@@ -244,6 +244,8 @@ pub enum Action {
     KillServer,
     /// Install the newest seshi and restart this window into it.
     Update,
+    /// Ask now whether a newer seshi is out, without waiting for the next check.
+    CheckUpdate,
     /// Every command with its key, as a list (the sidebar's "a actions").
     Actions,
     /// The worktrees step of the key map: new, switch, merge, delete.
@@ -325,6 +327,7 @@ impl Action {
             Action::SendPrefix => "send prefix key".into(),
             Action::KillServer => "kill server".into(),
             Action::Update => "Update seshi".into(),
+            Action::CheckUpdate => "Check for updates".into(),
             Action::Actions => "Actions".into(),
             Action::Worktrees => "Worktrees…".into(),
             Action::None => "unbound".into(),
@@ -401,6 +404,7 @@ impl Action {
             Action::SendPrefix => "send-prefix".into(),
             Action::KillServer => "kill-server".into(),
             Action::Update => "update".into(),
+            Action::CheckUpdate => "check-update".into(),
             Action::Actions => "actions".into(),
             Action::Worktrees => "worktrees".into(),
             Action::None => return None,
@@ -490,6 +494,7 @@ impl FromStr for Action {
             "send-prefix" => Action::SendPrefix,
             "kill-server" => Action::KillServer,
             "update" => Action::Update,
+            "check-update" => Action::CheckUpdate,
             "actions" => Action::Actions,
             "worktrees" => Action::Worktrees,
             "none" | "unbind" => Action::None,

@@ -1674,6 +1674,36 @@ mod hydra_tests {
     }
 
     #[test]
+    fn you_can_ask_for_an_update_check_and_are_told_what_it_found() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let said = |app: &App| app.notice.as_ref().map(|(m, _, err)| (m.clone(), *err)).unwrap();
+        assert!(app.palette_commands().contains(&Action::CheckUpdate), "in the palette");
+        // Settings: beside the version, when no newer one is known.
+        app.act(Action::Settings);
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains(&format!("seshi {}", env!("CARGO_PKG_VERSION"))) && o.contains("Check for updates"));
+        assert!(app.hits.iter().any(|(_, h)| *h == Hit::Hy(hydra::HyHit::CheckUpdate)), "it can be clicked");
+        // While it's asking, the button says so and can't be pressed twice.
+        app.update_checking = true;
+        let o = draw(&mut app, 160, 45);
+        assert!(o.contains("checking…") && !app.hits.iter().any(|(_, h)| *h == Hit::Hy(hydra::HyHit::CheckUpdate)));
+        // Nothing newer: you asked, so it says so. A check seshi made itself stays quiet.
+        app.notice = None;
+        app.update_checked_now(false, Ok(None), Vec::new());
+        assert!(app.notice.is_none(), "its own checks say nothing when there's nothing new");
+        app.update_checked_now(true, Ok(None), Vec::new());
+        assert!(!app.update_checking && said(&app) == (format!("seshi {} is the latest", env!("CARGO_PKG_VERSION")), false));
+        app.update_checked_now(true, Err("couldn't reach GitHub: timed out".into()), Vec::new());
+        assert!(said(&app).1 && said(&app).0.contains("Couldn't check for updates"), "{:?}", said(&app));
+        // A newer one: the Update button takes the place of the check.
+        app.update_checked_now(true, Ok(Some("9.9.9".into())), vec!["New: something".into()]);
+        assert_eq!(app.update_available.as_deref(), Some("9.9.9"));
+        let o = draw(&mut app, 160, 45);
+        assert!(o.contains("Update now") && !o.contains("Check for updates"));
+    }
+
+    #[test]
     fn a_woken_agents_pane_says_its_waking_until_the_agent_is_back() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.got_state = true;

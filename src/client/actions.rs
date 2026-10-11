@@ -110,6 +110,7 @@ impl App {
                 self.mode = Mode::Prompt { kind: PromptKind::ConfirmKillServer, input: String::new() };
             }
             Action::Update => self.ask_update(),
+            Action::CheckUpdate => self.check_for_update(true),
             Action::None => {}
             // The rest are handled by hy_act above.
             _ => {}
@@ -192,6 +193,7 @@ impl App {
             Action::ReloadConfig,
             Action::PaneInfo,
             Action::Update,
+            Action::CheckUpdate,
             Action::Detach,
         ]
     }

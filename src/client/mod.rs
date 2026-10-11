@@ -286,12 +286,14 @@ pub struct App {
     update_checked: Option<Instant>,
     /// An update is downloading.
     updating: bool,
+    /// Asking, because you said to, whether a newer seshi is out.
+    update_checking: bool,
     /// Installed a newer seshi: start it here once this one has closed.
     restart: Option<PathBuf>,
-    cfg: Config,
-    theme: Theme,
     /// When this window last had to attach to the server again.
     reattached: Option<Instant>,
+    cfg: Config,
+    theme: Theme,
     keymap: Keymap,
     notice: Option<(String, Instant, bool)>,
     /// The session the note is about (an agent finished or needs you): clicking it goes there.
@@ -407,7 +409,7 @@ async fn run_async(opts: Options) -> Result<Option<PathBuf>> {
     if crate::sync::enabled() {
         app.spawn_bg(|| Bg::Synced(crate::sync::pull().unwrap_or(false)));
     }
-    app.check_for_update();
+    app.check_for_update(false);
     if let Some(e) = err {
         app.notify(format!("config error: {e}"), true);
     }
@@ -488,11 +490,12 @@ impl App {
             update_notes: Vec::new(),
             update_checked: None,
             updating: false,
+            update_checking: false,
             restart: None,
+            reattached: None,
             theme: cfg.theme(),
             sidebar: cfg.ui.sidebar,
             alerted: HashMap::new(),
-            reattached: None,
             last_alert: None,
             waking: HashMap::new(),
             motion: motion::Motion::default(),
@@ -640,7 +643,7 @@ impl App {
                 },
                 _ = tick.tick() => {
                     if self.update_checked.is_some_and(|at| at.elapsed() >= UPDATE_CHECK_EVERY) {
-                        self.check_for_update();
+                        self.check_for_update(false);
                     }
                     // What agents ask (read off their screens) can change without a state
                     // message; look again now and then.
@@ -683,9 +686,6 @@ impl App {
         }
     }
 
-    /// Download the newest seshi in the background, then restart this window into it (the
-    /// sessions keep running in the server).
-    fn start_update(&mut self) {
     /// The connection to the server ended while the server is still there (it lets go of a
     /// window that falls too far behind): attach again, for a fresh copy of everything.
     /// False when it can't: the server is gone, or this keeps happening.
@@ -710,6 +710,9 @@ impl App {
         true
     }
 
+    /// Download the newest seshi in the background, then restart this window into it (the
+    /// sessions keep running in the server).
+    fn start_update(&mut self) {
         if self.updating {
             return;
         }
@@ -755,26 +758,44 @@ impl App {
     }
 
     /// Ask (in the background) whether a newer seshi is out: when the window opens, then now
-    /// and then while it stays open. A new one brings up the Update button.
-    fn check_for_update(&mut self) {
-        if !self.cfg.ui.update_check {
+    /// and then while it stays open, and when you ask (`asked`: that one says what it found
+    /// either way, and isn't turned off by the setting). A new one brings up the Update
+    /// button.
+    fn check_for_update(&mut self, asked: bool) {
+        if (!asked && !self.cfg.ui.update_check) || self.update_checking {
             return;
         }
         self.update_checked = Some(Instant::now());
-        self.spawn_bg(|| {
-            let newer = crate::update::newer_release();
+        self.update_checking = asked;
+        if asked {
+            self.notify("Checking for updates…".into(), false);
+        }
+        self.spawn_bg(move || {
+            let latest = crate::update::latest_tag();
+            let newer = latest.as_ref().ok().filter(|tag| crate::update::is_newer(tag)).map(|tag| tag.trim_start_matches('v').to_string());
             // Only asked for when there is something new: one more request, now and then.
             let notes = if newer.is_some() { crate::update::changes_since_this() } else { Vec::new() };
-            Bg::Then(Box::new(move |app: &mut App| {
-                if let Some(v) = newer
-                    && app.update_available.as_ref() != Some(&v)
-                {
-                    app.notify(format!("seshi {v} is out: Update now is in Settings"), false);
-                    app.update_available = Some(v);
-                    app.update_notes = notes;
-                }
-            }))
+            Bg::Then(Box::new(move |app: &mut App| app.update_checked_now(asked, latest.map(|_| newer), notes)))
         });
+    }
+
+    /// What a check for a newer seshi found: the newer version, none, or why it couldn't
+    /// look. One you asked for always says.
+    fn update_checked_now(&mut self, asked: bool, found: Result<Option<String>, String>, notes: Vec<String>) {
+        if asked {
+            self.update_checking = false;
+        }
+        match found {
+            Ok(Some(v)) if self.update_available.as_ref() != Some(&v) => {
+                self.notify(format!("seshi {v} is out: Update now is in Settings"), false);
+                self.update_available = Some(v);
+                self.update_notes = notes;
+            }
+            Ok(Some(v)) if asked => self.notify(format!("seshi {v} is out: Update now is in Settings"), false),
+            Ok(None) if asked => self.notify(format!("seshi {} is the latest", env!("CARGO_PKG_VERSION")), false),
+            Err(e) if asked => self.notify(format!("Couldn't check for updates: {e}"), true),
+            _ => {}
+        }
     }
 
     /// Ask before updating: this version, the new one, and what changed.

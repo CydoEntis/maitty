@@ -210,13 +210,6 @@ pub fn tidy() {
 
 // ---- the check ------------------------------------------------------------------------------
 
-/// A newer release's version, if there is one. Asks GitHub each time (slow, network): call
-/// it off the UI thread.
-pub fn newer_release() -> Option<String> {
-    let tag = latest_tag().ok()?;
-    is_newer(&tag).then(|| tag.trim_start_matches('v').to_string())
-}
-
 /// What changed since this build: the `- ` lines of every newer release's notes, newest
 /// release first. Empty when GitHub can't be reached. Slow (network): off the UI thread.
 pub fn changes_since_this() -> Vec<String> {

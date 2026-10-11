@@ -813,7 +813,6 @@ impl App {
                 continue;
             }
             self.hy.overlap_at.insert(repo.clone(), Instant::now());
-            let base = crate::gitfs::main_branch(&repo);
             let tx = self.bg.clone();
             std::thread::spawn(move || {
                 let checkouts: Vec<(String, PathBuf)> = wts.iter().map(|w| (w.name.clone(), w.path.clone())).collect();
@@ -927,6 +926,8 @@ pub(super) enum HyHit {
     SideFocus,
     /// Install the newer seshi (in Settings › General).
     Update,
+    /// Ask now whether a newer seshi is out (the same place, when none is known).
+    CheckUpdate,
     /// The sidebar's "a actions".
     Actions,
     /// A row of the actions list.

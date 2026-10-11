@@ -105,7 +105,8 @@ sidebar, and Settings has an **Update now** button by the version (also "Update 
 command palette). Click it to see your version, the new one and what changed; confirm, and the new
 version downloads and the window restarts into it, with your sessions still running. From a
 shell it's `seshi update` (or `seshi update --check` to just
-look). Turn the check off in Settings (Check for updates).
+look). To look right now, Settings has **Check for updates** by the version when no newer one is
+known (also in the command palette). Turn the automatic check off in Settings (Check for updates).
 
 **Coming from hydra?** Seshi is its new name. Install seshi as above; the first time it starts,
 it brings hydra's config, saved sessions and history over (hydra's own folders are left as they

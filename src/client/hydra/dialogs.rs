@@ -284,15 +284,23 @@ pub(in crate::client) fn draw_settings(app: &mut App, f: &mut Frame, area: Rect,
     }
     // Under the tabs, at the right.
     let vw = segs_width(&ver);
-    let update = app.update_available.as_ref().map(|_| button_pill(look, t, if app.updating { "updating…" } else { "Update now" }, "", true, false, t.card));
-    let uw = update.as_ref().map(|u| segs_width(u)).unwrap_or(0);
-    let vx = r.right().saturating_sub(vw + uw + 4);
+    // Beside it: the newer one to install, or a way to ask for one now (it's otherwise
+    // only looked for when the window opens and every few hours).
+    let (label, primary, what) = match (&app.update_available, app.updating, app.update_checking) {
+        (Some(_), true, _) => ("updating…", true, HyHit::Update),
+        (Some(_), ..) => ("Update now", true, HyHit::Update),
+        (None, _, true) => ("checking…", false, HyHit::Noop),
+        (None, ..) => ("Check for updates", false, HyHit::CheckUpdate),
+    };
+    let uw = segs_width(&button_pill(look, t, label, "", primary, false, t.card));
+    let gap = if app.update_available.is_some() { 0 } else { 2 };
+    let vx = r.right().saturating_sub(vw + gap + uw + 4);
     let vy = r.y + 4;
     put(buf, vx, vy, &ver, r.right() - 3);
-    if let Some(u) = update {
-        put(buf, vx + vw, vy, &u, r.right() - 3);
-        hit(app, Rect { x: vx + vw, y: vy, width: uw, height: 1 }, HyHit::Update);
-    }
+    let ur = Rect { x: vx + vw + gap, y: vy, width: uw, height: 1 };
+    let update = button_pill(look, t, label, "", primary, hovered(app, ur), t.card);
+    put(buf, ur.x, vy, &update, r.right() - 3);
+    hit(app, ur, what);
     hline(buf, r.x + 3, r.y + 3, r.width.saturating_sub(6), t, t.card);
     let cat = Cat::ALL[v.cat.min(Cat::ALL.len() - 1)];
     let rows = crate::client::design::settings_rows(cat);
