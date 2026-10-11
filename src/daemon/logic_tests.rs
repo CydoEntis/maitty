@@ -92,6 +92,28 @@ fn a_report_traced_outside_the_pane_is_dropped() {
 }
 
 #[test]
+fn a_finish_you_have_seen_is_not_announced_again() {
+    let (mut d, _rx) = daemon();
+    d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();
+    let t = d.workspaces[0].tabs[0].focus;
+    let secret = d.terms[&t].token.clone();
+    let say = |d: &mut Daemon, status, event: &str| d.apply_hook(report(t, &secret, 0, status, event), Some(true), Vec::new());
+    say(&mut d, HookStatus::Working, "UserPromptSubmit");
+    say(&mut d, HookStatus::Done, "Stop");
+    assert_eq!(d.terms[&t].status, Status::Done);
+    d.command(0, Command::MarkSeen { term: t }).unwrap();
+    assert_eq!(d.terms[&t].status, Status::Idle, "you looked");
+    // A minute on, Claude says it's still waiting: nothing new.
+    say(&mut d, HookStatus::Done, "Notification:idle_prompt");
+    assert_eq!(d.terms[&t].status, Status::Idle, "still seen");
+    // The same notice with the finish itself missed still counts as the finish.
+    say(&mut d, HookStatus::Working, "UserPromptSubmit");
+    say(&mut d, HookStatus::Done, "Notification:idle_prompt");
+    assert_eq!(d.terms[&t].status, Status::Done);
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn a_permission_ask_settled_without_you_stops_needing_you() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);

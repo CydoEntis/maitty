@@ -178,6 +178,9 @@ impl Daemon {
                 self.dirty = true;
                 return;
             }
+            // Claude's "still waiting for you", a minute after its turn ended, isn't a second
+            // finish: one you've already looked at stays looked at (and doesn't alert again).
+            HookStatus::Done if event == "Notification:idle_prompt" && t.status == Status::Idle => return,
             HookStatus::Working => Status::Working,
             HookStatus::Blocked => Status::Blocked,
             HookStatus::Idle => Status::Idle,
