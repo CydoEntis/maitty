@@ -51,6 +51,10 @@ const PASTE_GAP: Duration = Duration::from_millis(8);
 const PASTE_MAX_WAIT: Duration = Duration::from_secs(1);
 /// How long a note stays in the bottom bar.
 const NOTICE_FOR: Duration = Duration::from_secs(5);
+/// Server messages taken in one go before the next frame.
+const SERVER_BURST: usize = 512;
+/// Losing the server twice within this long is the server going, not a hiccup: stop.
+const REATTACH_AT_MOST_EVERY: Duration = Duration::from_secs(10);
 /// A pane stops saying it's waking after this long, whatever the agent has or hasn't shown.
 const WAKING_AT_MOST: Duration = Duration::from_secs(30);
 /// Rows with something on them that count as the agent having drawn its screen.
@@ -286,6 +290,8 @@ pub struct App {
     restart: Option<PathBuf>,
     cfg: Config,
     theme: Theme,
+    /// When this window last had to attach to the server again.
+    reattached: Option<Instant>,
     keymap: Keymap,
     notice: Option<(String, Instant, bool)>,
     /// The session the note is about (an agent finished or needs you): clicking it goes there.
@@ -486,6 +492,7 @@ impl App {
             theme: cfg.theme(),
             sidebar: cfg.ui.sidebar,
             alerted: HashMap::new(),
+            reattached: None,
             last_alert: None,
             waking: HashMap::new(),
             motion: motion::Motion::default(),
@@ -604,11 +611,30 @@ impl App {
                     self.on_bg(b);
                     self.dirty = true;
                 }
-                msg = ipc::recv_server(reader) => match msg {
-                    Ok(Some(m)) => self.on_server(m),
-                    // One message that didn't decode: skip it rather than quit.
-                    Err(e) if ipc::is_decode_error(&e) => tracing::warn!("skipped a message from the server: {e:#}"),
-                    _ => {
+                msg = ipc::recv_server(reader) => {
+                    // Take everything the server has already sent before drawing again. One
+                    // message per frame can't keep up once a frame takes longer than messages
+                    // arrive (many agents printing), and the server lets go of a window that
+                    // falls too far behind.
+                    let mut next = Some(msg);
+                    let mut taken = 0;
+                    let mut lost = false;
+                    while let Some(msg) = next.take() {
+                        match msg {
+                            Ok(Some(m)) => self.on_server(m),
+                            // One message that didn't decode: skip it rather than quit.
+                            Err(e) if ipc::is_decode_error(&e) => tracing::warn!("skipped a message from the server: {e:#}"),
+                            _ => {
+                                lost = true;
+                                break;
+                            }
+                        }
+                        taken += 1;
+                        if taken < SERVER_BURST && self.quit.is_none() {
+                            next = ipc::recv_server(reader).now_or_never();
+                        }
+                    }
+                    if lost && self.quit.is_none() && !self.reattach(reader).await {
                         self.quit.get_or_insert_with(|| "server exited".into());
                     }
                 },
@@ -660,6 +686,30 @@ impl App {
     /// Download the newest seshi in the background, then restart this window into it (the
     /// sessions keep running in the server).
     fn start_update(&mut self) {
+    /// The connection to the server ended while the server is still there (it lets go of a
+    /// window that falls too far behind): attach again, for a fresh copy of everything.
+    /// False when it can't: the server is gone, or this keeps happening.
+    async fn reattach(&mut self, reader: &mut ipc::Reader) -> bool {
+        if self.reattached.is_some_and(|at| at.elapsed() < REATTACH_AT_MOST_EVERY) {
+            return false;
+        }
+        // Connect only: a server that has stopped must not be started again by this.
+        let Ok((r, mut writer)) = ipc::open(true).await else { return false };
+        *reader = r;
+        let (out_tx, mut out_rx) = mpsc::unbounded_channel::<ClientMsg>();
+        tokio::spawn(async move {
+            while let Some(msg) = out_rx.recv().await {
+                if ipc::send(&mut writer, &msg).await.is_err() {
+                    break;
+                }
+            }
+        });
+        self.out = out_tx;
+        self.reattached = Some(Instant::now());
+        self.notify("Lost the server for a moment; connected again".into(), false);
+        true
+    }
+
         if self.updating {
             return;
         }
