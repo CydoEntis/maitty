@@ -135,7 +135,7 @@ Everything below is shipped on `dev` unless marked.
 - Seshi Walnut (default), Seshi Night and Seshi Day themes; block SESHI wordmark on the splash — done, unreleased — `src/theme.rs`, `src/client/hydra/splash.rs`
 
 **Extras**
-- Desktop alerts and sounds, notification history — shipped — `src/alert.rs`
+- One alert when an agent needs you or finishes: seshi's own two sounds and a note in the window; a desktop notification only with no window open; notification history — shipped — `src/alert.rs`
 - Click a notification to jump to its session — shipped — `src/reveal.rs`, `src/alert.rs` (#19)
 - Sidebar groups sessions by where they work now (repo, or folder outside git); no projects to open; splits stay with their session — shipped — `src/client/hydra/mod.rs`
 - Releases and installers (Windows, macOS, Linux; checksums), `seshi update` and a daily update check — shipped — `.github/workflows/release.yml`, `install.sh`, `install.ps1`, `src/update.rs`
@@ -147,6 +147,7 @@ Everything below is shipped on `dev` unless marked.
 ## Out
 
 - Features cut 2026-10-09 (the user's call: they repeated something else or weren't used): open project, go to, next agent that needs you, arrange panes, undo automatic workspace, the map, ideas, races, run a preset as a list (presets stay in the new-agent dialog), memory per session, past chats, agent tools, extensions, and the tmux stand-in for Claude agent teams. Bringing one back needs a new decision. (Talk / reply / answer, the quick prompt, tickets, the queue, checkpoints, SSH remotes, config sync, the dev-server runner and the pull-request view with Ship were cut the same day and are coming back in phase 8, redesigned.)
+- Desktop notifications while a seshi window is open, the terminal bell on an alert, and choosing among system sounds (or your own sound file) — cut 2026-10-11 (the user's call: three overlapping alerts, two of them the Windows error ding). Bringing one back needs a new decision.
 - Other UI layouts (workspaces, tree, dock, sidebar) — declined 2026-10-03: one layout to build and test (ADR-0004, now ADR-0007: floating and tiled are styles of it). Bringing them back needs a new decision.
 
 ## Later

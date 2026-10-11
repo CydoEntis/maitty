@@ -288,14 +288,8 @@ pub struct Detection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Notify {
-    /// Ring the terminal bell when an agent becomes blocked or finishes out of view.
-    pub bell: bool,
-    /// A desktop notification when an agent you're not looking at needs you or finishes
-    /// (also when no seshi window is open).
-    pub desktop: bool,
-    /// Sounds: glass, ping, chime, pop, off, or a path to a sound file.
-    pub sound_needs: String,
-    pub sound_done: String,
+    /// Play seshi's sound when an agent you're not looking at needs you or finishes.
+    pub sound: bool,
     /// Alerts on your phone through ntfy (the free ntfy app): your topic's name. Empty is off.
     /// On the public server the name is all that keeps them private, so make it hard to guess.
     pub phone_topic: String,
@@ -545,10 +539,7 @@ impl Default for Detection {
 impl Default for Notify {
     fn default() -> Self {
         Notify {
-            bell: false,
-            desktop: true,
-            sound_needs: "ping".into(),
-            sound_done: "glass".into(),
+            sound: true,
             phone_topic: String::new(),
             phone_server: "https://ntfy.sh".into(),
             phone_after: 60,
@@ -985,6 +976,15 @@ fn which(exe: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_config_with_the_old_alert_settings_still_loads() {
+        let old = "[notify]\nbell = true\ndesktop = false\nsound_needs = \"ping\"\nsound_done = \"off\"\nphone_after = 90\n";
+        let c: super::Config = toml::from_str(old).expect("the settings that are gone are ignored");
+        assert!(c.notify.sound && c.notify.phone_after == 90);
+        let c: super::Config = toml::from_str("[notify]\nsound = false\n").unwrap();
+        assert!(!c.notify.sound);
+    }
+
     #[test]
     fn a_program_becomes_an_agent() {
         let args = |s: &str| s.split_whitespace().map(String::from).collect::<Vec<_>>();

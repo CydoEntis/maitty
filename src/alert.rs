@@ -1,6 +1,10 @@
-//! Desktop notifications and sounds, using each system's own tools so nothing extra is
-//! needed: a Windows toast through PowerShell, `osascript` on macOS, `notify-send` on Linux;
-//! sounds through PowerShell's media player, `afplay`, or `paplay` / `pw-play`.
+//! Alerts: seshi's own two sounds, and a desktop notification for when no seshi window is
+//! open to say it. Each system's own tools show and play them, so nothing extra is needed: a
+//! Windows toast through PowerShell, `osascript` on macOS, `notify-send` on Linux; sounds
+//! through PowerShell's media player, `afplay`, or `paplay` / `pw-play`.
+//!
+//! The sounds are made here rather than borrowed from the system: a system sound means
+//! something else already (on Windows, "you can't do that").
 //!
 //! Everything runs on a short-lived thread and failures are ignored: an alert that can't be
 //! shown must never get in the way. A notification can carry a `seshi://` link (see
@@ -16,8 +20,78 @@ pub enum Kind {
     Done,
 }
 
-/// The built-in sound names (anything else is a path to a sound file).
-pub const SOUNDS: &[&str] = &["glass", "ping", "chime", "pop", "off"];
+impl Kind {
+    /// Its sound as notes (pitch in Hz, length in ms): two rising for "needs you", one
+    /// lower and longer for "finished", so you can tell which without looking.
+    fn notes(self) -> &'static [(f32, u32)] {
+        match self {
+            Kind::Needs => &[(659.25, 130), (987.77, 240)],
+            Kind::Done => &[(523.25, 320)],
+        }
+    }
+
+    fn file_name(self) -> &'static str {
+        // The number changes with the sound, so an older file isn't played in its place.
+        match self {
+            Kind::Needs => "seshi-needs-you-1.wav",
+            Kind::Done => "seshi-finished-1.wav",
+        }
+    }
+}
+
+const SAMPLE_RATE: u32 = 22_050;
+/// How loud the sounds are, of full scale: heard, not startling.
+const LEVEL: f32 = 0.3;
+/// Each note fades in over this long, so it doesn't click.
+const ATTACK_MS: f32 = 6.0;
+
+/// `kind`'s sound as a WAV file's bytes (16-bit mono).
+pub fn tone(kind: Kind) -> Vec<u8> {
+    let mut pcm: Vec<i16> = Vec::new();
+    for (hz, ms) in kind.notes() {
+        let n = SAMPLE_RATE * ms / 1000;
+        for i in 0..n {
+            let t = i as f32 / SAMPLE_RATE as f32;
+            // Rings like a struck note: quick in, dying away; an octave above for colour.
+            let fade_in = (t * 1000.0 / ATTACK_MS).min(1.0);
+            let fade_out = (-4.0 * i as f32 / n as f32).exp();
+            let wave = (std::f32::consts::TAU * hz * t).sin() + 0.25 * (std::f32::consts::TAU * hz * 2.0 * t).sin();
+            pcm.push((wave / 1.25 * fade_in * fade_out * LEVEL * f32::from(i16::MAX)) as i16);
+        }
+    }
+    let data_len = (pcm.len() * 2) as u32;
+    let mut out = Vec::with_capacity(44 + pcm.len() * 2);
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + data_len).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    // PCM, one channel.
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&SAMPLE_RATE.to_le_bytes());
+    out.extend_from_slice(&(SAMPLE_RATE * 2).to_le_bytes());
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&16u16.to_le_bytes());
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&data_len.to_le_bytes());
+    for s in pcm {
+        out.extend_from_slice(&s.to_le_bytes());
+    }
+    out
+}
+
+/// `kind`'s sound as a file the system's player can open: written to seshi's data folder the
+/// first time it's needed.
+pub fn tone_file(kind: Kind) -> Option<PathBuf> {
+    let path = crate::config::data_dir().join(kind.file_name());
+    if !path.is_file()
+        && let Err(e) = crate::config::write_atomic(&path, tone(kind))
+    {
+        tracing::warn!("writing {}: {e}", path.display());
+        return None;
+    }
+    Some(path)
+}
 
 /// An agent that says the same thing again this soon (it finished, worked a moment longer for
 /// a subagent, finished again) isn't news: no second alert.
@@ -33,19 +107,19 @@ pub fn should_alert<S: PartialEq>(status: &S, last_here: Option<(&S, std::time::
     !same_again && !crowded
 }
 
-/// Show a desktop notification and/or play the sound for `kind`, as configured. `link`:
-/// where clicking the notification goes.
-pub fn alert(cfg: &crate::config::Notify, kind: Kind, title: &str, body: &str, link: Option<String>) {
-    let sound = match kind {
-        Kind::Needs => cfg.sound_needs.clone(),
-        Kind::Done => cfg.sound_done.clone(),
-    };
-    if cfg.desktop {
-        let (title, body) = (title.to_string(), body.to_string());
-        // Its own thread: on Linux it waits for the click.
-        std::thread::spawn(move || notify(&title, &body, link.as_deref()));
+/// Play seshi's sound for `kind`, unless sounds are off. Returns at once.
+pub fn ring(cfg: &crate::config::Notify, kind: Kind) {
+    if cfg.sound {
+        std::thread::spawn(move || play(kind));
     }
-    std::thread::spawn(move || play(&sound));
+}
+
+/// A desktop notification, for when no seshi window is open to say it. `link`: where
+/// clicking it goes. Returns at once.
+pub fn notify_soon(title: &str, body: &str, link: Option<String>) {
+    let (title, body) = (title.to_string(), body.to_string());
+    // Its own thread: on Linux it waits for the click.
+    std::thread::spawn(move || notify(&title, &body, link.as_deref()));
 }
 
 /// An alert on your phone: an ntfy message to your topic. Blocks until sent (run it off the
@@ -146,52 +220,9 @@ fn on_path(tool: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(tool).is_file()))
 }
 
-/// The file behind a sound name on this system (or the path itself for a custom sound).
-pub fn sound_file(name: &str) -> Option<PathBuf> {
-    let name = name.trim();
-    if name.is_empty() || name.eq_ignore_ascii_case("off") {
-        return None;
-    }
-    if name.contains(['/', '\\']) || name.contains('.') {
-        let p = PathBuf::from(name);
-        return p.exists().then_some(p);
-    }
-    let lower = name.to_lowercase();
-    let file = if cfg!(windows) {
-        let f = match lower.as_str() {
-            "glass" => "Windows Notify System Generic.wav",
-            "ping" => "Windows Ding.wav",
-            "chime" => "Windows Notify Messaging.wav",
-            "pop" => "Windows Notify Email.wav",
-            _ => return None,
-        };
-        let windir = std::env::var_os("WINDIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
-        windir.join("Media").join(f)
-    } else if cfg!(target_os = "macos") {
-        let f = match lower.as_str() {
-            "glass" => "Glass",
-            "ping" => "Ping",
-            "chime" => "Hero",
-            "pop" => "Pop",
-            _ => return None,
-        };
-        PathBuf::from(format!("/System/Library/Sounds/{f}.aiff"))
-    } else {
-        let f = match lower.as_str() {
-            "glass" => "complete",
-            "ping" => "bell",
-            "chime" => "message-new-instant",
-            "pop" => "message",
-            _ => return None,
-        };
-        PathBuf::from(format!("/usr/share/sounds/freedesktop/stereo/{f}.oga"))
-    };
-    file.exists().then_some(file)
-}
-
-/// Play a sound by name (see `SOUNDS`) or file path. Blocks until it has played.
-pub fn play(name: &str) {
-    let Some(file) = sound_file(name) else { return };
+/// Play `kind`'s sound. Blocks until it has played.
+pub fn play(kind: Kind) {
+    let Some(file) = tone_file(kind) else { return };
     if cfg!(windows) {
         // MediaPlayer handles wav, mp3 and wma; it plays asynchronously, so wait a moment.
         const PLAY: &str = "Add-Type -AssemblyName PresentationCore; $p = New-Object System.Windows.Media.MediaPlayer; \
@@ -227,13 +258,23 @@ mod tests {
     }
 
     #[test]
-    fn sound_names() {
-        assert!(sound_file("off").is_none() && sound_file("").is_none());
-        assert!(sound_file("no-such-sound").is_none());
-        assert!(sound_file("/definitely/missing.wav").is_none(), "a custom file must exist");
-        if cfg!(windows) {
-            assert!(sound_file("ping").is_some_and(|p| p.ends_with("Windows Ding.wav")));
+    fn the_two_sounds_are_wav_files_you_can_tell_apart() {
+        let (needs, done) = (tone(Kind::Needs), tone(Kind::Done));
+        for wav in [&needs, &done] {
+            assert_eq!((&wav[..4], &wav[8..16]), (&b"RIFF"[..], &b"WAVEfmt "[..]));
+            let riff = u32::from_le_bytes(wav[4..8].try_into().unwrap()) as usize;
+            let data = u32::from_le_bytes(wav[40..44].try_into().unwrap()) as usize;
+            assert_eq!((riff, data), (wav.len() - 8, wav.len() - 44), "the sizes it declares are its own");
+            let samples: Vec<i16> = wav[44..].as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes(*b)).collect();
+            let peak = samples.iter().map(|s| s.unsigned_abs()).max().unwrap();
+            assert!(peak > 2000 && f32::from(peak) <= LEVEL * f32::from(i16::MAX) + 1.0, "audible, and no louder than its level: {peak}");
+            assert!(samples[0].unsigned_abs() < 200 && samples[samples.len() - 1].unsigned_abs() < 800, "it starts and ends near silence (no click)");
+            let secs = samples.len() as f32 / SAMPLE_RATE as f32;
+            assert!((0.2..0.6).contains(&secs), "short: {secs}s");
         }
+        assert!(needs != done && Kind::Needs.notes().len() == 2 && Kind::Done.notes().len() == 1, "two notes for needs you, one for finished");
+        assert!(Kind::Needs.notes()[0].0 < Kind::Needs.notes()[1].0, "needs you rises");
+        assert!(Kind::Needs.file_name() != Kind::Done.file_name());
     }
 
     #[test]

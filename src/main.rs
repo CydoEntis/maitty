@@ -313,15 +313,13 @@ fn main() {
         Some(Cmd::Sync { action, name }) => sync::command(action.as_deref(), name.as_deref()),
         Some(Cmd::TestAlert) => {
             let (cfg, _) = config::Config::load_or_default();
-            println!("notification: {}", if cfg.notify.desktop { "on" } else { "off (notify.desktop)" });
-            if cfg.notify.desktop {
-                // With a server running, clicking it goes to the session you're on.
-                let link = cli::focused_pane().map(reveal::link);
-                if link.is_some() {
-                    println!("click the notification to go to the session you're on");
-                }
-                alert::notify("claude needs you", "seshi · this is a test", link.as_deref());
+            println!("notification: the one you get when no seshi window is open");
+            // With a server running, clicking it goes to the session you're on.
+            let link = cli::focused_pane().map(reveal::link);
+            if link.is_some() {
+                println!("click the notification to go to the session you're on");
             }
+            alert::notify("claude needs you", "seshi · this is a test", link.as_deref());
             match alert::phone_url(&cfg.notify.phone_server, &cfg.notify.phone_topic) {
                 None => println!("phone: off (notify.phone_topic)"),
                 Some(url) => match alert::phone(&cfg.notify, "claude needs you", "seshi · this is a test") {
@@ -329,13 +327,16 @@ fn main() {
                     Err(e) => println!("phone: didn't go to {url}: {e}"),
                 },
             }
-            for (what, sound) in [("needs you", &cfg.notify.sound_needs), ("done", &cfg.notify.sound_done)] {
-                match alert::sound_file(sound) {
+            if !cfg.notify.sound {
+                println!("sounds: off (notify.sound); playing them anyway");
+            }
+            for (what, kind) in [("needs you", alert::Kind::Needs), ("finished", alert::Kind::Done)] {
+                match alert::tone_file(kind) {
                     Some(f) => {
-                        println!("{what} sound: {sound} ({})", f.display());
-                        alert::play(sound);
+                        println!("{what} sound: {}", f.display());
+                        alert::play(kind);
                     }
-                    None => println!("{what} sound: {sound} (off or not found)"),
+                    None => println!("{what} sound: couldn't be written to seshi's data folder"),
                 }
             }
             Ok(())

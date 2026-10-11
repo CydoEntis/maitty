@@ -73,10 +73,7 @@ shell = ""                  # a terminal (Nerd Font); ">" or "$" without one
 branch = "\ue0a0 "          # Nerd Font branch glyph; use "" or "on " without one
 
 [notify]
-desktop = true              # a desktop notification when an agent you're not looking at needs you
-sound_needs = "ping"        # glass | ping | chime | pop | off | a path to a sound file
-sound_done = "glass"
-bell = false                # also ring the terminal bell
+sound = true                # seshi's own sounds when an agent you're not looking at needs you or finishes
 # phone_topic = "seshi-pick-something-unguessable"   # ntfy app topic; empty is off
 # phone_after = 60          # seconds an agent waits unanswered before your phone buzzes
 # phone_done = false        # also when one finishes and nobody looked

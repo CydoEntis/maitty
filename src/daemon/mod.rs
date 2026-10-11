@@ -369,7 +369,7 @@ impl Daemon {
     fn new(cfg: Config, tx: mpsc::Sender<Ev>) -> Daemon {
         contain::children_die_with_us();
         // Clicking a notification opens its seshi:// link (Windows needs to be told how).
-        if cfg.notify.desktop && !cfg!(test) {
+        if !cfg!(test) {
             crate::reveal::register();
         }
         // Hooks naming another seshi (an older install) can't reach this server.

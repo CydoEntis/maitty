@@ -208,9 +208,10 @@ Everything also works with the mouse. Hold Shift to select text with your termin
 
 ## Alerts
 
-A desktop notification and a sound when an agent you're not looking at needs you or finishes,
-also when no seshi window is open (the server sends it). Sounds: glass, ping, chime, pop, off,
-or a path to your own file (`[notify] sound_needs`, `sound_done`). `seshi test-alert` tries them.
+One alert when an agent you're not looking at needs you or finishes: seshi's own sound (two
+rising notes for needs you, one for finished) and a note inside seshi. With no seshi window
+open, the server plays the sound and shows a desktop notification instead. `[notify] sound =
+false` (Settings → Alert sounds) turns the sounds off; `seshi test-alert` plays them.
 
 **On your phone** (off until you set it up): install the free [ntfy](https://ntfy.sh) app (no
 account), subscribe to a topic name nobody would guess, and put it in Settings → Phone alerts
@@ -221,7 +222,7 @@ public server the topic name is all that keeps them private (`phone_server` for 
 `seshi test-alert` sends a test.
 
 Click a notification to go to its session: seshi comes to the front on it (its split too).
-That works for the note inside seshi and the desktop pop-ups on Windows and Linux (on
+That works for the note inside seshi and the desktop notification on Windows and Linux (on
 Omarchy / Hyprland the window is brought forward too); on macOS, install
 `terminal-notifier` for clickable ones.
 
