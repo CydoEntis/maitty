@@ -1096,6 +1096,37 @@ mod hydra_tests {
     }
 
     #[test]
+    fn an_agents_row_menu_makes_it_a_captain() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        let typed = |rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::protocol::ClientMsg>| {
+            std::iter::from_fn(|| rx.try_recv().ok()).find_map(|m| match m {
+                crate::protocol::ClientMsg::Input { term, data } => Some((term, String::from_utf8_lossy(&data).into_owned())),
+                _ => None,
+            })
+        };
+        let offered = |app: &App, t: TermId| app.session_items(t).unwrap().1.into_iter().find(|(l, _)| l == "Captain a fleet").map(|(_, a)| a);
+        let act = offered(&app, 1).expect("on an agent's row");
+        assert!(offered(&app, 3).is_none(), "not on a shell");
+        // Its key isn't one the row already uses (m follows up, i says why).
+        let items = app.session_items(1).unwrap().1;
+        let key = crate::client::menu::menu_keys(&items)[items.iter().position(|(l, _)| l == "Captain a fleet").unwrap()];
+        assert!(key.is_some_and(|k| !['m', 'i', 'j', 'k', 'x'].contains(&k)), "{key:?}");
+        // claude is on a prompt: typing there would answer it.
+        app.menu_do(act.clone());
+        assert!(typed(&mut rx).is_none(), "nothing typed into a prompt");
+        app.snap.terms.get_mut(&1).unwrap().status = Status::Idle;
+        app.menu_do(act);
+        let (term, text) = typed(&mut rx).expect("told to captain");
+        assert_eq!((term, text.as_str()), (1, crate::brief::captain_prompt("").as_str()));
+        assert!(text.contains("seshi brief") && text.contains("ask me for the goal"));
+        app.snap.terms.get_mut(&1).unwrap().asleep = true;
+        app.hy_fresh();
+        assert!(offered(&app, 1).is_none(), "not while it's asleep");
+    }
+
+    #[test]
     fn tabs_close_rename_and_reorder_with_the_mouse() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();

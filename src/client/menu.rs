@@ -23,6 +23,8 @@ pub enum Act {
     End(Vec<TermId>),
     Changes(PathBuf),
     RenamePane(TermId),
+    /// Tell this agent to run a fleet from now on (`seshi brief`).
+    Captain(TermId),
     Split(TermId, crate::layout::Dir),
     RightClicks(TermId),
     RenameProject(String, String),
@@ -172,6 +174,10 @@ impl App {
         items.push(("Rename".to_string(), Act::RenamePane(term)));
         if let Some(d) = dir.filter(|d| crate::gitfs::head(d).is_some()) {
             items.push(("Changes".to_string(), Act::Changes(d)));
+        }
+        // Not "Make captain": on a row, m is already the follow-up key.
+        if s.is_agent && !s.asleep {
+            items.push(("Captain a fleet".to_string(), Act::Captain(term)));
         }
         items.push(("Close".to_string(), Act::End(vec![term])));
         // Titled by what it is (an agent, or the program's name), never its window title.
@@ -369,6 +375,11 @@ impl App {
                 });
             }
             Act::TeachAgent(term) => self.cmd(Command::TeachAgent { term }),
+            // Typed into a prompt it would be taken as that prompt's answer.
+            Act::Captain(term) if self.snap.terms.get(&term).is_some_and(|t| t.status == crate::protocol::Status::Blocked) => {
+                self.notify("it's waiting on you: answer it first".into(), true);
+            }
+            Act::Captain(term) => self.send_follow_up(term, &crate::brief::captain_prompt("")),
             Act::RightClicks(t) => {
                 if !self.hy.right_clicks.remove(&t) {
                     self.hy.right_clicks.insert(t);
