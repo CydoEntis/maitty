@@ -2,7 +2,7 @@
 //! or open it in your editor at the line.
 
 use super::design::{fill, put, seg, tilde};
-use super::hydra::{HyHit, dim_all, hints, hit, hovered, panel};
+use super::hydra::{HyHit, chip, dim_all, hints, hit, hovered, panel};
 use super::render::truncate;
 use super::{App, Bg, Mode, files};
 use crate::protocol::ClientMsg;
@@ -245,7 +245,7 @@ pub(super) fn draw_find(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, v: 
         } else {
             Style::default().bg(t.btn).fg(t.text)
         };
-        put(buf, x, r.y + 2, &[seg(txt.clone(), st)], r.right());
+        put(buf, x, r.y + 2, &chip(label, st), r.right());
         hit(app, tr, HyHit::FindTab(i as u8));
         x += tr.width + 2;
     }

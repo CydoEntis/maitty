@@ -368,7 +368,9 @@ pub(super) fn draw_branches(app: &mut App, f: &mut Frame, area: Rect, t: &Theme,
                 fill(buf, rr, bg);
                 let st = Style::default().bg(bg);
                 let lc = if *carry == Carry::Discard { t.blocked } else { t.strong };
-                put(buf, rr.x + 2, yy, &[seg(format!(" {} ", i + 1), Style::default().bg(t.btn).fg(t.accent).add_modifier(Modifier::BOLD)), seg(format!("  {label}"), st.fg(lc).add_modifier(Modifier::BOLD)), seg(format!("  {what}"), st.fg(t.muted))], rr.right());
+                let mut row = super::hydra::chip(&(i + 1).to_string(), Style::default().bg(t.btn).fg(t.accent).add_modifier(Modifier::BOLD));
+                row.extend([seg(format!("  {label}"), st.fg(lc).add_modifier(Modifier::BOLD)), seg(format!("  {what}"), st.fg(t.muted))]);
+                put(buf, rr.x + 2, yy, &row, rr.right());
                 hit(app, rr, HyHit::BranchChoice(i));
             }
             put(buf, r.x + 3, r.bottom() - 2, &hints(t, &[("1-4", "choose"), ("Esc", "back")]), r.right() - 1);

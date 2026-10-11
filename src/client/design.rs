@@ -116,6 +116,8 @@ pub(super) fn fill(buf: &mut Buffer, r: Rect, bg: Color) {
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum BtnKind {
     Primary,
+    /// The one that ends or removes something.
+    Danger,
     Normal,
     Ghost,
 }
@@ -124,10 +126,11 @@ pub(super) enum BtnKind {
 pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind, hovered: bool) -> Vec<Seg> {
     let (bg, fg, kfg) = match kind {
         BtnKind::Primary => (t.accent, t.acc_ink, t.acc_ink),
+        BtnKind::Danger => (t.danger_fill(), t.ink_on(t.danger_fill()), t.ink_on(t.danger_fill())),
         BtnKind::Normal => (t.btn, t.strong, t.accent),
         BtnKind::Ghost => (t.sidebar_bg, t.text, t.accent),
     };
-    let bg = if hovered && kind != BtnKind::Primary { t.hov } else { bg };
+    let bg = if hovered && matches!(kind, BtnKind::Normal | BtnKind::Ghost) { t.hov } else { bg };
     let bold = if kind == BtnKind::Ghost { Modifier::empty() } else { Modifier::BOLD };
     // A pill: the same width as " Label key " was.
     let (l, r) = super::hydra::ends(bg);
@@ -239,7 +242,9 @@ fn action_row(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, buttons: &[(&
             Style::default().bg(t.btn).fg(t.accent).add_modifier(Modifier::BOLD)
         };
         let text_st = Style::default().bg(if hov { t.hov } else { t.card2 }).fg(t.strong);
-        x = put(buf, x, y, &[seg(cap, cap_st), seg(text, text_st)], r.right()) + 2;
+        let mut segs = super::hydra::chip(key, cap_st);
+        segs.push(seg(text, text_st));
+        x = put(buf, x, y, &segs, r.right()) + 2;
         app.hits.push((br, *hit));
     }
     let tail: Vec<Seg> = tail.iter().map(|(s, st)| (s.clone(), st.bg(t.card2))).collect();
@@ -754,7 +759,7 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
     use super::modal::Kind;
     let cfg = &app.cfg;
     if selected && v.capturing {
-        return vec![seg(" press the new key… ", Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD))];
+        return super::hydra::chip("press the new key…", Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD));
     }
     match row {
         SRow::Theme(_) => vec![],
@@ -771,9 +776,9 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
             match s.kind {
                 Kind::Bool => {
                     if cur.and_then(|v| v.as_bool()).unwrap_or(false) {
-                        vec![seg(" ● on  ", Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD))]
+                        super::hydra::chip("● on ", Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD))
                     } else {
-                        vec![seg(" ○ off ", Style::default().bg(t.btn).fg(t.muted).add_modifier(Modifier::BOLD))]
+                        super::hydra::chip("○ off", Style::default().bg(t.btn).fg(t.muted).add_modifier(Modifier::BOLD))
                     }
                 }
                 Kind::Number { min, max, .. } => {
@@ -802,7 +807,7 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
                     } else {
                         let shown = super::modal::display(cfg, s);
                         let shown = if shown.is_empty() || shown == "(shell)" { "(default)".to_string() } else { shown };
-                        vec![seg(format!(" {} ", truncate(&shown, 28)), Style::default().bg(t.btn).fg(t.strong))]
+                        super::hydra::chip(&truncate(&shown, 28), Style::default().bg(t.btn).fg(t.strong))
                     }
                 }
                 Kind::Choice(_) | Kind::Int { .. } => {

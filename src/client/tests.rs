@@ -325,7 +325,9 @@ mod hydra_tests {
         assert!(matches!(&app.mode, Mode::Confirm(c) if c.title == "Close pane"), "asks before closing");
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains(" Close Enter") && o.contains(" Cancel Esc"), "a red Close and a plain Cancel");
+        // Buttons are the same pills everywhere: each starts with a pill's end, not a flat block.
+        let cap = hydra::ends(app.theme.btn).0.0.to_string();
+        assert!(o.contains(&format!("{cap}Close Enter")) && o.contains(&format!("{cap}Cancel Esc")), "a red Close and a plain Cancel");
         app.on_key(key(KeyCode::Esc));
         assert!(matches!(app.mode, Mode::Normal), "Esc keeps it");
         // The sidebar: sessions right under their project, worktree sessions tagged.
@@ -788,7 +790,8 @@ mod hydra_tests {
         app.open_changes(dir.clone());
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("isn't a git repository yet.") && o.contains(" Make it a git repo g") && o.contains(" Cancel Esc"));
+        let cap = hydra::ends(app.theme.btn).0.0.to_string();
+        assert!(o.contains("isn't a git repository yet.") && o.contains(&format!("{cap}Make it a git repo g")) && o.contains(&format!("{cap}Cancel Esc")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

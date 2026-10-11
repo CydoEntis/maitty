@@ -120,4 +120,7 @@ dividers, scroll; Ctrl+click opens paths.
   keycap somewhere (hints line, keys screen, palette).
 - Short-lived notes are toasts above the bottom bar; destructive actions ask
   first (`Confirm`) and go last in menus.
+- Anything filled that you click or read as a control (a button, a toggle, a tab, a tag,
+  a key) is drawn with `button` / `btn`, `chip` or `pill`, so its ends follow the pill
+  setting everywhere. Never a bare `seg` on a button colour.
 - Copy is plain words ("Focus the sidebar", not "browse-tree").

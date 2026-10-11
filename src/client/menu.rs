@@ -1,7 +1,7 @@
 //! Right-click menus for the seshi layout: a pane, an agent row, a project, a branch or a
 //! worktree. Short, hoverable, and every item does something.
 
-use super::design::{put, seg};
+use super::design::{BtnKind, button, put, seg, segs_width};
 use super::hydra::{HyHit, find, hit, hovered};
 use super::render::truncate;
 use super::{App, Mode};
@@ -95,14 +95,12 @@ pub(super) fn draw_confirm(app: &mut App, f: &mut ratatui::Frame, area: ratatui:
     }
     let buttons_y = r.y + 6 + list_h;
     let key = if c.key == '\n' { "Enter".to_string() } else { c.key.to_string() };
-    let (yb, yf) = if c.danger { (t.danger_fill(), t.ink_on(t.danger_fill())) } else { (t.accent, t.acc_ink) };
-    let yes = vec![seg(format!(" {} ", c.yes), Style::default().bg(yb).fg(yf).add_modifier(Modifier::BOLD)), seg(format!("{key} "), Style::default().bg(yb).fg(yf).add_modifier(Modifier::BOLD))];
-    let yw: u16 = yes.iter().map(|(x, _)| x.chars().count() as u16).sum();
+    let yes = button(t, &c.yes, &key, if c.danger { BtnKind::Danger } else { BtnKind::Primary }, false);
+    let yw = segs_width(&yes);
     let yr = Rect { x: r.x + 3, y: buttons_y, width: yw, height: 1 };
     put(buf, yr.x, yr.y, &yes, r.right());
     let nr = Rect { x: yr.right() + 2, y: buttons_y, width: 12, height: 1 };
-    let nb = if hovered(app, nr) { t.hov } else { t.btn };
-    put(buf, nr.x, nr.y, &[seg(" Cancel ", Style::default().bg(nb).fg(t.strong).add_modifier(Modifier::BOLD)), seg("Esc ", Style::default().bg(nb).fg(t.accent).add_modifier(Modifier::BOLD))], r.right());
+    put(buf, nr.x, nr.y, &button(t, "Cancel", "Esc", BtnKind::Normal, hovered(app, nr)), r.right());
     hit(app, area, HyHit::ConfirmNo);
     hit(app, r, HyHit::Noop);
     hit(app, yr, HyHit::ConfirmYes);
