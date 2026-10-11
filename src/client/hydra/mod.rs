@@ -325,6 +325,8 @@ pub(super) struct Session {
     pub context: Option<f32>,
     /// Stopped by a plan limit: seshi says "continue" then (unix seconds).
     pub resume_at: Option<u64>,
+    /// The session whose agent started this one (its captain), if one did.
+    pub started_by: Option<TermId>,
 }
 
 #[derive(Debug, Clone)]
@@ -665,6 +667,7 @@ impl App {
                     model: t.model.clone(),
                     context: t.usage.context,
                     resume_at: t.resume_at,
+                    started_by: t.started_by,
                 });
             }
             // The repo's other worktrees, even with nothing running in them.

@@ -151,8 +151,8 @@ pub(in crate::client) enum Line {
     Section(Kind, usize),
     Proj(usize),
     /// A heading: BRANCHES or WORKTREES.
-    /// An agent or shell (pi, wi, si).
-    Sess(usize, usize, usize),
+    /// An agent or shell (pi, wi, si), and how deep it sits in a fleet (0: not under anyone).
+    Sess(usize, usize, usize, u8),
     /// A dim line under an agent: what it's on, its question, a subagent. Shares the
     /// agent's highlight.
     Note(String, Color, TermId),
@@ -182,6 +182,11 @@ pub(in crate::client) fn session_lines(s: &Session, t: &Theme, out: &mut Vec<Lin
     }
 }
 
+/// A helper's row steps in this far under the session that started it, per level.
+const FLEET_INDENT: u16 = 2;
+/// Deeper helpers stay at this level: the names need the width more than the tree does.
+const FLEET_DEPTH: u8 = 2;
+
 pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec<Line> {
     let mut out = Vec::new();
     for (pi, p) in model.iter().enumerate() {
@@ -206,10 +211,29 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
             let mine = at(s.term);
             (sort && settled(s.status), if mine == usize::MAX { !p.wts[wi].main } else { false }, mine, s.term)
         });
+        // A fleet: the sessions a session started sit under it, in the order above. One that
+        // needs you has sorted to the top and stays there, on its own.
+        let term_of = |r: &(usize, usize)| p.wts[r.0].sessions[r.1].term;
+        let captain = |r: &(usize, usize)| {
+            let s = &p.wts[r.0].sessions[r.1];
+            let floats = sort && !settled(s.status);
+            s.started_by.filter(|by| !floats && *by != s.term && rows.iter().any(|x| term_of(x) == *by))
+        };
+        let mut placed: Vec<((usize, usize), u8)> = Vec::with_capacity(rows.len());
+        let mut next: Vec<((usize, usize), u8)> = rows.iter().rev().filter(|r| captain(r).is_none()).map(|r| (*r, 0)).collect();
+        while let Some((r, depth)) = next.pop() {
+            placed.push((r, depth));
+            let below = (depth + 1).min(FLEET_DEPTH);
+            next.extend(rows.iter().rev().filter(|k| captain(k) == Some(term_of(&r)) && !placed.iter().any(|(x, _)| x == *k)).map(|k| (*k, below)));
+        }
+        // Sessions that started each other can't come from the daemon; if they did, they're
+        // still listed.
+        let lost: Vec<(usize, usize)> = rows.iter().filter(|r| !placed.iter().any(|(x, _)| x == *r)).copied().collect();
+        placed.extend(lost.into_iter().map(|r| (r, 0)));
         let mut any = false;
-        for (wi, si) in rows {
+        for ((wi, si), depth) in placed {
             any = true;
-            out.push(Line::Sess(pi, wi, si));
+            out.push(Line::Sess(pi, wi, si, depth));
             let s = &p.wts[wi].sessions[si];
             session_lines(s, t, &mut out);
             // A file another checkout changed too: a quiet tag under the row.
@@ -231,7 +255,7 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
 /// The session a sidebar line stands for, if any.
 pub(in crate::client) fn line_term(model: &[Proj], l: &Line) -> Option<TermId> {
     match l {
-        Line::Sess(pi, wi, si) => Some(model[*pi].wts[*wi].sessions[*si].term),
+        Line::Sess(pi, wi, si, _) => Some(model[*pi].wts[*wi].sessions[*si].term),
         _ => None,
     }
 }
@@ -302,8 +326,19 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
         let mine = if focused_side { app.hy.cursor == Some(term) } else { Some(term) == focus };
         (hovered(app, row) || (!pointing && mine && !glide)).then_some(t.hov)
     };
+    // The lines under a session (what it asks, its subagents) step in as far as it does.
+    let mut indents: Vec<u16> = Vec::with_capacity(lines.len());
+    for l in &lines {
+        let last = indents.last().copied().unwrap_or(0);
+        indents.push(match l {
+            Line::Sess(.., depth) => u16::from(*depth) * FLEET_INDENT,
+            Line::Note(..) => last,
+            _ => 0,
+        });
+    }
     for (i, line) in lines.iter().enumerate().skip(scroll).take(list_h) {
         let y = top + (i - scroll) as u16;
+        let indent = indents[i];
         let row = Rect { x: x0 + 2, y, width: w.saturating_sub(4), height: 1 };
         match line {
             Line::Proj(pi) => {
@@ -345,7 +380,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     put(buf, right.saturating_sub(cw), y, &c, right);
                 }
             }
-            Line::Sess(pi, wi, si) => {
+            Line::Sess(pi, wi, si, _) => {
                 let s = &model[*pi].wts[*wi].sessions[*si];
                 app.hy.row_y.insert(s.term, y);
                 let mine = if focused_side { app.hy.cursor == Some(s.term) } else { Some(s.term) == focus };
@@ -422,7 +457,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     vec![]
                 };
                 // The name comes first: when it doesn't fit, the branch gives way (the age stays).
-                let name_x = x0 + 7;
+                let name_x = x0 + 7 + indent;
                 let room = right.saturating_sub(name_x) as usize;
                 let tail = if s.is_agent && !sel && !s.asleep && s.resume_at.is_none() && !small && segs_width(&left) as usize + segs_width(&tail) as usize + 2 > room {
                     let col = if s.status == Status::Blocked { t.blocked } else { t.muted };
@@ -438,9 +473,9 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     // Snoring, the way a comic draws it: z's growing as they rise. They hang
                     // left of the icon column so the name stays in line with the others.
                     let zs: Vec<Seg> = SLEEP_ZS.iter().map(|(z, f)| seg(*z, st.fg(blend(bg, t.text, *f)).add_modifier(Modifier::BOLD))).collect();
-                    put(buf, x0 + 3, y, &zs, name_x);
+                    put(buf, x0 + 3 + indent, y, &zs, name_x);
                 } else {
-                    put(buf, x0 + 5, y, &[seg(gl, gs)], name_x);
+                    put(buf, x0 + 5 + indent, y, &[seg(gl, gs)], name_x);
                 }
                 put(buf, name_x, y, &left, end.saturating_sub(tw + 1));
                 put(buf, end.saturating_sub(tw), y, &tail, end);
@@ -453,7 +488,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 if small {
                     continue;
                 }
-                put(buf, x0 + 7, y, &[seg(truncate(text, w.saturating_sub(11) as usize), Style::default().bg(pb).fg(*c).add_modifier(Modifier::ITALIC))], right);
+                put(buf, x0 + 7 + indent, y, &[seg(truncate(text, w.saturating_sub(11 + indent) as usize), Style::default().bg(pb).fg(*c).add_modifier(Modifier::ITALIC))], right);
                 hit(app, row, HyHit::Session(*term));
             }
             // Nothing running: one click starts a shell there.

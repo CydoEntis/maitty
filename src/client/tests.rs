@@ -1150,6 +1150,76 @@ mod hydra_tests {
         assert_eq!(rows(&mut app, Status::Blocked), [1, 2], "sorting off: nothing moves");
     }
 
+    /// claude (1) as a captain: codex (2) is its helper, 4 is codex's, 5 is 4's.
+    fn fleet() -> App {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        for (id, by) in [(4, 2), (5, 4)] {
+            let mut t = app.snap.terms[&2].clone();
+            t.id = id;
+            app.snap.terms.insert(id, t);
+            app.snap.workspaces[0].tabs[0].layout.split(2, crate::layout::Dir::Down, id);
+            app.snap.terms.get_mut(&id).unwrap().started_by = Some(by);
+        }
+        app.snap.terms.get_mut(&2).unwrap().started_by = Some(1);
+        for t in app.snap.terms.values_mut() {
+            t.status = Status::Idle;
+        }
+        app.hy_fresh();
+        app
+    }
+
+    /// The agents' rows, top to bottom, with how deep each sits.
+    fn fleet_rows(app: &mut App) -> Vec<(TermId, u8)> {
+        app.hy_fresh();
+        let model = app.hy_model();
+        hydra::side_lines(app, &model, &app.theme)
+            .iter()
+            .filter_map(|l| match l {
+                hydra::Line::Sess(.., depth) => hydra::line_term(&model, l).map(|t| (t, *depth)),
+                _ => None,
+            })
+            .filter(|(t, _)| *t != 3)
+            .collect()
+    }
+
+    #[test]
+    fn helpers_sit_under_the_session_that_started_them() {
+        let mut app = fleet();
+        assert_eq!(fleet_rows(&mut app), [(1, 0), (2, 1), (4, 2), (5, 2)], "each under its captain, no deeper than two steps");
+        // One that needs you goes to the top, and takes its own helpers with it.
+        app.snap.terms.get_mut(&2).unwrap().status = Status::Blocked;
+        assert_eq!(fleet_rows(&mut app), [(2, 0), (4, 1), (5, 2), (1, 0)]);
+        // Sorting off: nothing moves, the fleet stays together.
+        app.cfg.ui.attention_sort = false;
+        assert_eq!(fleet_rows(&mut app), [(1, 0), (2, 1), (4, 2), (5, 2)]);
+        // Its captain closed: an ordinary row, its own helpers still under it.
+        app.cfg.ui.attention_sort = true;
+        app.snap.terms.get_mut(&2).unwrap().status = Status::Idle;
+        app.snap.terms.get_mut(&2).unwrap().started_by = Some(999);
+        assert_eq!(fleet_rows(&mut app), [(1, 0), (2, 0), (4, 1), (5, 2)]);
+    }
+
+    #[test]
+    fn a_fleet_shows_in_the_sidebar() {
+        let mut app = fleet();
+        // The shell is in another group: started by claude or not, it's an ordinary row there.
+        app.snap.terms.get_mut(&3).unwrap().started_by = Some(1);
+        app.hy_fresh();
+        for (w, h) in [(160, 45), (100, 30)] {
+            let o = draw(&mut app, w, h);
+            show(&o);
+            // Where a name starts, in the sidebar's columns (names show in pane titles too).
+            let col = |name: &str| {
+                let side = |l: &str| l.chars().take(30).collect::<String>();
+                o.lines().find_map(|l| side(l).find(name).map(|i| side(l)[..i].chars().count())).unwrap_or_else(|| panic!("{name} is in the sidebar at {w}x{h}"))
+            };
+            let model = app.hy_model();
+            let name = |t: TermId| model.iter().flat_map(|p| p.sessions()).find(|s| s.term == t).unwrap().name.clone();
+            assert_eq!(col(&name(2)), col(&name(1)) + 2, "a helper steps in under its captain");
+            assert_eq!(col(&name(3)), col(&name(1)), "a session in another group doesn't");
+        }
+    }
+
     #[test]
     fn sessions_drag_within_their_group_and_click_to_open() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
