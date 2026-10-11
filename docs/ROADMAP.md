@@ -11,8 +11,8 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-Active phase: **7 — test-week feedback** (collecting: the user runs Seshi for a week)
-Next: **8**, once its designs are in (`docs/design-brief-v4.md`)
+Active phase: **9 — one agent runs a fleet for you** (chosen 2026-10-11)
+Next unblocked: #32 — record which session started a session; #33 — `seshi brief` prints the captain's instructions
 
 ## Phases
 
@@ -72,6 +72,24 @@ checkpoints (off by default); SSH remotes and config sync are back already, as t
 the same files, review and merge from the Inbox, why this status, today on the splash, alerts on
 your phone (ntfy, off by default).
 
+### 9 — One agent runs a fleet for you · active
+
+[A captain that runs a fleet of agents](features/fleet/intent.md): you give one agent a goal; it starts
+helpers, briefs them, checks on them and reports back.
+
+Exit when:
+- every ticket below is closed and its change is on `dev`;
+- the Verify line above passes on `dev`;
+- live check: start a fleet with a goal, the captain starts two helpers, and both sit indented under it in the sidebar.
+
+1. #32 — record which session started a session
+2. #33 — `seshi brief` prints the captain's instructions · can run alongside 1
+3. #34 — keep the started-by link when a session is replaced · after 1
+4. #35 — keep the started-by link across a restart · after 1
+5. #36 — helpers sit under the session that started them · after 1
+6. #37 — start a fleet from the actions list · after 2
+7. #38 — make an agent the captain from its row menu · after 2
+
 ## In scope
 
 Everything below is shipped on `dev` unless marked.
@@ -89,6 +107,7 @@ Everything below is shipped on `dev` unless marked.
 - New agent task box (project, worktree, agent, model, effort), presets and recipes as its choices, prewarm — shipped — `src/client/hydra/dialogs.rs`, `src/client/recipes.rs`
 - Agents talk to agents (MCP server `seshi mcp`) — shipped — `src/mcp.rs`
 - `seshi send --wait`, `seshi wait`, `seshi read` — shipped — `src/cli.rs`
+- A captain runs a fleet: one agent starts, briefs and checks helpers, which sit under it in the sidebar — active — [intent](features/fleet/intent.md), #32–#38
 
 **The UI (one layout, ADR-0004)**
 - Floating look: rounded cards with gaps, title and state in the border, unfocused cards faded, pill tabs, no app footer; floating or tiled, corners, gap, dim, focus border, pill ends in Settings — done, unreleased — `src/client/hydra/card.rs`, `screen.rs`, ADR-0007
@@ -132,7 +151,8 @@ Everything below is shipped on `dev` unless marked.
 
 ## Later
 
-- none.
+- Personas (a saved name, brief, agent, model and permissions) — deferred 2026-10-11: the user wants to think about them more. Comes back when the user decides what a persona holds.
+- The designed team view, threads between agents, take over and hand back, pause the fleet, stop all, cost per fleet — deferred 2026-10-11: waiting on the design from [design brief v5](design-brief-v5.md). Comes back when the prototype is in.
 
 ## Decisions
 
@@ -153,13 +173,14 @@ Everything below is shipped on `dev` unless marked.
 - Every built-in theme passes the contrast audit — `cargo test` (theme audit test in `src/theme.rs`) — readability
 - Both platform sides compile — `cargo check --target x86_64-unknown-linux-gnu` / `aarch64-apple-darwin` — AGENTS.md non-negotiable 3
 - clippy is clean — `cargo clippy --all-targets -- -D warnings` — CODE-STANDARDS
+- A session's "started by" is only set by the daemon, from a pane whose secret checked out — `src/daemon/mod.rs` `starter`, tests in `src/daemon/logic_tests.rs` — AGENTS.md non-negotiable 5
 
 ## Records
 
 Docs: `AGENTS.md`, `docs/` (architecture, standards, testing, security, UI, API patterns), `docs/stack/rust.md`.
 Design references: [design brief](design-brief.md), [design brief v3](design-brief-v3.md).
 Glossary: none yet.
-Feature docs: `docs/features/` (none yet).
+Feature docs: `docs/features/`. Each live intent is linked from In scope or a phase.
 
 ## Rework
 
