@@ -91,9 +91,37 @@ pub fn shell(shell: &[String], line: &str, interactive: bool) -> Command {
     c
 }
 
+/// Put this process ahead of what runs in seshi's panes. Agents' builds and tests take every
+/// core they can; at the same priority the window can't get a turn to switch session or
+/// draw, and seshi looks hung while nothing in it is wrong.
+///
+/// Windows only: there a process above normal still starts its children at normal, so the
+/// panes are not raised with it. Elsewhere raising a process needs rights seshi doesn't ask
+/// for, and a child would inherit it.
+pub fn ahead_of_the_panes() {
+    #[cfg(windows)]
+    // SAFETY: both calls take this process's own pseudo-handle, which is always valid.
+    unsafe {
+        use windows_sys::Win32::System::Threading::{ABOVE_NORMAL_PRIORITY_CLASS, GetCurrentProcess, SetPriorityClass};
+        SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn seshi_runs_ahead_of_its_panes_and_they_stay_normal() {
+        use windows_sys::Win32::System::Threading::{ABOVE_NORMAL_PRIORITY_CLASS, GetCurrentProcess, GetPriorityClass};
+        ahead_of_the_panes();
+        // SAFETY: this process's own pseudo-handle.
+        assert_eq!(unsafe { GetPriorityClass(GetCurrentProcess()) }, ABOVE_NORMAL_PRIORITY_CLASS);
+        // What it starts is at normal priority (Windows only hands down the low classes).
+        let out = Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command", "(Get-Process -Id $PID).PriorityClass"]).output().expect("powershell runs");
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "Normal");
+    }
 
     fn args(c: &Command) -> Vec<String> {
         c.get_args().map(|a| a.to_string_lossy().into_owned()).collect()

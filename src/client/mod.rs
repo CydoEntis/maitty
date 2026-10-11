@@ -385,6 +385,7 @@ pub fn run(opts: Options) -> Result<()> {
     let restart = rt.block_on(run_async(opts))?;
     drop(rt);
     // Updated: the new seshi takes over this terminal, with the same arguments.
+    crate::proc::ahead_of_the_panes();
     if let Some(exe) = restart {
         let status = std::process::Command::new(&exe).args(std::env::args_os().skip(1)).env(UPDATED_ENV, "1").status()?;
         std::process::exit(status.code().unwrap_or(0));

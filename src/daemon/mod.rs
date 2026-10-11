@@ -193,6 +193,7 @@ pub fn run() -> Result<()> {
         let _ = std::fs::write(ipc::pid_file(), std::process::id().to_string());
         let (tx, rx) = mpsc::channel::<Ev>(4096);
 
+    crate::proc::ahead_of_the_panes();
         let accept_tx = tx.clone();
         tokio::spawn(async move {
             let mut next: ClientId = 1;
