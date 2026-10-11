@@ -211,6 +211,32 @@ fn a_worktree_start_keeps_its_starter_after_the_caller_has_gone() {
 }
 
 #[test]
+fn a_replaced_session_keeps_its_place_in_a_fleet() {
+    let (mut d, _rx) = daemon();
+    let here = Some(std::env::temp_dir());
+    for _ in 0..3 {
+        d.command(0, Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None }).unwrap();
+    }
+    let [lead, captain, helper] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
+    d.terms.get_mut(&captain).unwrap().started_by = Some(lead);
+    d.terms.get_mut(&helper).unwrap().started_by = Some(captain);
+    // Woken from sleep: a new process, the same session.
+    let t = d.terms.get_mut(&captain).unwrap();
+    t.asleep = true;
+    t.kill_tree();
+    let woken = d.wake(captain).expect("it wakes");
+    assert_eq!(d.terms[&woken].started_by, Some(lead), "still under the one that started it");
+    assert_eq!(d.terms[&helper].started_by, Some(woken), "and its helper is still its own");
+    // Moved into a worktree: the same again.
+    d.relocate(woken, &std::env::temp_dir());
+    let moved = d.workspaces[1].tabs[0].focus;
+    assert!(moved != woken, "a new process in the new folder");
+    assert_eq!(d.terms[&moved].started_by, Some(lead));
+    assert_eq!(d.terms[&helper].started_by, Some(moved));
+    close(&mut d, &[lead, moved, helper]);
+}
+
+#[test]
 fn detaching_and_closing_prune_tabs_and_workspaces() {
     let (mut d, _rx) = daemon();
     let dir = std::env::temp_dir();

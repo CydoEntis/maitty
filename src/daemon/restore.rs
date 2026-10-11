@@ -13,6 +13,7 @@ struct Kept {
     first_prompt: String,
     model: String,
     grants: Option<Vec<String>>,
+    started_by: Option<TermId>,
 }
 
 impl Kept {
@@ -26,17 +27,25 @@ impl Kept {
             first_prompt: t.first_prompt.clone(),
             model: t.model.clone(),
             grants: t.grants.clone(),
+            started_by: t.started_by,
         }
     }
 
     fn give(self, t: &mut Term) {
         (t.agent, t.session, t.cmd) = (self.agent, self.session, self.cmd);
         (t.label, t.name, t.first_prompt) = (self.label, self.name, self.first_prompt);
-        (t.model, t.grants) = (self.model, self.grants);
+        (t.model, t.grants, t.started_by) = (self.model, self.grants, self.started_by);
     }
 }
 
 impl Daemon {
+    /// `new` took `old`'s place: the sessions `old` started are still its fleet.
+    fn takes_over_fleet(&mut self, old: TermId, new: TermId) {
+        for t in self.terms.values_mut().filter(|t| t.started_by == Some(old)) {
+            t.started_by = Some(new);
+        }
+    }
+
     pub(super) fn mass_exit(&self) -> bool {
         self.natural_exits.iter().filter(|t| t.elapsed() < MASS_EXIT_WINDOW).count() >= 2
     }
@@ -271,6 +280,7 @@ impl Daemon {
                 }
             }
         }
+        self.takes_over_fleet(old, new);
         // Closing a terminal can block on Windows until its programs let go; never here.
         if let Some(t) = self.terms.remove(&old) {
             std::thread::spawn(move || drop(t));
@@ -330,6 +340,7 @@ impl Daemon {
                 w.cwd = dest.to_path_buf();
             }
         }
+        self.takes_over_fleet(old, new);
         self.remove_term(old);
         self.poll_git_soon();
         self.dirty = true;
