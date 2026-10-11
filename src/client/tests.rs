@@ -1896,6 +1896,31 @@ mod hydra_tests {
     }
 
     #[test]
+    fn many_shared_files_are_one_line_and_never_ahead_of_the_agents() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let model = app.hy_model();
+        let p = model.iter().find(|p| p.git && p.wts.len() >= 2).expect("a repo with a worktree").clone();
+        let names: Vec<String> = p.wts.iter().map(|w| w.name.clone()).collect();
+        let shared = |n: usize| (0..n).map(|i| crate::client::overlap::Overlap { file: format!("src/file{i}.ts"), checkouts: names.clone() }).collect::<Vec<_>>();
+        // Sixty files changed in both checkouts: a count under each row, not sixty lines.
+        app.hy.overlaps.insert(p.path.clone(), shared(60));
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("⇆ 60 shared files") && !o.contains("⇆ file0.ts"), "counted");
+        let lines = hydra::side_lines(&app, &app.hy_model(), &app.theme);
+        assert!(lines.len() < 20, "the sidebar stays short: {} lines", lines.len());
+        // A couple are still named.
+        app.hy.overlaps.insert(p.path.clone(), shared(2));
+        let o = draw(&mut app, 160, 45);
+        assert!(o.contains("⇆ file0.ts") && o.contains("⇆ file1.ts") && !o.contains("shared files"));
+        // In the Inbox they come after what needs you and what finished, however many.
+        app.hy.overlaps.insert(p.path.clone(), shared(60));
+        let rows = hydra::goto_rows(&app.hy_model(), "", hydra::heads_up(&app).len());
+        let at = |want: &str| rows.iter().position(|r| matches!(r, hydra::GoRow::Head(h) if *h == want)).unwrap_or_else(|| panic!("{want} is a section"));
+        assert!(at("NEEDS YOU") < at("JUST FINISHED") && at("JUST FINISHED") < at("HEADS UP"));
+    }
+
+    #[test]
     fn heads_up_and_review_from_the_inbox() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let key = |app: &mut App, c: char| app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));

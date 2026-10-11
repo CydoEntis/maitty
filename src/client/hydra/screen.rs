@@ -182,6 +182,8 @@ pub(in crate::client) fn session_lines(s: &Session, t: &Theme, out: &mut Vec<Lin
     }
 }
 
+/// This many files shared with another checkout are named under a row; more are counted.
+const OVERLAPS_LISTED: usize = 2;
 /// A helper's row steps in this far under the session that started it, per level.
 const FLEET_INDENT: u16 = 2;
 /// Deeper helpers stay at this level: the names need the width more than the tree does.
@@ -236,11 +238,21 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
             out.push(Line::Sess(pi, wi, si, depth));
             let s = &p.wts[wi].sessions[si];
             session_lines(s, t, &mut out);
-            // A file another checkout changed too: a quiet tag under the row.
+            // A file another checkout changed too: a quiet tag under the row. More than a
+            // couple are one line with a count (the Inbox lists them): a long branch can share
+            // dozens, and a wall of them pushes every other session off the sidebar.
             if s.is_agent {
-                for (_, o) in heads_up(app).iter().filter(|(repo, o)| repo == &p.path && o.checkouts.contains(&p.wts[wi].name)) {
-                    let name = o.file.rsplit('/').next().unwrap_or(&o.file);
-                    out.push(Line::Note(format!("⇆ {name}"), blend(t.blocked, t.text, 0.45), s.term));
+                let heads = heads_up(app);
+                let shared: Vec<&str> = heads
+                    .iter()
+                    .filter(|(repo, o)| repo == &p.path && o.checkouts.contains(&p.wts[wi].name))
+                    .map(|(_, o)| o.file.rsplit('/').next().unwrap_or(&o.file))
+                    .collect();
+                let tag = blend(t.blocked, t.text, 0.45);
+                if shared.len() > OVERLAPS_LISTED {
+                    out.push(Line::Note(format!("⇆ {} shared files", shared.len()), tag, s.term));
+                } else {
+                    out.extend(shared.iter().map(|name| Line::Note(format!("⇆ {name}"), tag, s.term)));
                 }
             }
         }

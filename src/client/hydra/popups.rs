@@ -414,12 +414,14 @@ pub(in crate::client) fn goto_rows(model: &[Proj], q: &str, heads: usize) -> Vec
         let of = |st: Status| waiting.iter().filter(|(s, ..)| s.status == st).map(|(s, ..)| s.term).collect::<Vec<_>>();
         out.push(GoRow::Head("NEEDS YOU"));
         out.extend(of(Status::Blocked).into_iter().map(GoRow::Ask));
+        out.push(GoRow::Head("JUST FINISHED"));
+        out.extend(of(Status::Done).into_iter().map(GoRow::Done));
+        // Last: there can be dozens (every file two checkouts both changed), and they must
+        // never stand between you and an agent that needs you or has finished.
         if heads > 0 {
             out.push(GoRow::Head("HEADS UP"));
             out.extend((0..heads).map(GoRow::Heads));
         }
-        out.push(GoRow::Head("JUST FINISHED"));
-        out.extend(of(Status::Done).into_iter().map(GoRow::Done));
         return out;
     }
     // Typed: every session it matches (by name, agent, title or folder), most urgent first.
