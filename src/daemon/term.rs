@@ -142,6 +142,8 @@ pub struct Term {
     pub token: String,
     /// What it may do through seshi, if you set it for this pane (else `[mcp] grants`).
     pub grants: Option<Vec<String>>,
+    /// The pane whose agent started this one (its captain), if one did.
+    pub started_by: Option<TermId>,
     /// Finished and not seen before a restart: stays "done" once it's back.
     pub restore_unseen: bool,
     /// Typed while it was asleep: delivered once it's back up (or after a few seconds).
@@ -538,6 +540,7 @@ impl Term {
             done_held: None,
             subagent_seen: None,
             grants: None,
+            started_by: None,
             progress_off: None,
             last_working_hook: None,
             blocked_at: None,

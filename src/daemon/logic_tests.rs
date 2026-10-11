@@ -142,6 +142,74 @@ fn waking_a_sleeping_session_keeps_what_you_called_it() {
     close(&mut d, &[new]);
 }
 
+/// A connection acting from `term`, as its agent's `seshi` commands do.
+fn from_pane(d: &mut Daemon, client: ClientId, term: TermId, token: &str) -> mpsc::Receiver<ServerMsg> {
+    let (tx, rx) = mpsc::channel(64);
+    d.handle(Ev::Connected(client, tx, false));
+    d.handle(Ev::From(client, term, token.into()));
+    rx
+}
+
+fn newest(d: &Daemon) -> TermId {
+    *d.terms.keys().max().unwrap()
+}
+
+#[test]
+fn a_session_knows_which_pane_started_it() {
+    let (mut d, _rx) = daemon();
+    let here = Some(std::env::temp_dir());
+    d.command(0, Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None }).unwrap();
+    let captain = d.workspaces[0].tabs[0].focus;
+    assert_eq!(d.terms[&captain].started_by, None, "you started it");
+    let token = d.terms[&captain].token.clone();
+    let _c = from_pane(&mut d, 1, captain, &token);
+    let mut made = vec![captain];
+    d.handle(Ev::Msg(1, ClientMsg::Command(Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None })));
+    made.push(newest(&d));
+    let ws = d.workspaces[0].id;
+    d.handle(Ev::Msg(1, ClientMsg::Command(Command::NewTab { ws, name: None, cmd: None })));
+    made.push(newest(&d));
+    d.handle(Ev::Msg(1, ClientMsg::Command(Command::Split { term: captain, dir: crate::layout::Dir::Right, cmd: None, cwd: None })));
+    made.push(newest(&d));
+    assert_eq!(made.len(), 4, "a workspace, a tab and a split");
+    for t in &made[1..] {
+        assert_eq!(d.terms[t].started_by, Some(captain), "started from the captain's pane");
+    }
+    assert_eq!(d.snapshot().terms[&made[1]].started_by, Some(captain), "and clients are told");
+    close(&mut d, &made);
+}
+
+#[test]
+fn only_the_pane_itself_can_be_named_as_the_starter() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let _c = from_pane(&mut d, 1, t, "not-the-secret");
+    d.handle(Ev::Msg(1, ClientMsg::Command(Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None })));
+    let new = newest(&d);
+    assert!(new != t, "it may still start a session");
+    assert_eq!(d.terms[&new].started_by, None, "but not in that pane's name");
+    close(&mut d, &[t, new]);
+}
+
+#[test]
+fn a_worktree_start_keeps_its_starter_after_the_caller_has_gone() {
+    let (mut d, _rx) = daemon();
+    let captain = pane(&mut d);
+    let dir = std::env::temp_dir().join(format!("seshi-started-by-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    // The worktree was asked for from the captain's pane; that connection closed while git ran.
+    d.pending_ops += 1;
+    d.handle(Ev::WorktreeCreated { client: 9, branch: "helper".into(), cmd: None, split: None, by: Some(captain), result: Ok((dir.clone(), String::new())) });
+    let helper = newest(&d);
+    assert_eq!(d.terms[&helper].started_by, Some(captain));
+    // The next session you start yourself isn't the captain's.
+    d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();
+    let yours = newest(&d);
+    assert_eq!(d.terms[&yours].started_by, None);
+    close(&mut d, &[captain, helper, yours]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn detaching_and_closing_prune_tabs_and_workspaces() {
     let (mut d, _rx) = daemon();

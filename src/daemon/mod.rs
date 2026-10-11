@@ -65,6 +65,8 @@ pub enum Ev {
         branch: String,
         cmd: Option<String>,
         split: Option<TermId>,
+        /// The pane that asked, noted when it asked: its connection is usually gone by now.
+        by: Option<TermId>,
         result: Result<(PathBuf, String), String>,
     },
     WorktreeRemoved { client: ClientId, path: PathBuf, result: Result<(), String> },
@@ -159,6 +161,9 @@ struct Daemon {
     last_codex: Instant,
     /// The next pane runs its command once and ends with it (a popup).
     next_once: bool,
+    /// The pane the next session is started for, when its connection can't say (the
+    /// worktree it asked for took a while).
+    next_starter: Option<TermId>,
     /// The prewarmed agent: (repo, its worktree, its pane), and whether one is being made.
     spare: Option<(PathBuf, PathBuf, TermId)>,
     spare_making: bool,
@@ -407,6 +412,7 @@ impl Daemon {
             codex_busy: false,
             last_codex: Instant::now() - Duration::from_secs(3600),
             next_once: false,
+            next_starter: None,
             spare: None,
             spare_making: false,
             adopt: None,
@@ -697,8 +703,9 @@ impl Daemon {
                     }
                 }
             }
-            Ev::WorktreeCreated { client, branch, cmd, split, result } => {
+            Ev::WorktreeCreated { client, branch, cmd, split, by, result } => {
                 self.pending_ops -= 1;
+                self.next_starter = by;
                 let as_pane = split.filter(|t| self.terms.contains_key(t));
                 let opened = result.map_err(anyhow::Error::msg).and_then(|(path, repo)| {
                     match as_pane {
@@ -718,6 +725,7 @@ impl Daemon {
                     }
                     Ok(path)
                 });
+                self.next_starter = None;
                 if let Ok(p) = &opened {
                     self.made_worktrees.push(p.clone());
                     if !self.adopted.take().is_some_and(|a| same_path(&a, p)) {
@@ -972,6 +980,7 @@ impl Daemon {
                     usage: t.usage.clone(),
                     resume_at: t.resume_at,
                     subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
+                    started_by: t.started_by,
                 })
             })
             .collect();
@@ -1015,6 +1024,19 @@ impl Daemon {
         )
         .trim_end()
         .to_string()
+    }
+
+    /// The pane a start comes from, if it comes from one. Only a connection that proved it
+    /// is that pane (its secret) counts: a session can't be hung on a pane by naming it.
+    fn starter(&mut self, client: ClientId) -> Option<TermId> {
+        self.next_starter.take().or_else(|| self.clients.get(&client).and_then(|c| c.from)).filter(|t| self.terms.contains_key(t))
+    }
+
+    /// Note which pane's agent started `term`.
+    fn started(&mut self, term: TermId, by: Option<TermId>) {
+        if let Some(t) = self.terms.get_mut(&term) {
+            t.started_by = by.filter(|b| *b != term);
+        }
     }
 
     fn spawn(&mut self, cmd: Option<&str>, cwd: &std::path::Path, cols: u16, rows: u16) -> Result<TermId> {

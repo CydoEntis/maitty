@@ -51,6 +51,7 @@ mod design_tests {
             branch: None,
             linked: false,
             subagents: Vec::new(),
+            started_by: None,
             root: None,
             top: None,
             since: 0,

@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Bump whenever a message shape changes; client and daemon refuse to talk across versions.
-pub const PROTOCOL_VERSION: u32 = 33;
+pub const PROTOCOL_VERSION: u32 = 34;
 
 pub type TermId = u32;
 pub type WsId = u32;
@@ -390,6 +390,9 @@ pub struct TermInfo {
     pub linked: bool,
     /// Subagents running right now (their kinds).
     pub subagents: Vec<String>,
+    /// The pane whose agent started this one, if one did.
+    #[serde(default)]
+    pub started_by: Option<TermId>,
     /// The repository's main checkout, if the pane is in a repo.
     pub root: Option<PathBuf>,
     /// The checkout (main or a linked worktree) the pane is in.
