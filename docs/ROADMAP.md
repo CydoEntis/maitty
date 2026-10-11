@@ -12,7 +12,7 @@ which ones need you, jump to them, and keep them running when you leave. See
 ## Now
 
 Active phase: **9 — one agent runs a fleet for you** (chosen 2026-10-11)
-Next: #32–#38 are built on the `brave-wren` branch (gate passing), not yet on `dev`; then the phase's live check
+Next: the phase's live check (#32–#38 are on `dev`, released in 0.20.0)
 
 ## Phases
 
