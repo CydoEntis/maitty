@@ -1,0 +1,57 @@
+//! `seshi brief`: what a captain does. An agent is made a captain by being told to run this
+//! and follow it, so the instructions are the same however it was started and never have
+//! to survive a shell's quoting.
+
+pub const BRIEF: &str = include_str!("brief.md");
+
+pub fn print() {
+    print!("{BRIEF}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    /// The words after `seshi ` wherever the brief shows a command (in backticks).
+    fn commands_named() -> Vec<String> {
+        let mut out: Vec<String> = BRIEF.split('`').skip(1).step_by(2).filter_map(|code| code.strip_prefix("seshi ")).filter_map(|rest| rest.split_whitespace().next()).map(String::from).collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    fn tools_named() -> Vec<String> {
+        let mut out: Vec<String> = BRIEF.split(|c: char| !c.is_ascii_alphanumeric() && c != '_').filter(|w| w.starts_with("seshi_")).map(String::from).collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    #[test]
+    fn the_brief_covers_a_captains_job_in_order() {
+        let parts = ["## Split the goal", "## Start helpers", "## Wait and read", "## Prompts and questions", "## Check the work", "## Report back", "## When the repo has a plan"];
+        let at: Vec<usize> = parts.iter().map(|p| BRIEF.find(p).unwrap_or_else(|| panic!("missing: {p}"))).collect();
+        assert!(at.windows(2).all(|w| w[0] < w[1]), "in the order a captain does them");
+        for must in ["its own worktree", "permission prompt", "active phase", "One ticket per helper", "blocked by"] {
+            assert!(BRIEF.contains(must), "the brief says: {must}");
+        }
+    }
+
+    #[test]
+    fn the_brief_only_names_commands_and_tools_that_exist() {
+        let cli = crate::Args::command();
+        let subs: Vec<&str> = cli.get_subcommands().map(|c| c.get_name()).collect();
+        let commands = commands_named();
+        assert!(commands.len() >= 5, "it shows the shell commands: {commands:?}");
+        for c in &commands {
+            assert!(subs.contains(&c.as_str()), "`seshi {c}` is not a command");
+        }
+        let tools = crate::mcp::tool_names();
+        let named = tools_named();
+        assert!(named.len() >= 5, "it names the tools: {named:?}");
+        for t in &named {
+            assert!(tools.contains(t), "{t} is not a tool");
+        }
+    }
+}

@@ -1,4 +1,5 @@
 mod alert;
+mod brief;
 mod cli;
 mod clock;
 mod client;
@@ -182,6 +183,9 @@ enum Cmd {
     DebugColors { pane: u32 },
     /// Check that everything seshi relies on is in place, and how to fix what isn't.
     Doctor,
+    /// Print a captain's instructions: how an agent runs a fleet of helpers. For agents to
+    /// read ("run seshi brief and follow it").
+    Brief,
     /// Install the newest release over this one.
     Update {
         /// Only say whether a newer version is out.
@@ -298,6 +302,10 @@ fn main() {
         Some(Cmd::KillServer { forget }) => cli::kill_server(forget),
         Some(Cmd::Mcp) => mcp::run(),
         Some(Cmd::Doctor) => cli::doctor(),
+        Some(Cmd::Brief) => {
+            brief::print();
+            Ok(())
+        }
         Some(Cmd::Update { check, force }) => update::run(check, force),
         Some(Cmd::Allow { dir }) => cli::allow(dir),
         Some(Cmd::Proxy) => cli::block_on(ipc::proxy()),

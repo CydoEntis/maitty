@@ -94,6 +94,12 @@ fn tools() -> Value {
     ])
 }
 
+/// The tools' names, for checking that what seshi tells agents to call exists.
+#[cfg(test)]
+pub(crate) fn tool_names() -> Vec<String> {
+    tools().as_array().into_iter().flatten().filter_map(|t| t.get("name").and_then(Value::as_str)).map(String::from).collect()
+}
+
 /// The numbered choices on a screen and the question above them.
 fn prompt_on(screen: &str) -> (String, Vec<(u32, String)>) {
     let lines: Vec<&str> = screen.lines().collect();

@@ -54,6 +54,7 @@ layers*. Never reverse the direction.
 src/
   main.rs        argument parsing, picks client / daemon / CLI role
   cli.rs         one-shot subcommands (send, read, wait, hook, allow, doctor, …)
+  brief.rs       `seshi brief`: a captain's instructions (brief.md)
   protocol.rs    wire messages and PROTOCOL_VERSION
   ipc.rs         local sockets and the SSH proxy
   config.rs      config.toml (+ config.local.toml) loading, atomic state files
@@ -201,6 +202,7 @@ The client never touches a PTY; the daemon never draws. They meet only through
 src/
   main.rs        argument parsing, picks client / daemon / CLI role
   cli.rs         one-shot subcommands (send, read, wait, hook, doctor, …)
+  brief.rs       `seshi brief`: a captain's instructions (brief.md)
   protocol.rs    wire messages and PROTOCOL_VERSION
   ipc.rs         local sockets and the SSH proxy
   config.rs      config.toml (+ config.local.toml) loading

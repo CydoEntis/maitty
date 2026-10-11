@@ -464,6 +464,7 @@ seshi send -p 3 --wait "fix the bug"   # waits for the turn to end, prints the a
 seshi wait -p 3 [--regex "passed"]     # the turn ending, or text on the screen (exit 2: timeout)
 seshi worktree --move [name]           # run by an agent: move itself into a new worktree
 seshi doctor                           # check everything seshi relies on
+seshi brief                            # a captain's instructions: how an agent runs a fleet of helpers
 seshi --remote me@box                  # the UI here, agents on another machine (any command)
 ```
 
