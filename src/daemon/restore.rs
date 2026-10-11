@@ -107,6 +107,7 @@ impl Daemon {
             name: if term.name.is_empty() { term.first_prompt.clone() } else { term.name.clone() },
             model: term.model.clone(),
             label: term.label.clone(),
+            started_by: term.started_by,
         };
         let workspaces = self
             .workspaces
@@ -159,6 +160,10 @@ impl Daemon {
     pub(super) fn restore(&mut self, mut saved: persist::Saved) {
         self.made_worktrees = std::mem::take(&mut saved.made_worktrees);
         let mut restored = 0;
+        // Every pane's new id by its saved one, and who started it by the saved id: panes come
+        // back in any order, so the links are made once all of them are up.
+        let mut ids: HashMap<TermId, TermId> = HashMap::new();
+        let mut started: Vec<(TermId, TermId)> = Vec::new();
         for sw in saved.workspaces {
             let mut tabs = Vec::new();
             for st in sw.tabs {
@@ -183,6 +188,8 @@ impl Daemon {
                                 t.label = pane.label.clone();
                             }
                             map.insert(old, new);
+                            ids.insert(old, new);
+                            started.extend(pane.started_by.map(|by| (new, by)));
                             restored += 1;
                         }
                         Err(e) => tracing::warn!("restoring pane in {}: {e:#}", cwd.display()),
@@ -212,6 +219,10 @@ impl Daemon {
                 is_new: false,
                 group: sw.group.clone(),
             });
+        }
+        for (term, by) in started {
+            // Its captain didn't come back: it's on its own.
+            self.started(term, ids.get(&by).copied());
         }
         self.active_ws = self.workspaces.get(saved.active).or(self.workspaces.first()).map(|w| w.id);
         self.dirty = true;

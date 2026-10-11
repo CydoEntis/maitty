@@ -279,6 +279,41 @@ fn a_spare_fits_only_its_repo_and_its_agent() {
 }
 
 #[test]
+fn a_fleet_comes_back_from_a_restart() {
+    let (mut d, _rx) = daemon();
+    let dir = std::env::temp_dir();
+    // Saved ids: 70 is the captain, 71 its helper, 72 a helper whose captain (99) is gone.
+    // The helpers are saved ahead of the captain, so they come back before it does.
+    let ws = |id: TermId, by: Option<TermId>| persist::SavedWs {
+        name: String::new(),
+        cwd: dir.clone(),
+        worktree: false,
+        color: None,
+        group: None,
+        tabs: vec![persist::SavedTab {
+            name: String::new(),
+            layout: Node::Leaf(id),
+            focus: id,
+            panes: [(id, persist::SavedPane { cwd: Some(dir.clone()), started_by: by, ..Default::default() })].into(),
+        }],
+        active_tab: 0,
+    };
+    d.restore(persist::Saved { workspaces: vec![ws(71, Some(70)), ws(72, Some(99)), ws(70, None)], active: 0, made_worktrees: Vec::new() });
+    let [helper, orphan, captain] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
+    assert!(captain != 70, "the captain has this run's id");
+    assert_eq!(d.terms[&helper].started_by, Some(captain), "its helper found it again");
+    assert_eq!(d.terms[&orphan].started_by, None, "a helper whose captain didn't come back is on its own");
+    assert_eq!(d.terms[&captain].started_by, None);
+    // And it's saved that way again.
+    let saved = d.saved();
+    assert_eq!(saved.workspaces[0].tabs[0].panes[&helper].started_by, Some(captain));
+    // A session saved before fleets existed still loads.
+    let old: persist::SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":null,"session":null}"#).expect("an older pane");
+    assert_eq!(old.started_by, None);
+    close(&mut d, &[helper, orphan, captain]);
+}
+
+#[test]
 fn restore_gives_panes_new_ids_and_keeps_their_layout() {
     let (mut d, _rx) = daemon();
     let dir = std::env::temp_dir();

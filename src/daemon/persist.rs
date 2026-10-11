@@ -60,6 +60,9 @@ pub struct SavedPane {
     /// The name you gave it (rename), which wins over everything else.
     #[serde(default)]
     pub label: String,
+    /// The pane that started it, by its id when this was saved (a key of some tab's `panes`).
+    #[serde(default)]
+    pub started_by: Option<TermId>,
 }
 
 pub fn path() -> PathBuf {
