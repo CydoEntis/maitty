@@ -551,13 +551,35 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
             .collect();
         // Closing first: when they don't all fit, it's the one to keep.
         pairs.sort_by_key(|(k, _)| k != "x");
-        for (key, word) in pairs {
-            let pair = [seg(key, hot), seg(format!(" {word}  "), plain.fg(t.text))];
-            if x0 + 3 + segs_width(&segs) + segs_width(&pair) <= bx {
+        let pair = |(key, word): &(String, String)| [seg(key.clone(), hot), seg(format!(" {word}  "), plain.fg(t.text))];
+        let all: u16 = pairs.iter().map(|p| segs_width(&pair(p))).sum();
+        // When they don't, say so: a key you can't see is one you press by accident. The
+        // note opens the row's menu, which lists them all.
+        let more = |n: usize| [seg(format!("+{n} more"), plain.fg(t.muted).add_modifier(Modifier::ITALIC))];
+        let room = if x0 + 3 + all <= bx { bx } else { bx.saturating_sub(segs_width(&more(pairs.len())) + 1) };
+        let mut hidden = 0;
+        for p in &pairs {
+            let pair = pair(p);
+            if x0 + 3 + segs_width(&segs) + segs_width(&pair) <= room {
                 segs.extend(pair);
+            } else {
+                hidden += 1;
             }
         }
-        put(buf, x0 + 3, fy, &segs, bx);
+        let end = put(buf, x0 + 3, fy, &segs, bx);
+        if hidden > 0 {
+            let note = more(hidden);
+            let nr = Rect { x: end, y: fy, width: segs_width(&note), height: 1 };
+            put(buf, end, fy, &note, bx);
+            let menu = match (&app.hy.cursor_proj, app.hy.cursor) {
+                (Some(key), _) => model.iter().position(|p| p.key == *key).map(HyHit::RowMenuProj),
+                (None, Some(term)) => Some(HyHit::RowMenuSess(term)),
+                _ => None,
+            };
+            if let Some(h) = menu {
+                hit(app, nr, h);
+            }
+        }
         return;
     }
     // A key that's its word's first letter is lit in the word ("actions"), else in front.

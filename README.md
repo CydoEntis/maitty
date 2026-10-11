@@ -276,8 +276,8 @@ goal and which agent is the **captain**; the captain splits the work up, starts 
 own worktrees, checks what comes back and reports to you. Helpers sit under their captain in the
 sidebar, and one that needs you still goes to the top.
 
-An agent you're already talking to can take over as captain: **Captain a fleet** in its row's
-menu. The captain's instructions are `seshi brief`: read them, or tell any agent to "run seshi
+An agent you're already talking to can take over as captain: **Fleet captain** in its row's
+menu (it asks first). The captain's instructions are `seshi brief`: read them, or tell any agent to "run seshi
 brief and follow it". It works best with seshi's tools set up (`seshi integrate mcp`); without them the
 captain uses the `seshi` commands from its shell. With a plan and tickets in the repo, a goal like
 "work the active phase" has it take them in order, one helper per ticket.

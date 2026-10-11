@@ -1099,6 +1099,27 @@ mod hydra_tests {
     }
 
     #[test]
+    fn the_sidebars_foot_says_when_a_rows_keys_dont_all_fit() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        // codex: an agent that isn't on a prompt, in a git project (rename, changes, captain, close).
+        app.hy_side_set(hydra::SideItem::Sess(2));
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        let n = app.session_items(2).unwrap().1.len();
+        let foot = o.lines().find(|l| l.contains("x close")).expect("the row's keys are in the foot");
+        let shown = ["x close", "r rename", "c changes", "f fleet", "o open"].iter().filter(|k| foot.contains(**k)).count();
+        assert!(shown < n, "this sidebar is too narrow for all {n}: {foot}");
+        assert!(foot.contains(&format!("+{} more", n - shown)), "so it says how many are missing: {foot}");
+        let note = app.hits.iter().any(|(_, h)| *h == Hit::Hy(hydra::HyHit::RowMenuSess(2)));
+        assert!(note, "and the note opens the row's menu");
+        // With room for them all there is no note.
+        app.hy.saved.side_w = Some(70);
+        let o = draw(&mut app, 200, 45);
+        let foot = o.lines().find(|l| l.contains("x close")).unwrap();
+        assert!(foot.contains("f fleet") && !foot.contains("more"), "{foot}");
+    }
+
+    #[test]
     fn an_agents_row_menu_makes_it_a_captain() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
@@ -1109,18 +1130,28 @@ mod hydra_tests {
                 _ => None,
             })
         };
-        let offered = |app: &App, t: TermId| app.session_items(t).unwrap().1.into_iter().find(|(l, _)| l == "Captain a fleet").map(|(_, a)| a);
+        let offered = |app: &App, t: TermId| app.session_items(t).unwrap().1.into_iter().find(|(l, _)| l == "Fleet captain").map(|(_, a)| a);
         let act = offered(&app, 1).expect("on an agent's row");
         assert!(offered(&app, 3).is_none(), "not on a shell");
-        // Its key isn't one the row already uses (m follows up, i says why).
+        // Its key is f: not a (the foot teaches a for actions), nor one the row already uses.
         let items = app.session_items(1).unwrap().1;
-        let key = crate::client::menu::menu_keys(&items)[items.iter().position(|(l, _)| l == "Captain a fleet").unwrap()];
-        assert!(key.is_some_and(|k| !['m', 'i', 'j', 'k', 'x'].contains(&k)), "{key:?}");
-        // claude is on a prompt: typing there would answer it.
-        app.menu_do(act.clone());
-        assert!(typed(&mut rx).is_none(), "nothing typed into a prompt");
+        let key = crate::client::menu::menu_keys(&items)[items.iter().position(|(l, _)| l == "Fleet captain").unwrap()];
+        assert_eq!(key, Some('f'));
+        // claude is on a prompt: typing there would answer it, so there's nothing to confirm.
+        app.menu_act(act.clone());
+        assert!(app.mode == Mode::Normal && typed(&mut rx).is_none(), "nothing typed into a prompt");
+        // Otherwise it asks first: a slip of a key types nothing.
         app.snap.terms.get_mut(&1).unwrap().status = Status::Idle;
-        app.menu_do(act);
+        app.hy_fresh();
+        app.menu_act(act.clone());
+        assert!(matches!(&app.mode, Mode::Confirm(c) if c.title == "Fleet captain" && !c.danger) && typed(&mut rx).is_none(), "asks before typing");
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("Make it captain Enter") && o.contains("Cancel Esc"));
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(app.mode == Mode::Normal && typed(&mut rx).is_none(), "Esc: nothing sent");
+        app.menu_act(act);
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let (term, text) = typed(&mut rx).expect("told to captain");
         assert_eq!((term, text.as_str()), (1, crate::brief::captain_prompt("").as_str()));
         assert!(text.contains("seshi brief") && text.contains("ask me for the goal"));

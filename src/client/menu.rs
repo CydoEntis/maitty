@@ -173,9 +173,10 @@ impl App {
         if let Some(d) = dir.filter(|d| crate::gitfs::head(d).is_some()) {
             items.push(("Changes".to_string(), Act::Changes(d)));
         }
-        // Not "Make captain": on a row, m is already the follow-up key.
+        // Its key comes from its label: f, not a (the foot teaches a for actions) or m
+        // (a row's follow-up key).
         if s.is_agent && !s.asleep {
-            items.push(("Captain a fleet".to_string(), Act::Captain(term)));
+            items.push(("Fleet captain".to_string(), Act::Captain(term)));
         }
         items.push(("Close".to_string(), Act::End(vec![term])));
         // Titled by what it is (an agent, or the program's name), never its window title.
@@ -316,6 +317,20 @@ impl App {
                 danger: false,
                 act: a.clone(),
             }),
+            // It types into the agent, so never on a slip of a key. (One that's on a prompt is
+            // told to answer first, with nothing to confirm.)
+            Act::Captain(t) if self.snap.terms.get(t).is_some_and(|x| x.status != crate::protocol::Status::Blocked) => find(&model, *t).map(|(_, _, s)| Confirm {
+                title: "Fleet captain".into(),
+                sub: String::new(),
+                what: s.name.clone(),
+                detail: s.agent.clone(),
+                note: "It's told to run seshi brief and ask you for the goal; from then on it starts helpers.".into(),
+                list: Vec::new(),
+                yes: "Make it captain".into(),
+                key: '\n',
+                danger: false,
+                act: a.clone(),
+            }),
             Act::CloseProject(pi) => model.get(*pi).map(|p| {
                 let n = p.sessions().count();
                 Confirm {
@@ -335,8 +350,13 @@ impl App {
         };
         match ask {
             Some(c) => {
-                // Asked from the sidebar: come back to it afterwards, on the next row.
-                self.hy.side_return = if self.mode == Mode::Side { self.side_after_close() } else { None };
+                // Asked from the sidebar: come back to it afterwards, on the next row (the
+                // one asked about is going), or the same row when it stays.
+                self.hy.side_return = match &c.act {
+                    _ if self.mode != Mode::Side => None,
+                    Act::Captain(t) => Some(super::hydra::SideItem::Sess(*t)),
+                    _ => self.side_after_close(),
+                };
                 self.mode = Mode::Confirm(Box::new(c));
             }
             None => self.menu_do(a),
