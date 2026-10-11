@@ -742,12 +742,12 @@ impl App {
         self.cfg.ui.motion && crate::ipc::remote().is_none() && !cfg!(test)
     }
 
-    /// The toast is sliding in or fading out.
+    /// The toast is sliding in, settling from its flash, or fading out.
     fn toast_moving(&self) -> bool {
         let Some((_, at, err)) = &self.notice else { return false };
         let hold = hydra::toast_hold(*err, self.notice_term.is_some());
         let e = at.elapsed();
-        self.motion_on() && (e < motion::TOAST_IN || (e + motion::TOAST_FADE >= hold && e < hold))
+        self.motion_on() && (e < motion::TOAST_IN.max(motion::TOAST_FLASH) || (e + motion::TOAST_FADE >= hold && e < hold))
     }
 
     fn spinner_frame(&self) -> u64 {

@@ -1053,6 +1053,11 @@ pub(in crate::client) fn toast_hold(err: bool, about: bool) -> std::time::Durati
     })
 }
 
+/// How far a toast's hint ("click to open") sinks into its fill: readable, second to the news.
+const TOAST_HINT_FADE: f32 = 0.3;
+/// How far toward white a toast is when it arrives.
+const TOAST_FLASH_BRIGHT: f32 = 0.55;
+
 pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, panes: Rect, t: &Theme) {
     let Some((msg, at, err)) = app.notice.clone() else { return };
     let about = app.notice_term.filter(|t| app.snap.terms.contains_key(t));
@@ -1067,19 +1072,27 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, panes: Rect
     let left = hold.saturating_sub(shown);
     let fade = if on && left < crate::client::motion::TOAST_FADE { 1.0 - left.as_secs_f32() / crate::client::motion::TOAST_FADE.as_secs_f32() } else { 0.0 };
     let hint = if about.is_some() { "   click to open" } else { "" };
-    let text = truncate(&msg, (panes.width.saturating_sub(14) as usize).saturating_sub(hint.width()));
+    let text = truncate(&msg, (panes.width.saturating_sub(16) as usize).saturating_sub(hint.width()));
+    // Filled with the colour of what it says, so it's seen from the corner of your eye: an
+    // agent that needs you or finished wears its state, an error the error colour, a plain
+    // note the accent. On the card's own grey it was easy to miss.
+    let needs = about.and_then(|term| app.snap.terms.get(&term)).is_some_and(|x| x.status == Status::Blocked);
+    let (fill, mark) = match (err, needs, about) {
+        (true, ..) => (t.err, "✕ "),
+        (_, true, _) => (t.blocked, "● "),
+        (_, _, Some(_)) => (t.done, "✓ "),
+        _ => (t.accent, "✓ "),
+    };
+    let ink = t.ink_on(fill);
+    // It arrives bright and settles into its colour.
+    let flash = if on { (1.0 - shown.as_secs_f32() / crate::client::motion::TOAST_FLASH.as_secs_f32()).max(0.0) } else { 0.0 };
+    let bold = Style::default().fg(ink).add_modifier(Modifier::BOLD);
     // A pill inside the top right of the panes, a row below the card's border: away from
     // where you type (an agent's prompt is at the bottom).
     let segs = pill(
         Look::of(&app.cfg.ui),
-        vec![
-            seg(" ", Style::default()),
-            seg(if err { "✕ " } else { "✓ " }, Style::default().fg(if err { t.err } else { t.done }).add_modifier(Modifier::BOLD)),
-            seg(text, Style::default().fg(t.strong).add_modifier(Modifier::BOLD)),
-            seg(hint, Style::default().fg(t.muted)),
-            seg(" ", Style::default()),
-        ],
-        t.card2,
+        vec![seg("  ", Style::default()), seg(mark, bold), seg(text, bold), seg(hint, Style::default().fg(blend(ink, fill, TOAST_HINT_FADE))), seg("  ", Style::default())],
+        blend(fill, t.strong, flash * TOAST_FLASH_BRIGHT),
         pane_bg(t),
     );
     let w = segs_width(&segs);

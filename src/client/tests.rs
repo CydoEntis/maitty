@@ -1674,6 +1674,39 @@ mod hydra_tests {
     }
 
     #[test]
+    fn a_toast_wears_the_colour_of_its_news() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        // The fill and ink under the first letter of `word`, and the mark in front of it.
+        let toast = |app: &mut App, word: &str| {
+            app.hy_fresh();
+            let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+            term.draw(|f| render::draw(app, f)).unwrap();
+            let buf = term.backend().buffer().clone();
+            let first = word.chars().next().unwrap().to_string();
+            let (x, y) = (0..45u16)
+                .flat_map(|y| (0..160u16).map(move |x| (x, y)))
+                .find(|&(x, y)| buf[(x, y)].symbol() == first && (0..word.chars().count() as u16).all(|i| Some(buf[(x + i, y)].symbol()) == word.chars().nth(i as usize).map(|c| c.to_string()).as_deref()))
+                .unwrap_or_else(|| panic!("{word} is on screen"));
+            (buf[(x, y)].bg, buf[(x, y)].fg, buf[(x - 2, y)].symbol().to_string())
+        };
+        let t = app.theme.clone();
+        app.notify("Copied".into(), false);
+        assert_eq!(toast(&mut app, "Copied"), (t.accent, t.ink_on(t.accent), "✓".to_string()), "a plain note: the accent");
+        app.notify("Couldn't save".into(), true);
+        assert_eq!(toast(&mut app, "Couldn't"), (t.err, t.ink_on(t.err), "✕".to_string()), "an error");
+        // claude (1) is on a prompt; codex (2) isn't.
+        app.notify("pane-one needs you".into(), false);
+        app.notice_term = Some(1);
+        assert_eq!(toast(&mut app, "pane-one"), (t.blocked, t.ink_on(t.blocked), "●".to_string()), "needs you: its state's colour");
+        app.notify("pane-two finished".into(), false);
+        app.notice_term = Some(2);
+        assert_eq!(toast(&mut app, "pane-two"), (t.done, t.ink_on(t.done), "✓".to_string()), "finished");
+        for fill in [t.accent, t.err, t.blocked, t.done] {
+            assert!(fill != t.card2 && fill != t.card, "never the card's own grey");
+        }
+    }
+
+    #[test]
     fn go_to_a_project_or_session() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);

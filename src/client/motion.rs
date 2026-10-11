@@ -12,6 +12,8 @@ pub const GLIDE: Duration = Duration::from_millis(90);
 /// A toast's slide in, and the fade at the end of its time.
 pub const TOAST_IN: Duration = Duration::from_millis(120);
 pub const TOAST_FADE: Duration = Duration::from_millis(350);
+/// A toast arrives bright and settles into its colour over this long.
+pub const TOAST_FLASH: Duration = Duration::from_millis(500);
 /// How long the pane you've just moved to stays lit up.
 pub const LAND: Duration = Duration::from_millis(450);
 
