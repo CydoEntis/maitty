@@ -204,6 +204,8 @@ pub enum Action {
     Files,
     /// The + Pane menu: what to run, and in which folder.
     NewPane,
+    /// The new-agent box asking for a goal: what starts is a fleet's captain.
+    StartFleet,
     /// The selected worktree's changes (review and ship).
     Changes,
     /// Interrupt the selected worktree's agent (Ctrl+C).
@@ -298,6 +300,7 @@ impl Action {
             Action::BrowseTree => "Focus the sidebar".into(),
             Action::Files => "Files".into(),
             Action::NewPane => "New agent (task, agent, model, worktree)".into(),
+            Action::StartFleet => "Start a fleet (a captain and its helpers)".into(),
             Action::Changes => "Changes (diff, review, commit)".into(),
             Action::StopAgent => "stop agent (Ctrl+C)".into(),
             Action::Message => "Follow-up: the agent's next prompt".into(),
@@ -373,6 +376,7 @@ impl Action {
             Action::BrowseTree => "browse-tree".into(),
             Action::Files => "files".into(),
             Action::NewPane => "new".into(),
+            Action::StartFleet => "start-fleet".into(),
             Action::Jump => "jump".into(),
             Action::NewSession => "new-beside".into(),
             Action::CloseSplit => "close-split".into(),
@@ -461,6 +465,7 @@ impl FromStr for Action {
             "browse-tree" | "browse" => Action::BrowseTree,
             "files" => Action::Files,
             "new-pane" | "new" => Action::NewPane,
+            "start-fleet" => Action::StartFleet,
             "jump" => Action::Jump,
             "new-session" | "new-beside" => Action::NewSession,
             "close-split" => Action::CloseSplit,

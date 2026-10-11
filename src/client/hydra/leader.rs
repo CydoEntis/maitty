@@ -26,6 +26,7 @@ pub(in crate::client) fn action_items() -> Vec<(&'static str, Action)> {
         ("New shell here", Action::ShellHere),
         ("New pane beside this", Action::SplitRight),
         ("New tab", Action::NewTab),
+        ("Start a fleet", Action::StartFleet),
         ("Inbox", Action::Jump),
         ("Hide sidebar", Action::ToggleSidebar),
         ("All keys", Action::Help),

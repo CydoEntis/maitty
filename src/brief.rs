@@ -4,6 +4,16 @@
 
 pub const BRIEF: &str = include_str!("brief.md");
 
+/// What an agent is told to make it a captain: where its instructions are, and the goal if
+/// there is one yet. Its own words carry no quotes or backticks for a shell to trip on.
+pub fn captain_prompt(goal: &str) -> String {
+    let brief = "You are the captain of a fleet of agents in seshi. Run the shell command seshi brief and follow what it prints.";
+    match goal.trim() {
+        "" => format!("{brief} Then ask me for the goal."),
+        goal => format!("{brief} The goal: {goal}"),
+    }
+}
+
 pub fn print() {
     print!("{BRIEF}");
 }
@@ -26,6 +36,15 @@ mod tests {
         out.sort();
         out.dedup();
         out
+    }
+
+    #[test]
+    fn a_captain_is_pointed_at_the_brief_and_given_the_goal() {
+        let p = captain_prompt("  ship the login page  ");
+        assert!(p.contains("seshi brief") && p.ends_with("The goal: ship the login page"), "{p}");
+        assert!(!captain_prompt("").contains("The goal") && captain_prompt(" ").ends_with("ask me for the goal."));
+        let own = captain_prompt("");
+        assert!(!own.contains(['\'', '"', '`', '$', '\n']), "nothing in its own words needs quoting: {own}");
     }
 
     #[test]

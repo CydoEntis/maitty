@@ -267,6 +267,16 @@ impl App {
         self.hy_new(p, beside);
     }
 
+    /// Start a fleet: the + New chooser asking for a goal, for the agent that will captain it.
+    pub(in crate::client) fn hy_start_fleet(&mut self) {
+        self.hy_open_new_pane(false);
+        if let Mode::HyPane(np) = &mut self.mode {
+            // The draft is a task for one agent, not a fleet's goal.
+            np.task.clear();
+            np.fleet = true;
+        }
+    }
+
     pub(in crate::client) fn hy_settings(&mut self) {
         self.mode = Mode::HySettings(Box::new(SView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
     }
@@ -367,6 +377,7 @@ impl App {
         match a {
             Action::Settings => self.hy_settings(),
             Action::NewPane => self.hy_open_new_pane(false),
+            Action::StartFleet => self.hy_start_fleet(),
             // A plain shell in the project's own folder (the repo itself, not a worktree).
             Action::ShellHere => {
                 let dir = self
@@ -748,8 +759,24 @@ impl App {
         let agents = np_agents(self);
         let agent = agents.get(np.a).cloned().unwrap_or_else(|| "shell".into());
         let main = p.wts.iter().find(|w| w.main).map(|w| w.path.clone()).unwrap_or_else(|| p.path.clone());
-        let cmd = np_command(self, &agent, np.model, &np.task);
-        if !self.hy.saved.draft.is_empty() {
+        if np.fleet {
+            // A fleet needs a goal, and an agent to captain it.
+            let missing = if np.task.trim().is_empty() {
+                Some("say what the fleet should get done")
+            } else if agent == "shell" || agent.starts_with('⚙') {
+                Some("pick an agent to captain the fleet")
+            } else {
+                None
+            };
+            if let Some(why) = missing {
+                self.mode = Mode::HyPane(np.clone());
+                self.notify(why.into(), true);
+                return;
+            }
+        }
+        let task = if np.fleet { crate::brief::captain_prompt(&np.task) } else { np.task.clone() };
+        let cmd = np_command(self, &agent, np.model, &task);
+        if !np.fleet && !self.hy.saved.draft.is_empty() {
             self.hy.saved.draft.clear();
             self.hy.save();
         }
@@ -980,8 +1007,8 @@ impl App {
         };
         match k.code {
             KeyCode::Esc => {
-                // The task stays for next time.
-                if self.hy.saved.draft != np.task {
+                // The task stays for next time (a fleet's goal isn't one).
+                if !np.fleet && self.hy.saved.draft != np.task {
                     self.hy.saved.draft = np.task.clone();
                     self.hy.save();
                 }

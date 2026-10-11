@@ -47,7 +47,7 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
     let model = app.hy_model();
     let buf = f.buffer_mut();
     dim_all(buf, area, t);
-    let r = panel(app, buf, area, 86, 21, "New", &[], t);
+    let r = panel(app, buf, area, 86, 21, if np.fleet { "Start a fleet" } else { "New" }, &[], t);
     let lab = |buf: &mut Buffer, y: u16, text: &str, row: u8| {
         put(buf, r.x + 3, y, &[seg(text, Style::default().fg(if np.row == row { t.accent } else { t.muted }).bg(t.card).add_modifier(Modifier::BOLD))], r.right());
     };
@@ -88,7 +88,7 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
     let agent = agents.get(np.a).cloned().unwrap_or_default();
     let muted = Style::default().fg(t.muted).bg(t.card);
     // The task: typed straight away, it's the agent's first prompt.
-    lab(buf, r.y + 2, "TASK", 0);
+    lab(buf, r.y + 2, if np.fleet { "GOAL" } else { "TASK" }, 0);
     let tb = Rect { x: r.x + 14, y: r.y + 2, width: r.right().saturating_sub(r.x + 17), height: 1 };
     strip(buf, tb, t.card2);
     let s2 = Style::default().bg(t.card2);
@@ -103,6 +103,7 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
     }
     if np.task.is_empty() {
         let ph = match preset_of(app, &agent) {
+            _ if np.fleet => " what should the fleet get done?".to_string(),
             Some(p) if !p.asks() => format!(" (the preset says: {})", truncate(&p.prompt, 50)),
             Some(_) => " what should it do?".to_string(),
             None if agent == "shell" || agent.starts_with('⚙') => " (not used for this)".to_string(),
@@ -169,14 +170,16 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
     };
     let c = Style::default().bg(t.card);
     let what = match np_command(app, &agent, np.model, &np.task) {
+        _ if np.fleet && (agent == "shell" || agent.starts_with('⚙')) => "A fleet needs an agent to captain it.".to_string(),
+        _ if np.fleet => format!("{agent} is the captain: it splits the goal up and starts helpers in their own worktrees. {what}"),
         Some(cmd) if !np.task.trim().is_empty() || np.model > 0 => format!("{what}  Runs: {cmd}"),
         _ => what,
     };
     for (i, l) in crate::client::views::wrap(&what, (r.width - 6) as usize).into_iter().take(3).enumerate() {
         put(buf, r.x + 3, r.y + 14 + i as u16, &[seg(l, c.fg(t.text))], r.right() - 2);
     }
-    let gx = btn(app, buf, r.x + 3, r.y + 18, if np.task.trim().is_empty() { "Open" } else { "Start" }, "Enter", BtnKind::Primary, HyHit::NpGo, r.right());
-    put(buf, gx + 3, r.y + 18, &hints(t, &[("↑↓", "rows"), ("←→", "choose"), ("Esc", "close, keeps the task")]), r.right());
+    let gx = btn(app, buf, r.x + 3, r.y + 18, if np.task.trim().is_empty() && !np.fleet { "Open" } else { "Start" }, "Enter", BtnKind::Primary, HyHit::NpGo, r.right());
+    put(buf, gx + 3, r.y + 18, &hints(t, &[("↑↓", "rows"), ("←→", "choose"), ("Esc", if np.fleet { "close" } else { "close, keeps the task" })]), r.right());
 }
 
 // Talk ----------------------------------------------------------------------------------------

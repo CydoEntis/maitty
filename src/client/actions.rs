@@ -164,6 +164,7 @@ impl App {
             Action::Jump,
             Action::BrowseTree,
             Action::NewPane,
+            Action::StartFleet,
             Action::ShellHere,
             Action::SplitRight,
             Action::SplitDown,

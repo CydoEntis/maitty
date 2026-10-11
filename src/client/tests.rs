@@ -1031,6 +1031,71 @@ mod hydra_tests {
     }
 
     #[test]
+    fn start_a_fleet_asks_for_a_goal_and_starts_its_captain() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
+        let started = |rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::protocol::ClientMsg>| {
+            std::iter::from_fn(|| rx.try_recv().ok()).find_map(|m| match m {
+                crate::protocol::ClientMsg::Command(crate::protocol::Command::NewWorkspace { cwd, cmd, .. }) => Some((cwd, cmd)),
+                crate::protocol::ClientMsg::Command(crate::protocol::Command::NewWorktree { .. }) => panic!("a captain works from the project's folder, not a worktree"),
+                _ => None,
+            })
+        };
+        assert!(hydra::action_items().iter().any(|(name, a)| *name == "Start a fleet" && *a == Action::StartFleet), "in the actions list");
+        app.hy.saved.draft = "a task left from before".into();
+        app.act(Action::StartFleet);
+        assert!(matches!(&app.mode, Mode::HyPane(np) if np.fleet && np.task.is_empty()), "the goal box, empty");
+        for (w, h) in [(160, 45), (100, 30)] {
+            let o = draw(&mut app, w, h);
+            show(&o);
+            assert!(o.contains("Start a fleet") && o.contains("GOAL") && o.contains("is the captain"), "at {w}x{h}");
+        }
+        // No goal: nothing starts, the box stays.
+        app.on_key(key(KeyCode::Enter));
+        assert!(matches!(&app.mode, Mode::HyPane(np) if np.fleet) && started(&mut rx).is_none());
+        // A goal, quotes and all, goes to the captain as it was typed.
+        let goal = r#"fix `login` & "signup" for $5, it's urgent"#;
+        for c in goal.chars() {
+            app.on_key(key(KeyCode::Char(c)));
+        }
+        app.on_key(key(KeyCode::Enter));
+        assert_eq!(app.mode, Mode::Normal);
+        let (cwd, cmd) = started(&mut rx).expect("the captain starts");
+        let said = crate::brief::captain_prompt(goal);
+        assert_eq!(cmd.as_deref(), Some(format!("claude {}", app.cfg.quote_for_shell(&said)).as_str()));
+        assert!(cwd.is_some_and(|d| d.ends_with("shop-api")), "in the project's own folder");
+        assert_eq!(app.hy.saved.draft, "a task left from before", "your task draft is untouched");
+        // Esc closes it and starts nothing; a shell can't captain.
+        app.act(Action::StartFleet);
+        app.on_key(key(KeyCode::Char('x')));
+        app.on_key(key(KeyCode::Esc));
+        assert!(app.mode == Mode::Normal && started(&mut rx).is_none());
+        app.act(Action::StartFleet);
+        let shell = hydra::np_agents(&app).iter().position(|a| a == "shell").unwrap();
+        if let Mode::HyPane(np) = &mut app.mode {
+            np.task = "a goal".into();
+            np.a = shell;
+        }
+        app.on_key(key(KeyCode::Enter));
+        assert!(matches!(&app.mode, Mode::HyPane(_)) && started(&mut rx).is_none(), "a fleet needs an agent");
+    }
+
+    #[test]
+    fn a_goal_survives_each_shells_quoting() {
+        let said = crate::brief::captain_prompt("fix `login` & \"signup\" for $5, it's urgent\nthen the tests");
+        for (shell, open, apostrophe) in [("pwsh.exe", "'", "''"), ("bash", "'", r"'\''")] {
+            let cfg = Config { shell: Some(shell.into()), ..Config::default() };
+            let q = cfg.quote_for_shell(&said);
+            // Single-quoted, so $, backticks, double quotes and the newline are literal; only
+            // the apostrophe needs its escape.
+            assert!(q.starts_with(open) && q.ends_with(open), "{shell}: {q}");
+            assert_eq!(q[1..q.len() - 1].replace(apostrophe, "'"), said, "{shell}: back to what was typed");
+        }
+    }
+
+    #[test]
     fn tabs_close_rename_and_reorder_with_the_mouse() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();

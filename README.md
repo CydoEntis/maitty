@@ -268,6 +268,18 @@ safe = ["npm test", "cargo test", "git status"]   # with "safe": only prompts th
 scope = "project"    # project: only sessions in the calling agent's repo | all
 ```
 
+## Fleets
+
+Give one agent a goal and let it run the others. **Start a fleet** (in `actions`) asks for the
+goal and which agent is the **captain**; the captain splits the work up, starts helpers in their
+own worktrees, checks what comes back and reports to you. Helpers sit under their captain in the
+sidebar, and one that needs you still goes to the top.
+
+The captain's instructions are `seshi brief`: read them, or tell any agent to "run seshi brief
+and follow it". It works best with seshi's tools set up (`seshi integrate mcp`); without them the
+captain uses the `seshi` commands from its shell. With a plan and tickets in the repo, a goal like
+"work the active phase" has it take them in order, one helper per ticket.
+
 ## Sync between machines
 
 ```sh
