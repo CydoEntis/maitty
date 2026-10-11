@@ -80,6 +80,10 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             let sel = *sel;
             super::hydra::draw_history(app, f, area, &t, sel);
         }
+        Mode::Tidy(v) => {
+            let v = (**v).clone();
+            super::hydra::draw_tidy(app, f, area, &t, &v);
+        }
         Mode::Branch(v) => {
             let v = (**v).clone();
             super::branch::draw_branches(app, f, area, &t, &v);

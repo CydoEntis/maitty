@@ -150,6 +150,12 @@ pub(super) fn copy_claude_transcript(src: &std::path::Path, session: &str, dest:
     }
 }
 
+/// A worktree to remove in a clean-up: its folder, and whether to go ahead with
+/// uncommitted changes in it.
+pub(super) type TidyGo = (PathBuf, bool);
+/// One that stays: its name, and why.
+pub(super) type TidyStay = (String, String);
+
 impl Daemon {
     /// Heuristic statuses for agents without hooks, and "seen" bookkeeping for everyone.
     /// Whether the spare can be what `cmd` asks for in `repo`: the same agent, with at most a
@@ -199,7 +205,7 @@ impl Daemon {
 
 
     /// A worktree hook (`on_create` / `on_remove` in the repo's .seshi.toml) as a job to run.
-    pub(super) fn hook_job(&self, dir: &std::path::Path, create: bool) -> Option<impl FnOnce() -> String + Send + 'static> {
+    pub(super) fn hook_job(&self, dir: &std::path::Path, create: bool) -> Option<impl FnOnce() -> String + Send + 'static + use<>> {
         let proj = crate::project::load(dir);
         let cmd = if create { proj.hooks.on_create } else { proj.hooks.on_remove };
         if cmd.trim().is_empty() {
@@ -243,6 +249,47 @@ impl Daemon {
             .filter_map(|t| self.terms.get(t))
             .filter_map(|t| t.head.as_ref().filter(|h| h.linked).map(|h| h.top.clone()))
             .collect()
+    }
+
+    /// Now and then: worktrees seshi made that nothing runs in any more (their session
+    /// crashed, or ended some way other than you closing it) and that hold nothing of their
+    /// own go, as they would have when you closed their last session.
+    pub(super) fn sweep_worktrees(&mut self) {
+        if !self.cfg.worktree.delete_with_last {
+            return;
+        }
+        let idle: Vec<PathBuf> = self.made_worktrees.iter().filter(|m| !self.runs_in(m)).cloned().collect();
+        if idle.is_empty() {
+            return;
+        }
+        let tx = self.tx.clone();
+        tokio::task::spawn_blocking(move || {
+            let (gone, here): (Vec<PathBuf>, Vec<PathBuf>) = idle.into_iter().partition(|p| !p.is_dir());
+            let safe = here.into_iter().filter(|p| crate::tidy::standing(p).safe()).collect();
+            let _ = tx.blocking_send(Ev::WorktreeSwept { safe, gone });
+        });
+    }
+
+    /// Whether any session is in this checkout.
+    pub(super) fn runs_in(&self, top: &std::path::Path) -> bool {
+        self.terms.values().any(|t| t.head.as_ref().is_some_and(|h| same_path(&h.top, top)))
+    }
+
+    /// A clean-up's worktrees, sorted into the ones to remove (folder, even with uncommitted
+    /// changes) and the ones that stay, with why.
+    pub(super) fn tidy_plan(&self, items: Vec<TidyGo>) -> (Vec<TidyGo>, Vec<TidyStay>) {
+        let mut go = Vec::new();
+        let mut stay = Vec::new();
+        for (path, force) in items {
+            let path = clean_path(path);
+            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            match crate::gitfs::head(&path).filter(|h| h.linked) {
+                None => stay.push((name, "it isn't a worktree".to_string())),
+                Some(h) if self.runs_in(&h.top) => stay.push((name, "something is running in it".to_string())),
+                Some(h) => go.push((h.top, force)),
+            }
+        }
+        (go, stay)
     }
 
     /// After you close something: remove worktrees seshi made that nothing runs in any

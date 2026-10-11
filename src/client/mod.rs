@@ -99,6 +99,8 @@ enum Mode {
     Branch(Box<branch::BranchView>),
     /// Notification history (the selected row, newest first).
     History { sel: usize },
+    /// A repo's worktrees and which to remove.
+    Tidy(Box<hydra::TidyView>),
     /// "Close …?" with confirm / cancel.
     Confirm(Box<menu::Confirm>),
     /// The switcher: projects and sessions, typed to filter.
@@ -143,6 +145,8 @@ pub(super) enum Bg {
     Done(Result<String, String>, bool),
     /// A worktree's branch merged (or not): then the worktree and its branch go.
     Merged(Result<String, String>, PathBuf),
+    /// A repo's worktrees, each looked at, for the clean-up list.
+    Tidy(PathBuf, Vec<hydra::TidyRow>),
     /// Each checkout's diff of a heads-up's file: (repo, [(checkout, diff)]).
     BothDiff(PathBuf, Vec<(String, String)>),
     /// What a checkout changed: (its folder, the status time it's for, "+42 −7 · 3 files").
@@ -381,11 +385,11 @@ pub struct App {
 pub const UPDATED_ENV: &str = "SESHI_UPDATED";
 
 pub fn run(opts: Options) -> Result<()> {
+    crate::proc::ahead_of_the_panes();
     let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build()?;
     let restart = rt.block_on(run_async(opts))?;
     drop(rt);
     // Updated: the new seshi takes over this terminal, with the same arguments.
-    crate::proc::ahead_of_the_panes();
     if let Some(exe) = restart {
         let status = std::process::Command::new(&exe).args(std::env::args_os().skip(1)).env(UPDATED_ENV, "1").status()?;
         std::process::exit(status.code().unwrap_or(0));

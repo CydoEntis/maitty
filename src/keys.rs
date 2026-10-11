@@ -246,6 +246,8 @@ pub enum Action {
     Update,
     /// Ask now whether a newer seshi is out, without waiting for the next check.
     CheckUpdate,
+    /// The clean-up list for the worktrees of the project you're in.
+    TidyWorktrees,
     /// Every command with its key, as a list (the sidebar's "a actions").
     Actions,
     /// The worktrees step of the key map: new, switch, merge, delete.
@@ -328,6 +330,7 @@ impl Action {
             Action::KillServer => "kill server".into(),
             Action::Update => "Update seshi".into(),
             Action::CheckUpdate => "Check for updates".into(),
+            Action::TidyWorktrees => "Clean up worktrees".into(),
             Action::Actions => "Actions".into(),
             Action::Worktrees => "Worktrees…".into(),
             Action::None => "unbound".into(),
@@ -405,6 +408,7 @@ impl Action {
             Action::KillServer => "kill-server".into(),
             Action::Update => "update".into(),
             Action::CheckUpdate => "check-update".into(),
+            Action::TidyWorktrees => "tidy-worktrees".into(),
             Action::Actions => "actions".into(),
             Action::Worktrees => "worktrees".into(),
             Action::None => return None,
@@ -495,6 +499,7 @@ impl FromStr for Action {
             "kill-server" => Action::KillServer,
             "update" => Action::Update,
             "check-update" => Action::CheckUpdate,
+            "tidy-worktrees" => Action::TidyWorktrees,
             "actions" => Action::Actions,
             "worktrees" => Action::Worktrees,
             "none" | "unbind" => Action::None,

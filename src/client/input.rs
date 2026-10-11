@@ -158,6 +158,7 @@ impl App {
             Mode::Find(v) => self.on_find_key(*v, &k),
             Mode::Branch(v) => self.on_branch_key(*v, &k),
             Mode::History { sel } => self.on_history_key(sel, &k),
+            Mode::Tidy(v) => self.on_tidy_key(*v, &k),
             Mode::GoTo { query, sel } => self.on_goto_key(query, sel, &k),
             Mode::Compose(c) => self.on_compose_key(*c, &k),
             Mode::Why { side, .. } => self.on_why_key(side, &k),

@@ -111,6 +111,7 @@ impl App {
             }
             Action::Update => self.ask_update(),
             Action::CheckUpdate => self.check_for_update(true),
+            Action::TidyWorktrees => self.tidy_open_here(),
             Action::None => {}
             // The rest are handled by hy_act above.
             _ => {}
@@ -194,6 +195,7 @@ impl App {
             Action::PaneInfo,
             Action::Update,
             Action::CheckUpdate,
+            Action::TidyWorktrees,
             Action::Detach,
         ]
     }

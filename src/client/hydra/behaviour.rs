@@ -1103,6 +1103,12 @@ impl App {
             HyHit::Settings => self.hy_settings(),
             HyHit::Update => self.act(Action::Update),
             HyHit::CheckUpdate => self.act(Action::CheckUpdate),
+            HyHit::TidyRow(i) => self.tidy_click(i),
+            HyHit::TidyGo => {
+                if let Mode::Tidy(v) = std::mem::replace(&mut self.mode, Mode::Normal) {
+                    self.tidy_ask(*v);
+                }
+            }
             // The sidebar's "new": a shell where you are.
             // The ✕ on a pane: close it (after asking).
             HyHit::CloseSplit(t) => self.menu_act(crate::client::menu::Act::End(vec![t])),

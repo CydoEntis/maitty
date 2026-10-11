@@ -34,6 +34,10 @@ pub enum Act {
     /// git init and a first commit, so agents there can get worktrees.
     GitInit(PathBuf),
     OpenWorktree(usize),
+    /// The clean-up list for a project's worktrees.
+    TidyOpen(usize),
+    /// Remove these worktrees (each: its folder, and whether to lose uncommitted changes).
+    Tidy(Vec<(PathBuf, bool)>),
     /// Download the newest seshi and restart into it.
     Update,
 }
@@ -199,6 +203,7 @@ impl App {
         if p.git {
             items.push(("New worktree".to_string(), Act::NewWorktree(pi)));
             items.push(("Open worktree…".to_string(), Act::OpenWorktree(pi)));
+            items.push(("Clean up worktrees…".to_string(), Act::TidyOpen(pi)));
         } else {
             items.push(("Make it a git repo…".to_string(), Act::GitInit(p.path.clone())));
         }
@@ -393,6 +398,11 @@ impl App {
                 });
             }
             Act::TeachAgent(term) => self.cmd(Command::TeachAgent { term }),
+            Act::TidyOpen(pi) => self.tidy_open(pi),
+            Act::Tidy(items) => {
+                self.notify("Cleaning up worktrees…".into(), false);
+                self.cmd(Command::TidyWorktrees { items });
+            }
             // Typed into a prompt it would be taken as that prompt's answer.
             Act::Captain(term) if self.snap.terms.get(&term).is_some_and(|t| t.status == crate::protocol::Status::Blocked) => {
                 self.notify("it's waiting on you: answer it first".into(), true);

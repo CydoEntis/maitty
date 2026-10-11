@@ -403,6 +403,14 @@ New worktrees go to `{repo_parent}/{repo}-worktrees/{branch}` (set `[worktree] d
 local or `origin/` branch is checked out instead of created. Set `[worktree] command = "claude"`
 to start an agent in every new worktree.
 
+**Cleaning up.** Closing the last session in a worktree seshi made removes its folder (never
+with uncommitted changes; the branch is kept unless it's merged). One left behind by a session
+that crashed is removed the same way a few minutes later, once nothing in it exists only there.
+For everything else there is **Clean up worktrees** (a project's menu, or the command palette):
+every worktree of the repo with why it's still around (in use, uncommitted changes, not merged,
+when it last committed). The safe ones come ticked; tick any others, and one confirm removes
+them. It says so first when ticked ones hold uncommitted changes, which would be lost.
+
 ## Copy mode
 
 | key | |

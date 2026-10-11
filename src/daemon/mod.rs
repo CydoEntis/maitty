@@ -43,6 +43,12 @@ const SAVE_EVERY: Duration = Duration::from_secs(2);
 const OUTPUT_SAVE_EVERY: Duration = Duration::from_secs(30);
 /// How often idle agents are checked for putting to sleep.
 const SLEEP_CHECK_EVERY: Duration = Duration::from_secs(30);
+/// How often worktrees left behind (a session that crashed) are looked for, and how soon
+/// after the server starts the first look is.
+const WORKTREE_SWEEP_EVERY: Duration = Duration::from_secs(10 * 60);
+const WORKTREE_SWEEP_FIRST: Duration = Duration::from_secs(60);
+/// Stands in for a client when a notice is for every window (nobody asked).
+const EVERYONE: ClientId = ClientId::MAX;
 /// A daemon nothing ever used (no panes, no clients) exits after this.
 const EXIT_WHEN_UNUSED_FOR: Duration = Duration::from_secs(30);
 /// Two panes ending on their own within this window means something killed them all
@@ -77,6 +83,12 @@ pub enum Ev {
     AgentWorktreeMade { client: ClientId, result: Result<PathBuf, String> },
     /// A worktree removed (or kept) after its last pane closed.
     WorktreeAutoRemoved { client: ClientId, path: PathBuf, result: Result<bool, String> },
+    /// The sweep's findings: seshi-made worktrees nothing runs in that are safe to remove,
+    /// and ones whose folder is already gone.
+    WorktreeSwept { safe: Vec<PathBuf>, gone: Vec<PathBuf> },
+    /// A clean-up you asked for is done: what went (and whether its merged branch went
+    /// too), and what stayed and why.
+    WorktreesTidied { client: ClientId, removed: Vec<(String, bool)>, kept: Vec<(String, String)> },
     WorktreeList { client: ClientId, result: Result<Vec<WorktreeEntry>, String> },
     /// A worktree hook ran: what to tell people.
     HookRan(String),
@@ -172,6 +184,7 @@ struct Daemon {
     /// The spare's folder, handed over: its on_create hook already ran.
     adopted: Option<PathBuf>,
     last_sleep_check: Instant,
+    last_worktree_sweep: Instant,
     /// The last automatic workspace move, for undo.
     auto_undo: Option<AutoUndo>,
     /// Panes whose process ended on its own, recently. Several at once means a crash,
@@ -180,6 +193,7 @@ struct Daemon {
 }
 
 pub fn run() -> Result<()> {
+    crate::proc::ahead_of_the_panes();
     init_logging();
     let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build()?;
     rt.block_on(async {
@@ -193,7 +207,6 @@ pub fn run() -> Result<()> {
         let _ = std::fs::write(ipc::pid_file(), std::process::id().to_string());
         let (tx, rx) = mpsc::channel::<Ev>(4096);
 
-    crate::proc::ahead_of_the_panes();
         let accept_tx = tx.clone();
         tokio::spawn(async move {
             let mut next: ClientId = 1;
@@ -293,6 +306,21 @@ async fn serve(id: ClientId, stream: interprocess::local_socket::tokio::Stream, 
     writer.abort();
 }
 
+/// "removed 3 worktrees (1 merged branch went too); kept rate: it has uncommitted changes".
+pub(super) fn tidied_note(removed: &[(String, bool)], kept: &[(String, String)]) -> String {
+    let mut parts = Vec::new();
+    if !removed.is_empty() {
+        let also = match removed.iter().filter(|(_, branch)| *branch).count() {
+            0 => String::new(),
+            1 => " (1 merged branch went too)".to_string(),
+            n => format!(" ({n} merged branches went too)"),
+        };
+        parts.push(format!("removed {} worktree{}{also}", removed.len(), if removed.len() == 1 { "" } else { "s" }));
+    }
+    parts.extend(kept.iter().map(|(name, why)| format!("kept {name}: {why}")));
+    if parts.is_empty() { "nothing to clean up".into() } else { parts.join("; ") }
+}
+
 /// What a pane may do through seshi (see `[mcp] grants`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum Grant {
@@ -355,7 +383,12 @@ impl Daemon {
                 // Closing itself is fine.
                 if self.clients.get(&client).and_then(|c| c.from) == Some(*term) { Ok(()) } else { Err(e) }
             }),
-            Command::CloseWorkspace { .. } | Command::CloseTab { .. } | Command::RemoveWorktree { .. } | Command::CloseWorktree { .. } | Command::KillServer { .. } => {
+            Command::CloseWorkspace { .. }
+            | Command::CloseTab { .. }
+            | Command::RemoveWorktree { .. }
+            | Command::CloseWorktree { .. }
+            | Command::TidyWorktrees { .. }
+            | Command::KillServer { .. } => {
                 self.may(client, Grant::Admin, None)
             }
             Command::AnswerHuman { id, .. } => {
@@ -430,6 +463,7 @@ impl Daemon {
             adopt: None,
             adopted: None,
             last_sleep_check: Instant::now(),
+            last_worktree_sweep: crate::clock::ago(WORKTREE_SWEEP_EVERY - WORKTREE_SWEEP_FIRST),
             natural_exits: Vec::new(),
             auto_undo: None,
         }
@@ -456,6 +490,10 @@ impl Daemon {
                         self.sleep_idle();
                     }
                     self.poll_git();
+                    if self.last_worktree_sweep.elapsed() >= WORKTREE_SWEEP_EVERY {
+                        self.last_worktree_sweep = Instant::now();
+                        self.sweep_worktrees();
+                    }
                     if self.last_save.elapsed() > SAVE_EVERY {
                         self.last_save = Instant::now();
                         self.persist(false);
@@ -835,7 +873,24 @@ impl Daemon {
                     Ok(false) => format!("removed worktree {name} (its branch is kept)"),
                     Err(_) => format!("kept worktree {name}: it has uncommitted changes"),
                 };
-                self.send(client, ServerMsg::Notice(msg));
+                // The sweep answers to nobody: say what went, to every window, and nothing
+                // about what stayed.
+                if client != EVERYONE {
+                    self.send(client, ServerMsg::Notice(msg));
+                } else if result.is_ok() {
+                    self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{msg}: nothing was running in it")));
+                }
+                self.dirty = true;
+            }
+            Ev::WorktreeSwept { safe, gone } => {
+                self.made_worktrees.retain(|m| !gone.iter().any(|g| same_path(g, m)));
+                self.cleanup_worktrees(EVERYONE, safe);
+            }
+            Ev::WorktreesTidied { client, removed, kept } => {
+                self.pending_ops -= 1;
+                self.send(client, ServerMsg::Notice(tidied_note(&removed, &kept)));
+                self.send(client, ServerMsg::Reply(Reply::Ok));
+                self.poll_git_soon();
                 self.dirty = true;
             }
             Ev::CodexUsage { usage, limits, subagents } => self.codex_usage(usage, limits, subagents),

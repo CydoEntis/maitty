@@ -92,6 +92,45 @@ fn a_report_traced_outside_the_pane_is_dropped() {
 }
 
 #[test]
+fn a_clean_up_only_takes_worktrees_nothing_runs_in() {
+    let (mut d, _rx) = daemon();
+    let root = std::env::temp_dir().join(format!("seshi-tidy-plan-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let repo = root.join("repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    let git = |dir: &std::path::Path, args: &[&str]| crate::proc::git(dir, args).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    git(&repo, &["config", "user.email", "t@t"]);
+    git(&repo, &["config", "user.name", "t"]);
+    std::fs::write(repo.join("a.ts"), "a").unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "-qm", "one"]);
+    let (idle, busy) = (root.join("idle"), root.join("busy"));
+    git(&repo, &["worktree", "add", "-q", "-b", "idle", idle.to_str().unwrap()]);
+    git(&repo, &["worktree", "add", "-q", "-b", "busy", busy.to_str().unwrap()]);
+    // A session in one of them.
+    let t = d.spawn(None, &busy, 80, 24).expect("a shell there");
+    d.terms.get_mut(&t).unwrap().refresh_head();
+    assert!(d.runs_in(&crate::gitfs::head(&busy).unwrap().top) && !d.runs_in(&crate::gitfs::head(&idle).unwrap().top));
+    let (go, stay) = d.tidy_plan(vec![(idle.clone(), false), (busy.clone(), true), (repo.clone(), false), (root.join("nowhere"), false)]);
+    assert_eq!(go.len(), 1, "only the idle one goes: {go:?}");
+    assert!(same_path(&go[0].0, &idle) && !go[0].1);
+    let why: Vec<(&str, &str)> = stay.iter().map(|(n, w)| (n.as_str(), w.as_str())).collect();
+    assert_eq!(why, [("busy", "something is running in it"), ("repo", "it isn't a worktree"), ("nowhere", "it isn't a worktree")], "the main folder is never one");
+    close(&mut d, &[t]);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_clean_up_says_what_went_and_what_stayed() {
+    let note = super::tidied_note;
+    assert_eq!(note(&[("a".into(), false)], &[]), "removed 1 worktree");
+    assert_eq!(note(&[("a".into(), true), ("b".into(), false), ("c".into(), true)], &[]), "removed 3 worktrees (2 merged branches went too)");
+    assert_eq!(note(&[("a".into(), true)], &[("rate".into(), "something is running in it".into())]), "removed 1 worktree (1 merged branch went too); kept rate: something is running in it");
+    assert_eq!(note(&[], &[]), "nothing to clean up");
+}
+
+#[test]
 fn a_finish_you_have_seen_is_not_announced_again() {
     let (mut d, _rx) = daemon();
     d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();

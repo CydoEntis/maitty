@@ -1674,6 +1674,68 @@ mod hydra_tests {
     }
 
     #[test]
+    fn worktrees_are_cleaned_up_from_one_list() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
+        let standing = |dirty: usize, merged: bool| crate::tidy::Standing { dirty, branch: Some("b".into()), merged, last_commit: "3 days ago".into() };
+        let row = |name: &str, sessions: usize, s: crate::tidy::Standing| hydra::TidyRow { path: PathBuf::from(format!("/wt/{name}")), name: name.into(), branch: format!("feat/{name}"), sessions, ticked: sessions == 0 && s.safe(), standing: s };
+        // It opens from the project's menu and the palette, and says it's looking.
+        let pi = app.hy_model().iter().position(|p| p.git).unwrap();
+        assert!(app.project_items(pi).unwrap().1.iter().any(|(l, a)| l == "Clean up worktrees…" && *a == crate::client::menu::Act::TidyOpen(pi)));
+        assert!(app.palette_commands().contains(&Action::TidyWorktrees));
+        app.mode = Mode::Tidy(Box::new(hydra::TidyView { repo: PathBuf::from("/repo"), name: "shop-api".into(), rows: None, sel: 0 }));
+        assert!(draw(&mut app, 160, 45).contains("looking at each worktree"));
+        // Looked at: one safe, one never merged, one with edits, one in use.
+        app.tidy_loaded(PathBuf::from("/repo"), vec![row("done", 0, standing(0, true)), row("parked", 0, standing(0, false)), row("messy", 0, standing(2, false)), row("busy", 1, standing(0, true))]);
+        let ticked = |app: &App| match &app.mode {
+            Mode::Tidy(v) => v.rows.as_ref().unwrap().iter().filter(|r| r.ticked).map(|r| r.name.clone()).collect::<Vec<_>>(),
+            m => panic!("the list is open: {:?}", std::mem::discriminant(m)),
+        };
+        assert_eq!(ticked(&app), ["done"], "only what holds nothing of its own comes ticked");
+        for (w, h) in [(160, 45), (100, 30)] {
+            let o = draw(&mut app, w, h);
+            show(&o);
+            assert!(o.contains("Clean up worktrees") && o.contains("✓ done") && o.contains("○ parked") && o.contains("· busy") && o.contains("Remove 1"), "at {w}x{h}");
+        }
+        let o = draw(&mut app, 160, 45);
+        assert!(o.contains("merged, nothing uncommitted") && o.contains("not merged anywhere") && o.contains("2 uncommitted changes") && o.contains("in use: 1 session"));
+        // One in use can't be ticked; the others are yours to tick.
+        for _ in 0..3 {
+            app.on_key(key(KeyCode::Down));
+        }
+        app.on_key(key(KeyCode::Char(' ')));
+        assert_eq!(ticked(&app), ["done"], "busy stays");
+        app.on_key(key(KeyCode::Up));
+        app.on_key(key(KeyCode::Char(' ')));
+        assert_eq!(ticked(&app), ["done", "messy"]);
+        // Enter asks, and says what would be lost.
+        app.on_key(key(KeyCode::Enter));
+        assert!(matches!(&app.mode, Mode::Confirm(c) if c.danger && c.what == "2 worktrees" && c.note.contains("1 has uncommitted changes, which will be lost")), "asks first");
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("messy (2 uncommitted)"));
+        assert!(rx.try_recv().is_err(), "nothing sent before you confirm");
+        app.on_key(key(KeyCode::Enter));
+        let sent = std::iter::from_fn(|| rx.try_recv().ok()).find_map(|m| match m {
+            crate::protocol::ClientMsg::Command(crate::protocol::Command::TidyWorktrees { items }) => Some(items),
+            _ => None,
+        });
+        assert_eq!(sent, Some(vec![(PathBuf::from("/wt/done"), false), (PathBuf::from("/wt/messy"), true)]), "only the edited one is forced");
+        // Nothing ticked: Enter says so and the list stays.
+        app.mode = Mode::Tidy(Box::new(hydra::TidyView { repo: PathBuf::from("/repo"), name: "shop-api".into(), rows: Some(vec![row("parked", 0, standing(0, false))]), sel: 0 }));
+        app.on_key(key(KeyCode::Enter));
+        assert!(matches!(app.mode, Mode::Tidy(_)));
+        // a ticks every safe one; n unticks all.
+        app.tidy_loaded(PathBuf::from("/repo"), vec![row("done", 0, standing(0, true)), row("parked", 0, standing(0, false))]);
+        app.on_key(key(KeyCode::Char('n')));
+        assert!(ticked(&app).is_empty());
+        app.on_key(key(KeyCode::Char('a')));
+        assert_eq!(ticked(&app), ["done"]);
+    }
+
+    #[test]
     fn you_can_ask_for_an_update_check_and_are_told_what_it_found() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let said = |app: &App| app.notice.as_ref().map(|(m, _, err)| (m.clone(), *err)).unwrap();

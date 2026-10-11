@@ -365,6 +365,7 @@ impl App {
                     v.refresh_preview();
                 }
             }
+            (Bg::Tidy(repo, rows), _) => self.tidy_loaded(repo, rows),
             (Bg::BothDiff(repo, parts), _) => {
                 if let Some(View::Both(v)) = &mut self.view
                     && v.repo == repo

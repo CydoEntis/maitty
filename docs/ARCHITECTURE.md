@@ -55,6 +55,7 @@ src/
   main.rs        argument parsing, picks client / daemon / CLI role
   cli.rs         one-shot subcommands (send, read, wait, hook, allow, doctor, …)
   brief.rs       `seshi brief`: a captain's instructions (brief.md)
+  tidy.rs        what removing a worktree would lose (shared by the server's sweep and the clean-up list)
   protocol.rs    wire messages and PROTOCOL_VERSION
   ipc.rs         local sockets and the SSH proxy
   config.rs      config.toml (+ config.local.toml) loading, atomic state files
@@ -203,6 +204,7 @@ src/
   main.rs        argument parsing, picks client / daemon / CLI role
   cli.rs         one-shot subcommands (send, read, wait, hook, doctor, …)
   brief.rs       `seshi brief`: a captain's instructions (brief.md)
+  tidy.rs        what removing a worktree would lose (shared by the server's sweep and the clean-up list)
   protocol.rs    wire messages and PROTOCOL_VERSION
   ipc.rs         local sockets and the SSH proxy
   config.rs      config.toml (+ config.local.toml) loading

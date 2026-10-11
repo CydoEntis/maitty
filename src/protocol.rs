@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Bump whenever a message shape changes; client and daemon refuse to talk across versions.
-pub const PROTOCOL_VERSION: u32 = 34;
+pub const PROTOCOL_VERSION: u32 = 35;
 
 pub type TermId = u32;
 pub type WsId = u32;
@@ -137,6 +137,10 @@ pub enum Command {
     /// Close everything running in a linked worktree, remove it and delete its branch (a
     /// branch just merged).
     CloseWorktree { path: PathBuf },
+    /// Remove these worktrees, none of which has anything running in it: each a folder and
+    /// whether to go ahead with uncommitted changes in it (they are lost). A branch is kept
+    /// unless it's already merged.
+    TidyWorktrees { items: Vec<(PathBuf, bool)> },
     /// Close a worktree workspace and `git worktree remove` its checkout.
     /// `delete_branch`: also delete the worktree's branch (discarding a task).
     RemoveWorktree { ws: WsId, force: bool, delete_branch: bool },
@@ -532,6 +536,7 @@ mod tests {
             ClientMsg::Command(Command::AskHuman { term: 3, text: "Deploy?".into(), options: vec!["Yes".into(), "No".into()] }),
             ClientMsg::Command(Command::AnswerHuman { id: 1, choice: 0 }),
             ClientMsg::Command(Command::Grant { term: 3, grants: Some(vec!["read".into()]) }),
+            ClientMsg::Command(Command::TidyWorktrees { items: vec![(PathBuf::from("/code/.wt/rate"), false)] }),
             ClientMsg::Command(Command::RenamePane { term: 3, name: "x".into() }),
             ClientMsg::Command(Command::MoveToWorktree { term: 3, branch: Some("feat/x".into()) }),
         ];
