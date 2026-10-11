@@ -78,22 +78,26 @@ impl App {
     /// Both diffs of heads-up `o` in `repo`, in the sheet; they're read off the UI thread.
     pub(in crate::client) fn open_both(&mut self, repo: PathBuf, o: Overlap) {
         let model = self.hy_model();
-        let base = crate::gitfs::main_branch(&repo);
-        let dirs: Vec<(String, PathBuf, bool)> = o
+        let dirs: Vec<(String, PathBuf)> = o
             .checkouts
             .iter()
-            .filter_map(|name| checkouts(&model, &repo).into_iter().find(|w| &w.name == name).map(|w| (name.clone(), w.path, w.main)))
+            .filter_map(|name| checkouts(&model, &repo).into_iter().find(|w| &w.name == name).map(|w| (name.clone(), w.path)))
             .collect();
         let file = o.file.clone();
         self.mode = Mode::Normal;
         self.view = Some(crate::client::View::Both(Box::new(BothView { repo: repo.clone(), overlap: o, parts: None, scroll: 0 })));
         self.spawn_bg(move || {
+            // Each side's changes since the two last had a commit in common (as the
+            // heads-up itself is found): against the first other checkout.
+            let heads: Vec<Option<String>> = dirs.iter().map(|(_, dir)| crate::proc::git(dir, &["rev-parse", "HEAD"]).ok().map(|h| h.trim().to_string())).collect();
             let parts = dirs
-                .into_iter()
-                .map(|(name, dir, main)| {
-                    let since = if main { Some("HEAD".to_string()) } else { base.as_deref().and_then(|b| crate::proc::git(&dir, &["merge-base", "HEAD", b]).ok()).map(|s| s.trim().to_string()) };
-                    let diff = since.and_then(|s| crate::proc::git(&dir, &["diff", s.as_str(), "--", &file]).ok()).unwrap_or_default();
-                    (name, diff)
+                .iter()
+                .enumerate()
+                .map(|(i, (name, dir))| {
+                    let other = heads.iter().enumerate().find(|(j, _)| *j != i).and_then(|(_, h)| h.clone());
+                    let since = other.and_then(|h| crate::proc::git(dir, &["merge-base", "HEAD", h.as_str()]).ok()).map(|s| s.trim().to_string());
+                    let diff = since.and_then(|s| crate::proc::git(dir, &["diff", s.as_str(), "--", &file]).ok()).unwrap_or_default();
+                    (name.clone(), diff)
                 })
                 .collect();
             crate::client::Bg::BothDiff(repo, parts)

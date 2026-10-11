@@ -191,6 +191,8 @@ const FLEET_DEPTH: u8 = 2;
 
 pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec<Line> {
     let mut out = Vec::new();
+    // Once for the whole sidebar: this is built on every frame.
+    let heads = heads_up(app);
     for (pi, p) in model.iter().enumerate() {
         if pi == 0 || model[pi - 1].kind != p.kind {
             let n = model.iter().filter(|q| q.kind == p.kind).map(|q| q.sessions().count()).sum();
@@ -242,7 +244,6 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
             // couple are one line with a count (the Inbox lists them): a long branch can share
             // dozens, and a wall of them pushes every other session off the sidebar.
             if s.is_agent {
-                let heads = heads_up(app);
                 let shared: Vec<&str> = heads
                     .iter()
                     .filter(|(repo, o)| repo == &p.path && o.checkouts.contains(&p.wts[wi].name))

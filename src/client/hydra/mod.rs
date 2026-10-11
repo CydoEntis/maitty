@@ -816,11 +816,8 @@ impl App {
             let base = crate::gitfs::main_branch(&repo);
             let tx = self.bg.clone();
             std::thread::spawn(move || {
-                let changes: Vec<(String, Vec<String>)> = wts
-                    .iter()
-                    .map(|w| (w.name.clone(), crate::client::overlap::changed_files(&w.path, if w.main { None } else { base.as_deref() })))
-                    .collect();
-                let _ = tx.send(super::Bg::Overlaps(repo, crate::client::overlap::find(&changes)));
+                let checkouts: Vec<(String, PathBuf)> = wts.iter().map(|w| (w.name.clone(), w.path.clone())).collect();
+                let _ = tx.send(super::Bg::Overlaps(repo, crate::client::overlap::between(&checkouts)));
             });
         }
     }
