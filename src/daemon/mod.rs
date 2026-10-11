@@ -264,7 +264,7 @@ async fn serve(id: ClientId, stream: interprocess::local_socket::tokio::Stream, 
     {
         return;
     }
-    let writer = tokio::spawn(async move {
+    let mut writer = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
             let bye = matches!(msg, ServerMsg::Bye);
             if ipc::send(&mut w, &msg).await.is_err() || bye {
@@ -272,9 +272,20 @@ async fn serve(id: ClientId, stream: interprocess::local_socket::tokio::Stream, 
             }
         }
     });
-    while let Ok(Some(msg)) = ipc::recv_client(&mut r).await {
-        if ev.send(Ev::Msg(id, msg)).await.is_err() {
-            break;
+    loop {
+        tokio::select! {
+            // Nothing more will be sent (the daemon let go of a client that fell behind, or
+            // said goodbye): close the connection. Left half open, a window keeps sending
+            // commands and is never told what they did, so it looks frozen.
+            _ = &mut writer => break,
+            msg = ipc::recv_client(&mut r) => match msg {
+                Ok(Some(msg)) => {
+                    if ev.send(Ev::Msg(id, msg)).await.is_err() {
+                        break;
+                    }
+                }
+                _ => break,
+            },
         }
     }
     let _ = ev.send(Ev::Disconnected(id)).await;
