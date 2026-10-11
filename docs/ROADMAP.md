@@ -12,7 +12,7 @@ which ones need you, jump to them, and keep them running when you leave. See
 ## Now
 
 Active phase: **9 — one agent runs a fleet for you** (chosen 2026-10-11)
-Next unblocked: #32 — record which session started a session; #33 — `seshi brief` prints the captain's instructions
+Next: #32–#38 are built on the `brave-wren` branch (gate passing), not yet on `dev`; then the phase's live check
 
 ## Phases
 
