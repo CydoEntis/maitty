@@ -33,9 +33,11 @@ impl App {
                 let first = !self.got_state;
                 self.got_state = true;
                 if !first {
+                    self.note_wakes(&s);
                     self.remember_changes(&s);
                 }
                 self.snap = s;
+                self.settle_waking();
                 if first {
                     self.on_first_state();
                 }
@@ -149,6 +151,18 @@ impl App {
         if self.snap.workspaces.is_empty() || open.is_some() {
             let cwd = open.or_else(|| self.cfg.start_dir()).or_else(|| std::env::current_dir().ok());
             self.cmd(Command::NewWorkspace { cwd, name: None, cmd: None });
+        }
+    }
+
+    /// A sleeping agent you open is replaced by a new pane that resumes it. That pane is
+    /// blank until the agent has started again: note it, so it can say it's waking.
+    fn note_wakes(&mut self, new: &crate::protocol::Snapshot) {
+        let slept: Vec<&TermInfo> = self.snap.terms.values().filter(|t| t.asleep && !new.terms.contains_key(&t.id)).collect();
+        let now = Instant::now();
+        for t in new.terms.values().filter(|t| !self.snap.terms.contains_key(&t.id)) {
+            if slept.iter().any(|o| o.agent == t.agent && o.cwd == t.cwd) {
+                self.waking.insert(t.id, now);
+            }
         }
     }
 

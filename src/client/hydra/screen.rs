@@ -1010,6 +1010,18 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         put(f.buffer_mut(), x, inner.y + inner.height / 2, &note, inner.right());
     }
 
+    // Just woken: blank until the agent has started again. Say so, or it looks broken.
+    if app.waking.contains_key(&term) {
+        let note = vec![
+            seg(format!(" {} ", glyph(app, Status::Working)), Style::default().bg(t.card2).fg(t.working).add_modifier(Modifier::BOLD)),
+            seg("waking up", Style::default().bg(t.card2).fg(t.accent).add_modifier(Modifier::BOLD)),
+            seg(" · picking up where it left off ", Style::default().bg(t.card2).fg(t.text)),
+        ];
+        let w = segs_width(&note);
+        let x = inner.x + inner.width.saturating_sub(w) / 2;
+        put(f.buffer_mut(), x, inner.y + inner.height / 2, &note, inner.right());
+    }
+
     // Not the one you're in: its inside fades (the border and its amber tag stay as they are).
     if !focused {
         dim_inside(f.buffer_mut(), inside, look.dim, t);

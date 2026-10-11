@@ -51,6 +51,16 @@ const PASTE_GAP: Duration = Duration::from_millis(8);
 const PASTE_MAX_WAIT: Duration = Duration::from_secs(1);
 /// How long a note stays in the bottom bar.
 const NOTICE_FOR: Duration = Duration::from_secs(5);
+/// A pane stops saying it's waking after this long, whatever the agent has or hasn't shown.
+const WAKING_AT_MOST: Duration = Duration::from_secs(30);
+/// Rows with something on them that count as the agent having drawn its screen.
+const WOKEN_ROWS: usize = 3;
+
+/// Whether a just-woken pane's agent is back: its hooks have reported, or (an agent with no
+/// hooks) it has drawn its screen.
+fn woken(t: &TermInfo, screen: Option<&vt100::Parser>) -> bool {
+    t.why_hook_at > 0 || screen.is_some_and(|p| p.screen().contents().lines().filter(|l| !l.trim().is_empty()).count() >= WOKEN_ROWS)
+}
 /// Two clicks this close together are a double-click.
 pub(super) const DOUBLE_CLICK: Duration = Duration::from_millis(400);
 
@@ -304,6 +314,9 @@ pub struct App {
     /// soon doesn't ring twice.
     alerted: HashMap<TermId, (Status, Instant)>,
     last_alert: Option<Instant>,
+    /// Panes that took a sleeping agent's place, and when: blank until the agent is back up,
+    /// so they say they're waking.
+    waking: HashMap<TermId, Instant>,
     /// What's moving, and how far the sidebar and the sheet are in this frame (0 to 1).
     motion: motion::Motion,
     side_frac: f32,
@@ -474,6 +487,7 @@ impl App {
             sidebar: cfg.ui.sidebar,
             alerted: HashMap::new(),
             last_alert: None,
+            waking: HashMap::new(),
             motion: motion::Motion::default(),
             side_frac: 1.0,
             sheet_frac: 1.0,
@@ -610,7 +624,8 @@ impl App {
                         self.dirty = true;
                     }
                     let frame = self.spinner_frame();
-                    if frame != last_frame && self.any_working() {
+                    self.settle_waking();
+                    if frame != last_frame && (self.any_working() || !self.waking.is_empty()) {
                         last_frame = frame;
                         self.dirty = true;
                     }
@@ -748,6 +763,11 @@ impl App {
         let hold = hydra::toast_hold(*err, self.notice_term.is_some());
         let e = at.elapsed();
         self.motion_on() && (e < motion::TOAST_IN.max(motion::TOAST_FLASH) || (e + motion::TOAST_FADE >= hold && e < hold))
+    }
+
+    /// Panes whose agent is back (or that have waited long enough) stop saying they're waking.
+    fn settle_waking(&mut self) {
+        self.waking.retain(|term, at| at.elapsed() < WAKING_AT_MOST && self.snap.terms.get(term).is_some_and(|t| !woken(t, self.parsers.get(term))));
     }
 
     fn spinner_frame(&self) -> u64 {

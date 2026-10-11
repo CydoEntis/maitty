@@ -1674,6 +1674,44 @@ mod hydra_tests {
     }
 
     #[test]
+    fn a_woken_agents_pane_says_its_waking_until_the_agent_is_back() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.got_state = true;
+        app.snap.terms.get_mut(&1).unwrap().asleep = true;
+        let o = draw(&mut app, 160, 45);
+        assert!(o.contains("zzZ asleep") && !o.contains("waking up"));
+        // You click it: the server starts it again in a new pane (9) in its place, blank so far.
+        let woken = |hook_at: u64| {
+            let mut s = app.snap.clone();
+            let mut t = s.terms.remove(&1).unwrap();
+            (t.id, t.asleep, t.status, t.why_hook_at) = (9, false, Status::Idle, hook_at);
+            s.terms.insert(9, t);
+            let tab = &mut s.workspaces[0].tabs[0];
+            tab.layout = tab.layout.map_leaves(&mut |id| Some(if id == 1 { 9 } else { id })).unwrap();
+            tab.focus = 9;
+            s
+        };
+        let (blank, back) = (woken(0), woken(1));
+        app.on_server(crate::protocol::ServerMsg::State(blank));
+        assert!(app.waking.contains_key(&9), "the pane that took its place");
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("waking up") && o.contains("picking up where it left off") && !o.contains("zzZ asleep"), "it says so instead of sitting blank");
+        // Its hooks report: it's back, and the note goes.
+        app.on_server(crate::protocol::ServerMsg::State(back));
+        assert!(super::woken(&app.snap.terms[&9], app.parsers.get(&9)) && !app.waking.contains_key(&9), "its hooks have reported");
+        assert!(!draw(&mut app, 160, 45).contains("waking up"));
+        // An agent with no hooks counts as back once it has drawn its screen.
+        let mut drawn = vt100::Parser::new(20, 80, 0);
+        drawn.process(b"Welcome back\r\n> \r\nesc to interrupt\r\n");
+        let mut quiet = app.snap.terms[&9].clone();
+        quiet.why_hook_at = 0;
+        assert!(super::woken(&quiet, Some(&drawn)) && !super::woken(&quiet, Some(&vt100::Parser::new(20, 80, 0))));
+        // A pane that's simply new isn't waking.
+        assert!(!app.waking.contains_key(&2));
+    }
+
+    #[test]
     fn a_toast_wears_the_colour_of_its_news() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // The fill and ink under the first letter of `word`, and the mark in front of it.
