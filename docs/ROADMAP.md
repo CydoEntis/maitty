@@ -107,6 +107,7 @@ Everything below is shipped on `dev` unless marked.
 - New agent task box (project, worktree, agent, model, effort), presets and recipes as its choices, prewarm — shipped — `src/client/hydra/dialogs.rs`, `src/client/recipes.rs`
 - Agents talk to agents (MCP server `seshi mcp`) — shipped — `src/mcp.rs`
 - `seshi send --wait`, `seshi wait`, `seshi read` — shipped — `src/cli.rs`
+- At most a set number of helpers working at once (`[mcp] helpers_at_once`) — shipped 0.25.0 — `Daemon::starting` in `src/daemon/mod.rs`
 - A commander runs a fleet: one agent starts, briefs and checks helpers, which sit under it in the sidebar — active — [intent](features/fleet/intent.md), #32–#38
 
 **The UI (one layout, ADR-0004)**
@@ -129,6 +130,7 @@ Everything below is shipped on `dev` unless marked.
 - Tasks (a worktree's review: commit, merge, PR, throw away) — shipped — `src/client/tasks.rs`
 - Own worktree for `claude`/`codex` typed into a shell in a repo's main folder — shipped 0.9.12 — `seshi agent-dir`, `daemon/term.rs` `agent_functions`
 - Usage and limits meter, context per agent, continue after a limit — shipped 0.10.0 — `seshi statusline`, `src/daemon/usage.rs`
+- A session's share of the machine (CPU and memory) under its row when it's large — shipped 0.25.0 — `src/daemon/scan.rs`, `load_note` in `src/client/hydra/screen.rs`
 - Merge that cleans up (the worktree and its branch go) — shipped 0.11.0 — `src/client/view_keys.rs`
 
 **Identity**

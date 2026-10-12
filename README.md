@@ -158,6 +158,10 @@ split beside a session stays with it.
   never edit the same files.
 - Things that need you sort to the top; everything else keeps its place. Agents asleep (see
   Settings) show `zzZ … asleep`; open one and its pane says it's waking until the agent is back.
+  With the keys in the sidebar, the highlight on a sleeping agent shows its last screen without
+  waking it.
+- A session taking a real share of the machine says so under its row (`▲ 38% CPU · 2.1 GB`,
+  from a fifth of the CPU or two gigabytes).
 - `⇆` under a row names a file that this checkout and another have each changed since their
   branches parted (a merge conflict waiting to happen); more than two are one line with a count.
 - Drag a group's name, or a session, up or down to reorder (what needs you still comes first);
@@ -175,11 +179,11 @@ second step (`w` worktrees: new, switch, merge, delete; Backspace goes back).
 |---|---|
 | `j` | **inbox**: what needs you (answer a question with its number, Enter goes there), then every session; type to find one |
 | `n` / `p` | a shell right where you are (cd and run what you like; it groups itself) / a shell beside this one |
+| `c` | start a fleet: a goal, and the agent that commands it |
 | `z` (or `b`) / `x` | hide or show the sidebar / close |
 | arrows | focus the pane that way (left past the edge: the sidebar). `Alt`+arrows do it without the leader (Settings → General turns that off) |
 | `v` / `-` / `H J K L` | split right / split down / resize |
 | `t` / `r` / `]` `[` / `X` | **tabs**: new tab (a shell where you are) / rename it in its pill (or double-click it) / next, previous / close it. `Alt+1`–`9` (no leader) goes to a tab |
-| `c` | start a fleet: a goal, and the agent that commands it |
 | `w` / `f` / `d` | worktrees › / files / changes |
 | `e` / `Space` / `a` | focus the sidebar / command palette / actions |
 | `F` / `/` / `B` | find a file / search the code / switch branch |
@@ -289,6 +293,10 @@ menu (it asks first). The commander's instructions are `seshi brief`: read them,
 brief and follow it". It works best with seshi's tools set up (`seshi integrate mcp`); without them the
 commander uses the `seshi` commands from its shell. With a plan and tickets in the repo, a goal like
 "work the active phase" has it take them in order, one helper per ticket.
+
+Only so many helpers work at once (four, or what Settings → Agents → Helpers working at once
+says; 0 is no limit): each runs builds and tests of its own, and a commander that asks for more
+is told to wait for one to finish.
 
 ## Sync between machines
 
