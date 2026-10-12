@@ -109,7 +109,8 @@ pub fn should_alert<S: PartialEq>(status: &S, last_here: Option<(&S, std::time::
 
 /// Play seshi's sound for `kind`, unless sounds are off. Returns at once.
 pub fn ring(cfg: &crate::config::Notify, kind: Kind) {
-    if cfg.sound {
+    // Tests drive real status changes: they must not ring the machine they run on.
+    if cfg.sound && !cfg!(test) {
         std::thread::spawn(move || play(kind));
     }
 }
@@ -121,6 +122,9 @@ pub fn notify_soon(title: &str, body: &str, link: Option<String>) {
     // Its own thread: on Linux it waits for the click.
     std::thread::spawn(move || notify(&title, &body, link.as_deref()));
 }
+    if cfg!(test) {
+        return;
+    }
 
 /// An alert on your phone: an ntfy message to your topic. Blocks until sent (run it off the
 /// UI thread); what went wrong when it isn't.
