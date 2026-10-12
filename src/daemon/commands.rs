@@ -240,7 +240,7 @@ impl Daemon {
                         if !renamed {
                             tracing::warn!("couldn't rename the spare worktree's branch to {branch}");
                         }
-                        let _ = tx.blocking_send(Ev::WorktreeCreated { client, branch, cmd, split, by, result: Ok((path, String::new())) });
+                        let _ = tx.blocking_send(Ev::WorktreeCreated { client, branch, cmd, split, by, set_up: false, result: Ok((path, String::new())) });
                     });
                     self.prewarm(repo.clone());
                     return Ok(false);
@@ -253,7 +253,7 @@ impl Daemon {
                 tokio::task::spawn_blocking(move || {
                     let result =
                         create_trusted_worktree(&dir, &branch, base.as_deref(), &template);
-                    let _ = tx.blocking_send(Ev::WorktreeCreated { client, branch, cmd, split, by, result });
+                    let _ = tx.blocking_send(Ev::WorktreeCreated { client, branch, cmd, split, by, set_up: false, result });
                 });
                 return Ok(false);
             }

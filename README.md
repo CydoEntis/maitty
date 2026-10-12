@@ -533,6 +533,9 @@ seshi ls/send/hook ──┼──►   seshi daemon
 
 ## Per-repo settings: `.seshi.toml`
 
+`on_create` runs in a new worktree before anything starts in it, so an agent begins with the
+install done and the `.env` in place rather than halfway through.
+
 Commit one to the repo:
 
 ```toml

@@ -79,6 +79,8 @@ pub enum Ev {
         by: Option<TermId>,
         result: Result<(PathBuf, String), String>,
     },
+        /// The repo's setup (its on_create hook) has run: open what was asked for.
+        set_up: bool,
     WorktreeRemoved { client: ClientId, path: PathBuf, result: Result<(), String> },
     /// Numbers read from Codex's session files (`usage::poll_codex`).
     /// What Codex's session files say: usage, limits, and what runs under each pane's session.
@@ -763,7 +765,24 @@ impl Daemon {
                     }
                 }
             }
-            Ev::WorktreeCreated { client, branch, cmd, split, by, result } => {
+            Ev::WorktreeCreated { client, branch, cmd, split, by, set_up, result } => {
+                // The repo's own setup comes first (an install, a .env), so what starts in the
+                // new worktree starts with it ready, not halfway through. A spare was set up
+                // when it was made.
+                if !set_up
+                    && let Ok((path, _)) = &result
+                    && !self.adopted.as_ref().is_some_and(|a| same_path(a, path))
+                    && let Some(job) = self.hook_job(path, true)
+                {
+                    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    self.send(client, ServerMsg::Notice(format!("setting up {name} before anything starts in it")));
+                    let tx = self.tx.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let _ = tx.blocking_send(Ev::HookRan(job()));
+                        let _ = tx.blocking_send(Ev::WorktreeCreated { client, branch, cmd, split, by, set_up: true, result });
+                    });
+                    return;
+                }
                 self.pending_ops -= 1;
                 self.next_starter = by;
                 let as_pane = split.filter(|t| self.terms.contains_key(t));
@@ -788,8 +807,8 @@ impl Daemon {
                 self.next_starter = None;
                 if let Ok(p) = &opened {
                     self.made_worktrees.push(p.clone());
-                    if !self.adopted.take().is_some_and(|a| same_path(&a, p)) {
-                        self.worktree_hook(p, true);
+                    if self.adopted.as_ref().is_some_and(|a| same_path(a, p)) {
+                        self.adopted = None;
                     }
                 }
                 match opened {

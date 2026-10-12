@@ -373,7 +373,7 @@ fn a_worktree_start_keeps_its_starter_after_the_caller_has_gone() {
     std::fs::create_dir_all(&dir).unwrap();
     // The worktree was asked for from the commander's pane; that connection closed while git ran.
     d.pending_ops += 1;
-    d.handle(Ev::WorktreeCreated { client: 9, branch: "helper".into(), cmd: None, split: None, by: Some(commander), result: Ok((dir.clone(), String::new())) });
+    d.handle(Ev::WorktreeCreated { client: 9, branch: "helper".into(), cmd: None, split: None, by: Some(commander), set_up: false, result: Ok((dir.clone(), String::new())) });
     let helper = newest(&d);
     assert_eq!(d.terms[&helper].started_by, Some(commander));
     // The next session you start yourself isn't the commander's.
