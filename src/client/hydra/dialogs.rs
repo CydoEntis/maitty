@@ -40,7 +40,8 @@ pub(in crate::client) fn np_command(app: &App, agent: &str, model: usize, task: 
         let (first, rest) = cmd.split_once(' ').map(|(a, b)| (a.to_string(), format!(" {b}"))).unwrap_or((cmd.clone(), String::new()));
         cmd = format!("{first} {flag} {m}{rest}");
     }
-    Some(cmd)
+    // An account runs through `seshi account`, which gives it its own sign-in.
+    Some(app.cfg.as_account(agent, &cmd))
 }
 
 pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, np: &NewPaneHy) {

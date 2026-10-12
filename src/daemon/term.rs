@@ -150,6 +150,8 @@ pub struct Term {
     pub restore_unseen: bool,
     /// Typed while it was asleep: delivered once it's back up (or after a few seconds).
     pub pending_input: Option<(Vec<u8>, Instant)>,
+    /// The account it runs as, if its command says one (`seshi account <name> -- …`).
+    pub account: Option<String>,
     /// Follow-ups to type into it when its turn is over, next first.
     pub queue: std::collections::VecDeque<String>,
     /// When the last of them went in: the next waits for the turn that one starts.
@@ -559,6 +561,7 @@ impl Term {
             token,
             restore_unseen: false,
             pending_input: None,
+            account: None,
             queue: Default::default(),
             queue_sent: None,
             transcript: None,

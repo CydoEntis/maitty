@@ -1168,7 +1168,12 @@ impl Daemon {
     }
 
     fn spawn(&mut self, cmd: Option<&str>, cwd: &std::path::Path, cols: u16, rows: u16) -> Result<TermId> {
-        let taught = cmd.map(|c| self.teach(c));
+        // An account's command is taught as the command inside it, and keeps its account.
+        let (account, inner) = cmd.map(|c| self.cfg.split_account(c)).unwrap_or((None, ""));
+        let taught = cmd.map(|_| {
+            let taught = self.teach(inner);
+            account.as_deref().map(|a| self.cfg.as_account(a, &taught)).unwrap_or(taught)
+        });
         let cmd = taught.as_deref();
         let id = self.next();
         if let Some((dir, term)) = self.adopt.take() {
@@ -1182,7 +1187,8 @@ impl Daemon {
             self.adopt = Some((dir, term));
         }
         let once = std::mem::take(&mut self.next_once);
-        let t = Term::spawn(&self.cfg, SpawnSpec { id, cmd, cwd, cols, rows, once }, self.tx.clone())?;
+        let mut t = Term::spawn(&self.cfg, SpawnSpec { id, cmd, cwd, cols, rows, once }, self.tx.clone())?;
+        t.account = account;
         self.terms.insert(id, t);
         self.had_terms = true;
         Ok(id)

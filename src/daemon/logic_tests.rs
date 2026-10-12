@@ -92,6 +92,34 @@ fn a_report_traced_outside_the_pane_is_dropped() {
 }
 
 #[test]
+fn a_session_keeps_its_account_through_sleep_and_restart() {
+    let (mut d, _rx) = daemon();
+    d.cfg.quick.agents.push(crate::config::QuickAgent { name: "claude work".into(), command: "claude {prompt}".into(), env: [("CLAUDE_CONFIG_DIR".to_string(), "~/.claude-work".to_string())].into(), ..Default::default() });
+    let wrapped = d.cfg.as_account("claude work", "cmd /c exit");
+    // Started as the account: the command line says so, and the pane remembers.
+    let t = d.spawn(Some(&wrapped), &std::env::temp_dir(), 80, 24).expect("it starts");
+    assert_eq!(d.terms[&t].account.as_deref(), Some("claude work"));
+    let plain = pane(&mut d);
+    assert_eq!(d.terms[&plain].account, None);
+    // Resumed (after sleep, or a move): under the same account, where its conversation is.
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.agent, p.session) = (Some("claude".into()), Some("abc123".into()));
+    }
+    let resume = d.resume_cmd(&d.terms[&t]).expect("claude can be resumed");
+    assert!(resume.starts_with("seshi account ") && resume.contains("claude work") && resume.contains("abc123"), "{resume}");
+    // And after the server restarts.
+    let saved = d.saved();
+    assert!(saved.workspaces.is_empty(), "these panes are in no workspace");
+    let pane = persist::SavedPane { agent: Some("claude".into()), session: Some("abc123".into()), account: Some("claude work".into()), ..Default::default() };
+    let again = d.restore_cmd(&pane).expect("restored as a resume");
+    assert_eq!(again, resume);
+    let old: persist::SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":"claude","session":"abc123"}"#).unwrap();
+    assert!(!d.restore_cmd(&old).unwrap().starts_with("seshi account"), "one saved before accounts resumes as itself");
+    close(&mut d, &[t, plain]);
+}
+
+#[test]
 fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);

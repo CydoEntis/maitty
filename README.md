@@ -393,6 +393,23 @@ agents = [
 ]
 ```
 
+### Accounts
+
+An agent entry with an `env` of its own is an account: the same agent, signed in as someone
+else. It shows up wherever you pick an agent, and a session keeps its account through sleep,
+a move to another worktree, and a restart.
+
+```toml
+[[quick.agents]]
+name = "claude work"
+command = "claude {prompt}"
+env = { CLAUDE_CONFIG_DIR = "~/.claude-work" }
+```
+
+Set one up once, from any terminal: `seshi account "claude work" -- claude` to sign in, and
+`seshi account "claude work" -- seshi integrate claude` so that account reports its status
+to seshi too. When one account hits its limit, start the next session on the other.
+
 ## Restarts
 
 The session (workspaces, tabs, splits, each pane's directory and command, agent sessions) is

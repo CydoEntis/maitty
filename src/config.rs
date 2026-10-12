@@ -250,6 +250,9 @@ pub struct QuickAgent {
     pub models: Vec<String>,
     /// The flag that picks one (default `--model`).
     pub model_flag: String,
+    /// Its own environment, which makes it an account: `CLAUDE_CONFIG_DIR = "~/.claude-work"`
+    /// is claude signed in as someone else. A leading `~` is your home folder.
+    pub env: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -483,6 +486,7 @@ impl Default for Quick {
             command: command.into(),
             models: models.iter().map(|m| m.to_string()).collect(),
             model_flag: flag.into(),
+            env: BTreeMap::new(),
         };
         Quick {
             agents: vec![a("claude", "claude {prompt}", &["opus", "sonnet", "haiku"], "--model"), a("codex", "codex {prompt}", &[], "-m")],
@@ -843,6 +847,36 @@ impl Config {
         v
     }
 
+    /// An agent entry with an environment of its own (an account), by name.
+    pub fn account(&self, name: &str) -> Option<&QuickAgent> {
+        self.quick.agents.iter().find(|a| a.name == name && !a.env.is_empty())
+    }
+
+    /// What goes in front of an account's command: `seshi account <name> -- `. The session
+    /// then runs with that account's environment, and the command line itself says which
+    /// account it is, so nothing else has to remember.
+    fn account_prefix(&self, name: &str) -> String {
+        format!("seshi account {} -- ", self.quote_for_shell(name))
+    }
+
+    /// `cmd` as account `name` runs it (unchanged for an agent that isn't an account).
+    pub fn as_account(&self, name: &str, cmd: &str) -> String {
+        match self.account(name) {
+            Some(a) if !cmd.starts_with(&self.account_prefix(&a.name)) => format!("{}{cmd}", self.account_prefix(&a.name)),
+            _ => cmd.to_string(),
+        }
+    }
+
+    /// The account a command line runs as, and the command itself.
+    pub fn split_account<'a>(&self, cmd: &'a str) -> (Option<String>, &'a str) {
+        for a in self.quick.agents.iter().filter(|a| !a.env.is_empty()) {
+            if let Some(rest) = cmd.strip_prefix(&self.account_prefix(&a.name)) {
+                return (Some(a.name.clone()), rest);
+            }
+        }
+        (None, cmd)
+    }
+
     /// Quote `s` as one argument for the configured shell.
     pub fn quote_for_shell(&self, s: &str) -> String {
         let shell = self.shell_command();
@@ -980,6 +1014,24 @@ fn which(exe: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_agent_entry_with_an_env_is_an_account() {
+        let toml = "[[quick.agents]]\nname = \"claude\"\ncommand = \"claude {prompt}\"\n\n[[quick.agents]]\nname = \"claude work\"\ncommand = \"claude {prompt}\"\nenv = { CLAUDE_CONFIG_DIR = \"~/.claude-work\" }\n";
+        for (shell, prefix) in [("pwsh.exe", "seshi account 'claude work' -- "), ("bash", "seshi account 'claude work' -- ")] {
+            let mut c: super::Config = toml::from_str(toml).unwrap();
+            c.shell = Some(shell.into());
+            assert!(c.account("claude").is_none() && c.account("claude work").is_some(), "only the one with an env");
+            // Its command says which account it is; the plain agent's is left alone.
+            let cmd = c.as_account("claude work", "claude --resume abc");
+            assert_eq!(cmd, format!("{prefix}claude --resume abc"), "{shell}");
+            assert_eq!(c.as_account("claude", "claude 'hi'"), "claude 'hi'");
+            assert_eq!(c.as_account("claude work", &cmd), cmd, "never wrapped twice");
+            // And it can be read back off the command line.
+            assert_eq!(c.split_account(&cmd), (Some("claude work".to_string()), "claude --resume abc"));
+            assert_eq!(c.split_account("claude 'hi'"), (None, "claude 'hi'"));
+        }
+    }
+
     #[test]
     fn a_config_with_the_old_alert_settings_still_loads() {
         let old = "[notify]\nbell = true\ndesktop = false\nsound_needs = \"ping\"\nsound_done = \"off\"\nphone_after = 90\n";

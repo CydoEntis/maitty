@@ -184,6 +184,13 @@ enum Cmd {
     DebugColors { pane: u32 },
     /// Check that everything seshi relies on is in place, and how to fix what isn't.
     Doctor,
+    /// Run a command as one of your accounts: an agent entry in config with an `env` of its
+    /// own (`seshi account "claude work" -- claude`). seshi starts such agents this way.
+    Account {
+        name: String,
+        #[arg(last = true)]
+        command: Vec<String>,
+    },
     /// Print a commander's instructions: how an agent runs a fleet of helpers. For agents to
     /// read ("run seshi brief and follow it").
     Brief,
@@ -303,6 +310,7 @@ fn main() {
         Some(Cmd::KillServer { forget }) => cli::kill_server(forget),
         Some(Cmd::Mcp) => mcp::run(),
         Some(Cmd::Doctor) => cli::doctor(),
+        Some(Cmd::Account { name, command }) => cli::account(&name, &command),
         Some(Cmd::Brief) => {
             brief::print();
             Ok(())

@@ -284,7 +284,7 @@ impl Server {
             .unwrap_or_else(|| "claude".into());
         let q = self.cfg.quote_for_shell(prompt);
         let cmd = match self.cfg.quick.agents.iter().find(|a| a.name == agent) {
-            Some(a) => a.command.replace("{prompt}", &q),
+            Some(a) => self.cfg.as_account(&a.name, &a.command.replace("{prompt}", &q)),
             // Only agents seshi knows, by plain name: anything else would run as a command.
             None if known_agent(&self.cfg, &agent) => format!("{agent} {q}"),
             None => {

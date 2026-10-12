@@ -112,6 +112,7 @@ impl Daemon {
             label: term.label.clone(),
             started_by: term.started_by,
             queue: term.queue.iter().cloned().collect(),
+            account: term.account.clone(),
         };
         let workspaces = self
             .workspaces
@@ -151,11 +152,12 @@ impl Daemon {
         if self.cfg.restore.agents
             && let Some(def) = p.agent.as_ref().and_then(|n| self.agents.iter().find(|a| &a.name == n))
         {
+            let as_account = |cmd: String| p.account.as_deref().map(|a| self.cfg.as_account(a, &cmd)).unwrap_or(cmd);
             if let (Some(tpl), Some(id)) = (&def.resume, &p.session) {
-                return Some(tpl.replace("{session}", id));
+                return Some(as_account(tpl.replace("{session}", id)));
             }
             if let Some(tpl) = &def.resume_last {
-                return Some(tpl.clone());
+                return Some(as_account(tpl.clone()));
             }
         }
         if self.cfg.restore.commands { p.cmd.clone() } else { None }
@@ -237,10 +239,12 @@ impl Daemon {
     /// The command that resumes an agent's conversation, if its kind supports it.
     pub(super) fn resume_cmd(&self, t: &Term) -> Option<String> {
         let def = t.agent.as_ref().and_then(|n| self.agents.iter().find(|a| &a.name == n))?;
-        match (&def.resume, &t.session) {
+        let resume = match (&def.resume, &t.session) {
             (Some(tpl), Some(id)) => Some(tpl.replace("{session}", id)),
             _ => def.resume_last.clone(),
-        }
+        };
+        // Under the account it was started as: its conversation is in that account's folder.
+        resume.map(|cmd| t.account.as_deref().map(|a| self.cfg.as_account(a, &cmd)).unwrap_or(cmd))
     }
 
     /// Stop agents that have sat finished or idle longer than `sleep_after` (never the

@@ -1480,6 +1480,37 @@ pub fn debug_colors(pane: TermId) -> Result<()> {
 }
 
 /// `seshi allow`: show the repo's hook commands and let them run from now on.
+/// A `~` at the start of a value is your home folder.
+fn home_in(value: &str) -> String {
+    match (value.strip_prefix('~'), directories::BaseDirs::new()) {
+        (Some(rest), Some(d)) => d.home_dir().join(rest.trim_start_matches(['/', '\\'])).to_string_lossy().into_owned(),
+        _ => value.to_string(),
+    }
+}
+
+/// The command line `seshi account` runs for `command`: the program as typed, each argument
+/// quoted again for the shell that will run it.
+pub fn account_line(cfg: &crate::config::Config, command: &[String]) -> Option<String> {
+    let (program, args) = command.split_first()?;
+    Some(std::iter::once(program.clone()).chain(args.iter().map(|a| cfg.quote_for_shell(a))).collect::<Vec<_>>().join(" "))
+}
+
+/// `seshi account <name> -- <command>`: run it with that account's environment, in this
+/// terminal, and leave with its exit code.
+pub fn account(name: &str, command: &[String]) -> Result<()> {
+    let (cfg, _) = crate::config::Config::load_or_default();
+    let Some(a) = cfg.account(name) else {
+        let known: Vec<&str> = cfg.quick.agents.iter().filter(|a| !a.env.is_empty()).map(|a| a.name.as_str()).collect();
+        let known = if known.is_empty() { "none yet: give a [[quick.agents]] entry an env".to_string() } else { known.join(", ") };
+        anyhow::bail!("no account named \"{name}\" (accounts: {known})");
+    };
+    let Some(line) = account_line(&cfg, command) else {
+        anyhow::bail!("give the command to run: seshi account \"{name}\" -- claude");
+    };
+    let status = crate::proc::shell(&cfg.shell_command(), &line, true).envs(a.env.iter().map(|(k, v)| (k.clone(), home_in(v)))).status()?;
+    std::process::exit(status.code().unwrap_or(1));
+}
+
 pub fn allow(dir: Option<std::path::PathBuf>) -> Result<()> {
     let dir = match dir {
         Some(d) => d,
