@@ -98,11 +98,12 @@ anything starts in it (0.25.1).
 Also built, not yet released: queued follow-ups (the queue, back from the 2026-10-09 cut; sent
 when the turn ends, never into a question), named accounts (an agent entry with its own `env`),
 snapshots before each turn (checkpoints, back from the same cut; a restore keeps what's there
-first).
+first), and auto-settle and snooze (decided 2026-10-12: a session idle for `settle_after`, or
+whose branch's work is merged, folds into a collapsed `settled` line at the foot of its
+project; snooze sends one there until a time you pick; one that needs you always comes back).
 
-Work: auto-settle and snooze. Decided 2026-10-12: a session idle for days, or whose PR merged,
-folds into a collapsed `settled` group at the bottom of its project; snooze sends one there
-until a time you pick.
+Exit check, still owed: each of the four used for real in a day's work, not only in tests.
+Known gap: a squash-merged branch isn't seen as merged (it settles on the idle timer).
 
 ## In scope
 
