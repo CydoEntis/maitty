@@ -528,7 +528,7 @@ mod audit {
     /// different things look different.
     #[test]
     fn every_theme_reads_well() {
-        let names = ["seshi-night", "seshi-day", "hydra", "tinkery", "tinkery-light", "aurora", "moonlit", "papercolor-dark", "tango-dark", "monokai", "tokyo-night", "catppuccin-mocha", "catppuccin-latte", "gruvbox", "nord", "dracula"];
+        let names = ["seshi-walnut", "seshi-night", "seshi-day", "hydra", "tinkery", "tinkery-light", "aurora", "moonlit", "papercolor-dark", "tango-dark", "monokai", "tokyo-night", "catppuccin-mocha", "catppuccin-latte", "gruvbox", "nord", "dracula"];
         let mut bad = Vec::new();
         for n in names {
             let t = Theme::named(n);

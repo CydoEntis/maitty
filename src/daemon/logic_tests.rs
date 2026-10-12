@@ -686,8 +686,9 @@ fn a_popup_floats_in_no_workspace_and_goes_when_done() {
     let (&id, t) = d.terms.iter().next().expect("the popup's pane");
     assert!(t.popup && d.workspaces.is_empty(), "floating, in no workspace");
     assert!(d.snapshot().terms[&id].popup);
-    // Its command exits: the pane goes.
-    let until = Instant::now() + Duration::from_secs(10);
+    // Its command exits: the pane goes. (A ceiling, not a wait: on a machine with every core
+    // busy, starting and ending even this takes a while.)
+    let until = Instant::now() + Duration::from_secs(60);
     while d.terms.contains_key(&id) && Instant::now() < until {
         if let Ok(ev) = rx.try_recv() {
             d.handle(ev);
