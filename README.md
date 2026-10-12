@@ -50,7 +50,7 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
   Each pane's recent output is kept on disk too, so its history is still there to scroll
   back through, above a line marking the restart.
 - **One screen for everything.** Floating cards: a full-height sidebar of your projects and the
-  sessions in each, tabs as pills above the panes, and every pane a rounded card with its name,
+  sessions in each, tabs as pills above the panes, and every pane a card with its name,
   state and ✕ in its border; the one you're in is lit, the others fade. The leader is
   `Ctrl+Space`: a sky-blue pill says it's armed, and a pause (or `?`) shows every key.
 - **Find anything.** `<leader> j` is the inbox: what needs you first, then type to go to any
@@ -156,7 +156,10 @@ split beside a session stays with it.
 - Under it, its sessions: state, name, `branch · age` on the right. A session that needs you has
   its question under it. Every new claude / codex gets its own worktree (named for you), so agents
   never edit the same files.
-- Things that need you sort to the top. Agents asleep (see Settings) show `zzZ … asleep`.
+- Things that need you sort to the top; everything else keeps its place. Agents asleep (see
+  Settings) show `zzZ … asleep`; open one and its pane says it's waking until the agent is back.
+- `⇆` under a row names a file that this checkout and another have each changed since their
+  branches parted (a merge conflict waiting to happen); more than two are one line with a count.
 - Drag a group's name, or a session, up or down to reorder (what needs you still comes first);
   drop a session on another group (its name or one of its sessions) to move it there, within its
   section. Click to fold or open. With the sidebar focused
@@ -483,7 +486,7 @@ are guardrails for agents that behave, not a sandbox.
 seshi ls [--json]                      # tree of workspaces / tabs / panes with agent status
 seshi split [--down] [-p ID] -- codex  # inside a pane, targets that pane by default
 seshi send -p 3 "run the tests"        # types text and presses Enter
-seshi read -p 3                        # the pane's screen as text
+seshi read 3                           # the pane's screen as text
 seshi new ~/code/web -- claude
 seshi worktree feat/x -- claude        # worktree workspace for this pane's repo
 seshi focus 3 | close 3 | kill-server [--forget]
