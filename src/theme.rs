@@ -66,6 +66,15 @@ pub const BUILTIN: &[&str] = &[
     "seshi-walnut",
     "seshi-night",
     "seshi-day",
+    "harbor",
+    "harbor-day",
+    "moss",
+    "moss-day",
+    "ember",
+    "ash",
+    "ink",
+    "paper",
+    "arcade",
     "hydra",
     "tinkery",
     "tinkery-light",
@@ -88,6 +97,15 @@ pub const DESIGN: &[(&str, &str)] = &[
     ("seshi-walnut", "Seshi Walnut"),
     ("seshi-night", "Seshi Night"),
     ("seshi-day", "Seshi Day"),
+    ("harbor", "Harbor"),
+    ("harbor-day", "Harbor Day"),
+    ("moss", "Moss"),
+    ("moss-day", "Moss Day"),
+    ("ember", "Ember"),
+    ("ash", "Ash"),
+    ("ink", "Ink"),
+    ("paper", "Paper"),
+    ("arcade", "Arcade"),
     ("hydra", "Hydra"),
     ("tinkery", "Tinkery"),
     ("tinkery-light", "Tinkery Light"),
@@ -302,6 +320,88 @@ impl Theme {
                 ["#c0392b", "#3f8f45", "#a06a00", "#2f6fb0", "#8e4dbf", "#13867c", "#8f7b6c"],
             )
             .with_err("#c73a55"),
+            // Seshi's other pairs, a dark one and its day, and one loud one.
+            // A harbour at night: deep navy, brass for focus.
+            "harbor" => Theme::design(
+                [
+                    "#0b1220", "#c9d3e0", "#101a2c", "#142036", "#1b2a44", "#263a5c", "#7f8ea6", "#b9c5d6",
+                    "#f1f5fb", "#e0b25c", "#1a1203", "#f0a35a", "#6fcf97", "#ff6b7a", "#223452", "#2b4068",
+                ],
+                ["#e0b25c", "#5fb8d9", "#f0a35a", "#8fd3c1"],
+                ["#ff6b7a", "#6fcf97", "#e8c56a", "#5fa8e8", "#b79cf0", "#5fc9d9", "#7f8ea6"],
+            ),
+            // The same harbour in fog: pale grey-blue, rope amber, harbour blue for focus.
+            "harbor-day" => Theme::design(
+                [
+                    "#eef2f5", "#33424f", "#e3e9ee", "#f7f9fb", "#e9eef2", "#c5d0da", "#6f7f8d", "#3f4f5d",
+                    "#14202b", "#1f5f8b", "#f5fafd", "#925400", "#1f7a4d", "#b3262f", "#d8e1e8", "#cfdae3",
+                ],
+                ["#1f5f8b", "#8a6a12", "#b0522a", "#1f7a6a"],
+                ["#b3262f", "#1f7a4d", "#8a6a00", "#1f5f8b", "#7a4fb0", "#13807c", "#6f7f8d"],
+            ),
+            // A forest floor: greens on near-black, lime for focus.
+            "moss" => Theme::design(
+                [
+                    "#0d120e", "#c8d3c4", "#121a13", "#172118", "#1f2c20", "#2c3d2d", "#7d8f7a", "#b7c4b2",
+                    "#f0f6ec", "#9bd16c", "#0f1a08", "#e8b04a", "#5fd0a3", "#ff6f61", "#263626", "#2f4330",
+                ],
+                ["#9bd16c", "#e8b04a", "#6fc3d6", "#d9a0e0"],
+                ["#ff6f61", "#8fd16c", "#e8c15a", "#6fb3e0", "#c79ae0", "#5fd0c0", "#7d8f7a"],
+            ),
+            // The same forest by day: paper and sage.
+            "moss-day" => Theme::design(
+                [
+                    "#f3f4ec", "#3d4739", "#e8ebdf", "#fafbf5", "#edf0e4", "#c9d1bd", "#717b69", "#48523f",
+                    "#1b2416", "#3f7a2e", "#f6fbf2", "#8f5a00", "#1d7d6a", "#b3312b", "#dde2d1", "#d3dac5",
+                ],
+                ["#3f7a2e", "#8f5a00", "#2f6f8f", "#8a4f9a"],
+                ["#b3312b", "#3f7a2e", "#8a6a00", "#2f6fa0", "#8a4f9a", "#1d7d6a", "#717b69"],
+            ),
+            // Charcoal with a fire in it: red-orange for focus.
+            "ember" => Theme::design(
+                [
+                    "#120d0b", "#d6c9c2", "#1a1310", "#211815", "#2b1f1b", "#3d2c26", "#93807a", "#c6b7af",
+                    "#fbf1ea", "#ff6a3d", "#1f0a02", "#f2c14e", "#7fd18a", "#ff7ab8", "#36261f", "#452f27",
+                ],
+                ["#ff6a3d", "#f2c14e", "#6fb6d9", "#c79ae0"],
+                ["#ff7ab8", "#7fd18a", "#f2c14e", "#6fa8e8", "#d28ae0", "#5fc9c0", "#93807a"],
+            ),
+            // What the fire leaves: warm grey-white, burnt orange for focus.
+            "ash" => Theme::design(
+                [
+                    "#f4f1ee", "#45403b", "#eae5e0", "#fbf9f7", "#efeae5", "#cfc7bf", "#7a726a", "#4f4943",
+                    "#1e1a17", "#c2410c", "#fff7f2", "#8a5b00", "#2f7d4f", "#b01e4a", "#e0d9d2", "#d6cdc4",
+                ],
+                ["#c2410c", "#8a5b00", "#2f6f9a", "#7a4fa0"],
+                ["#b01e4a", "#2f7d4f", "#8a6a00", "#2f6fa0", "#7a4fa0", "#1d7d7a", "#7a726a"],
+            ),
+            // Nearly no colour: greys, one blue for focus, and the states.
+            "ink" => Theme::design(
+                [
+                    "#0e0e10", "#cfcfd4", "#141417", "#1a1a1e", "#222227", "#303037", "#85858f", "#bdbdc6",
+                    "#f5f5f7", "#7aa2ff", "#08122b", "#d9a441", "#74c98a", "#f0707a", "#2a2a31", "#34343d",
+                ],
+                ["#7aa2ff", "#b9b9c4", "#9a9aa6", "#dcdce4"],
+                ["#f0707a", "#74c98a", "#d9a441", "#7aa2ff", "#b08ae0", "#6fc3c9", "#85858f"],
+            ),
+            // Ink's page: off-white and greys, one blue for focus.
+            "paper" => Theme::design(
+                [
+                    "#f7f7f5", "#3a3a3a", "#ededea", "#ffffff", "#f1f1ee", "#cfcfca", "#74746f", "#454545",
+                    "#141414", "#2f5fd0", "#f7faff", "#8a5a00", "#2a7a45", "#b3262f", "#e2e2de", "#d8d8d3",
+                ],
+                ["#2f5fd0", "#5a5a5a", "#7a7a7a", "#3a3a3a"],
+                ["#b3262f", "#2a7a45", "#8a6a00", "#2f5fd0", "#7a4fb0", "#1d7d7a", "#74746f"],
+            ),
+            // The loud one: neon on black, magenta for focus.
+            "arcade" => Theme::design(
+                [
+                    "#07060d", "#d9d6f0", "#0d0b18", "#131022", "#1b1730", "#2c2550", "#8a84b0", "#c8c4e6",
+                    "#ffffff", "#ff3df2", "#1a0218", "#ffe14a", "#3dffa0", "#ff4f5e", "#251f44", "#332a5e",
+                ],
+                ["#ff3df2", "#3df2ff", "#ffe14a", "#3dffa0"],
+                ["#ff4f5e", "#3dffa0", "#ffe14a", "#4f9dff", "#ff3df2", "#3df2ff", "#8a84b0"],
+            ),
             // The design handoff's palette, the default before the rename ("drover" is the
             // app's first name).
             "hydra" | "drover" => Theme::design(
@@ -528,7 +628,7 @@ mod audit {
     /// different things look different.
     #[test]
     fn every_theme_reads_well() {
-        let names = ["seshi-walnut", "seshi-night", "seshi-day", "hydra", "tinkery", "tinkery-light", "aurora", "moonlit", "papercolor-dark", "tango-dark", "monokai", "tokyo-night", "catppuccin-mocha", "catppuccin-latte", "gruvbox", "nord", "dracula"];
+        let names = ["seshi-walnut", "seshi-night", "seshi-day", "harbor", "harbor-day", "moss", "moss-day", "ember", "ash", "ink", "paper", "arcade", "hydra", "tinkery", "tinkery-light", "aurora", "moonlit", "papercolor-dark", "tango-dark", "monokai", "tokyo-night", "catppuccin-mocha", "catppuccin-latte", "gruvbox", "nord", "dracula"];
         let mut bad = Vec::new();
         for n in names {
             let t = Theme::named(n);

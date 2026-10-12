@@ -820,9 +820,9 @@ mod hydra_tests {
         }
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("THEME") && o.contains("○ Hydra") && o.contains("○ Tinkery"), "then a row per theme");
+        assert!(o.contains("THEME") && o.contains("○ Seshi Night") && o.contains("○ Harbor") && o.contains("○ Moss"), "then a row per theme, seshi's own first");
         // The list is longer than the popup: further down, Tinkery's four and the rest.
-        for _ in 0..4 {
+        for _ in 0..13 {
             app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
         }
         let o = draw(&mut app, 160, 45);
