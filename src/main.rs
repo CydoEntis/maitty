@@ -18,6 +18,7 @@ mod theme;
 mod tidy;
 mod update;
 mod reveal;
+mod snapshot;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;

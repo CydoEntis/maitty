@@ -14,6 +14,9 @@ use ratatui::style::{Modifier, Style};
 use std::path::PathBuf;
 use unicode_width::UnicodeWidthStr;
 
+/// How many snapshots the list offers (each has its number as its key).
+const SNAPSHOTS_LISTED: usize = 9;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Act {
     Beside(TermId),
@@ -27,6 +30,10 @@ pub enum Act {
     Commander(TermId),
     /// Drop the follow-ups waiting for this agent's turn to end.
     ClearQueue(TermId),
+    /// List a checkout's snapshots (its folder, and whose row asked).
+    Snapshots(PathBuf, TermId),
+    /// Put a checkout's files back as a snapshot has them: (folder, commit, when, whose row).
+    Restore(PathBuf, String, String, TermId),
     Split(TermId, crate::layout::Dir),
     RightClicks(TermId),
     RenameProject(String, String),
@@ -177,7 +184,10 @@ impl App {
         }
         items.push(("Rename".to_string(), Act::RenamePane(term)));
         if let Some(d) = dir.filter(|d| crate::gitfs::head(d).is_some()) {
-            items.push(("Changes".to_string(), Act::Changes(d)));
+            items.push(("Changes".to_string(), Act::Changes(d.clone())));
+            if s.is_agent && self.cfg.snapshots.enabled {
+                items.push(("Snapshots…".to_string(), Act::Snapshots(d, term)));
+            }
         }
         // Its key comes from its label: f, not a (the foot teaches a for actions) or m
         // (a row's follow-up key).
@@ -192,6 +202,24 @@ impl App {
         let what = if s.is_agent { agent } else { info.map(|t| t.process.clone()).filter(|p| !p.is_empty()).unwrap_or_else(|| "shell".into()) };
         let title = if what == s.name { what } else { format!("{} · {}", s.name, truncate(&what, 30)) };
         Some((title, items))
+    }
+
+    /// A checkout's snapshots as a numbered list, newest first; picking one asks, then
+    /// restores it.
+    pub(super) fn snapshots_menu(&mut self, dir: PathBuf, term: TermId, kept: Vec<crate::snapshot::Snapshot>, at: (u16, u16)) {
+        if kept.is_empty() {
+            return self.notify("no snapshots here yet: one is kept each time an agent's turn begins".into(), false);
+        }
+        let items = kept
+            .iter()
+            .take(SNAPSHOTS_LISTED)
+            .enumerate()
+            .map(|(i, s)| {
+                let when = format!("{} ago · {}", super::hydra::age(s.at), s.why);
+                (format!("{}  {when}", i + 1), Act::Restore(dir.clone(), s.commit.clone(), when, term))
+            })
+            .collect();
+        self.menu(format!("snapshots · {}", super::hydra::folder_name(&dir)), items, at);
     }
 
     /// Right-click on a project row.
@@ -315,6 +343,25 @@ impl App {
                 danger: true,
                 act: a.clone(),
             }),
+            Act::Restore(dir, _, when, term) => {
+                let working = self.snap.terms.get(term).is_some_and(|x| x.status == crate::protocol::Status::Working);
+                Some(Confirm {
+                    title: "Restore snapshot".into(),
+                    sub: String::new(),
+                    what: super::hydra::folder_name(dir),
+                    detail: when.clone(),
+                    note: if working {
+                        "Its agent is working in these files right now. They go back to how they were then; what's there now is kept as a snapshot first.".into()
+                    } else {
+                        "The files go back to how they were then. What's there now is kept as a snapshot first, so this can be taken back.".into()
+                    },
+                    list: Vec::new(),
+                    yes: "Restore".into(),
+                    key: '\n',
+                    danger: working,
+                    act: a.clone(),
+                })
+            }
             Act::GitInit(p) => Some(Confirm {
                 title: "Make it a git repo".into(),
                 sub: String::new(),
@@ -364,7 +411,7 @@ impl App {
                 // one asked about is going), or the same row when it stays.
                 self.hy.side_return = match &c.act {
                     _ if self.mode != Mode::Side => None,
-                    Act::Commander(t) => Some(super::hydra::SideItem::Sess(*t)),
+                    Act::Commander(t) | Act::Restore(_, _, _, t) => Some(super::hydra::SideItem::Sess(*t)),
                     _ => self.side_after_close(),
                 };
                 self.mode = Mode::Confirm(Box::new(c));
@@ -405,6 +452,27 @@ impl App {
             Act::TeachAgent(term) => self.cmd(Command::TeachAgent { term }),
             Act::TidyOpen(pi) => self.tidy_open(pi),
             Act::ClearQueue(term) => self.cmd(Command::ClearQueue { term }),
+            Act::Snapshots(dir, term) => {
+                let at = self.hy.row_y.get(&term).map(|y| (self.hy.saved.side_w.unwrap_or(0), *y)).unwrap_or((0, 0));
+                self.spawn_bg(move || {
+                    let kept = crate::snapshot::list(&dir);
+                    super::Bg::Then(Box::new(move |app: &mut App| app.snapshots_menu(dir, term, kept, at)))
+                });
+            }
+            Act::Restore(dir, commit, _, _) => {
+                self.notify("restoring…".into(), false);
+                self.spawn_bg(move || {
+                    let result = crate::snapshot::restore(&dir, &commit);
+                    super::Bg::Then(Box::new(move |app: &mut App| {
+                        match result {
+                            Ok(0) => app.notify("the files are already as they were then".into(), false),
+                            Ok(n) => app.notify(format!("Restored {n} file{} · the newest snapshot takes it back", if n == 1 { "" } else { "s" }), false),
+                            Err(e) => app.notify(format!("couldn't restore: {e}"), true),
+                        }
+                        app.hy_fresh();
+                    }))
+                });
+            }
             Act::Tidy(items) => {
                 self.notify("Cleaning up worktrees…".into(), false);
                 self.cmd(Command::TidyWorktrees { items });

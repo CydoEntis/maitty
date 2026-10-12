@@ -206,6 +206,20 @@ impl Daemon {
         self.dirty = true;
     }
 
+    /// Keep `dir`'s files as they are, off the loop. Not in tests: they'd write refs into
+    /// whatever repo they run from.
+    fn snapshot_before_turn(&self, agent: String, dir: std::path::PathBuf) {
+        if cfg!(test) {
+            return;
+        }
+        let tx = self.tx.clone();
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = crate::snapshot::take(&dir, &format!("before {agent}'s turn")) {
+                let _ = tx.blocking_send(Ev::HookRan(format!("couldn't snapshot {}: {e}", dir.display())));
+            }
+        });
+    }
+
     pub(super) fn set_status(&mut self, term: TermId, new: Status, why: &str) {
         let Some(t) = self.terms.get_mut(&term) else { return };
         if t.status == new {
@@ -217,12 +231,17 @@ impl Daemon {
         }
         let turn = (t.status == Status::Working && t.agent.is_some())
             .then(|| (t.agent.clone().unwrap_or_default(), t.place(), term::unix_now().saturating_sub(t.status_since)));
+        // A turn is starting: the files as they are now are what it can be taken back to.
+        let before_turn = (new == Status::Working && self.cfg.snapshots.enabled).then(|| t.agent.clone().map(|a| (a, t.cwd.clone()))).flatten();
         t.blocked_at = (new == Status::Blocked).then(Instant::now);
         t.status = new;
         t.status_since = term::unix_now();
         self.dirty = true;
         if let Some((agent, place, secs)) = turn {
             self.note_turn(agent, place, secs);
+        }
+        if let Some((agent, dir)) = before_turn {
+            self.snapshot_before_turn(agent, dir);
         }
         // Whatever it was about to say is out of date now.
         if let Some(t) = self.terms.get_mut(&term) {

@@ -72,6 +72,9 @@ idle = "○"
 shell = ""                  # a terminal (Nerd Font); ">" or "$" without one
 branch = "\ue0a0 "          # Nerd Font branch glyph; use "" or "on " without one
 
+[snapshots]
+enabled = true              # keep a checkout's files as they were when an agent's turn begins; restore from its menu
+
 [notify]
 sound = true                # seshi's own sounds when an agent you're not looking at needs you or finishes
 # phone_topic = "seshi-pick-something-unguessable"   # ntfy app topic; empty is off

@@ -1685,6 +1685,31 @@ mod hydra_tests {
     }
 
     #[test]
+    fn a_snapshot_is_restored_from_the_list_only_once_you_say_so() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let dir = std::path::PathBuf::from("/code/dsa-tool");
+        let kept: Vec<crate::snapshot::Snapshot> =
+            (0..12).map(|i| crate::snapshot::Snapshot { commit: format!("c{i}"), at: now - 120 * (i + 1), why: "before claude's turn".into() }).collect();
+        // None yet: it says when there will be, and opens nothing.
+        app.snapshots_menu(dir.clone(), 1, Vec::new(), (30, 6));
+        assert!(!matches!(app.mode, Mode::HyMenu(_)));
+        // Newest first, numbered, and no more than have a number to press.
+        app.snapshots_menu(dir.clone(), 1, kept, (30, 6));
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("snapshots · dsa-tool") && o.contains("1  2m ago · before claude's turn") && o.contains("9  18m ago") && !o.contains("20m ago"), "the list");
+        // Picking one asks first, and says what happens to what's there now.
+        app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
+        let Mode::Confirm(c) = &app.mode else { panic!("it asks: {:?}", app.mode) };
+        assert_eq!(c.act, crate::client::menu::Act::Restore(dir, "c1".into(), "4m ago · before claude's turn".into(), 1));
+        assert!(c.note.contains("kept as a snapshot first") && c.yes == "Restore");
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("Restore snapshot") && o.contains("dsa-tool"));
+    }
+
+    #[test]
     fn a_follow_up_to_a_working_agent_waits_its_turn() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();

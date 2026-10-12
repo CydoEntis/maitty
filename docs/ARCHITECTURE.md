@@ -56,6 +56,7 @@ src/
   cli.rs         one-shot subcommands (send, read, wait, hook, allow, doctor, …)
   brief.rs       `seshi brief`: a commander's instructions (brief.md)
   tidy.rs        what removing a worktree would lose (shared by the server's sweep and the clean-up list)
+  snapshot.rs    a checkout's files kept before each agent turn, and put back (the server takes them, the client lists and restores)
   protocol.rs    wire messages and PROTOCOL_VERSION
   ipc.rs         local sockets and the SSH proxy
   config.rs      config.toml (+ config.local.toml) loading, atomic state files
@@ -205,6 +206,7 @@ src/
   cli.rs         one-shot subcommands (send, read, wait, hook, doctor, …)
   brief.rs       `seshi brief`: a commander's instructions (brief.md)
   tidy.rs        what removing a worktree would lose (shared by the server's sweep and the clean-up list)
+  snapshot.rs    a checkout's files kept before each agent turn, and put back (the server takes them, the client lists and restores)
   protocol.rs    wire messages and PROTOCOL_VERSION
   ipc.rs         local sockets and the SSH proxy
   config.rs      config.toml (+ config.local.toml) loading

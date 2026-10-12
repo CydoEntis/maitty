@@ -56,6 +56,7 @@ pub struct Config {
     pub keys: Keys,
     pub detection: Detection,
     pub notify: Notify,
+    pub snapshots: Snapshots,
     /// Agent definitions merged over the built-ins by `name`.
     pub agents: Vec<AgentDef>,
     /// Drop the built-in agent list and use only `agents`.
@@ -294,6 +295,20 @@ pub struct Detection {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+pub struct Snapshots {
+    /// Keep a checkout's files as they were each time an agent's turn begins there, so a
+    /// turn can be taken back from the agent's menu.
+    pub enabled: bool,
+}
+
+impl Default for Snapshots {
+    fn default() -> Self {
+        Snapshots { enabled: true }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Notify {
     /// Play seshi's sound when an agent you're not looking at needs you or finishes.
     pub sound: bool,
@@ -445,6 +460,7 @@ impl Default for Config {
             keys: Keys::default(),
             detection: Detection::default(),
             notify: Notify::default(),
+            snapshots: Snapshots::default(),
             agents: Vec::new(),
             agents_replace_defaults: false,
         }

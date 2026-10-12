@@ -244,6 +244,20 @@ Omarchy / Hyprland the window is brought forward too); on macOS, install
 to save memory. They keep their place; open one and it resumes its conversation
 (`claude --resume`, `codex resume`).
 
+## Follow-ups and snapshots
+
+`m` on an agent's row writes it a follow-up without leaving where you are. While the agent is
+working, Enter leaves the message with seshi and it's typed in when the turn is over (never
+into a question the agent is asking); Ctrl+Enter sends it at once. What's waiting shows under
+the row, and the row's menu drops it.
+
+Each time an agent's turn begins, seshi keeps the checkout's files as they are (tracked or
+not; never what git ignores). **Snapshots…** in the agent's menu lists the last nine;
+picking one puts the files back as they were then. What's there now is kept as a snapshot
+first, so a restore can be taken back the same way. Snapshots are commits under the
+worktree's own refs (`refs/worktree/seshi/snapshots`): no branch, nothing in your history,
+your staging untouched, the newest 30 kept. `[snapshots] enabled = false` turns them off.
+
 ## Merging
 
 In Changes, `m` merges a worktree's branch into the main one, then closes its
