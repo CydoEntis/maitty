@@ -92,6 +92,45 @@ fn a_report_traced_outside_the_pane_is_dropped() {
 }
 
 #[test]
+fn an_agent_is_working_while_one_of_its_own_runs_in_the_background() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Idle);
+        // Its turn ended, however that came about, with a background agent of its own still going.
+        p.subagents.push(("a1".into(), "general-purpose".into()));
+        p.subagent_seen = Some(Instant::now());
+    }
+    d.update_statuses();
+    assert_eq!(d.terms[&t].status, Status::Working, "still working: its own agent is");
+    assert!(d.terms[&t].done_held.is_some(), "and held, so that agent finishing ends it");
+    d.update_statuses();
+    assert_eq!(d.terms[&t].status, Status::Working, "steady: it doesn't flip back and forth");
+    // The background agent finishes: now the turn is over.
+    let secret = d.terms[&t].token.clone();
+    let mut stop = report(t, &secret, 0, HookStatus::Same, "SubagentStop");
+    if let ClientMsg::Hook { subagent, .. } = &mut stop {
+        *subagent = Some(crate::protocol::Subagent { id: "a1".into(), kind: "general-purpose".into(), start: false });
+    }
+    d.apply_hook(stop, Some(true), Vec::new());
+    assert!(d.terms[&t].subagents.is_empty());
+    assert_eq!(d.terms[&t].status, Status::Done, "its last one finished: done");
+    d.update_statuses();
+    assert_eq!(d.terms[&t].status, Status::Done, "and it stays done");
+    // One that went silent long ago (it died without saying so) doesn't hold it working.
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        p.status = Status::Idle;
+        p.subagents.push(("a2".into(), "general-purpose".into()));
+        p.subagent_seen = Some(Instant::now() - super::status::SUBAGENTS_QUIET_AT_MOST - Duration::from_secs(1));
+    }
+    d.update_statuses();
+    assert_eq!(d.terms[&t].status, Status::Idle);
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn only_so_many_helpers_work_at_once() {
     let (mut d, _rx) = daemon();
     d.cfg.mcp.helpers_at_once = 2;

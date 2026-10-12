@@ -41,7 +41,7 @@ pub(super) const UNASKED_QUESTION_GONE_AFTER: Duration = Duration::from_secs(8);
 static CHOICES: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"(?m)^[\s│┃]*[❯>]?\s*1\.\s+\S").unwrap());
 /// A "done" held while subagents run is let through once none has been heard from for this
 /// long (one died without saying so). Background agents can run, and wait on CI, for a while.
-const SUBAGENTS_QUIET_AT_MOST: Duration = Duration::from_secs(60 * 60);
+pub(super) const SUBAGENTS_QUIET_AT_MOST: Duration = Duration::from_secs(60 * 60);
 /// A permission ping this soon after a "working" is Claude repeating one already answered.
 const REPEATED_PROMPT_WITHIN: Duration = Duration::from_secs(5);
 /// The progress indicator gone this long with no turn-end: the turn was cancelled (Esc).
@@ -326,11 +326,19 @@ impl Daemon {
         let grace = Duration::from_millis(self.cfg.detection.echo_grace_ms);
         let rows = self.cfg.detection.pattern_rows;
         let mut changes = Vec::new();
+        let mut still_working = Vec::new();
         for t in self.terms.values() {
             let Some(name) = &t.agent else { continue };
             if t.hooked {
                 if t.status == Status::Done && Some(t.id) == focused {
                     changes.push((t.id, Status::Idle, "you're looking at it".to_string()));
+                }
+                // An agent with one of its own still running in the background is still
+                // working, whatever ended its turn (it answered you and went back to waiting
+                // for them). The hold lets their finishing end it, as it would have.
+                if matches!(t.status, Status::Idle | Status::Done) && !t.subagents.is_empty() && t.subagent_seen.is_some_and(|s| s.elapsed() <= SUBAGENTS_QUIET_AT_MOST) {
+                    still_working.push(t.id);
+                    continue;
                 }
                 // Subagents went quiet for good (one died without reporting): don't hold "done"
                 // forever.
@@ -411,6 +419,12 @@ impl Daemon {
             if new != t.status {
                 changes.push((t.id, new, why));
             }
+        }
+        for id in still_working {
+            if let Some(t) = self.terms.get_mut(&id) {
+                t.done_held = Some(Instant::now());
+            }
+            self.set_status(id, Status::Working, "one of its own agents is still running");
         }
         for (id, s, why) in changes {
             if s != Status::Working
