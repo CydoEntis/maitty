@@ -326,6 +326,8 @@ pub struct App {
     /// soon doesn't ring twice.
     alerted: HashMap<TermId, (Status, Instant)>,
     last_alert: Option<Instant>,
+    /// Agents that finished, and when to say so if they're still finished then.
+    settling: HashMap<TermId, Instant>,
     /// Panes that took a sleeping agent's place, and when: blank until the agent is back up,
     /// so they say they're waking.
     waking: HashMap<TermId, Instant>,
@@ -502,6 +504,7 @@ impl App {
             sidebar: cfg.ui.sidebar,
             alerted: HashMap::new(),
             last_alert: None,
+            settling: HashMap::new(),
             waking: HashMap::new(),
             motion: motion::Motion::default(),
             side_frac: 1.0,
@@ -659,6 +662,7 @@ impl App {
                     }
                     let frame = self.spinner_frame();
                     self.settle_waking();
+                    self.settle_finished();
                     if frame != last_frame && (self.any_working() || !self.waking.is_empty()) {
                         last_frame = frame;
                         self.dirty = true;

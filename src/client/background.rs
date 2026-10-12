@@ -87,27 +87,14 @@ impl App {
                 self.feed(term, &data);
             }
             ServerMsg::Attention { term, status } => {
-                if self.focused() == Some(term) && self.window_focused {
-                    return;
+                self.settling.remove(&term);
+                if status == Status::Blocked {
+                    self.alert_now(term, status);
+                } else if !self.is_helper(term) {
+                    // Finished waits, to see whether it stays finished. One that another
+                    // agent started isn't said at all: that agent is the one waiting on it.
+                    self.settling.insert(term, Instant::now() + crate::alert::FINISHED_SETTLES);
                 }
-                // The same news again soon, or another agent just rang: the note says it, quietly.
-                let now = Instant::now();
-                let ring = crate::alert::should_alert(&status, self.alerted.get(&term).map(|(s, at)| (s, *at)), self.last_alert, now);
-                if ring {
-                    self.alerted.insert(term, (status, now));
-                    self.last_alert = Some(now);
-                    // One alert: seshi's sound, and its own note below. (With no window open
-                    // the server shows a desktop notification instead.)
-                    let kind = if status == Status::Blocked { crate::alert::Kind::Needs } else { crate::alert::Kind::Done };
-                    crate::alert::ring(&self.cfg.notify, kind);
-                }
-                if self.focused() == Some(term) {
-                    return;
-                }
-                let who = self.describe_term(term);
-                let what = if status == Status::Blocked { "needs you" } else { "finished" };
-                self.notify(format!("{who} {what}"), false);
-                self.notice_term = Some(term);
             }
             ServerMsg::Clipboard { term, text } => {
                 let n = text.chars().count();
@@ -152,6 +139,47 @@ impl App {
             let cwd = open.or_else(|| self.cfg.start_dir()).or_else(|| std::env::current_dir().ok());
             self.cmd(Command::NewWorkspace { cwd, name: None, cmd: None });
         }
+    }
+
+    /// Whether another session's agent started this one (and is still there to hear of it).
+    fn is_helper(&self, term: TermId) -> bool {
+        self.snap.terms.get(&term).and_then(|t| t.started_by).is_some_and(|by| self.snap.terms.contains_key(&by))
+    }
+
+    /// Agents that finished a while ago and are still finished: say so now.
+    pub(super) fn settle_finished(&mut self) {
+        let now = Instant::now();
+        let due: Vec<TermId> = self.settling.iter().filter(|(_, at)| **at <= now).map(|(t, _)| *t).collect();
+        for term in due {
+            self.settling.remove(&term);
+            if self.snap.terms.get(&term).is_some_and(|t| t.status == Status::Done) {
+                self.alert_now(term, Status::Done);
+                self.dirty = true;
+            }
+        }
+    }
+
+    /// An agent you're not looking at needs you or has finished: seshi's sound and its own
+    /// note. (With no window open the server shows a desktop notification instead.)
+    fn alert_now(&mut self, term: TermId, status: Status) {
+        if self.focused() == Some(term) && self.window_focused {
+            return;
+        }
+        // The same news again soon, or another agent just rang: the note says it, quietly.
+        let now = Instant::now();
+        if crate::alert::should_alert(&status, self.alerted.get(&term).map(|(s, at)| (s, *at)), self.last_alert, now) {
+            self.alerted.insert(term, (status, now));
+            self.last_alert = Some(now);
+            let kind = if status == Status::Blocked { crate::alert::Kind::Needs } else { crate::alert::Kind::Done };
+            crate::alert::ring(&self.cfg.notify, kind);
+        }
+        if self.focused() == Some(term) {
+            return;
+        }
+        let who = self.describe_term(term);
+        let what = if status == Status::Blocked { "needs you" } else { "finished" };
+        self.notify(format!("{who} {what}"), false);
+        self.notice_term = Some(term);
     }
 
     /// A sleeping agent you open is replaced by a new pane that resumes it. That pane is

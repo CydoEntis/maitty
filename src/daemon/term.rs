@@ -101,6 +101,8 @@ pub struct Term {
     pub phoned: u64,
     /// The last desktop alert the server rang for it (no window open): its status, when.
     pub alerted: Option<(Status, std::time::Instant)>,
+    /// It finished: say so then, if it's still finished (see `alert::FINISHED_SETTLES`).
+    pub alert_due: Option<std::time::Instant>,
     /// Hooks reported for this agent session: trust them over heuristics.
     pub hooked: bool,
     pub last_output: Instant,
@@ -524,6 +526,7 @@ impl Term {
             last_screen: None,
             phoned: 0,
             alerted: None,
+            alert_due: None,
             hooked: false,
             last_output: now,
             last_input: now,

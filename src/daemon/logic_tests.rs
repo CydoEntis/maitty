@@ -92,6 +92,43 @@ fn a_report_traced_outside_the_pane_is_dropped() {
 }
 
 #[test]
+fn with_no_window_open_finished_waits_and_a_helper_stays_quiet() {
+    let (mut d, _rx) = daemon();
+    let (captain, helper) = (pane(&mut d), pane(&mut d));
+    for t in [captain, helper] {
+        d.terms.get_mut(&t).unwrap().agent = Some("claude".into());
+    }
+    let rang = |d: &Daemon, t: TermId| d.terms[&t].alerted.map(|(s, _)| s);
+    let overdue = |d: &mut Daemon, t: TermId| d.terms.get_mut(&t).unwrap().alert_due = Some(Instant::now() - Duration::from_millis(1));
+    // Finished: not said yet.
+    d.set_status(captain, Status::Working, "test");
+    d.set_status(captain, Status::Done, "test");
+    assert!(rang(&d, captain).is_none() && d.terms[&captain].alert_due.is_some(), "it waits");
+    // Back to work before the wait is over: never said.
+    d.set_status(captain, Status::Working, "test");
+    assert!(d.terms[&captain].alert_due.is_none());
+    d.settled_alerts();
+    assert!(rang(&d, captain).is_none());
+    // Finished and still finished: said.
+    d.set_status(captain, Status::Done, "test");
+    overdue(&mut d, captain);
+    d.settled_alerts();
+    assert_eq!(rang(&d, captain), Some(Status::Done));
+    // A helper's finish is its captain's news.
+    d.terms.get_mut(&helper).unwrap().started_by = Some(captain);
+    d.set_status(helper, Status::Working, "test");
+    d.set_status(helper, Status::Done, "test");
+    assert!(d.terms[&helper].alert_due.is_none() && rang(&d, helper).is_none());
+    // Needing you is said at once, helper or not (once the last ring is a few seconds old).
+    for t in [captain, helper] {
+        d.terms.get_mut(&t).unwrap().alerted = None;
+    }
+    d.set_status(helper, Status::Blocked, "test");
+    assert_eq!(rang(&d, helper), Some(Status::Blocked));
+    close(&mut d, &[captain, helper]);
+}
+
+#[test]
 fn a_clean_up_only_takes_worktrees_nothing_runs_in() {
     let (mut d, _rx) = daemon();
     let root = std::env::temp_dir().join(format!("seshi-tidy-plan-{}", std::process::id()));

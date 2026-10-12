@@ -210,7 +210,10 @@ Everything also works with the mouse. Hold Shift to select text with your termin
 ## Alerts
 
 One alert when an agent you're not looking at needs you or finishes: seshi's own sound (two
-rising notes for needs you, one for finished) and a note inside seshi. With no seshi window
+rising notes for needs you, one for finished) and a note inside seshi. Needs you is said at
+once. Finished waits twenty seconds and is only said if the agent is still finished then, so one
+that carries on by itself stays quiet; a session another agent started isn't said when it
+finishes at all, since that agent is the one waiting for it. With no seshi window
 open, the server plays the sound and shows a desktop notification instead. `[notify] sound =
 false` (Settings → Alert sounds) turns the sounds off; `seshi test-alert` plays them.
 

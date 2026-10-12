@@ -221,24 +221,58 @@ impl Daemon {
         if let Some((agent, place, secs)) = turn {
             self.note_turn(agent, place, secs);
         }
+        // Whatever it was about to say is out of date now.
+        if let Some(t) = self.terms.get_mut(&term) {
+            t.alert_due = None;
+        }
         if matches!(new, Status::Blocked | Status::Done) {
             self.broadcast(|c| c.attach, ServerMsg::Attention { term, status: new });
-            // No window open: the server tells you itself (once for the same news).
-            let now = std::time::Instant::now();
-            let last_any = self.terms.values().filter_map(|t| t.alerted.map(|(_, at)| at)).max();
-            if !self.has_viewer()
+            if new == Status::Blocked {
+                self.alert(term, new);
+            } else if !self.is_helper(term)
                 && let Some(t) = self.terms.get_mut(&term)
-                && crate::alert::should_alert(&new, t.alerted.as_ref().map(|(s, at)| (s, *at)), last_any, now)
             {
-                t.alerted = Some((new, now));
-                let agent = t.agent.clone().unwrap_or_else(|| "an agent".into());
-                let place = t.place();
-                let summary = t.summary.trim();
-                let body = if summary.is_empty() { place } else { format!("{place} · {summary}") };
-                let (kind, what) = if new == Status::Blocked { (crate::alert::Kind::Needs, "needs you") } else { (crate::alert::Kind::Done, "finished") };
-                crate::alert::ring(&self.cfg.notify, kind);
-                crate::alert::notify_soon(&format!("{agent} {what}"), &body, Some(crate::reveal::link(term)));
+                // Finished waits, to see whether it stays finished. One that another
+                // agent started isn't said at all: that agent is the one waiting on it.
+                t.alert_due = Some(std::time::Instant::now() + crate::alert::FINISHED_SETTLES);
             }
+        }
+    }
+
+    /// Whether another session's agent started this one (and is still there to hear of it).
+    pub(super) fn is_helper(&self, term: TermId) -> bool {
+        self.terms.get(&term).and_then(|t| t.started_by).is_some_and(|by| self.terms.contains_key(&by))
+    }
+
+    /// Agents that finished a while ago and are still finished: say so now.
+    pub(super) fn settled_alerts(&mut self) {
+        let now = std::time::Instant::now();
+        let due: Vec<TermId> = self.terms.values().filter(|t| t.alert_due.is_some_and(|at| at <= now)).map(|t| t.id).collect();
+        for term in due {
+            let still = self.terms.get_mut(&term).is_some_and(|t| t.alert_due.take().is_some() && t.status == Status::Done);
+            if still {
+                self.alert(term, Status::Done);
+            }
+        }
+    }
+
+    /// No window open: the server tells you itself (once for the same news), with seshi's
+    /// sound and a desktop notification.
+    fn alert(&mut self, term: TermId, status: Status) {
+        let now = std::time::Instant::now();
+        let last_any = self.terms.values().filter_map(|t| t.alerted.map(|(_, at)| at)).max();
+        if !self.has_viewer()
+            && let Some(t) = self.terms.get_mut(&term)
+            && crate::alert::should_alert(&status, t.alerted.as_ref().map(|(s, at)| (s, *at)), last_any, now)
+        {
+            t.alerted = Some((status, now));
+            let agent = t.agent.clone().unwrap_or_else(|| "an agent".into());
+            let place = t.place();
+            let summary = t.summary.trim();
+            let body = if summary.is_empty() { place } else { format!("{place} · {summary}") };
+            let (kind, what) = if status == Status::Blocked { (crate::alert::Kind::Needs, "needs you") } else { (crate::alert::Kind::Done, "finished") };
+            crate::alert::ring(&self.cfg.notify, kind);
+            crate::alert::notify_soon(&format!("{agent} {what}"), &body, Some(crate::reveal::link(term)));
         }
     }
 

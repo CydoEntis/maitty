@@ -1681,6 +1681,53 @@ mod hydra_tests {
     }
 
     #[test]
+    fn finished_is_only_said_once_it_has_stayed_finished() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let attention = |app: &mut App, term: TermId, status: Status| {
+            app.snap.terms.get_mut(&term).unwrap().status = status;
+            app.on_server(crate::protocol::ServerMsg::Attention { term, status });
+        };
+        let due = |app: &mut App, term: TermId| {
+            app.settling.insert(term, Instant::now() - Duration::from_millis(1));
+            app.settle_finished();
+        };
+        // codex (2), not the session you're on.
+        app.notice = None;
+        attention(&mut app, 2, Status::Done);
+        assert!(app.notice.is_none() && app.settling.contains_key(&2), "finished: nothing yet, it waits");
+        // It went back to work by itself: nothing is ever said.
+        app.snap.terms.get_mut(&2).unwrap().status = Status::Working;
+        due(&mut app, 2);
+        assert!(app.notice.is_none() && !app.alerted.contains_key(&2), "it carried on: no note, no sound");
+        // Finished and still finished when the wait is over: now it's said.
+        attention(&mut app, 2, Status::Done);
+        due(&mut app, 2);
+        assert!(app.notice.as_ref().is_some_and(|(m, ..)| m.ends_with("finished")) && app.alerted.contains_key(&2));
+        // Needs you is said at once, and cancels a finish that was waiting.
+        app.notice = None;
+        app.alerted.clear();
+        app.last_alert = None;
+        attention(&mut app, 2, Status::Done);
+        attention(&mut app, 2, Status::Blocked);
+        assert!(app.notice.as_ref().is_some_and(|(m, ..)| m.ends_with("needs you")) && !app.settling.contains_key(&2));
+        // A session another agent started: its finish is that agent's news, not yours.
+        app.notice = None;
+        app.snap.terms.get_mut(&2).unwrap().started_by = Some(1);
+        attention(&mut app, 2, Status::Done);
+        assert!(app.notice.is_none() && !app.settling.contains_key(&2), "a helper's finish is never said");
+        // But it still says when it needs you.
+        app.alerted.clear();
+        app.last_alert = None;
+        attention(&mut app, 2, Status::Blocked);
+        assert!(app.notice.as_ref().is_some_and(|(m, ..)| m.ends_with("needs you")));
+        // Its starter gone: it's yours again.
+        app.notice = None;
+        app.snap.terms.get_mut(&2).unwrap().started_by = Some(999);
+        attention(&mut app, 2, Status::Done);
+        assert!(app.settling.contains_key(&2));
+    }
+
+    #[test]
     fn worktrees_are_cleaned_up_from_one_list() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();

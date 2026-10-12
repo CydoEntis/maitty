@@ -482,6 +482,7 @@ impl Daemon {
                 }
                 _ = tick.tick() => {
                     self.update_statuses();
+                    self.settled_alerts();
                     self.phone_alerts();
                     self.auto_continue();
                     self.poll_codex();

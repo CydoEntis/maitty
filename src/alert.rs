@@ -96,6 +96,10 @@ pub fn tone_file(kind: Kind) -> Option<PathBuf> {
 /// An agent that says the same thing again this soon (it finished, worked a moment longer for
 /// a subagent, finished again) isn't news: no second alert.
 pub const SAME_AGAIN_AFTER: std::time::Duration = std::time::Duration::from_secs(120);
+/// "Finished" waits this long before it's said. An agent running helpers of its own
+/// finishes a turn and starts the next by itself, over and over; one still finished after
+/// this is really waiting for you.
+pub const FINISHED_SETTLES: std::time::Duration = std::time::Duration::from_secs(20);
 /// Several agents at once ring once.
 pub const ANY_AGAIN_AFTER: std::time::Duration = std::time::Duration::from_secs(4);
 
@@ -118,13 +122,13 @@ pub fn ring(cfg: &crate::config::Notify, kind: Kind) {
 /// A desktop notification, for when no seshi window is open to say it. `link`: where
 /// clicking it goes. Returns at once.
 pub fn notify_soon(title: &str, body: &str, link: Option<String>) {
+    if cfg!(test) {
+        return;
+    }
     let (title, body) = (title.to_string(), body.to_string());
     // Its own thread: on Linux it waits for the click.
     std::thread::spawn(move || notify(&title, &body, link.as_deref()));
 }
-    if cfg!(test) {
-        return;
-    }
 
 /// An alert on your phone: an ntfy message to your topic. Blocks until sent (run it off the
 /// UI thread); what went wrong when it isn't.
