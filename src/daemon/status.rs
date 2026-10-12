@@ -206,6 +206,63 @@ impl Daemon {
         self.dirty = true;
     }
 
+    /// Agents that have sat finished or idle for `settle_after` fold into the settled group,
+    /// and snoozes whose time has come end. Never the one you're on.
+    pub(super) fn settle_idle(&mut self) {
+        let now = term::unix_now();
+        let after = self.cfg.settle_secs();
+        let focused = if self.has_viewer() { self.focused_term() } else { None };
+        for (id, t) in self.terms.iter_mut() {
+            let sat = matches!(t.status, Status::Idle | Status::Done) && t.agent.is_some();
+            let next = match t.aside {
+                Some(until) if until > 0 && until <= now => None,
+                None if sat && Some(*id) != focused && after.is_some_and(|a| now.saturating_sub(t.status_since) >= a) => Some(0),
+                same => same,
+            };
+            if next != t.aside {
+                t.aside = next;
+                self.dirty = true;
+            }
+        }
+    }
+
+    /// Look (off the loop) at where each resting agent's worktree stands, to settle the ones
+    /// whose work has been merged.
+    pub(super) fn sweep_merged(&mut self) {
+        if self.cfg.settle_secs().is_none() {
+            return;
+        }
+        let resting: Vec<(TermId, std::path::PathBuf)> = self
+            .terms
+            .iter()
+            .filter(|(_, t)| t.agent.is_some() && t.aside.is_none() && matches!(t.status, Status::Idle | Status::Done))
+            .filter_map(|(id, t)| t.head.as_ref().filter(|h| h.linked).map(|h| (*id, h.top.clone())))
+            .collect();
+        if resting.is_empty() {
+            return;
+        }
+        let tx = self.tx.clone();
+        tokio::task::spawn_blocking(move || {
+            let stands = resting.into_iter().map(|(id, top)| (id, crate::tidy::standing(&top))).collect();
+            let _ = tx.blocking_send(Ev::Stands(stands));
+        });
+    }
+
+    /// Where resting agents' worktrees stand: one whose own commits are now somewhere else
+    /// too, with nothing uncommitted, is done with and settles.
+    pub(super) fn settle_merged(&mut self, stands: Vec<(TermId, crate::tidy::Standing)>) {
+        let focused = if self.has_viewer() { self.focused_term() } else { None };
+        for (id, standing) in stands {
+            let Some(t) = self.terms.get_mut(&id) else { continue };
+            if !standing.merged {
+                t.had_own_work = true;
+            } else if t.had_own_work && standing.dirty == 0 && t.aside.is_none() && Some(id) != focused && matches!(t.status, Status::Idle | Status::Done) {
+                t.aside = Some(0);
+                self.dirty = true;
+            }
+        }
+    }
+
     /// Keep `dir`'s files as they are, off the loop. Not in tests: they'd write refs into
     /// whatever repo they run from.
     fn snapshot_before_turn(&self, agent: String, dir: std::path::PathBuf) {
@@ -246,6 +303,11 @@ impl Daemon {
         // Whatever it was about to say is out of date now.
         if let Some(t) = self.terms.get_mut(&term) {
             t.alert_due = None;
+            // Set aside, it comes back when it needs you; settled (not snoozed), also when
+            // it gets to work again.
+            if new == Status::Blocked || (new == Status::Working && t.aside == Some(0)) {
+                t.aside = None;
+            }
             // A turn has started: the next queued follow-up waits for this one to end.
             if new == Status::Working {
                 t.queue_sent = None;

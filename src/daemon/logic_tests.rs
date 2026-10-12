@@ -92,6 +92,79 @@ fn a_report_traced_outside_the_pane_is_dropped() {
 }
 
 #[test]
+fn a_session_set_aside_comes_back_when_it_should() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let other = pane(&mut d);
+    for id in [t, other] {
+        let p = d.terms.get_mut(&id).unwrap();
+        (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Done);
+    }
+    let aside = |d: &Daemon, id| d.snapshot().terms[&id].aside;
+    let now = term::unix_now();
+    // Snoozed: working again doesn't bring it back, needing you does.
+    d.command(0, Command::SetAside { term: t, until: Some(now + 3600) }).unwrap();
+    d.set_status(t, Status::Working, "test");
+    assert_eq!(aside(&d, t), Some(now + 3600), "a snooze holds while it works");
+    d.set_status(t, Status::Blocked, "test");
+    assert_eq!(aside(&d, t), None, "one that needs you is never out of sight");
+    assert!(d.command(0, Command::SetAside { term: t, until: Some(0) }).is_err(), "nor can it be put there");
+    // A snooze ends when its time comes.
+    d.set_status(t, Status::Done, "test");
+    d.command(0, Command::SetAside { term: t, until: Some(now.saturating_sub(1)) }).unwrap();
+    d.settle_idle();
+    assert_eq!(aside(&d, t), None);
+    // Settled (no time): back as soon as it works again, or you open it.
+    d.command(0, Command::SetAside { term: t, until: Some(0) }).unwrap();
+    d.set_status(t, Status::Working, "test");
+    assert_eq!(aside(&d, t), None);
+    d.set_status(t, Status::Done, "test");
+    d.command(0, Command::SetAside { term: t, until: Some(0) }).unwrap();
+    d.command(0, Command::SetAside { term: t, until: None }).unwrap();
+    assert_eq!(aside(&d, t), None, "brought back by hand");
+    // Left finished for days, it settles by itself; a shell, or one still working, never.
+    d.cfg.settle_after = "3d".into();
+    let days = |n: u64| now.saturating_sub(n * 86_400);
+    d.terms.get_mut(&t).unwrap().status_since = days(4);
+    d.terms.get_mut(&other).unwrap().status_since = days(2);
+    d.settle_idle();
+    assert_eq!((aside(&d, t), aside(&d, other)), (Some(0), None), "only the one that sat long enough");
+    d.terms.get_mut(&other).unwrap().status_since = days(4);
+    d.terms.get_mut(&other).unwrap().status = Status::Working;
+    d.settle_idle();
+    assert_eq!(aside(&d, other), None, "a working one is never settled");
+    d.terms.get_mut(&other).unwrap().status = Status::Done;
+    d.cfg.settle_after = "never".into();
+    d.settle_idle();
+    assert_eq!(aside(&d, other), None, "and never when it's turned off");
+    close(&mut d, &[t, other]);
+}
+
+#[test]
+fn an_agent_whose_work_is_merged_settles() {
+    let (mut d, _rx) = daemon();
+    let fresh = pane(&mut d);
+    let merged = pane(&mut d);
+    for id in [fresh, merged] {
+        let p = d.terms.get_mut(&id).unwrap();
+        (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Done);
+    }
+    let stands = |merged: bool, dirty: usize| crate::tidy::Standing { dirty, branch: Some("feat".into()), merged, last_commit: String::new() };
+    let aside = |d: &Daemon, id| d.terms[&id].aside;
+    // A new branch has nothing of its own: "everything is elsewhere" says nothing yet.
+    d.settle_merged(vec![(fresh, stands(true, 0))]);
+    assert_eq!(aside(&d, fresh), None, "a branch that never had work isn't merged, it's new");
+    // One that had commits of its own, which are now elsewhere too: done with.
+    d.settle_merged(vec![(merged, stands(false, 0))]);
+    assert_eq!(aside(&d, merged), None);
+    d.settle_merged(vec![(merged, stands(true, 2))]);
+    assert_eq!(aside(&d, merged), None, "not with changes it hasn't committed");
+    d.settle_merged(vec![(merged, stands(true, 0))]);
+    assert_eq!(aside(&d, merged), Some(0));
+    close(&mut d, &[fresh, merged]);
+}
+
+#[test]
 fn a_session_keeps_its_account_through_sleep_and_restart() {
     let (mut d, _rx) = daemon();
     d.cfg.quick.agents.push(crate::config::QuickAgent { name: "claude work".into(), command: "claude {prompt}".into(), env: [("CLAUDE_CONFIG_DIR".to_string(), "~/.claude-work".to_string())].into(), ..Default::default() });

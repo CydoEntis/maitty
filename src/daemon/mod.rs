@@ -102,6 +102,8 @@ pub enum Ev {
     WorktreeList { client: ClientId, result: Result<Vec<WorktreeEntry>, String> },
     /// A worktree hook ran: what to tell people.
     HookRan(String),
+    /// Where resting agents' worktrees stand (for settling the merged ones).
+    Stands(Vec<(TermId, crate::tidy::Standing)>),
     /// A spare worktree for prewarming: (repo, result).
     SpareMade(PathBuf, Result<(PathBuf, String), String>),
     /// A worktree made for an agent to move into: (client, pane, branch, result).
@@ -501,11 +503,13 @@ impl Daemon {
                     if self.last_sleep_check.elapsed() >= SLEEP_CHECK_EVERY {
                         self.last_sleep_check = Instant::now();
                         self.sleep_idle();
+                        self.settle_idle();
                     }
                     self.poll_git();
                     if self.last_worktree_sweep.elapsed() >= WORKTREE_SWEEP_EVERY {
                         self.last_worktree_sweep = Instant::now();
                         self.sweep_worktrees();
+                        self.sweep_merged();
                     }
                     if self.last_save.elapsed() > SAVE_EVERY {
                         self.last_save = Instant::now();
@@ -854,6 +858,7 @@ impl Daemon {
                 self.dirty = true;
             }
             Ev::HookRan(msg) => self.broadcast(|_| true, ServerMsg::Notice(msg)),
+            Ev::Stands(stands) => self.settle_merged(stands),
             Ev::HookChecked { msg, verdict, chain } => self.apply_hook(msg, verdict, chain),
             Ev::SpareMade(repo, result) => {
                 self.spare_making = false;
@@ -1091,6 +1096,7 @@ impl Daemon {
                     subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
                     started_by: t.started_by,
                     queued: t.queue.iter().cloned().collect(),
+                    aside: t.aside,
                 })
             })
             .collect();

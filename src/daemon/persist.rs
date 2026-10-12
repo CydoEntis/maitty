@@ -63,6 +63,9 @@ pub struct SavedPane {
     /// The pane that started it, by its id when this was saved (a key of some tab's `panes`).
     #[serde(default)]
     pub started_by: Option<TermId>,
+    /// Set aside: settled, or snoozed until then.
+    #[serde(default)]
+    pub aside: Option<u64>,
     /// The account it ran as.
     #[serde(default)]
     pub account: Option<String>,

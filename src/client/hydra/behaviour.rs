@@ -1090,6 +1090,11 @@ impl App {
     /// Clicks on this layout's chips, rows and buttons.
     pub(in crate::client) fn on_hy_hit(&mut self, h: HyHit, double: bool) {
         match h {
+            HyHit::ToggleAside(pi) => {
+                if let Some(p) = self.hy_model().get(pi) {
+                    self.toggle_aside(p.key.clone());
+                }
+            }
             HyHit::ToggleProj(i) => {
                 if let Some(key) = self.hy.proj_keys.get(i).cloned() {
                     self.hy_fold(&key, None);

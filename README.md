@@ -244,6 +244,19 @@ Omarchy / Hyprland the window is brought forward too); on macOS, install
 to save memory. They keep their place; open one and it resumes its conversation
 (`claude --resume`, `codex resume`).
 
+## Settled and snoozed
+
+An agent that has sat finished or idle for `settle_after` (default `"3d"`; `"never"` turns it
+off), or whose branch's commits have all landed somewhere else with nothing uncommitted, folds
+into a **settled** line at the foot of its project. Click the line (or **Show settled** in the
+project's menu) to unfold it. A settled session comes back by itself when it works again,
+needs you, or you open it.
+
+**Snooze…** in an agent's menu sets it aside yourself: for an hour, four hours, a day, or
+until it has something for you. A snoozed agent comes back when the time is up, and at once
+if it needs you: one that's waiting on you is never out of sight. (A branch merged by squash
+leaves no trace git can see, so that one settles on the idle timer.)
+
 ## Follow-ups and snapshots
 
 `m` on an agent's row writes it a follow-up without leaving where you are. While the agent is

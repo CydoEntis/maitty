@@ -108,6 +108,10 @@ pub enum Command {
     MarkSeen { term: TermId },
     /// Name a pane yourself (empty: back to the automatic name).
     RenamePane { term: TermId, name: String },
+    /// Set a session aside (the sidebar's settled group) or bring it back (`None`).
+    /// `Some(0)`: until it works again, needs you, or you open it. `Some(t)`: snoozed until
+    /// that time (unix seconds), or it needs you.
+    SetAside { term: TermId, until: Option<u64> },
     /// The agent in `term` moves into a new worktree of its repo: made now, and when its turn
     /// ends it restarts there, resumed (the agent runs `seshi worktree --move`).
     MoveToWorktree { term: TermId, branch: Option<String> },
@@ -407,6 +411,9 @@ pub struct TermInfo {
     /// Follow-ups waiting for its turn to end, next first.
     #[serde(default)]
     pub queued: Vec<String>,
+    /// Set aside (see `Command::SetAside`): settled, or snoozed until then.
+    #[serde(default)]
+    pub aside: Option<u64>,
     /// The repository's main checkout, if the pane is in a repo.
     pub root: Option<PathBuf>,
     /// The checkout (main or a linked worktree) the pane is in.
@@ -548,6 +555,7 @@ mod tests {
             ClientMsg::Command(Command::Grant { term: 3, grants: Some(vec!["read".into()]) }),
             ClientMsg::Command(Command::QueueFollowUp { term: 3, text: "then run the tests".into() }),
             ClientMsg::Command(Command::ClearQueue { term: 3 }),
+            ClientMsg::Command(Command::SetAside { term: 3, until: Some(1_760_000_000) }),
             ClientMsg::Command(Command::TidyWorktrees { items: vec![(PathBuf::from("/code/.wt/rate"), false)] }),
             ClientMsg::Command(Command::RenamePane { term: 3, name: "x".into() }),
             ClientMsg::Command(Command::MoveToWorktree { term: 3, branch: Some("feat/x".into()) }),

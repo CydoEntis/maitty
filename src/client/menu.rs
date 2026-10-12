@@ -14,6 +14,9 @@ use ratatui::style::{Modifier, Style};
 use std::path::PathBuf;
 use unicode_width::UnicodeWidthStr;
 
+/// How long a snooze can be (seconds; none: until it has something for you).
+const SNOOZES: [(&str, Option<u64>); 4] = [("for an hour", Some(3600)), ("for four hours", Some(4 * 3600)), ("for a day", Some(86_400)), ("until it has something for me", None)];
+
 /// How many snapshots the list offers (each has its number as its key).
 const SNAPSHOTS_LISTED: usize = 9;
 
@@ -30,6 +33,12 @@ pub enum Act {
     Commander(TermId),
     /// Drop the follow-ups waiting for this agent's turn to end.
     ClearQueue(TermId),
+    /// The choices for how long to snooze a session.
+    SnoozeMenu(TermId),
+    /// Set a session aside until then (`Some(0)`: settled), or bring it back (`None`).
+    Aside(TermId, Option<u64>),
+    /// Fold / unfold a project's settled group (by the project's key).
+    ToggleAside(String),
     /// List a checkout's snapshots (its folder, and whose row asked).
     Snapshots(PathBuf, TermId),
     /// Put a checkout's files back as a snapshot has them: (folder, commit, when, whose row).
@@ -194,6 +203,12 @@ impl App {
         if s.is_agent && !s.asleep {
             items.push(("Fleet commander".to_string(), Act::Commander(term)));
         }
+        // Out of the way: until later, or for good until it has something for you.
+        if s.aside.is_some() {
+            items.push(("Bring back".to_string(), Act::Aside(term, None)));
+        } else if s.is_agent && s.status != crate::protocol::Status::Blocked {
+            items.push(("Snooze…".to_string(), Act::SnoozeMenu(term)));
+        }
         if !s.queued.is_empty() {
             items.push((format!("Drop queued follow-ups ({})", s.queued.len()), Act::ClearQueue(term)));
         }
@@ -222,6 +237,13 @@ impl App {
         self.menu(format!("snapshots · {}", super::hydra::folder_name(&dir)), items, at);
     }
 
+    /// Fold / unfold a project's settled group.
+    pub(super) fn toggle_aside(&mut self, key: String) {
+        if !self.hy.aside_open.remove(&key) {
+            self.hy.aside_open.insert(key);
+        }
+    }
+
     /// Right-click on a project row.
     pub(super) fn menu_for_project(&mut self, pi: usize, at: (u16, u16)) {
         if let Some((title, items)) = self.project_items(pi) {
@@ -239,6 +261,11 @@ impl App {
             items.push(("Clean up worktrees…".to_string(), Act::TidyOpen(pi)));
         } else {
             items.push(("Make it a git repo…".to_string(), Act::GitInit(p.path.clone())));
+        }
+        let aside = p.sessions().filter(|s| s.aside.is_some()).count();
+        if aside > 0 {
+            let label = if self.hy.aside_open.contains(&p.key) { "Hide settled".to_string() } else { format!("Show settled ({aside})") };
+            items.push((label, Act::ToggleAside(p.key.clone())));
         }
         Some((p.name.clone(), items))
     }
@@ -452,6 +479,25 @@ impl App {
             Act::TeachAgent(term) => self.cmd(Command::TeachAgent { term }),
             Act::TidyOpen(pi) => self.tidy_open(pi),
             Act::ClearQueue(term) => self.cmd(Command::ClearQueue { term }),
+            Act::SnoozeMenu(term) => {
+                let at = self.hy.row_y.get(&term).map(|y| (self.hy.saved.side_w.unwrap_or(0), *y)).unwrap_or((0, 0));
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+                let items = SNOOZES.iter().enumerate().map(|(i, (label, secs))| (format!("{}  {label}", i + 1), Act::Aside(term, Some(secs.map_or(0, |s| now + s))))).collect();
+                self.menu("snooze".into(), items, at);
+            }
+            Act::Aside(term, until) => {
+                self.cmd(Command::SetAside { term, until });
+                let who = self.snap.terms.get(&term).map(|t| t.display_name()).unwrap_or_default();
+                self.notify(
+                    match until {
+                        None => format!("{who} is back"),
+                        Some(0) => format!("{who} is settled: it comes back when it has something for you"),
+                        Some(_) => format!("{who} is snoozed: it comes back then, or sooner if it needs you"),
+                    },
+                    false,
+                );
+            }
+            Act::ToggleAside(key) => self.toggle_aside(key),
             Act::Snapshots(dir, term) => {
                 let at = self.hy.row_y.get(&term).map(|y| (self.hy.saved.side_w.unwrap_or(0), *y)).unwrap_or((0, 0));
                 self.spawn_bg(move || {

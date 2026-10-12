@@ -74,6 +74,8 @@ pub(super) struct Hy {
     pub tabs: Vec<HyTab>,
     /// Panes whose program gets right-clicks (no seshi menu there; Shift+right-click for it).
     pub right_clicks: HashSet<TermId>,
+    /// Projects (by key) whose settled group is unfolded.
+    pub aside_open: HashSet<String>,
     /// Which way the next "split" goes.
     pub split_dir: Option<crate::layout::Dir>,
     /// Where the bottom bar's "where you are" starts (lined up with the panes).
@@ -332,6 +334,8 @@ pub(super) struct Session {
     pub started_by: Option<TermId>,
     /// Follow-ups waiting for its turn to end, next first.
     pub queued: Vec<String>,
+    /// Set aside: in the settled group (`Some(0)`), or snoozed until then.
+    pub aside: Option<u64>,
     /// What everything running in it takes: CPU as a share of the machine (0 to 100), and
     /// memory in bytes.
     pub cpu: f32,
@@ -678,6 +682,7 @@ impl App {
                     resume_at: t.resume_at,
                     started_by: t.started_by,
                     queued: t.queued.clone(),
+                    aside: t.aside,
                     cpu: t.cpu,
                     mem: t.mem,
                 });
@@ -890,6 +895,8 @@ fn session_title(t: &TermInfo, name: &str, top: &Path) -> String {
 pub(super) enum HyHit {
     /// Fold / unfold a project.
     ToggleProj(usize),
+    /// Fold / unfold a project's settled group.
+    ToggleAside(usize),
     Session(TermId),
     /// An answer chip in the Inbox: send this key to that agent.
     InboxAnswer(TermId, char),

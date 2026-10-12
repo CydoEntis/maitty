@@ -54,6 +54,7 @@ mod design_tests {
             subagents: Vec::new(),
             started_by: None,
             queued: Vec::new(),
+            aside: None,
             root: None,
             top: None,
             since: 0,
@@ -1682,6 +1683,46 @@ mod hydra_tests {
         let at = lines.iter().position(|l| l.contains("✓ Copied")).expect("a toast");
         assert!(at < lines.len() - 2, "over the panes, above the bottom bar");
         assert!(!lines.last().unwrap().contains("Copied"), "not in the bottom bar");
+    }
+
+    #[test]
+    fn settled_sessions_fold_under_one_line() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        let sent = |rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::protocol::ClientMsg>| std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
+        let rows = |app: &App| {
+            let model = app.hy_model();
+            hydra::side_lines(app, &model, &app.theme).iter().filter_map(|l| hydra::line_term(&model, l)).collect::<Vec<_>>()
+        };
+        let before = rows(&app);
+        assert!(before.contains(&2) && !draw(&mut app, 160, 45).contains("settled ·"), "nothing set aside, no group");
+        // An agent's menu snoozes it: a numbered list of how long.
+        let snooze = app.session_items(2).unwrap().1.into_iter().find(|(l, _)| l == "Snooze…").map(|(_, a)| a).expect("on an agent's row");
+        app.menu_do(snooze);
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("1  for an hour") && o.contains("4  until it has something for me"));
+        app.on_key(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::NONE));
+        assert!(sent(&mut rx).iter().any(|m| matches!(m, crate::protocol::ClientMsg::Command(crate::protocol::Command::SetAside { term: 2, until: Some(0) }))));
+        // The server says it's aside: its row is gone, and one line stands for it.
+        let soon = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 2 * 3600;
+        app.snap.terms.get_mut(&2).unwrap().aside = Some(soon);
+        app.mode = Mode::Normal;
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("▸ settled · 1") && !rows(&app).contains(&2), "folded away");
+        // Unfolded (a click on the line, or the project's menu): it's there, with when it's back.
+        let key = app.hy_model().iter().find(|p| p.sessions().any(|s| s.term == 2)).map(|p| p.key.clone()).unwrap();
+        app.menu_do(crate::client::menu::Act::ToggleAside(key));
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("▾ settled · 1") && rows(&app).contains(&2) && o.contains("snoozed · back in 2h"));
+        // And its menu brings it back; one that's waiting on you is never offered a snooze.
+        let items = app.session_items(2).unwrap().1;
+        assert!(items.iter().any(|(l, a)| l == "Bring back" && *a == crate::client::menu::Act::Aside(2, None)) && !items.iter().any(|(l, _)| l == "Snooze…"));
+        app.snap.terms.get_mut(&3).unwrap().status = Status::Blocked;
+        assert!(!app.session_items(3).unwrap().1.iter().any(|(l, _)| l == "Snooze…"));
     }
 
     #[test]
