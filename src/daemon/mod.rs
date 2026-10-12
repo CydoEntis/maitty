@@ -43,6 +43,10 @@ const SAVE_EVERY: Duration = Duration::from_secs(2);
 const OUTPUT_SAVE_EVERY: Duration = Duration::from_secs(30);
 /// How often idle agents are checked for putting to sleep.
 const SLEEP_CHECK_EVERY: Duration = Duration::from_secs(30);
+/// A pane's CPU share is passed on when it has moved this many points.
+const CPU_STEP: f32 = 5.0;
+/// A helper just started counts as working this long: its agent hasn't reported yet.
+const HELPER_SETTLES: Duration = Duration::from_secs(45);
 /// How often worktrees left behind (a session that crashed) are looked for, and how soon
 /// after the server starts the first look is.
 const WORKTREE_SWEEP_EVERY: Duration = Duration::from_secs(10 * 60);
@@ -694,6 +698,11 @@ impl Daemon {
                         t.mem = f.mem;
                         self.dirty = true;
                     }
+                    // And for CPU only when it moved by a few points: it never sits still.
+                    if (t.cpu - f.cpu).abs() >= CPU_STEP {
+                        t.cpu = f.cpu;
+                        self.dirty = true;
+                    }
                     if t.process != f.process && !f.process.is_empty() {
                         t.process = f.process;
                         self.dirty = true;
@@ -1030,6 +1039,7 @@ impl Daemon {
                     model: t.model.clone(),
                     label: t.label.clone(),
                     mem: t.mem,
+                    cpu: t.cpu,
                     bell: t.bell,
                     said: t.said.clone(),
                     branch: t.head.as_ref().map(|h| h.branch.clone()),

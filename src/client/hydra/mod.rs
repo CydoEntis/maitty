@@ -330,6 +330,10 @@ pub(super) struct Session {
     pub resume_at: Option<u64>,
     /// The session whose agent started this one (its commander), if one did.
     pub started_by: Option<TermId>,
+    /// What everything running in it takes: CPU as a share of the machine (0 to 100), and
+    /// memory in bytes.
+    pub cpu: f32,
+    pub mem: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -671,6 +675,8 @@ impl App {
                     context: t.usage.context,
                     resume_at: t.resume_at,
                     started_by: t.started_by,
+                    cpu: t.cpu,
+                    mem: t.mem,
                 });
             }
             // The repo's other worktrees, even with nothing running in them.

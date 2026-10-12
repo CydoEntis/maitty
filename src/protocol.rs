@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Bump whenever a message shape changes; client and daemon refuse to talk across versions.
-pub const PROTOCOL_VERSION: u32 = 35;
+pub const PROTOCOL_VERSION: u32 = 36;
 
 pub type TermId = u32;
 pub type WsId = u32;
@@ -383,6 +383,9 @@ pub struct TermInfo {
     /// Memory used by what runs in it (bytes).
     #[serde(default)]
     pub mem: u64,
+    /// CPU used by what runs in it, as a share of the whole machine (0 to 100).
+    #[serde(default)]
+    pub cpu: f32,
     /// It rang the bell and you haven't looked yet.
     #[serde(default)]
     pub bell: bool,

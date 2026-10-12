@@ -164,6 +164,10 @@ pub struct Term {
     pub spare: bool,
     /// Memory used by what runs in it (bytes), from the process scan.
     pub mem: u64,
+    /// CPU used by what runs in it, as a share of the whole machine (0 to 100).
+    pub cpu: f32,
+    /// When this pane was started.
+    pub born: Instant,
     /// It rang the bell while you weren't looking at it.
     pub bell: bool,
     /// The name given in the agent (/rename), its first prompt, and its model.
@@ -558,6 +562,8 @@ impl Term {
             pending_move: None,
             spare: false,
             mem: 0,
+            cpu: 0.0,
+            born: Instant::now(),
             bell: false,
             name: String::new(),
             first_prompt: String::new(),

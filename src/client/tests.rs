@@ -37,6 +37,7 @@ mod design_tests {
             label: String::new(),
             model: String::new(),
             mem: 0,
+            cpu: 0.0,
             bell: false,
             id,
             cols: 80,

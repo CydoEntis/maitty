@@ -163,10 +163,30 @@ pub(in crate::client) enum Line {
 
 /// What a sidebar row shows of a session: the agent and its state on top, what it's working
 /// on (or asking) underneath.
+/// A session's load is said under its row from here: a fifth of the machine's CPU, or two
+/// gigabytes. And in the working colour from here, where it's the reason the PC is slow.
+const LOAD_SAID_CPU: f32 = 20.0;
+const LOAD_SAID_MEM: u64 = 2 << 30;
+const LOAD_HEAVY_CPU: f32 = 50.0;
+const LOAD_HEAVY_MEM: u64 = 6 << 30;
+
+/// "▲ 38% CPU · 2.1 GB" for a session that's taking a real share of the machine, and whether
+/// it's heavy. Nothing for one that isn't.
+pub(in crate::client) fn load_note(cpu: f32, mem: u64) -> Option<(String, bool)> {
+    if cpu < LOAD_SAID_CPU && mem < LOAD_SAID_MEM {
+        return None;
+    }
+    let gb = mem as f64 / f64::from(1u32 << 30);
+    Some((format!("▲ {cpu:.0}% CPU · {gb:.1} GB"), cpu >= LOAD_HEAVY_CPU || mem >= LOAD_HEAVY_MEM))
+}
+
 pub(in crate::client) fn session_lines(s: &Session, t: &Theme, out: &mut Vec<Line>) {
     let notes_c = t.muted;
     if let Some(q) = &s.question {
         out.push(Line::Note(q.clone(), blend(t.blocked, t.sidebar_bg, 0.25), s.term));
+    }
+    if let Some((load, heavy)) = load_note(s.cpu, s.mem) {
+        out.push(Line::Note(load, if heavy { t.working } else { notes_c }, s.term));
     }
     // Several of one kind (a workflow's fleet) are one line with a count, not a wall of rows.
     let mut kinds: Vec<(&String, usize)> = Vec::new();
@@ -636,6 +656,13 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     }
 }
 
+/// The sleeping agent whose last screen is shown in place of the panes: the one the
+/// sidebar's highlight is on, while the sidebar has the keys.
+pub(in crate::client) fn peeked(app: &App, focus: TermId) -> Option<TermId> {
+    let on = app.hy.cursor.filter(|c| *c != focus)?;
+    (app.mode == Mode::Side && app.snap.terms.get(&on).is_some_and(|t| t.asleep)).then_some(on)
+}
+
 pub(in crate::client) fn draw_main(app: &mut App, f: &mut Frame, area: Rect, model: &[Proj], t: &Theme) {
     let Some(focus) = app.focused() else {
         let nk = k(app, &Action::ShellHere);
@@ -656,13 +683,6 @@ pub(in crate::client) fn draw_main(app: &mut App, f: &mut Frame, area: Rect, mod
     let (gap_x, gap_y) = (look.gap, look.gap);
     let inset = |r: Rect| -> Rect {
         let mut r = r;
-/// The sleeping agent whose last screen is shown in place of the panes: the one the
-/// sidebar's highlight is on, while the sidebar has the keys.
-pub(in crate::client) fn peeked(app: &App, focus: TermId) -> Option<TermId> {
-    let on = app.hy.cursor.filter(|c| *c != focus)?;
-    (app.mode == Mode::Side && app.snap.terms.get(&on).is_some_and(|t| t.asleep)).then_some(on)
-}
-
         if r.right() < area.right() {
             r.width = r.width.saturating_sub(gap_x);
         }
@@ -672,6 +692,15 @@ pub(in crate::client) fn peeked(app: &App, focus: TermId) -> Option<TermId> {
         r
     };
     app.hy.dividers.clear();
+    // A peek: with the keys in the sidebar and the highlight on a sleeping agent, its last
+    // screen shows here. Looking doesn't wake it; opening it (Enter, a click) does.
+    if let Some(peek) = peeked(app, focus) {
+        app.hy.leaf_rects = vec![(peek, area)];
+        draw_session(app, f, area, peek, false, model, t);
+        // It isn't in this place to stay: its size is left as it was.
+        app.panes.retain(|(term, _)| *term != peek);
+        return;
+    }
     let layout = app
         .hy
         .tabs
@@ -692,15 +721,6 @@ pub(in crate::client) fn peeked(app: &App, focus: TermId) -> Option<TermId> {
             draw_session(app, f, inset(r), id, id == focus, model, t);
         }
         return;
-    // A peek: with the keys in the sidebar and the highlight on a sleeping agent, its last
-    // screen shows here. Looking doesn't wake it; opening it (Enter, a click) does.
-    if let Some(peek) = peeked(app, focus) {
-        app.hy.leaf_rects = vec![(peek, area)];
-        draw_session(app, f, area, peek, false, model, t);
-        // It isn't in this place to stay: its size is left as it was.
-        app.panes.retain(|(term, _)| *term != peek);
-        return;
-    }
     }
     // A pane that has just opened grows out of its edge (the split's share eases to where it
     // goes); one too thin to draw yet is only space.

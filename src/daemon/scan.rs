@@ -52,6 +52,9 @@ pub struct Found {
     pub agent_cwd: Option<std::path::PathBuf>,
     /// Memory used by everything running in the pane (bytes).
     pub mem: u64,
+    /// CPU used by everything running in the pane since the last scan, as a share of the
+    /// whole machine (0 to 100).
+    pub cpu: f32,
     /// The machine an ssh (or mosh, …) client in the pane is connected to.
     pub remote: Option<String>,
 }
@@ -151,7 +154,7 @@ pub fn start(shared: Arc<Mutex<Shared>>, tx: mpsc::Sender<Ev>) {
                     sys.refresh_processes_specifics(
                         ProcessesToUpdate::All,
                         true,
-                        ProcessRefreshKind::nothing().with_cmd(UpdateKind::OnlyIfNotSet).with_cwd(UpdateKind::Always).with_memory(),
+                        ProcessRefreshKind::nothing().with_cmd(UpdateKind::OnlyIfNotSet).with_cwd(UpdateKind::Always).with_memory().with_cpu(),
                     );
                     let found = scan(&sys, &roots, &agents);
                     if tx.blocking_send(Ev::Scan(found)).is_err() {
@@ -170,6 +173,8 @@ fn stem(name: &std::ffi::OsStr) -> String {
 }
 
 fn scan(sys: &System, roots: &[(TermId, u32)], agents: &[CompiledAgent]) -> Vec<Found> {
+    // A process's usage is a share of one core; a pane's is told as a share of them all.
+    let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as f32;
     let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
     for (pid, p) in sys.processes() {
         if let Some(parent) = p.parent() {
@@ -186,6 +191,7 @@ fn scan(sys: &System, roots: &[(TermId, u32)], agents: &[CompiledAgent]) -> Vec<
             let mut agent_cwd = None;
             let mut deepest: Option<(usize, u64, String)> = None;
             let mut mem = 0u64;
+            let mut cpu = 0f32;
             let mut remote = None;
             let mut i = 0;
             while i < queue.len() {
@@ -193,6 +199,7 @@ fn scan(sys: &System, roots: &[(TermId, u32)], agents: &[CompiledAgent]) -> Vec<
                 i += 1;
                 if let Some(p) = sys.process(pid) {
                     mem += p.memory();
+                    cpu += p.cpu_usage();
                     let name = stem(p.name());
                     if !IGNORED.contains(&name.as_str()) {
                         if remote.is_none() && depth > 0 && REMOTE_CLIENTS.contains(&name.as_str()) {
@@ -218,7 +225,7 @@ fn scan(sys: &System, roots: &[(TermId, u32)], agents: &[CompiledAgent]) -> Vec<
                 }
             }
             let cwd = sys.process(root).and_then(|p| p.cwd()).map(|p| p.to_path_buf());
-            Found { term, process: deepest.map(|d| d.2).unwrap_or_default(), agent, cwd, agent_cwd, mem, remote }
+            Found { term, process: deepest.map(|d| d.2).unwrap_or_default(), agent, cwd, agent_cwd, mem, cpu: cpu / cores, remote }
         })
         .collect()
 }
