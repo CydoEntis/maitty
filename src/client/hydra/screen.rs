@@ -656,6 +656,13 @@ pub(in crate::client) fn draw_main(app: &mut App, f: &mut Frame, area: Rect, mod
     let (gap_x, gap_y) = (look.gap, look.gap);
     let inset = |r: Rect| -> Rect {
         let mut r = r;
+/// The sleeping agent whose last screen is shown in place of the panes: the one the
+/// sidebar's highlight is on, while the sidebar has the keys.
+pub(in crate::client) fn peeked(app: &App, focus: TermId) -> Option<TermId> {
+    let on = app.hy.cursor.filter(|c| *c != focus)?;
+    (app.mode == Mode::Side && app.snap.terms.get(&on).is_some_and(|t| t.asleep)).then_some(on)
+}
+
         if r.right() < area.right() {
             r.width = r.width.saturating_sub(gap_x);
         }
@@ -685,6 +692,15 @@ pub(in crate::client) fn draw_main(app: &mut App, f: &mut Frame, area: Rect, mod
             draw_session(app, f, inset(r), id, id == focus, model, t);
         }
         return;
+    // A peek: with the keys in the sidebar and the highlight on a sleeping agent, its last
+    // screen shows here. Looking doesn't wake it; opening it (Enter, a click) does.
+    if let Some(peek) = peeked(app, focus) {
+        app.hy.leaf_rects = vec![(peek, area)];
+        draw_session(app, f, area, peek, false, model, t);
+        // It isn't in this place to stay: its size is left as it was.
+        app.panes.retain(|(term, _)| *term != peek);
+        return;
+    }
     }
     // A pane that has just opened grows out of its edge (the split's share eases to where it
     // goes); one too thin to draw yet is only space.
@@ -1019,7 +1035,8 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         dim_all(f.buffer_mut(), inner, t);
         let note = vec![
             seg(" zzZ asleep to save memory · ", Style::default().bg(t.card2).fg(t.text)),
-            seg("click or press any key", Style::default().bg(t.card2).fg(t.accent).add_modifier(Modifier::BOLD)),
+            // With the keys in the sidebar this is a look at it: Enter is what opens it.
+            seg(if app.mode == Mode::Side { "Enter or a click" } else { "click or press any key" }, Style::default().bg(t.card2).fg(t.accent).add_modifier(Modifier::BOLD)),
             seg(" to wake it where it left off ", Style::default().bg(t.card2).fg(t.text)),
         ];
         let w = segs_width(&note);

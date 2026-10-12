@@ -1681,6 +1681,57 @@ mod hydra_tests {
     }
 
     #[test]
+    #[test]
+    fn the_highlight_on_a_sleeping_agent_shows_it_without_waking_it() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        // codex (2) is asleep, with something on its last screen; you're on claude (1).
+        app.snap.terms.get_mut(&2).unwrap().asleep = true;
+        let mut screen = vt100::Parser::new(20, 80, 0);
+        screen.process(b"the last thing codex said before it slept\r\n");
+        app.parsers.insert(2, screen);
+        app.hy.tabs.clear();
+        app.hy_place(1, None);
+        let o = draw(&mut app, 160, 45);
+        assert!(!o.contains("the last thing codex said"), "not shown while you're elsewhere");
+        // The sidebar's highlight lands on it: its last screen, and how to wake it.
+        app.hy_side_set(hydra::SideItem::Sess(2));
+        assert_eq!(hydra::peeked(&app, 1), Some(2));
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("the last thing codex said before it slept") && o.contains("zzZ asleep") && o.contains("Enter or a click"), "a look at it");
+        let woke = std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, crate::protocol::ClientMsg::Command(crate::protocol::Command::FocusPane { term: 2 }) | crate::protocol::ClientMsg::Input { term: 2, .. } | crate::protocol::ClientMsg::Command(crate::protocol::Command::ResizePane { term: 2, .. })));
+        assert!(!woke, "looking sends it nothing: it stays asleep");
+        assert!(!app.panes.iter().any(|(t, _)| *t == 2), "and its size is left alone");
+        // On an agent that's awake, the highlight changes nothing in the panes.
+        app.snap.terms.get_mut(&2).unwrap().asleep = false;
+        assert_eq!(hydra::peeked(&app, 1), None);
+        // Enter opens it, which is what wakes it.
+        app.snap.terms.get_mut(&2).unwrap().asleep = true;
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        let opened = std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, crate::protocol::ClientMsg::Command(crate::protocol::Command::FocusPane { term: 2 })));
+        assert!(opened, "Enter opens (and so wakes) it");
+    }
+
+    #[test]
+    fn a_session_taking_much_of_the_machine_says_so() {
+        let gb = |n: u64| n << 30;
+        assert_eq!(hydra::load_note(5.0, gb(1)), None, "an ordinary session: nothing");
+        assert_eq!(hydra::load_note(38.0, gb(1) / 2), Some(("▲ 38% CPU · 0.5 GB".to_string(), false)), "a fifth of the CPU or more");
+        assert_eq!(hydra::load_note(3.0, gb(3)), Some(("▲ 3% CPU · 3.0 GB".to_string(), false)), "or gigabytes of memory");
+        assert!(hydra::load_note(60.0, gb(1)).unwrap().1 && hydra::load_note(1.0, gb(7)).unwrap().1, "heavy from half the CPU, or six gigabytes");
+        // Under its row in the sidebar, in the working colour when heavy.
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        (app.snap.terms.get_mut(&2).unwrap().cpu, app.snap.terms.get_mut(&2).unwrap().mem) = (62.0, gb(5));
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("▲ 62% CPU · 5.0 GB"), "said under the session that's using it");
+        let model = app.hy_model();
+        let heavy = hydra::side_lines(&app, &model, &app.theme).iter().any(|l| matches!(l, hydra::Line::Note(text, c, 2) if text.starts_with("▲") && *c == app.theme.working));
+        assert!(heavy, "in the working colour");
+    }
+
     fn a_opens_actions_with_the_keys_in_the_sidebar_too() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.hy_side_set(hydra::SideItem::Sess(2));
