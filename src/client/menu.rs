@@ -24,7 +24,7 @@ pub enum Act {
     Changes(PathBuf),
     RenamePane(TermId),
     /// Tell this agent to run a fleet from now on (`seshi brief`).
-    Captain(TermId),
+    Commander(TermId),
     Split(TermId, crate::layout::Dir),
     RightClicks(TermId),
     RenameProject(String, String),
@@ -180,7 +180,7 @@ impl App {
         // Its key comes from its label: f, not a (the foot teaches a for actions) or m
         // (a row's follow-up key).
         if s.is_agent && !s.asleep {
-            items.push(("Fleet captain".to_string(), Act::Captain(term)));
+            items.push(("Fleet commander".to_string(), Act::Commander(term)));
         }
         items.push(("Close".to_string(), Act::End(vec![term])));
         // Titled by what it is (an agent, or the program's name), never its window title.
@@ -324,14 +324,14 @@ impl App {
             }),
             // It types into the agent, so never on a slip of a key. (One that's on a prompt is
             // told to answer first, with nothing to confirm.)
-            Act::Captain(t) if self.snap.terms.get(t).is_some_and(|x| x.status != crate::protocol::Status::Blocked) => find(&model, *t).map(|(_, _, s)| Confirm {
-                title: "Fleet captain".into(),
+            Act::Commander(t) if self.snap.terms.get(t).is_some_and(|x| x.status != crate::protocol::Status::Blocked) => find(&model, *t).map(|(_, _, s)| Confirm {
+                title: "Fleet commander".into(),
                 sub: String::new(),
                 what: s.name.clone(),
                 detail: s.agent.clone(),
                 note: "It's told to run seshi brief and ask you for the goal; from then on it starts helpers.".into(),
                 list: Vec::new(),
-                yes: "Make it captain".into(),
+                yes: "Make it commander".into(),
                 key: '\n',
                 danger: false,
                 act: a.clone(),
@@ -359,7 +359,7 @@ impl App {
                 // one asked about is going), or the same row when it stays.
                 self.hy.side_return = match &c.act {
                     _ if self.mode != Mode::Side => None,
-                    Act::Captain(t) => Some(super::hydra::SideItem::Sess(*t)),
+                    Act::Commander(t) => Some(super::hydra::SideItem::Sess(*t)),
                     _ => self.side_after_close(),
                 };
                 self.mode = Mode::Confirm(Box::new(c));
@@ -404,10 +404,10 @@ impl App {
                 self.cmd(Command::TidyWorktrees { items });
             }
             // Typed into a prompt it would be taken as that prompt's answer.
-            Act::Captain(term) if self.snap.terms.get(&term).is_some_and(|t| t.status == crate::protocol::Status::Blocked) => {
+            Act::Commander(term) if self.snap.terms.get(&term).is_some_and(|t| t.status == crate::protocol::Status::Blocked) => {
                 self.notify("it's waiting on you: answer it first".into(), true);
             }
-            Act::Captain(term) => self.send_follow_up(term, &crate::brief::captain_prompt("")),
+            Act::Commander(term) => self.send_follow_up(term, &crate::brief::commander_prompt("")),
             Act::RightClicks(t) => {
                 if !self.hy.right_clicks.remove(&t) {
                     self.hy.right_clicks.insert(t);

@@ -1,4 +1,4 @@
-# Intent: a captain that runs a fleet of agents
+# Intent: a commander that runs a fleet of agents
 
 Type: feature
 Author: Cody · Status: accepted
@@ -12,27 +12,27 @@ what, and you carry messages between them."
 
 ## Proposed outcome
 
-You give one agent, the **captain**, a goal. It breaks the work up, starts helpers in
+You give one agent, the **commander**, a goal. It breaks the work up, starts helpers in
 their own worktrees, briefs them, checks on them and reports back. Together they are a
-**fleet**. In the sidebar the helpers sit indented under their captain, each with its
+**fleet**. In the sidebar the helpers sit indented under their commander, each with its
 own state.
 
 ## Affected users and systems
 
 Anyone running several agents in one project. The actions list (starting a fleet), the
-agent row menu (making an existing agent the captain), the sidebar, the daemon
+agent row menu (making an existing agent the commander), the sidebar, the daemon
 (recording who started whom), the saved session, and the protocol version.
 
 ## Constraints
 
-- A captain is an ordinary agent session with instructions, not a new kind of session.
+- A commander is an ordinary agent session with instructions, not a new kind of session.
 - It only uses the seshi commands and tools agents already have, within its pane's
   grants.
 - A helper that needs you still goes to the top of its group and shows in the Inbox.
 - Its instructions say how to work a repo's plan and tickets in order when there are
   any; Seshi does not depend on the roadmap skill.
-- The link between a captain and its helpers survives a daemon restart, a helper or
-  captain waking from sleep, and a move into a worktree.
+- The link between a commander and its helpers survives a daemon restart, a helper or
+  commander waking from sleep, and a move into a worktree.
 - "Started by" is only set by the daemon, from a pane whose secret checked out
   (`AGENTS.md`, project non-negotiable 5).
 

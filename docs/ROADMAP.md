@@ -74,21 +74,21 @@ your phone (ntfy, off by default).
 
 ### 9 — One agent runs a fleet for you · active
 
-[A captain that runs a fleet of agents](features/fleet/intent.md): you give one agent a goal; it starts
+[A commander that runs a fleet of agents](features/fleet/intent.md): you give one agent a goal; it starts
 helpers, briefs them, checks on them and reports back.
 
 Exit when:
 - every ticket below is closed and its change is on `dev`;
 - the Verify line above passes on `dev`;
-- live check: start a fleet with a goal, the captain starts two helpers, and both sit indented under it in the sidebar.
+- live check: start a fleet with a goal, the commander starts two helpers, and both sit indented under it in the sidebar.
 
 1. #32 — record which session started a session
-2. #33 — `seshi brief` prints the captain's instructions · can run alongside 1
+2. #33 — `seshi brief` prints the commander's instructions · can run alongside 1
 3. #34 — keep the started-by link when a session is replaced · after 1
 4. #35 — keep the started-by link across a restart · after 1
 5. #36 — helpers sit under the session that started them · after 1
 6. #37 — start a fleet from the actions list · after 2
-7. #38 — make an agent the captain from its row menu · after 2
+7. #38 — make an agent the commander from its row menu · after 2
 
 ## In scope
 
@@ -107,7 +107,7 @@ Everything below is shipped on `dev` unless marked.
 - New agent task box (project, worktree, agent, model, effort), presets and recipes as its choices, prewarm — shipped — `src/client/hydra/dialogs.rs`, `src/client/recipes.rs`
 - Agents talk to agents (MCP server `seshi mcp`) — shipped — `src/mcp.rs`
 - `seshi send --wait`, `seshi wait`, `seshi read` — shipped — `src/cli.rs`
-- A captain runs a fleet: one agent starts, briefs and checks helpers, which sit under it in the sidebar — active — [intent](features/fleet/intent.md), #32–#38
+- A commander runs a fleet: one agent starts, briefs and checks helpers, which sit under it in the sidebar — active — [intent](features/fleet/intent.md), #32–#38
 
 **The UI (one layout, ADR-0004)**
 - Floating look: rounded cards with gaps, title and state in the border, unfocused cards faded, pill tabs, no app footer; floating or tiled, corners, gap, dim, focus border, pill ends in Settings — done, unreleased — `src/client/hydra/card.rs`, `screen.rs`, ADR-0007

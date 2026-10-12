@@ -184,7 +184,7 @@ enum Cmd {
     DebugColors { pane: u32 },
     /// Check that everything seshi relies on is in place, and how to fix what isn't.
     Doctor,
-    /// Print a captain's instructions: how an agent runs a fleet of helpers. For agents to
+    /// Print a commander's instructions: how an agent runs a fleet of helpers. For agents to
     /// read ("run seshi brief and follow it").
     Brief,
     /// Install the newest release over this one.

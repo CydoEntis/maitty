@@ -54,7 +54,7 @@ layers*. Never reverse the direction.
 src/
   main.rs        argument parsing, picks client / daemon / CLI role
   cli.rs         one-shot subcommands (send, read, wait, hook, allow, doctor, …)
-  brief.rs       `seshi brief`: a captain's instructions (brief.md)
+  brief.rs       `seshi brief`: a commander's instructions (brief.md)
   tidy.rs        what removing a worktree would lose (shared by the server's sweep and the clean-up list)
   protocol.rs    wire messages and PROTOCOL_VERSION
   ipc.rs         local sockets and the SSH proxy
@@ -203,7 +203,7 @@ The client never touches a PTY; the daemon never draws. They meet only through
 src/
   main.rs        argument parsing, picks client / daemon / CLI role
   cli.rs         one-shot subcommands (send, read, wait, hook, doctor, …)
-  brief.rs       `seshi brief`: a captain's instructions (brief.md)
+  brief.rs       `seshi brief`: a commander's instructions (brief.md)
   tidy.rs        what removing a worktree would lose (shared by the server's sweep and the clean-up list)
   protocol.rs    wire messages and PROTOCOL_VERSION
   ipc.rs         local sockets and the SSH proxy

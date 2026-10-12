@@ -267,7 +267,7 @@ impl App {
         self.hy_new(p, beside);
     }
 
-    /// Start a fleet: the + New chooser asking for a goal, for the agent that will captain it.
+    /// Start a fleet: the + New chooser asking for a goal, for the agent that will command it.
     pub(in crate::client) fn hy_start_fleet(&mut self) {
         self.hy_open_new_pane(false);
         if let Mode::HyPane(np) = &mut self.mode {
@@ -760,11 +760,11 @@ impl App {
         let agent = agents.get(np.a).cloned().unwrap_or_else(|| "shell".into());
         let main = p.wts.iter().find(|w| w.main).map(|w| w.path.clone()).unwrap_or_else(|| p.path.clone());
         if np.fleet {
-            // A fleet needs a goal, and an agent to captain it.
+            // A fleet needs a goal, and an agent to command it.
             let missing = if np.task.trim().is_empty() {
                 Some("say what the fleet should get done")
             } else if agent == "shell" || agent.starts_with('⚙') {
-                Some("pick an agent to captain the fleet")
+                Some("pick an agent to command the fleet")
             } else {
                 None
             };
@@ -774,7 +774,7 @@ impl App {
                 return;
             }
         }
-        let task = if np.fleet { crate::brief::captain_prompt(&np.task) } else { np.task.clone() };
+        let task = if np.fleet { crate::brief::commander_prompt(&np.task) } else { np.task.clone() };
         let cmd = np_command(self, &agent, np.model, &task);
         if !np.fleet && !self.hy.saved.draft.is_empty() {
             self.hy.saved.draft.clear();

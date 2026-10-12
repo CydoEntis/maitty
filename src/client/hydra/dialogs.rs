@@ -170,8 +170,8 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
     };
     let c = Style::default().bg(t.card);
     let what = match np_command(app, &agent, np.model, &np.task) {
-        _ if np.fleet && (agent == "shell" || agent.starts_with('⚙')) => "A fleet needs an agent to captain it.".to_string(),
-        _ if np.fleet => format!("{agent} is the captain: it splits the goal up and starts helpers in their own worktrees. {what}"),
+        _ if np.fleet && (agent == "shell" || agent.starts_with('⚙')) => "A fleet needs an agent to command it.".to_string(),
+        _ if np.fleet => format!("{agent} is the commander: it splits the goal up and starts helpers in their own worktrees. {what}"),
         Some(cmd) if !np.task.trim().is_empty() || np.model > 0 => format!("{what}  Runs: {cmd}"),
         _ => what,
     };

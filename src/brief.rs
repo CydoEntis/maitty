@@ -1,13 +1,13 @@
-//! `seshi brief`: what a captain does. An agent is made a captain by being told to run this
+//! `seshi brief`: what a commander does. An agent is made a commander by being told to run this
 //! and follow it, so the instructions are the same however it was started and never have
 //! to survive a shell's quoting.
 
 pub const BRIEF: &str = include_str!("brief.md");
 
-/// What an agent is told to make it a captain: where its instructions are, and the goal if
+/// What an agent is told to make it a commander: where its instructions are, and the goal if
 /// there is one yet. Its own words carry no quotes or backticks for a shell to trip on.
-pub fn captain_prompt(goal: &str) -> String {
-    let brief = "You are the captain of a fleet of agents in seshi. Run the shell command seshi brief and follow what it prints.";
+pub fn commander_prompt(goal: &str) -> String {
+    let brief = "You are the commander of a fleet of agents in seshi. Run the shell command seshi brief and follow what it prints.";
     match goal.trim() {
         "" => format!("{brief} Then ask me for the goal."),
         goal => format!("{brief} The goal: {goal}"),
@@ -39,19 +39,19 @@ mod tests {
     }
 
     #[test]
-    fn a_captain_is_pointed_at_the_brief_and_given_the_goal() {
-        let p = captain_prompt("  ship the login page  ");
+    fn a_commander_is_pointed_at_the_brief_and_given_the_goal() {
+        let p = commander_prompt("  ship the login page  ");
         assert!(p.contains("seshi brief") && p.ends_with("The goal: ship the login page"), "{p}");
-        assert!(!captain_prompt("").contains("The goal") && captain_prompt(" ").ends_with("ask me for the goal."));
-        let own = captain_prompt("");
+        assert!(!commander_prompt("").contains("The goal") && commander_prompt(" ").ends_with("ask me for the goal."));
+        let own = commander_prompt("");
         assert!(!own.contains(['\'', '"', '`', '$', '\n']), "nothing in its own words needs quoting: {own}");
     }
 
     #[test]
-    fn the_brief_covers_a_captains_job_in_order() {
+    fn the_brief_covers_a_commanders_job_in_order() {
         let parts = ["## Split the goal", "## Start helpers", "## Wait and read", "## Prompts and questions", "## Check the work", "## Report back", "## When the repo has a plan"];
         let at: Vec<usize> = parts.iter().map(|p| BRIEF.find(p).unwrap_or_else(|| panic!("missing: {p}"))).collect();
-        assert!(at.windows(2).all(|w| w[0] < w[1]), "in the order a captain does them");
+        assert!(at.windows(2).all(|w| w[0] < w[1]), "in the order a commander does them");
         for must in ["its own worktree", "permission prompt", "active phase", "One ticket per helper", "blocked by"] {
             assert!(BRIEF.contains(must), "the brief says: {must}");
         }

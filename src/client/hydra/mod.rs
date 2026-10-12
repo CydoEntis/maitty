@@ -287,7 +287,7 @@ pub(super) struct NewPaneHy {
     pub task: String,
     /// The model (0: the agent's default).
     pub model: usize,
-    /// Starting a fleet: the task is its goal, and what runs is its captain.
+    /// Starting a fleet: the task is its goal, and what runs is its commander.
     pub fleet: bool,
 }
 
@@ -299,7 +299,7 @@ impl NewPaneHy {
     }
 
     pub fn place_for(&self, agent: &str, per_agent: bool) -> u8 {
-        // A captain coordinates from the project's own folder; its helpers get the worktrees.
+        // A commander coordinates from the project's own folder; its helpers get the worktrees.
         self.place.unwrap_or(if agent != "shell" && per_agent && !self.fleet { 0 } else { 2 })
     }
 }
@@ -328,7 +328,7 @@ pub(super) struct Session {
     pub context: Option<f32>,
     /// Stopped by a plan limit: seshi says "continue" then (unix seconds).
     pub resume_at: Option<u64>,
-    /// The session whose agent started this one (its captain), if one did.
+    /// The session whose agent started this one (its commander), if one did.
     pub started_by: Option<TermId>,
 }
 

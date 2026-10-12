@@ -218,17 +218,17 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
         // A fleet: the sessions a session started sit under it, in the order above. One that
         // needs you has sorted to the top and stays there, on its own.
         let term_of = |r: &(usize, usize)| p.wts[r.0].sessions[r.1].term;
-        let captain = |r: &(usize, usize)| {
+        let commander = |r: &(usize, usize)| {
             let s = &p.wts[r.0].sessions[r.1];
             let floats = sort && !settled(s.status);
             s.started_by.filter(|by| !floats && *by != s.term && rows.iter().any(|x| term_of(x) == *by))
         };
         let mut placed: Vec<((usize, usize), u8)> = Vec::with_capacity(rows.len());
-        let mut next: Vec<((usize, usize), u8)> = rows.iter().rev().filter(|r| captain(r).is_none()).map(|r| (*r, 0)).collect();
+        let mut next: Vec<((usize, usize), u8)> = rows.iter().rev().filter(|r| commander(r).is_none()).map(|r| (*r, 0)).collect();
         while let Some((r, depth)) = next.pop() {
             placed.push((r, depth));
             let below = (depth + 1).min(FLEET_DEPTH);
-            next.extend(rows.iter().rev().filter(|k| captain(k) == Some(term_of(&r)) && !placed.iter().any(|(x, _)| x == *k)).map(|k| (*k, below)));
+            next.extend(rows.iter().rev().filter(|k| commander(k) == Some(term_of(&r)) && !placed.iter().any(|(x, _)| x == *k)).map(|k| (*k, below)));
         }
         // Sessions that started each other can't come from the daemon; if they did, they're
         // still listed.

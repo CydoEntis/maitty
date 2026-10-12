@@ -221,7 +221,7 @@ impl Daemon {
             });
         }
         for (term, by) in started {
-            // Its captain didn't come back: it's on its own.
+            // Its commander didn't come back: it's on its own.
             self.started(term, ids.get(&by).copied());
         }
         self.active_ws = self.workspaces.get(saved.active).or(self.workspaces.first()).map(|w| w.id);

@@ -1041,7 +1041,7 @@ mod hydra_tests {
     }
 
     #[test]
-    fn start_a_fleet_asks_for_a_goal_and_starts_its_captain() {
+    fn start_a_fleet_asks_for_a_goal_and_starts_its_commander() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         app.out = tx;
@@ -1049,7 +1049,7 @@ mod hydra_tests {
         let started = |rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::protocol::ClientMsg>| {
             std::iter::from_fn(|| rx.try_recv().ok()).find_map(|m| match m {
                 crate::protocol::ClientMsg::Command(crate::protocol::Command::NewWorkspace { cwd, cmd, .. }) => Some((cwd, cmd)),
-                crate::protocol::ClientMsg::Command(crate::protocol::Command::NewWorktree { .. }) => panic!("a captain works from the project's folder, not a worktree"),
+                crate::protocol::ClientMsg::Command(crate::protocol::Command::NewWorktree { .. }) => panic!("a commander works from the project's folder, not a worktree"),
                 _ => None,
             })
         };
@@ -1060,24 +1060,24 @@ mod hydra_tests {
         for (w, h) in [(160, 45), (100, 30)] {
             let o = draw(&mut app, w, h);
             show(&o);
-            assert!(o.contains("Start a fleet") && o.contains("GOAL") && o.contains("is the captain"), "at {w}x{h}");
+            assert!(o.contains("Start a fleet") && o.contains("GOAL") && o.contains("is the commander"), "at {w}x{h}");
         }
         // No goal: nothing starts, the box stays.
         app.on_key(key(KeyCode::Enter));
         assert!(matches!(&app.mode, Mode::HyPane(np) if np.fleet) && started(&mut rx).is_none());
-        // A goal, quotes and all, goes to the captain as it was typed.
+        // A goal, quotes and all, goes to the commander as it was typed.
         let goal = r#"fix `login` & "signup" for $5, it's urgent"#;
         for c in goal.chars() {
             app.on_key(key(KeyCode::Char(c)));
         }
         app.on_key(key(KeyCode::Enter));
         assert_eq!(app.mode, Mode::Normal);
-        let (cwd, cmd) = started(&mut rx).expect("the captain starts");
-        let said = crate::brief::captain_prompt(goal);
+        let (cwd, cmd) = started(&mut rx).expect("the commander starts");
+        let said = crate::brief::commander_prompt(goal);
         assert_eq!(cmd.as_deref(), Some(format!("claude {}", app.cfg.quote_for_shell(&said)).as_str()));
         assert!(cwd.is_some_and(|d| d.ends_with("shop-api")), "in the project's own folder");
         assert_eq!(app.hy.saved.draft, "a task left from before", "your task draft is untouched");
-        // Esc closes it and starts nothing; a shell can't captain.
+        // Esc closes it and starts nothing; a shell can't command one.
         app.act(Action::StartFleet);
         app.on_key(key(KeyCode::Char('x')));
         app.on_key(key(KeyCode::Esc));
@@ -1094,7 +1094,7 @@ mod hydra_tests {
 
     #[test]
     fn a_goal_survives_each_shells_quoting() {
-        let said = crate::brief::captain_prompt("fix `login` & \"signup\" for $5, it's urgent\nthen the tests");
+        let said = crate::brief::commander_prompt("fix `login` & \"signup\" for $5, it's urgent\nthen the tests");
         for (shell, open, apostrophe) in [("pwsh.exe", "'", "''"), ("bash", "'", r"'\''")] {
             let cfg = Config { shell: Some(shell.into()), ..Config::default() };
             let q = cfg.quote_for_shell(&said);
@@ -1108,7 +1108,7 @@ mod hydra_tests {
     #[test]
     fn the_sidebars_foot_says_when_a_rows_keys_dont_all_fit() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        // codex: an agent that isn't on a prompt, in a git project (rename, changes, captain, close).
+        // codex: an agent that isn't on a prompt, in a git project (rename, changes, commander, close).
         app.hy_side_set(hydra::SideItem::Sess(2));
         let o = draw(&mut app, 160, 45);
         show(&o);
@@ -1127,7 +1127,7 @@ mod hydra_tests {
     }
 
     #[test]
-    fn an_agents_row_menu_makes_it_a_captain() {
+    fn an_agents_row_menu_makes_it_a_commander() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         app.out = tx;
@@ -1137,12 +1137,12 @@ mod hydra_tests {
                 _ => None,
             })
         };
-        let offered = |app: &App, t: TermId| app.session_items(t).unwrap().1.into_iter().find(|(l, _)| l == "Fleet captain").map(|(_, a)| a);
+        let offered = |app: &App, t: TermId| app.session_items(t).unwrap().1.into_iter().find(|(l, _)| l == "Fleet commander").map(|(_, a)| a);
         let act = offered(&app, 1).expect("on an agent's row");
         assert!(offered(&app, 3).is_none(), "not on a shell");
         // Its key is f: not a (the foot teaches a for actions), nor one the row already uses.
         let items = app.session_items(1).unwrap().1;
-        let key = crate::client::menu::menu_keys(&items)[items.iter().position(|(l, _)| l == "Fleet captain").unwrap()];
+        let key = crate::client::menu::menu_keys(&items)[items.iter().position(|(l, _)| l == "Fleet commander").unwrap()];
         assert_eq!(key, Some('f'));
         // claude is on a prompt: typing there would answer it, so there's nothing to confirm.
         app.menu_act(act.clone());
@@ -1151,16 +1151,16 @@ mod hydra_tests {
         app.snap.terms.get_mut(&1).unwrap().status = Status::Idle;
         app.hy_fresh();
         app.menu_act(act.clone());
-        assert!(matches!(&app.mode, Mode::Confirm(c) if c.title == "Fleet captain" && !c.danger) && typed(&mut rx).is_none(), "asks before typing");
+        assert!(matches!(&app.mode, Mode::Confirm(c) if c.title == "Fleet commander" && !c.danger) && typed(&mut rx).is_none(), "asks before typing");
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("Make it captain Enter") && o.contains("Cancel Esc"));
+        assert!(o.contains("Make it commander Enter") && o.contains("Cancel Esc"));
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert!(app.mode == Mode::Normal && typed(&mut rx).is_none(), "Esc: nothing sent");
         app.menu_act(act);
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        let (term, text) = typed(&mut rx).expect("told to captain");
-        assert_eq!((term, text.as_str()), (1, crate::brief::captain_prompt("").as_str()));
+        let (term, text) = typed(&mut rx).expect("told to take command");
+        assert_eq!((term, text.as_str()), (1, crate::brief::commander_prompt("").as_str()));
         assert!(text.contains("seshi brief") && text.contains("ask me for the goal"));
         app.snap.terms.get_mut(&1).unwrap().asleep = true;
         app.hy_fresh();
@@ -1287,7 +1287,7 @@ mod hydra_tests {
         assert_eq!(rows(&mut app, Status::Blocked), [1, 2], "sorting off: nothing moves");
     }
 
-    /// claude (1) as a captain: codex (2) is its helper, 4 is codex's, 5 is 4's.
+    /// claude (1) as a commander: codex (2) is its helper, 4 is codex's, 5 is 4's.
     fn fleet() -> App {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         for (id, by) in [(4, 2), (5, 4)] {
@@ -1322,14 +1322,14 @@ mod hydra_tests {
     #[test]
     fn helpers_sit_under_the_session_that_started_them() {
         let mut app = fleet();
-        assert_eq!(fleet_rows(&mut app), [(1, 0), (2, 1), (4, 2), (5, 2)], "each under its captain, no deeper than two steps");
+        assert_eq!(fleet_rows(&mut app), [(1, 0), (2, 1), (4, 2), (5, 2)], "each under its commander, no deeper than two steps");
         // One that needs you goes to the top, and takes its own helpers with it.
         app.snap.terms.get_mut(&2).unwrap().status = Status::Blocked;
         assert_eq!(fleet_rows(&mut app), [(2, 0), (4, 1), (5, 2), (1, 0)]);
         // Sorting off: nothing moves, the fleet stays together.
         app.cfg.ui.attention_sort = false;
         assert_eq!(fleet_rows(&mut app), [(1, 0), (2, 1), (4, 2), (5, 2)]);
-        // Its captain closed: an ordinary row, its own helpers still under it.
+        // Its commander closed: an ordinary row, its own helpers still under it.
         app.cfg.ui.attention_sort = true;
         app.snap.terms.get_mut(&2).unwrap().status = Status::Idle;
         app.snap.terms.get_mut(&2).unwrap().started_by = Some(999);
@@ -1352,7 +1352,7 @@ mod hydra_tests {
             };
             let model = app.hy_model();
             let name = |t: TermId| model.iter().flat_map(|p| p.sessions()).find(|s| s.term == t).unwrap().name.clone();
-            assert_eq!(col(&name(2)), col(&name(1)) + 2, "a helper steps in under its captain");
+            assert_eq!(col(&name(2)), col(&name(1)) + 2, "a helper steps in under its commander");
             assert_eq!(col(&name(3)), col(&name(1)), "a session in another group doesn't");
         }
     }

@@ -144,7 +144,7 @@ pub struct Term {
     pub token: String,
     /// What it may do through seshi, if you set it for this pane (else `[mcp] grants`).
     pub grants: Option<Vec<String>>,
-    /// The pane whose agent started this one (its captain), if one did.
+    /// The pane whose agent started this one (its commander), if one did.
     pub started_by: Option<TermId>,
     /// Finished and not seen before a restart: stays "done" once it's back.
     pub restore_unseen: bool,

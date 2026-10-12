@@ -94,38 +94,38 @@ fn a_report_traced_outside_the_pane_is_dropped() {
 #[test]
 fn with_no_window_open_finished_waits_and_a_helper_stays_quiet() {
     let (mut d, _rx) = daemon();
-    let (captain, helper) = (pane(&mut d), pane(&mut d));
-    for t in [captain, helper] {
+    let (commander, helper) = (pane(&mut d), pane(&mut d));
+    for t in [commander, helper] {
         d.terms.get_mut(&t).unwrap().agent = Some("claude".into());
     }
     let rang = |d: &Daemon, t: TermId| d.terms[&t].alerted.map(|(s, _)| s);
     let overdue = |d: &mut Daemon, t: TermId| d.terms.get_mut(&t).unwrap().alert_due = Some(Instant::now() - Duration::from_millis(1));
     // Finished: not said yet.
-    d.set_status(captain, Status::Working, "test");
-    d.set_status(captain, Status::Done, "test");
-    assert!(rang(&d, captain).is_none() && d.terms[&captain].alert_due.is_some(), "it waits");
+    d.set_status(commander, Status::Working, "test");
+    d.set_status(commander, Status::Done, "test");
+    assert!(rang(&d, commander).is_none() && d.terms[&commander].alert_due.is_some(), "it waits");
     // Back to work before the wait is over: never said.
-    d.set_status(captain, Status::Working, "test");
-    assert!(d.terms[&captain].alert_due.is_none());
+    d.set_status(commander, Status::Working, "test");
+    assert!(d.terms[&commander].alert_due.is_none());
     d.settled_alerts();
-    assert!(rang(&d, captain).is_none());
+    assert!(rang(&d, commander).is_none());
     // Finished and still finished: said.
-    d.set_status(captain, Status::Done, "test");
-    overdue(&mut d, captain);
+    d.set_status(commander, Status::Done, "test");
+    overdue(&mut d, commander);
     d.settled_alerts();
-    assert_eq!(rang(&d, captain), Some(Status::Done));
-    // A helper's finish is its captain's news.
-    d.terms.get_mut(&helper).unwrap().started_by = Some(captain);
+    assert_eq!(rang(&d, commander), Some(Status::Done));
+    // A helper's finish is its commander's news.
+    d.terms.get_mut(&helper).unwrap().started_by = Some(commander);
     d.set_status(helper, Status::Working, "test");
     d.set_status(helper, Status::Done, "test");
     assert!(d.terms[&helper].alert_due.is_none() && rang(&d, helper).is_none());
     // Needing you is said at once, helper or not (once the last ring is a few seconds old).
-    for t in [captain, helper] {
+    for t in [commander, helper] {
         d.terms.get_mut(&t).unwrap().alerted = None;
     }
     d.set_status(helper, Status::Blocked, "test");
     assert_eq!(rang(&d, helper), Some(Status::Blocked));
-    close(&mut d, &[captain, helper]);
+    close(&mut d, &[commander, helper]);
 }
 
 #[test]
@@ -257,23 +257,23 @@ fn a_session_knows_which_pane_started_it() {
     let (mut d, _rx) = daemon();
     let here = Some(std::env::temp_dir());
     d.command(0, Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None }).unwrap();
-    let captain = d.workspaces[0].tabs[0].focus;
-    assert_eq!(d.terms[&captain].started_by, None, "you started it");
-    let token = d.terms[&captain].token.clone();
-    let _c = from_pane(&mut d, 1, captain, &token);
-    let mut made = vec![captain];
+    let commander = d.workspaces[0].tabs[0].focus;
+    assert_eq!(d.terms[&commander].started_by, None, "you started it");
+    let token = d.terms[&commander].token.clone();
+    let _c = from_pane(&mut d, 1, commander, &token);
+    let mut made = vec![commander];
     d.handle(Ev::Msg(1, ClientMsg::Command(Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None })));
     made.push(newest(&d));
     let ws = d.workspaces[0].id;
     d.handle(Ev::Msg(1, ClientMsg::Command(Command::NewTab { ws, name: None, cmd: None })));
     made.push(newest(&d));
-    d.handle(Ev::Msg(1, ClientMsg::Command(Command::Split { term: captain, dir: crate::layout::Dir::Right, cmd: None, cwd: None })));
+    d.handle(Ev::Msg(1, ClientMsg::Command(Command::Split { term: commander, dir: crate::layout::Dir::Right, cmd: None, cwd: None })));
     made.push(newest(&d));
     assert_eq!(made.len(), 4, "a workspace, a tab and a split");
     for t in &made[1..] {
-        assert_eq!(d.terms[t].started_by, Some(captain), "started from the captain's pane");
+        assert_eq!(d.terms[t].started_by, Some(commander), "started from the commander's pane");
     }
-    assert_eq!(d.snapshot().terms[&made[1]].started_by, Some(captain), "and clients are told");
+    assert_eq!(d.snapshot().terms[&made[1]].started_by, Some(commander), "and clients are told");
     close(&mut d, &made);
 }
 
@@ -292,19 +292,19 @@ fn only_the_pane_itself_can_be_named_as_the_starter() {
 #[test]
 fn a_worktree_start_keeps_its_starter_after_the_caller_has_gone() {
     let (mut d, _rx) = daemon();
-    let captain = pane(&mut d);
+    let commander = pane(&mut d);
     let dir = std::env::temp_dir().join(format!("seshi-started-by-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    // The worktree was asked for from the captain's pane; that connection closed while git ran.
+    // The worktree was asked for from the commander's pane; that connection closed while git ran.
     d.pending_ops += 1;
-    d.handle(Ev::WorktreeCreated { client: 9, branch: "helper".into(), cmd: None, split: None, by: Some(captain), result: Ok((dir.clone(), String::new())) });
+    d.handle(Ev::WorktreeCreated { client: 9, branch: "helper".into(), cmd: None, split: None, by: Some(commander), result: Ok((dir.clone(), String::new())) });
     let helper = newest(&d);
-    assert_eq!(d.terms[&helper].started_by, Some(captain));
-    // The next session you start yourself isn't the captain's.
+    assert_eq!(d.terms[&helper].started_by, Some(commander));
+    // The next session you start yourself isn't the commander's.
     d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();
     let yours = newest(&d);
     assert_eq!(d.terms[&yours].started_by, None);
-    close(&mut d, &[captain, helper, yours]);
+    close(&mut d, &[commander, helper, yours]);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -315,14 +315,14 @@ fn a_replaced_session_keeps_its_place_in_a_fleet() {
     for _ in 0..3 {
         d.command(0, Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None }).unwrap();
     }
-    let [lead, captain, helper] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
-    d.terms.get_mut(&captain).unwrap().started_by = Some(lead);
-    d.terms.get_mut(&helper).unwrap().started_by = Some(captain);
+    let [lead, commander, helper] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
+    d.terms.get_mut(&commander).unwrap().started_by = Some(lead);
+    d.terms.get_mut(&helper).unwrap().started_by = Some(commander);
     // Woken from sleep: a new process, the same session.
-    let t = d.terms.get_mut(&captain).unwrap();
+    let t = d.terms.get_mut(&commander).unwrap();
     t.asleep = true;
     t.kill_tree();
-    let woken = d.wake(captain).expect("it wakes");
+    let woken = d.wake(commander).expect("it wakes");
     assert_eq!(d.terms[&woken].started_by, Some(lead), "still under the one that started it");
     assert_eq!(d.terms[&helper].started_by, Some(woken), "and its helper is still its own");
     // Moved into a worktree: the same again.
@@ -380,8 +380,8 @@ fn a_spare_fits_only_its_repo_and_its_agent() {
 fn a_fleet_comes_back_from_a_restart() {
     let (mut d, _rx) = daemon();
     let dir = std::env::temp_dir();
-    // Saved ids: 70 is the captain, 71 its helper, 72 a helper whose captain (99) is gone.
-    // The helpers are saved ahead of the captain, so they come back before it does.
+    // Saved ids: 70 is the commander, 71 its helper, 72 a helper whose commander (99) is gone.
+    // The helpers are saved ahead of the commander, so they come back before it does.
     let ws = |id: TermId, by: Option<TermId>| persist::SavedWs {
         name: String::new(),
         cwd: dir.clone(),
@@ -397,18 +397,18 @@ fn a_fleet_comes_back_from_a_restart() {
         active_tab: 0,
     };
     d.restore(persist::Saved { workspaces: vec![ws(71, Some(70)), ws(72, Some(99)), ws(70, None)], active: 0, made_worktrees: Vec::new() });
-    let [helper, orphan, captain] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
-    assert!(captain != 70, "the captain has this run's id");
-    assert_eq!(d.terms[&helper].started_by, Some(captain), "its helper found it again");
-    assert_eq!(d.terms[&orphan].started_by, None, "a helper whose captain didn't come back is on its own");
-    assert_eq!(d.terms[&captain].started_by, None);
+    let [helper, orphan, commander] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
+    assert!(commander != 70, "the commander has this run's id");
+    assert_eq!(d.terms[&helper].started_by, Some(commander), "its helper found it again");
+    assert_eq!(d.terms[&orphan].started_by, None, "a helper whose commander didn't come back is on its own");
+    assert_eq!(d.terms[&commander].started_by, None);
     // And it's saved that way again.
     let saved = d.saved();
-    assert_eq!(saved.workspaces[0].tabs[0].panes[&helper].started_by, Some(captain));
+    assert_eq!(saved.workspaces[0].tabs[0].panes[&helper].started_by, Some(commander));
     // A session saved before fleets existed still loads.
     let old: persist::SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":null,"session":null}"#).expect("an older pane");
     assert_eq!(old.started_by, None);
-    close(&mut d, &[helper, orphan, captain]);
+    close(&mut d, &[helper, orphan, commander]);
 }
 
 #[test]
