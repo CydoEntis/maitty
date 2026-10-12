@@ -90,6 +90,19 @@ Exit when:
 6. #37 — start a fleet from the actions list · after 2
 7. #38 — make an agent the commander from its row menu · after 2
 
+### 10 — Borrowed from T3 Code · next
+
+Chosen 2026-10-12, after reading `pingdotgg/t3code`. Done: a worktree's `on_create` finishes before
+anything starts in it (0.25.1).
+
+Work: queued follow-ups (the queue, back from the 2026-10-09 cut), snapshots before each run
+(checkpoints, back from the same cut), named accounts per agent, auto-settle and snooze.
+Open decisions:
+- Queued follow-ups: where you type one, and what counts as the moment to send it.
+- Snapshots: what a restore does to work made since, and whether they're on by default.
+- Named accounts: where an account's sign-in lives, and how a sleeping session keeps its account.
+- Auto-settle and snooze: what settling does to a session, and where settled ones go.
+
 ## In scope
 
 Everything below is shipped on `dev` unless marked.
@@ -149,7 +162,7 @@ Everything below is shipped on `dev` unless marked.
 
 ## Out
 
-- Features cut 2026-10-09 (the user's call: they repeated something else or weren't used): open project, go to, next agent that needs you, arrange panes, undo automatic workspace, the map, ideas, races, run a preset as a list (presets stay in the new-agent dialog), memory per session, past chats, agent tools, extensions, and the tmux stand-in for Claude agent teams. Bringing one back needs a new decision. (Talk / reply / answer, the quick prompt, tickets, the queue, checkpoints, SSH remotes, config sync, the dev-server runner and the pull-request view with Ship were cut the same day and are coming back in phase 8, redesigned.)
+- Features cut 2026-10-09 (the user's call: they repeated something else or weren't used): open project, go to, next agent that needs you, arrange panes, undo automatic workspace, the map, ideas, races, run a preset as a list (presets stay in the new-agent dialog), past chats, agent tools, extensions, and the tmux stand-in for Claude agent teams. Bringing one back needs a new decision. Memory per session was on this list and came back 2026-10-12 as the load line under a busy session (the user's call, after a day of finding the heavy agent by hand); races were asked about again the same day and stay cut. (Talk / reply / answer, the quick prompt, tickets, the queue, checkpoints, SSH remotes, config sync, the dev-server runner and the pull-request view with Ship were cut the same day and are coming back in phase 8, redesigned.)
 - Desktop notifications while a seshi window is open, the terminal bell on an alert, and choosing among system sounds (or your own sound file) — cut 2026-10-11 (the user's call: three overlapping alerts, two of them the Windows error ding). Bringing one back needs a new decision.
 - Other UI layouts (workspaces, tree, dock, sidebar) — declined 2026-10-03: one layout to build and test (ADR-0004, now ADR-0007: floating and tiled are styles of it). Bringing them back needs a new decision.
 
