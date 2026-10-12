@@ -408,14 +408,17 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 }
                 let sel = focused_side && app.hy.cursor == Some(s.term);
                 let st = Style::default().bg(bg);
+                // A state's colour on this row: the theme's own, kept readable when the
+                // row is lit.
+                let state = |c: Color| if lit.is_some() { t.on_lit(c) } else { c };
                 let (gl, gc) = if s.is_agent || s.status != Status::None {
-                    (glyph(app, s.status), state_color(t, s.status))
+                    (glyph(app, s.status), state(state_color(t, s.status)))
                 } else {
                     ("›".to_string(), t.muted)
                 };
                 // A bell from something with no status of its own; an agent's state says more
                 // (codex rings it when it finishes).
-                let (gl, gc) = if s.bell && !matches!(s.status, Status::Blocked | Status::Done) { ("♪".to_string(), t.blocked) } else { (gl, gc) };
+                let (gl, gc) = if s.bell && !matches!(s.status, Status::Blocked | Status::Done) { ("♪".to_string(), state(t.blocked)) } else { (gl, gc) };
                 let mut gs = st.fg(gc);
                 if s.status == Status::Blocked {
                     gs = gs.add_modifier(Modifier::BOLD);
@@ -425,18 +428,19 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 // Finished and not looked at yet: green, like its dot.
                 // An agent's name wears its state, as its glyph does: amber shimmering while it
                 // works, red when it needs you, green until you look at what it finished, dim
-                // asleep. The lit row keeps bright text, readable on its pill.
+                // asleep. The lit row says its state too: only a row with no state to show
+                // (idle, asleep) goes bright there. Every colour is the theme's own.
                 let unseen = s.is_agent && s.status == Status::Done && !s.asleep;
                 let needs = s.is_agent && s.status == Status::Blocked && !s.asleep;
                 let working = s.is_agent && s.status == Status::Working && !s.asleep;
-                let name_c = if sel {
+                let name_c = if needs {
+                    state(t.blocked)
+                } else if unseen {
+                    state(t.done)
+                } else if sel {
                     t.strong
                 } else if s.asleep {
                     t.muted
-                } else if needs {
-                    t.blocked
-                } else if unseen {
-                    t.done
                 } else if open_row {
                     t.strong
                 } else {
@@ -448,8 +452,8 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 }
                 let mut left = vec![];
                 if working {
-                    let (base, bright) = if sel { (t.strong, t.strong) } else { (t.working, blend(t.working, t.strong, 0.6)) };
-                    left.extend(shimmer(&s.name, app.spinner_frame(), base, bright, ns));
+                    let working = state(t.working);
+                    left.extend(shimmer(&s.name, app.spinner_frame(), working, blend(working, t.strong, 0.6), ns));
                 } else {
                     left.push(seg(s.name.clone(), ns));
                 }

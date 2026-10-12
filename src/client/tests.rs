@@ -1681,6 +1681,45 @@ mod hydra_tests {
     }
 
     #[test]
+    fn the_selected_row_still_says_its_state_in_every_theme() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        // The colour of a row's name in the sidebar (its first letter).
+        let name_fg = |app: &mut App, name: &str| {
+            app.hy_fresh();
+            let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+            term.draw(|f| render::draw(app, f)).unwrap();
+            let buf = term.backend().buffer().clone();
+            let letters: Vec<String> = name.chars().map(|c| c.to_string()).collect();
+            let (x, y) = (0..45u16)
+                .flat_map(|y| (0..30u16).map(move |x| (x, y)))
+                .find(|&(x, y)| letters.iter().enumerate().all(|(i, l)| buf[(x + i as u16, y)].symbol() == l))
+                .unwrap_or_else(|| panic!("{name} is in the sidebar"));
+            (buf[(x, y)].fg, buf[(x, y)].bg)
+        };
+        for theme in crate::theme::BUILTIN.iter().filter(|n| **n != "mono") {
+            app.cfg.theme = theme.to_string();
+            app.theme = app.cfg.theme();
+            let t = app.theme.clone();
+            // claude (1) is the selected row, in each state in turn.
+            app.hy_side_set(hydra::SideItem::Sess(1));
+            for (status, want) in [(Status::Blocked, t.on_lit(t.blocked)), (Status::Done, t.on_lit(t.done))] {
+                app.snap.terms.get_mut(&1).unwrap().status = status;
+                let (fg, bg) = name_fg(&mut app, "claude");
+                assert_eq!(bg, t.hov, "{theme}: the row is lit");
+                assert_eq!(fg, want, "{theme}: {status:?} keeps its colour on the lit row");
+                assert!(crate::theme::contrast(fg, bg) >= 3.0, "{theme}: and reads there");
+            }
+            // Working shimmers between its colour and a brighter one, never plain white.
+            app.snap.terms.get_mut(&1).unwrap().status = Status::Working;
+            let (fg, _) = name_fg(&mut app, "claude");
+            assert!(fg != t.strong, "{theme}: working isn't white on the lit row");
+            // No state to show: bright, as before.
+            app.snap.terms.get_mut(&1).unwrap().status = Status::Idle;
+            assert_eq!(name_fg(&mut app, "claude").0, t.strong, "{theme}: idle is plain bright text");
+        }
+    }
+
+    #[test]
     fn finished_is_only_said_once_it_has_stayed_finished() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let attention = |app: &mut App, term: TermId, status: Status| {

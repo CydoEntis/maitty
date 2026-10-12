@@ -118,6 +118,12 @@ pub fn parse_color(s: &str) -> Option<Color> {
     s.parse::<Color>().ok()
 }
 
+/// How well a state's colour must read on the lit row (the audit's bar for coloured text
+/// on the sidebar), and how it gets there: a step toward the strongest text at a time.
+const LIT_READS: f64 = 3.0;
+const LIT_STEP: f32 = 0.15;
+const LIT_STEPS: usize = 12;
+
 /// WCAG contrast between two colours (1 to 21).
 pub fn contrast(a: Color, b: Color) -> f64 {
     let l = |c: Color| match c {
@@ -156,6 +162,21 @@ impl Theme {
                 break;
             }
             c = mix(c, Color::Rgb(0, 0, 0), 0.08);
+        }
+        c
+    }
+
+    /// A state's colour as drawn on the lit row: itself where it reads on `hov`, else moved
+    /// toward the theme's strongest text just far enough to. A row you select keeps saying
+    /// its state, and no theme needs colours of its own for that (some put a red on a
+    /// violet highlight, where it can't be read as it is).
+    pub fn on_lit(&self, state: Color) -> Color {
+        let mut c = state;
+        for _ in 0..LIT_STEPS {
+            if contrast(c, self.hov) >= LIT_READS {
+                break;
+            }
+            c = mix(c, self.strong, LIT_STEP);
         }
         c
     }
@@ -530,6 +551,10 @@ mod audit {
                 ("blocked on sidebar", t.blocked, t.sidebar_bg, 3.0),
                 ("done on sidebar", t.done, t.sidebar_bg, 3.0),
                 ("working on sidebar", t.working, t.sidebar_bg, 4.5),
+                // The selected row is lit with `hov`, and its name keeps its state's colour.
+                ("blocked on the lit row", t.on_lit(t.blocked), t.hov, 3.0),
+                ("done on the lit row", t.on_lit(t.done), t.hov, 3.0),
+                ("working on the lit row", t.on_lit(t.working), t.hov, 3.0),
                 ("err on card", t.err, t.card, 3.0),
                 ("ink on the red Close button", t.ink_on(t.danger_fill()), t.danger_fill(), 4.5),
             ];
@@ -546,6 +571,10 @@ mod audit {
                 // Needs you is red like errors on purpose; working and done must differ.
                 ("working vs done", t.working, t.done),
                 ("working vs blocked", t.working, t.blocked),
+                // And still on the lit row, where each may have moved toward white.
+                ("lit done vs lit blocked", t.on_lit(t.done), t.on_lit(t.blocked)),
+                ("lit working vs lit done", t.on_lit(t.working), t.on_lit(t.done)),
+                ("lit working vs lit blocked", t.on_lit(t.working), t.on_lit(t.blocked)),
             ] {
                 if a == b || contrast(a, b) < 1.15 && hue_near(a, b) {
                     bad.push(format!("{n:18} {what:24} too alike"));
