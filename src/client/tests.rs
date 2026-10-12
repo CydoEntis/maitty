@@ -1681,6 +1681,19 @@ mod hydra_tests {
     }
 
     #[test]
+    fn a_opens_actions_with_the_keys_in_the_sidebar_too() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.hy_side_set(hydra::SideItem::Sess(2));
+        assert_eq!(app.mode, Mode::Side);
+        app.on_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+        assert!(matches!(app.mode, Mode::Actions { .. }), "a is actions here, as the foot says everywhere else");
+        // And no row's menu item is ever handed a key the sidebar already uses.
+        let items: Vec<(String, crate::client::menu::Act)> = ["Archive", "Ask", "Mark", "Inspect", "Jump", "Keep"].iter().map(|l| (l.to_string(), crate::client::menu::Act::RenamePane(1))).collect();
+        let keys = crate::client::menu::menu_keys(&items);
+        assert!(keys.iter().flatten().all(|k| !['a', 'm', 'i', 'j', 'k'].contains(k)), "{keys:?}");
+    }
+
+    #[test]
     fn the_selected_row_still_says_its_state_in_every_theme() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // The colour of a row's name in the sidebar (its first letter).

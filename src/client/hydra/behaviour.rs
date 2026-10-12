@@ -588,6 +588,8 @@ impl App {
             // m: a follow-up to this row's agent; i: why it has its status.
             KeyCode::Char('m') if plain && self.hy.cursor.is_some() => self.act(Action::Message),
             KeyCode::Char('i') if plain && self.hy.cursor.is_some() => self.act(Action::Why),
+            // What the foot teaches everywhere else: a is actions, here too.
+            KeyCode::Char('a') if plain => self.act(Action::Actions),
             // A letter from the row's menu does that (x close, r rename, …).
             KeyCode::Char(c) if plain && crate::client::menu::menu_keys(&self.cursor_items()).contains(&Some(c)) => {
                 let items = self.cursor_items();

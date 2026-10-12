@@ -492,7 +492,8 @@ fn git_init(dir: &std::path::Path) -> Result<(), String> {
 /// A key for each item: the first letter of its label not taken yet (j and k move).
 /// Numbered lists (presets) use their numbers.
 pub(super) fn menu_keys(items: &[(String, Act)]) -> Vec<Option<char>> {
-    let mut used: Vec<char> = vec!['j', 'k'];
+    // Taken already where a row's letters work (the sidebar): moving, actions, follow-up, why.
+    let mut used: Vec<char> = vec!['j', 'k', 'a', 'm', 'i'];
     // Closing is always x.
     let closes = |a: &Act| matches!(a, Act::End(_) | Act::CloseProject(_));
     if items.iter().any(|(_, a)| closes(a)) {
