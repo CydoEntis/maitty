@@ -306,7 +306,8 @@ Projects · Keys. Values are chips you click (or ←→ / Enter). Appearance has
 the themes: **Seshi Walnut** (the default: walnut and chocolate browns, turquoise focus, a red,
 orange and lemon-lime run for what agents are doing), **Seshi Night** (warm driftwood dark, sunset
 peach) and **Seshi Day** (its
-light twin), then Hydra, PaperColor Dark, Tango Dark, Monokai, Tokyo Night and more, with live
+light twin), then Hydra, Tinkery's four (Tinkery, Tinkery Light, Aurora, Moonlit), PaperColor Dark,
+Tango Dark, Monokai, Tokyo Night and more, with live
 swatches; the theme recolours agent output's ANSI colours too. On Keys, Enter then press a new key to rebind a shortcut. Projects lists
 the folders you opened (Enter forgets one). Everything is saved to `config.toml` (comments kept)
 and applies at once.

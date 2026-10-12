@@ -67,6 +67,10 @@ pub const BUILTIN: &[&str] = &[
     "seshi-night",
     "seshi-day",
     "hydra",
+    "tinkery",
+    "tinkery-light",
+    "aurora",
+    "moonlit",
     "papercolor-dark",
     "tango-dark",
     "monokai",
@@ -85,6 +89,10 @@ pub const DESIGN: &[(&str, &str)] = &[
     ("seshi-night", "Seshi Night"),
     ("seshi-day", "Seshi Day"),
     ("hydra", "Hydra"),
+    ("tinkery", "Tinkery"),
+    ("tinkery-light", "Tinkery Light"),
+    ("aurora", "Aurora"),
+    ("moonlit", "Moonlit"),
     ("papercolor-dark", "PaperColor Dark"),
     ("tango-dark", "Tango Dark"),
     ("monokai", "Monokai"),
@@ -283,6 +291,45 @@ impl Theme {
                 ["#a593ff", "#5aa9ff", "#ff7ab6", "#3dd6c0"],
                 ["#ff6b6b", "#7fd962", "#e8c565", "#5aa9ff", "#a593ff", "#3dd6c0", "#71808f"],
             ),
+            // The four that follow are Tinkery's (the editor's), in its colours. Where one
+            // missed the audit below, that tone is a shade off Tinkery's: the dim text in the
+            // last three, and tinkery-light's amber and red.
+            // Tinkery's own: a forge at night, ember orange on char.
+            "tinkery" => Theme::design(
+                [
+                    "#110f0e", "#dcd2c7", "#171413", "#1f1b19", "#292320", "#40362f", "#7d7067", "#b5a89d",
+                    "#f8f0e6", "#ff8a3d", "#1f0d02", "#f2c14e", "#8fc7a2", "#ff5d4d", "#332a25", "#3a302a",
+                ],
+                ["#ff8a3d", "#ffd27a", "#8fb4d6", "#8fc7a2"],
+                ["#ff5d4d", "#8fc7a2", "#f2c14e", "#8fb4d6", "#ff8a3d", "#ffd27a", "#7d7067"],
+            ),
+            // The same forge by day.
+            "tinkery-light" => Theme::design(
+                [
+                    "#f5f0e9", "#3a322c", "#ede6dc", "#e4dcd0", "#d9cfc2", "#c0b3a3", "#847768", "#5b5047",
+                    "#1c1714", "#b84a08", "#fff6ec", "#835900", "#3f7d5a", "#a3123f", "#dcd2c5", "#d3c7b8",
+                ],
+                ["#b84a08", "#b07d0c", "#3c6a94", "#3f7d5a"],
+                ["#a3123f", "#3f7d5a", "#835900", "#3c6a94", "#b84a08", "#b07d0c", "#847768"],
+            ),
+            // Tinkery's Aurora: violet on near-black, with a teal second light.
+            "aurora" => Theme::design(
+                [
+                    "#0b0a10", "#d2cfe2", "#0f0e16", "#16141f", "#1e1b2a", "#2e2a40", "#6d6884", "#a6a2bb",
+                    "#f4f2fb", "#b69cff", "#120a24", "#f0cf7a", "#7fe3c9", "#ff6f91", "#2e2a40", "#221c35",
+                ],
+                ["#b69cff", "#6ee7d8", "#8fd0ff", "#7fe3c9"],
+                ["#ff6f91", "#7fe3c9", "#f0cf7a", "#8fd0ff", "#b69cff", "#6ee7d8", "#6d6884"],
+            ),
+            // Tinkery's Moonlit: pale blue on blue-black, gold beside it.
+            "moonlit" => Theme::design(
+                [
+                    "#090b10", "#d0d6e4", "#0d1017", "#141822", "#1b2030", "#2a3246", "#657089", "#a2abbf",
+                    "#f2f5fb", "#a9c6ff", "#0b1426", "#f0cf7a", "#7fe3c9", "#ff6f91", "#2a3246", "#1c2538",
+                ],
+                ["#a9c6ff", "#f0cf7a", "#a9c6ff", "#7fe3c9"],
+                ["#ff6f91", "#7fe3c9", "#f0cf7a", "#a9c6ff", "#a9c6ff", "#f0cf7a", "#657089"],
+            ),
             "papercolor-dark" => Theme::design(
                 [
                     "#1c1c1c", "#d0d0d0", "#262626", "#303030", "#3a3a3a", "#444444", "#808080", "#b2b2b2",
@@ -460,7 +507,7 @@ mod audit {
     /// different things look different.
     #[test]
     fn every_theme_reads_well() {
-        let names = ["seshi-night", "seshi-day", "hydra", "papercolor-dark", "tango-dark", "monokai", "tokyo-night", "catppuccin-mocha", "catppuccin-latte", "gruvbox", "nord", "dracula"];
+        let names = ["seshi-night", "seshi-day", "hydra", "tinkery", "tinkery-light", "aurora", "moonlit", "papercolor-dark", "tango-dark", "monokai", "tokyo-night", "catppuccin-mocha", "catppuccin-latte", "gruvbox", "nord", "dracula"];
         let mut bad = Vec::new();
         for n in names {
             let t = Theme::named(n);

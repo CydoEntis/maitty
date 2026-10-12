@@ -4,7 +4,7 @@
 
 prefix = "ctrl+space"
 
-# seshi-walnut | seshi-night | seshi-day | hydra | papercolor-dark | tango-dark | monokai | tokyo-night | catppuccin-mocha | catppuccin-latte | gruvbox | nord | dracula | mono
+# seshi-walnut | seshi-night | seshi-day | hydra | tinkery | tinkery-light | aurora | moonlit | papercolor-dark | tango-dark | monokai | tokyo-night | catppuccin-mocha | catppuccin-latte | gruvbox | nord | dracula | mono
 theme = "seshi-walnut"
 
 # Shell for new panes. Default: pwsh / powershell on Windows, $SHELL elsewhere.
