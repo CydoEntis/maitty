@@ -92,6 +92,43 @@ fn a_report_traced_outside_the_pane_is_dropped() {
 }
 
 #[test]
+fn only_so_many_helpers_work_at_once() {
+    let (mut d, _rx) = daemon();
+    d.cfg.mcp.helpers_at_once = 2;
+    let here = Some(std::env::temp_dir());
+    d.command(0, Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None }).unwrap();
+    let commander = d.workspaces[0].tabs[0].focus;
+    let token = d.terms[&commander].token.clone();
+    let mut c = from_pane(&mut d, 1, commander, &token);
+    let start = |d: &mut Daemon| d.handle(Ev::Msg(1, ClientMsg::Command(Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None })));
+    let refused = |c: &mut mpsc::Receiver<ServerMsg>| std::iter::from_fn(|| c.try_recv().ok()).find_map(|m| if let ServerMsg::Error(e) = m { Some(e) } else { None });
+    // Two helpers, just started: both count as working until their agents report.
+    start(&mut d);
+    start(&mut d);
+    assert_eq!(d.terms.len(), 3);
+    assert!(refused(&mut c).is_none());
+    // A third is refused, and told what to do.
+    start(&mut d);
+    let why = refused(&mut c).expect("the third is refused");
+    assert!(d.terms.len() == 3 && why.contains("2 helpers are already working") && why.contains("Wait for one to finish"), "{why}");
+    // One finishes (and has been up a while): there's room again.
+    let helpers: Vec<TermId> = d.terms.keys().copied().filter(|t| *t != commander).collect();
+    let done = d.terms.get_mut(&helpers[0]).unwrap();
+    (done.status, done.born) = (Status::Done, Instant::now() - super::HELPER_SETTLES - Duration::from_secs(1));
+    start(&mut d);
+    assert_eq!(d.terms.len(), 4, "a helper finished: the next may start");
+    // What you start yourself never counts, and never waits.
+    d.command(0, Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None }).unwrap();
+    assert_eq!(d.terms.len(), 5);
+    // No limit: as many as asked for.
+    d.cfg.mcp.helpers_at_once = 0;
+    start(&mut d);
+    assert_eq!(d.terms.len(), 6);
+    let all: Vec<TermId> = d.terms.keys().copied().collect();
+    close(&mut d, &all);
+}
+
+#[test]
 fn with_no_window_open_finished_waits_and_a_helper_stays_quiet() {
     let (mut d, _rx) = daemon();
     let (commander, helper) = (pane(&mut d), pane(&mut d));

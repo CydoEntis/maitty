@@ -1682,7 +1682,6 @@ mod hydra_tests {
     }
 
     #[test]
-    #[test]
     fn the_highlight_on_a_sleeping_agent_shows_it_without_waking_it() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
@@ -1733,6 +1732,7 @@ mod hydra_tests {
         assert!(heavy, "in the working colour");
     }
 
+    #[test]
     fn a_opens_actions_with_the_keys_in_the_sidebar_too() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.hy_side_set(hydra::SideItem::Sess(2));

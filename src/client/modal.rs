@@ -121,6 +121,7 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "worktree.per_agent", label: "Own worktree per agent", kind: Kind::Bool, cat: Cat::Agents, help: "Agents started in a repo's main folder (+ New, the quick prompt, or claude/codex typed in a shell) get their own branch and folder." },
     Setting { path: "worktree.command", label: "Start in new worktrees", kind: Kind::Text, cat: Cat::Agents, help: "A command to run in every new worktree (e.g. claude). Empty: a shell." },
     Setting { path: "mcp.approve", label: "Agents may approve prompts", kind: Kind::Choice(&["never", "safe", "always"]), cat: Cat::Agents, help: "Through seshi mcp. safe: only prompts for commands on [mcp] safe (tests, lint, git status…). Saying no is always allowed." },
+    Setting { path: "mcp.helpers_at_once", label: "Helpers working at once", kind: Kind::Int { step: 1, min: 0, max: 16 }, cat: Cat::Agents, help: "How many sessions started by other agents may be working at the same time. A commander that asks for more is told to wait for one to finish. 0: no limit." },
     Setting { path: "mcp.scope", label: "Agents can reach", kind: Kind::Choice(&["project", "all"]), cat: Cat::Agents, help: "project: only sessions in the calling agent's own repo. Set up with: seshi integrate mcp" },
     Setting { path: "detection.working_window_ms", label: "Working window (ms)", kind: Kind::Int { step: 250, min: 250, max: 10_000 }, cat: Cat::Agents, help: "For agents without hooks: output this recent counts as working." },
 ];

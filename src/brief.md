@@ -28,6 +28,8 @@ below. Session numbers come from `seshi ls` or `seshi_list`.
 - A helper knows nothing you know. Its task must stand on its own: what to change and
   why, which files and functions, what done looks like, how to check it (the project's
   test and lint commands), and what not to touch.
+- seshi limits how many helpers work at once, so the machine stays usable. If a start is
+  refused for that, wait for a helper to finish and start it then; don't work around it.
 - Ask each helper to commit its work on its branch and to finish with a short report:
   what it changed, what it ran, and anything it left undone.
 

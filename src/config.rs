@@ -152,6 +152,9 @@ pub struct Mcp {
     /// respond (answer another agent's prompt or question), admin (close other panes, stop
     /// the server).
     pub grants: Vec<String>,
+    /// How many sessions started by other agents may be working at the same time; a start
+    /// past that is refused until one finishes. 0: no limit.
+    pub helpers_at_once: usize,
 }
 
 impl Default for Mcp {
@@ -166,6 +169,7 @@ impl Default for Mcp {
             .to_vec(),
             scope: "project".into(),
             grants: ["read", "write", "start"].map(String::from).to_vec(),
+            helpers_at_once: 4,
         }
     }
 }

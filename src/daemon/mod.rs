@@ -1110,6 +1110,24 @@ impl Daemon {
         self.next_starter.take().or_else(|| self.clients.get(&client).and_then(|c| c.from)).filter(|t| self.terms.contains_key(t))
     }
 
+    /// The pane a start comes from, once there's room for what it starts. A session another
+    /// agent starts is a helper, and each helper runs builds and tests of its own: a
+    /// commander that starts ten takes the whole machine. Past the limit the start is
+    /// refused, with what to do instead.
+    fn starting(&mut self, client: ClientId) -> Result<Option<TermId>> {
+        // A worktree asked for earlier was let through then: don't strand it now.
+        let let_through = self.next_starter.is_some();
+        let by = self.starter(client);
+        let most = self.cfg.mcp.helpers_at_once;
+        if by.is_some() && most > 0 && !let_through {
+            let busy = self.terms.values().filter(|t| t.started_by.is_some() && (t.status == Status::Working || t.born.elapsed() < HELPER_SETTLES)).count();
+            if busy >= most {
+                anyhow::bail!("{busy} helpers are already working, and {most} at once is the limit (Settings, Agents). Wait for one to finish, then start this one.");
+            }
+        }
+        Ok(by)
+    }
+
     /// Note which pane's agent started `term`.
     fn started(&mut self, term: TermId, by: Option<TermId>) {
         if let Some(t) = self.terms.get_mut(&term) {

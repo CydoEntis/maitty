@@ -9,7 +9,7 @@ impl Daemon {
             Command::NewWorkspace { cwd, name, cmd } => {
                 let cwd = cwd.map(clean_path).filter(|p| p.is_dir()).unwrap_or_else(home);
                 let (cols, rows) = self.guess_size();
-                let by = self.starter(client);
+                let by = self.starting(client)?;
                 let term = self.spawn(cmd.as_deref(), &cwd, cols, rows)?;
                 self.started(term, by);
                 let id = self.next();
@@ -55,7 +55,7 @@ impl Daemon {
             Command::NewTab { ws, name, cmd } => {
                 let cwd = self.ws_mut(ws)?.cwd.clone();
                 let (cols, rows) = self.guess_size();
-                let by = self.starter(client);
+                let by = self.starting(client)?;
                 let term = self.spawn(cmd.as_deref(), &cwd, cols, rows)?;
                 self.started(term, by);
                 let id = self.next();
@@ -99,7 +99,7 @@ impl Daemon {
                     .unwrap_or(ws_cwd);
                 let (cols, rows) = self.terms.get(&term).map(|t| (t.cols, t.rows)).unwrap_or((80, 24));
                 let (cols, rows) = if dir.horizontal() { (cols / 2, rows) } else { (cols, rows / 2) };
-                let by = self.starter(client);
+                let by = self.starting(client)?;
                 let new = self.spawn(cmd.as_deref(), &cwd, cols, rows)?;
                 self.started(new, by);
                 let w = self.ws_mut(ws)?;
@@ -212,7 +212,7 @@ impl Daemon {
                 }
             }
             Command::NewWorktree { ws, branch, base, cmd, split, from } => {
-                let by = self.starter(client);
+                let by = self.starting(client)?;
                 let ws_dir = self.ws_mut(ws)?.cwd.clone();
                 let dir = from.map(clean_path).filter(|d| d.is_dir()).unwrap_or(ws_dir);
                 let template = self.cfg.worktree.dir.clone();
