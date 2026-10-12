@@ -95,13 +95,14 @@ Exit when:
 Chosen 2026-10-12, after reading `pingdotgg/t3code`. Done: a worktree's `on_create` finishes before
 anything starts in it (0.25.1).
 
-Work: queued follow-ups (the queue, back from the 2026-10-09 cut), snapshots before each run
-(checkpoints, back from the same cut), named accounts per agent, auto-settle and snooze.
-Open decisions:
-- Queued follow-ups: where you type one, and what counts as the moment to send it.
-- Snapshots: what a restore does to work made since, and whether they're on by default.
-- Named accounts: where an account's sign-in lives, and how a sleeping session keeps its account.
-- Auto-settle and snooze: what settling does to a session, and where settled ones go.
+Also built, not yet released: queued follow-ups (the queue, back from the 2026-10-09 cut; sent
+when the turn ends, never into a question), named accounts (an agent entry with its own `env`),
+snapshots before each turn (checkpoints, back from the same cut; a restore keeps what's there
+first).
+
+Work: auto-settle and snooze. Decided 2026-10-12: a session idle for days, or whose PR merged,
+folds into a collapsed `settled` group at the bottom of its project; snooze sends one there
+until a time you pick.
 
 ## In scope
 
