@@ -25,6 +25,8 @@ pub enum Act {
     RenamePane(TermId),
     /// Tell this agent to run a fleet from now on (`seshi brief`).
     Commander(TermId),
+    /// Drop the follow-ups waiting for this agent's turn to end.
+    ClearQueue(TermId),
     Split(TermId, crate::layout::Dir),
     RightClicks(TermId),
     RenameProject(String, String),
@@ -181,6 +183,9 @@ impl App {
         // (a row's follow-up key).
         if s.is_agent && !s.asleep {
             items.push(("Fleet commander".to_string(), Act::Commander(term)));
+        }
+        if !s.queued.is_empty() {
+            items.push((format!("Drop queued follow-ups ({})", s.queued.len()), Act::ClearQueue(term)));
         }
         items.push(("Close".to_string(), Act::End(vec![term])));
         // Titled by what it is (an agent, or the program's name), never its window title.
@@ -399,6 +404,7 @@ impl App {
             }
             Act::TeachAgent(term) => self.cmd(Command::TeachAgent { term }),
             Act::TidyOpen(pi) => self.tidy_open(pi),
+            Act::ClearQueue(term) => self.cmd(Command::ClearQueue { term }),
             Act::Tidy(items) => {
                 self.notify("Cleaning up worktrees…".into(), false);
                 self.cmd(Command::TidyWorktrees { items });

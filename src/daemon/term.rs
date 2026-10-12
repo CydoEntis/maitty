@@ -150,6 +150,10 @@ pub struct Term {
     pub restore_unseen: bool,
     /// Typed while it was asleep: delivered once it's back up (or after a few seconds).
     pub pending_input: Option<(Vec<u8>, Instant)>,
+    /// Follow-ups to type into it when its turn is over, next first.
+    pub queue: std::collections::VecDeque<String>,
+    /// When the last of them went in: the next waits for the turn that one starts.
+    pub queue_sent: Option<Instant>,
     /// The agent's conversation file (from hooks).
     pub transcript: Option<PathBuf>,
     /// Context and cost, as the agent last reported them.
@@ -555,6 +559,8 @@ impl Term {
             token,
             restore_unseen: false,
             pending_input: None,
+            queue: Default::default(),
+            queue_sent: None,
             transcript: None,
             usage: Default::default(),
             resume_at: None,

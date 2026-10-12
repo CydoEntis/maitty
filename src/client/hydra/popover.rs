@@ -86,7 +86,13 @@ pub(in crate::client) fn compose_box(app: &mut App, buf: &mut Buffer, at: Rect, 
         }
         put(buf, x + 3, y + 1 + i as u16, &segs, r.right() - 2);
     }
-    let keys = cap_hints(t, outer, &[("Enter", "send"), ("Shift+Enter", "new line"), ("Esc", "cancel")]);
+    // To an agent that's working, Enter queues it for when the turn is over.
+    let working = app.snap.terms.get(&c.term).is_some_and(|i| i.status == Status::Working);
+    let keys = if working {
+        cap_hints(t, outer, &[("Enter", "send when it's done"), ("Ctrl+Enter", "now"), ("Shift+Enter", "new line"), ("Esc", "cancel")])
+    } else {
+        cap_hints(t, outer, &[("Enter", "send"), ("Shift+Enter", "new line"), ("Esc", "cancel")])
+    };
     put(buf, x + 1, y + rows + 2, &keys, x + w);
     rows + 3
 }
@@ -214,7 +220,13 @@ impl App {
             KeyCode::Enter if newline => c.text.push('\n'),
             KeyCode::Enter => {
                 let text = if c.text.trim().is_empty() { "keep going".to_string() } else { c.text.trim_end().to_string() };
-                self.send_follow_up(c.term, &text);
+                // Typed into a working agent it would interrupt, or be lost: it waits its turn.
+                let working = self.snap.terms.get(&c.term).is_some_and(|t| t.status == Status::Working);
+                if working && !ctrl {
+                    self.queue_follow_up(c.term, &text);
+                } else {
+                    self.send_follow_up(c.term, &text);
+                }
                 return self.compose_back(&c);
             }
             KeyCode::Backspace => {
@@ -225,6 +237,13 @@ impl App {
             _ => {}
         }
         self.mode = Mode::Compose(Box::new(c));
+    }
+
+    /// Leave `text` with the server for the agent: it's typed in when this turn is over.
+    pub(in crate::client) fn queue_follow_up(&mut self, term: TermId, text: &str) {
+        self.cmd(Command::QueueFollowUp { term, text: text.to_string() });
+        let who = self.snap.terms.get(&term).map(|t| t.display_name()).unwrap_or_default();
+        self.notify(format!("Queued for {who}: it goes in when this turn is over"), false);
     }
 
     /// Type `text` into the agent's prompt and press Enter (a moment later, once it has taken

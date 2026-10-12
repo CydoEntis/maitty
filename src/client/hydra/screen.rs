@@ -185,6 +185,11 @@ pub(in crate::client) fn session_lines(s: &Session, t: &Theme, out: &mut Vec<Lin
     if let Some(q) = &s.question {
         out.push(Line::Note(q.clone(), blend(t.blocked, t.sidebar_bg, 0.25), s.term));
     }
+    // What it's been told to do next, once this turn is over.
+    if let Some(next) = s.queued.first() {
+        let more = if s.queued.len() > 1 { format!(" (+{})", s.queued.len() - 1) } else { String::new() };
+        out.push(Line::Note(format!("⏵ next: {next}{more}"), notes_c, s.term));
+    }
     if let Some((load, heavy)) = load_note(s.cpu, s.mem) {
         out.push(Line::Note(load, if heavy { t.working } else { notes_c }, s.term));
     }

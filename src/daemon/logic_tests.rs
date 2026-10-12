@@ -92,6 +92,48 @@ fn a_report_traced_outside_the_pane_is_dropped() {
 }
 
 #[test]
+fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Working);
+    }
+    let queued = |d: &Daemon| d.snapshot().terms[&t].queued.clone();
+    d.command(0, Command::QueueFollowUp { term: t, text: "  then run the tests ".into() }).unwrap();
+    d.command(0, Command::QueueFollowUp { term: t, text: "and open a PR".into() }).unwrap();
+    assert_eq!(queued(&d), ["then run the tests", "and open a PR"], "kept by the server, in order");
+    assert!(d.command(0, Command::QueueFollowUp { term: t, text: "  ".into() }).is_err(), "nothing to queue");
+    // Still working: nothing is typed.
+    d.update_statuses();
+    assert_eq!(queued(&d).len(), 2);
+    // Asking you something: nothing is typed into the question either.
+    d.set_status(t, Status::Blocked, "test");
+    d.update_statuses();
+    assert_eq!(queued(&d).len(), 2, "never into a question");
+    // The turn ends: the first goes in, and only the first.
+    d.set_status(t, Status::Working, "test");
+    d.set_status(t, Status::Done, "test");
+    d.update_statuses();
+    assert_eq!(queued(&d), ["and open a PR"], "one at a time");
+    d.update_statuses();
+    assert_eq!(queued(&d).len(), 1, "the next waits for the turn that one starts");
+    // That turn starts and ends: the next goes.
+    d.set_status(t, Status::Working, "test");
+    d.set_status(t, Status::Done, "test");
+    d.update_statuses();
+    assert!(queued(&d).is_empty());
+    // Dropping what's queued; a shell takes none.
+    d.set_status(t, Status::Working, "test");
+    d.command(0, Command::QueueFollowUp { term: t, text: "never mind".into() }).unwrap();
+    d.command(0, Command::ClearQueue { term: t }).unwrap();
+    assert!(queued(&d).is_empty());
+    d.terms.get_mut(&t).unwrap().agent = None;
+    assert!(d.command(0, Command::QueueFollowUp { term: t, text: "ls".into() }).is_err());
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn a_pane_started_as_an_agent_keeps_its_name_while_the_agent_starts() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);

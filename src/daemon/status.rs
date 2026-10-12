@@ -41,6 +41,9 @@ pub(super) const UNASKED_QUESTION_GONE_AFTER: Duration = Duration::from_secs(8);
 static CHOICES: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"(?m)^[\s│┃]*[❯>]?\s*1\.\s+\S").unwrap());
 /// A "done" held while subagents run is let through once none has been heard from for this
 /// long (one died without saying so). Background agents can run, and wait on CI, for a while.
+/// After a queued follow-up goes in, the agent has this long to say it has started on it
+/// before the next one may go (an agent with no hooks never says).
+const QUEUED_TURN_STARTS_WITHIN: Duration = Duration::from_secs(60);
 pub(super) const SUBAGENTS_QUIET_AT_MOST: Duration = Duration::from_secs(60 * 60);
 /// A permission ping this soon after a "working" is Claude repeating one already answered.
 const REPEATED_PROMPT_WITHIN: Duration = Duration::from_secs(5);
@@ -224,6 +227,10 @@ impl Daemon {
         // Whatever it was about to say is out of date now.
         if let Some(t) = self.terms.get_mut(&term) {
             t.alert_due = None;
+            // A turn has started: the next queued follow-up waits for this one to end.
+            if new == Status::Working {
+                t.queue_sent = None;
+            }
         }
         if matches!(new, Status::Blocked | Status::Done) {
             self.broadcast(|c| c.attach, ServerMsg::Attention { term, status: new });
@@ -303,6 +310,19 @@ impl Daemon {
     }
 
     pub(super) fn update_statuses(&mut self) {
+        // A follow-up queued for an agent goes in when its turn is over: never into a question
+        // it's asking, and one at a time (the next waits for the turn this one starts).
+        for t in self.terms.values_mut() {
+            let turn_over = matches!(t.status, Status::Idle | Status::Done) && t.agent.is_some() && !t.asleep;
+            let last_taken = t.queue_sent.is_none_or(|at| at.elapsed() > QUEUED_TURN_STARTS_WITHIN);
+            if turn_over && last_taken && t.pending_input.is_none()
+                && let Some(next) = t.queue.pop_front()
+            {
+                t.pending_input = Some((format!("{}\r", next.replace(['\r', '\n'], " ")).into_bytes(), Instant::now()));
+                t.queue_sent = Some(Instant::now());
+                self.dirty = true;
+            }
+        }
         // Messages typed to a sleeping agent: deliver once it's ready (its hooks say idle) or
         // after a few seconds.
         for t in self.terms.values_mut() {

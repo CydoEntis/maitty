@@ -14,6 +14,7 @@ struct Kept {
     model: String,
     grants: Option<Vec<String>>,
     started_by: Option<TermId>,
+    queue: std::collections::VecDeque<String>,
 }
 
 impl Kept {
@@ -28,6 +29,7 @@ impl Kept {
             model: t.model.clone(),
             grants: t.grants.clone(),
             started_by: t.started_by,
+            queue: t.queue.clone(),
         }
     }
 
@@ -35,6 +37,7 @@ impl Kept {
         (t.agent, t.session, t.cmd) = (self.agent, self.session, self.cmd);
         (t.label, t.name, t.first_prompt) = (self.label, self.name, self.first_prompt);
         (t.model, t.grants, t.started_by) = (self.model, self.grants, self.started_by);
+        t.queue = self.queue;
     }
 }
 
@@ -108,6 +111,7 @@ impl Daemon {
             model: term.model.clone(),
             label: term.label.clone(),
             started_by: term.started_by,
+            queue: term.queue.iter().cloned().collect(),
         };
         let workspaces = self
             .workspaces
@@ -186,6 +190,7 @@ impl Daemon {
                                 t.first_prompt = pane.name.clone();
                                 t.model = pane.model.clone();
                                 t.label = pane.label.clone();
+                                t.queue = pane.queue.iter().cloned().collect();
                             }
                             map.insert(old, new);
                             ids.insert(old, new);

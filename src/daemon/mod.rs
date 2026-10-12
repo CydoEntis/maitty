@@ -47,6 +47,8 @@ const SLEEP_CHECK_EVERY: Duration = Duration::from_secs(30);
 const CPU_STEP: f32 = 5.0;
 /// How long a pane started as an agent may take to show that agent's process.
 const AGENT_SHOWS_WITHIN: Duration = Duration::from_secs(45);
+/// The most follow-ups one agent can have waiting.
+const QUEUE_MOST: usize = 20;
 /// A helper just started counts as working this long: its agent hasn't reported yet.
 const HELPER_SETTLES: Duration = Duration::from_secs(45);
 /// How often worktrees left behind (a session that crashed) are looked for, and how soon
@@ -399,6 +401,8 @@ impl Daemon {
             | Command::KillServer { .. } => {
                 self.may(client, Grant::Admin, None)
             }
+            // Typing into another pane, only later.
+            Command::QueueFollowUp { term, .. } | Command::ClearQueue { term } => self.may(client, Grant::Write, Some(*term)),
             Command::AnswerHuman { id, .. } => {
                 let asker = self.questions.iter().find(|(q, ..)| q.id == *id).map(|(q, ..)| q.term);
                 self.may(client, Grant::Respond, asker.filter(|_| false))
@@ -1086,6 +1090,7 @@ impl Daemon {
                     resume_at: t.resume_at,
                     subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
                     started_by: t.started_by,
+                    queued: t.queue.iter().cloned().collect(),
                 })
             })
             .collect();

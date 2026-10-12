@@ -445,6 +445,27 @@ impl Daemon {
                 self.set_status(q.term, Status::Working, "you answered it");
                 self.dirty = true;
             }
+            Command::QueueFollowUp { term, text } => {
+                let t = self.terms.get_mut(&term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+                let text = text.trim();
+                if t.agent.is_none() {
+                    anyhow::bail!("only an agent takes a follow-up");
+                }
+                if text.is_empty() {
+                    anyhow::bail!("there's nothing to queue");
+                }
+                if t.queue.len() >= QUEUE_MOST {
+                    anyhow::bail!("{QUEUE_MOST} follow-ups are already waiting for it");
+                }
+                t.queue.push_back(text.to_string());
+                self.dirty = true;
+            }
+            Command::ClearQueue { term } => {
+                if let Some(t) = self.terms.get_mut(&term) {
+                    t.queue.clear();
+                    self.dirty = true;
+                }
+            }
             Command::Grant { term, grants } => {
                 let known = ["read", "write", "start", "respond", "admin"];
                 if let Some(bad) = grants.iter().flatten().find(|g| !known.contains(&g.as_str())) {

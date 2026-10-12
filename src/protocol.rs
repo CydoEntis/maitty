@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Bump whenever a message shape changes; client and daemon refuse to talk across versions.
-pub const PROTOCOL_VERSION: u32 = 36;
+pub const PROTOCOL_VERSION: u32 = 37;
 
 pub type TermId = u32;
 pub type WsId = u32;
@@ -163,6 +163,10 @@ pub enum Command {
     /// What a pane may do through seshi (read, write, start, respond, admin); None goes back
     /// to the default from config. Only you can (not from inside a pane).
     Grant { term: TermId, grants: Option<Vec<String>> },
+    /// A follow-up for an agent that's working: typed into it when its turn is over.
+    QueueFollowUp { term: TermId, text: String },
+    /// Drop the follow-ups queued for a pane.
+    ClearQueue { term: TermId },
     /// `forget`: also discard the saved session, so the next start is a clean slate.
     KillServer { forget: bool },
 }
@@ -400,6 +404,9 @@ pub struct TermInfo {
     /// The pane whose agent started this one, if one did.
     #[serde(default)]
     pub started_by: Option<TermId>,
+    /// Follow-ups waiting for its turn to end, next first.
+    #[serde(default)]
+    pub queued: Vec<String>,
     /// The repository's main checkout, if the pane is in a repo.
     pub root: Option<PathBuf>,
     /// The checkout (main or a linked worktree) the pane is in.
@@ -539,6 +546,8 @@ mod tests {
             ClientMsg::Command(Command::AskHuman { term: 3, text: "Deploy?".into(), options: vec!["Yes".into(), "No".into()] }),
             ClientMsg::Command(Command::AnswerHuman { id: 1, choice: 0 }),
             ClientMsg::Command(Command::Grant { term: 3, grants: Some(vec!["read".into()]) }),
+            ClientMsg::Command(Command::QueueFollowUp { term: 3, text: "then run the tests".into() }),
+            ClientMsg::Command(Command::ClearQueue { term: 3 }),
             ClientMsg::Command(Command::TidyWorktrees { items: vec![(PathBuf::from("/code/.wt/rate"), false)] }),
             ClientMsg::Command(Command::RenamePane { term: 3, name: "x".into() }),
             ClientMsg::Command(Command::MoveToWorktree { term: 3, branch: Some("feat/x".into()) }),

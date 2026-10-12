@@ -330,6 +330,8 @@ pub(super) struct Session {
     pub resume_at: Option<u64>,
     /// The session whose agent started this one (its commander), if one did.
     pub started_by: Option<TermId>,
+    /// Follow-ups waiting for its turn to end, next first.
+    pub queued: Vec<String>,
     /// What everything running in it takes: CPU as a share of the machine (0 to 100), and
     /// memory in bytes.
     pub cpu: f32,
@@ -675,6 +677,7 @@ impl App {
                     context: t.usage.context,
                     resume_at: t.resume_at,
                     started_by: t.started_by,
+                    queued: t.queued.clone(),
                     cpu: t.cpu,
                     mem: t.mem,
                 });

@@ -53,6 +53,7 @@ mod design_tests {
             linked: false,
             subagents: Vec::new(),
             started_by: None,
+            queued: Vec::new(),
             root: None,
             top: None,
             since: 0,
@@ -1681,6 +1682,46 @@ mod hydra_tests {
         let at = lines.iter().position(|l| l.contains("✓ Copied")).expect("a toast");
         assert!(at < lines.len() - 2, "over the panes, above the bottom bar");
         assert!(!lines.last().unwrap().contains("Copied"), "not in the bottom bar");
+    }
+
+    #[test]
+    fn a_follow_up_to_a_working_agent_waits_its_turn() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        let key = |c: KeyCode, m: KeyModifiers| KeyEvent::new(c, m);
+        let sent = |rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::protocol::ClientMsg>| std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
+        let write = |app: &mut App, text: &str| {
+            app.start_compose(2, false, None);
+            for c in text.chars() {
+                app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+            }
+        };
+        // codex (2) is working: Enter leaves it with the server.
+        write(&mut app, "then run the tests");
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("send when it's done") && o.contains("Ctrl+Enter"), "the box says what Enter does now");
+        app.on_key(key(KeyCode::Enter, KeyModifiers::NONE));
+        let got = sent(&mut rx);
+        assert!(got.iter().any(|m| matches!(m, crate::protocol::ClientMsg::Command(crate::protocol::Command::QueueFollowUp { term: 2, text }) if text == "then run the tests")), "queued");
+        assert!(!got.iter().any(|m| matches!(m, crate::protocol::ClientMsg::Input { term: 2, .. })), "nothing typed into it now");
+        // Ctrl+Enter sends it now all the same.
+        write(&mut app, "stop");
+        app.on_key(key(KeyCode::Enter, KeyModifiers::CONTROL));
+        assert!(sent(&mut rx).iter().any(|m| matches!(m, crate::protocol::ClientMsg::Input { term: 2, .. })));
+        // Its turn over: Enter sends, as it always did.
+        app.snap.terms.get_mut(&2).unwrap().status = Status::Idle;
+        write(&mut app, "next thing");
+        app.on_key(key(KeyCode::Enter, KeyModifiers::NONE));
+        let got = sent(&mut rx);
+        assert!(got.iter().any(|m| matches!(m, crate::protocol::ClientMsg::Input { term: 2, .. })) && !got.iter().any(|m| matches!(m, crate::protocol::ClientMsg::Command(crate::protocol::Command::QueueFollowUp { .. }))));
+        // What's waiting shows under its row, and can be dropped from its menu.
+        app.snap.terms.get_mut(&2).unwrap().queued = vec!["then run the tests".into(), "and open a PR".into()];
+        app.mode = Mode::Normal;
+        let o = draw(&mut app, 160, 45);
+        assert!(o.contains("⏵ next: then run the t"), "under the row: {}", o.lines().find(|l| l.contains("⏵")).unwrap_or(""));
+        assert!(app.session_items(2).unwrap().1.iter().any(|(l, a)| l == "Drop queued follow-ups (2)" && *a == crate::client::menu::Act::ClearQueue(2)));
     }
 
     #[test]
