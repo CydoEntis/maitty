@@ -92,6 +92,27 @@ fn a_report_traced_outside_the_pane_is_dropped() {
 }
 
 #[test]
+fn a_pane_started_as_an_agent_keeps_its_name_while_the_agent_starts() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    // Woken (or moved, or restored): it is claude, with a conversation to resume, before
+    // claude's own process exists.
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.agent, p.session, p.summary) = (Some("claude".into()), Some("abc".into()), "the task".into());
+    }
+    let nothing_yet = |term| scan::Found { term, process: "powershell".into(), agent: None, cwd: None, agent_cwd: None, mem: 0, cpu: 0.0, remote: None };
+    d.handle(Ev::Scan(vec![nothing_yet(t)]));
+    let p = &d.terms[&t];
+    assert_eq!((p.agent.as_deref(), p.session.as_deref(), p.summary.as_str()), (Some("claude"), Some("abc"), "the task"), "still claude, conversation and all");
+    // Long past the time an agent takes to start, with still no agent there: it's a shell.
+    d.terms.get_mut(&t).unwrap().born = Instant::now() - super::AGENT_SHOWS_WITHIN - Duration::from_secs(1);
+    d.handle(Ev::Scan(vec![nothing_yet(t)]));
+    assert_eq!(d.terms[&t].agent, None);
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn an_agent_is_working_while_one_of_its_own_runs_in_the_background() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);

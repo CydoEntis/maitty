@@ -1931,7 +1931,7 @@ mod hydra_tests {
         app.got_state = true;
         app.snap.terms.get_mut(&1).unwrap().asleep = true;
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("zzZ asleep") && !o.contains("waking up"));
+        assert!(o.contains("zzZ asleep") && !o.contains("Waking"));
         // You click it: the server starts it again in a new pane (9) in its place, blank so far.
         let woken = |hook_at: u64| {
             let mut s = app.snap.clone();
@@ -1948,11 +1948,11 @@ mod hydra_tests {
         assert!(app.waking.contains_key(&9), "the pane that took its place");
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("waking up") && o.contains("picking up where it left off") && !o.contains("zzZ asleep"), "it says so instead of sitting blank");
+        assert!(o.contains("Waking claude") && o.contains("claude is picking up where it left off") && o.contains("z  z  Z") && !o.contains("zzZ asleep"), "it says so, by name, instead of sitting blank");
         // Its hooks report: it's back, and the note goes.
         app.on_server(crate::protocol::ServerMsg::State(back));
         assert!(super::woken(&app.snap.terms[&9], app.parsers.get(&9)) && !app.waking.contains_key(&9), "its hooks have reported");
-        assert!(!draw(&mut app, 160, 45).contains("waking up"));
+        assert!(!draw(&mut app, 160, 45).contains("Waking claude"));
         // An agent with no hooks counts as back once it has drawn its screen.
         let mut drawn = vt100::Parser::new(20, 80, 0);
         drawn.process(b"Welcome back\r\n> \r\nesc to interrupt\r\n");

@@ -45,6 +45,8 @@ const OUTPUT_SAVE_EVERY: Duration = Duration::from_secs(30);
 const SLEEP_CHECK_EVERY: Duration = Duration::from_secs(30);
 /// A pane's CPU share is passed on when it has moved this many points.
 const CPU_STEP: f32 = 5.0;
+/// How long a pane started as an agent may take to show that agent's process.
+const AGENT_SHOWS_WITHIN: Duration = Duration::from_secs(45);
 /// A helper just started counts as working this long: its agent hasn't reported yet.
 const HELPER_SETTLES: Duration = Duration::from_secs(45);
 /// How often worktrees left behind (a session that crashed) are looked for, and how soon
@@ -77,10 +79,10 @@ pub enum Ev {
         split: Option<TermId>,
         /// The pane that asked, noted when it asked: its connection is usually gone by now.
         by: Option<TermId>,
-        result: Result<(PathBuf, String), String>,
-    },
         /// The repo's setup (its on_create hook) has run: open what was asked for.
         set_up: bool,
+        result: Result<(PathBuf, String), String>,
+    },
     WorktreeRemoved { client: ClientId, path: PathBuf, result: Result<(), String> },
     /// Numbers read from Codex's session files (`usage::poll_codex`).
     /// What Codex's session files say: usage, limits, and what runs under each pane's session.
@@ -722,6 +724,12 @@ impl Daemon {
                     }
                     // Hooks own the agent identity while they're reporting.
                     if t.hooked && t.agent.is_some() {
+                        continue;
+                    }
+                    // Started as this agent (woken, moved, restored) and its process isn't up
+                    // yet: it is still that agent, not a shell that lost its name and its
+                    // conversation.
+                    if f.agent.is_none() && t.agent.is_some() && t.born.elapsed() < AGENT_SHOWS_WITHIN {
                         continue;
                     }
                     if t.agent != f.agent {
