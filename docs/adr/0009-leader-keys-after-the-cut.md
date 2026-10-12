@@ -18,7 +18,7 @@ back to herdr's.
 ## Decision
 
 After the leader: `j` the inbox (what needs you; type to go anywhere; a number
-answers), `n` a shell where you are, `p` (or `v`, `|`) a shell beside this one, `-`
+answers), `n` a shell where you are, `c` a fleet (a commander and its helpers), `p` (or `v`, `|`) a shell beside this one, `-`
 below, `z` zoom, `x` close, arrows move focus, `H J K L` resize, `b` the sidebar,
 `t` new tab, `r` rename it, `]` `[` next and previous, `X` close it, `w` worktrees (a
 second step), `W` a new worktree, `f` files, `d` changes, `F` find a file, `/` search

@@ -12,7 +12,7 @@ const MATCHES_SHOWN: usize = 12;
 /// The key map's groups: what each key does, in the design's words.
 fn groups() -> Vec<(&'static str, Vec<(Action, &'static str)>)> {
     vec![
-        ("AGENTS", vec![(Action::Jump, "inbox"), (Action::ShellHere, "new shell here")]),
+        ("AGENTS", vec![(Action::Jump, "inbox"), (Action::ShellHere, "new shell here"), (Action::StartFleet, "start a fleet")]),
         ("PANES", vec![(Action::SplitRight, "new pane beside"), (Action::ToggleSidebar, "hide sidebar"), (Action::ClosePane, "close"), (Action::Focus(Dir::Left), "move focus")]),
         ("TABS", vec![(Action::NewTab, "new tab"), (Action::SelectTab(1), "go to tab"), (Action::RenameTab, "rename")]),
         ("PROJECT", vec![(Action::Worktrees, "worktrees  ›"), (Action::Files, "files"), (Action::Changes, "changes")]),

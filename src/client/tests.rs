@@ -1055,6 +1055,8 @@ mod hydra_tests {
             })
         };
         assert!(hydra::action_items().iter().any(|(name, a)| *name == "Start a fleet" && *a == Action::StartFleet), "in the actions list");
+        let c: crate::keys::KeySpec = "c".parse().unwrap();
+        assert_eq!(app.keymap.prefixed.get(&c), Some(&Action::StartFleet), "with a leader key of its own: c");
         app.hy.saved.draft = "a task left from before".into();
         app.act(Action::StartFleet);
         assert!(matches!(&app.mode, Mode::HyPane(np) if np.fleet && np.task.is_empty()), "the goal box, empty");

@@ -179,6 +179,7 @@ second step (`w` worktrees: new, switch, merge, delete; Backspace goes back).
 | arrows | focus the pane that way (left past the edge: the sidebar). `Alt`+arrows do it without the leader (Settings → General turns that off) |
 | `v` / `-` / `H J K L` | split right / split down / resize |
 | `t` / `r` / `]` `[` / `X` | **tabs**: new tab (a shell where you are) / rename it in its pill (or double-click it) / next, previous / close it. `Alt+1`–`9` (no leader) goes to a tab |
+| `c` | start a fleet: a goal, and the agent that commands it |
 | `w` / `f` / `d` | worktrees › / files / changes |
 | `e` / `Space` / `a` | focus the sidebar / command palette / actions |
 | `F` / `/` / `B` | find a file / search the code / switch branch |
@@ -278,7 +279,7 @@ scope = "project"    # project: only sessions in the calling agent's repo | all
 
 ## Fleets
 
-Give one agent a goal and let it run the others. **Start a fleet** (in `actions`) asks for the
+Give one agent a goal and let it run the others. **Start a fleet** (`<leader> c`, or in `actions`) asks for the
 goal and which agent is the **commander**; the commander splits the work up, starts helpers in their
 own worktrees, checks what comes back and reports to you. Helpers sit under their commander in the
 sidebar, and one that needs you still goes to the top.

@@ -642,6 +642,7 @@ pub(super) fn key_rows() -> Vec<(&'static str, Vec<(&'static str, Vec<crate::key
             "START",
             vec![
                 ("New session (a shell here)", vec![A::ShellHere]),
+                ("Start a fleet (a commander and its helpers)", vec![A::StartFleet]),
                 ("Rename session", vec![A::RenameWorkspace]),
             ],
         ),

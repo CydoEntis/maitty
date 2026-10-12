@@ -515,6 +515,7 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("m", "message"),
     ("i", "why"),
     ("n", "shell-here"),
+    ("c", "start-fleet"),
     // Panes
     ("p", "split-right"),
     ("z", "toggle-sidebar"),
