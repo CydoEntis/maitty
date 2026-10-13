@@ -436,8 +436,11 @@ impl App {
             Some(c) => {
                 // Asked from the sidebar: come back to it afterwards, on the next row (the
                 // one asked about is going), or the same row when it stays.
+                // The cursor is still on a row when the leader key or the actions list was
+                // opened from the sidebar: that's the sidebar too.
+                let from_side = self.mode == Mode::Side || self.hy.cursor.is_some() || self.hy.cursor_proj.is_some();
                 self.hy.side_return = match &c.act {
-                    _ if self.mode != Mode::Side => None,
+                    _ if !from_side => None,
                     Act::Commander(t) | Act::Restore(_, _, _, t) => Some(super::hydra::SideItem::Sess(*t)),
                     _ => self.side_after_close(),
                 };

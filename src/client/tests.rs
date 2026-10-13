@@ -769,6 +769,14 @@ mod hydra_tests {
         app.on_key(key(KeyCode::Enter));
         assert!(matches!(app.mode, Mode::Side), "after closing, the keys stay in the sidebar");
         assert_eq!(next.map(|n| n != hydra::SideItem::Sess(first)), Some(true));
+        // The leader key's close, from the sidebar: the cursor's row, and the keys stay too.
+        let on = app.hy.cursor.or_else(|| app.hy.side_items.iter().find_map(|i| match i { hydra::SideItem::Sess(t) => Some(*t), _ => None })).unwrap();
+        app.hy_side_set(hydra::SideItem::Sess(on));
+        app.mode = Mode::Prefix { since: std::time::Instant::now() };
+        app.act(Action::ClosePane);
+        assert!(matches!(&app.mode, Mode::Confirm(c) if c.act == crate::client::menu::Act::End(vec![on])), "it asks about the row the cursor is on");
+        app.on_key(key(KeyCode::Enter));
+        assert!(matches!(app.mode, Mode::Side), "and afterwards you're still in the sidebar");
         app.hy_side_set(hydra::SideItem::Sess(first));
         // Enter opens it and gives the keys back to the pane.
         app.on_key(key(KeyCode::Enter));

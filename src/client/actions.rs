@@ -27,7 +27,8 @@ impl App {
                 }
             }
             Action::ClosePane => {
-                if let Some(term) = focused {
+                // From the sidebar it's the row the cursor is on, as its x is.
+                if let Some(term) = self.hy.cursor.or(focused) {
                     self.menu_act(menu::Act::End(vec![term]));
                 }
             }
