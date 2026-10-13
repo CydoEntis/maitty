@@ -1004,7 +1004,9 @@ mod screen;
 mod sheet;
 mod splash;
 mod tidy;
+mod wake;
 
+pub(in crate::client) use self::wake::{Wake, WakeStyle};
 pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, screen::*, splash::*, sheet::*, popover::*, heads::*, tidy::*};
 
 

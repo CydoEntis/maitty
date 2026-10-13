@@ -173,6 +173,8 @@ pub(in crate::client) struct Card<'a> {
     /// Dim, after the title, dropped when there isn't room.
     pub sub: &'a str,
     pub state: Option<Status>,
+    /// Its sleeping agent is waking: said in place of the state.
+    pub waking: bool,
     /// A short note left of the state (what it's taking of the machine), in its colour.
     /// Dropped first when the title needs the room.
     pub note: Option<(String, Color)>,
@@ -190,7 +192,7 @@ pub(in crate::client) struct Card<'a> {
 
 impl<'a> Card<'a> {
     pub fn new(t: &Theme, title: &'a str) -> Card<'a> {
-        Card { title, sub: "", state: None, note: None, close: None, border: t.line, bold: false, title_fg: t.text, bg: pane_bg(t), foot: Vec::new(), foot_r: Vec::new() }
+        Card { title, sub: "", state: None, waking: false, note: None, close: None, border: t.line, bold: false, title_fg: t.text, bg: pane_bg(t), foot: Vec::new(), foot_r: Vec::new() }
     }
 
     /// The focused look: the border and title in `c`, bold.
@@ -249,7 +251,10 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
                 out.push(seg(edges.top, b));
             }
         }
-        if let Some(st) = c.state {
+        if c.waking {
+            let label = if short { "" } else { " waking" };
+            out.push(seg(format!(" {}{label} ", glyph(app, Status::Working)), desk.fg(t.accent).add_modifier(Modifier::BOLD)));
+        } else if let Some(st) = c.state {
             let mut s = desk.fg(state_color(t, st));
             if st == Status::Blocked {
                 s = s.add_modifier(Modifier::BOLD);
@@ -257,7 +262,7 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
             let label = if short { String::new() } else { format!(" {}", state_label(st)) };
             out.push(seg(format!(" {}{label} ", glyph(app, st)), s));
         }
-        if c.state.is_some() && c.close.is_some() {
+        if (c.state.is_some() || c.waking) && c.close.is_some() {
             out.push(seg(edges.top, b));
         }
         if c.close.is_some() {

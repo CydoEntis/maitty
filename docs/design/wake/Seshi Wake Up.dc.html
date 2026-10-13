@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>@font-face{font-family:'JBM';src:url(https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono@2.304/fonts/webfonts/JetBrainsMono-Regular.woff2) format('woff2');font-weight:400}@font-face{font-family:'JBM';src:url(https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono@2.304/fonts/webfonts/JetBrainsMono-Bold.woff2) format('woff2');font-weight:700}@font-face{font-family:'JBM';src:url(https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono@2.304/fonts/webfonts/JetBrainsMono-Italic.woff2) format('woff2');font-style:italic}body{margin:0;background:#161616;color:#c8c8c8;font-family:'JBM',monospace}a{color:#22b8b0}a:hover{color:#e8e8e8}</style>
+</helmet>
+<div style="display:flex;flex-direction:column;gap:14px;padding:24px 28px;align-items:flex-start;min-height:100%;box-sizing:border-box;background:#161616">
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <span style="background:#22b8b0;color:#111;font-weight:700;font-size:13px;padding:3px 10px;border-radius:999px">wake-up transition</span>
+    <span style="font-size:13px;color:#8a8a8a">Click the pane (or press Enter) to wake brave-wren. Click again to put it back to sleep.</span>
+  </div>
+  <div style="overflow-x:auto;max-width:100%"><canvas ref="{{ canvasRef }}" tabIndex="0" style="display:block;outline:none;border:1px solid #2a2a2a;cursor:pointer"></canvas></div>
+  <div style="font-size:12px;color:#8a8a8a;max-width:1100px;line-height:1.7;text-wrap:pretty">Exact 160×45 cell grid. <b style="color:#e8e8e8">Rain</b> (0.0–0.9s): columns of half-width katakana and digits fall at their own speeds, bright head, teal trail. <b style="color:#e8e8e8">Dissolve</b> (0.9–2.6s): each cell gets a random fade-out time, weighted so the centre clears first; the label sits on a cleared pill and the bar fills. <b style="color:#e8e8e8">Restore</b> (2.6s+): the scrollback reappears line by line from the top, then the state goes from zzZ asleep to ○ idle. If the agent takes longer, the dissolve holds at 85% until it answers. Respects reduced motion: it skips straight to a 300ms fade.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  canvasRef = React.createRef();
+  componentDidMount() {
+    const W = 160, H = 45, CW = 9, CH = 18, cv = this.canvasRef.current, dpr = window.devicePixelRatio || 1;
+    cv.width = W * CW * dpr; cv.height = H * CH * dpr; cv.style.width = W * CW + 'px'; cv.style.height = H * CH + 'px';
+    const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr); ctx.textBaseline = 'top';
+    const C = { bg: '#1c1c1c', pane: '#222222', line: '#3a3a3a', teal: '#22b8b0', tealDim: '#14605c', text: '#c8c8c8', dim: '#7a7a7a', strong: '#eeeeee', sel: '#5b5fc7', pink: '#e0708f', green: '#7fb800', amber: '#e5a50a', pill: '#333333' };
+    const GLY = 'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ0123456789:.=*+<>¦';
+    const rnd = n => Math.floor(Math.random() * n), pick = () => GLY[rnd(GLY.length)];
+    const mixc = (a, b, t) => { const p = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); const A = p(a), B = p(b); return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join(''); };
+    let grid;
+    const reset = () => { grid = Array.from({ length: H }, () => Array.from({ length: W }, () => ({ ch: ' ', fg: C.text, bg: C.bg, b: 0, i: 0 }))); };
+    const set = (x, y, ch, o = {}) => { if (x < 0 || y < 0 || x >= W || y >= H) return; const c = grid[y][x]; c.ch = ch; if (o.fg) c.fg = o.fg; if (o.bg) c.bg = o.bg; c.b = o.b || 0; c.i = o.i || 0; };
+    const put = (x, y, s, o) => { [...s].forEach((ch, k) => set(x + k, y, ch, o)); return x + [...s].length; };
+    const fill = (x, y, w, h, bg) => { for (let r = y; r < y + h; r++) for (let c = x; c < x + w; c++) set(c, r, ' ', { bg }); };
+    const box = (x, y, w, h, fg, bg) => { fill(x, y, w, h, bg); for (let c = x + 1; c < x + w - 1; c++) { set(c, y, '─', { fg, bg: C.bg }); set(c, y + h - 1, '─', { fg, bg: C.bg }); } for (let r = y + 1; r < y + h - 1; r++) { set(x, r, '│', { fg, bg: C.bg }); set(x + w - 1, r, '│', { fg, bg: C.bg }); } set(x, y, '╭', { fg, bg: C.bg }); set(x + w - 1, y, '╮', { fg, bg: C.bg }); set(x, y + h - 1, '╰', { fg, bg: C.bg }); set(x + w - 1, y + h - 1, '╯', { fg, bg: C.bg }); };
+    const PX = 22, PY = 3, PW = W - PX - 1, PH = H - PY - 1, IX = PX + 2, IY = PY + 1, IW = PW - 4, IH = PH - 3;
+    const OUT = [
+      [['● ', C.green], ['Read(src/ui/AgentList.tsx)', C.text]], [['  └ 188 lines', C.dim]], [],
+      [['● ', C.green], ['The list scrolls back to the top because scrollTop resets on every re-render.', C.text]], [],
+      [['● ', C.green], ['Update(src/ui/AgentList.tsx)', C.text]], [['  └ ', C.dim], ['+6 −2', C.green]], [],
+      [['● ', C.green], ['Bash(npm test -- AgentList)', C.text]], [['  └ ', C.dim], ['12 passed', C.green], [', 0 failed', C.dim]], [],
+      [['● ', C.text], ['Fixed: the list keeps its scroll position when you click an agent.', C.strong]], [], [['> ', C.dim], ['█', C.teal]]];
+    let st = { mode: 'asleep', t0: 0 }, cols = [], die = [];
+    const initRain = () => {
+      cols = Array.from({ length: IW }, () => ({ y: -rnd(IH), sp: 0.35 + Math.random() * 0.9, len: 6 + rnd(18) }));
+      die = Array.from({ length: IH }, (_, r) => Array.from({ length: IW }, (_, c) => { const dx = (c - IW / 2) / (IW / 2), dy = (r - IH / 2) / (IH / 2), d = Math.min(1, Math.sqrt(dx * dx + dy * dy)); return 0.15 + d * 0.55 + Math.random() * 0.3; }));
+      rain = Array.from({ length: IH }, () => Array.from({ length: IW }, () => ({ ch: pick(), a: 0 })));
+    };
+    let rain = [];
+    const chrome = (state) => {
+      reset(); fill(0, 0, W, H, C.bg);
+      box(1, 1, 20, H - 2, C.line, C.bg);
+      let y = 2; const hd = (n, k) => { put(3, y, n, { fg: C.dim, b: 1 }); put(3 + n.length, y, ' ' + k + ' ', { fg: C.dim, b: 1 }); for (let c = 3 + n.length + k.length + 2; c < 19; c++) set(c, y, '─', { fg: C.line }); y++; };
+      hd('AGENTS', '3');
+      put(3, y, '▾ ', { fg: C.teal }); put(5, y++, 'browser-4x', { fg: C.strong, b: 1 });
+      put(3, y, 'zzZ ', { fg: C.dim }); put(7, y++, 'Commander', { fg: C.dim });
+      put(6, y++, '⇆ 3 shared', { fg: C.pink, i: 1 }); y++;
+      put(3, y, '▾ ', { fg: C.teal }); put(5, y++, 'drover', { fg: C.strong, b: 1 });
+      fill(2, y, 18, 1, C.sel); set(2, y, '\ue0b6', { fg: C.sel, bg: C.bg }); set(19, y, '\ue0b4', { fg: C.sel, bg: C.bg });
+      const g = state === 'asleep' ? 'z' : state === 'idle' ? '○' : '⣾';
+      put(5, y, g, { fg: C.strong, bg: C.sel }); put(7, y, 'brave-wren', { fg: C.strong, bg: C.sel, b: 1 }); y += 2;
+      hd('TERMINALS', '8');
+      ['fix-the-facti', 'redraw-the-or', 'fix-tile-clic', 'art-job-for-r'].forEach(n => { put(3, y, 'zzZ ', { fg: C.dim }); put(7, y++, n, { fg: C.dim }); });
+      for (let c = 3; c < 19; c++) set(c, H - 4, '─', { fg: C.line });
+      put(3, H - 3, 'a', { fg: C.teal, b: 1 }); put(4, H - 3, 'ctions', { fg: C.text });
+      put(0 + PX, 1, '', {}); fill(PX, 1, 9, 1, C.bg);
+      set(PX, 1, '\ue0b6', { fg: C.teal }); put(PX + 1, 1, ' 1 ' + (state === 'idle' ? '○' : 'z') + ' ', { fg: '#111', bg: C.teal, b: 1 }); set(PX + 6, 1, '\ue0b4', { fg: C.teal }); put(PX + 8, 1, '+', { fg: C.teal, b: 1 });
+      box(PX, PY, PW, PH, C.teal, C.pane);
+      let tx = put(PX + 2, PY, ' brave-wren ', { fg: C.teal, b: 1, bg: C.bg }); tx = put(tx, PY, '─ ', { fg: C.teal, bg: C.bg }); put(tx, PY, 'Agent list scroll jump on click · drover ', { fg: C.text, bg: C.bg });
+      const tag = state === 'asleep' ? ' zzZ asleep ' : state === 'idle' ? ' ○ idle ' : ' ⣾ waking ';
+      put(PX + PW - 5 - tag.length, PY, tag, { fg: state === 'waking' ? C.teal : C.dim, bg: C.bg, b: state === 'waking' }); put(PX + PW - 4, PY, ' ✕ ', { fg: C.dim, bg: C.bg });
+      put(IX + 1, PY + PH - 2, 'C:\\dev\\ideaplosion\\drover-worktrees\\brave-wren · ', { fg: C.dim, bg: C.pane }); put(IX + 49, PY + PH - 2, '⎇ brave-wren', { fg: C.green, bg: C.pane });
+      put(PX + PW - 12, PY + PH - 2, 'opus 4.5', { fg: C.dim, bg: C.pane });
+    };
+    const center = (yy, segs, bg) => { const len = segs.reduce((n, s) => n + [...s[0]].length, 0); let x = IX + Math.floor((IW - len) / 2); if (bg) { fill(x - 2, yy, len + 4, 1, bg); set(x - 3, yy, '\ue0b6', { fg: bg, bg: C.pane }); set(x + len + 2, yy, '\ue0b4', { fg: bg, bg: C.pane }); } segs.forEach(([t, fg, b]) => { x = put(x, yy, t, { fg, bg: bg || C.pane, b }); }); return x; };
+    const SP = '⣾⣽⣻⢿⡿⣟⣯⣷';
+    const RAIN_END = 900, DIS_END = 2600, REST_END = 3400;
+    const frame = now => {
+      const t = now - st.t0;
+      if (st.mode === 'asleep') {
+        chrome('asleep');
+        center(IY + Math.floor(IH / 2) - 1, [['zzZ ', C.dim], ['brave-wren is asleep', C.text]]);
+        center(IY + Math.floor(IH / 2) + 1, [['click or ', C.dim], ['Enter', C.teal, 1], [' to wake it · its session is saved', C.dim]]);
+      } else if (st.mode === 'waking' && t < DIS_END) {
+        chrome('waking');
+        const dt = 16;
+        cols.forEach((c, x) => { c.y += c.sp * (t < RAIN_END ? 1 : 0.6); const hy = Math.floor(c.y); if (hy >= 0 && hy < IH) { rain[hy][x].ch = pick(); rain[hy][x].a = 1; } if (c.y - c.len > IH) { c.y = -rnd(8); c.sp = 0.35 + Math.random() * 0.9; } });
+        const p = t < RAIN_END ? 0 : Math.min(1, (t - RAIN_END) / (DIS_END - RAIN_END - 200));
+        for (let r = 0; r < IH; r++) for (let x = 0; x < IW; x++) {
+          const k = rain[r][x]; k.a *= 0.955; if (Math.random() < 0.02) k.ch = pick();
+          if (k.a < 0.04) continue;
+          if (p > 0 && p * 1.15 > die[r][x]) continue;
+          const head = k.a > 0.97, fadeEdge = p > 0 && p * 1.15 > die[r][x] - 0.08;
+          const fg = head ? '#d8fffb' : fadeEdge ? mixc(C.teal, C.pane, 0.7) : mixc(C.pane, C.teal, Math.min(1, k.a * 1.1));
+          set(IX + x, IY + r, k.ch, { fg, bg: C.pane, b: head });
+        }
+        const pct = Math.min(100, Math.round(Math.min(1, t / (DIS_END - 200)) * 100)), bw = 24, fl = Math.round(bw * pct / 100);
+        const my = IY + Math.floor(IH / 2) - 1;
+        center(my, [[SP[Math.floor(t / 80) % 8] + ' ', C.amber], ['waking up', C.teal, 1], [' · picking up where it left off', C.text]], C.pill);
+        center(my + 2, [['━'.repeat(fl), C.teal], ['━'.repeat(bw - fl), C.line], ['  ' + (t < RAIN_END ? 'restoring session' : t < 1800 ? 'reattaching opus 4.5' : 'replaying scrollback'), C.dim]], null);
+      } else {
+        const rt = st.mode === 'idle' ? 1e9 : t - DIS_END, shown = Math.min(OUT.length, Math.floor(rt / 55));
+        chrome(shown >= OUT.length ? 'idle' : 'waking');
+        OUT.slice(0, shown).forEach((l, i) => { let x = IX + 1; l.forEach(([s, fg]) => { x = put(x, IY + 1 + i, s, { fg, bg: C.pane }); }); });
+        if (rt < 900) { const a = rt / 900; center(IY + Math.floor(IH / 2) - 1, [['✓ ', mixc(C.green, C.pane, a)], ['awake', mixc(C.teal, C.pane, a), 1], [' · back where it left off', mixc(C.text, C.pane, a)]], mixc(C.pill, C.pane, a)); }
+        if (shown >= OUT.length && st.mode !== 'idle') st.mode = 'idle';
+      }
+      ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W * CW, H * CH);
+      for (let r = 0; r < H; r++) for (let x = 0; x < W; x++) { const c = grid[r][x]; if (c.bg !== C.bg) { ctx.fillStyle = c.bg; ctx.fillRect(x * CW, r * CH, CW + 0.5, CH + 0.5); } }
+      for (let r = 0; r < H; r++) for (let x = 0; x < W; x++) {
+        const c = grid[r][x]; if (c.ch === ' ') continue;
+        ctx.fillStyle = c.fg;
+        if (c.ch === '\ue0b6' || c.ch === '\ue0b4') { ctx.beginPath(); const cx = c.ch === '\ue0b6' ? x * CW + CW : x * CW; ctx.ellipse(cx, r * CH + CH / 2, CW, CH / 2 - 1, 0, c.ch === '\ue0b6' ? Math.PI / 2 : -Math.PI / 2, c.ch === '\ue0b6' ? Math.PI * 1.5 : Math.PI / 2); ctx.fill(); continue; }
+        ctx.font = (c.i ? 'italic ' : '') + (c.b ? '700 ' : '400 ') + '13px JBM, monospace';
+        ctx.fillText(c.ch, x * CW, r * CH + 2, CW + 1);
+      }
+      this.raf = requestAnimationFrame(frame);
+    };
+    const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const toggle = () => { if (st.mode === 'asleep') { initRain(); st = { mode: reduced ? 'restore' : 'waking', t0: performance.now() - (reduced ? DIS_END : 0) }; } else if (st.mode === 'idle') { st = { mode: 'asleep', t0: 0 }; } try { localStorage.setItem('seshi-wake', st.mode === 'asleep' ? 'asleep' : 'awake'); } catch (e) {} };
+    cv.addEventListener('click', toggle);
+    cv.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+    document.fonts && document.fonts.load('13px JBM');
+    this.raf = requestAnimationFrame(frame);
+  }
+  componentWillUnmount() { cancelAnimationFrame(this.raf); }
+  renderVals() { return { canvasRef: this.canvasRef }; }
+}
+</script>
+</body>
+</html>

@@ -541,6 +541,9 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     // left of the icon column so the name stays in line with the others.
                     let zs: Vec<Seg> = SLEEP_ZS.iter().map(|(z, f)| seg(*z, st.fg(blend(bg, t.text, *f)).add_modifier(Modifier::BOLD))).collect();
                     put(buf, x0 + 3 + indent, y, &zs, name_x);
+                } else if app.waking.contains_key(&s.term) {
+                    // Waking: the spinner, in the colour of its pane's "waking".
+                    put(buf, x0 + 5 + indent, y, &[seg(glyph(app, Status::Working), st.fg(t.accent).add_modifier(Modifier::BOLD))], name_x);
                 } else {
                     put(buf, x0 + 5 + indent, y, &[seg(gl, gs)], name_x);
                 }
@@ -776,8 +779,6 @@ pub(in crate::client) fn row_menu_button(app: &mut App, buf: &mut Buffer, r: Rec
 
 /// A sleeping row's three z's and how strongly each shows: small and faint to big and clear.
 const SLEEP_ZS: [(&str, f32); 3] = [("z", 0.5), ("z", 0.75), ("Z", 1.0)];
-/// The longest name the waking pane spells out.
-const WAKING_NAME_MAX: usize = 48;
 
 /// A small glyph button on a sidebar row (⋯, +): just the glyph on the row's own ground,
 /// brightening when it's the one under the mouse.
@@ -978,6 +979,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     let mut c = Card::new(t, &name);
     c.sub = &sub;
     c.state = info.agent.is_some().then_some(st).filter(|s| *s != Status::None);
+    c.waking = app.waking.contains_key(&term);
     // What it's taking of the machine, beside its state: where you look when the PC is slow.
     c.note = load_note(info.cpu, info.mem).map(|(load, heavy)| (load, if heavy { t.working } else { t.muted }));
     c.close = Some(HyHit::CloseSplit(term));
@@ -1069,31 +1071,14 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         put(f.buffer_mut(), x, inner.y + inner.height / 2, &note, inner.right());
     }
 
-    // Just woken: blank until the agent has started again. Say so, or it looks broken.
-    if let Some(since) = app.waking.get(&term).copied() {
-        let name = found.map(|(_, _, s)| s.name.clone()).unwrap_or_else(|| info.display_name());
-        let who = info.agent.clone().unwrap_or_else(|| "it".into());
-        let ground = Style::default().bg(c.bg);
-        // The sidebar's zzZ, drifting up and away as it wakes.
-        let zs: Vec<Seg> = SLEEP_ZS.iter().flat_map(|(z, bright)| [seg(*z, ground.fg(blend(c.bg, t.text, *bright)).add_modifier(Modifier::BOLD)), seg("  ", ground)]).collect();
-        let lines: [Vec<Seg>; 4] = [
-            zs,
-            Vec::new(),
-            vec![
-                seg(format!("{}  ", glyph(app, Status::Working)), ground.fg(t.working).add_modifier(Modifier::BOLD)),
-                seg("Waking ", ground.fg(t.text)),
-                seg(truncate(&name, WAKING_NAME_MAX), ground.fg(t.strong).add_modifier(Modifier::BOLD)),
-            ],
-            vec![seg(format!("{who} is picking up where it left off · {}s", since.elapsed().as_secs()), ground.fg(t.muted))],
-        ];
-        let top = inner.y + inner.height.saturating_sub(lines.len() as u16) / 2;
-        for (i, line) in lines.iter().enumerate() {
-            let w = segs_width(line);
-            let y = top + i as u16;
-            if y < inner.bottom() {
-                put(f.buffer_mut(), inner.x + inner.width.saturating_sub(w) / 2, y, line, inner.right());
-            }
-        }
+    // Just woken: its transition plays over the inside until the agent is back and its
+    // screen has been brought in.
+    if let Some(mut wake) = app.waking.remove(&term) {
+        let model_name = found.map(|(_, _, s)| s.model.clone()).filter(|m| !m.is_empty());
+        let who = model_name.or_else(|| info.agent.clone()).unwrap_or_else(|| "the agent".into());
+        let ink = super::wake::Ink { theme: t, look, ground: c.bg, who: &who };
+        super::wake::draw(f.buffer_mut(), inner, &mut wake, Instant::now(), &ink);
+        app.waking.insert(term, wake);
     }
 
     // Not the one you're in: its inside fades (the border and its amber tag stay as they are).

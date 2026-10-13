@@ -187,9 +187,12 @@ impl App {
     fn note_wakes(&mut self, new: &crate::protocol::Snapshot) {
         let slept: Vec<&TermInfo> = self.snap.terms.values().filter(|t| t.asleep && !new.terms.contains_key(&t.id)).collect();
         let now = Instant::now();
+        let style = self.wake_style();
+        // No two wakes rain alike.
+        let seed = self.started.elapsed().as_nanos() as u64;
         for t in new.terms.values().filter(|t| !self.snap.terms.contains_key(&t.id)) {
             if slept.iter().any(|o| o.agent == t.agent && o.cwd == t.cwd) {
-                self.waking.insert(t.id, now);
+                self.waking.insert(t.id, hydra::Wake::new(now, style, u64::from(t.id) ^ seed));
             }
         }
     }

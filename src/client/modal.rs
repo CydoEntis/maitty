@@ -90,6 +90,7 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "ui.mouse", label: "Mouse", kind: Kind::Bool, cat: Cat::General, help: "Click, hover, scroll and drag. Hold Shift to select text with your terminal instead." },
     Setting { path: "ui.alt_arrows", label: "Alt+arrows move between panes", kind: Kind::Bool, cat: Cat::General, help: "Without the leader. Turn it off if your shell jumps words with Alt+arrows." },
     Setting { path: "ui.motion", label: "Motion", kind: Kind::Bool, cat: Cat::General, help: "The sidebar and the sheet slide in, the highlight glides, toasts slide and fade (under 150 ms). Always off over SSH." },
+    Setting { path: "ui.wake_animation", label: "Wake-up animation", kind: Kind::Choice(&["on", "simple", "off"]), cat: Cat::General, help: "What a pane plays as its sleeping agent wakes. on: rain that dissolves into its screen. simple: a note, then a fade. With Motion off, on is simple." },
     Setting { path: "ui.which_key", label: "Keys after a pause", kind: Kind::Bool, cat: Cat::General, help: "After the leader key, show every shortcut if you pause." },
     Setting { path: "ui.sidebar_position", label: "Sidebar side", kind: Kind::Choice(&["left", "right"]), cat: Cat::General, help: "Which edge the sidebar sits on." },
     Setting { path: "ui.start_dir", label: "Start folder", kind: Kind::Folder, cat: Cat::General, help: "Where plain `seshi` opens (and the shell after you close everything). Empty: wherever you run it. ~ is home." },

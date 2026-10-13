@@ -248,6 +248,11 @@ Omarchy / Hyprland the window is brought forward too); on macOS, install
 to save memory. They keep their place; open one and it resumes its conversation
 (`claude --resume`, `codex resume`).
 
+While it wakes, its pane plays a short transition: rain that dissolves from the centre, a
+"waking up" note with a progress bar, then its screen coming back line by line. A slow agent
+holds the dissolve until it's back. Settings → Wake-up animation (`ui.wake_animation`) is
+`on`, `simple` (the note, then a fade) or `off`; with Motion off, `on` is `simple`.
+
 ## Settled and snoozed
 
 An agent that has sat finished or idle for `settle_after` (default `"3d"`; `"never"` turns it

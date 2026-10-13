@@ -87,6 +87,9 @@ pub struct Ui {
     /// Short slides and glides (the sidebar, the sheet, the highlight, toasts). Always off
     /// over SSH.
     pub motion: bool,
+    /// What a pane plays as its sleeping agent wakes: "on" (rain that dissolves into its
+    /// screen), "simple" (a note, then a fade) or "off". With `motion` off, "on" is simple.
+    pub wake_animation: String,
     /// Alt+arrows move between panes without the leader (off: they go to the program, for
     /// shells that jump words with them).
     pub alt_arrows: bool,
@@ -486,6 +489,7 @@ impl Default for Ui {
             splash: true,
             update_check: true,
             motion: true,
+            wake_animation: "on".into(),
             alt_arrows: true,
             start_dir: String::new(),
             attention_sort: true,

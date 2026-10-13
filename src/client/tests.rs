@@ -2038,9 +2038,11 @@ mod hydra_tests {
     fn a_woken_agents_pane_says_its_waking_until_the_agent_is_back() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.got_state = true;
+        // The short one: the rain has tests of its own (hydra::wake).
+        app.cfg.ui.wake_animation = "simple".into();
         app.snap.terms.get_mut(&1).unwrap().asleep = true;
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("zzZ asleep") && !o.contains("Waking"));
+        assert!(o.contains("zzZ asleep") && !o.contains("waking up"));
         // You click it: the server starts it again in a new pane (9) in its place, blank so far.
         let woken = |hook_at: u64| {
             let mut s = app.snap.clone();
@@ -2057,11 +2059,14 @@ mod hydra_tests {
         assert!(app.waking.contains_key(&9), "the pane that took its place");
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("Waking claude") && o.contains("claude is picking up where it left off") && o.contains("z  z  Z") && !o.contains("zzZ asleep"), "it says so, by name, instead of sitting blank");
+        assert!(o.contains("waking up · picking up where it left off") && o.contains("waking ") && !o.contains("zzZ asleep"), "it says so (in its title too) instead of sitting blank");
         // Its hooks report: it's back, and the note goes.
         app.on_server(crate::protocol::ServerMsg::State(back));
-        assert!(super::woken(&app.snap.terms[&9], app.parsers.get(&9)) && !app.waking.contains_key(&9), "its hooks have reported");
-        assert!(!draw(&mut app, 160, 45).contains("Waking claude"));
+        assert!(super::woken(&app.snap.terms[&9], app.parsers.get(&9)) && app.waking[&9].ready.is_some(), "its hooks have reported: the transition can finish");
+        // A short fade, then it's an ordinary pane.
+        std::thread::sleep(std::time::Duration::from_millis(320));
+        app.on_server(crate::protocol::ServerMsg::State(app.snap.clone()));
+        assert!(!app.waking.contains_key(&9) && !draw(&mut app, 160, 45).contains("waking up"));
         // An agent with no hooks counts as back once it has drawn its screen.
         let mut drawn = vt100::Parser::new(20, 80, 0);
         drawn.process(b"Welcome back\r\n> \r\nesc to interrupt\r\n");
