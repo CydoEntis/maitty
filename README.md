@@ -160,8 +160,12 @@ split beside a session stays with it.
   Settings) show `zzZ … asleep`; open one and its pane says it's waking until the agent is back.
   With the keys in the sidebar, the highlight on a sleeping agent shows its last screen without
   waking it.
-- A session taking a real share of the machine says so under its row (`▲ 38% CPU · 2.1 GB`,
-  from a fifth of the CPU or two gigabytes).
+- A session taking a real share of the machine says so in its pane's title, beside its state
+  (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
+- An agent's subagents are listed under its row; the `▾ 3 subagents` heading (or **Hide
+  subagents** in its menu) folds them away.
+- The sidebar's foot: **+ new** starts an agent, **actions** lists everything else (settings
+  included).
 - `⇆` under a row names a file that this checkout and another have each changed since their
   branches parted (a merge conflict waiting to happen); more than two are one line with a count.
 - Drag a group's name, or a session, up or down to reorder (what needs you still comes first);

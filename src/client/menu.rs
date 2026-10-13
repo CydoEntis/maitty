@@ -33,6 +33,8 @@ pub enum Act {
     Commander(TermId),
     /// Drop the follow-ups waiting for this agent's turn to end.
     ClearQueue(TermId),
+    /// Fold / unfold a session's subagents in the sidebar.
+    ToggleSubs(TermId),
     /// The choices for how long to snooze a session.
     SnoozeMenu(TermId),
     /// Set a session aside until then (`Some(0)`: settled), or bring it back (`None`).
@@ -203,6 +205,10 @@ impl App {
         if s.is_agent && !s.asleep {
             items.push(("Fleet commander".to_string(), Act::Commander(term)));
         }
+        if !s.subagents.is_empty() {
+            let label = if self.hy.subs_closed.contains(&term) { "Show subagents" } else { "Hide subagents" };
+            items.push((label.to_string(), Act::ToggleSubs(term)));
+        }
         // Out of the way: until later, or for good until it has something for you.
         if s.aside.is_some() {
             items.push(("Bring back".to_string(), Act::Aside(term, None)));
@@ -235,6 +241,13 @@ impl App {
             })
             .collect();
         self.menu(format!("snapshots · {}", super::hydra::folder_name(&dir)), items, at);
+    }
+
+    /// Fold / unfold a session's subagents.
+    pub(super) fn toggle_subs(&mut self, term: TermId) {
+        if !self.hy.subs_closed.remove(&term) {
+            self.hy.subs_closed.insert(term);
+        }
     }
 
     /// Fold / unfold a project's settled group.
@@ -501,6 +514,7 @@ impl App {
                 );
             }
             Act::ToggleAside(key) => self.toggle_aside(key),
+            Act::ToggleSubs(term) => self.toggle_subs(term),
             Act::Snapshots(dir, term) => {
                 let at = self.hy.row_y.get(&term).map(|y| (self.hy.saved.side_w.unwrap_or(0), *y)).unwrap_or((0, 0));
                 self.spawn_bg(move || {

@@ -14,9 +14,6 @@ pub(in crate::client) const SHEET_DRAWN_FROM: u16 = 24;
 /// The narrowest a pane is drawn while it grows in.
 const PANE_DRAWN_FROM: u16 = 8;
 
-/// The Nerd Font cog (nf-fa-cog) at the sidebar's foot.
-const SETTINGS_COG: &str = "\u{f013}";
-
 /// Below this many columns the layout tightens: a slimmer sidebar without its right-hand
 /// meta, and tabs other than the current one shrink to their number and state.
 pub(in crate::client) const NARROW: u16 = 140;
@@ -156,6 +153,8 @@ pub(in crate::client) enum Line {
     /// A dim line under an agent: what it's on, its question, a subagent. Shares the
     /// agent's highlight.
     Note(String, Color, TermId),
+    /// The heading over a session's subagents: how many, and whether they're listed.
+    Subs(TermId, usize, bool),
     /// Nothing running in a folder project.
     Empty(usize),
     /// A project's settled group: how many sessions are set aside, and whether it's unfolded.
@@ -182,7 +181,7 @@ pub(in crate::client) fn load_note(cpu: f32, mem: u64) -> Option<(String, bool)>
     Some((format!("▲ {cpu:.0}% CPU · {gb:.1} GB"), cpu >= LOAD_HEAVY_CPU || mem >= LOAD_HEAVY_MEM))
 }
 
-pub(in crate::client) fn session_lines(s: &Session, t: &Theme, out: &mut Vec<Line>) {
+pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme, out: &mut Vec<Line>) {
     let notes_c = t.muted;
     if let Some(q) = &s.question {
         out.push(Line::Note(q.clone(), blend(t.blocked, t.sidebar_bg, 0.25), s.term));
@@ -192,22 +191,20 @@ pub(in crate::client) fn session_lines(s: &Session, t: &Theme, out: &mut Vec<Lin
         let more = if s.queued.len() > 1 { format!(" (+{})", s.queued.len() - 1) } else { String::new() };
         out.push(Line::Note(format!("⏵ next: {next}{more}"), notes_c, s.term));
     }
-    if let Some((load, heavy)) = load_note(s.cpu, s.mem) {
-        out.push(Line::Note(load, if heavy { t.working } else { notes_c }, s.term));
-    }
-    // Several of one kind (a workflow's fleet) are one line with a count, not a wall of rows.
-    let mut kinds: Vec<(&String, usize)> = Vec::new();
-    for sub in &s.subagents {
-        match kinds.iter_mut().find(|(k, _)| *k == sub) {
-            Some((_, n)) => *n += 1,
-            None => kinds.push((sub, 1)),
+    // Its subagents, each on a line, under a heading that folds them away.
+    if !s.subagents.is_empty() {
+        out.push(Line::Subs(s.term, s.subagents.len(), !subs_closed));
+        if !subs_closed {
+            out.extend(s.subagents.iter().take(SUBS_LISTED).map(|sub| Line::Note(format!("  ↳ {sub}"), notes_c, s.term)));
+            if s.subagents.len() > SUBS_LISTED {
+                out.push(Line::Note(format!("  +{} more", s.subagents.len() - SUBS_LISTED), notes_c, s.term));
+            }
         }
     }
-    for (sub, n) in kinds {
-        let label = if n > 1 { format!("↳ {sub} ×{n}") } else { format!("↳ {sub}") };
-        out.push(Line::Note(label, notes_c, s.term));
-    }
 }
+
+/// This many of a session's subagents are named; a workflow's fleet past that is counted.
+const SUBS_LISTED: usize = 8;
 
 /// This many files shared with another checkout are named under a row; more are counted.
 const OVERLAPS_LISTED: usize = 2;
@@ -271,7 +268,7 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
             any = true;
             out.push(Line::Sess(pi, wi, si, depth));
             let s = &p.wts[wi].sessions[si];
-            session_lines(s, t, &mut out);
+            session_lines(s, app.hy.subs_closed.contains(&s.term), t, &mut out);
             // A file another checkout changed too: a quiet tag under the row. More than a
             // couple are one line with a count (the Inbox lists them): a long branch can share
             // dozens, and a wall of them pushes every other session off the sidebar.
@@ -327,7 +324,7 @@ pub(in crate::client) fn line_term(model: &[Proj], l: &Line) -> Option<TermId> {
 }
 
 /// The sidebar card: projects (● in their colour, bold), their sessions under them most urgent
-/// first, a question under a session that needs you; actions and settings at the foot.
+/// first, a question under a session that needs you; new and actions at the foot.
 pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme) {
     let look = Look::of(&app.cfg.ui);
     let pb = pane_bg(t);
@@ -398,7 +395,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
         let last = indents.last().copied().unwrap_or(0);
         indents.push(match l {
             Line::Sess(.., depth) => u16::from(*depth) * FLEET_INDENT,
-            Line::Note(..) => last,
+            Line::Note(..) | Line::Subs(..) => last,
             _ => 0,
         });
     }
@@ -578,6 +575,16 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 );
                 hit(app, row, HyHit::ShellIn(*pi));
             }
+            // A session's subagents: the heading folds and unfolds them.
+            Line::Subs(term, n, open) => {
+                if small {
+                    continue;
+                }
+                let st = Style::default().bg(pb).fg(if hovered(app, row) { t.text } else { t.muted });
+                let label = format!("{} {n} subagent{}", if *open { "▾" } else { "▸" }, if *n == 1 { "" } else { "s" });
+                put(buf, x0 + 7 + indent, y, &[seg(label, st)], right);
+                hit(app, row, HyHit::ToggleSubs(*term));
+            }
             // The settled group: one quiet line that unfolds.
             Line::Aside(pi, n, open) => {
                 let bg = if hovered(app, row) { t.hov } else { pb };
@@ -605,8 +612,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     if scroll + list_h < lines.len() {
         put(buf, r.right() - 2, top + list_h as u16 - 1, &[seg("▼", plain.fg(t.muted))], r.right() - 1);
     }
-    // The foot: a rule, then actions on the left and settings on the right (a dot when an
-    // update is ready).
+    // The foot: a rule, then new on the left and actions on the right.
     if r.height < 8 {
         return;
     }
@@ -617,51 +623,6 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     hline(buf, x0 + 3, ry, w.saturating_sub(6), t, pb);
     let fy = ry + 1;
     let hot = plain.fg(t.accent).add_modifier(Modifier::BOLD);
-    if focused_side {
-        let items = app.cursor_items();
-        let keys = crate::client::menu::menu_keys(&items);
-        let back = [seg("Esc", hot), seg(" back", plain.fg(t.text))];
-        let bx = right.saturating_sub(segs_width(&back));
-        put(buf, bx, fy, &back, right);
-        let mut segs: Vec<Seg> = Vec::new();
-        let mut pairs: Vec<(String, String)> = items
-            .iter()
-            .zip(keys)
-            .filter_map(|((label, _), k)| k.map(|k| (k.to_string(), label.trim_start_matches('▶').trim().trim_end_matches('…').split_whitespace().next().unwrap_or("").to_lowercase())))
-            .collect();
-        // Closing first: when they don't all fit, it's the one to keep.
-        pairs.sort_by_key(|(k, _)| k != "x");
-        let pair = |(key, word): &(String, String)| [seg(key.clone(), hot), seg(format!(" {word}  "), plain.fg(t.text))];
-        let all: u16 = pairs.iter().map(|p| segs_width(&pair(p))).sum();
-        // When they don't, say so: a key you can't see is one you press by accident. The
-        // note opens the row's menu, which lists them all.
-        let more = |n: usize| [seg(format!("+{n} more"), plain.fg(t.muted).add_modifier(Modifier::ITALIC))];
-        let room = if x0 + 3 + all <= bx { bx } else { bx.saturating_sub(segs_width(&more(pairs.len())) + 1) };
-        let mut hidden = 0;
-        for p in &pairs {
-            let pair = pair(p);
-            if x0 + 3 + segs_width(&segs) + segs_width(&pair) <= room {
-                segs.extend(pair);
-            } else {
-                hidden += 1;
-            }
-        }
-        let end = put(buf, x0 + 3, fy, &segs, bx);
-        if hidden > 0 {
-            let note = more(hidden);
-            let nr = Rect { x: end, y: fy, width: segs_width(&note), height: 1 };
-            put(buf, end, fy, &note, bx);
-            let menu = match (&app.hy.cursor_proj, app.hy.cursor) {
-                (Some(key), _) => model.iter().position(|p| p.key == *key).map(HyHit::RowMenuProj),
-                (None, Some(term)) => Some(HyHit::RowMenuSess(term)),
-                _ => None,
-            };
-            if let Some(h) = menu {
-                hit(app, nr, h);
-            }
-        }
-        return;
-    }
     // A key that's its word's first letter is lit in the word ("actions"), else in front.
     let label = |key: String, word: &str| -> Vec<Seg> {
         match word.strip_prefix(key.as_str()) {
@@ -680,22 +641,19 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
         }
         hit(app, pad, h);
     };
-    let actions = label(k(app, &Action::Actions), "actions");
-    let aw = segs_width(&actions);
-    show(app, buf, x0 + 3, actions, HyHit::Actions);
-    // Settings: a cog (the Nerd Font one with the round pill ends that need that font too),
-    // with a dot when an update is ready.
-    // A Nerd Font icon is drawn wider than its cell: a space after it gives it the room, or
-    // the pill's end is drawn over its right half.
-    let cog = if look.caps { format!("{SETTINGS_COG} ") } else { "⚙".to_string() };
-    let mut set = vec![seg(cog, plain.fg(t.text).add_modifier(Modifier::BOLD))];
+    // New on the left: the thing you do most. Actions on the right, where everything else
+    // is (settings too), with a dot when an update is ready.
+    let mut new = vec![seg("+ ", hot)];
+    new.extend(label(k(app, &Action::NewPane), "new"));
+    let nw = segs_width(&new);
+    show(app, buf, x0 + 3, new, HyHit::NewPane);
+    let mut actions = label(k(app, &Action::Actions), "actions");
     if app.update_available.is_some() {
-        set.push(seg(" ●", hot));
+        actions.push(seg(" ●", hot));
     }
-    let sw = segs_width(&set);
-    let sx = right.saturating_sub(sw);
-    if sx > x0 + 3 + aw + 2 {
-        show(app, buf, sx, set, HyHit::Settings);
+    let ax = right.saturating_sub(segs_width(&actions));
+    if ax > x0 + 3 + nw + 2 {
+        show(app, buf, ax, actions, HyHit::Actions);
     }
 }
 
@@ -1020,6 +978,8 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     let mut c = Card::new(t, &name);
     c.sub = &sub;
     c.state = info.agent.is_some().then_some(st).filter(|s| *s != Status::None);
+    // What it's taking of the machine, beside its state: where you look when the PC is slow.
+    c.note = load_note(info.cpu, info.mem).map(|(load, heavy)| (load, if heavy { t.working } else { t.muted }));
     c.close = Some(HyHit::CloseSplit(term));
     c.foot = foot;
     c.foot_r = foot_r;

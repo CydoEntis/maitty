@@ -188,7 +188,7 @@ mod hydra_tests {
         assert!(lines[6].contains("> fix the flaky checkout test"), "the terminal a row below the border, inset");
         assert!(text.contains("shop-api · ⎇ main"), "folder and branch in the card's footer");
         assert!(!text.contains("needs you   a inbox"), "no app footer");
-        assert!(text.contains("actions") && text.contains('\u{f013}') && !text.contains(", settings"), "the sidebar's foot: actions (its key lit in the word) and a settings cog");
+        assert!(text.contains("+ new") && text.contains("actions") && !text.contains('\u{f013}'), "the sidebar's foot: new on the left, actions (settings is in there) on the right");
         // Projects and their sessions, nothing in between.
         assert!(text.contains("▾ shop-api") && text.contains("● 1"), "a project: its fold arrow and name, what needs you on the right");
         assert!(text.contains("AGENTS 2 ─") && text.contains("TERMINALS 1 ─") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "a heading per section");
@@ -198,7 +198,7 @@ mod hydra_tests {
         assert!(text.contains("● claude") && text.contains("main · 3m"), "state, then the name; branch · age on the right");
         assert!(text.contains("Run npm test -- checkout?"), "the question under the agent");
         assert!(text.contains("↳ Explore"), "subagents under their agent");
-        assert!(text.contains("↳ workflow-subagent ×3") && text.matches("workflow-subagent").count() == 1, "one line per kind, counted");
+        assert!(text.contains("▾ 4 subagents") && text.matches("↳ workflow-subagent").count() == 3, "each one listed, under a heading that folds them");
         assert!(text.contains("⣾ rate") && text.contains("rate-limit · 2m"), "a worktree's session is named after it");
         assert!(!text.contains("Rate limit /login"), "under a session only its question, as in the redesign");
         assert!(text.contains("› shell") && !text.contains("shell 2"), "a shell in the project's folder is just 'shell', no age");
@@ -755,10 +755,7 @@ mod hydra_tests {
         assert!(app.hy.cursor_proj.is_some() && app.hy.cursor.is_none(), "← goes to its project");
         app.on_key(key(KeyCode::Down));
         assert_eq!(app.hy.cursor, Some(first));
-        // The sidebar's foot says what the row's own keys do.
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(o.contains("x close") && o.contains("Esc back"), "the row's keys that fit at the sidebar's foot");
+        draw(&mut app, 160, 45);
         // A row's letter does what its menu says: x asks to close it.
         app.on_key(key(KeyCode::Char('x')));
         assert!(matches!(&app.mode, Mode::Confirm(c) if c.title == "Close pane"), "x closes (after asking)");
@@ -1048,7 +1045,7 @@ mod hydra_tests {
         assert!(lines[1].starts_with("  ▁") && lines[1].trim().chars().filter(|c| *c == '▁').count() == 24, "a slim sidebar: {}", lines[1]);
         let side: String = lines.iter().map(|l| l.chars().take(30).collect::<String>() + "\n").collect();
         assert!(!side.contains("main · 3m") && !side.contains("Run npm test"), "no meta or questions in the slim sidebar: {side}");
-        assert!(o.contains("actions") && o.contains('\u{f013}'), "actions and the cog fit a slim sidebar");
+        assert!(o.contains("+ new") && o.contains("actions"), "new and actions fit a slim sidebar");
     }
 
     #[test]
@@ -1119,24 +1116,13 @@ mod hydra_tests {
     }
 
     #[test]
-    fn the_sidebars_foot_says_when_a_rows_keys_dont_all_fit() {
+    fn the_sidebars_foot_is_the_same_with_the_keys_in_it() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        // codex: an agent that isn't on a prompt, in a git project (rename, changes, commander, close).
         app.hy_side_set(hydra::SideItem::Sess(2));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        let n = app.session_items(2).unwrap().1.len();
-        let foot = o.lines().find(|l| l.contains("x close")).expect("the row's keys are in the foot");
-        let shown = ["x close", "r rename", "c changes", "f fleet", "o open"].iter().filter(|k| foot.contains(**k)).count();
-        assert!(shown < n, "this sidebar is too narrow for all {n}: {foot}");
-        assert!(foot.contains(&format!("+{} more", n - shown)), "so it says how many are missing: {foot}");
-        let note = app.hits.iter().any(|(_, h)| *h == Hit::Hy(hydra::HyHit::RowMenuSess(2)));
-        assert!(note, "and the note opens the row's menu");
-        // With room for them all there is no note.
-        app.hy.saved.side_w = Some(70);
-        let o = draw(&mut app, 200, 45);
-        let foot = o.lines().find(|l| l.contains("x close")).unwrap();
-        assert!(foot.contains("f fleet") && !foot.contains("more"), "{foot}");
+        // A row's keys are in its menu; the foot stays new and actions.
+        assert!(o.contains("+ new") && o.contains("actions") && !o.contains("x close") && !o.contains("Esc back"));
     }
 
     #[test]
@@ -1465,12 +1451,12 @@ mod hydra_tests {
     fn a_newer_hydra_has_an_update_button_that_asks_first() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains('\u{f013}') && !o.contains("\u{f013} ●"), "no dot without a newer version");
+        assert!(o.contains("actions") && !o.contains("actions ●"), "no dot without a newer version");
         app.update_available = Some("9.9.9".into());
         app.update_notes = vec!["Fixed: copying".into(), "New: an Update now button".into()];
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("\u{f013}  ●"), "a dot after the settings cog (and its room)");
+        assert!(o.contains("actions ●"), "a dot after actions, where the update is");
         assert!(app.palette_commands().contains(&Action::Update), "and it's in the palette");
         // Settings: the version, the new one, and the button.
         app.act(Action::Settings);
@@ -1838,15 +1824,23 @@ mod hydra_tests {
         assert_eq!(hydra::load_note(38.0, gb(1) / 2), Some(("▲ 38% CPU · 0.5 GB".to_string(), false)), "a fifth of the CPU or more");
         assert_eq!(hydra::load_note(3.0, gb(3)), Some(("▲ 3% CPU · 3.0 GB".to_string(), false)), "or gigabytes of memory");
         assert!(hydra::load_note(60.0, gb(1)).unwrap().1 && hydra::load_note(1.0, gb(7)).unwrap().1, "heavy from half the CPU, or six gigabytes");
-        // Under its row in the sidebar, in the working colour when heavy.
+        // Beside its state in the pane's title, in the working colour when heavy; not in the sidebar.
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        (app.snap.terms.get_mut(&2).unwrap().cpu, app.snap.terms.get_mut(&2).unwrap().mem) = (62.0, gb(5));
+        let on = app.focused().unwrap();
+        (app.snap.terms.get_mut(&on).unwrap().cpu, app.snap.terms.get_mut(&on).unwrap().mem) = (62.0, gb(5));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("▲ 62% CPU · 5.0 GB"), "said under the session that's using it");
+        let title = o.lines().find(|l| l.contains("▲ 62% CPU · 5.0 GB")).expect("said in the pane's title");
+        assert!(title.contains('✕'), "on the title border, beside the state: {title}");
         let model = app.hy_model();
-        let heavy = hydra::side_lines(&app, &model, &app.theme).iter().any(|l| matches!(l, hydra::Line::Note(text, c, 2) if text.starts_with("▲") && *c == app.theme.working));
-        assert!(heavy, "in the working colour");
+        assert!(!hydra::side_lines(&app, &model, &app.theme).iter().any(|l| matches!(l, hydra::Line::Note(text, ..) if text.starts_with("▲"))), "and no longer under its sidebar row");
+        // Its subagents fold away from the heading, and from its menu.
+        let with_subs = app.snap.terms.iter().find(|(_, i)| !i.subagents.is_empty()).map(|(id, _)| *id).unwrap();
+        assert!(o.contains("▾ 4 subagents"));
+        app.on_hy_hit(hydra::HyHit::ToggleSubs(with_subs), false);
+        let o = draw(&mut app, 160, 45);
+        assert!(o.contains("▸ 4 subagents") && !o.contains("↳ workflow-subagent"), "folded");
+        assert!(app.session_items(with_subs).unwrap().1.iter().any(|(l, a)| l == "Show subagents" && *a == crate::client::menu::Act::ToggleSubs(with_subs)));
     }
 
     #[test]

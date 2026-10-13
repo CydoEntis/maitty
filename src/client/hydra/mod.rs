@@ -74,6 +74,8 @@ pub(super) struct Hy {
     pub tabs: Vec<HyTab>,
     /// Panes whose program gets right-clicks (no seshi menu there; Shift+right-click for it).
     pub right_clicks: HashSet<TermId>,
+    /// Sessions whose subagents are folded away.
+    pub subs_closed: HashSet<TermId>,
     /// Projects (by key) whose settled group is unfolded.
     pub aside_open: HashSet<String>,
     /// Which way the next "split" goes.
@@ -336,10 +338,6 @@ pub(super) struct Session {
     pub queued: Vec<String>,
     /// Set aside: in the settled group (`Some(0)`), or snoozed until then.
     pub aside: Option<u64>,
-    /// What everything running in it takes: CPU as a share of the machine (0 to 100), and
-    /// memory in bytes.
-    pub cpu: f32,
-    pub mem: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -683,8 +681,6 @@ impl App {
                     started_by: t.started_by,
                     queued: t.queued.clone(),
                     aside: t.aside,
-                    cpu: t.cpu,
-                    mem: t.mem,
                 });
             }
             // The repo's other worktrees, even with nothing running in them.
@@ -897,10 +893,13 @@ pub(super) enum HyHit {
     ToggleProj(usize),
     /// Fold / unfold a project's settled group.
     ToggleAside(usize),
+    /// Fold / unfold a session's subagents.
+    ToggleSubs(TermId),
+    /// The sidebar's "+ new": the new-agent dialog.
+    NewPane,
     Session(TermId),
     /// An answer chip in the Inbox: send this key to that agent.
     InboxAnswer(TermId, char),
-    Settings,
     CloseSplit(TermId),
     Divider(usize),
     /// The ⋯ on a hovered sidebar row: its menu.

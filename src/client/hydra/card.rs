@@ -173,6 +173,9 @@ pub(in crate::client) struct Card<'a> {
     /// Dim, after the title, dropped when there isn't room.
     pub sub: &'a str,
     pub state: Option<Status>,
+    /// A short note left of the state (what it's taking of the machine), in its colour.
+    /// Dropped first when the title needs the room.
+    pub note: Option<(String, Color)>,
     /// The ✕ at the right of the title border, and what a click on it does.
     pub close: Option<HyHit>,
     pub border: Color,
@@ -187,7 +190,7 @@ pub(in crate::client) struct Card<'a> {
 
 impl<'a> Card<'a> {
     pub fn new(t: &Theme, title: &'a str) -> Card<'a> {
-        Card { title, sub: "", state: None, close: None, border: t.line, bold: false, title_fg: t.text, bg: pane_bg(t), foot: Vec::new(), foot_r: Vec::new() }
+        Card { title, sub: "", state: None, note: None, close: None, border: t.line, bold: false, title_fg: t.text, bg: pane_bg(t), foot: Vec::new(), foot_r: Vec::new() }
     }
 
     /// The focused look: the border and title in `c`, bold.
@@ -240,6 +243,12 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
     let span = r_x.saturating_sub(l_x);
     let tag = |short: bool| -> Vec<Seg> {
         let mut out = Vec::new();
+        if let Some((note, colour)) = c.note.as_ref().filter(|_| !short) {
+            out.push(seg(format!(" {note} "), desk.fg(*colour)));
+            if c.state.is_some() {
+                out.push(seg(edges.top, b));
+            }
+        }
         if let Some(st) = c.state {
             let mut s = desk.fg(state_color(t, st));
             if st == Status::Blocked {

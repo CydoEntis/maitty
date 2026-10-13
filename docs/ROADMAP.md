@@ -145,7 +145,7 @@ Everything below is shipped on `dev` unless marked.
 - Tasks (a worktree's review: commit, merge, PR, throw away) — shipped — `src/client/tasks.rs`
 - Own worktree for `claude`/`codex` typed into a shell in a repo's main folder — shipped 0.9.12 — `seshi agent-dir`, `daemon/term.rs` `agent_functions`
 - Usage and limits meter, context per agent, continue after a limit — shipped 0.10.0 — `seshi statusline`, `src/daemon/usage.rs`
-- A session's share of the machine (CPU and memory) under its row when it's large — shipped 0.25.0 — `src/daemon/scan.rs`, `load_note` in `src/client/hydra/screen.rs`
+- A session's share of the machine (CPU and memory) in its pane's title when it's large — shipped 0.25.0, moved off the sidebar row 0.26.2 — `src/daemon/scan.rs`, `load_note` in `src/client/hydra/screen.rs`
 - Merge that cleans up (the worktree and its branch go) — shipped 0.11.0 — `src/client/view_keys.rs`
 
 **Identity**

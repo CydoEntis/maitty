@@ -1090,6 +1090,7 @@ impl App {
     /// Clicks on this layout's chips, rows and buttons.
     pub(in crate::client) fn on_hy_hit(&mut self, h: HyHit, double: bool) {
         match h {
+            HyHit::ToggleSubs(term) => self.toggle_subs(term),
             HyHit::ToggleAside(pi) => {
                 if let Some(p) = self.hy_model().get(pi) {
                     self.toggle_aside(p.key.clone());
@@ -1107,7 +1108,6 @@ impl App {
                 self.hy_focus(t);
                 self.hy_side_set(SideItem::Sess(t));
             }
-            HyHit::Settings => self.hy_settings(),
             HyHit::Update => self.act(Action::Update),
             HyHit::CheckUpdate => self.act(Action::CheckUpdate),
             HyHit::TidyRow(i) => self.tidy_click(i),
@@ -1158,6 +1158,7 @@ impl App {
             HyHit::SideFocus => self.act(Action::BrowseTree),
             HyHit::TabNew => self.act(Action::NewTab),
             HyHit::Actions => self.act(Action::Actions),
+            HyHit::NewPane => self.act(Action::NewPane),
             HyHit::ActionRow(i) => self.actions_run(i),
             HyHit::Leader => self.open_keymap(None),
             HyHit::KeyRow(i) => {
