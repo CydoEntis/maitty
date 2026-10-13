@@ -734,6 +734,11 @@ impl Daemon {
                     if t.hooked && t.agent.is_some() {
                         continue;
                     }
+                    // A sleeping agent has no process to find. It's still that agent: without
+                    // this it turned into a terminal, and woke as a bare shell.
+                    if t.asleep {
+                        continue;
+                    }
                     // Started as this agent (woken, moved, restored) and its process isn't up
                     // yet: it is still that agent, not a shell that lost its name and its
                     // conversation.

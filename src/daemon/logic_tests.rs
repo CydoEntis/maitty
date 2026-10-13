@@ -248,6 +248,14 @@ fn a_pane_started_as_an_agent_keeps_its_name_while_the_agent_starts() {
     d.handle(Ev::Scan(vec![nothing_yet(t)]));
     let p = &d.terms[&t];
     assert_eq!((p.agent.as_deref(), p.session.as_deref(), p.summary.as_str()), (Some("claude"), Some("abc"), "the task"), "still claude, conversation and all");
+    // Asleep, long after: there's no process to find, and it's still claude.
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.asleep, p.born) = (true, Instant::now() - super::AGENT_SHOWS_WITHIN - Duration::from_secs(1));
+    }
+    d.handle(Ev::Scan(vec![nothing_yet(t)]));
+    assert_eq!((d.terms[&t].agent.as_deref(), d.terms[&t].session.as_deref()), (Some("claude"), Some("abc")), "a sleeping agent stays an agent");
+    d.terms.get_mut(&t).unwrap().asleep = false;
     // Long past the time an agent takes to start, with still no agent there: it's a shell.
     d.terms.get_mut(&t).unwrap().born = Instant::now() - super::AGENT_SHOWS_WITHIN - Duration::from_secs(1);
     d.handle(Ev::Scan(vec![nothing_yet(t)]));
