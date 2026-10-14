@@ -455,7 +455,9 @@ saved to the data directory a couple of seconds after it changes. On the next st
   via OSC 7 or OSC 9;9, as oh-my-posh and starship can. Other shells are tracked automatically.
 - Agents resume. With hooks installed, seshi knows the exact session (`claude --resume <id>`).
   Otherwise it uses the agent's "most recent" form (`claude --continue`, `codex resume --last`).
-- Panes started with a command (`spawn-right:lazygit`, `seshi split -- x`) run it again.
+- Panes started with a command (`spawn-right:lazygit`, `seshi split -- x`) run it again, except
+  an agent's: `codex "<task>"` would start the task over, so an agent that can't be resumed
+  opens as a shell.
 
 `seshi kill-server` keeps the session for next time, and `seshi kill-server --forget` discards it.
 Closing every pane yourself also starts fresh. A burst of panes dying at once, as at logoff or a

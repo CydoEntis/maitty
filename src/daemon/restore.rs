@@ -147,8 +147,22 @@ impl Daemon {
         persist::Saved { workspaces, active, made_worktrees: self.made_worktrees.clone() }
     }
 
+    /// The agent a command line starts (`codex "…"`, `"C:\…\claude.exe" …`), by its program,
+    /// for a pane whose record lost which agent it was.
+    pub(super) fn agent_in_cmd(&self, cmd: &str) -> Option<String> {
+        let (_, cmd) = self.cfg.split_account(cmd);
+        let cmd = cmd.trim_start().trim_start_matches("& ");
+        let program = match cmd.strip_prefix('"') {
+            Some(rest) => rest.split('"').next(),
+            None => cmd.split_whitespace().next(),
+        }?;
+        let stem = std::path::Path::new(program).file_stem()?.to_string_lossy().to_lowercase();
+        self.agents.iter().find(|a| a.process.iter().any(|p| p.eq_ignore_ascii_case(&stem))).map(|a| a.name.clone())
+    }
+
     /// The command that brings a saved pane back: an agent's resume command, the pane's
-    /// original command, or nothing (a shell).
+    /// original command, or nothing (a shell). An agent's own start command is never run
+    /// again: it carries the task, and the agent would start that task over.
     pub(super) fn restore_cmd(&self, p: &persist::SavedPane) -> Option<String> {
         if self.cfg.restore.agents
             && let Some(def) = p.agent.as_ref().and_then(|n| self.agents.iter().find(|a| &a.name == n))
@@ -161,7 +175,8 @@ impl Daemon {
                 return Some(as_account(tpl.clone()));
             }
         }
-        if self.cfg.restore.commands { p.cmd.clone() } else { None }
+        let starts_an_agent = p.agent.is_some() || p.cmd.as_deref().is_some_and(|c| self.agent_in_cmd(c).is_some());
+        if self.cfg.restore.commands && !starts_an_agent { p.cmd.clone() } else { None }
     }
 
     pub(super) fn restore(&mut self, mut saved: persist::Saved) {
@@ -176,7 +191,12 @@ impl Daemon {
             for st in sw.tabs {
                 let mut map = HashMap::new();
                 for old in st.layout.leaves() {
-                    let pane = st.panes.get(&old).cloned().unwrap_or_default();
+                    let mut pane = st.panes.get(&old).cloned().unwrap_or_default();
+                    // Saved after it lost which agent it was (asleep, before 0.26.2): its
+                    // command still says, so it comes back as that agent, resumed.
+                    if pane.agent.is_none() {
+                        pane.agent = pane.cmd.as_deref().and_then(|c| self.agent_in_cmd(c));
+                    }
                     let cwd = pane.cwd.clone().filter(|p| p.is_dir()).unwrap_or_else(|| sw.cwd.clone());
                     let cmd = self.restore_cmd(&pane);
                     match self.spawn(cmd.as_deref(), &cwd, 120, 32) {

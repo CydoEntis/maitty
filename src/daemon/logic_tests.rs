@@ -92,6 +92,25 @@ fn a_report_traced_outside_the_pane_is_dropped() {
 }
 
 #[test]
+fn a_restore_never_starts_an_agents_task_over() {
+    let (d, _rx) = daemon();
+    let saved = |agent: Option<&str>, cmd: &str| persist::SavedPane { agent: agent.map(String::from), cmd: Some(cmd.into()), ..Default::default() };
+    // A helper saved without its agent (it lost it asleep): its command still names codex,
+    // so it's resumed, not handed its task again.
+    let lost = saved(None, r#"codex "Fix the starting kit: give each faction its units""#);
+    assert_eq!(d.agent_in_cmd(lost.cmd.as_deref().unwrap()).as_deref(), Some("codex"));
+    assert_eq!(d.restore_cmd(&lost), None, "no session to resume: the agent isn't run again");
+    let named = persist::SavedPane { agent: Some("codex".into()), ..lost.clone() };
+    assert_eq!(d.restore_cmd(&named).as_deref(), Some("codex resume --last"), "known: resumed");
+    // By path, quoted, with .exe; an agent with no way to resume opens as a shell.
+    assert_eq!(d.agent_in_cmd(r#""C:\Users\me\.local\bin\claude.exe" --model opus "do it""#).as_deref(), Some("claude"));
+    assert_eq!(d.restore_cmd(&saved(Some("gemini"), r#"gemini "write the docs""#)), None);
+    // Anything else still comes back running what it ran.
+    assert_eq!(d.agent_in_cmd("npm run dev"), None);
+    assert_eq!(d.restore_cmd(&saved(None, "npm run dev")).as_deref(), Some("npm run dev"));
+}
+
+#[test]
 fn a_session_set_aside_comes_back_when_it_should() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
