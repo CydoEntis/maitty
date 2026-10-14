@@ -388,6 +388,12 @@ roles, override them per project, and export native agent files for your
 workflows. Editable Planner / Worker / Reviewer starters are included.
 See [agent profiles](docs/features/agent-profiles.md).
 
+**Workflows:** open **Workflows** in the command palette or profiles sheet.
+Select your planner, worker and reviewer profiles, approve the plan in **Runs**,
+then let build/review repeat for up to three rounds in one task worktree.
+Repo instructions can select a workflow automatically for ordinary requests.
+See [setup, prompts and recovery](docs/features/workflows/usage.md).
+
 ```sh
 seshi config init   # writes the annotated example to the config path
 seshi config path   # %APPDATA%\seshi\config.toml, or ~/.config/seshi/config.toml

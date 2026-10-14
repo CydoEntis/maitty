@@ -10,6 +10,7 @@ mod ipc;
 mod mcp;
 mod project;
 mod profiles;
+mod workflows;
 mod keys;
 mod layout;
 mod proc;
@@ -40,6 +41,11 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// Run saved planner, worker and reviewer sequences.
+    Workflow {
+        #[command(subcommand)]
+        cmd: cli::workflow::WorkflowCmd,
+    },
     /// Configure reusable Claude Code and Codex roles.
     Profile {
         #[command(subcommand)]
@@ -316,6 +322,7 @@ fn main() {
     }
     let result = match args.cmd {
         Some(Cmd::Profile { cmd }) => profile_command(cmd),
+        Some(Cmd::Workflow { cmd }) => cli::workflow::command(cmd),
         None => open_client(args.path),
         Some(Cmd::Attach { path }) => open_client(path),
         Some(Cmd::Daemon) => daemon::run(),

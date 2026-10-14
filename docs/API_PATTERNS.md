@@ -125,6 +125,11 @@ the pane's process tree or `SESHI_PANE_TOKEN`.
 [agent profiles](features/agent-profiles.md). Launches use the existing
 `NewWorkspace` / worktree commands, so the wire protocol is unchanged.
 
+`seshi workflow` and `seshi_workflow_*` MCP tools expose saved workflow execution;
+see [usage](features/workflows/usage.md). Workflow commands and snapshots use
+protocol 38. Only the authenticated active pane may submit a stage report;
+approve/retry/cancel are human controls. Validate and freeze profiles before launch.
+
 A new capability adds: a `Command` variant (and any new `ServerMsg` /
 snapshot field) in `protocol.rs` with a `PROTOCOL_VERSION` bump; handling in
 `daemon/mod.rs` (or a `daemon/<feature>.rs`); the client side as an `Action` in
@@ -137,3 +142,6 @@ Honor a trusted turn-finished hook even when its transcript lists a background
 shell or dev server. Background commands do not turn `Done` back into `Working`.
 Continue tracking actual subagents through their own lifecycle reports. Prepare
 the hook message separately from socket I/O so its effective status is testable.
+
+Codex's queued unanswered question takes precedence over its working spinner,
+including with turn-end-only hooks. Clearing it restores ongoing work detection.

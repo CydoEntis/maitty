@@ -81,5 +81,6 @@ subagents inherit permissions and MCP servers from their parent. Exporting a rol
 does not create an independently sandboxed subagent.
 
 Profile setup is local; it is unavailable over SSH. Profiles are not offered in
-the race chooser. Workflow sequencing, approval stages and automatic review/fix
-loops are outside this version.
+the race chooser. Setup opens in the right-hand sheet beside the panes. Its
+Workflows tab connects saved profiles into sequences; see [workflows](workflows/usage.md).
+Selecting a profile alone still starts a fresh session without sequencing.

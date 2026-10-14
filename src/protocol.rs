@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Bump whenever a message shape changes; client and daemon refuse to talk across versions.
-pub const PROTOCOL_VERSION: u32 = 37;
+pub const PROTOCOL_VERSION: u32 = 38;
 
 pub type TermId = u32;
 pub type WsId = u32;
@@ -88,6 +88,9 @@ pub struct Limit {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Command {
+    WorkflowStart { name: String, cwd: PathBuf, goal: String },
+    WorkflowFinish { run: u64, report: crate::workflows::Report },
+    WorkflowControl { run: u64, action: WorkflowAction },
     NewWorkspace { cwd: Option<PathBuf>, name: Option<String>, cmd: Option<String> },
     CloseWorkspace { ws: WsId },
     RenameWorkspace { ws: WsId, name: String },
@@ -174,6 +177,9 @@ pub enum Command {
     /// `forget`: also discard the saved session, so the next start is a clean slate.
     KillServer { forget: bool },
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WorkflowAction { Approve, Retry, Cancel }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Query {
@@ -279,6 +285,8 @@ impl Status {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Snapshot {
+    #[serde(default)]
+    pub workflows: Vec<crate::workflows::Run>,
     pub workspaces: Vec<WorkspaceInfo>,
     pub active_ws: Option<WsId>,
     pub terms: BTreeMap<TermId, TermInfo>,
@@ -555,6 +563,9 @@ mod tests {
             ClientMsg::Command(Command::Grant { term: 3, grants: Some(vec!["read".into()]) }),
             ClientMsg::Command(Command::QueueFollowUp { term: 3, text: "then run the tests".into() }),
             ClientMsg::Command(Command::ClearQueue { term: 3 }),
+            ClientMsg::Command(Command::WorkflowStart { name: "feature".into(), cwd: PathBuf::from("/repo"), goal: "add reset".into() }),
+            ClientMsg::Command(Command::WorkflowFinish { run: 1, report: crate::workflows::Report { text: "the plan".into(), verdict: crate::workflows::Verdict::Complete } }),
+            ClientMsg::Command(Command::WorkflowControl { run: 1, action: WorkflowAction::Approve }),
             ClientMsg::Command(Command::SetAside { term: 3, until: Some(1_760_000_000) }),
             ClientMsg::Command(Command::TidyWorktrees { items: vec![(PathBuf::from("/code/.wt/rate"), false)] }),
             ClientMsg::Command(Command::RenamePane { term: 3, name: "x".into() }),

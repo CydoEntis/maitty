@@ -1,0 +1,801 @@
+//! The workflow editor and run controls in the right-hand sheet.
+
+use super::design::{BtnKind, fill, put, seg};
+use super::hydra::{HyHit, btn, hints, hit};
+use super::*;
+use crate::workflows::{self as wf, ResolvedWorkflow, State, Workflow};
+use anyhow::Context;
+use ratatui::{buffer::Buffer, style::Style};
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct WorkflowView {
+    pub dir: PathBuf,
+    pub entries: Option<Vec<ResolvedWorkflow>>,
+    pub profiles: Vec<crate::profiles::Resolved>,
+    pub runs: bool,
+    pub sel: usize,
+    pub scroll: usize,
+    pub editor: Option<Workflow>,
+    pub original: Option<String>,
+    pub project: bool,
+    pub field: usize,
+    pub task: Option<String>,
+    pub busy: bool,
+    pub error: Option<String>,
+    pub confirm: Option<WorkflowAction>,
+}
+
+impl WorkflowView {
+    pub fn paste(&mut self, text: &str) {
+        if let Some(task) = &mut self.task {
+            task.push_str(text);
+        } else if self.field == 0
+            && let Some(editor) = &mut self.editor
+        {
+            editor
+                .name
+                .push_str(text.lines().next().unwrap_or_default());
+        }
+    }
+}
+
+impl App {
+    pub(super) fn open_workflows_at(&mut self, dir: PathBuf, runs: bool) {
+        if ipc::remote().is_some() {
+            self.notify(
+                "Workflow setup is local; run Seshi on the remote host.".into(),
+                true,
+            );
+            return;
+        }
+        self.mode = Mode::Workflows(Box::new(WorkflowView {
+            dir: dir.clone(),
+            entries: None,
+            profiles: Vec::new(),
+            runs,
+            sel: 0,
+            scroll: 0,
+            editor: None,
+            original: None,
+            project: false,
+            field: 0,
+            task: None,
+            busy: true,
+            error: None,
+            confirm: None,
+        }));
+        self.refresh_workflows(dir);
+    }
+
+    pub(super) fn open_workflows(&mut self, runs: bool) {
+        self.open_workflows_at(self.hy_target_dir(), runs);
+    }
+
+    fn refresh_workflows(&mut self, dir: PathBuf) {
+        self.spawn_bg(move || {
+            let result = (|| {
+                let cfg = Config::load()?;
+                let workflows = wf::load(&cfg, &dir)?;
+                let profiles = crate::profiles::load(&cfg, &dir)?;
+                Ok::<_, anyhow::Error>((cfg, workflows, profiles))
+            })()
+            .map_err(|e| format!("{e:#}"));
+            Bg::Then(Box::new(move |app| {
+                if let Mode::Workflows(view) = &mut app.mode
+                    && view.dir == dir
+                {
+                    view.busy = false;
+                    match result {
+                        Ok((cfg, entries, profiles)) => {
+                            app.cfg.profiles = cfg.profiles;
+                            app.cfg.workflows = cfg.workflows;
+                            view.entries = Some(entries);
+                            view.profiles = profiles;
+                            view.error = None;
+                        }
+                        Err(error) => {
+                            view.error = Some(error);
+                            view.entries = Some(Vec::new());
+                        }
+                    }
+                }
+            }))
+        });
+    }
+
+    fn save_workflow(&mut self, view: &mut WorkflowView, starter: Option<crate::profiles::Runner>) {
+        let dir = view.dir.clone();
+        let project = view.project;
+        let editor = view.editor.clone();
+        let original = view.original.clone();
+        view.busy = true;
+        self.spawn_bg(move || {
+            let result = (|| {
+                let cfg = Config::load()?;
+                if let Some(runner) = starter {
+                    return wf::init(&cfg, &dir, runner, project);
+                }
+                let editor = editor.context("no workflow to save")?;
+                editor.profiles(&crate::profiles::load(&cfg, &dir)?)?;
+                let path = if project {
+                    dir.join(crate::project::FILE)
+                } else {
+                    crate::config::workflow_path()?
+                };
+                wf::save(&path, original.as_deref(), &editor)
+            })()
+            .map_err(|e| format!("{e:#}"));
+            Bg::Then(Box::new(move |app| {
+                let mut reload = false;
+                if let Mode::Workflows(v) = &mut app.mode
+                    && v.dir == dir
+                {
+                    v.busy = false;
+                    match result {
+                        Ok(()) => {
+                            v.editor = None;
+                            v.original = None;
+                            v.error = None;
+                            reload = true;
+                        }
+                        Err(error) => v.error = Some(error),
+                    }
+                }
+                if reload {
+                    app.cmd(Command::ReloadConfig);
+                    app.refresh_workflows(dir);
+                }
+            }))
+        });
+    }
+
+    pub(super) fn on_workflows_key(&mut self, mut view: WorkflowView, key: &KeyEvent) {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        if view.busy && key.code != KeyCode::Esc {
+            return;
+        }
+        if let Some(action) = view.confirm {
+            view.confirm = None;
+            if matches!(key.code, KeyCode::Enter | KeyCode::Char('y'))
+                && let Some(run) = runs(self, &view).get(view.sel)
+            {
+                self.cmd(Command::WorkflowControl {
+                    run: run.id,
+                    action,
+                });
+            }
+        } else if let Some(task) = &mut view.task {
+            match key.code {
+                KeyCode::Esc => view.task = None,
+                KeyCode::Enter => {
+                    if task.trim().is_empty() || task.len() > wf::MAX_GOAL {
+                        view.error = Some(format!("Enter a task of 1..{} bytes.", wf::MAX_GOAL));
+                    } else if let Some(entry) = view.entries.as_ref().and_then(|v| v.get(view.sel))
+                    {
+                        self.cmd(Command::WorkflowStart {
+                            name: entry.workflow.name.clone(),
+                            cwd: view.dir.clone(),
+                            goal: task.clone(),
+                        });
+                        view.task = None;
+                        view.runs = true;
+                        view.sel = 0;
+                        view.error = None;
+                    }
+                }
+                KeyCode::Backspace => {
+                    task.pop();
+                }
+                KeyCode::Char('u') if ctrl => task.clear(),
+                KeyCode::Char(c) if !ctrl => task.push(c),
+                _ => {}
+            }
+        } else if view.editor.is_some() {
+            match key.code {
+                KeyCode::Esc => {
+                    view.editor = None;
+                    view.error = None;
+                }
+                KeyCode::Char('s') if ctrl => self.save_workflow(&mut view, None),
+                KeyCode::Tab | KeyCode::Down => view.field = (view.field + 1) % 5,
+                KeyCode::BackTab | KeyCode::Up => view.field = (view.field + 4) % 5,
+                KeyCode::Left | KeyCode::Right if (1..=3).contains(&view.field) => {
+                    let names: Vec<_> = view
+                        .profiles
+                        .iter()
+                        .map(|p| p.profile.name.clone())
+                        .collect();
+                    if !names.is_empty()
+                        && let Some(editor) = &mut view.editor
+                    {
+                        let field = match view.field {
+                            1 => &mut editor.planner,
+                            2 => &mut editor.worker,
+                            _ => &mut editor.reviewer,
+                        };
+                        let at = names.iter().position(|n| n == field).unwrap_or(0);
+                        let at = if key.code == KeyCode::Left {
+                            (at + names.len() - 1) % names.len()
+                        } else {
+                            (at + 1) % names.len()
+                        };
+                        *field = names[at].clone();
+                    }
+                }
+                KeyCode::Left | KeyCode::Right | KeyCode::Char(' ')
+                    if view.field == 4 && view.original.is_none() =>
+                {
+                    view.project = !view.project
+                }
+                KeyCode::Backspace if view.field == 0 => {
+                    if let Some(e) = &mut view.editor {
+                        e.name.pop();
+                    }
+                }
+                KeyCode::Char('u') if ctrl && view.field == 0 => {
+                    if let Some(e) = &mut view.editor {
+                        e.name.clear();
+                    }
+                }
+                KeyCode::Char(c) if !ctrl && view.field == 0 => {
+                    if let Some(e) = &mut view.editor {
+                        e.name.push(c);
+                    }
+                }
+                _ => {}
+            }
+        } else {
+            let count = if view.runs {
+                runs(self, &view).len()
+            } else {
+                view.entries.as_ref().map_or(0, Vec::len)
+            };
+            match key.code {
+                KeyCode::Esc => {
+                    self.mode = Mode::Normal;
+                    return;
+                }
+                KeyCode::Char('p') => {
+                    self.open_profiles();
+                    return;
+                }
+                KeyCode::Char('w') => {
+                    view.runs = false;
+                    view.sel = 0;
+                    view.scroll = 0;
+                }
+                KeyCode::Char('r') if !ctrl => {
+                    view.runs = true;
+                    view.sel = 0;
+                    view.scroll = 0;
+                }
+                KeyCode::Char('r') if ctrl => {
+                    let dir = view.dir.clone();
+                    self.mode = Mode::Workflows(Box::new(view));
+                    self.refresh_workflows(dir);
+                    return;
+                }
+                KeyCode::Down => {
+                    view.sel = (view.sel + 1).min(count.saturating_sub(1));
+                    view.scroll = 0;
+                }
+                KeyCode::Up => {
+                    view.sel = view.sel.saturating_sub(1);
+                    view.scroll = 0;
+                }
+                KeyCode::PageDown => view.scroll = view.scroll.saturating_add(5),
+                KeyCode::PageUp => view.scroll = view.scroll.saturating_sub(5),
+                KeyCode::Enter if !view.runs => {
+                    if let Some(entry) = view.entries.as_ref().and_then(|v| v.get(view.sel)) {
+                        match entry.workflow.profiles(&view.profiles) {
+                            Ok(_) => {
+                                view.task = Some(String::new());
+                                view.error = None;
+                            }
+                            Err(e) => view.error = Some(e.to_string()),
+                        }
+                    }
+                }
+                KeyCode::Char('n' | 'e') if !view.runs => {
+                    let entry = (key.code == KeyCode::Char('e'))
+                        .then(|| view.entries.as_ref().and_then(|v| v.get(view.sel)))
+                        .flatten();
+                    view.original = entry.map(|e| e.workflow.name.clone());
+                    view.project = entry.is_some_and(|e| e.project);
+                    view.editor = Some(entry.map(|e| e.workflow.clone()).unwrap_or_else(|| {
+                        let name = |i: usize| {
+                            view.profiles
+                                .get(i)
+                                .map(|p| p.profile.name.clone())
+                                .unwrap_or_default()
+                        };
+                        Workflow {
+                            name: String::new(),
+                            planner: name(0),
+                            worker: name(1),
+                            reviewer: name(2),
+                        }
+                    }));
+                    view.field = 0;
+                    view.error = None;
+                }
+                KeyCode::Char('1' | '2') if !view.runs => self.save_workflow(
+                    &mut view,
+                    Some(if key.code == KeyCode::Char('1') {
+                        crate::profiles::Runner::Claude
+                    } else {
+                        crate::profiles::Runner::Codex
+                    }),
+                ),
+                KeyCode::Char('a') if view.runs => {
+                    if let Some(run) = runs(self, &view).get(view.sel) {
+                        self.cmd(Command::WorkflowControl {
+                            run: run.id,
+                            action: WorkflowAction::Approve,
+                        });
+                    }
+                }
+                KeyCode::Char('c' | 't') if view.runs => {
+                    view.confirm = Some(if key.code == KeyCode::Char('c') {
+                        WorkflowAction::Cancel
+                    } else {
+                        WorkflowAction::Retry
+                    })
+                }
+                KeyCode::Char('o') | KeyCode::Enter if view.runs => {
+                    if let Some(term) = runs(self, &view)
+                        .get(view.sel)
+                        .and_then(|r| r.term.or_else(|| r.finished.last().copied()))
+                    {
+                        self.cmd(Command::FocusPane { term });
+                        self.mode = Mode::Normal;
+                        return;
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.mode = Mode::Workflows(Box::new(view));
+    }
+}
+
+fn runs<'a>(app: &'a App, _view: &WorkflowView) -> Vec<&'a wf::Run> {
+    // The Runs tab is intentionally a machine-wide list, like the sidebar.
+    app.snap.workflows.iter().rev().collect()
+}
+
+fn run_label(app: &App, run: &wf::Run) -> &'static str {
+    if run.state == State::Running
+        && run
+            .term
+            .and_then(|id| app.snap.terms.get(&id))
+            .is_some_and(|t| t.status == Status::Blocked)
+    {
+        "needs you"
+    } else {
+        run.state.label()
+    }
+}
+
+pub(super) fn draw_tabs(app: &mut App, buf: &mut Buffer, r: Rect, _t: &Theme, selected: u8) {
+    let mut x = r.x + 2;
+    for (i, title) in ["Profiles", "Workflows", "Runs"].iter().enumerate() {
+        x = btn(
+            app,
+            buf,
+            x,
+            r.y + 1,
+            title,
+            "",
+            if i == selected as usize {
+                BtnKind::Primary
+            } else {
+                BtnKind::Normal
+            },
+            HyHit::WorkflowTab(i as u8),
+            r.right().saturating_sub(1),
+        ) + 1;
+    }
+}
+
+pub(super) fn draw_workflows(
+    app: &mut App,
+    buf: &mut Buffer,
+    r: Rect,
+    t: &Theme,
+    view: &WorkflowView,
+) {
+    let style = Style::default().bg(t.card);
+    let (x, right) = (r.x + 2, r.right().saturating_sub(2));
+    let bottom = r.bottom().saturating_sub(5);
+    let mut y = r.y + 3;
+    if let Some(editor) = &view.editor {
+        for (i, (name, value)) in [
+            ("NAME", editor.name.as_str()),
+            ("PLANNER", &editor.planner),
+            ("WORKER", &editor.worker),
+            ("REVIEWER", &editor.reviewer),
+            (
+                "SCOPE",
+                if view.project {
+                    "this project"
+                } else {
+                    "personal"
+                },
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let row = Rect {
+                x,
+                y,
+                width: right.saturating_sub(x),
+                height: 1,
+            };
+            fill(buf, row, if view.field == i { t.card2 } else { t.card });
+            put(
+                buf,
+                x + 1,
+                y,
+                &[seg(
+                    format!(
+                        "{name:<10}{value}{}",
+                        if view.field == i { " ▏" } else { "" }
+                    ),
+                    style.fg(if view.field == i { t.accent } else { t.strong }),
+                )],
+                right,
+            );
+            hit(app, row, HyHit::WorkflowField(i));
+            y += 2;
+        }
+    } else if let Some(task) = &view.task {
+        put(
+            buf,
+            x,
+            y,
+            &[seg("Task for the selected workflow", style.fg(t.strong))],
+            right,
+        );
+        y += 2;
+        for line in super::views::wrap(&format!("{task}▏"), right.saturating_sub(x) as usize)
+            .into_iter()
+            .take(bottom.saturating_sub(y) as usize)
+        {
+            put(buf, x, y, &[seg(line, style.fg(t.text))], right);
+            y += 1;
+        }
+    } else if view.runs {
+        draw_runs(app, buf, r, t, view);
+    } else {
+        put(
+            buf,
+            x,
+            y,
+            &[seg(
+                "Choose the roles, then give them a task.",
+                style.fg(t.muted),
+            )],
+            right,
+        );
+        y += 2;
+        let entries = view.entries.as_deref().unwrap_or_default();
+        if entries.is_empty() {
+            for line in [
+                if view.busy {
+                    "Loading workflows…"
+                } else {
+                    "No workflows yet."
+                },
+                "Create a starter below, then edit its roles.",
+                "Your own profiles work in every stage.",
+            ] {
+                put(buf, x, y, &[seg(line, style.fg(t.text))], right);
+                y += 1;
+            }
+        } else {
+            let visible = bottom.saturating_sub(y + 5).clamp(1, 5) as usize;
+            let start = view.sel.saturating_sub(visible - 1);
+            for (i, entry) in entries.iter().enumerate().skip(start).take(visible) {
+                let row = Rect {
+                    x,
+                    y,
+                    width: right.saturating_sub(x),
+                    height: 1,
+                };
+                let rs = hydra::list_row(app, buf, row, i == view.sel, t);
+                put(
+                    buf,
+                    x + 2,
+                    y,
+                    &[seg(
+                        format!(
+                            "{} · {}",
+                            entry.workflow.name,
+                            if entry.project { "project" } else { "personal" }
+                        ),
+                        rs.fg(t.strong),
+                    )],
+                    right,
+                );
+                hit(app, row, HyHit::WorkflowRow(i));
+                y += 1;
+            }
+            if let Some(entry) = entries.get(view.sel) {
+                for line in [
+                    format!("Plan: {} → your approval", entry.workflow.planner),
+                    format!("Build: {}", entry.workflow.worker),
+                    format!("Review: {} · up to 3 rounds", entry.workflow.reviewer),
+                ] {
+                    y += 1;
+                    if y >= bottom {
+                        break;
+                    }
+                    put(buf, x, y, &[seg(line, style.fg(t.text))], right);
+                }
+            }
+        }
+    }
+    if let Some(error) = &view.error {
+        put(
+            buf,
+            x,
+            bottom,
+            &[seg(error.clone(), style.fg(t.err))],
+            right,
+        );
+    }
+    draw_footer(app, buf, r, t, view);
+}
+
+fn draw_runs(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, view: &WorkflowView) {
+    let (x, right) = (r.x + 2, r.right().saturating_sub(2));
+    let style = Style::default().bg(t.card);
+    let list: Vec<_> = runs(app, view).into_iter().cloned().collect();
+    let mut y = r.y + 3;
+    if list.is_empty() {
+        put(
+            buf,
+            x,
+            y,
+            &[seg(
+                "No runs yet. Choose a workflow to start.",
+                style.fg(t.muted),
+            )],
+            right,
+        );
+        return;
+    }
+    let visible = 3.min(r.height.saturating_sub(14) as usize).max(1);
+    let start = view.sel.saturating_sub(visible - 1);
+    for (i, run) in list.iter().enumerate().skip(start).take(visible) {
+        let row = Rect {
+            x,
+            y,
+            width: right.saturating_sub(x),
+            height: 1,
+        };
+        let rs = hydra::list_row(app, buf, row, i == view.sel, t);
+        put(
+            buf,
+            x + 2,
+            y,
+            &[seg(
+                format!("{} · {} · {}", run.id, run.name, run_label(app, run)),
+                rs.fg(t.strong),
+            )],
+            right,
+        );
+        hit(app, row, HyHit::WorkflowRow(i));
+        y += 1;
+    }
+    if let Some(run) = list.get(view.sel) {
+        let text = format!(
+            "{} · {} · round {}/3\n{}\n\n{}\n{}",
+            run.stage.label(),
+            run_label(app, run),
+            run.round,
+            run.note,
+            if run.state == State::Approval {
+                "PLAN — read before approving"
+            } else {
+                "LATEST REPORT"
+            },
+            if run.state == State::Approval {
+                &run.plan
+            } else if !run.review.is_empty() {
+                &run.review
+            } else if !run.work.is_empty() {
+                &run.work
+            } else {
+                &run.goal
+            }
+        );
+        y += 1;
+        let lines = super::views::wrap(&text, right.saturating_sub(x) as usize);
+        let count = r.bottom().saturating_sub(5 + y) as usize;
+        let start = view.scroll.min(lines.len().saturating_sub(count.max(1)));
+        for line in lines.into_iter().skip(start).take(count) {
+            put(buf, x, y, &[seg(line, style.fg(t.text))], right);
+            y += 1;
+        }
+    }
+}
+
+fn draw_footer(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, view: &WorkflowView) {
+    let x = r.x + 2;
+    let right = r.right().saturating_sub(2);
+    let y = r.bottom().saturating_sub(4);
+    let style = Style::default().bg(t.card);
+    if let Some(action) = view.confirm {
+        put(
+            buf,
+            x,
+            y,
+            &[seg(
+                if action == WorkflowAction::Cancel {
+                    "Stop sequencing? Panes/files are kept."
+                } else {
+                    "Retry stage? Close its old pane first."
+                },
+                style.fg(t.strong),
+            )],
+            right,
+        );
+        put(
+            buf,
+            x,
+            y + 1,
+            &hints(t, &[("Enter/y", "confirm"), ("Esc", "back")]),
+            right,
+        );
+    } else if view.busy {
+        put(buf, x, y, &[seg("Working…", style.fg(t.muted))], right);
+    } else if view.editor.is_some() {
+        btn(
+            app,
+            buf,
+            x,
+            y,
+            "Save",
+            "Ctrl+S",
+            BtnKind::Primary,
+            HyHit::WorkflowKey('s'),
+            right,
+        );
+        put(
+            buf,
+            x,
+            y + 1,
+            &hints(t, &[("Tab", "field"), ("←→", "profile/scope")]),
+            right,
+        );
+    } else if view.task.is_some() {
+        btn(
+            app,
+            buf,
+            x,
+            y,
+            "Start workflow",
+            "Enter",
+            BtnKind::Primary,
+            HyHit::WorkflowKey('\n'),
+            right,
+        );
+    } else if view.runs {
+        let selected = runs(app, view)
+            .get(view.sel)
+            .map(|r| (r.state, r.term.is_some() || !r.finished.is_empty()));
+        let mut bx = x;
+        if selected.is_some_and(|(s, _)| s == State::Approval) {
+            bx = btn(
+                app,
+                buf,
+                bx,
+                y,
+                "Approve plan",
+                "a",
+                BtnKind::Primary,
+                HyHit::WorkflowKey('a'),
+                right,
+            ) + 1;
+        }
+        if selected.is_some_and(|(_, pane)| pane) {
+            btn(
+                app,
+                buf,
+                bx,
+                y,
+                "Open pane",
+                "o",
+                BtnKind::Normal,
+                HyHit::WorkflowKey('o'),
+                right,
+            );
+        }
+        if selected.is_some_and(|(s, _)| matches!(s, State::Failed | State::Interrupted)) {
+            btn(
+                app,
+                buf,
+                x,
+                y + 1,
+                "Retry stage",
+                "t",
+                BtnKind::Normal,
+                HyHit::WorkflowKey('t'),
+                right,
+            );
+        } else if selected.is_some_and(|(s, _)| !s.terminal()) {
+            btn(
+                app,
+                buf,
+                x,
+                y + 1,
+                "Cancel run",
+                "c",
+                BtnKind::Normal,
+                HyHit::WorkflowKey('c'),
+                right,
+            );
+        }
+    } else {
+        let mut bx = x;
+        for (title, key) in [("New", 'n'), ("Edit", 'e')] {
+            bx = btn(
+                app,
+                buf,
+                bx,
+                y,
+                title,
+                &key.to_string(),
+                BtnKind::Normal,
+                HyHit::WorkflowKey(key),
+                right,
+            ) + 1;
+        }
+        btn(
+            app,
+            buf,
+            bx,
+            y,
+            "Run",
+            "Enter",
+            BtnKind::Primary,
+            HyHit::WorkflowKey('\n'),
+            right,
+        );
+        let bx = btn(
+            app,
+            buf,
+            x,
+            y + 1,
+            "Claude starter",
+            "1",
+            BtnKind::Normal,
+            HyHit::WorkflowKey('1'),
+            right,
+        ) + 1;
+        btn(
+            app,
+            buf,
+            bx,
+            y + 1,
+            "Codex starter",
+            "2",
+            BtnKind::Normal,
+            HyHit::WorkflowKey('2'),
+            right,
+        );
+    }
+    put(
+        buf,
+        x,
+        y + 2,
+        &hints(
+            t,
+            &[("↑↓", "choose"), ("PgUp/Dn", "report"), ("Esc", "close")],
+        ),
+        right,
+    );
+}

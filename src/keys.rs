@@ -225,6 +225,8 @@ pub enum Action {
     /// Find a file (0) or search the code (1).
     Find(u8),
     Profiles,
+    Workflows,
+    WorkflowRuns,
     /// Switch the branch of the checkout you're in.
     Branches,
     /// A shell in the folder of the session you're on, straight away.
@@ -315,6 +317,8 @@ impl Action {
             Action::CloseSplit => "close the split".into(),
             Action::PasteImage => "Paste the clipboard image".into(),
             Action::Profiles => "Agent profiles".into(),
+            Action::Workflows => "Workflows".into(),
+            Action::WorkflowRuns => "Workflow runs".into(),
             Action::Branches => "Switch branch".into(),
             Action::ShellHere => "New session (a shell here)".into(),
             Action::PrevPrompt => "Jump to the previous command in history".into(),
@@ -390,6 +394,8 @@ impl Action {
             Action::CloseSplit => "close-split".into(),
             Action::PasteImage => "paste-image".into(),
             Action::Profiles => "profiles".into(),
+            Action::Workflows => "workflows".into(),
+            Action::WorkflowRuns => "workflow-runs".into(),
             Action::Branches => "switch-branch".into(),
             Action::ShellHere => "shell-here".into(),
             Action::PrevPrompt => "prev-prompt".into(),
@@ -482,6 +488,8 @@ impl FromStr for Action {
             "close-split" => Action::CloseSplit,
             "paste-image" => Action::PasteImage,
             "profiles" => Action::Profiles,
+            "workflows" => Action::Workflows,
+            "workflow-runs" => Action::WorkflowRuns,
             "switch-branch" => Action::Branches,
             "shell-here" => Action::ShellHere,
             "prev-prompt" => Action::PrevPrompt,

@@ -8,6 +8,8 @@ use crate::client::overlap::Overlap;
 /// What the sheet shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::client) enum SheetKind {
+    Profiles,
+    Workflows,
     Inbox,
     Changes,
     /// Both diffs of a heads-up's file.
@@ -22,7 +24,11 @@ const WIDE_AT: u16 = 200;
 /// The sheet that's open, if any: the Inbox while you're in it (or writing a follow-up in
 /// one of its rows), else Changes.
 pub(in crate::client) fn open_sheet(app: &App) -> Option<SheetKind> {
-    if inbox_place(app).is_some() {
+    if matches!(app.mode, Mode::Profiles(_)) {
+        Some(SheetKind::Profiles)
+    } else if matches!(app.mode, Mode::Workflows(_)) {
+        Some(SheetKind::Workflows)
+    } else if inbox_place(app).is_some() {
         Some(SheetKind::Inbox)
     } else if matches!(app.view, Some(crate::client::View::Changes(_))) {
         Some(SheetKind::Changes)
@@ -62,6 +68,8 @@ pub(in crate::client) fn heads_up(app: &App) -> Vec<(PathBuf, Overlap)> {
 
 pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t: &Theme) {
     let (title, close) = match kind {
+        SheetKind::Profiles => ("Agent profiles", HyHit::Close),
+        SheetKind::Workflows => ("Workflows", HyHit::Close),
         SheetKind::Inbox => ("Inbox", HyHit::Close),
         SheetKind::Changes | SheetKind::Both => ("Changes", HyHit::ViewClose),
     };
@@ -72,7 +80,25 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     let inside = card(app, buf, r, &c, t);
     // Clicks inside it stay in it.
     hit(app, inside, HyHit::Noop);
+    if matches!(kind, SheetKind::Profiles | SheetKind::Workflows) && r.height < 18 {
+        put(buf, inside.x + 1, inside.y + 1, &[seg("Make the window taller", Style::default().fg(t.muted).bg(t.card))], inside.right());
+        return;
+    }
     match kind {
+        SheetKind::Profiles => {
+            if let Mode::Profiles(v) = &app.mode {
+                let v = (**v).clone();
+                crate::client::workflows::draw_tabs(app, buf, r, t, 0);
+                crate::client::profiles::draw_profiles(app, buf, r, t, &v);
+            }
+        }
+        SheetKind::Workflows => {
+            if let Mode::Workflows(v) = &app.mode {
+                let v = (**v).clone();
+                crate::client::workflows::draw_tabs(app, buf, r, t, if v.runs { 2 } else { 1 });
+                crate::client::workflows::draw_workflows(app, buf, r, t, &v);
+            }
+        }
         SheetKind::Inbox => draw_inbox(app, buf, inside, t),
         SheetKind::Changes => {
             let inner = Rect { x: inside.x + 1, width: inside.width.saturating_sub(2), ..inside };

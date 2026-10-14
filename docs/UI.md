@@ -115,8 +115,12 @@ its configured key hint. **Actions** includes a clickable Settings row.
 
 ## Project-specific: UI conventions
 
+<!-- local: user requested Profiles and Workflows in the right-hand sheet. -->
+
 - Popups are centred `panel()`s with an accent title bar and `Esc close`; the
   screen behind is dimmed.
+  Profiles and Workflows use the existing right-hand sheet instead, with Profiles,
+  Workflows and Runs tabs and the working panes visible beside them.
 - Selection = `hov` background and a `›` marker; never the accent colour as a
   row fill.
 - Every popup row is clickable and keyboard-reachable; every key is shown as a
@@ -138,6 +142,11 @@ save. Esc or the close button returns to Appearance without changing the theme.
 Saving runs in a background task; failure keeps the selection and shows a toast.
 The preview shows built-in defaults; configured overrides still apply after saving.
 See [theme sources](theme-sources.md) for upstream palettes and local UI adaptations.
+
+## Project-specific: workflow sheet
+
+The workflow sheet has profile selectors, task entry, reports, human plan
+approval, retry and cancellation; see [usage](features/workflows/usage.md).
 
 ## Project-specific: frame presentation
 

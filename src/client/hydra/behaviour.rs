@@ -1208,6 +1208,26 @@ impl App {
                 self.inbox_answer(term, key, &name);
             }
             HyHit::Profiles => self.open_profiles(),
+            HyHit::WorkflowTab(tab) => {
+                let dir = match &self.mode {
+                    Mode::Profiles(v) => v.dir.clone(),
+                    Mode::Workflows(v) => v.dir.clone(),
+                    _ => self.hy_target_dir(),
+                };
+                if tab == 0 { self.open_profiles(); } else { self.open_workflows_at(dir, tab == 2); }
+            }
+            HyHit::WorkflowRow(i) => {
+                if let Mode::Workflows(v) = &mut self.mode { v.sel = i; v.scroll = 0; }
+            }
+            HyHit::WorkflowField(i) => {
+                if let Mode::Workflows(v) = &mut self.mode { v.field = i; }
+            }
+            HyHit::WorkflowKey(c) => {
+                if let Mode::Workflows(v) = &self.mode {
+                    let v = (**v).clone();
+                    self.on_workflows_key(v, &KeyEvent::new(if c == '\n' { KeyCode::Enter } else { KeyCode::Char(c) }, if c == 's' { KeyModifiers::CONTROL } else { KeyModifiers::NONE }));
+                }
+            }
             HyHit::ProfileRow(i) => {
                 if let Mode::Profiles(v) = &mut self.mode { v.sel = i; v.scroll = 0; }
             }
@@ -1217,7 +1237,7 @@ impl App {
             HyHit::ProfileKey(c) => {
                 if let Mode::Profiles(v) = &self.mode {
                     let modifiers = if c == 's' { KeyModifiers::CONTROL } else { KeyModifiers::NONE };
-                    self.on_profiles_key((**v).clone(), &KeyEvent::new(KeyCode::Char(c), modifiers));
+                    self.on_profiles_key((**v).clone(), &KeyEvent::new(if c == '\n' { KeyCode::Enter } else { KeyCode::Char(c) }, modifiers));
                 }
             }
             HyHit::NpTask => {

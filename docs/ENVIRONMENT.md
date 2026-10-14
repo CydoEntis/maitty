@@ -68,6 +68,12 @@ Agent profiles use `[[profiles]]` in these files, with project overrides in
 `.seshi.toml`. See [agent profiles](features/agent-profiles.md) for fields,
 precedence, setup and native exports. Personal Codex exports honor `CODEX_HOME`.
 
+Workflows use `[[workflows]]` in the same files: `name`, `planner`, `worker`,
+`reviewer`. Project definitions replace personal definitions by name. Personal
+edits update the file supplying the workflows array. Runs and handoffs are local
+daemon data scoped by socket; no new environment variables are required.
+See [workflow usage](features/workflows/usage.md).
+
 ## Project-specific: variables
 
 No `.env` file: Seshi is configured through `config.toml`. Environment variables

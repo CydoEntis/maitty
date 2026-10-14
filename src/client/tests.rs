@@ -589,6 +589,42 @@ mod hydra_tests {
     }
 
     #[test]
+    fn profiles_and_workflows_use_the_right_sheet_and_human_run_controls() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
+        app.mode = Mode::Profiles(Box::new(profiles::ProfilesView { dir: PathBuf::from("."), entries: Some(Vec::new()), error: None, sel: 0, scroll: 0, editor: None, busy: false, import_path: None }));
+        let o = draw(&mut app, 160, 45); show(&o);
+        assert!(o.contains("Agent profiles") && o.contains("Workflows") && o.contains("Saved roles for fresh"));
+        let grid = hydra::grid(&app, Rect::new(0, 0, 160, 45));
+        assert!(grid.sheet.x > grid.panes.x && grid.sheet.right() == 159);
+        let close = app.hits.iter().find_map(|(r, h)| matches!(h, Hit::Hy(hydra::HyHit::WorkflowTab(1))).then_some(*r)).unwrap();
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: close.x + 1, row: close.y, modifiers: KeyModifiers::NONE });
+        let Mode::Workflows(v) = &mut app.mode else { panic!("workflow tab opens the editor") };
+        v.busy = false; v.entries = Some(vec![crate::workflows::ResolvedWorkflow { workflow: crate::workflows::Workflow { name: "feature".into(), planner: "my-plan".into(), worker: "my-worker".into(), reviewer: "my-reviewer".into() }, project: false }]);
+        v.profiles = (0..3).map(|i| {
+            let mut profile = crate::profiles::starter(crate::profiles::Runner::Codex, i);
+            profile.name = ["my-plan", "my-worker", "my-reviewer"][i].into();
+            crate::profiles::Resolved { profile, project: false }
+        }).collect();
+        for (w, h) in [(80, 24), (100, 30), (160, 45), (240, 60)] {
+            let o = draw(&mut app, w, h); show(&o);
+            assert!(o.contains("feature") && o.contains("my-plan") && o.contains("approval"));
+        }
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        app.on_paste("Build password reset".into());
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::WorkflowStart { name, goal, .. }) if name == "feature" && goal == "Build password reset")));
+        let mut run = crate::workflows::tests::run(); run.state = crate::workflows::State::Approval; run.plan = "Approved only after the person reads this plan".into(); run.term = None;
+        app.snap.workflows.push(run);
+        let o = draw(&mut app, 100, 30); show(&o);
+        assert!(o.contains("Approve plan") && o.contains("PLAN"));
+        app.on_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+        assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::WorkflowControl { run: 1, action: WorkflowAction::Approve }))));
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(matches!(app.mode, Mode::Normal));
+    }
+
+    #[test]
     fn switching_sessions_is_not_held_by_the_previous_panes_update() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let old = app.focused().unwrap();

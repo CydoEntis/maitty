@@ -11,6 +11,25 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
+Current user-requested work: [saved profile workflows](features/workflows/intent.md)
+([spec](features/workflows/spec.md)), extending phase 9. Select custom planner,
+worker and reviewer profiles; approve the plan; run at most three build/review
+rounds; keep durable progress; expose a right-side drawer and CLI/MCP entry points.
+Status: implemented for v0.29.0. The full gate passed (263 tests passed,
+three existing tests ignored; lint and Linux/macOS cross-checks passed). Named
+servers verified approval, restart recovery, handoffs, completion and the
+three-round limit with controlled stub agents. The live 80×24 UI check covered
+mouse tabs, editing, task preview/cancel and detach. Real-agent daily use remains
+a follow-up after release.
+
+Also requested: fix top-to-bottom repaint during ordinary session switches and
+show Codex's queued unanswered questions as needs-you while its spinner continues.
+Verify frame presentation, navigation and question-clearing regressions; retain
+the separate sleep/wake animation.
+Status: regression checks passed, including failures against the prior behavior;
+outer frames use synchronized updates. Subjective smoothness still needs checking
+in the user's normal terminal with its real sessions.
+
 User-requested navigation fixes: the sidebar's **+ new** must open the same
 plain shell as leader + `n`; **Actions** must include Settings. Acceptance:
 mouse and keyboard reach the same actions, including the selected sidebar
@@ -232,6 +251,8 @@ Design references: [design brief](design-brief.md), [design brief v3](design-bri
 Glossary: none yet.
 Feature docs: `docs/features/`. Each live intent is linked from In scope or a phase.
 Agent profiles: [usage and contract](features/agent-profiles.md).
+Profile workflows: [intent](features/workflows/intent.md),
+[spec](features/workflows/spec.md), [usage](features/workflows/usage.md).
 
 ## Rework
 

@@ -6,6 +6,13 @@ impl Daemon {
     /// Apply a command. `Ok(false)` means the reply is sent later (background git work).
     pub(super) fn command(&mut self, client: ClientId, cmd: Command) -> Result<bool> {
         match cmd {
+            Command::WorkflowStart { name, cwd, goal } => {
+                let id = self.start_workflow(client, name, cwd, goal)?;
+                self.send(client, ServerMsg::Reply(Reply::Text(id.to_string())));
+                return Ok(false);
+            }
+            Command::WorkflowFinish { run, report } => self.finish_workflow(client, run, report)?,
+            Command::WorkflowControl { run, action } => self.control_workflow(run, action)?,
             Command::NewWorkspace { cwd, name, cmd } => {
                 let cwd = cwd.map(clean_path).filter(|p| p.is_dir()).unwrap_or_else(home);
                 let (cols, rows) = self.guess_size();

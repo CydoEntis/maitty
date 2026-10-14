@@ -61,6 +61,7 @@ impl App {
                 }
             }
             Mode::HyPane(np) => np.task.push_str(&s.replace("\r\n", "\n")),
+            Mode::Workflows(v) => v.paste(&s),
             Mode::Profiles(v) => {
                 if let Some(path) = &mut v.import_path { path.push_str(s.lines().next().unwrap_or("")); }
                 else if let Some(editor) = &mut v.editor {
@@ -166,6 +167,7 @@ impl App {
             Mode::Finder(fd) => self.on_finder_key(*fd, &k),
             Mode::HyPane(np) => self.on_hy_pane_key(np, &k),
             Mode::Profiles(v) => self.on_profiles_key(*v, &k),
+            Mode::Workflows(v) => self.on_workflows_key(*v, &k),
             Mode::HySettings(_) => self.hy_settings_key(&k),
             Mode::Themes { query, sel, saving } => self.on_theme_key(query, sel, saving, &k),
             Mode::Side => self.on_side_key(&k),

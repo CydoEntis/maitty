@@ -17,6 +17,7 @@ mod recipes;
 mod render;
 mod tasks;
 mod profiles;
+mod workflows;
 mod views;
 mod actions;
 mod background;
@@ -84,6 +85,7 @@ enum Mode {
     /// Jump list (`commands: false`) or command palette (`commands: true`).
     Picker { query: String, sel: usize, commands: bool },
     Profiles(Box<profiles::ProfilesView>),
+    Workflows(Box<workflows::WorkflowView>),
     Prompt { kind: PromptKind, input: String },
     Copy(Box<copy::Copy>),
     /// Pick an existing worktree of the repo, or type a branch to create one.

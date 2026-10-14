@@ -663,7 +663,7 @@ fn a_fleet_comes_back_from_a_restart() {
         }],
         active_tab: 0,
     };
-    d.restore(persist::Saved { workspaces: vec![ws(71, Some(70)), ws(72, Some(99)), ws(70, None)], active: 0, made_worktrees: Vec::new() });
+    d.restore(persist::Saved { workflows: Vec::new(), workspaces: vec![ws(71, Some(70)), ws(72, Some(99)), ws(70, None)], active: 0, made_worktrees: Vec::new() });
     let [helper, orphan, commander] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
     assert!(commander != 70, "the commander has this run's id");
     assert_eq!(d.terms[&helper].started_by, Some(commander), "its helper found it again");
@@ -688,6 +688,7 @@ fn restore_gives_panes_new_ids_and_keeps_their_layout() {
     panes.insert(70, persist::SavedPane { cwd: Some(dir.clone()), name: "left one".into(), label: "Map Gen".into(), ..Default::default() });
     panes.insert(71, persist::SavedPane { cwd: Some(dir.clone()), model: "opus".into(), ..Default::default() });
     let saved = persist::Saved {
+        workflows: Vec::new(),
         workspaces: vec![persist::SavedWs {
             name: "api".into(),
             cwd: dir.clone(),
@@ -1069,6 +1070,95 @@ fn codex_queued_questions_need_attention_even_while_work_continues() {
     observed.push((true, d.terms[&id].status));
     close(&mut d, &[id]);
     assert_eq!(observed, [(false, Status::Blocked), (false, Status::Working), (true, Status::Blocked), (true, Status::Working), (true, Status::Working)], "questions take precedence with or without hooks, then ongoing work resumes; prose and zero questions do not block");
+}
+
+#[test]
+fn waiting_workflows_keep_the_daemon_alive_and_third_review_can_retry() {
+    use crate::workflows::{self as wf, State};
+    let (mut d, _rx) = daemon();
+    d.had_terms = true;
+    let mut run = wf::tests::run(); run.state = State::Approval; run.term = None;
+    d.workflows.push(run);
+    assert!(!d.should_exit(), "waiting for approval survives closing all panes and clients");
+    let run = &mut d.workflows[0]; run.state = State::Interrupted; run.stage = wf::Stage::Review; run.round = 3; run.review = "Findings from round two".into();
+    d.control_workflow(1, WorkflowAction::Retry).unwrap();
+    assert_eq!(d.workflows[0].state, State::Ready, "a third reviewer that never completed is not exhaustion");
+    d.workflows[0].state = State::Failed; d.workflows[0].exhausted = true;
+    assert!(d.control_workflow(1, WorkflowAction::Retry).is_err());
+}
+
+#[test]
+fn an_invalid_workflow_start_does_not_evict_history() {
+    let (mut d, _rx) = daemon();
+    for id in 0..32 {
+        let mut run = crate::workflows::tests::run(); run.id = id; run.state = crate::workflows::State::Complete;
+        d.workflows.push(run);
+    }
+    assert!(d.start_workflow(0, "../invalid".into(), std::env::temp_dir(), "a goal".into()).is_err());
+    assert_eq!(d.workflows.len(), 32);
+    assert_eq!(d.workflows[0].id, 0);
+}
+
+#[test]
+fn workflow_reports_need_the_assigned_pane_and_a_finished_turn() {
+    use crate::workflows::{self as wf, State};
+    let (mut d, _rx) = daemon();
+    let id = pane(&mut d);
+    let other = pane(&mut d);
+    let (tx, _rx) = mpsc::channel(32);
+    d.clients.insert(1, Client { tx: tx.clone(), attach: false, from: Some(id), behind: Default::default() });
+    d.clients.insert(2, Client { tx: tx.clone(), attach: false, from: Some(other), behind: Default::default() });
+    d.clients.insert(3, Client { tx, attach: false, from: Some(TermId::MAX), behind: Default::default() });
+    let mut run = wf::tests::run(); run.term = Some(id);
+    d.workflows.push(run);
+    let report = wf::Report { text: "The actual plan".into(), verdict: wf::Verdict::Complete };
+    assert!(d.finish_workflow(0, 1, report.clone()).is_err(), "even a human connection cannot impersonate a stage");
+    assert!(d.finish_workflow(2, 1, report.clone()).is_err());
+    assert!(d.finish_workflow(3, 1, report.clone()).is_err());
+    d.terms.get_mut(&id).unwrap().status = Status::Working;
+    d.finish_workflow(1, 1, report).unwrap();
+    d.update_workflows(); assert_eq!(d.workflows[0].state, State::Running);
+    d.terms.get_mut(&id).unwrap().status = Status::Blocked;
+    d.update_workflows(); assert_eq!(d.workflows[0].state, State::Running, "a permission prompt is not completion");
+    assert!(d.workflows[0].note.contains("needs you"));
+    d.terms.get_mut(&id).unwrap().status = Status::Done;
+    d.update_workflows(); assert_eq!(d.workflows[0].state, State::Approval);
+    assert_eq!(d.workflows[0].plan, "The actual plan");
+    assert!(d.may_command(1, &Command::WorkflowControl { run: 1, action: WorkflowAction::Approve }).is_err());
+    assert!(d.may_command(0, &Command::WorkflowControl { run: 1, action: WorkflowAction::Approve }).is_ok());
+    d.control_workflow(1, WorkflowAction::Approve).unwrap();
+    assert_eq!(d.workflows[0].stage, wf::Stage::Build);
+    d.control_workflow(1, WorkflowAction::Cancel).unwrap();
+    assert_eq!(d.workflows[0].state, State::Cancelled);
+    assert!(d.terms.contains_key(&id), "cancel keeps existing panes");
+    close(&mut d, &[id, other]);
+}
+
+#[test]
+fn workflow_progress_survives_restore_without_replaying_the_stage() {
+    use crate::workflows::{self as wf, State};
+    let (mut d, _rx) = daemon();
+    let id = pane(&mut d);
+    d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();
+    let stage = d.workspaces[0].tabs[0].focus;
+    let mut run = wf::tests::run(); run.parent = Some(id); run.term = Some(stage); run.plan = "approved plan".into();
+    run.stage = wf::Stage::Build; run.round = 1;
+    d.workflows.push(run);
+    let mut saved = d.saved();
+    let text = serde_json::to_string(&saved).unwrap();
+    saved = serde_json::from_str(&text).unwrap();
+    let (mut restored, _rx) = daemon();
+    restored.restore(saved);
+    assert_eq!(restored.workflows[0].state, State::Interrupted);
+    assert_eq!(restored.workflows[0].plan, "approved plan");
+    let new = restored.workflows[0].term.unwrap();
+    assert!(restored.terms.contains_key(&new));
+    assert!(restored.control_workflow(1, WorkflowAction::Retry).is_err(), "cannot start a second agent while the restored pane exists");
+    restored.close_term(new);
+    restored.control_workflow(1, WorkflowAction::Retry).unwrap();
+    assert_eq!(restored.workflows[0].state, State::Ready);
+    let live: Vec<_> = restored.terms.keys().copied().collect(); close(&mut restored, &live);
+    close(&mut d, &[id, stage]);
 }
 
 #[tokio::test]

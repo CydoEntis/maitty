@@ -4,6 +4,14 @@
 
 prefix = "ctrl+space"
 
+# Saved planner → your approval → worker → reviewer sequences.
+# Create a starter in the Workflows sheet, or: seshi workflow init --agent codex
+# [[workflows]]
+# name = "feature"
+# planner = "codex-planner"
+# worker = "codex-worker"
+# reviewer = "codex-reviewer"
+
 # Browse all built-in names in Settings > Appearance > Theme.
 # Families and variants: docs/theme-sources.md (gruvbox is Dark; tokyo-night is Night).
 theme = "seshi-walnut"

@@ -20,6 +20,8 @@ impl App {
             Action::PasteImage => self.paste_image(),
             Action::Find(tab) => self.open_find(tab),
             Action::Profiles => self.open_profiles(),
+            Action::Workflows => self.open_workflows(false),
+            Action::WorkflowRuns => self.open_workflows(true),
             Action::Branches => self.open_branches(None),
             Action::History => self.mode = Mode::History { sel: 0 },
             Action::SpawnTab(c) => {
@@ -188,6 +190,8 @@ impl App {
             Action::CloseTab,
             Action::RenameWorkspace,
             Action::Profiles,
+            Action::Workflows,
+            Action::WorkflowRuns,
             Action::Files,
             Action::Find(0),
             Action::Find(1),

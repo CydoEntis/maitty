@@ -10,6 +10,8 @@ use std::path::PathBuf;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Saved {
+    #[serde(default)]
+    pub workflows: Vec<crate::workflows::Run>,
     pub workspaces: Vec<SavedWs>,
     /// Index into `workspaces`.
     pub active: usize,

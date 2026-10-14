@@ -1,6 +1,7 @@
 //! One-shot commands: scripting the multiplexer from a shell (or from an agent inside it).
 
 use crate::ipc;
+pub(crate) mod workflow;
 use crate::layout::Dir;
 use crate::protocol::*;
 use anyhow::{Context, Result, anyhow, bail};

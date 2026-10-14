@@ -26,6 +26,7 @@ pub struct Config {
     /// Saved launches: an agent, a model and a prompt, e.g. "commit and push" (Ctrl+Space .).
     pub presets: Vec<Preset>,
     pub profiles: Vec<crate::profiles::Profile>,
+    pub workflows: Vec<crate::workflows::Workflow>,
     /// Put agents to sleep after sitting finished or idle this long ("15m", "1h", "4h",
     /// "never"); they resume where they were when you open them.
     pub sleep_after: String,
@@ -452,6 +453,7 @@ impl Default for Config {
             recipes: Vec::new(),
             presets: Vec::new(),
             profiles: Vec::new(),
+            workflows: Vec::new(),
             theme: crate::theme::DEFAULT.into(),
             theme_overrides: ThemeOverrides::default(),
             shell: None,
@@ -681,13 +683,21 @@ pub fn write_atomic(path: &std::path::Path, data: impl AsRef<[u8]>) -> std::io::
 
 /// Edit the personal profiles in the file that currently supplies them.
 pub fn profile_path() -> Result<PathBuf> {
+    array_path("profiles")
+}
+
+pub fn workflow_path() -> Result<PathBuf> {
+    array_path("workflows")
+}
+
+fn array_path(key: &str) -> Result<PathBuf> {
     let path = config_path();
     if std::env::var_os("SESHI_CONFIG").is_some() { return Ok(path); }
     let local = path.with_file_name("config.local.toml");
     match std::fs::read_to_string(&local) {
         Ok(text) => {
             let table: toml::Table = toml::from_str(&text).context("parsing machine-local settings")?;
-            Ok(if table.contains_key("profiles") { local } else { path })
+            Ok(if table.contains_key(key) { local } else { path })
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(path),
         Err(e) => Err(e).context("reading machine-local settings"),
@@ -874,6 +884,7 @@ impl Config {
             cfg.ui.spinner = Ui::default().spinner;
         }
         crate::profiles::validate(&cfg.profiles)?;
+        crate::workflows::validate(&cfg.workflows)?;
         Ok(cfg)
     }
 

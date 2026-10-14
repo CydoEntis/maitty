@@ -1,10 +1,10 @@
 //! Profile setup, preview, and choosing a role for a fresh session.
 
 use super::design::{BtnKind, fill, put, seg};
-use super::hydra::{HyHit, btn, hints, hit, panel};
+use super::hydra::{HyHit, btn, hints, hit};
 use super::*;
 use crate::profiles::{Profile, Resolved, Runner};
-use ratatui::{Frame, layout::Rect, style::Style};
+use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 
 const EDIT_FIELDS: usize = 7;
 const INSTRUCTIONS_FIELD: usize = 6;
@@ -178,7 +178,9 @@ impl App {
             );
             return;
         }
-        let project = if let Mode::HyPane(np) = &self.mode {
+        let project = if let Mode::Workflows(v) = &self.mode {
+            Some(v.dir.clone())
+        } else if let Mode::HyPane(np) = &self.mode {
             self.hy.saved.draft = np.task.clone();
             self.profile_dir(np.p)
         } else {
@@ -378,6 +380,8 @@ impl App {
                 KeyCode::Char('n') => {
                     view.editor = Some(Editor::new(Profile::default(), false, None))
                 }
+                KeyCode::Char('w') => { self.open_workflows_at(view.dir, false); return; }
+                KeyCode::Char('r') if !ctrl => { self.open_workflows_at(view.dir, true); return; }
                 KeyCode::Char('i') => view.import_path = Some(String::new()),
                 KeyCode::Char(c @ '1'..='6') => {
                     let i = (c as u8 - b'1') as usize;
@@ -485,21 +489,18 @@ pub(super) fn selected(app: &App, project: usize, run: &str) -> Option<Profile> 
 
 pub(super) fn draw_profiles(
     app: &mut App,
-    f: &mut Frame,
-    area: Rect,
+    buf: &mut Buffer,
+    r: Rect,
     t: &Theme,
     view: &ProfilesView,
 ) {
-    let buf = f.buffer_mut();
-    super::hydra::dim_all(buf, area, t);
-    let r = panel(app, buf, area, 100, 24, "Agent profiles", &[], t);
     let y = if let Some(editor) = &view.editor {
         draw_profile_editor(app, buf, r, t, editor)
     } else if let Some(path) = &view.import_path {
         put(
             buf,
             r.x + 3,
-            r.y + 2,
+            r.y + 3,
             &[seg(
                 "Native agent file to import (.md / .toml)",
                 Style::default().bg(t.card).fg(t.strong),
@@ -546,7 +547,8 @@ fn draw_profile_editor(
     t: &Theme,
     editor: &Editor,
 ) -> u16 {
-    let mut y = r.y + 2;
+    let mut y = r.y + 3;
+    let stride = if r.height >= 25 { 2 } else { 1 };
     for (field, title) in [
         "NAME",
         "AGENT",
@@ -593,7 +595,7 @@ fn draw_profile_editor(
             r.right().saturating_sub(3),
         );
         hit(app, row, HyHit::ProfileField(field));
-        y += 2;
+        y += stride;
     }
     for line in [
         "Blank model/effort uses the agent default.",
@@ -611,217 +613,69 @@ fn draw_profile_editor(
     y
 }
 
-fn draw_profile_rows(
-    app: &mut App,
-    buf: &mut ratatui::buffer::Buffer,
-    r: Rect,
-    t: &Theme,
-    view: &ProfilesView,
-) -> u16 {
+fn draw_profile_rows(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, view: &ProfilesView) -> u16 {
     let st = Style::default().bg(t.card);
-    let right = r.right().saturating_sub(3);
-    put(
-        buf,
-        r.x + 3,
-        r.y + 2,
-        &[seg(
-            "Personal defaults; project roles replace matching names.",
-            st.fg(t.muted),
-        )],
-        right,
-    );
-    let mut y = r.y + 4;
+    let right = r.right().saturating_sub(2);
+    for (i, line) in ["Saved roles for fresh agent sessions.", "Enter chooses a task; this session stays as is."].iter().enumerate() {
+        put(buf, r.x + 2, r.y + 3 + i as u16, &[seg(*line, st.fg(t.muted))], right);
+    }
+    let mut y = r.y + 6;
     let entries = view.entries.as_deref().unwrap_or_default();
-    let visible = (r.height.saturating_sub(18) as usize).clamp(1, 6);
+    let visible = (r.height.saturating_sub(19) as usize).clamp(1, 5);
     let start = view.sel.saturating_sub(visible - 1);
     for (i, entry) in entries.iter().enumerate().skip(start).take(visible) {
-        let row = Rect {
-            x: r.x + 2,
-            y,
-            width: r.width.saturating_sub(4),
-            height: 1,
-        };
+        let row = Rect { x: r.x + 2, y, width: r.width.saturating_sub(4), height: 1 };
         let rs = super::hydra::list_row(app, buf, row, i == view.sel, t);
-        put(
-            buf,
-            r.x + 5,
-            y,
-            &[seg(
-                format!(
-                    "{} · {} · {}",
-                    entry.profile.name,
-                    entry.profile.summary(),
-                    if entry.project { "project" } else { "personal" }
-                ),
-                rs.fg(t.strong),
-            )],
-            right,
-        );
-        hit(app, row, HyHit::ProfileRow(i));
-        y += 1;
+        put(buf, r.x + 4, y, &[seg(format!("{} ? {}", entry.profile.name, if entry.project { "project" } else { "personal" }), rs.fg(t.strong))], right);
+        hit(app, row, HyHit::ProfileRow(i)); y += 1;
     }
     if entries.is_empty() {
-        put(
-            buf,
-            r.x + 3,
-            y,
-            &[seg(
-                if view.entries.is_none() {
-                    "Loading profiles…"
-                } else {
-                    "No profiles yet. Choose a starter below or press n."
-                },
-                st.fg(t.muted),
-            )],
-            right,
-        );
-        y += 1;
+        put(buf, r.x + 2, y, &[seg(if view.entries.is_none() { "Loading profiles?" } else { "Choose a starter below or press n." }, st.fg(t.muted))], right); y += 1;
     }
     if let Some(entry) = entries.get(view.sel) {
         y += 1;
-        let lines = super::views::wrap(
-            &entry.profile.instructions_for_runner(),
-            r.width.saturating_sub(6) as usize,
-        );
-        let start = view.scroll.min(lines.len().saturating_sub(3));
-        for line in lines.into_iter().skip(start).take(3) {
-            put(buf, r.x + 3, y, &[seg(line, st.fg(t.text))], right);
-            y += 1;
+        put(buf, r.x + 2, y, &[seg(entry.profile.summary(), st.fg(t.strong))], right); y += 1;
+        let lines = super::views::wrap(&entry.profile.instructions_for_runner(), r.width.saturating_sub(4) as usize);
+        let start = view.scroll.min(lines.len().saturating_sub(2));
+        for line in lines.into_iter().skip(start).take(2) {
+            put(buf, r.x + 2, y, &[seg(line, st.fg(t.text))], right); y += 1;
         }
     }
     y + 1
 }
 
-fn draw_profile_starters(
-    app: &mut App,
-    buf: &mut ratatui::buffer::Buffer,
-    r: Rect,
-    t: &Theme,
-    mut y: u16,
-) -> u16 {
+fn draw_profile_starters(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, mut y: u16) -> u16 {
     for (runner, offset) in [("Claude", 0), ("Codex", 3)] {
-        put(
-            buf,
-            r.x + 3,
-            y,
-            &[seg(runner, Style::default().bg(t.card).fg(t.muted))],
-            r.right().saturating_sub(3),
-        );
-        let mut x = r.x + 11;
+        put(buf, r.x + 2, y, &[seg(runner, Style::default().bg(t.card).fg(t.muted))], r.right().saturating_sub(2));
+        let mut x = r.x + 9;
         for (i, role) in ["Planner", "Worker", "Reviewer"].iter().enumerate() {
             let key = char::from(b'1' + (offset + i) as u8);
-            x = btn(
-                app,
-                buf,
-                x,
-                y,
-                role,
-                &key.to_string(),
-                BtnKind::Normal,
-                HyHit::ProfileKey(key),
-                r.right().saturating_sub(3),
-            ) + 1;
+            x = btn(app, buf, x, y, role, &key.to_string(), BtnKind::Normal, HyHit::ProfileKey(key), r.right().saturating_sub(2)) + 1;
         }
-        y += 1;
-    }
-    for line in [
-        "Fresh sessions; installed tools remain available.",
-        "Claude preloads skills; Codex requests them. PgUp/PgDn details.",
-    ] {
-        put(
-            buf,
-            r.x + 3,
-            y,
-            &[seg(line, Style::default().bg(t.card).fg(t.muted))],
-            r.right().saturating_sub(3),
-        );
         y += 1;
     }
     y
 }
 
-fn draw_profile_footer(
-    app: &mut App,
-    buf: &mut ratatui::buffer::Buffer,
-    r: Rect,
-    t: &Theme,
-    view: &ProfilesView,
-) {
-    let y = r.bottom().saturating_sub(2);
-    let right = r.right().saturating_sub(3);
+fn draw_profile_footer(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, view: &ProfilesView) {
+    let y = r.bottom().saturating_sub(4);
+    let right = r.right().saturating_sub(2);
     if view.busy {
-        put(
-            buf,
-            r.x + 3,
-            y,
-            &[seg("Working…", Style::default().bg(t.card).fg(t.muted))],
-            right,
-        );
+        put(buf, r.x + 2, y, &[seg("Working?", Style::default().bg(t.card).fg(t.muted))], right);
     } else if view.editor.is_some() {
-        let x = btn(
-            app,
-            buf,
-            r.x + 3,
-            y,
-            "Save",
-            "Ctrl+S",
-            BtnKind::Primary,
-            HyHit::ProfileKey('s'),
-            right,
-        );
-        put(
-            buf,
-            x + 2,
-            y,
-            &hints(
-                t,
-                &[
-                    ("Tab", "field"),
-                    ("←→", "choose"),
-                    ("Enter", "newline"),
-                    ("Esc", "back"),
-                ],
-            ),
-            right,
-        );
+        btn(app, buf, r.x + 2, y, "Save", "Ctrl+S", BtnKind::Primary, HyHit::ProfileKey('s'), right);
+        put(buf, r.x + 2, y + 1, &hints(t, &[("Tab", "field"), ("??", "choose"), ("Enter", "newline")]), right);
     } else if view.import_path.is_some() {
-        put(
-            buf,
-            r.x + 3,
-            y,
-            &hints(t, &[("Enter", "import"), ("Esc", "cancel")]),
-            right,
-        );
+        put(buf, r.x + 2, y, &hints(t, &[("Enter", "import"), ("Esc", "cancel")]), right);
     } else {
-        put(
-            buf,
-            r.x + 3,
-            y.saturating_sub(1),
-            &hints(
-                t,
-                &[("↑↓", "choose"), ("Enter", "launch"), ("Esc", "close")],
-            ),
-            right,
-        );
-        let mut x = r.x + 3;
-        for (title, key) in [
-            ("New", 'n'),
-            ("Edit", 'e'),
-            ("Project override", 'p'),
-            ("Export", 'x'),
-            ("Import", 'i'),
-        ] {
-            x = btn(
-                app,
-                buf,
-                x,
-                y,
-                title,
-                &key.to_string(),
-                BtnKind::Normal,
-                HyHit::ProfileKey(key),
-                right,
-            ) + 1;
+        let mut x = r.x + 2;
+        for (title, key) in [("New", 'n'), ("Edit", 'e'), ("Project", 'p')] {
+            x = btn(app, buf, x, y, title, &key.to_string(), BtnKind::Normal, HyHit::ProfileKey(key), right) + 1;
+        }
+        let mut x = r.x + 2;
+        for (title, key) in [("Export", 'x'), ("Import", 'i'), ("Launch", '\n')] {
+            x = btn(app, buf, x, y + 1, title, if key == '\n' { "Enter" } else if key == 'x' { "x" } else { "i" }, BtnKind::Normal, HyHit::ProfileKey(key), right) + 1;
         }
     }
+    put(buf, r.x + 2, y + 2, &hints(t, &[("??", "choose"), ("PgUp/Dn", "details"), ("Esc", "close")]), right);
 }
