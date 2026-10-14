@@ -19,15 +19,17 @@ families and add a searchable preview browser in Appearance. Acceptance: all
 families and documented variants are selectable; search, keyboard paging, mouse
 selection, preview, cancel, and saving work; every built-in passes the contrast
 audit. Verification: the full AGENTS.md gate and a nested-server UI check.
-Status: verified in this worktree; pending integration. Sources: [theme research](theme-sources.md).
+Status: integrated for 0.28.0 with 63 built-in choices; verified in the release
+worktree. Sources: [theme research](theme-sources.md).
 
 Also requested: fix Claude reporting working after its turn ends with a dev
 server still running. User decision: working tracks the agent's turn; background
 shells do not extend it. Acceptance: Stop and idle-prompt reports remain Done
 with an unfinished background command in the transcript; real subagent lifecycle
-reports still work. Status: verified in this worktree; pending integration. The
-full gate passed (184 tests, three pre-existing live tests ignored). A named test
-daemon reported Claude Done while its background PowerShell job remained Running.
+reports still work. Status: integrated for 0.28.0. The combined release gate
+passed (251 tests, three pre-existing tests ignored), including Linux and macOS
+cross-checks. Named test daemons showed the completed turn as Done, then Idle
+once seen, while its background PowerShell job remained Running.
 
 ## Phases
 
@@ -132,8 +134,8 @@ Everything below is shipped on `dev` unless marked.
 
 **Agents**
 - Personal and project agent profiles for Claude Code and Codex, setup UI,
-  fresh launches and native workflow exports/imports — implemented, unreleased;
-  verification gate passed in this worktree — `src/profiles.rs`, `src/client/profiles.rs`; contract:
+  fresh launches and native workflow exports/imports — integrated for 0.28.0;
+  verification gate passed in the release worktree — `src/profiles.rs`, `src/client/profiles.rs`; contract:
   [agent profiles](features/agent-profiles.md). Automatic workflow sequencing is
   outside this slice.
 - Status detection: working / needs you / done (until seen) / idle, from screen patterns, OSC progress and agent hooks — shipped — `src/daemon/scan.rs`, `seshi hook` in `src/cli.rs`
