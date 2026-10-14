@@ -758,7 +758,7 @@ impl App {
             self.hy_open_finder();
             return;
         };
-        let agents = np_agents(self);
+        let agents = np_agents(self, np.p);
         let agent = agents.get(np.a).cloned().unwrap_or_else(|| "shell".into());
         let main = p.wts.iter().find(|w| w.main).map(|w| w.path.clone()).unwrap_or_else(|| p.path.clone());
         if np.fleet {
@@ -777,7 +777,18 @@ impl App {
             }
         }
         let task = if np.fleet { crate::brief::commander_prompt(&np.task) } else { np.task.clone() };
-        let cmd = np_command(self, &agent, np.model, &task);
+        let cmd = if let Some(profile) = super::super::profiles::selected(self, np.p, &agent) {
+            if self.profile_dir(np.p).is_some_and(|dir| !self.profile_projects.contains_key(&dir)) {
+                self.load_profile_project(np.p);
+                self.notify("Reading profiles for this checkout; press Enter again when ready.".into(), false);
+                return;
+            }
+            if let Err(e) = profile.validate() { self.notify(e.to_string(), true); return; }
+            match super::super::profiles::launch_command(&self.cfg, &profile, &task) {
+                Ok(command) => Some(command),
+                Err(e) => { self.notify(e.to_string(), true); return; }
+            }
+        } else { np_command(self, &agent, np.model, &task) };
         if !np.fleet && !self.hy.saved.draft.is_empty() {
             self.hy.saved.draft.clear();
             self.hy.save();
@@ -982,15 +993,16 @@ impl App {
         let mut np = NewPaneHy::new(p, beside);
         np.task = self.hy.saved.draft.clone();
         self.mode = Mode::HyPane(np);
+        self.load_profile_project(p);
     }
 
     pub(in crate::client) fn on_hy_pane_key(&mut self, mut np: NewPaneHy, k: &KeyEvent) {
         let model = self.hy_model();
         let nproj = model.len() + 1;
-        let agents = np_agents(self);
+        let agents = np_agents(self, np.p);
         let nag = agents.len();
         let agent = agents.get(np.a).cloned().unwrap_or_default();
-        let nmodels = if agent.starts_with('★') { 0 } else { np_models(self, &agent).len() };
+        let nmodels = if agent.starts_with('★') || agent.starts_with('◇') { 0 } else { np_models(self, &agent).len() };
         let nplaces = model.get(np.p).map(|p| np_places(p).len()).unwrap_or(3);
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
         let d: i32 = match k.code {
@@ -1008,6 +1020,7 @@ impl App {
             }
         };
         match k.code {
+            KeyCode::Char('p') if ctrl => { self.mode = Mode::HyPane(np); self.open_profiles(); return; }
             KeyCode::Esc => {
                 // The task stays for next time (a fleet's goal isn't one).
                 if !np.fleet && self.hy.saved.draft != np.task {
@@ -1045,6 +1058,7 @@ impl App {
                 3 => {
                     np.p = cyc(np.p, d, nproj);
                     np.place = np.place.filter(|p| *p < 3);
+                    if agent.starts_with('◇') { np.a = 0; np.model = 0; }
                 }
                 4 => {
                     let cur = np.place_for(&agent, self.cfg.worktree.per_agent) as usize;
@@ -1054,7 +1068,10 @@ impl App {
             },
             _ => {}
         }
+        let project_changed = match &self.mode { Mode::HyPane(old) => old.p != np.p || old.place != np.place, _ => false };
+        let project = np.p;
         self.mode = Mode::HyPane(np);
+        if project_changed { self.load_profile_project(project); }
     }
 
     /// Keys on the splash: move between its buttons, Enter picks one, or a button's own key.
@@ -1190,6 +1207,19 @@ impl App {
                 let name = self.snap.terms.get(&term).map(|t| t.display_name()).unwrap_or_default();
                 self.inbox_answer(term, key, &name);
             }
+            HyHit::Profiles => self.open_profiles(),
+            HyHit::ProfileRow(i) => {
+                if let Mode::Profiles(v) = &mut self.mode { v.sel = i; v.scroll = 0; }
+            }
+            HyHit::ProfileField(i) => {
+                if let Mode::Profiles(v) = &mut self.mode && let Some(e) = &mut v.editor { e.field = i; }
+            }
+            HyHit::ProfileKey(c) => {
+                if let Mode::Profiles(v) = &self.mode {
+                    let modifiers = if c == 's' { KeyModifiers::CONTROL } else { KeyModifiers::NONE };
+                    self.on_profiles_key((**v).clone(), &KeyEvent::new(KeyCode::Char(c), modifiers));
+                }
+            }
             HyHit::NpTask => {
                 if let Mode::HyPane(np) = &mut self.mode {
                     np.row = 0;
@@ -1216,6 +1246,8 @@ impl App {
                         HyHit::NpProj(_) => {
                             np.p = i;
                             np.place = np.place.filter(|p| *p < 3);
+                            np.a = 0;
+                            np.model = 0;
                             np.row = 3;
                         }
                         _ => {
@@ -1224,6 +1256,8 @@ impl App {
                         }
                     }
                 }
+                if matches!(h, HyHit::NpProj(_) | HyHit::NpWhere(_))
+                    && let Mode::HyPane(np) = &self.mode { self.load_profile_project(np.p); }
             }
             HyHit::NpGo => {
                 if let Mode::HyPane(np) = &self.mode {

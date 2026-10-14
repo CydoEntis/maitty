@@ -64,6 +64,10 @@ Settings live in `config.toml` (`%APPDATA%\seshi\` on Windows,
 `~/.config/seshi/` elsewhere), with `config.local.toml` beside it for
 machine-only values. `config.example.toml` documents every key.
 
+Agent profiles use `[[profiles]]` in these files, with project overrides in
+`.seshi.toml`. See [agent profiles](features/agent-profiles.md) for fields,
+precedence, setup and native exports. Personal Codex exports honor `CODEX_HOME`.
+
 ## Project-specific: variables
 
 No `.env` file: Seshi is configured through `config.toml`. Environment variables

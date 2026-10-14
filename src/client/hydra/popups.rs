@@ -277,7 +277,7 @@ pub(in crate::client) fn draw_finder(app: &mut App, f: &mut Frame, area: Rect, t
 
 // New pane ----------------------------------------------------------------------------------
 
-pub(in crate::client) fn np_agents(app: &App) -> Vec<String> {
+pub(in crate::client) fn np_agents(app: &App, project: usize) -> Vec<String> {
     let mut v: Vec<String> = app.cfg.quick.agents.iter().map(|a| a.name.clone()).collect();
     for a in ["claude", "codex", "gemini"] {
         if !v.iter().any(|x| x == a) {
@@ -287,6 +287,9 @@ pub(in crate::client) fn np_agents(app: &App) -> Vec<String> {
     v.push("shell".into());
     v.extend(app.cfg.recipes.iter().filter(|r| !r.run.is_empty()).map(|r| format!("⚙ {}", r.name)));
     v.extend(app.cfg.presets.iter().map(|p| format!("★ {}", p.name)));
+    if crate::ipc::remote().is_none() {
+        v.extend(app.profiles_for(project).unwrap_or_default().iter().map(|p| crate::client::profiles::label(&p.profile)));
+    }
     v
 }
 

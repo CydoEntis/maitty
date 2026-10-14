@@ -224,6 +224,7 @@ pub enum Action {
     PasteImage,
     /// Find a file (0) or search the code (1).
     Find(u8),
+    Profiles,
     /// Switch the branch of the checkout you're in.
     Branches,
     /// A shell in the folder of the session you're on, straight away.
@@ -313,6 +314,7 @@ impl Action {
             Action::NewSession => "+ new, beside this one".into(),
             Action::CloseSplit => "close the split".into(),
             Action::PasteImage => "Paste the clipboard image".into(),
+            Action::Profiles => "Agent profiles".into(),
             Action::Branches => "Switch branch".into(),
             Action::ShellHere => "New session (a shell here)".into(),
             Action::PrevPrompt => "Jump to the previous command in history".into(),
@@ -387,6 +389,7 @@ impl Action {
             Action::NewSession => "new-beside".into(),
             Action::CloseSplit => "close-split".into(),
             Action::PasteImage => "paste-image".into(),
+            Action::Profiles => "profiles".into(),
             Action::Branches => "switch-branch".into(),
             Action::ShellHere => "shell-here".into(),
             Action::PrevPrompt => "prev-prompt".into(),
@@ -478,6 +481,7 @@ impl FromStr for Action {
             "new-session" | "new-beside" => Action::NewSession,
             "close-split" => Action::CloseSplit,
             "paste-image" => Action::PasteImage,
+            "profiles" => Action::Profiles,
             "switch-branch" => Action::Branches,
             "shell-here" => Action::ShellHere,
             "prev-prompt" => Action::PrevPrompt,

@@ -517,6 +517,78 @@ mod hydra_tests {
 
 
     #[test]
+    fn profiles_preview_project_overrides_and_launch_a_fresh_role() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        let personal = crate::profiles::starter(crate::profiles::Runner::Claude, 2);
+        let mut local = personal.clone();
+        local.agent = crate::profiles::Runner::Codex;
+        local.model = "chosen-model".into();
+        local.skills = vec!["ponytail".into()];
+        app.cfg.profiles = vec![personal];
+        let dir = app.hy_model()[0].path.clone();
+        app.profile_projects.insert(dir.clone(), Ok(vec![local.clone()]));
+        let entries = app.profiles_for(0).unwrap();
+        app.mode = Mode::Profiles(Box::new(profiles::ProfilesView { dir, entries: Some(entries), error: None, sel: 0, scroll: 0, editor: None, busy: false, import_path: None }));
+        let screen = draw(&mut app, 110, 30);
+        show(&screen);
+        assert!(screen.contains("Agent profiles") && screen.contains("chosen-model") && screen.contains("project"));
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        let screen = draw(&mut app, 110, 30);
+        assert!(screen.contains("codex · chosen-model · medium") && screen.contains("Fresh codex session"));
+        app.on_paste("Review the change with 'quotes', $text and a new\nline".into());
+        assert!(rx.try_recv().is_err(), "pasted task stays in the chooser");
+        let Mode::HyPane(mut np) = app.mode.clone() else { panic!("expected the launch chooser") };
+        assert_eq!(np.task, "Review the change with 'quotes', $text and a new\nline");
+        np.place = Some(2);
+        let encoded = crate::profiles::encode_task(&np.task).unwrap();
+        app.hy_pane_go(&np);
+        let commands: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        let command = commands.iter().find_map(|c| match c { ClientMsg::Command(Command::NewWorkspace { cmd: Some(cmd), .. }) => Some(cmd), _ => None }).unwrap();
+        assert!(command.contains("profile run") && command.contains(&local.name) && command.contains(&encoded));
+        assert!(!command.contains("--resume") && !command.contains("$text"));
+    }
+
+    #[test]
+    fn profiles_starters_edit_with_keyboard_and_preserve_multiline_pastes() {
+        let (_, mut app) = super::design_tests::render_with(110, 30);
+        app.mode = Mode::Profiles(Box::new(profiles::ProfilesView { dir: PathBuf::from("."), entries: Some(Vec::new()), error: None, sel: 0, scroll: 0, editor: None, busy: false, import_path: None }));
+        app.on_key(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::NONE));
+        assert!(matches!(&app.mode, Mode::Profiles(v) if v.editor.as_ref().is_some_and(|e| e.profile.agent == crate::profiles::Runner::Codex && e.profile.name == "codex-planner")));
+        for _ in 0..6 { app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)); }
+        app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        app.on_paste("Read the code.\nMake a plan.".into());
+        assert!(matches!(&app.mode, Mode::Profiles(v) if v.editor.as_ref().is_some_and(|e| e.profile.instructions == "Read the code.\nMake a plan.")));
+        let screen = draw(&mut app, 80, 24);
+        show(&screen);
+        assert!(screen.contains("NAME") && screen.contains("INSTRUCTIONS") && screen.contains("Ctrl+S"));
+        for (width, height) in [(1, 1), (20, 6), (40, 15)] { draw(&mut app, width, height); }
+    }
+
+    #[test]
+    fn profiles_use_the_selected_checkout_for_overrides_and_review() {
+        let (_, mut app) = super::design_tests::render_with(110, 30);
+        let project = app.hy_model()[0].clone();
+        let worktree = project.wts.iter().find(|w| !w.main).unwrap().path.clone();
+        let personal = crate::profiles::starter(crate::profiles::Runner::Codex, 2);
+        let mut local = personal.clone();
+        local.model = "worktree-model".into();
+        app.cfg.profiles = vec![personal];
+        app.profile_projects.insert(project.path.clone(), Ok(Vec::new()));
+        app.profile_projects.insert(worktree.clone(), Ok(vec![local.clone()]));
+        let entries = crate::profiles::resolve(&app.cfg.profiles, &[local]).unwrap();
+        app.mode = Mode::Profiles(Box::new(profiles::ProfilesView { dir: worktree.clone(), entries: Some(entries), error: None, sel: 0, scroll: 0, editor: None, busy: false, import_path: None }));
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(app.profile_dir(0), Some(worktree));
+        assert_eq!(app.profiles_for(0).unwrap()[0].profile.model, "worktree-model");
+        let screen = draw(&mut app, 80, 24);
+        show(&screen);
+        assert!(screen.contains("worktree-model"));
+        assert!(matches!(&app.mode, Mode::HyPane(np) if np.place.is_some_and(|p| p >= 3)));
+    }
+
+    #[test]
     fn agent_rows_show_name_model_and_latest_prompt() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let id = *app.snap.terms.iter().find(|(_, t)| t.agent.as_deref() == Some("claude")).unwrap().0;
@@ -1094,7 +1166,7 @@ mod hydra_tests {
         app.on_key(key(KeyCode::Esc));
         assert!(app.mode == Mode::Normal && started(&mut rx).is_none());
         app.act(Action::StartFleet);
-        let shell = hydra::np_agents(&app).iter().position(|a| a == "shell").unwrap();
+        let shell = hydra::np_agents(&app, 0).iter().position(|a| a == "shell").unwrap();
         if let Mode::HyPane(np) = &mut app.mode {
             np.task = "a goal".into();
             np.a = shell;

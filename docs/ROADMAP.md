@@ -131,6 +131,11 @@ Everything below is shipped on `dev` unless marked.
 - SSH remotes (`--remote host`) — shipped — `src/ipc.rs` `connect_remote`
 
 **Agents**
+- Personal and project agent profiles for Claude Code and Codex, setup UI,
+  fresh launches and native workflow exports/imports — implemented, unreleased;
+  verification gate passed in this worktree — `src/profiles.rs`, `src/client/profiles.rs`; contract:
+  [agent profiles](features/agent-profiles.md). Automatic workflow sequencing is
+  outside this slice.
 - Status detection: working / needs you / done (until seen) / idle, from screen patterns, OSC progress and agent hooks — shipped — `src/daemon/scan.rs`, `seshi hook` in `src/cli.rs`
 - Trusted status reports (process tree or `SESHI_PANE_TOKEN`) — shipped — `src/daemon/term.rs`, `src/cli.rs`
 - Agent kinds: Claude, Codex, Gemini, OpenCode, Cursor, Copilot, Amp, Qwen, Aider, Goose, Crush, Droid, Pi, Kiro, Grok, custom `[[agents]]` — shipped — `src/config.rs`
@@ -216,6 +221,7 @@ Docs: `AGENTS.md`, `docs/` (architecture, standards, testing, security, UI, API 
 Design references: [design brief](design-brief.md), [design brief v3](design-brief-v3.md).
 Glossary: none yet.
 Feature docs: `docs/features/`. Each live intent is linked from In scope or a phase.
+Agent profiles: [usage and contract](features/agent-profiles.md).
 
 ## Rework
 

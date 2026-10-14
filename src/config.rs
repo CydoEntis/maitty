@@ -24,6 +24,7 @@ pub struct Config {
     pub recipes: Vec<Recipe>,
     /// Saved launches: an agent, a model and a prompt, e.g. "commit and push" (Ctrl+Space .).
     pub presets: Vec<Preset>,
+    pub profiles: Vec<crate::profiles::Profile>,
     /// Put agents to sleep after sitting finished or idle this long ("15m", "1h", "4h",
     /// "never"); they resume where they were when you open them.
     pub sleep_after: String,
@@ -449,6 +450,7 @@ impl Default for Config {
             mcp: Mcp::default(),
             recipes: Vec::new(),
             presets: Vec::new(),
+            profiles: Vec::new(),
             theme: crate::theme::DEFAULT.into(),
             theme_overrides: ThemeOverrides::default(),
             shell: None,
@@ -676,6 +678,30 @@ pub fn write_atomic(path: &std::path::Path, data: impl AsRef<[u8]>) -> std::io::
     })
 }
 
+/// Edit the personal profiles in the file that currently supplies them.
+pub fn profile_path() -> Result<PathBuf> {
+    let path = config_path();
+    if std::env::var_os("SESHI_CONFIG").is_some() { return Ok(path); }
+    let local = path.with_file_name("config.local.toml");
+    match std::fs::read_to_string(&local) {
+        Ok(text) => {
+            let table: toml::Table = toml::from_str(&text).context("parsing machine-local settings")?;
+            Ok(if table.contains_key("profiles") { local } else { path })
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(path),
+        Err(e) => Err(e).context("reading machine-local settings"),
+    }
+}
+
+pub fn native_agent_dir(runner: crate::profiles::Runner) -> Result<PathBuf> {
+    if runner == crate::profiles::Runner::Codex && let Some(dir) = std::env::var_os("CODEX_HOME") {
+        return Ok(PathBuf::from(dir).join("agents"));
+    }
+    let home = directories::BaseDirs::new().context("finding your home folder")?;
+    let folder = if runner == crate::profiles::Runner::Claude { ".claude" } else { ".codex" };
+    Ok(home.home_dir().join(folder).join("agents"))
+}
+
 /// Read a JSON state file; one that's there but won't parse is kept as `<name>.bak` (so a
 /// bad write or a hand edit loses nothing) and the defaults are used.
 pub fn read_state<T: serde::de::DeserializeOwned + Default>(path: &std::path::Path) -> T {
@@ -846,6 +872,7 @@ impl Config {
         if cfg.ui.spinner == OLD_SPINNER {
             cfg.ui.spinner = Ui::default().spinner;
         }
+        crate::profiles::validate(&cfg.profiles)?;
         Ok(cfg)
     }
 

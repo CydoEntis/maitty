@@ -226,6 +226,13 @@ config.example.toml
 
 ## Project-specific: patterns and conventions
 
+Agent profiles live in `profiles.rs` (validation, scope resolution, persistence,
+native definitions and launch arguments) and `client/profiles.rs` (setup and
+preview). `seshi profile run` runs inside a daemon-owned pane; `proc::agent`
+passes arguments directly to the native CLI or its npm Node entry on Windows.
+Profile filesystem work runs in `spawn_bg`; no new IPC message shapes are needed.
+See [agent profiles](features/agent-profiles.md) for the public contract.
+
 - **Commands and snapshots.** The client sends `Command`s; the daemon answers
   with full `Snapshot`s plus per-pane output. The client derives its view model
   (`hy_model`) from the snapshot each frame instead of caching parallel state.

@@ -382,6 +382,12 @@ Set-Alias hy "$env:USERPROFILE\.cargo\bin\seshi.exe"   # PowerShell ($PROFILE)
 
 ## Configure
 
+**Agent profiles:** press **Ctrl+P** in **New**, or choose
+**Agent profiles** in the command palette. Create personal Claude Code / Codex
+roles, override them per project, and export native agent files for your
+workflows. Editable Planner / Worker / Reviewer starters are included.
+See [agent profiles](docs/features/agent-profiles.md).
+
 ```sh
 seshi config init   # writes the annotated example to the config path
 seshi config path   # %APPDATA%\seshi\config.toml, or ~/.config/seshi/config.toml

@@ -121,6 +121,10 @@ the pane's process tree or `SESHI_PANE_TOKEN`.
 
 ## Project-specific: feature/module structure
 
+`seshi profile list|run|export|import` is the local profile interface; see
+[agent profiles](features/agent-profiles.md). Launches use the existing
+`NewWorkspace` / worktree commands, so the wire protocol is unchanged.
+
 A new capability adds: a `Command` variant (and any new `ServerMsg` /
 snapshot field) in `protocol.rs` with a `PROTOCOL_VERSION` bump; handling in
 `daemon/mod.rs` (or a `daemon/<feature>.rs`); the client side as an `Action` in
