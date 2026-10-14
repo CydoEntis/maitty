@@ -14,6 +14,14 @@ which ones need you, jump to them, and keep them running when you leave. See
 Active phase: **9 — one agent runs a fleet for you** (chosen 2026-10-11)
 Next: the phase's live check (#32–#38 are on `dev`, released in 0.20.0)
 
+Current user-requested work: fix Claude reporting working after its turn ends with a dev
+server still running. User decision: working tracks the agent's turn; background
+shells do not extend it. Acceptance: Stop and idle-prompt reports remain Done
+with an unfinished background command in the transcript; real subagent lifecycle
+reports still work. Status: verified in this worktree; pending integration. The
+full gate passed (184 tests, three pre-existing live tests ignored). A named test
+daemon reported Claude Done while its background PowerShell job remained Running.
+
 ## Phases
 
 ### 1 — Working with agents feels effortless (Batch A) · complete 2026-10-03 at `54855dd`

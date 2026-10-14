@@ -126,3 +126,10 @@ snapshot field) in `protocol.rs` with a `PROTOCOL_VERSION` bump; handling in
 `daemon/mod.rs` (or a `daemon/<feature>.rs`); the client side as an `Action` in
 `keys.rs`, a `Mode` and `draw_*` / `on_*_key` pair in `client/`, and a CLI
 subcommand in `cli.rs` when scripts should reach it.
+
+## Project-specific: agent turns and background shells
+
+Honor a trusted turn-finished hook even when its transcript lists a background
+shell or dev server. Background commands do not turn `Done` back into `Working`.
+Continue tracking actual subagents through their own lifecycle reports. Prepare
+the hook message separately from socket I/O so its effective status is testable.
