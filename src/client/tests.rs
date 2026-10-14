@@ -2591,3 +2591,59 @@ mod settings_splash_tests {
         assert!(keys.contains("Seshi Night") && keys.contains("Seshi Day"), "a row per theme, Seshi's own first");
     }
 }
+
+#[cfg(test)]
+mod shots {
+    //! Not a check: writes the screens the README shows, cell by cell, for the image step.
+    //! `SESHI_SHOTS=<dir> cargo test write_the_readme_screens -- --ignored`
+    use super::design_tests::render_with;
+    use super::*;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    fn cells(app: &mut App, w: u16, h: u16, name: &str, dir: &std::path::Path) {
+        app.hy_fresh();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let mut rows = Vec::new();
+        for y in 0..h {
+            let row: Vec<serde_json::Value> = (0..w)
+                .map(|x| {
+                    let c = &buf[(x, y)];
+                    let col = |c: ratatui::style::Color| match c {
+                        ratatui::style::Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
+                        _ => String::new(),
+                    };
+                    serde_json::json!([c.symbol(), col(c.fg), col(c.bg), c.modifier.contains(ratatui::style::Modifier::BOLD)])
+                })
+                .collect();
+            rows.push(row);
+        }
+        std::fs::write(dir.join(format!("{name}.json")), serde_json::to_string(&rows).unwrap()).unwrap();
+    }
+
+    #[test]
+    #[ignore]
+    fn write_the_readme_screens() {
+        let dir = std::path::PathBuf::from(std::env::var("SESHI_SHOTS").expect("set SESHI_SHOTS"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (_, mut app) = render_with(160, 45);
+        cells(&mut app, 160, 45, "02-main", &dir);
+        let (_, mut app) = render_with(160, 45);
+        app.mode = Mode::GoTo { query: String::new(), sel: 0 };
+        cells(&mut app, 160, 45, "03-go-to", &dir);
+        let (_, mut app) = render_with(160, 45);
+        app.mode = Mode::Actions { sel: 0 };
+        cells(&mut app, 160, 45, "04-palette", &dir);
+        let (_, mut app) = render_with(160, 45);
+        app.act(crate::keys::Action::Settings);
+        cells(&mut app, 160, 45, "07-settings", &dir);
+        let (_, mut app) = render_with(160, 45);
+        app.open_keymap(None);
+        cells(&mut app, 160, 45, "06-keys", &dir);
+        let (_, mut app) = render_with(160, 45);
+        app.splash = true;
+        cells(&mut app, 160, 45, "01-splash", &dir);
+    }
+}
