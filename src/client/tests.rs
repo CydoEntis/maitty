@@ -2630,6 +2630,13 @@ mod shots {
         std::fs::create_dir_all(&dir).unwrap();
         let (_, mut app) = render_with(160, 45);
         cells(&mut app, 160, 45, "02-main", &dir);
+        // The agent beside a shell in the same tab.
+        let (_, mut app) = render_with(160, 45);
+        let mut split = crate::layout::Node::Leaf(1);
+        split.split(1, crate::layout::Dir::Right, 3);
+        app.hy.tabs[0].layout = split;
+        app.hy.tabs[0].focus = 1;
+        cells(&mut app, 160, 45, "05-split", &dir);
         let (_, mut app) = render_with(160, 45);
         app.mode = Mode::GoTo { query: String::new(), sel: 0 };
         cells(&mut app, 160, 45, "03-go-to", &dir);
