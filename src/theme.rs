@@ -290,12 +290,12 @@ impl Theme {
         let black = Color::Rgb(0, 0, 0);
         let white = Color::Rgb(255, 255, 255);
         let acc_ink = if contrast(black, accent) > contrast(white, accent) { black } else { white };
-        let done = readable_on(ansi[1], ink, &[sidebar], 3.0);
-        let blocked = readable_on(ansi[0], ink, &[sidebar], 3.0);
-        let mut working = readable_on(ansi[2], ink, &[sidebar], 4.5);
+        let done = readable_on(ansi[1], ink, &[sidebar, hov], 3.0);
+        let blocked = readable_on(ansi[0], ink, &[sidebar, hov], 3.0);
+        let mut working = readable_on(ansi[2], ink, &[sidebar, hov], 4.5);
         // Muted terminal yellows can look like green or red. Status must remain distinguishable.
         if colors_alike(working, done) || colors_alike(working, blocked) {
-            working = readable_on(mix(ansi[2], Color::Rgb(255, 96, 0), 0.85), ink, &[sidebar], 4.5);
+            working = readable_on(mix(ansi[2], Color::Rgb(255, 96, 0), 0.85), ink, &[sidebar, hov], 4.5);
         }
         let line = mix(bg, fg, 0.22);
         Theme {
