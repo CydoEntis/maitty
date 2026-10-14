@@ -156,7 +156,9 @@ impl Daemon {
             Some(rest) => rest.split('"').next(),
             None => cmd.split_whitespace().next(),
         }?;
-        let stem = std::path::Path::new(program).file_stem()?.to_string_lossy().to_lowercase();
+        // Both separators: a saved command may be a Windows path on any machine.
+        let file = program.rsplit(['/', '\\']).next()?;
+        let stem = file.rsplit_once('.').map_or(file, |(stem, _)| stem).to_lowercase();
         self.agents.iter().find(|a| a.process.iter().any(|p| p.eq_ignore_ascii_case(&stem))).map(|a| a.name.clone())
     }
 
