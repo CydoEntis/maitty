@@ -27,6 +27,7 @@ pub(super) fn path_key(p: &Path) -> String {
 
 /// The question an agent is asking, read off the bottom of its screen.
 pub(super) fn question(parser: &vt100::Parser) -> Option<String> {
+    static QUEUED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(crate::config::CODEX_QUEUED_QUESTION_PATTERN).unwrap());
     let screen = parser.screen();
     let (rows, cols) = screen.size();
     let lines: Vec<String> = screen.rows(0, cols).collect();
@@ -39,6 +40,7 @@ pub(super) fn question(parser: &vt100::Parser) -> Option<String> {
         .filter(|l| !l.is_empty())
         .filter(|l| !l.starts_with('❯') && !l.starts_with('›') && !l.chars().next().is_some_and(|c| c.is_ascii_digit()))
         .find(|l| l.ends_with('?') || l.starts_with("Do you want") || l.starts_with("Allow"))
+        .or_else(|| lines[start..].iter().any(|l| QUEUED.is_match(l)).then(|| "Unanswered Codex question — open its question list".into()))
 }
 
 impl App {

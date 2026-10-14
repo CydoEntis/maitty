@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 pub const EXAMPLE: &str = include_str!("../config.example.toml");
+pub const CODEX_QUEUED_QUESTION_PATTERN: &str = r"(?m)^\s*\?\s+[1-9][0-9]*\s+questions?\s*$";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]

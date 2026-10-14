@@ -1044,6 +1044,33 @@ fn codex_shows_working_from_its_screen_after_a_turn() {
     close(&mut d, &[t]);
 }
 
+#[test]
+fn codex_queued_questions_need_attention_even_while_work_continues() {
+    let (mut d, _rx) = daemon();
+    let id = pane(&mut d);
+    let mut observed = Vec::new();
+    for hooked in [false, true] {
+        let t = d.terms.get_mut(&id).unwrap();
+        t.agent = Some("codex".into()); t.hooked = hooked; t.status = Status::Working;
+        t.parser.process(b"\x1b[2J\x1b[H"); t.parser.process(&b"\r\n".repeat(30));
+        t.parser.process(b"Working (8m 01s - esc to interrupt)\r\nQueued follow-up inputs\r\n  ? 1 question\r\n  shift+tab to answer\r\nAsk Codex to do anything");
+        d.update_statuses();
+        observed.push((hooked, d.terms[&id].status));
+        let t = d.terms.get_mut(&id).unwrap();
+        t.parser.process(b"\x1b[2J\x1b[H"); t.parser.process(&b"\r\n".repeat(30));
+        t.parser.process(b"Working (8m 05s - esc to interrupt)\r\nAsk Codex to do anything");
+        d.update_statuses();
+        observed.push((hooked, d.terms[&id].status));
+    }
+    let t = d.terms.get_mut(&id).unwrap();
+    t.parser.process(b"\x1b[2J\x1b[H"); t.parser.process(&b"\r\n".repeat(30));
+    t.parser.process(b"The report discusses 1 question\r\n? 0 questions\r\nWorking (esc to interrupt)");
+    d.update_statuses();
+    observed.push((true, d.terms[&id].status));
+    close(&mut d, &[id]);
+    assert_eq!(observed, [(false, Status::Blocked), (false, Status::Working), (true, Status::Blocked), (true, Status::Working), (true, Status::Working)], "questions take precedence with or without hooks, then ongoing work resumes; prose and zero questions do not block");
+}
+
 #[tokio::test]
 async fn a_phone_alert_goes_once_after_the_wait() {
     let (mut d, _rx) = daemon();

@@ -39,6 +39,9 @@ pub(super) const QUESTION_GONE_AFTER: Duration = Duration::from_secs(2);
 pub(super) const UNASKED_QUESTION_GONE_AFTER: Duration = Duration::from_secs(8);
 /// A numbered choice an agent offers ("❯ 1. Yes"): a question, whatever its wording.
 static CHOICES: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"(?m)^[\s│┃]*[❯>]?\s*1\.\s+\S").unwrap());
+/// Codex can keep working while an asynchronous question waits in its composer.
+static CODEX_QUEUED_QUESTION: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(crate::config::CODEX_QUEUED_QUESTION_PATTERN).unwrap());
+const CODEX_QUESTION_WHY: &str = "screen: Codex has an unanswered queued question";
 /// A "done" held while subagents run is let through once none has been heard from for this
 /// long (one died without saying so). Background agents can run, and wait on CI, for a while.
 /// After a queued follow-up goes in, the agent has this long to say it has started on it
@@ -430,6 +433,17 @@ impl Daemon {
         let mut still_working = Vec::new();
         for t in self.terms.values() {
             let Some(name) = &t.agent else { continue };
+            if name == "codex" && CODEX_QUEUED_QUESTION.is_match(&t.tail_text(rows)) {
+                if t.status != Status::Blocked {
+                    changes.push((t.id, Status::Blocked, CODEX_QUESTION_WHY.into()));
+                }
+                continue;
+            }
+            if name == "codex" && t.status == Status::Blocked && t.status_why == CODEX_QUESTION_WHY {
+                let working = self.agents.iter().find(|a| &a.name == name).is_some_and(|d| d.working.iter().any(|r| r.is_match(&t.tail_text(rows))));
+                changes.push((t.id, if working { Status::Working } else if Some(t.id) == focused { Status::Idle } else { Status::Done }, "screen: queued question answered".into()));
+                continue;
+            }
             if t.hooked {
                 if t.status == Status::Done && Some(t.id) == focused {
                     changes.push((t.id, Status::Idle, "you're looking at it".to_string()));
