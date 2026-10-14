@@ -1629,14 +1629,24 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("actions") && !o.contains("actions ●"), "no dot without a newer version");
+        app.act(Action::Actions);
+        let o = draw(&mut app, 160, 45);
+        assert!(o.contains("Settings") && !o.contains("Settings ●"), "no Settings dot without a newer version");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         app.update_available = Some("9.9.9".into());
         app.update_notes = vec!["Fixed: copying".into(), "New: an Update now button".into()];
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("actions ●"), "a dot after actions, where the update is");
         assert!(app.palette_commands().contains(&Action::Update), "and it's in the palette");
+        app.act(Action::Actions);
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("Settings ●"), "the Actions menu points to Settings for the update");
+        let index = hydra::action_items().iter().position(|(_, action)| *action == Action::Settings).unwrap();
+        let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::ActionRow(index))).then_some((r.x + 1, r.y))).expect("Settings is clickable");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
         // Settings: the version, the new one, and the button.
-        app.act(Action::Settings);
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains(&format!("seshi {} → 9.9.9", env!("CARGO_PKG_VERSION"))) && o.contains("Update now"), "the button by the version");

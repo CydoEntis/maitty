@@ -282,6 +282,8 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
         let end = put(buf, r.x + 4, yy, &[seg(*label, ls)], r.right() - 6);
         if *a == Action::Jump && needs > 0 {
             put(buf, end + 1, yy, &[seg(format!("● {needs}"), st.fg(t.blocked).add_modifier(Modifier::BOLD))], r.right() - 6);
+        } else if *a == Action::Settings && app.update_available.is_some() {
+            put(buf, end + 1, yy, &[seg("●", st.fg(t.accent).add_modifier(Modifier::BOLD))], r.right() - 6);
         }
         let key = k(app, a);
         let kw = key.width() as u16;

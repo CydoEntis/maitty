@@ -113,6 +113,9 @@ dividers, scroll; Ctrl+click opens paths.
 The sidebar's **+ new** uses the same shell action as leader + `n`, including
 its configured key hint. **Actions** includes a clickable Settings row.
 
+When an update is available, show the accent dot beside **Actions**, its
+**Settings** row and the **General** settings tab to guide users to the update.
+
 ## Project-specific: UI conventions
 
 <!-- local: user requested Profiles and Workflows in the right-hand sheet. -->

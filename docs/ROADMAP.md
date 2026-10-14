@@ -11,6 +11,15 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
+User-requested update discovery: show the update dot beside **Settings** in
+**Actions**, matching the sidebar indicator. Acceptance: hide it without an
+update; clicking the marked row reaches the update controls. Verification:
+rendered update flow and the full gate passed (263 tests passed, three existing
+tests ignored; lint and both cross-checks passed). The missing-badge regression
+fails against the previous behavior. The live nested-server check was blocked
+by automatic approval review; no live verification claimed. Status: verified
+locally for v0.29.1.
+
 Current user-requested work: [saved profile workflows](features/workflows/intent.md)
 ([spec](features/workflows/spec.md)), extending phase 9. Select custom planner,
 worker and reviewer profiles; approve the plan; run at most three build/review
