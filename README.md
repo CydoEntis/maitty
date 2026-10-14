@@ -353,17 +353,22 @@ Turn it off in Settings → General. Settings → General → Start folder sets 
 opens (e.g. `~/code`); empty means wherever you run it.
 
 `Ctrl+Space ,` opens **Settings**, with tabs (Tab cycles): General · Sessions · Appearance · Agents ·
-Projects · Keys. Values are chips you click (or ←→ / Enter). Appearance has how panes look and
-the themes: **Seshi Walnut** (the default: walnut and chocolate browns, turquoise focus, a red,
-orange and lemon-lime run for what agents are doing), **Seshi Night** (warm driftwood dark, sunset
-peach) and **Seshi Day** (its
-light twin), four more pairs of a dark theme and its day (Harbor and Harbor Day, Moss and Moss Day,
-Ember and Ash, Ink and Paper) and the loud one, Arcade; then Hydra, Tinkery's four (Tinkery, Tinkery
-Light, Aurora, Moonlit), PaperColor Dark,
-Tango Dark, Monokai, Tokyo Night and more, with live
-swatches; the theme recolours agent output's ANSI colours too. On Keys, Enter then press a new key to rebind a shortcut. Projects lists
-the folders you opened (Enter forgets one). Everything is saved to `config.toml` (comments kept)
-and applies at once.
+Keys. Values are chips you click (or ←→ / Enter). Appearance has pane controls and a **Theme**
+control: press Enter to browse 63 themes. Type a name or flavor to filter, use arrows or
+PgUp/PgDn to move, and preview the palette before pressing Enter to apply it. Click a row
+to preview and click it again to apply; Esc returns without changing your theme.
+
+The catalog includes all four Catppuccin flavors, Gruvbox Dark/Light, Nord, Dracula,
+Tokyo Night Night/Storm/Moon/Day, Solarized Dark/Light, One Dark, One Half Dark/Light,
+Kanagawa Wave/Dragon/Lotus, Ayu Dark/Mirage/Light, Night Owl, Nightfly, Moonfly,
+Everforest Dark/Light, Rosé Pine/Moon/Dawn, Cobalt2, Jellybeans, Iceberg, Sonokai,
+Shades of Purple, Panda, Lucario, Gotham, Apprentice, and Zenbones Dark/Light, alongside
+Seshi Walnut (the default), Seshi Night/Day, Harbor/Day, Moss/Day, Ember/Ash,
+Ink/Paper, Arcade, Hydra, Tinkery/Light, Aurora, Moonlit, and the existing themes. [Palette sources and variant notes](docs/theme-sources.md).
+New palettes theme ANSI agent output; explicit RGB output keeps the program's colors.
+UI text and status colors are adapted for contrast. Existing theme overrides remain active.
+On Keys, Enter then press a new key to rebind a shortcut. Changes save to `config.toml`
+with comments preserved and apply at once.
 
 ## Command name clash
 
@@ -386,7 +391,7 @@ See [`config.example.toml`](config.example.toml) for every option. Some highligh
 
 ```toml
 prefix = "ctrl+a"
-theme = "tokyo-night"          # seshi-walnut (default), seshi-night, seshi-day, catppuccin-mocha/latte, gruvbox, nord, dracula, mono
+theme = "tokyo-night"          # browse all choices in Settings > Appearance > Theme
 
 [theme_overrides]
 accent = "#ff9e64"

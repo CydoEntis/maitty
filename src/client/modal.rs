@@ -117,7 +117,7 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "ui.dim", label: "Dim unfocused", kind: Kind::Choice(&["off", "subtle", "40%", "60%"]), cat: Cat::Appearance, help: "How far the panes you're not in fade. Their colours stay recognisable." },
     Setting { path: "ui.focus_border", label: "Focus border", kind: Kind::Choice(&["accent", "bright", "none"]), cat: Cat::Appearance, help: "How the pane you're in is outlined." },
     Setting { path: "ui.pill_caps", label: "Round pill ends", kind: Kind::Bool, cat: Cat::Appearance, help: "Tabs and buttons get round ends. Needs a Nerd Font; turn off for square ends." },
-    Setting { path: "theme", label: "Theme", kind: Kind::Choice(crate::theme::BUILTIN), cat: Cat::Appearance, help: "Changes the whole app live. Agent output keeps its own colours; only the ANSI palette is themed." },
+    Setting { path: "theme", label: "Theme", kind: Kind::Choice(crate::theme::BUILTIN), cat: Cat::Appearance, help: "Enter to search and preview themes. Enter in the browser applies your choice." },
     // Agents
     Setting { path: "worktree.per_agent", label: "Own worktree per agent", kind: Kind::Bool, cat: Cat::Agents, help: "Agents started in a repo's main folder (+ New, the quick prompt, or claude/codex typed in a shell) get their own branch and folder." },
     Setting { path: "worktree.command", label: "Start in new worktrees", kind: Kind::Text, cat: Cat::Agents, help: "A command to run in every new worktree (e.g. claude). Empty: a shell." },
@@ -187,7 +187,7 @@ pub fn write(path: &str, value: toml_edit::Value) -> Result<()> {
 }
 
 /// Write a value at a path of keys (a key may contain dots, like the `.` shortcut).
-pub fn write_at(parts: &[&str], value: toml_edit::Value) -> Result<()> {
+pub fn write_at(parts: &[&str], mut value: toml_edit::Value) -> Result<()> {
     let file = crate::config::config_path();
     let text = match std::fs::read_to_string(&file) {
         Ok(t) => t,
@@ -206,7 +206,13 @@ pub fn write_at(parts: &[&str], value: toml_edit::Value) -> Result<()> {
         }
         table = table[*part].as_table_mut().with_context(|| format!("`{part}` in config.toml is not a table"))?;
     }
-    table.insert(leaf, toml_edit::value(value));
+    if let Some(old) = table.get_mut(leaf).and_then(toml_edit::Item::as_value_mut) {
+        // Replacing the whole entry discards comments attached to its key and value.
+        *value.decor_mut() = old.decor().clone();
+        *old = value;
+    } else {
+        table.insert(leaf, toml_edit::value(value));
+    }
     crate::config::write_atomic(&file, doc.to_string()).context("writing config")?;
     crate::sync::push_soon();
     Ok(())
@@ -243,7 +249,28 @@ mod tests {
         unsafe { std::env::set_var("SESHI_CONFIG", &file) };
         write("ui.which_key_delay_ms", 500.into()).unwrap();
         write("worktree.command", "claude".into()).unwrap();
+        let (tx, _) = super::super::mpsc::unbounded_channel();
+        let (bg_tx, mut bg_rx) = super::super::mpsc::unbounded_channel();
+        let mut app = super::super::App::new(Config::load().unwrap(), tx, None, bg_tx);
+        app.splash = false;
+        app.open_themes();
+        app.on_paste("zenbones light".into());
+        app.on_key(super::super::KeyEvent::new(super::super::KeyCode::Enter, super::super::KeyModifiers::NONE));
+        assert!(matches!(app.mode, super::super::Mode::Themes { saving: true, .. }));
+        app.on_bg(bg_rx.blocking_recv().unwrap());
+        assert_eq!(app.cfg.theme, "zenbones-light");
+        assert_eq!(app.theme.bg, crate::theme::Theme::named("zenbones-light").bg);
+        assert!(matches!(app.mode, super::super::Mode::HySettings(_)));
         let out = std::fs::read_to_string(&file).unwrap();
+        assert!(out.contains("theme = \"zenbones-light\""));
+        // A directory cannot be a config file: failed saves retain the browser and applied theme.
+        unsafe { std::env::set_var("SESHI_CONFIG", &dir) };
+        app.open_themes();
+        app.on_paste("solarized dark".into());
+        app.on_key(super::super::KeyEvent::new(super::super::KeyCode::Enter, super::super::KeyModifiers::NONE));
+        app.on_bg(bg_rx.blocking_recv().unwrap());
+        assert_eq!(app.cfg.theme, "zenbones-light");
+        assert!(matches!(&app.mode, super::super::Mode::Themes { query, saving: false, .. } if query == "solarized dark"));
         unsafe { std::env::remove_var("SESHI_CONFIG") };
         assert!(out.contains("# my notes") && out.contains("# my ui notes"), "{out}");
         assert!(out.contains("which_key_delay_ms = 500"), "{out}");

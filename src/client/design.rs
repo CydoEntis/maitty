@@ -676,16 +676,14 @@ pub(super) fn key_rows() -> Vec<(&'static str, Vec<(&'static str, Vec<crate::key
 pub(super) enum SRow {
     Setting(&'static super::modal::Setting),
     Bind { label: &'static str, acts: Vec<crate::keys::Action> },
-    /// One theme (Settings → Appearance): index into theme::BUILTIN.
-    Theme(usize),
 }
 
 /// The small caps heading a settings row sits under.
 pub(super) fn settings_group(row: &SRow) -> &'static str {
     match row {
-        SRow::Theme(_) => "THEME",
         SRow::Bind { label, .. } => key_rows().into_iter().find(|(_, items)| items.iter().any(|(l, _)| l == label)).map(|(g, _)| g).unwrap_or("KEYS"),
         SRow::Setting(s) => match s.path {
+            "theme" => "THEME",
             "prefix" | "ui.mouse" | "ui.which_key" => "INPUT",
             "ui.sidebar_position" | "ui.splash" => "LAYOUT",
             "ui.update_check" => "UPDATES",
@@ -718,14 +716,7 @@ pub(super) fn theme_label(name: &str) -> String {
 pub(super) fn settings_rows(cat: super::modal::Cat) -> Vec<SRow> {
     let mut rows: Vec<SRow> = super::modal::in_cat(cat)
         .into_iter()
-        .flat_map(|s| {
-            // Appearance: one row per theme.
-            if s.path == "theme" {
-                crate::theme::BUILTIN.iter().enumerate().filter(|(_, n)| **n != "mono").map(|(i, _)| SRow::Theme(i)).collect::<Vec<_>>()
-            } else {
-                vec![SRow::Setting(s)]
-            }
-        })
+        .map(SRow::Setting)
         .collect();
     // Grouped under their headings, in the order the headings first come.
     let order: Vec<&str> = rows.iter().map(settings_group).fold(Vec::new(), |mut v, g| {
@@ -763,7 +754,6 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
         return super::hydra::chip("press the new key…", Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD));
     }
     match row {
-        SRow::Theme(_) => vec![],
         SRow::Bind { acts, .. } => {
             let keys = key_text(app, acts);
             if keys.is_empty() {
@@ -773,6 +763,10 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
             }
         }
         SRow::Setting(s) => {
+            if s.path == "theme" {
+                let name = if cfg.theme.is_empty() { crate::theme::DEFAULT } else { &cfg.theme };
+                return vec![seg(format!(" {} ", theme_label(name)), Style::default().fg(t.strong)), seg("Enter browse", Style::default().fg(t.accent))];
+            }
             let cur = super::modal::current(cfg, s.path);
             match s.kind {
                 Kind::Bool => {

@@ -89,6 +89,42 @@ pub const BUILTIN: &[&str] = &[
     "gruvbox",
     "nord",
     "dracula",
+    "apprentice",
+    "ayu-dark",
+    "ayu-light",
+    "ayu-mirage",
+    "catppuccin-frappe",
+    "catppuccin-macchiato",
+    "cobalt2",
+    "everforest-dark",
+    "everforest-light",
+    "gotham",
+    "gruvbox-light",
+    "iceberg",
+    "jellybeans",
+    "kanagawa-dragon",
+    "kanagawa-lotus",
+    "kanagawa-wave",
+    "lucario",
+    "moonfly",
+    "night-owl",
+    "nightfly",
+    "one-dark",
+    "one-half-dark",
+    "one-half-light",
+    "panda",
+    "rose-pine",
+    "rose-pine-dawn",
+    "rose-pine-moon",
+    "shades-of-purple",
+    "solarized-dark",
+    "solarized-light",
+    "sonokai",
+    "tokyo-night-day",
+    "tokyo-night-moon",
+    "tokyo-night-storm",
+    "zenbones-dark",
+    "zenbones-light",
     "mono",
 ];
 
@@ -115,6 +151,47 @@ pub const DESIGN: &[(&str, &str)] = &[
     ("tango-dark", "Tango Dark"),
     ("monokai", "Monokai"),
     ("tokyo-night", "Tokyo Night"),
+    ("apprentice", "Apprentice"),
+    ("ayu-dark", "Ayu Dark"),
+    ("ayu-light", "Ayu Light"),
+    ("ayu-mirage", "Ayu Mirage"),
+    ("catppuccin-frappe", "Catppuccin Frappé"),
+    ("catppuccin-latte", "Catppuccin Latte"),
+    ("catppuccin-macchiato", "Catppuccin Macchiato"),
+    ("catppuccin-mocha", "Catppuccin Mocha"),
+    ("cobalt2", "Cobalt2"),
+    ("dracula", "Dracula"),
+    ("everforest-dark", "Everforest Dark"),
+    ("everforest-light", "Everforest Light"),
+    ("gotham", "Gotham"),
+    ("gruvbox", "Gruvbox Dark"),
+    ("gruvbox-light", "Gruvbox Light"),
+    ("iceberg", "Iceberg"),
+    ("jellybeans", "Jellybeans"),
+    ("kanagawa-dragon", "Kanagawa Dragon"),
+    ("kanagawa-lotus", "Kanagawa Lotus"),
+    ("kanagawa-wave", "Kanagawa Wave"),
+    ("lucario", "Lucario"),
+    ("moonfly", "Moonfly"),
+    ("night-owl", "Night Owl"),
+    ("nightfly", "Nightfly"),
+    ("nord", "Nord"),
+    ("one-dark", "One Dark / Atom One"),
+    ("one-half-dark", "One Half Dark"),
+    ("one-half-light", "One Half Light"),
+    ("panda", "Panda"),
+    ("rose-pine", "Rosé Pine"),
+    ("rose-pine-dawn", "Rosé Pine Dawn"),
+    ("rose-pine-moon", "Rosé Pine Moon"),
+    ("shades-of-purple", "Shades of Purple"),
+    ("solarized-dark", "Solarized Dark"),
+    ("solarized-light", "Solarized Light"),
+    ("sonokai", "Sonokai"),
+    ("tokyo-night-day", "Tokyo Night Day"),
+    ("tokyo-night-moon", "Tokyo Night Moon"),
+    ("tokyo-night-storm", "Tokyo Night Storm"),
+    ("zenbones-dark", "Zenbones Dark"),
+    ("zenbones-light", "Zenbones Light"),
 ];
 
 fn hex(s: &str) -> Color {
@@ -170,7 +247,74 @@ pub fn mix(a: Color, b: Color, t: f32) -> Color {
     }
 }
 
+fn readable_on(color: Color, ink: Color, surfaces: &[Color], minimum: f64) -> Color {
+    const STEPS: usize = 100;
+    for step in 0..=STEPS {
+        let candidate = mix(color, ink, step as f32 / STEPS as f32);
+        if surfaces.iter().all(|surface| contrast(candidate, *surface) >= minimum) {
+            return candidate;
+        }
+    }
+    ink
+}
+
+fn colors_alike(a: Color, b: Color) -> bool {
+    const MIN_COLOR_DISTANCE: i32 = 90;
+    const MIN_COLOR_CONTRAST: f64 = 1.15;
+    let (Color::Rgb(r1, g1, b1), Color::Rgb(r2, g2, b2)) = (a, b) else { return a == b };
+    let distance = (r1 as i32 - r2 as i32).abs() + (g1 as i32 - g2 as i32).abs() + (b1 as i32 - b2 as i32).abs();
+    a == b || contrast(a, b) < MIN_COLOR_CONTRAST && distance < MIN_COLOR_DISTANCE
+}
+
 impl Theme {
+    /// Keep terminal colors faithful to upstream, while adapting UI roles for readable chrome.
+    fn palette(base: [&str; 4], ansi: [&str; 7]) -> Theme {
+        let [bg, fg, muted, accent] = base.map(hex);
+        let ansi = ansi.map(hex);
+        let ink = if contrast(bg, Color::Rgb(0, 0, 0)) > contrast(bg, Color::Rgb(255, 255, 255)) {
+            Color::Rgb(0, 0, 0)
+        } else {
+            Color::Rgb(255, 255, 255)
+        };
+        let sidebar = mix(bg, fg, 0.025);
+        let card = mix(bg, fg, 0.04);
+        let card2 = mix(bg, fg, 0.08);
+        let btn = mix(bg, fg, 0.10);
+        let hov = mix(bg, fg, 0.16);
+        let accent = readable_on(accent, ink, &[btn], 3.0);
+        let open = mix(sidebar, accent, 0.16);
+        let hover = mix(sidebar, ink, 0.10);
+        let strong = readable_on(fg, ink, &[bg, open, hover], 7.0);
+        let text = readable_on(mix(fg, muted, 0.20), ink, &[bg, card, card2], 4.5);
+        let muted = readable_on(muted, ink, &[bg, sidebar, open], 3.0);
+        let black = Color::Rgb(0, 0, 0);
+        let white = Color::Rgb(255, 255, 255);
+        let acc_ink = if contrast(black, accent) > contrast(white, accent) { black } else { white };
+        let done = readable_on(ansi[1], ink, &[sidebar], 3.0);
+        let blocked = readable_on(ansi[0], ink, &[sidebar], 3.0);
+        let mut working = readable_on(ansi[2], ink, &[sidebar], 4.5);
+        // Muted terminal yellows can look like green or red. Status must remain distinguishable.
+        if colors_alike(working, done) || colors_alike(working, blocked) {
+            working = readable_on(mix(ansi[2], Color::Rgb(255, 96, 0), 0.85), ink, &[sidebar], 4.5);
+        }
+        let line = mix(bg, fg, 0.22);
+        Theme {
+            bg, fg, muted, accent,
+            border: line,
+            border_active: accent,
+            sidebar_bg: sidebar,
+            selection_bg: hov,
+            tab_active_bg: accent,
+            tab_active_fg: acc_ink,
+            working, blocked, done,
+            idle: muted,
+            card, card2, btn, hov, line, text, strong, acc_ink,
+            err: readable_on(ansi[0], ink, &[card], 3.0),
+            ws: Some([ansi[4], ansi[3], ansi[0], ansi[5]]),
+            ansi: Some(ansi),
+        }
+    }
+
     /// The fill of a destructive button (Close): the error red, a little deeper when its
     /// text wouldn't read on it otherwise.
     pub fn danger_fill(&self) -> Color {
@@ -503,6 +647,150 @@ impl Theme {
                 "#282a36", "#f8f8f2", "#7a8ac0", "#bd93f9", "#44475a", "#bd93f9", "#21222c",
                 "#44475a", "#bd93f9", "#282a36", "#f1fa8c", "#ff5555", "#8be9fd", "#50fa7b",
             ]),
+            "apprentice" => Theme::palette(
+                ["#262626", "#bcbcbc", "#6c6c6c", "#5f87af"],
+                ["#af5f5f", "#5f875f", "#87875f", "#5f87af", "#5f5f87", "#5f8787", "#6c6c6c"],
+            ),
+            "ayu-dark" => Theme::palette(
+                ["#0f1419", "#e6e1cf", "#5c6773", "#36a3d9"],
+                ["#f07178", "#b8cc52", "#f29718", "#36a3d9", "#ffee99", "#95e6cb", "#ffffff"],
+            ),
+            "ayu-light" => Theme::palette(
+                ["#fafafa", "#5c6773", "#abb0b6", "#36a3d9"],
+                ["#f07178", "#86b300", "#ff6a00", "#36a3d9", "#a37acc", "#4cbf99", "#ffffff"],
+            ),
+            "ayu-mirage" => Theme::palette(
+                ["#212733", "#d9d7ce", "#5c6773", "#5ccfe6"],
+                ["#f07178", "#bbe67e", "#ffcc66", "#5ccfe6", "#d4bfff", "#95e6cb", "#ffffff"],
+            ),
+            "catppuccin-frappe" => Theme::palette(
+                ["#303446", "#c6d0f5", "#626880", "#8caaee"],
+                ["#e78284", "#a6d189", "#e5c890", "#8caaee", "#f4b8e4", "#81c8be", "#b5bfe2"],
+            ),
+            "catppuccin-macchiato" => Theme::palette(
+                ["#24273a", "#cad3f5", "#5b6078", "#8aadf4"],
+                ["#ed8796", "#a6da95", "#eed49f", "#8aadf4", "#f5bde6", "#8bd5ca", "#b8c0e0"],
+            ),
+            "cobalt2" => Theme::palette(
+                ["#122738", "#ffffff", "#aaaaaa", "#ffc600"],
+                ["#ff628c", "#3ad900", "#ffc600", "#0088ff", "#fb94ff", "#80fcff", "#ffffff"],
+            ),
+            "everforest-dark" => Theme::palette(
+                ["#2d353b", "#d3c6aa", "#859289", "#7fbbb3"],
+                ["#e67e80", "#a7c080", "#dbbc7f", "#7fbbb3", "#d699b6", "#83c092", "#d3c6aa"],
+            ),
+            "everforest-light" => Theme::palette(
+                ["#fdf6e3", "#5c6a72", "#939f91", "#3a94c5"],
+                ["#f85552", "#8da101", "#dfa000", "#3a94c5", "#df69ba", "#35a77c", "#5c6a72"],
+            ),
+            "gotham" => Theme::palette(
+                ["#0c1014", "#99d1ce", "#195466", "#195466"],
+                ["#c23127", "#2aa889", "#edb443", "#195466", "#4e5166", "#33859e", "#99d1ce"],
+            ),
+            "gruvbox-light" => Theme::palette(
+                ["#fbf1c7", "#3c3836", "#928374", "#076678"],
+                ["#9d0006", "#79740e", "#b57614", "#076678", "#8f3f71", "#427b58", "#3c3836"],
+            ),
+            "iceberg" => Theme::palette(
+                ["#161821", "#c6c8d1", "#6b7089", "#84a0c6"],
+                ["#e27878", "#b4be82", "#e2a478", "#84a0c6", "#a093c7", "#89b8c2", "#c6c8d1"],
+            ),
+            "jellybeans" => Theme::palette(
+                ["#151515", "#e8e8d3", "#888888", "#597bc5"],
+                ["#cf6a4c", "#99ad6a", "#d8ad4c", "#597bc5", "#a037b0", "#71b9f8", "#adadad"],
+            ),
+            "kanagawa-dragon" => Theme::palette(
+                ["#181616", "#c5c9c5", "#a6a69c", "#8ba4b0"],
+                ["#c4746e", "#8a9a7b", "#c4b28a", "#8ba4b0", "#a292a3", "#8ea4a2", "#c8c093"],
+            ),
+            "kanagawa-lotus" => Theme::palette(
+                ["#f2ecbc", "#545464", "#8a8980", "#4d699b"],
+                ["#c84053", "#6f894e", "#77713f", "#4d699b", "#b35b79", "#597b75", "#545464"],
+            ),
+            "kanagawa-wave" => Theme::palette(
+                ["#1f1f28", "#dcd7ba", "#727169", "#7e9cd8"],
+                ["#c34043", "#76946a", "#c0a36e", "#7e9cd8", "#957fb8", "#6a9589", "#c8c093"],
+            ),
+            "lucario" => Theme::palette(
+                ["#2b3e50", "#f8f8f2", "#2f3943", "#5c98cd"],
+                ["#e94b35", "#199c4b", "#f0cc04", "#5c98cd", "#ca94ff", "#8be0fd", "#f8f8f2"],
+            ),
+            "moonfly" => Theme::palette(
+                ["#080808", "#bdbdbd", "#949494", "#80a0ff"],
+                ["#ff5d5d", "#8cc85f", "#e3c78a", "#80a0ff", "#cf87e8", "#79dac8", "#c6c6c6"],
+            ),
+            "night-owl" => Theme::palette(
+                ["#011627", "#d6deeb", "#575656", "#82aaff"],
+                ["#ef5350", "#22da6e", "#c5e478", "#82aaff", "#c792ea", "#21c7a8", "#ffffff"],
+            ),
+            "nightfly" => Theme::palette(
+                ["#011627", "#bdc1c6", "#7c8f8f", "#82aaff"],
+                ["#fc514e", "#a1cd5e", "#e3d18a", "#82aaff", "#c792ea", "#7fdbca", "#a1aab8"],
+            ),
+            "one-dark" => Theme::palette(
+                ["#282c34", "#abb2bf", "#3e4452", "#61afef"],
+                ["#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2", "#5c6370"],
+            ),
+            "one-half-dark" => Theme::palette(
+                ["#282c34", "#dcdfe4", "#5d677a", "#61afef"],
+                ["#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2", "#dcdfe4"],
+            ),
+            "one-half-light" => Theme::palette(
+                ["#fafafa", "#383a42", "#383a42", "#0184bc"],
+                ["#e45649", "#40a14f", "#c18401", "#0184bc", "#a626a4", "#0997b3", "#fafafa"],
+            ),
+            "panda" => Theme::palette(
+                ["#292a2b", "#e6e6e6", "#757575", "#ff75b5"],
+                ["#ff2c6d", "#19f9d8", "#ffb86c", "#45a9f9", "#ff75b5", "#b084eb", "#cdcdcd"],
+            ),
+            "rose-pine" => Theme::palette(
+                ["#191724", "#e0def4", "#6e6a86", "#c4a7e7"],
+                ["#eb6f92", "#31748f", "#f6c177", "#9ccfd8", "#c4a7e7", "#ebbcba", "#e0def4"],
+            ),
+            "rose-pine-dawn" => Theme::palette(
+                ["#faf4ed", "#575279", "#9893a5", "#907aa9"],
+                ["#b4637a", "#286983", "#ea9d34", "#56949f", "#907aa9", "#d7827e", "#575279"],
+            ),
+            "rose-pine-moon" => Theme::palette(
+                ["#232136", "#e0def4", "#6e6a86", "#c4a7e7"],
+                ["#eb6f92", "#3e8fb0", "#f6c177", "#9ccfd8", "#c4a7e7", "#ea9a97", "#e0def4"],
+            ),
+            "shades-of-purple" => Theme::palette(
+                ["#1e1e3f", "#ffffff", "#5c5c61", "#7857fe"],
+                ["#e43937", "#3ad900", "#fad000", "#7857fe", "#ff2c70", "#80fcff", "#ffffff"],
+            ),
+            "solarized-dark" => Theme::palette(
+                ["#002b36", "#839496", "#586e75", "#268bd2"],
+                ["#dc322f", "#859900", "#b58900", "#268bd2", "#d33682", "#2aa198", "#eee8d5"],
+            ),
+            "solarized-light" => Theme::palette(
+                ["#fdf6e3", "#657b83", "#93a1a1", "#268bd2"],
+                ["#dc322f", "#859900", "#b58900", "#268bd2", "#d33682", "#2aa198", "#eee8d5"],
+            ),
+            "sonokai" => Theme::palette(
+                ["#2c2e34", "#e2e2e3", "#7f8490", "#76cce0"],
+                ["#fc5d7c", "#9ed072", "#e7c664", "#76cce0", "#b39df3", "#f39660", "#e2e2e3"],
+            ),
+            "tokyo-night-day" => Theme::palette(
+                ["#e1e2e7", "#3760bf", "#a1a6c5", "#2e7de9"],
+                ["#f52a65", "#587539", "#8c6c3e", "#2e7de9", "#9854f1", "#007197", "#6172b0"],
+            ),
+            "tokyo-night-moon" => Theme::palette(
+                ["#222436", "#c8d3f5", "#444a73", "#82aaff"],
+                ["#ff757f", "#c3e88d", "#ffc777", "#82aaff", "#c099ff", "#86e1fc", "#828bb8"],
+            ),
+            "tokyo-night-storm" => Theme::palette(
+                ["#24283b", "#c0caf5", "#414868", "#7aa2f7"],
+                ["#f7768e", "#9ece6a", "#e0af68", "#7aa2f7", "#bb9af7", "#7dcfff", "#a9b1d6"],
+            ),
+            "zenbones-dark" => Theme::palette(
+                ["#1c1917", "#b4bdc3", "#403833", "#6099c0"],
+                ["#de6e7c", "#819b69", "#b77e64", "#6099c0", "#b279a7", "#66a5ad", "#b4bdc3"],
+            ),
+            "zenbones-light" => Theme::palette(
+                ["#f0edec", "#2c363c", "#cfc1ba", "#286486"],
+                ["#a8334c", "#4f6c31", "#944927", "#286486", "#88507d", "#3b8992", "#2c363c"],
+            ),
             "mono" => Theme {
                 bg: Color::Reset,
                 fg: Color::Reset,
@@ -604,6 +892,21 @@ mod audit {
     use super::Theme;
     use ratatui::style::Color;
 
+    #[test]
+    fn builtins_are_unique_and_resolve_without_falling_back() {
+        let mut names = std::collections::HashSet::new();
+        for &name in super::BUILTIN {
+            assert!(names.insert(name), "duplicate theme {name}");
+            let theme = Theme::named(name);
+            if name != super::DEFAULT {
+                assert_ne!(theme.bg, Theme::named(super::DEFAULT).bg, "{name} fell back to the default");
+            }
+            if name != "mono" {
+                assert!(matches!(theme.bg, Color::Rgb(..)), "invalid background for {name}");
+            }
+        }
+    }
+
     fn lum(c: Color) -> Option<f64> {
         let Color::Rgb(r, g, b) = c else { return None };
         let ch = |v: u8| {
@@ -628,9 +931,9 @@ mod audit {
     /// different things look different.
     #[test]
     fn every_theme_reads_well() {
-        let names = ["seshi-walnut", "seshi-night", "seshi-day", "harbor", "harbor-day", "moss", "moss-day", "ember", "ash", "ink", "paper", "arcade", "hydra", "tinkery", "tinkery-light", "aurora", "moonlit", "papercolor-dark", "tango-dark", "monokai", "tokyo-night", "catppuccin-mocha", "catppuccin-latte", "gruvbox", "nord", "dracula"];
+        let names = super::BUILTIN;
         let mut bad = Vec::new();
-        for n in names {
+        for &n in names {
             let t = Theme::named(n);
             let active = mix(t.sidebar_bg, t.accent, 0.16);
             let hover = mix(t.sidebar_bg, t.text, 0.10);
@@ -676,7 +979,7 @@ mod audit {
                 ("lit working vs lit done", t.on_lit(t.working), t.on_lit(t.done)),
                 ("lit working vs lit blocked", t.on_lit(t.working), t.on_lit(t.blocked)),
             ] {
-                if a == b || contrast(a, b) < 1.15 && hue_near(a, b) {
+                if super::colors_alike(a, b) {
                     bad.push(format!("{n:18} {what:24} too alike"));
                 }
             }
@@ -691,9 +994,4 @@ mod audit {
         assert!(bad.is_empty(), "{} theme problems", bad.len());
     }
 
-    fn hue_near(a: Color, b: Color) -> bool {
-        let (Color::Rgb(r1, g1, b1), Color::Rgb(r2, g2, b2)) = (a, b) else { return false };
-        let d = |x: u8, y: u8| (x as i32 - y as i32).abs();
-        d(r1, r2) + d(g1, g2) + d(b1, b2) < 90
-    }
 }

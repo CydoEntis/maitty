@@ -87,6 +87,7 @@ src/
                  both diffs), sheet.rs (the card docked right of the panes:
                  Inbox, Changes), behaviour.rs (its keys and clicks)
     render.rs, design.rs  drawing entry point and shared helpers
+    themes.rs    searchable theme browser, previews, background save
     menu.rs, views.rs, files.rs, find.rs, branch.rs, recipes.rs, overlap.rs,
     motion.rs (slides and glides), …
     tests.rs     rendering and behaviour tests

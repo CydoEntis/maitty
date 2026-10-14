@@ -124,3 +124,14 @@ dividers, scroll; Ctrl+click opens paths.
   a key) is drawn with `button` / `btn`, `chip` or `pill`, so its ends follow the pill
   setting everywhere. Never a bare `seg` on a button colour.
 - Copy is plain words ("Focus the sidebar", not "browse-tree").
+
+## Project-specific: theme browser
+
+Appearance has one Theme control. Enter or clicking its value opens a searchable
+browser with palette swatches, an applied marker, a result count, and a preview.
+Typing filters by name or flavor; arrows, Home/End, page keys, and the mouse wheel
+move the selection. Click a row to preview; click it again or press Enter to
+save. Esc or the close button returns to Appearance without changing the theme.
+Saving runs in a background task; failure keeps the selection and shows a toast.
+The preview shows built-in defaults; configured overrides still apply after saving.
+See [theme sources](theme-sources.md) for upstream palettes and local UI adaptations.

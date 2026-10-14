@@ -21,6 +21,7 @@ mod actions;
 mod background;
 mod input;
 mod view_keys;
+mod themes;
 
 use crate::config::{Config, Keymap};
 use crate::ipc;
@@ -91,6 +92,7 @@ enum Mode {
     HyPane(hydra::NewPaneHy),
     /// Seshi layout: the settings overlay.
     HySettings(Box<design::SettingsView>),
+    Themes { query: String, sel: usize, saving: bool },
     /// Seshi layout: keyboard cursor in the sidebar; bare keys act like leader keys.
     Side,
     /// A right-click menu (seshi layout).

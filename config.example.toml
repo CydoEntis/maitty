@@ -4,7 +4,8 @@
 
 prefix = "ctrl+space"
 
-# seshi-walnut | seshi-night | seshi-day | harbor | harbor-day | moss | moss-day | ember | ash | ink | paper | arcade | hydra | tinkery | tinkery-light | aurora | moonlit | papercolor-dark | tango-dark | monokai | tokyo-night | catppuccin-mocha | catppuccin-latte | gruvbox | nord | dracula | mono
+# Browse all built-in names in Settings > Appearance > Theme.
+# Families and variants: docs/theme-sources.md (gruvbox is Dark; tokyo-night is Night).
 theme = "seshi-walnut"
 
 # Shell for new panes. Default: pwsh / powershell on Windows, $SHELL elsewhere.

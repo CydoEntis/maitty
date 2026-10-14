@@ -929,6 +929,7 @@ pub(super) enum HyHit {
     SetRow(usize),
     /// Settings row, value index.
     SetVal(usize, usize),
+    ThemePick(usize),
     /// A button on the splash screen.
     SplashKey(char),
     /// A right-click menu item.

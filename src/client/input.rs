@@ -67,6 +67,11 @@ impl App {
             Mode::Find(v) => v.query.push_str(s.lines().next().unwrap_or("")),
             Mode::GoTo { query, .. } => query.push_str(s.lines().next().unwrap_or("").trim()),
             Mode::Compose(c) => c.text.push_str(&s.replace("\r\n", "\n")),
+            Mode::Themes { query, sel, saving: false } => {
+                themes::append_query(query, s.lines().next().unwrap_or(""));
+                *sel = 0;
+            }
+            Mode::Themes { saving: true, .. } => {}
             Mode::Branch(v) => v.query.push_str(s.lines().next().unwrap_or("").trim()),
             Mode::Finder(fd) => {
                 fd.q.push_str(s.lines().next().unwrap_or("").trim());
@@ -153,6 +158,7 @@ impl App {
             Mode::Finder(fd) => self.on_finder_key(*fd, &k),
             Mode::HyPane(np) => self.on_hy_pane_key(np, &k),
             Mode::HySettings(_) => self.hy_settings_key(&k),
+            Mode::Themes { query, sel, saving } => self.on_theme_key(query, sel, saving, &k),
             Mode::Side => self.on_side_key(&k),
             Mode::HyMenu(m) => self.on_hy_menu_key(*m, &k),
             Mode::Find(v) => self.on_find_key(*v, &k),
@@ -680,6 +686,10 @@ impl App {
             }
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
                 let up = m.kind == MouseEventKind::ScrollUp;
+                if let Mode::Themes { query, sel, saving } = self.mode.clone() {
+                    self.on_theme_key(query, sel, saving, &KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
+                    return;
+                }
                 if self.hy.preview_rect.contains(pos)
                     && let Some(View::Files(v)) = &mut self.view
                 {

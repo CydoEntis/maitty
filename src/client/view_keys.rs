@@ -396,16 +396,17 @@ impl App {
             }
             return true;
         }
+        if matches!(&row, Some(design::SRow::Setting(s)) if s.path == "theme")
+            && matches!(k.code, KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Left | KeyCode::Right | KeyCode::Char('h' | 'l'))
+        {
+            self.open_themes();
+            return true;
+        }
         let step = |app: &mut App, dir: i64| {
             if let Some(design::SRow::Setting(s)) = &row
                 && let Some(val) = modal::step(&app.cfg, s, dir)
             {
                 app.save_setting(s.path, val);
-            }
-            if let Some(design::SRow::Theme(i)) = &row
-                && let Some(name) = crate::theme::BUILTIN.get(*i)
-            {
-                app.save_setting("theme", (*name).into());
             }
         };
         match k.code {
@@ -444,7 +445,6 @@ impl App {
                 },
                 Some(design::SRow::Bind { acts, .. }) if acts.len() == 1 => v.capturing = true,
                 Some(design::SRow::Bind { .. }) => self.notify("that row has several keys: change them in the config file (o)".into(), false),
-                Some(design::SRow::Theme(_)) => step(self, 1),
                 None => {}
             },
             _ => {}

@@ -108,6 +108,10 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             let v = (**v).clone();
             super::hydra::draw_settings(app, f, area, &t, &v);
         }
+        Mode::Themes { query, sel, saving } => {
+            let (query, sel, saving) = (query.clone(), *sel, *saving);
+            super::themes::draw_themes(app, f, area, &t, &query, sel, saving);
+        }
         Mode::Picker { query, sel, commands } => {
             let (query, sel, commands) = (query.clone(), *sel, *commands);
             draw_picker(app, f, area, &t, &query, sel, commands)

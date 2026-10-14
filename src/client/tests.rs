@@ -816,7 +816,7 @@ mod hydra_tests {
         let layout = o.find("LAYOUT").unwrap();
         assert!(input < layout, "INPUT before LAYOUT");
         assert!(o.contains("› Leader key"), "the first row is selected");
-        // Appearance: one theme per row.
+        // Appearance has one theme control that opens the searchable browser.
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
@@ -827,14 +827,15 @@ mod hydra_tests {
         }
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("THEME") && o.contains("○ Seshi Night") && o.contains("○ Harbor") && o.contains("○ Moss"), "then a row per theme, seshi's own first");
-        // The list is longer than the popup: further down, Tinkery's four and the rest.
-        for _ in 0..13 {
-            app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
-        }
+        assert!(o.contains("THEME") && o.contains("Enter browse"), "then the theme browser control");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(o.contains("○ Aurora") && o.contains("○ Moonlit") && o.contains("○ Monokai") && o.contains("○ Tokyo Night"));
+        assert!(o.contains("Themes") && o.contains("Seshi Walnut"));
+        app.on_paste("Monokai".into());
+        assert!(draw(&mut app, 160, 45).contains("Monokai"));
+        app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        app.on_paste("Tokyo Night".into());
+        assert!(draw(&mut app, 160, 45).contains("Tokyo Night"));
     }
 
     #[test]
@@ -2588,7 +2589,7 @@ mod settings_splash_tests {
             assert!(settings.contains(page), "page {page}");
         }
         assert!(settings.contains("Leader key") && settings.contains("Splash screen"));
-        assert!(keys.contains("Seshi Night") && keys.contains("Seshi Day"), "a row per theme, Seshi's own first");
+        assert!(keys.contains("Theme") && keys.contains("Enter browse"), "the theme control opens the browser");
     }
 }
 

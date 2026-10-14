@@ -14,7 +14,14 @@ which ones need you, jump to them, and keep them running when you leave. See
 Active phase: **9 — one agent runs a fleet for you** (chosen 2026-10-11)
 Next: the phase's live check (#32–#38 are on `dev`, released in 0.20.0)
 
-Current user-requested work: fix Claude reporting working after its turn ends with a dev
+Current user-requested work: expand the built-in themes to cover the 25 requested
+families and add a searchable preview browser in Appearance. Acceptance: all
+families and documented variants are selectable; search, keyboard paging, mouse
+selection, preview, cancel, and saving work; every built-in passes the contrast
+audit. Verification: the full AGENTS.md gate and a nested-server UI check.
+Status: verified in this worktree; pending integration. Sources: [theme research](theme-sources.md).
+
+Also requested: fix Claude reporting working after its turn ends with a dev
 server still running. User decision: working tracks the agent's turn; background
 shells do not extend it. Acceptance: Stop and idle-prompt reports remain Done
 with an unfinished background command in the transcript; real subagent lifecycle

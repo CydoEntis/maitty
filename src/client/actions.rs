@@ -126,29 +126,33 @@ impl App {
     pub(super) fn reload_config(&mut self) {
         match Config::load() {
             Ok(cfg) => {
-                self.keymap = cfg.keymap();
-                self.theme = cfg.theme();
-                // Only what the file changed: a sidebar hidden with a key stays hidden.
-                if cfg.ui.sidebar != self.cfg.ui.sidebar {
-                    self.sidebar = cfg.ui.sidebar;
-                }
-                let mouse_changed = cfg.ui.mouse != self.cfg.ui.mouse;
-                self.cfg = cfg;
-                if mouse_changed {
-                    let _ = if self.cfg.ui.mouse {
-                        execute!(std::io::stdout(), event::EnableMouseCapture)
-                    } else {
-                        execute!(std::io::stdout(), event::DisableMouseCapture)
-                    };
-                }
-                self.cmd(Command::ReloadConfig);
-                if self.keymap.warnings.is_empty() {
-                    self.notify("config reloaded".into(), false);
-                } else {
-                    self.notify(format!("config: {}", self.keymap.warnings.join("; ")), true);
-                }
+                self.apply_config(cfg);
             }
             Err(e) => self.notify(format!("config error: {e:#}"), true),
+        }
+    }
+
+    pub(super) fn apply_config(&mut self, cfg: Config) {
+        self.keymap = cfg.keymap();
+        self.theme = cfg.theme();
+        // Only what the file changed: a sidebar hidden with a key stays hidden.
+        if cfg.ui.sidebar != self.cfg.ui.sidebar {
+            self.sidebar = cfg.ui.sidebar;
+        }
+        let mouse_changed = cfg.ui.mouse != self.cfg.ui.mouse;
+        self.cfg = cfg;
+        if mouse_changed {
+            let _ = if self.cfg.ui.mouse {
+                execute!(std::io::stdout(), event::EnableMouseCapture)
+            } else {
+                execute!(std::io::stdout(), event::DisableMouseCapture)
+            };
+        }
+        self.cmd(Command::ReloadConfig);
+        if self.keymap.warnings.is_empty() {
+            self.notify("config reloaded".into(), false);
+        } else {
+            self.notify(format!("config: {}", self.keymap.warnings.join("; ")), true);
         }
     }
 

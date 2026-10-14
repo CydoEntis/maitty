@@ -198,13 +198,7 @@ pub(in crate::client) fn chips_for(app: &App, row: &SRow) -> Option<(Vec<String>
             let on = cur.and_then(|v| v.as_bool()).unwrap_or(false);
             Some((vec!["on".into(), "off".into()], Some(if on { 0 } else { 1 })))
         }
-        Kind::Choice(opts) if s.path == "theme" => {
-            let names: Vec<String> = crate::theme::DESIGN.iter().map(|(_, l)| l.to_string()).collect();
-            let curname = cur.and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
-            let i = crate::theme::DESIGN.iter().position(|(n, _)| *n == curname || (curname == "drover" && *n == "hydra"));
-            let _ = opts;
-            Some((names, i))
-        }
+        Kind::Choice(_) if s.path == "theme" => None,
         Kind::Choice(opts) => {
             let curs = cur.and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
             Some((opts.iter().map(|o| o.to_string()).collect(), opts.iter().position(|o| *o == curs)))
@@ -225,10 +219,6 @@ pub(in crate::client) fn set_chip(app: &mut App, row: &SRow, vi: usize) {
     let SRow::Setting(s) = row else { return };
     let v: toml_edit::Value = match s.kind {
         Kind::Bool => (vi == 0).into(),
-        Kind::Choice(_) if s.path == "theme" => match crate::theme::DESIGN.get(vi) {
-            Some((n, _)) => (*n).into(),
-            None => return,
-        },
         Kind::Choice(opts) => match opts.get(vi) {
             Some(o) => (*o).into(),
             None => return,
@@ -247,7 +237,7 @@ pub(in crate::client) fn set_chip(app: &mut App, row: &SRow, vi: usize) {
 }
 
 pub(in crate::client) fn draw_settings(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, v: &SettingsView) {
-    use crate::client::design::{settings_group, theme_label};
+    use crate::client::design::settings_group;
     use crate::client::modal::Cat;
     let buf = f.buffer_mut();
     dim_all(buf, area, t);
@@ -312,7 +302,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, f: &mut Frame, area: Rect,
         Some(SRow::Setting(s)) => s.help.to_string(),
         Some(SRow::Bind { acts, .. }) if acts.len() > 1 => "Several keys; change them in the config file (o).".into(),
         Some(SRow::Bind { .. }) => "Enter, then press the new key.".into(),
-        Some(SRow::Theme(_)) | None => String::new(),
+        None => String::new(),
     };
     // Lines: headings, rows with a blank between them, a wider gap between groups. The
     // selected row's help sits in its own line at the bottom, so nothing moves.
@@ -366,49 +356,29 @@ pub(in crate::client) fn draw_settings(app: &mut App, f: &mut Frame, area: Rect,
                     ls = ls.add_modifier(Modifier::BOLD);
                 }
                 hit(app, Rect { x: r.x + 1, y, width: vx - r.x - 2, height: 1 }, HyHit::SetRow(*i));
-                match row {
-                    // One theme: ● if it's yours, its name, eight swatches.
-                    SRow::Theme(ti) => {
-                        let name = crate::theme::BUILTIN[*ti];
-                        let cur = if app.cfg.theme.is_empty() { crate::theme::DEFAULT } else { app.cfg.theme.as_str() };
-                        let mine = cur == name || (cur == "drover" && name == "hydra");
-                        put(buf, lx, y, &[seg(if mine { "●" } else { "○" }, st.fg(if mine { t.accent } else { t.muted })), seg(format!(" {}", theme_label(name)), ls)], vx - 1);
-                        let th = Theme::named(name);
-                        let a = th.ansi.unwrap_or([th.err, th.done, th.blocked, th.accent, th.accent, th.accent, th.muted]);
-                        let mut sx = vx;
-                        for col in [th.bg, th.sidebar_bg, th.accent, th.blocked, th.done, th.err, a[3], a[4]] {
-                            fill(buf, Rect { x: sx, y, width: 3, height: 1 }, col);
-                            sx += 4;
+                let label = match row {
+                    SRow::Setting(s) => s.label.to_string(),
+                    SRow::Bind { label, .. } => label.to_string(),
+                };
+                put(buf, lx, y, &[seg(truncate(&label, (vx - lx - 2) as usize), ls)], vx - 1);
+                if let Some((opts, cur)) = chips_for(app, row).filter(|_| !(sel && v.editing.is_some())) {
+                    let mut cx = vx;
+                    for (vi, o) in opts.iter().enumerate() {
+                        let on = Some(vi) == cur;
+                        // The chosen one a pill; the others plain, the same width.
+                        let segs = if on { pill(look, vec![seg(o.clone(), Style::default().fg(t.acc_ink).add_modifier(Modifier::BOLD))], t.accent, bg) } else { vec![seg(format!(" {o} "), st.fg(t.muted))] };
+                        let w = segs_width(&segs);
+                        if cx + w >= r.right() - 3 {
+                            break;
                         }
-                        hit(app, rr, HyHit::SetVal(*i, 0));
+                        put(buf, cx, y, &segs, r.right() - 3);
+                        hit(app, Rect { x: cx, y, width: w, height: 1 }, HyHit::SetVal(*i, vi));
+                        cx += w + 1;
                     }
-                    _ => {
-                        let label = match row {
-                            SRow::Setting(s) => s.label.to_string(),
-                            SRow::Bind { label, .. } => label.to_string(),
-                            SRow::Theme(_) => String::new(),
-                        };
-                        put(buf, lx, y, &[seg(truncate(&label, (vx - lx - 2) as usize), ls)], vx - 1);
-                        if let Some((opts, cur)) = chips_for(app, row).filter(|_| !(sel && v.editing.is_some())) {
-                            let mut cx = vx;
-                            for (vi, o) in opts.iter().enumerate() {
-                                let on = Some(vi) == cur;
-                                // The chosen one a pill; the others plain, the same width.
-                                let segs = if on { pill(look, vec![seg(o.clone(), Style::default().fg(t.acc_ink).add_modifier(Modifier::BOLD))], t.accent, bg) } else { vec![seg(format!(" {o} "), st.fg(t.muted))] };
-                                let w = segs_width(&segs);
-                                if cx + w >= r.right() - 3 {
-                                    break;
-                                }
-                                put(buf, cx, y, &segs, r.right() - 3);
-                                hit(app, Rect { x: cx, y, width: w, height: 1 }, HyHit::SetVal(*i, vi));
-                                cx += w + 1;
-                            }
-                        } else {
-                            let ctrl: Vec<Seg> = crate::client::design::control(app, t, row, v, sel).into_iter().map(|(x, s)| (x, if s.bg.is_none() { s.bg(bg) } else { s })).collect();
-                            put(buf, vx, y, &ctrl, r.right() - 1);
-                            hit(app, Rect { x: vx, y, width: segs_width(&ctrl).max(1), height: 1 }, HyHit::SetVal(*i, usize::MAX));
-                        }
-                    }
+                } else {
+                    let ctrl: Vec<Seg> = crate::client::design::control(app, t, row, v, sel).into_iter().map(|(x, s)| (x, if s.bg.is_none() { s.bg(bg) } else { s })).collect();
+                    put(buf, vx, y, &ctrl, r.right() - 1);
+                    hit(app, Rect { x: vx, y, width: segs_width(&ctrl).max(1), height: 1 }, HyHit::SetVal(*i, usize::MAX));
                 }
             }
         }

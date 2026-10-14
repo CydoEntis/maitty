@@ -1170,7 +1170,13 @@ impl App {
                     self.keymap_run(&km, i);
                 }
             }
-            HyHit::Close => self.mode = Mode::Normal,
+            HyHit::Close => {
+                if let Mode::Themes { query, sel, saving } = self.mode.clone() {
+                    self.on_theme_key(query, sel, saving, &KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                } else {
+                    self.mode = Mode::Normal;
+                }
+            }
             HyHit::ViewClose => self.view = None,
             HyHit::Noop => {}
             HyHit::FinderPick(i) => {
@@ -1231,6 +1237,15 @@ impl App {
                     v.sel = 0;
                     v.editing = None;
                     v.capturing = false;
+                }
+            }
+            HyHit::ThemePick(i) => {
+                if let Mode::Themes { query, sel, saving } = self.mode.clone() {
+                    if saving { return; }
+                    self.mode = Mode::Themes { query: query.clone(), sel: i, saving: false };
+                    if sel == i || double {
+                        self.on_theme_key(query, i, false, &KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                    }
                 }
             }
             HyHit::SetRow(i) | HyHit::SetVal(i, _) => {

@@ -61,6 +61,7 @@ jobs:
           name=seshi-${{ matrix.target }}
           mkdir -p dist/$name
           cp README.md LICENSE dist/$name/
+          cp docs/theme-sources.md dist/$name/THEME-NOTICES.md
           if [ "${{ matrix.archive }}" = "zip" ]; then
             cp target/${{ matrix.target }}/release/seshi.exe dist/$name/
             (cd dist && 7z a -tzip $name.zip $name >/dev/null)
