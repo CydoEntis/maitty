@@ -1175,7 +1175,7 @@ impl App {
             HyHit::SideFocus => self.act(Action::BrowseTree),
             HyHit::TabNew => self.act(Action::NewTab),
             HyHit::Actions => self.act(Action::Actions),
-            HyHit::NewPane => self.act(Action::NewPane),
+            HyHit::NewShell => self.act(Action::ShellHere),
             HyHit::ActionRow(i) => self.actions_run(i),
             HyHit::Leader => self.open_keymap(None),
             HyHit::KeyRow(i) => {

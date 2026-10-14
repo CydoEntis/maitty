@@ -11,6 +11,14 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
+User-requested navigation fixes: the sidebar's **+ new** must open the same
+plain shell as leader + `n`; **Actions** must include Settings. Acceptance:
+mouse and keyboard reach the same actions, including the selected sidebar
+project. Verification: regression tests, the full gate, and a nested-server UI
+check. Status: verified for 0.28.1 (253 tests passed, three pre-existing tests
+ignored; lint, both cross-checks and dependency audit passed). Live mouse clicks
+opened a plain shell and Settings from Actions.
+
 Active phase: **9 — one agent runs a fleet for you** (chosen 2026-10-11)
 Next: the phase's live check (#32–#38 are on `dev`, released in 0.20.0)
 

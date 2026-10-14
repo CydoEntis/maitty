@@ -1076,6 +1076,59 @@ mod hydra_tests {
     }
 
     #[test]
+    fn the_new_button_and_leader_n_start_the_same_plain_shell() {
+        for cursor in [None, Some(2)] {
+            for by_mouse in [false, true] {
+                let (_, mut app) = super::design_tests::render_with(100, 30);
+                let (tx, mut rx) = mpsc::unbounded_channel();
+                app.out = tx;
+                app.hy.cursor = cursor;
+                app.mode = if cursor.is_some() { Mode::Side } else { Mode::Normal };
+                let selected = &app.snap.terms[&cursor.or(app.focused()).unwrap()];
+                let expected = selected.root.clone().unwrap_or_else(|| selected.cwd.clone());
+                let screen = draw(&mut app, 100, 30);
+                show(&screen);
+                if by_mouse {
+                    let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::NewShell)).then_some((r.x, r.y))).expect("+ new is clickable");
+                    app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
+                } else {
+                    app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+                    app.on_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
+                }
+                assert_eq!(app.mode, Mode::Normal, "new opens a shell immediately");
+                let commands: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).filter_map(|m| match m { ClientMsg::Command(c) => Some(c), _ => None }).collect();
+                assert!(matches!(commands.as_slice(), [Command::NewWorkspace { cwd: Some(cwd), name: None, cmd: None }] if cwd == &expected), "one plain shell in the selected project: {commands:?}");
+                assert!(app.hy.pending_split.is_none(), "the new session opens full screen");
+            }
+        }
+    }
+
+    #[test]
+    fn settings_open_from_the_actions_menu_by_mouse_and_keyboard() {
+        for by_mouse in [false, true] {
+            let (_, mut app) = super::design_tests::render_with(100, 30);
+            app.act(Action::Actions);
+            let screen = draw(&mut app, 100, 30);
+            show(&screen);
+            assert!(screen.contains("Settings"), "Settings is visible in Actions");
+            let index = hydra::action_items().iter().position(|(_, action)| *action == Action::Settings).unwrap();
+            if by_mouse {
+                let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::ActionRow(index))).then_some((r.x, r.y))).expect("Settings is clickable");
+                app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
+            } else {
+                for _ in 0..index { app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)); }
+                app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            }
+            assert!(matches!(app.mode, Mode::HySettings(_)), "Settings opens from Actions");
+            let screen = draw(&mut app, 100, 30);
+            show(&screen);
+            assert!(screen.contains("General") && screen.contains("Appearance"));
+            app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+            assert_eq!(app.mode, Mode::Normal);
+        }
+    }
+
+    #[test]
     fn tiled_square_and_faded() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let a = app.focused().unwrap();

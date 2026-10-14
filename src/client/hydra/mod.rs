@@ -895,8 +895,8 @@ pub(super) enum HyHit {
     ToggleAside(usize),
     /// Fold / unfold a session's subagents.
     ToggleSubs(TermId),
-    /// The sidebar's "+ new": the new-agent dialog.
-    NewPane,
+    /// The sidebar's "+ new": a plain shell in the selected project.
+    NewShell,
     Session(TermId),
     /// An answer chip in the Inbox: send this key to that agent.
     InboxAnswer(TermId, char),

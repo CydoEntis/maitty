@@ -647,9 +647,9 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     // New on the left: the thing you do most. Actions on the right, where everything else
     // is (settings too), with a dot when an update is ready.
     let mut new = vec![seg("+ ", hot)];
-    new.extend(label(k(app, &Action::NewPane), "new"));
+    new.extend(label(k(app, &Action::ShellHere), "new"));
     let nw = segs_width(&new);
-    show(app, buf, x0 + 3, new, HyHit::NewPane);
+    show(app, buf, x0 + 3, new, HyHit::NewShell);
     let mut actions = label(k(app, &Action::Actions), "actions");
     if app.update_available.is_some() {
         actions.push(seg(" ●", hot));

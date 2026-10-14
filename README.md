@@ -164,8 +164,8 @@ split beside a session stays with it.
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
 - An agent's subagents are listed under its row; the `▾ 3 subagents` heading (or **Hide
   subagents** in its menu) folds them away.
-- The sidebar's foot: **+ new** starts an agent, **actions** lists everything else (settings
-  included).
+- The sidebar's foot: **+ new** opens a plain shell, just like `Ctrl+Space n`;
+  **actions** lists everything else (settings included).
 - `⇆` under a row names a file that this checkout and another have each changed since their
   branches parted (a merge conflict waiting to happen); more than two are one line with a count.
 - Drag a group's name, or a session, up or down to reorder (what needs you still comes first);

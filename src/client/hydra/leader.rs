@@ -29,6 +29,7 @@ pub(in crate::client) fn action_items() -> Vec<(&'static str, Action)> {
         ("Start a fleet", Action::StartFleet),
         ("Inbox", Action::Jump),
         ("Hide sidebar", Action::ToggleSidebar),
+        ("Settings", Action::Settings),
         ("All keys", Action::Help),
     ]
 }

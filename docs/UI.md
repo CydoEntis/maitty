@@ -110,6 +110,9 @@ branches, new agent. Minimum supported size is about
 80×24; popups clamp to the screen. Mouse: click, right-click menus, drag
 dividers, scroll; Ctrl+click opens paths.
 
+The sidebar's **+ new** uses the same shell action as leader + `n`, including
+its configured key hint. **Actions** includes a clickable Settings row.
+
 ## Project-specific: UI conventions
 
 - Popups are centred `panel()`s with an accent title bar and `Esc close`; the
