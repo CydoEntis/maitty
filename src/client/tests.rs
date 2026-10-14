@@ -589,6 +589,21 @@ mod hydra_tests {
     }
 
     #[test]
+    fn switching_sessions_is_not_held_by_the_previous_panes_update() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let old = app.focused().unwrap();
+        app.sync_hold.insert(old, Instant::now());
+        assert!(app.sync_hold_until().is_some());
+        app.snap.workspaces[0].tabs[0].focus = 2;
+        app.snap.active_ws = Some(10);
+        app.panes.retain(|(id, _)| *id == old);
+        assert!(app.sync_hold_until().is_none(), "navigation draws immediately instead of waiting for the old pane");
+        app.snap.workspaces[0].tabs[0].focus = old;
+        app.mode = Mode::Actions { sel: 0 };
+        assert!(app.sync_hold_until().is_none(), "opening a control is not delayed by the child's frame either");
+    }
+
+    #[test]
     fn agent_rows_show_name_model_and_latest_prompt() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let id = *app.snap.terms.iter().find(|(_, t)| t.agent.as_deref() == Some("claude")).unwrap().0;

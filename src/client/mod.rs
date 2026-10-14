@@ -698,7 +698,12 @@ impl App {
             if self.dirty && last_draw.elapsed() >= frame && self.sync_hold_until().is_none_or(|h| Instant::now() >= h) {
                 self.dirty = false;
                 last_draw = Instant::now();
-                terminal.draw(|f| render::draw(self, f))?;
+                // Commit the whole replacement frame together, including pane switches.
+                execute!(terminal.backend_mut(), ratatui::crossterm::terminal::BeginSynchronizedUpdate)?;
+                let drawn = terminal.draw(|f| render::draw(self, f)).map(|_| ());
+                let ended = execute!(terminal.backend_mut(), ratatui::crossterm::terminal::EndSynchronizedUpdate);
+                drawn?;
+                ended?;
                 self.sync_sizes();
                 // Something's moving: the next frame too.
                 if self.motion.moving() || self.toast_moving() || self.wake_moving() {
@@ -1107,6 +1112,11 @@ impl App {
     /// When to draw a pane that's mid synchronized update: its start + 100 ms, if that's
     /// still ahead.
     fn sync_hold_until(&self) -> Option<Instant> {
+        // The previous frame's panes must not hold up navigation to a different session.
+        if !matches!(self.mode, Mode::Normal) || self.view.is_some()
+            || self.focused().is_some_and(|focused| !self.panes.iter().any(|(id, _)| *id == focused)) {
+            return None;
+        }
         let limit = Duration::from_millis(100);
         self.panes
             .iter()

@@ -138,3 +138,9 @@ save. Esc or the close button returns to Appearance without changing the theme.
 Saving runs in a background task; failure keeps the selection and shows a toast.
 The preview shows built-in defaults; configured overrides still apply after saving.
 See [theme sources](theme-sources.md) for upstream palettes and local UI adaptations.
+
+## Project-specific: frame presentation
+
+Wrap each outer terminal frame in synchronized-update markers; end the update
+even when drawing fails. An unfinished child update from the previous frame
+must not delay switching to another session.
