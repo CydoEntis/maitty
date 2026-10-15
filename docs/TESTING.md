@@ -96,3 +96,24 @@ Tests never touch the user's real config (`SESHI_CONFIG` or in-memory configs).
 - Themes: the contrast audit test covers every built-in theme.
 - Daemon logic: `src/daemon/logic_tests.rs` drives a real `Daemon` (`Daemon::new`) with real
   shell panes; new daemon logic comes with a test there.
+
+## Project-specific: interaction performance
+
+Run `cargo test --release session_interactions_under_heavy_output -- --ignored --nocapture`
+for the opt-in interaction benchmark. It feeds eight panes with output while
+interleaving acknowledged session switches, scrollback and resize/rewrap. It
+checks focus, pane bounds, scrollback and retained output. Ordinary CI excludes
+this timing measurement; there is no machine-dependent pass threshold.
+
+Windows TestBackend measurement on 2026-10-15: 960 output messages, 4,300,800 bytes.
+
+| Operation | p50 | p95 | Maximum |
+| --- | --- | --- | --- |
+| Session switch and draw | 3.896 ms | 7.881 ms | 8.405 ms |
+| Scroll and draw | 0.212 ms | 0.529 ms | 0.547 ms |
+| Resize, rewrap and draw | 3.799 ms | 6.644 ms | 7.404 ms |
+| Eight-pane output burst | 0.484 ms | 0.733 ms | 1.027 ms |
+
+These are optimized app/TestBackend timings with simulated daemon acknowledgements,
+not native terminal presentation, IPC latency or live-agent measurements. Check
+subjective smoothness separately in the normal terminal with real sessions.

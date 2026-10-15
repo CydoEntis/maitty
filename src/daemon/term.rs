@@ -97,6 +97,7 @@ pub struct Term {
     /// changed its status, each with when (unix seconds): the evidence "why" lays out.
     pub last_hook: Option<(String, u64)>,
     pub last_screen: Option<(String, u64)>,
+    pub last_process: u64,
     /// The status (by when it began) a phone alert went out for, so it goes once.
     pub phoned: u64,
     /// The last desktop alert the server rang for it (no window open): its status, when.
@@ -539,6 +540,7 @@ impl Term {
             status_why: String::new(),
             last_hook: None,
             last_screen: None,
+            last_process: 0,
             phoned: 0,
             alerted: None,
             alert_due: None,

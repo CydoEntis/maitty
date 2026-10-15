@@ -173,6 +173,7 @@ pub(in crate::client) struct Card<'a> {
     /// Dim, after the title, dropped when there isn't room.
     pub sub: &'a str,
     pub state: Option<Status>,
+    pub state_hit: Option<HyHit>,
     /// Its sleeping agent is waking: said in place of the state.
     pub waking: bool,
     /// A short note left of the state (what it's taking of the machine), in its colour.
@@ -192,7 +193,7 @@ pub(in crate::client) struct Card<'a> {
 
 impl<'a> Card<'a> {
     pub fn new(t: &Theme, title: &'a str) -> Card<'a> {
-        Card { title, sub: "", state: None, waking: false, note: None, close: None, border: t.line, bold: false, title_fg: t.text, bg: pane_bg(t), foot: Vec::new(), foot_r: Vec::new() }
+        Card { title, sub: "", state: None, state_hit: None, waking: false, note: None, close: None, border: t.line, bold: false, title_fg: t.text, bg: pane_bg(t), foot: Vec::new(), foot_r: Vec::new() }
     }
 
     /// The focused look: the border and title in `c`, bold.
@@ -272,13 +273,20 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
     };
     let title_w = if c.title.is_empty() { 0 } else { c.title.width() as u16 + 2 };
     let mut right_segs = tag(false);
+    let mut short = false;
     if title_w + 3 + segs_width(&right_segs) > span {
         right_segs = tag(true);
+        short = true;
     }
     let rw = segs_width(&right_segs);
     if rw > 0 && rw <= span {
         let rx = r_x + 1 - rw;
         put(buf, rx, y, &right_segs, r_x + 1);
+        if let (Some(h), Some(st)) = (c.state_hit, c.state) {
+            let width = glyph(app, st).width() as u16 + 2 + if short { 0 } else { state_label(st).width() as u16 + 1 };
+            let end = (r_x + 1).saturating_sub(if c.close.is_some() { 4 } else { 0 });
+            hit(app, Rect { x: end.saturating_sub(width).max(rx), y, width: width.min(end.saturating_sub(rx)), height: 1 }, h);
+        }
         if let Some(h) = c.close {
             hit(app, Rect { x: r_x + 1 - 3, y, width: 3, height: 1 }, h);
         }

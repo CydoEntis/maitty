@@ -1046,6 +1046,49 @@ fn codex_shows_working_from_its_screen_after_a_turn() {
 }
 
 #[test]
+fn repeated_status_observations_refresh_evidence_without_restarting_the_turn() {
+    let (mut d, _rx) = daemon();
+    let id = pane(&mut d);
+    let t = d.terms.get_mut(&id).unwrap();
+    t.status = Status::Working; t.status_since = 7; t.status_why = "hook: working".into();
+    t.last_screen = Some(("old observation".into(), 1));
+    d.set_status(id, Status::Working, "screen: activity row is present");
+    let t = &d.terms[&id];
+    let result = (t.status_since, t.status_why.clone(), t.last_screen.clone(), t.alert_due.is_none());
+    close(&mut d, &[id]);
+    assert_eq!(result.0, 7, "evidence freshness is separate from turn duration");
+    assert_eq!(result.1, "hook: working", "the original status source stays authoritative");
+    assert!(result.2.is_some_and(|(detail, at)| detail == "activity row is present" && at > 1));
+    assert!(result.3, "the same status does not announce another transition");
+}
+
+#[test]
+fn codex_status_ignores_activity_in_a_finished_answer() {
+    let (mut d, _rx) = daemon();
+    let id = pane(&mut d);
+    let mut observed = Vec::new();
+    for hooked in [false, true] {
+        let t = d.terms.get_mut(&id).unwrap();
+        t.agent = Some("codex".into()); t.hooked = hooked;
+        t.status = if hooked { Status::Done } else { Status::Working };
+        t.status_since = term::unix_now() - 10;
+        t.last_input = Instant::now(); t.last_output = Instant::now() - Duration::from_secs(10);
+        t.parser.process(b"\x1b[2J\x1b[H"); t.parser.process(&b"\r\n".repeat(30));
+        t.parser.process(b"I checked the live daemon: it matches Codex's esc to interrupt spinner.\r\nWorked for 50s\r\n> Ask Codex to do anything");
+        d.update_statuses();
+        observed.push(d.terms[&id].status);
+        let t = d.terms.get_mut(&id).unwrap();
+        t.status_since = term::unix_now() - 10; t.last_input = Instant::now();
+        t.parser.process(b"\x1b[2J\x1b[H"); t.parser.process(&b"\r\n".repeat(30));
+        t.parser.process("• Working (8m 05s • esc to interrupt)\r\n> Ask Codex to do anything".as_bytes());
+        d.update_statuses();
+        observed.push(d.terms[&id].status);
+    }
+    close(&mut d, &[id]);
+    assert_eq!(observed, [Status::Done, Status::Working, Status::Done, Status::Working], "finished prose never starts or extends a turn, with or without hooks; the actual activity row does");
+}
+
+#[test]
 fn codex_queued_questions_need_attention_even_while_work_continues() {
     let (mut d, _rx) = daemon();
     let id = pane(&mut d);

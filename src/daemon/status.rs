@@ -282,13 +282,17 @@ impl Daemon {
 
     pub(super) fn set_status(&mut self, term: TermId, new: Status, why: &str) {
         let Some(t) = self.terms.get_mut(&term) else { return };
+        if let Some(seen) = why.strip_prefix("screen: ") {
+            let now = term::unix_now();
+            if t.last_screen.as_ref().is_none_or(|(text, at)| text != seen || *at != now) {
+                t.last_screen = Some((seen.to_string(), now));
+                self.dirty = true;
+            }
+        }
         if t.status == new {
             return;
         }
         t.status_why = why.to_string();
-        if let Some(seen) = why.strip_prefix("screen: ") {
-            t.last_screen = Some((seen.to_string(), term::unix_now()));
-        }
         let turn = (t.status == Status::Working && t.agent.is_some())
             .then(|| (t.agent.clone().unwrap_or_default(), t.place(), term::unix_now().saturating_sub(t.status_since)));
         // A turn is starting: the files as they are now are what it can be taken back to.
@@ -434,9 +438,7 @@ impl Daemon {
         for t in self.terms.values() {
             let Some(name) = &t.agent else { continue };
             if name == "codex" && CODEX_QUEUED_QUESTION.is_match(&t.tail_text(rows)) {
-                if t.status != Status::Blocked {
-                    changes.push((t.id, Status::Blocked, CODEX_QUESTION_WHY.into()));
-                }
+                changes.push((t.id, Status::Blocked, CODEX_QUESTION_WHY.into()));
                 continue;
             }
             if name == "codex" && t.status == Status::Blocked && t.status_why == CODEX_QUESTION_WHY {
@@ -445,6 +447,11 @@ impl Daemon {
                 continue;
             }
             if t.hooked {
+                if t.status == Status::Working
+                    && let Some(pattern) = self.agents.iter().find(|a| &a.name == name).and_then(|d| d.working.iter().find(|r| r.is_match(&t.tail_text(rows))))
+                {
+                    changes.push((t.id, t.status, format!("screen: matched `{pattern}`")));
+                }
                 if t.status == Status::Done && Some(t.id) == focused {
                     changes.push((t.id, Status::Idle, "you're looking at it".to_string()));
                 }
@@ -531,9 +538,7 @@ impl Daemon {
             } else {
                 (Status::Idle, "screen: quiet".to_string())
             };
-            if new != t.status {
-                changes.push((t.id, new, why));
-            }
+            changes.push((t.id, new, why));
         }
         for id in still_working {
             if let Some(t) = self.terms.get_mut(&id) {
@@ -544,6 +549,7 @@ impl Daemon {
         for (id, s, why) in changes {
             if s != Status::Working
                 && let Some(t) = self.terms.get_mut(&id)
+                && t.status != s
             {
                 if t.done_held.take().is_some() {
                     t.subagents.clear();

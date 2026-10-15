@@ -64,6 +64,10 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             let km = (**km).clone();
             super::hydra::draw_keymap(app, f, area, &t, &km);
         }
+        Mode::Shortcuts { query, scroll } => {
+            let (query, scroll) = (query.clone(), *scroll);
+            super::shortcuts::draw_shortcuts(app, f, area, &t, &query, scroll);
+        }
         Mode::Actions { sel } => {
             let sel = *sel;
             super::hydra::draw_actions(app, f, area, &t, sel);

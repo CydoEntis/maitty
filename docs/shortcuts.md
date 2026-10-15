@@ -1,0 +1,271 @@
+# Contextual shortcuts
+
+Open **All keys** with `Ctrl+Space`, release, then `?` (or Actions → All keys).
+The in-app reference lists every configured leader and global binding, including
+aliases and custom commands. Type to filter by key, action or screen name; arrows,
+page keys, Home/End and the mouse wheel scroll. Ctrl+U clears; Esc closes.
+`C-` means Ctrl, `M-` means Alt. The [README](../README.md#use) lists the defaults.
+
+These tables are also embedded in the app's All keys reference. Keys below act
+inside the named screen, without the leader. Ordinary typing edits the focused
+text field; Backspace removes a character. Keys sent to Claude, Codex, your shell
+or another program follow that program's own help.
+
+## All shortcuts
+
+| Keys | Action |
+| --- | --- |
+| Type, Backspace, Ctrl+U | Filter by key, action or screen; clear search |
+| Up, Down, PgUp, PgDn, Home, End, wheel | Scroll reference, page, go to beginning/end |
+| Esc | Close reference; no command runs while reading it |
+
+## Leader overview and Actions
+
+| Keys | Action |
+| --- | --- |
+| Bound leader key | Run its command from the overview; Actions accepts keys for its listed commands |
+| Tab | Toggle overview search; type words to search commands |
+| Up, Down, Enter | Choose and run a search result, worktree step or Actions row |
+| Backspace | Clear the overview query one character at a time, then return from a step |
+| Esc | Cancel the overview or Actions |
+
+## Worktrees second step
+
+| Keys | Action |
+| --- | --- |
+| n, s, m, d | New worktree, switch via Inbox, open Changes to merge, remove worktree |
+| Backspace, Esc | Return to overview, or close |
+
+## Sidebar keyboard focus
+
+| Keys | Action |
+| --- | --- |
+| Up / k, Down / j, Home, End | Browse rows, first row, last row; active session stays selected |
+| Right, Left | Expand project or enter session; fold project or go to session's project |
+| Enter | Toggle project or open selected session; opening a sleeping session wakes it |
+| Space | Open New for the selected project |
+| m, i, a | Follow-up to selected agent, status evidence, Actions |
+| Delete | Ask to close the selected session or project |
+| Menu letters | Use the letters shown in the selected row's right-click menu; r renames, x closes |
+| Esc | Return keyboard focus to the active pane |
+
+## Command palette and text prompts
+
+| Keys | Action |
+| --- | --- |
+| Type, Backspace | Search or edit text |
+| Up / Shift+Tab / Ctrl+P, Down / Tab / Ctrl+N | Move through palette or worktree-picker results |
+| Ctrl+U in text prompts | Clear prompt text |
+| Enter, Esc | Run selected result / submit prompt, or cancel |
+| y / Y / Enter in close-group or remove-worktree prompt | Confirm; f / F forces worktree removal when offered; other keys cancel |
+
+## New agent or fleet
+
+| Keys | Action |
+| --- | --- |
+| Tab / Down, Shift+Tab / Up | Next or previous field |
+| Left, Right | Change the selected option |
+| Ctrl+P | Open Agent profiles |
+| Ctrl+U | Clear task text |
+| b | Toggle beside when outside the task text field |
+| Enter, Esc | Start, or cancel |
+
+## Profiles
+
+| Keys | Action |
+| --- | --- |
+| Up, Down, PgUp, PgDn | Select profile; scroll its preview |
+| n, e, p | New profile, edit, create/edit project override |
+| 1, 2, 3 | Claude planner, worker, reviewer starters |
+| 4, 5, 6 | Codex planner, worker, reviewer starters |
+| i, x, Ctrl+R | Import native definition, export selected profile, reload definitions |
+| w, r | Open Workflows or Runs |
+| Enter, Esc | Return to New with selected profile, or close |
+
+## Profile editor and import
+
+| Keys | Action |
+| --- | --- |
+| Tab / Down, Shift+Tab / Up | Next or previous editor field |
+| Left, Right, Space | Change runner or scope on those fields |
+| Ctrl+U, Enter | Clear editor text field; newline in instructions |
+| Ctrl+S, Esc | Save editor, or discard editor changes |
+| Type, Backspace, Enter, Esc in import path | Edit path, import it, or cancel import |
+
+## Workflows
+
+| Keys | Action |
+| --- | --- |
+| Up, Down, PgUp, PgDn | Select workflow; scroll report |
+| p, w, r, Ctrl+R | Profiles, Workflows, Runs, reload definitions |
+| n, e, u | New workflow, edit roles, Setup preview |
+| 1, 2 | Create Claude or Codex starter workflow |
+| Enter | Enter a task; Enter again starts the workflow |
+| Ctrl+U | Clear task text |
+| Esc | Cancel task, return from editor/Setup, or close sheet |
+
+## Workflow editor
+
+| Keys | Action |
+| --- | --- |
+| Tab / Down, Shift+Tab / Up | Next or previous field |
+| Left, Right | Choose planner, worker or reviewer profile; change scope |
+| Space | Change scope on the scope field |
+| Ctrl+U, Ctrl+S, Esc | Clear name, save workflow, discard edits |
+
+## Workflow setup
+
+| Keys | Action |
+| --- | --- |
+| c | Copy repository instructions for review and pasting into AGENTS.md or CLAUDE.md |
+| Up / PgUp, Down / PgDn | Scroll instructions |
+| Esc | Return to workflow list |
+
+## Workflow runs
+
+| Keys | Action |
+| --- | --- |
+| Up, Down, PgUp, PgDn | Select run; scroll plan or report |
+| a | Approve selected plan after reading it; navigation never approves |
+| c, t | Ask to cancel run, or retry a failed/interrupted stage |
+| Enter, o | Open selected run's current or most recent stage pane |
+| p, w, r, Ctrl+R | Profiles, Workflows, Runs, refresh definitions |
+| Enter / y in confirmation | Confirm retry or cancellation; any other key cancels the confirmation |
+| Esc | Close sheet |
+
+## Inbox
+
+| Keys | Action |
+| --- | --- |
+| Type, Backspace | Filter by project, session or workflow task |
+| Up, Down, PgUp, PgDn | Choose a row |
+| Enter | Open session or selected workflow's plan for review |
+| 1–9 | Answer selected agent question when search is empty |
+| m | Follow-up to selected asking/finished agent when search is empty |
+| d, M, x | Finished worktree: diff, ask to merge, ask to discard; empty search |
+| d, m, k | Shared-file warning: diff, message its agent, dismiss; empty search |
+| Delete | Mark selected finished session seen |
+| Enter, Esc in confirmation | Confirm action, or cancel |
+| Esc | Close Inbox |
+
+## Follow-up and status evidence
+
+| Keys | Action |
+| --- | --- |
+| Enter | Send follow-up, or queue while working; empty message means keep going |
+| Ctrl+Enter | Send immediately, including while agent is working |
+| Shift+Enter, Alt+Enter | Insert a newline |
+| Ctrl+U, Esc | Clear message, or cancel |
+| i, Esc in evidence | Close status explanation; other keys close it and perform their normal action |
+
+## Files tree and preview
+
+| Keys | Action |
+| --- | --- |
+| Up / k, Down / j, Home, End | Choose file |
+| Right / l, Left / h, Enter on directory | Expand, collapse / parent, toggle directory |
+| Enter on file | Insert quoted path into agent prompt and close Files |
+| Tab, / | Toggle recent/tree, filter paths; Enter ends filtering, Esc clears filter |
+| e, i, o, y, d | External editor, edit in preview, open outside, copy path, Changes |
+| PgUp, PgDn, Shift+Up, Shift+Down | Scroll preview pages or individual lines |
+| Right on file | Focus preview; arrows / j / k scroll, Space pages down, g / G or Home / End go to ends |
+| Left / h / Esc in preview | Return to tree |
+| Esc in tree | Close Files |
+
+## Built-in file editor
+
+| Keys | Action |
+| --- | --- |
+| Arrows, Home, End, PgUp, PgDn | Move cursor or page |
+| Enter, Tab, Delete, Backspace | Newline, four spaces, delete forward, delete backward |
+| Ctrl+S | Save; repeat to overwrite a file that changed on disk after warning |
+| Esc | Exit editor; repeat to discard unsaved changes after warning |
+
+## Find file and search code
+
+| Keys | Action |
+| --- | --- |
+| Type, Backspace, Tab, Shift+Tab | Edit search; switch Files / Search code tab |
+| Up, Down, PgUp, PgDn | Choose result |
+| Enter, Ctrl+E, Ctrl+Y | Put path/line into prompt, open in editor, copy path |
+| Esc | Close search |
+
+## Changes and shared-file diffs
+
+| Keys | Action |
+| --- | --- |
+| Up / k / Shift+Tab, Down / j / Tab | Previous or next changed file |
+| PgUp, PgDn, Space | Read diff; Space pages down |
+| x, e, r | Mark reviewed, open editor, return to agent |
+| c, p | Commit; ask to push and open a pull request |
+| m, d | Linked worktree: ask to merge, ask to discard |
+| Enter / y in confirmation | Confirm the requested action; other keys cancel |
+| Up, Down, PgUp, PgDn in shared-file diffs | Scroll both checkout diffs together |
+| m, M, k in shared-file diffs | Message first agent, message second agent, dismiss warning |
+| Esc | Close Changes or shared-file diffs |
+
+## Branches and worktree cleanup
+
+| Keys | Action |
+| --- | --- |
+| Type, Backspace, Up, Down, PgUp, PgDn, Enter | Branches: filter, choose branch/create option, continue |
+| Up, Down, 1–4, Enter | Choose how branch switching handles uncommitted changes |
+| y in discard confirmation | Confirm discarding changes; other keys go back |
+| Enter in commit text | Commit changes and switch branch |
+| Up / k, Down / j, Space | Cleanup: choose row, toggle removal |
+| a, n, Enter in cleanup | Select safe unused worktrees, clear selection, review removal confirmation |
+| Esc | Go back from branch step, or close branches/cleanup |
+
+## Settings and themes
+
+| Keys | Action |
+| --- | --- |
+| Tab, Shift+Tab, Up / k, Down / j | Change settings category; choose row |
+| Left / h, Right / l, Enter, Space | Change value; Enter edits text or captures binding; theme opens browser |
+| o | Open configuration file outside Seshi |
+| Enter, Esc when editing | Save field / cancel; when capturing press the new key or Esc |
+| Type, Backspace, Ctrl+U in themes | Filter themes, clear filter |
+| Up, Down, PgUp, PgDn, Home, End in themes | Preview themes |
+| Enter, Esc in themes | Save theme, or return without saving |
+| Esc in settings | Close Settings |
+
+## Copy mode
+
+| Keys | Action |
+| --- | --- |
+| Arrows / h j k l, w, b | Move cursor, next word, previous word |
+| Home / 0, ^, End / $ | Line start, first nonblank character, line end |
+| g, G, H, M, L | History start, history end, viewport top, middle, bottom |
+| Ctrl+U / Ctrl+D, Ctrl+B / Ctrl+F, PgUp / PgDn | Half-page or full-page scroll |
+| Ctrl+Y, Ctrl+E | Scroll one line up or down |
+| v / Space, V | Toggle character selection, toggle line selection |
+| y / Enter with selection | Copy selection and leave |
+| y / Y without selection | Copy current line; Enter without selection leaves without copying |
+| /, ?, n, N | Search forward, backward, next match, previous match |
+| Enter, Esc in search | Apply search, or cancel search entry |
+| Tab, Shift+Tab | Keep selection and move to next/previous split pane; y copies collected selections |
+| Esc, q, Ctrl+C | Esc clears selection first, then exits; q or Ctrl+C exits |
+
+## Terminal scrolling and mouse
+
+| Keys | Action |
+| --- | --- |
+| PageUp, PageDown at a prompt | Scroll history; full-screen programs keep these keys |
+| Shift+PageUp, Shift+PageDown, Ctrl+Shift+Up, Ctrl+Shift+Down | Scroll half-pages or individual lines outside full-screen mode |
+| Shift with mouse | Keep selection/scrolling in Seshi when program captures the mouse |
+| Ctrl+click | Open a path or link |
+| Shift+right-click | Seshi menu even when program handles right-click |
+| Double-click, drag | Copy word/path/link, select and copy text |
+
+## Menus, history, splash and confirmations
+
+| Keys | Action |
+| --- | --- |
+| Up / k, Down / j, Enter, shown letters | Choose or run a context-menu item; Delete asks to close where offered |
+| 1–9 in numbered menu | Choose numbered option, such as an agent or snapshot |
+| Up, Down, Enter, c, Esc in history | Choose event, go to its session, clear events, close history |
+| Up / Left / k / Shift+Tab, Down / Right / j / Tab in splash | Choose splash action |
+| r, n, comma, ? in splash | Resume if available, new shell, Settings, All keys |
+| Enter / y / shown confirm key | Confirm action; closing panes also accepts x or Delete |
+| Esc / n / q in standard confirmation | Cancel action |
+| Tab in folder picker | Complete current directory; arrows choose; Enter opens; Esc goes back |

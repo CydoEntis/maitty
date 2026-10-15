@@ -153,6 +153,7 @@ pub(in crate::client) enum Line {
     /// A dim line under an agent: what it's on, its question, a subagent. Shares the
     /// agent's highlight.
     Note(String, Color, TermId),
+    Workflow(String, u64, bool),
     /// The heading over a session's subagents: how many, and whether they're listed.
     Subs(TermId, usize, bool),
     /// Nothing running in a folder project.
@@ -269,6 +270,10 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
             out.push(Line::Sess(pi, wi, si, depth));
             let s = &p.wts[wi].sessions[si];
             session_lines(s, app.hy.subs_closed.contains(&s.term), t, &mut out);
+            for run in app.snap.workflows.iter().filter(|r| r.parent == Some(s.term) || r.term == Some(s.term)
+                || (r.parent.is_none() && r.term.is_none() && r.finished.last() == Some(&s.term))) {
+                out.push(Line::Workflow(format!("{} · {}", crate::client::workflows::stage_badge(app, run), run.name), run.id, run.state == crate::workflows::State::Approval));
+            }
             // A file another checkout changed too: a quiet tag under the row. More than a
             // couple are one line with a count (the Inbox lists them): a long branch can share
             // dozens, and a wall of them pushes every other session off the sidebar.
@@ -375,19 +380,14 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     app.hy.row_y.clear();
     app.hy.proj_keys = model.iter().map(|p| p.key.clone()).collect();
 
-    // One row lit at a time: the one under the mouse; with the mouse elsewhere, the keyboard's
-    // row or the session you're in (its bold name still says which while you point around).
-    let pointing = app.hover.filter(|p| Rect { x: x0 + 2, y: top, width: w.saturating_sub(4), height: list_h as u16 }.contains(*p)).is_some_and(|p| {
-        // Only rows that light up count (not a heading or a question line).
-        lines.get(scroll + (p.y - top) as usize).is_some_and(|l| matches!(l, Line::Proj(_) | Line::Sess(..)))
-    });
-    // The keyboard's row (or the open session's) glides to the next one: until it gets there
-    // that row isn't lit, and a highlight passes over the rows between.
+    // Hover and keyboard browsing must never erase the session that's actually open.
+    let hover_bg = blend(pb, t.hov, 0.4);
     let on = app.motion_on();
     let mut gliding: Option<(u16, Rect)> = None;
     let shade = |app: &App, term: TermId, row: Rect, glide: bool| -> Option<Color> {
-        let mine = if focused_side { app.hy.cursor == Some(term) } else { Some(term) == focus };
-        (hovered(app, row) || (!pointing && mine && !glide)).then_some(t.hov)
+        if Some(term) == focus { Some(t.hov) }
+        else if focused_side && app.hy.cursor == Some(term) && !glide { Some(t.card2) }
+        else { hovered(app, row).then_some(hover_bg) }
     };
     // The lines under a session (what it asks, its subagents) step in as far as it does.
     let mut indents: Vec<u16> = Vec::with_capacity(lines.len());
@@ -395,7 +395,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
         let last = indents.last().copied().unwrap_or(0);
         indents.push(match l {
             Line::Sess(.., depth) => u16::from(*depth) * FLEET_INDENT,
-            Line::Note(..) | Line::Subs(..) => last,
+            Line::Note(..) | Line::Subs(..) | Line::Workflow(..) => last,
             _ => 0,
         });
     }
@@ -408,8 +408,8 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 let p = &model[*pi];
                 let open = !app.hy.saved.closed.contains(&format!("p:{}", p.key));
                 let on = focused_side && app.hy.cursor_proj.as_ref() == Some(&p.key);
-                let hov = hovered(app, row) || (on && !pointing);
-                let bg = if hov { t.hov } else { pb };
+                let hov = hovered(app, row) || on;
+                let bg = if on { t.card2 } else if hov { hover_bg } else { pb };
                 if bg != pb {
                     row_pill(look, buf, row.x, y, row.width, bg, pb);
                 }
@@ -446,8 +446,9 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
             Line::Sess(pi, wi, si, _) => {
                 let s = &model[*pi].wts[*wi].sessions[*si];
                 app.hy.row_y.insert(s.term, y);
-                let mine = if focused_side { app.hy.cursor == Some(s.term) } else { Some(s.term) == focus };
-                let glide = if mine && !pointing { app.motion.glide("side", u64::from(s.term), y, on) } else { None };
+                let active = Some(s.term) == focus;
+                let keyboard = focused_side && app.hy.cursor == Some(s.term);
+                let glide = if keyboard && !active { app.motion.glide("side", u64::from(s.term), y, on) } else { None };
                 if let Some(gy) = glide {
                     gliding = Some((gy, row));
                 }
@@ -455,6 +456,9 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 let bg = lit.unwrap_or(pb);
                 if lit.is_some() {
                     row_pill(look, buf, row.x, y, row.width, bg, pb);
+                }
+                if active || keyboard {
+                    put(buf, x0 + 3 + indent, y, &[seg(if active { "▸" } else { "›" }, Style::default().bg(bg).fg(t.strong))], x0 + 5 + indent);
                 }
                 let sel = focused_side && app.hy.cursor == Some(s.term);
                 let st = Style::default().bg(bg);
@@ -466,9 +470,6 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 } else {
                     ("›".to_string(), t.muted)
                 };
-                // A bell from something with no status of its own; an agent's state says more
-                // (codex rings it when it finishes).
-                let (gl, gc) = if s.bell && !matches!(s.status, Status::Blocked | Status::Done) { ("♪".to_string(), state(t.blocked)) } else { (gl, gc) };
                 let mut gs = st.fg(gc);
                 if s.status == Status::Blocked {
                     gs = gs.add_modifier(Modifier::BOLD);
@@ -524,7 +525,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     vec![]
                 };
                 // The name comes first: when it doesn't fit, the branch gives way (the age stays).
-                let name_x = x0 + 7 + indent;
+                let name_x = x0 + 7 + indent + u16::from(s.asleep);
                 let room = right.saturating_sub(name_x) as usize;
                 let tail = if s.is_agent && !sel && !s.asleep && s.resume_at.is_none() && !small && segs_width(&left) as usize + segs_width(&tail) as usize + 2 > room {
                     let col = if s.status == Status::Blocked { t.blocked } else { t.muted };
@@ -540,7 +541,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     // Snoring, the way a comic draws it: z's growing as they rise. They hang
                     // left of the icon column so the name stays in line with the others.
                     let zs: Vec<Seg> = SLEEP_ZS.iter().map(|(z, f)| seg(*z, st.fg(blend(bg, t.text, *f)).add_modifier(Modifier::BOLD))).collect();
-                    put(buf, x0 + 3 + indent, y, &zs, name_x);
+                    put(buf, x0 + 4 + indent, y, &zs, name_x);
                 } else if app.waking.contains_key(&s.term) {
                     // Waking: the spinner, in the colour of its pane's "waking".
                     put(buf, x0 + 5 + indent, y, &[seg(glyph(app, Status::Working), st.fg(t.accent).add_modifier(Modifier::BOLD))], name_x);
@@ -550,9 +551,14 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 put(buf, name_x, y, &left, end.saturating_sub(tw + 1));
                 put(buf, end.saturating_sub(tw), y, &tail, end);
                 hit(app, row, HyHit::Session(s.term));
+                hit(app, Rect { x: x0 + 5 + indent, y, width: 2, height: 1 }, HyHit::Why(s.term));
                 if menu {
                     row_menu_button(app, buf, Rect { x: right.saturating_sub(1), y, width: 1, height: 1 }, bg, t, HyHit::RowMenuSess(s.term));
                 }
+            }
+            Line::Workflow(text, run, approval) => {
+                put(buf, x0 + 5 + indent, y, &[seg(truncate(text, w.saturating_sub(9 + indent) as usize), Style::default().bg(pb).fg(if *approval { t.blocked } else { t.muted }))], right);
+                hit(app, row, HyHit::WorkflowRun(*run));
             }
             Line::Note(text, c, term) => {
                 if small {
@@ -619,8 +625,10 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     if r.height < 8 {
         return;
     }
-    if let Some((gy, row)) = gliding.filter(|(gy, _)| (top..top + list_h as u16).contains(gy)) {
-        tint_row(look, buf, row.x, gy, row.width, t.hov, pb);
+    if let Some((gy, row)) = gliding.filter(|(gy, _)| (top..top + list_h as u16).contains(gy))
+        && app.hy.row_y.get(&focus.unwrap_or_default()) != Some(&gy)
+    {
+        tint_row(look, buf, row.x, gy, row.width, t.card2, pb);
     }
     let ry = r.bottom() - 4;
     hline(buf, x0 + 3, ry, w.saturating_sub(6), t, pb);
@@ -651,7 +659,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     let nw = segs_width(&new);
     show(app, buf, x0 + 3, new, HyHit::NewShell);
     let mut actions = label(k(app, &Action::Actions), "actions");
-    if app.update_available.is_some() {
+    if app.update_available.is_some() || app.restart_pending() {
         actions.push(seg(" ●", hot));
     }
     let ax = right.saturating_sub(segs_width(&actions));
@@ -979,6 +987,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     let mut c = Card::new(t, &name);
     c.sub = &sub;
     c.state = info.agent.is_some().then_some(st).filter(|s| *s != Status::None);
+    c.state_hit = c.state.map(|_| HyHit::Why(term));
     c.waking = app.waking.contains_key(&term);
     // What it's taking of the machine, beside its state: where you look when the PC is slow.
     c.note = load_note(info.cpu, info.mem).map(|(load, heavy)| (load, if heavy { t.working } else { t.muted }));

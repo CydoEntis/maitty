@@ -326,8 +326,6 @@ pub(super) struct Session {
     /// Subagents it's running right now.
     pub subagents: Vec<String>,
     pub model: String,
-    /// It rang the bell and you haven't looked.
-    pub bell: bool,
     /// How full its context is, 0–100, when it says.
     pub context: Option<f32>,
     /// Stopped by a plan limit: seshi says "continue" then (unix seconds).
@@ -674,7 +672,6 @@ impl App {
                     is_agent: t.agent.is_some(),
                     asleep: t.asleep,
                     subagents: t.subagents.clone(),
-                    bell: t.bell,
                     model: t.model.clone(),
                     context: t.usage.context,
                     resume_at: t.resume_at,
@@ -925,6 +922,7 @@ pub(super) enum HyHit {
     NpGo,
     Profiles,
     WorkflowTab(u8),
+    WorkflowRun(u64),
     WorkflowRow(usize),
     WorkflowField(usize),
     WorkflowKey(char),
@@ -952,6 +950,7 @@ pub(super) enum HyHit {
     Update,
     /// Ask now whether a newer seshi is out (the same place, when none is known).
     CheckUpdate,
+    Why(TermId),
     /// A row of the worktree clean-up list (tick or untick it), and its Remove button.
     TidyRow(usize),
     TidyGo,

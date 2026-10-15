@@ -116,16 +116,36 @@ its configured key hint. **Actions** includes a clickable Settings row.
 When an update is available, show the accent dot beside **Actions**, its
 **Settings** row and the **General** settings tab to guide users to the update.
 
+Retain the working, needs-you, done or idle icon when a terminal rings. Terminal
+bells do not add sidebar indicators or history entries.
+
+Keep the active sidebar session filled with `hov` and marked `▸`, independently
+of mouse hover or keyboard browsing. Hover uses a quieter fill; the keyboard
+target uses `›`. Preserve agent status icons and colors in each state.
+
+Settings shows installed, window and daemon versions separately, with a labeled
+remote daemon and a restart-pending notice when versions differ. Keep the update
+dots until that mismatch is resolved. Installing an update leaves this window and
+the daemon running. Never restart the daemon automatically, even on a protocol mismatch.
+Status icons and pane status tags open the existing evidence popover, with a
+plain-language explanation and actual report/observation ages.
+
+**All keys** (`<leader> ?`, Actions or palette) opens a searchable, scrollable
+reference. List every active configured leader/global binding separately,
+including aliases and custom commands. Show palette-only commands without
+inventing bindings. Keep the delayed leader overview compact. Contextual keys
+come from [shortcuts.md](shortcuts.md), embedded in the app so both stay identical.
+
 ## Project-specific: UI conventions
 
-<!-- local: user requested Profiles and Workflows in the right-hand sheet. -->
+<!-- local: user requested right-hand Profiles/Workflows sheets and distinct active, keyboard and hover sidebar states. -->
 
 - Popups are centred `panel()`s with an accent title bar and `Esc close`; the
   screen behind is dimmed.
   Profiles and Workflows use the existing right-hand sheet instead, with Profiles,
   Workflows and Runs tabs and the working panes visible beside them.
-- Selection = `hov` background and a `›` marker; never the accent colour as a
-  row fill.
+- Selection uses the theme's selection fill and a marker; never the accent
+  colour as a row fill. The sidebar keeps active `▸` and keyboard `›` distinct.
 - Every popup row is clickable and keyboard-reachable; every key is shown as a
   keycap somewhere (hints line, keys screen, palette).
 - Short-lived notes are toasts above the bottom bar; destructive actions ask
@@ -150,6 +170,9 @@ See [theme sources](theme-sources.md) for upstream palettes and local UI adaptat
 
 The workflow sheet has profile selectors, task entry, reports, human plan
 approval, retry and cancellation; see [usage](features/workflows/usage.md).
+Setup previews and copies repository instructions without editing files. Show
+workflow stage/round labels beside associated sessions. Pending plan approvals
+also appear in Inbox and open the exact run for review before human approval.
 
 ## Project-specific: frame presentation
 

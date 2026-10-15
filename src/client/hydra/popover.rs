@@ -155,7 +155,7 @@ fn source_of(why: &str) -> &'static str {
 /// the one that set it bold and marked.
 pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: Rect, side: Rect, term: TermId, t: &Theme) {
     let Some(info) = app.snap.terms.get(&term).cloned() else { return };
-    let r = pop_rect(app, screen, side, term, WHY_W, 9);
+    let r = pop_rect(app, screen, side, term, WHY_W, 12);
     let title = format!("why {} {}", glyph(app, info.status), state_label(info.status));
     let mut card_ = Card::new(t, &title).lit(t.accent);
     card_.bg = t.card;
@@ -171,11 +171,29 @@ pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: R
     let rows = [
         ("hook", if info.why_hook.is_empty() { "none since it started".to_string() } else { info.why_hook.clone() }, ago(info.why_hook_at)),
         ("screen", if info.why_screen.is_empty() { "nothing matched yet".to_string() } else { info.why_screen.clone() }, ago(info.why_screen_at)),
-        ("process", process, "now".to_string()),
+        ("process", process, ago(info.why_process_at)),
     ];
     let c = Style::default().bg(t.card);
+    let confirmed = info.why_hook_at.max(info.why_screen_at);
+    let summary = if info.agent.is_some() && confirmed == 0 && info.status_why.is_empty() {
+        "Status uncertain — no report or screen confirmation."
+    } else {
+        match info.status {
+            Status::Blocked => "Waiting for your answer or permission.",
+            Status::Done => "Turn finished; ready for you to review.",
+            Status::Idle => "Ready for your next instruction.",
+            Status::Working if won == "hook" => "The agent reported that it is working.",
+            Status::Working if info.status_why.contains("one of its own") => "Waiting for its helpers to finish.",
+            Status::Working if info.why_screen_at == 0 => "Status uncertain — no turn confirmation yet.",
+            Status::Working => "Working — estimated from the screen.",
+            Status::None => "No agent status is available for this terminal.",
+        }
+    };
+    put(buf, r.x + 3, r.y + 2, &[seg(summary, c.fg(t.text))], r.right() - 2);
+    let confirmation = if confirmed == 0 { "Last confirmation: none".into() } else { format!("Last confirmation: {}", ago(confirmed)) };
+    put(buf, r.x + 3, r.y + 3, &[seg(confirmation, c.fg(t.muted))], r.right() - 2);
     for (i, (src, detail, when)) in rows.iter().enumerate() {
-        let y = r.y + 2 + i as u16;
+        let y = r.y + 5 + i as u16;
         let win = *src == won;
         let name = if win { c.fg(t.strong).add_modifier(Modifier::BOLD) } else { c.fg(t.muted) };
         let right = vec![seg(when.clone(), c.fg(t.muted)), seg(if win { "  ◂" } else { "   " }, c.fg(t.accent).add_modifier(Modifier::BOLD))];
@@ -184,11 +202,11 @@ pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: R
         put(buf, r.right().saturating_sub(rw + 3), y, &right, r.right() - 1);
     }
     let note = if won.is_empty() && !info.status_why.is_empty() {
-        format!("Set by you: {}.", info.status_why)
+        format!("Reason: {}.", info.status_why)
     } else {
         "The most specific source wins: hook, then screen, then process.".to_string()
     };
-    put(buf, r.x + 3, r.y + 6, &[seg(truncate(&note, r.width.saturating_sub(6) as usize), c.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right() - 2);
+    put(buf, r.x + 3, r.y + 9, &[seg(truncate(&note, r.width.saturating_sub(6) as usize), c.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right() - 2);
     pointer(buf, r, t);
 }
 

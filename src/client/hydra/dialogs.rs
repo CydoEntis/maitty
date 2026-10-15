@@ -258,7 +258,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, f: &mut Frame, area: Rect,
     let mut x = r.x + 3;
     for (i, cat) in Cat::ALL.iter().enumerate() {
         let on = i == v.cat;
-        let dot = *cat == Cat::General && app.update_available.is_some();
+        let dot = *cat == Cat::General && (app.update_available.is_some() || app.restart_pending());
         let mut segs = vec![seg(format!(" {} ", cat.label()), Style::default().fg(if on { t.acc_ink } else { t.text }).add_modifier(if on { Modifier::BOLD } else { Modifier::empty() }))];
         if dot {
             segs.push(seg("● ", Style::default().fg(if on { t.acc_ink } else { t.accent }).add_modifier(Modifier::BOLD)));
@@ -302,6 +302,20 @@ pub(in crate::client) fn draw_settings(app: &mut App, f: &mut Frame, area: Rect,
     let update = button_pill(look, t, label, "", primary, hovered(app, ur), t.card);
     put(buf, ur.x, vy, &update, r.right() - 3);
     hit(app, ur, what);
+    let installed = match &app.installed_version {
+        Some(Ok(v)) => v.as_str(),
+        Some(Err(_)) => "unavailable",
+        None => "checking…",
+    };
+    let daemon = if app.snap.daemon_version.is_empty() { "unknown" } else { &app.snap.daemon_version };
+    let host = crate::ipc::remote().map(|h| format!("Remote daemon ({h})")).unwrap_or_else(|| "Running daemon".into());
+    put(buf, r.x + 4, r.y + 5, &[seg(format!("Installed here: {installed}   This window: {}", env!("CARGO_PKG_VERSION")), c.fg(t.muted))], r.right() - 3);
+    put(buf, r.x + 4, r.y + 6, &[seg(format!("{host}: {daemon}"), c.fg(t.muted))], r.right() - 3);
+    if app.restart_pending() {
+        put(buf, r.x + 4, r.y + 7, &[seg("Restart pending — restart after active tasks finish.", c.fg(t.accent).add_modifier(Modifier::BOLD))], r.right() - 3);
+    } else if let Some(Err(error)) = &app.installed_version {
+        put(buf, r.x + 4, r.y + 7, &[seg(format!("Version check failed: {error}"), c.fg(t.err))], r.right() - 3);
+    }
     hline(buf, r.x + 3, r.y + 3, r.width.saturating_sub(6), t, t.card);
     let cat = Cat::ALL[v.cat.min(Cat::ALL.len() - 1)];
     let rows = crate::client::design::settings_rows(cat);
@@ -336,10 +350,10 @@ pub(in crate::client) fn draw_settings(app: &mut App, f: &mut Frame, area: Rect,
         lines.push(L::Row(i));
         lines.push(L::Blank);
     }
-    let top = r.y + 5;
+    let top = r.y + 8;
     // Appearance keeps room at the foot for its preview.
     let preview = cat == Cat::Appearance && r.height >= 30;
-    let h = r.height.saturating_sub(if preview { 16 } else { 11 }) as usize;
+    let h = r.height.saturating_sub(if preview { 19 } else { 14 }) as usize;
     let at = lines.iter().position(|l| matches!(l, L::Row(i) if *i == v.sel)).unwrap_or(0);
     let start = (at + 2).saturating_sub(h);
     for (k, line) in lines.iter().enumerate().skip(start).take(h) {

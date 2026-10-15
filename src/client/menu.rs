@@ -58,7 +58,7 @@ pub enum Act {
     TidyOpen(usize),
     /// Remove these worktrees (each: its folder, and whether to lose uncommitted changes).
     Tidy(Vec<(PathBuf, bool)>),
-    /// Download the newest seshi and restart into it.
+    /// Install the newest seshi without interrupting the running sessions.
     Update,
 }
 

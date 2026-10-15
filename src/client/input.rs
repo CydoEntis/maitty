@@ -75,6 +75,10 @@ impl App {
             // Seshi's own text boxes take the paste, not the pane behind them.
             Mode::Find(v) => v.query.push_str(s.lines().next().unwrap_or("")),
             Mode::GoTo { query, .. } => query.push_str(s.lines().next().unwrap_or("").trim()),
+            Mode::Shortcuts { query, scroll } => {
+                shortcuts::append_query(query, s.lines().next().unwrap_or(""));
+                *scroll = 0;
+            }
             Mode::Compose(c) => c.text.push_str(&s.replace("\r\n", "\n")),
             Mode::Themes { query, sel, saving: false } => {
                 themes::append_query(query, s.lines().next().unwrap_or(""));
@@ -218,6 +222,7 @@ impl App {
                 }
             }
             Mode::KeyMap(km) => self.on_keymap_key(*km, &k),
+            Mode::Shortcuts { query, scroll } => self.on_shortcuts_key(query, scroll, &k),
             Mode::Actions { sel } => self.on_actions_key(sel, &k),
             Mode::RenameTab(nt) => self.on_rename_tab_key(*nt, &k),
             Mode::Picker { mut query, mut sel, commands } => {
@@ -599,6 +604,7 @@ impl App {
             let at = (m.column, m.row);
             match hit {
                 Some(Hit::Hy(hydra::HyHit::Session(t))) => self.menu_for_session(t, at),
+                Some(Hit::Hy(hydra::HyHit::Why(t))) if self.hy.side_rect.contains(pos) => self.menu_for_session(t, at),
                 Some(Hit::Hy(hydra::HyHit::ToggleProj(pi))) => self.menu_for_project(pi, at),
                 _ => {
                     if let Some((term, _)) = self.pane_frames.iter().find(|(_, r)| r.contains(pos)).copied() {
@@ -648,7 +654,7 @@ impl App {
                 }
                 let double = self.last_click.is_some_and(|(prev, at)| prev == h && at.elapsed() < DOUBLE_CLICK);
                 self.last_click = Some((h, Instant::now()));
-                if matches!(self.mode, Mode::Prefix { .. } | Mode::Side) {
+                if matches!(self.mode, Mode::Prefix { .. } | Mode::Side) && !matches!(hh, hydra::HyHit::Why(_)) {
                     self.mode = Mode::Normal;
                 }
                 self.on_hy_hit(hh, double);
@@ -697,6 +703,10 @@ impl App {
             }
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
                 let up = m.kind == MouseEventKind::ScrollUp;
+                if let Mode::Shortcuts { query, scroll } = self.mode.clone() {
+                    self.on_shortcuts_key(query, scroll, &KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
+                    return;
+                }
                 if let Mode::Themes { query, sel, saving } = self.mode.clone() {
                     self.on_theme_key(query, sel, saving, &KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
                     return;

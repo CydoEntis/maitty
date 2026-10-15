@@ -278,6 +278,7 @@ impl App {
     }
 
     pub(in crate::client) fn hy_settings(&mut self) {
+        self.refresh_installed_version();
         self.mode = Mode::HySettings(Box::new(SView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
     }
 
@@ -429,7 +430,7 @@ impl App {
             Action::NewTab => self.new_tab_start(),
             Action::RenameTab => self.rename_tab_start(),
             Action::Actions => self.mode = Mode::Actions { sel: 0 },
-            Action::Help => self.open_keymap(None),
+            Action::Help => self.open_shortcuts(),
             Action::Worktrees => self.open_keymap(Some(Step::Worktrees)),
             Action::NextTab | Action::PrevTab => {
                 // This session's tabs, in order.
@@ -614,7 +615,7 @@ impl App {
 
     /// Go to, opened on its first row you can pick (what needs you, when anything does).
     pub(in crate::client) fn open_goto(&mut self) {
-        let rows = goto_rows(&self.hy_model(), "", heads_up(self).len());
+        let rows = goto_rows(&self.hy_model(), "", heads_up(self).len(), &self.snap.workflows);
         let sel = rows.iter().position(GoRow::pickable).unwrap_or(0);
         self.mode = Mode::GoTo { query: String::new(), sel };
     }
@@ -834,7 +835,7 @@ impl App {
 
     pub(in crate::client) fn on_goto_key(&mut self, mut query: String, mut sel: usize, k: &KeyEvent) {
         let model = self.hy_model();
-        let rows = goto_rows(&model, &query, heads_up(self).len());
+        let rows = goto_rows(&model, &query, heads_up(self).len(), &self.snap.workflows);
         // Headings aren't rows you land on.
         let land = |sel: usize, down: bool| -> usize {
             let n = rows.len();
@@ -938,6 +939,7 @@ impl App {
                     Some(GoRow::Ask(t) | GoRow::Done(t)) => self.hy_focus(*t),
                     Some(GoRow::Head(_) | GoRow::Heads(_)) => {}
                     Some(GoRow::Sess(_, t)) => self.hy_focus(*t),
+                    Some(GoRow::Workflow(run)) => self.open_workflow_run(*run),
                     // A project: its most urgent session, or a shell there.
                     None => {}
                 }
@@ -950,8 +952,8 @@ impl App {
             KeyCode::Char(c) if !k.modifiers.contains(KeyModifiers::CONTROL) => {
                 query.push(c);
                 // Land on the first session that matches, when there is one.
-                let rows = goto_rows(&model, &query, heads_up(self).len());
-                sel = rows.iter().position(|r| matches!(r, GoRow::Sess(..))).unwrap_or(0);
+                let rows = goto_rows(&model, &query, heads_up(self).len(), &self.snap.workflows);
+                sel = rows.iter().position(GoRow::pickable).unwrap_or(0);
             }
             _ => {}
         }
@@ -1127,6 +1129,9 @@ impl App {
             }
             HyHit::Update => self.act(Action::Update),
             HyHit::CheckUpdate => self.act(Action::CheckUpdate),
+            HyHit::Why(term) => {
+                self.mode = Mode::Why { term, side: matches!(self.mode, Mode::Side) };
+            }
             HyHit::TidyRow(i) => self.tidy_click(i),
             HyHit::TidyGo => {
                 if let Mode::Tidy(v) = std::mem::replace(&mut self.mode, Mode::Normal) {
@@ -1208,6 +1213,7 @@ impl App {
                 self.inbox_answer(term, key, &name);
             }
             HyHit::Profiles => self.open_profiles(),
+            HyHit::WorkflowRun(run) => self.open_workflow_run(run),
             HyHit::WorkflowTab(tab) => {
                 let dir = match &self.mode {
                     Mode::Profiles(v) => v.dir.clone(),

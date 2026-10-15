@@ -419,15 +419,7 @@ fn main() {
     }
 }
 
-/// Open the app. Started by an in-app update to a seshi that can't talk to the running
-/// server: restart the server (its sessions resume) instead of stopping with an error.
+/// Protocol mismatches leave the daemon running until the user can restart it safely.
 fn open_client(open: Option<std::path::PathBuf>) -> anyhow::Result<()> {
-    let updated = std::env::var_os(client::UPDATED_ENV).is_some();
-    match client::run(client::Options { open: open.clone() }) {
-        Err(e) if updated && e.chain().any(|c| c.is::<ipc::OtherVersion>()) => {
-            cli::kill_server(false)?;
-            client::run(client::Options { open })
-        }
-        r => r,
-    }
+    client::run(client::Options { open })
 }

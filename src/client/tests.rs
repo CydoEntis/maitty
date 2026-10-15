@@ -32,6 +32,7 @@ mod design_tests {
             why_hook_at: 0,
             why_screen: String::new(),
             why_screen_at: 0,
+            why_process_at: 0,
             pid: 0,
             name: String::new(),
             label: String::new(),
@@ -170,6 +171,313 @@ mod hydra_tests {
     fn show(s: &str) {
         if std::env::var("SESHI_SHOW").is_ok() {
             println!("{s}");
+        }
+    }
+
+    #[test]
+    fn all_keys_lists_aliases_globals_and_custom_bindings_without_disabled_keys() {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        let rows = shortcuts::entries(&app);
+        for (key, action) in &app.keymap.prefixed {
+            assert!(rows.contains(&("After leader".into(), key.to_string(), action.describe())), "leader {key} is discoverable");
+        }
+        for (key, action) in &app.keymap.global {
+            assert!(rows.contains(&("Without leader".into(), key.to_string(), action.describe())), "global {key} is discoverable");
+        }
+        for alias in ["p", "v", "|", ":", "Space", "C-v"] {
+            assert!(rows.iter().any(|(scope, key, _)| scope == "After leader" && key == alias), "alias {alias} is not hidden");
+        }
+        app.cfg.prefix = "ctrl+a".into();
+        app.cfg.keys.prefix.insert("v".into(), "none".into());
+        app.cfg.keys.prefix.insert("g".into(), "workflows".into());
+        app.cfg.keys.global.insert("alt+0".into(), "spawn-tab:my-agent --review".into());
+        app.keymap = app.cfg.keymap();
+        let rows = shortcuts::entries(&app);
+        assert_eq!(rows[0].1, "C-a");
+        assert!(!rows.iter().any(|(scope, key, _)| scope == "After leader" && key == "v"));
+        assert!(rows.iter().any(|(scope, key, label)| scope == "After leader" && key == "g" && label == "Workflows"));
+        assert!(rows.iter().any(|(scope, key, label)| scope == "Without leader" && key == "M-0" && label.contains("my-agent --review")));
+        app.cfg.keys.replace_defaults = true;
+        app.keymap = app.cfg.keymap();
+        assert!(!shortcuts::entries(&app).iter().any(|(scope, key, _)| scope == "After leader" && key == "j"));
+    }
+
+    #[test]
+    fn all_keys_opens_searches_scrolls_and_returns_without_running_commands() {
+        for (w, h) in [(80, 24), (100, 30), (160, 45)] {
+            let (_, mut app) = super::design_tests::render_with(w, h);
+            let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
+            app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+            app.on_key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE));
+            assert!(matches!(app.mode, Mode::Shortcuts { .. }));
+            let output = draw(&mut app, w, h); show(&output);
+            assert!(output.contains("All shortcuts") && output.contains("AFTER LEADER") && output.contains("Esc"));
+            app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
+            let output = draw(&mut app, w, h);
+            assert!(output.contains("folder picker"), "the end of the reference is reachable");
+            app.on_key(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE));
+            draw(&mut app, w, h);
+            app.on_mouse(MouseEvent { kind: MouseEventKind::ScrollDown, column: w / 2, row: h / 2, modifiers: KeyModifiers::NONE });
+            assert!(matches!(app.mode, Mode::Shortcuts { scroll: 1, .. }));
+            for (query, expected) in [("workflow setup", "WORKFLOW SETUP"), ("profiles", "PROFILES"),
+                ("copy mode", "COPY MODE"), ("without leader", "WITHOUT LEADER"),
+                ("Ctrl+Space", "START HERE"), ("Alt+1", "WITHOUT LEADER"), ("no match zzqq", "No shortcuts match")] {
+                app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+                app.on_paste(query.into());
+                let output = draw(&mut app, w, h); show(&output);
+                assert!(output.contains(expected));
+            }
+            app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+            assert_eq!(app.mode, Mode::Normal);
+            assert!(rx.try_recv().is_err(), "help must not run or send any command");
+            app.mode = Mode::Actions { sel: 0 };
+            app.actions_run(hydra::action_items().iter().position(|(_, a)| *a == Action::Help).unwrap());
+            assert!(matches!(app.mode, Mode::Shortcuts { .. }), "Actions → All keys reaches the full reference too");
+        }
+    }
+
+    #[test]
+    fn active_sidebar_selection_survives_hover_and_keyboard_browsing() {
+        let (_, mut app) = super::design_tests::render_with(120, 30);
+        let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
+        app.hy_focus(1);
+        app.mode = Mode::Normal;
+        let mut terminal = Terminal::new(TestBackend::new(120, 30)).unwrap();
+        terminal.draw(|f| render::draw(&mut app, f)).unwrap();
+        let x = app.hy.side_rect.x;
+        let active_y = app.hy.row_y[&1];
+        let hover_y = app.hy.row_y[&2];
+        let active_bg = terminal.backend().buffer()[(x + 8, active_y)].bg;
+        for (column, row) in [(x + 10, hover_y), (x + 4, 3), (x + 4, 27), (80, 20)] {
+            app.on_mouse(MouseEvent { kind: MouseEventKind::Moved, column, row, modifiers: KeyModifiers::NONE });
+            terminal.draw(|f| render::draw(&mut app, f)).unwrap();
+            assert_eq!(app.focused(), Some(1), "hover never changes the active pane");
+            assert_eq!(terminal.backend().buffer()[(x + 8, active_y)].bg, active_bg);
+            assert_eq!(terminal.backend().buffer()[(x + 3, active_y)].symbol(), "▸");
+        }
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Moved, column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
+        terminal.draw(|f| render::draw(&mut app, f)).unwrap();
+        assert_ne!(terminal.backend().buffer()[(x + 8, hover_y)].bg, active_bg, "hover has its own quieter style");
+        app.hy_side_set(hydra::SideItem::Sess(2));
+        terminal.draw(|f| render::draw(&mut app, f)).unwrap();
+        assert_eq!(terminal.backend().buffer()[(x + 3, active_y)].symbol(), "▸");
+        assert_eq!(terminal.backend().buffer()[(x + 3, hover_y)].symbol(), "›");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Up(MouseButton::Left), column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
+        assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 }))));
+        app.snap.workspaces[0].tabs[0].focus = 2;
+        app.hy_sync();
+        terminal.draw(|f| render::draw(&mut app, f)).unwrap();
+        assert_eq!(app.focused(), Some(2));
+        assert_eq!(terminal.backend().buffer()[(x + 3, hover_y)].symbol(), "▸");
+        app.snap.terms.get_mut(&2).unwrap().asleep = true;
+        app.hy_fresh();
+        terminal.draw(|f| render::draw(&mut app, f)).unwrap();
+        assert_eq!(terminal.backend().buffer()[(x + 3, hover_y)].symbol(), "▸", "sleep glyphs leave the active marker visible");
+    }
+
+    #[test]
+    fn installing_an_update_keeps_the_window_and_sessions_running() {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
+        let focused = app.focused();
+        app.updating = true;
+        app.update_available = Some("9.9.9".into());
+        app.update_installed("9.9.9".into());
+        assert!(!app.updating && app.update_available.is_none());
+        assert_eq!(app.installed_version, Some(Ok("9.9.9".into())));
+        assert!(app.quit.is_none() && app.restart_pending());
+        assert_eq!(app.focused(), focused);
+        assert!(rx.try_recv().is_err(), "install completion sends no session commands");
+        assert!(app.notice.as_ref().is_some_and(|(text, ..)| text.contains("restart after active tasks finish")));
+    }
+
+    #[test]
+    fn versions_distinguish_installed_window_and_running_daemon() {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        app.installed_version = Some(Ok("9.9.9".into()));
+        app.snap.daemon_version = "0.20.0".into();
+        app.act(Action::Settings);
+        let output = draw(&mut app, 100, 30); show(&output);
+        assert!(output.contains("Installed here: 9.9.9") && output.contains("This window:"));
+        assert!(output.contains("Running daemon: 0.20.0") && output.contains("Restart pending"));
+        app.update_available = Some("9.9.9".into());
+        app.update_checked_now(true, Ok(None), Vec::new());
+        assert!(app.update_available.is_none(), "a release already installed is not offered again");
+        assert!(app.restart_pending());
+        app.installed_version = Some(Ok(env!("CARGO_PKG_VERSION").into()));
+        app.snap.daemon_version = env!("CARGO_PKG_VERSION").into();
+        assert!(!app.restart_pending());
+        app.installed_version = Some(Err("unreadable executable".into()));
+        assert!(draw(&mut app, 80, 24).contains("unavailable"));
+    }
+
+    #[test]
+    fn clicking_status_opens_plain_language_evidence() {
+        let (_, mut app) = super::design_tests::render_with(120, 30);
+        for pane_tag in [false, true] {
+            app.mode = if pane_tag { Mode::Normal } else { Mode::Side };
+            draw(&mut app, 120, 30);
+            let hits: Vec<_> = app.hits.iter().filter_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::Why(1))).then_some(*r)).collect();
+            assert!(hits.len() >= 2, "the pane tag and sidebar status are clickable");
+            let at = if pane_tag { hits[0] } else { *hits.last().unwrap() };
+            app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.x, row: at.y, modifiers: KeyModifiers::NONE });
+            assert!(matches!(app.mode, Mode::Why { term: 1, .. }));
+            let output = draw(&mut app, 120, 30); show(&output);
+            assert!(output.contains("Status uncertain") && output.contains("Last confirmation: none"));
+            assert!(!output.contains("process  shell running  now"));
+            app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+            assert_eq!(matches!(app.mode, Mode::Side), !pane_tag);
+        }
+        let info = app.snap.terms.get_mut(&1).unwrap();
+        info.status_why = "screen: queued question".into(); info.why_screen_at = 1;
+        app.mode = Mode::Why { term: 1, side: false };
+        assert!(draw(&mut app, 120, 30).contains("Waiting for your answer"));
+    }
+
+    #[test]
+    fn workflow_setup_prepares_the_selected_profiles_and_instructions() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let roles: Vec<_> = ["my-planner", "my-worker", "my-reviewer"].iter().enumerate().map(|(i, name)| {
+            let mut profile = crate::profiles::starter(crate::profiles::Runner::Codex, i);
+            profile.name = (*name).into();
+            crate::profiles::Resolved { profile, project: false }
+        }).collect();
+        let workflow = crate::workflows::Workflow { name: "my-feature".into(), planner: "my-planner".into(), worker: "my-worker".into(), reviewer: "my-reviewer".into() };
+        let instructions = workflows::activation_instructions(&workflow);
+        assert!(instructions.contains("seshi workflow run my-feature") && instructions.contains("Do not approve it yourself") && instructions.contains("assigned workflow stage"));
+        app.mode = Mode::Workflows(Box::new(workflows::WorkflowView {
+            dir: PathBuf::from("."), entries: Some(vec![crate::workflows::ResolvedWorkflow { workflow, project: true }]), profiles: roles,
+            runs: false, sel: 0, scroll: 0, editor: None, original: None, project: true, field: 0, task: None, busy: false, error: None, confirm: None, setup: None,
+        }));
+        let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
+        app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::NONE));
+        assert!(matches!(&app.mode, Mode::Workflows(v) if v.setup.as_ref().is_some_and(|w| w.name == "my-feature")));
+        for (width, height) in [(80, 24), (100, 30), (160, 45)] {
+            let output = draw(&mut app, width, height); show(&output);
+            assert!(output.contains("Use in this project") && output.contains("my-planner") && output.contains("Copy instructions"));
+            assert!(output.contains("AGENTS.md") && output.contains("CLAUDE.md"));
+        }
+        assert!(rx.try_recv().is_err(), "reviewing instructions never starts or approves a run");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(matches!(&app.mode, Mode::Workflows(v) if v.setup.is_none() && v.task.is_none()));
+    }
+
+    #[test]
+    fn inbox_plan_approval_opens_the_exact_workflow_run() {
+        for mouse in [false, true] {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
+            let mut pending = crate::workflows::tests::run();
+            pending.id = 41; pending.state = crate::workflows::State::Approval; pending.term = None; pending.finished.clear(); pending.plan = "Plan for the selected task".into(); pending.parent = Some(2);
+            let mut newer = pending.clone(); newer.id = 99; newer.state = crate::workflows::State::Complete;
+            app.snap.workflows = vec![pending, newer];
+            app.open_goto();
+            let rows = hydra::goto_rows(&app.hy_model(), "", 0, &app.snap.workflows);
+            let selected = rows.iter().position(|r| *r == hydra::GoRow::Workflow(41)).expect("approval exists without a stage pane");
+            app.mode = Mode::GoTo { query: String::new(), sel: selected };
+            let output = draw(&mut app, 100, 30); show(&output);
+            assert!(output.contains("plan approval") && output.contains("Review plan"));
+            if mouse {
+                let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::WorkflowRun(41))).then_some(*r)).unwrap();
+                app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.x, row: at.y, modifiers: KeyModifiers::NONE });
+            } else { app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)); }
+            assert!(matches!(&app.mode, Mode::Workflows(v) if v.runs && v.sel == 1 && !v.busy));
+            let output = draw(&mut app, 100, 30); show(&output);
+            assert!(output.contains("Plan for the selected task") && output.contains("Approve plan"));
+            app.on_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+            assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::WorkflowControl { run: 41, action: WorkflowAction::Approve }))));
+            assert!(hydra::goto_rows(&app.hy_model(), "", 0, &app.snap.workflows).contains(&hydra::GoRow::Workflow(41)), "approval stays until the daemon advances it");
+            app.snap.workflows[0].state = crate::workflows::State::Ready;
+            assert!(!hydra::goto_rows(&app.hy_model(), "", 0, &app.snap.workflows).contains(&hydra::GoRow::Workflow(41)));
+        }
+    }
+
+    #[test]
+    fn workflow_stage_labels_follow_the_current_session_and_round() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let mut run = crate::workflows::tests::run(); run.parent = Some(2); run.term = Some(2); run.state = crate::workflows::State::Running;
+        app.snap.terms.get_mut(&2).unwrap().status = Status::Working;
+        app.snap.workflows.push(run);
+        for (stage, state, round, label) in [
+            (crate::workflows::Stage::Plan, crate::workflows::State::Running, 0, "Planning"),
+            (crate::workflows::Stage::Build, crate::workflows::State::Running, 1, "Building 1/3"),
+            (crate::workflows::Stage::Review, crate::workflows::State::Running, 2, "Reviewing 2/3"),
+            (crate::workflows::Stage::Plan, crate::workflows::State::Approval, 0, "Needs plan approval"),
+        ] {
+            let run = &mut app.snap.workflows[0]; run.stage = stage; run.state = state; run.round = round;
+            let output = draw(&mut app, 160, 45); show(&output);
+            assert!(output.contains(label), "{label} is visible beside its session");
+        }
+        app.snap.workflows[0].state = crate::workflows::State::Running;
+        app.snap.terms.get_mut(&2).unwrap().status = Status::Blocked;
+        assert!(workflows::stage_badge(&app, &app.snap.workflows[0]).starts_with("Needs your answer"));
+    }
+
+    #[test]
+    #[ignore = "opt-in release-mode performance measurement; no wall-clock CI threshold"]
+    fn session_interactions_under_heavy_output() {
+        const PANES: u32 = 8;
+        const CYCLES: usize = 120;
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let base_ws = app.snap.workspaces[0].clone();
+        let base_term = app.snap.terms[&2].clone();
+        app.snap.workspaces.clear(); app.snap.terms.clear(); app.parsers.clear(); app.hy.tabs.clear();
+        for id in 1..=PANES {
+            let mut info = base_term.clone(); info.id = id; info.status = Status::Working;
+            let mut ws = base_ws.clone(); ws.id = 100 + id; ws.tabs.truncate(1);
+            ws.tabs[0].id = 200 + id; ws.tabs[0].layout = crate::layout::Node::Leaf(id); ws.tabs[0].focus = id; ws.active_tab = 200 + id;
+            app.snap.workspaces.push(ws); app.snap.terms.insert(id, info);
+            app.parsers.insert(id, app.new_parser(30, 100));
+        }
+        app.snap.active_ws = Some(101); app.hy_fresh(); app.hy_focus(1);
+        let mut terminal = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        terminal.draw(|f| render::draw(&mut app, f)).unwrap(); app.sync_sizes();
+        let mut timings: [Vec<f64>; 4] = std::array::from_fn(|_| Vec::new());
+        let mut bytes = 0;
+        let mut scrolled = false;
+        for cycle in 0..CYCLES {
+            let payload = format!("\x1b[32mstress-{cycle:03}\x1b[0m output with enough text to wrap at narrow widths\r\n").repeat(64).into_bytes();
+            let began = Instant::now();
+            for id in 1..=PANES {
+                bytes += payload.len();
+                app.on_server(ServerMsg::Output { term: id, data: payload.clone() });
+            }
+            timings[3].push(began.elapsed().as_secs_f64() * 1000.0);
+            app.mode = Mode::Normal;
+            let began = Instant::now();
+            let action = cycle % 3;
+            let wanted = (cycle / 3) as u32 % PANES + 1;
+            match action {
+                0 => {
+                    app.hy_focus(wanted);
+                    let mut acknowledged = app.snap.clone();
+                    acknowledged.active_ws = Some(100 + wanted);
+                    app.on_server(ServerMsg::State(acknowledged));
+                }
+                1 => {
+                    let r = app.panes[0].1;
+                    app.on_mouse(MouseEvent { kind: MouseEventKind::ScrollUp, column: r.x + 1, row: r.y + 1, modifiers: KeyModifiers::NONE });
+                    scrolled |= app.focused().is_some_and(|id| app.history(id).0 > 0);
+                }
+                _ => {
+                    let (width, height) = if cycle % 2 == 0 { (100, 30) } else { (160, 45) };
+                    terminal.backend_mut().resize(width, height);
+                    app.on_event(event::Event::Resize(width, height));
+                }
+            }
+            terminal.draw(|f| render::draw(&mut app, f)).unwrap(); app.sync_sizes();
+            timings[action].push(began.elapsed().as_secs_f64() * 1000.0);
+            if action == 0 { assert_eq!(app.focused(), Some(wanted)); }
+            let area = terminal.backend().buffer().area;
+            assert!(app.panes.iter().all(|(_, r)| r.right() <= area.right() && r.bottom() <= area.bottom()));
+        }
+        assert!(scrolled, "the benchmark really exercised scrollback");
+        assert!(app.parsers[&PANES].screen().contents().contains("stress-"), "output survived switching and rewrapping");
+        println!("{PANES} panes, {} output messages, {bytes} bytes", CYCLES * PANES as usize);
+        for (label, mut samples) in ["switch", "scroll", "resize", "output burst"].into_iter().zip(timings) {
+            samples.sort_by(f64::total_cmp);
+            println!("{label}: p50={:.3}ms p95={:.3}ms max={:.3}ms", samples[samples.len() / 2], samples[(samples.len() * 95 / 100).min(samples.len() - 1)], samples[samples.len() - 1]);
         }
     }
 
@@ -658,7 +966,7 @@ mod hydra_tests {
 
 
     #[test]
-    fn history_keeps_who_finished_asked_and_rang() {
+    fn history_keeps_status_changes_without_terminal_bells() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let mut next = app.snap.clone();
         let (a, b) = {
@@ -668,15 +976,17 @@ mod hydra_tests {
         next.terms.get_mut(&a).unwrap().status = Status::Done;
         next.terms.get_mut(&a).unwrap().said = "Fixed it.\nMore".into();
         next.terms.get_mut(&b).unwrap().bell = true;
+        next.terms.get_mut(&b).unwrap().status = Status::Blocked;
         app.got_state = true;
         app.on_server(ServerMsg::State(next));
         let texts: Vec<&str> = app.history.iter().map(|h| h.3.as_str()).collect();
         assert!(texts.iter().any(|t| t.ends_with("finished: Fixed it.")), "{texts:?}");
-        assert!(texts.iter().any(|t| t.ends_with("rang the bell")), "{texts:?}");
+        assert!(texts.iter().any(|t| t.ends_with("needs you")), "{texts:?}");
+        assert!(!texts.iter().any(|t| t.ends_with("rang the bell")), "bell output is not an attention event: {texts:?}");
         app.act(Action::History);
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("What happened") && o.contains("rang the bell"));
+        assert!(o.contains("What happened") && o.contains("needs you") && !o.contains('♪'));
     }
 
     #[test]
@@ -1079,8 +1389,8 @@ mod hydra_tests {
         let y = (0..45).find(|&y| (0..160).any(|x| buf[(x, y)].symbol() == "✕")).unwrap();
         let x = (0..160).rev().find(|&x| buf[(x, y)].symbol() == "✕").unwrap();
         assert_eq!(buf[(x + 2, y)].fg, app.theme.sky(), "the focused border turns sky");
-        // ? opens the key map: groups, each key a cap, what needs you on j.
-        key(&mut app, KeyCode::Char('?'));
+        // The delayed overview groups common commands; ? opens the full reference instead.
+        app.open_keymap(None);
         assert!(matches!(app.mode, Mode::KeyMap(_)));
         let o = draw(&mut app, 160, 45);
         show(&o);
@@ -2211,7 +2521,7 @@ mod hydra_tests {
         app.update_checked_now(false, Ok(None), Vec::new());
         assert!(app.notice.is_none(), "its own checks say nothing when there's nothing new");
         app.update_checked_now(true, Ok(None), Vec::new());
-        assert!(!app.update_checking && said(&app) == (format!("seshi {} is the latest", env!("CARGO_PKG_VERSION")), false));
+        assert!(!app.update_checking && said(&app) == (format!("Installed seshi {} is the latest", env!("CARGO_PKG_VERSION")), false));
         app.update_checked_now(true, Err("couldn't reach GitHub: timed out".into()), Vec::new());
         assert!(said(&app).1 && said(&app).0.contains("Couldn't check for updates"), "{:?}", said(&app));
         // A newer one: the Update button takes the place of the check.
@@ -2313,7 +2623,7 @@ mod hydra_tests {
         show(&o);
         assert!(o.contains("FOUND 1 ─") && o.contains("rate  codex · shop-api"), "typing finds what matches");
         let Mode::GoTo { query, sel } = app.mode.clone() else { panic!("still open") };
-        let rows = hydra::goto_rows(&app.hy_model(), &query, 0);
+        let rows = hydra::goto_rows(&app.hy_model(), &query, 0, &app.snap.workflows);
         assert!(matches!(rows[sel], hydra::GoRow::Sess(..)), "it lands on the matching session");
         app.on_key(key(KeyCode::Enter));
         assert!(matches!(app.mode, Mode::Normal), "Enter goes there");
@@ -2468,7 +2778,7 @@ mod hydra_tests {
         assert!(o.contains("⇆ file0.ts") && o.contains("⇆ file1.ts") && !o.contains("shared files"));
         // In the Inbox they come after what needs you and what finished, however many.
         app.hy.overlaps.insert(p.path.clone(), shared(60));
-        let rows = hydra::goto_rows(&app.hy_model(), "", hydra::heads_up(&app).len());
+        let rows = hydra::goto_rows(&app.hy_model(), "", hydra::heads_up(&app).len(), &app.snap.workflows);
         let at = |want: &str| rows.iter().position(|r| matches!(r, hydra::GoRow::Head(h) if *h == want)).unwrap_or_else(|| panic!("{want} is a section"));
         assert!(at("NEEDS YOU") < at("JUST FINISHED") && at("JUST FINISHED") < at("HEADS UP"));
     }
@@ -2493,7 +2803,7 @@ mod hydra_tests {
         show(&o);
         assert!(o.contains("HEADS UP") && o.contains("both changed checkout.ts") && o.contains("both diffs") && o.contains(" dismiss"), "the heads-up row");
         let Mode::GoTo { query, .. } = app.mode.clone() else { panic!("the Inbox") };
-        let rows = hydra::goto_rows(&app.hy_model(), &query, 1);
+        let rows = hydra::goto_rows(&app.hy_model(), &query, 1, &app.snap.workflows);
         let at = rows.iter().position(|r| matches!(r, hydra::GoRow::Heads(_))).unwrap();
         app.mode = Mode::GoTo { query: String::new(), sel: at };
         // d: both diffs in the sheet.
@@ -2514,7 +2824,7 @@ mod hydra_tests {
         t.status = Status::Done;
         app.hy_fresh();
         app.act(Action::Jump);
-        let rows = hydra::goto_rows(&app.hy_model(), "", 0);
+        let rows = hydra::goto_rows(&app.hy_model(), "", 0, &app.snap.workflows);
         let done = rows.iter().position(|r| matches!(r, hydra::GoRow::Done(_))).expect("a finished row");
         app.mode = Mode::GoTo { query: String::new(), sel: done };
         let o = draw(&mut app, 160, 45);
@@ -2628,6 +2938,26 @@ mod hydra_tests {
             assert_eq!(now, to, "drag {n}: the line is under the pointer");
             at = now;
         }
+    }
+
+    #[test]
+    fn status_icons_ignore_terminal_bells() {
+        let (_, mut app) = super::design_tests::render_with(120, 30);
+        for status in [Status::Working, Status::Blocked, Status::Idle, Status::Done] {
+            let t = app.snap.terms.get_mut(&2).unwrap();
+            (t.status, t.bell) = (status, true);
+            app.hy_fresh();
+            let o = draw(&mut app, 120, 30); show(&o);
+            let row = o.lines().find(|line| line.contains("rate")).unwrap();
+            assert!(!row.contains('♪'), "an agent keeps its {status:?} status when it rings: {row}");
+        }
+        let t = app.snap.terms.get_mut(&3).unwrap();
+        (t.status, t.bell) = (Status::None, true);
+        let o = draw(&mut app, 120, 30);
+        assert!(o.lines().any(|line| line.contains("shell") && line.contains('›') && !line.contains('♪')), "a plain terminal keeps its normal icon when it rings");
+        app.snap.terms.get_mut(&3).unwrap().status = Status::Blocked;
+        let o = draw(&mut app, 120, 30);
+        assert!(o.lines().any(|line| line.contains("shell") && line.contains(&app.cfg.icons.blocked) && !line.contains('♪')), "a terminal asking a question keeps its needs-you icon too");
     }
 
     #[test]

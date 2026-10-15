@@ -11,6 +11,43 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
+User-requested shortcut/documentation audit: All keys must expose every configured
+leader/global binding, aliases and contextual controls. Keep the compact leader
+overview and add a searchable full reference from Actions, palette and leader + `?`.
+Share contextual controls with [shortcuts.md](shortcuts.md); update README for
+profiles/workflows, independent selection/hover, status evidence and deferred
+update restarts. Status: implemented locally. The ordered gate passed: build,
+276 tests passed / four ignored, clippy with warnings denied, Linux and macOS
+cross-checks. Rendered reference inspected at 80×24, 100×30 and 160×45; tests cover
+all active bindings, aliases, replacements/unbinding, custom commands, key-name
+search, contextual search, scrolling and Actions entry without running commands.
+Live terminal/clipboard verification remains outstanding as described below.
+Release target: v0.30.0.
+
+User-authorized work: [clear session state and workflow controls](features/session-clarity/intent.md)
+([spec](features/session-clarity/spec.md)), extending active phase 9. Keep sidebar
+selection independent of hover; distinguish update versions; expose status
+evidence; prepare workflow instructions; show stages and Inbox approvals; measure
+switching, scrolling and resizing under output. Extends existing status/workflow
+surfaces, including the existing phase-8 status popover. Updates install without
+restarting the window or daemon. Status: implemented locally; the ordered gate
+passed (`cargo build`, 274 tests passed / four ignored, clippy with warnings
+denied, Linux and macOS cross-checks). Rendered setup, versions, evidence and
+Inbox screens inspected; sidebar checks cover sleeping sessions too. The opt-in
+release benchmark passed; measurements and limits are in [TESTING](TESTING.md#project-specific-interaction-performance).
+Live nested-server and clipboard checks remain outstanding after automatic
+approval review rejected the earlier launch as "blocked by policy" without a
+more specific reason. Release target: v0.30.0; no remote tickets created.
+
+User-requested status correction: finished Codex prose mentioning its interrupt
+shortcut must not count as active work. Remove terminal-bell indicators from the
+sidebar and history; retain each session's normal status icon. Acceptance:
+completed prose settles to done/idle, real activity stays working, and unanswered
+questions stay needs-you. Verification: status and bell regressions fail before
+their fixes; rendered rows/history and the full gate passed (265 tests passed,
+three existing ignored; lint and Linux/macOS cross-checks passed). Live UI
+verification remains outstanding. Release target: v0.30.0; not in v0.29.1.
+
 User-requested update discovery: show the update dot beside **Settings** in
 **Actions**, matching the sidebar indicator. Acceptance: hide it without an
 update; clicking the marked row reaches the update controls. Verification:
@@ -262,6 +299,8 @@ Feature docs: `docs/features/`. Each live intent is linked from In scope or a ph
 Agent profiles: [usage and contract](features/agent-profiles.md).
 Profile workflows: [intent](features/workflows/intent.md),
 [spec](features/workflows/spec.md), [usage](features/workflows/usage.md).
+Session clarity: [intent](features/session-clarity/intent.md),
+[spec](features/session-clarity/spec.md).
 
 ## Rework
 

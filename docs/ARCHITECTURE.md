@@ -240,6 +240,10 @@ launcher; `client/workflows.rs` owns the sheet and human controls. Runs travel i
 versioned snapshots and are persisted with sessions. See
 [workflow spec](features/workflows/spec.md) and [usage](features/workflows/usage.md).
 
+`client/shortcuts.rs` derives the full shortcut reference from the active keymap
+and embeds `docs/shortcuts.md` for contextual controls. The compact leader
+overview remains in `client/hydra/leader.rs`; `Action::Help` opens the full reference.
+
 - **Commands and snapshots.** The client sends `Command`s; the daemon answers
   with full `Snapshot`s plus per-pane output. The client derives its view model
   (`hy_model`) from the snapshot each frame instead of caching parallel state.

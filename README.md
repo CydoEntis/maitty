@@ -30,11 +30,11 @@
   </tr>
   <tr>
     <td><img src="docs/media/05-split.png" alt="An agent and a shell side by side"></td>
-    <td><img src="docs/media/06-keys.png" alt="Every key on one screen"></td>
+    <td><img src="docs/media/06-keys.png" alt="The compact leader shortcut overview"></td>
   </tr>
   <tr>
     <td align="center">Split panes</td>
-    <td align="center">Every key on one screen</td>
+    <td align="center">Leader shortcut overview</td>
   </tr>
 </table>
 
@@ -52,12 +52,18 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
 - **One screen for everything.** Floating cards: a full-height sidebar of your projects and the
   sessions in each, tabs as pills above the panes, and every pane a card with its name,
   state and ✕ in its border; the one you're in is lit, the others fade. The leader is
-  `Ctrl+Space`: a sky-blue pill says it's armed, and a pause (or `?`) shows every key.
+  `Ctrl+Space`: a sky-blue pill says it's armed, a pause shows the compact overview,
+  and `?` opens the searchable **All shortcuts** reference.
 - **Find anything.** `<leader> j` is the inbox: what needs you first, then type to go to any
   project or session. `<leader> Space` is a command palette in plain words, `a actions`
-  at the foot of the sidebar lists the common commands, and `<leader> ?` maps every key.
+  at the foot of the sidebar lists common commands. `<leader> ?` lists every configured
+  binding (including aliases), global shortcuts and controls inside each screen.
 - **Status at a glance.** Working (yellow, its name shimmering), needs you (red), done (green until
   you look), idle. An alert or a sound tells you when one needs you or finishes out of view.
+  Click a sidebar status icon or pane status tag to see why, the evidence's age and any uncertainty.
+- **Saved workflows.** Use your own planner, worker and reviewer profiles. Review the plan
+  before approving it; build and review repeat for at most three rounds. Setup prepares
+  repository instructions; sidebar stage labels and Inbox plan approvals keep progress visible.
 - **Usage and limits.** Each agent's card shows how full its context is and what its session
   has cost, and its sidebar row shows the context once it's past half. An agent stopped by a limit
   is told "continue" once the limit resets (Settings → Continue after a limit). Claude's numbers
@@ -100,10 +106,13 @@ another `seshi` comes first. No admin rights needed. `SESHI_VERSION=v0.3.0` pick
 `SESHI_INSTALL_DIR` a folder. If scripts are blocked (a locked-down work PC), download the archive
 for your machine from [Releases](https://github.com/CydoEntis/seshi/releases) and put `seshi` on your PATH.
 To update later: Seshi checks each time you open it (and every few hours while it stays
-open), and when a newer version is out a dot shows after `, settings` at the foot of the
-sidebar, and Settings has an **Update now** button by the version (also "Update seshi" in the
-command palette). Click it to see your version, the new one and what changed; confirm, and the new
-version downloads and the window restarts into it, with your sessions still running. From a
+open). When a newer version is out, dots beside **Actions**, its **Settings** row and the
+**General** tab guide you to **Update now** (also "Update seshi" in the command palette).
+Review the version and release notes, then confirm to install. The current window and daemon
+keep running. Settings shows **Installed here**, **This window**, **Running daemon** (or the
+remote host), and **Restart pending** until those versions match. After active tasks finish,
+restart the daemon with `seshi kill-server`, then reopen `seshi` to load daemon fixes.
+Stopping the daemon stops its processes; saved sessions are restored on reopening. From a
 shell it's `seshi update` (or `seshi update --check` to just
 look). To look right now, Settings has **Check for updates** by the version when no newer one is
 known (also in the command palette). Turn the automatic check off in Settings (Check for updates).
@@ -147,7 +156,7 @@ split beside a session stays with it.
 │   ✓ quick-fox          40s   │
 │                              │
 │  ──────────────────────────  │
-│  a actions        , settings │
+│  + new             actions   │
 ╰──────────────────────────────╯
 ```
 
@@ -156,6 +165,8 @@ split beside a session stays with it.
 - Under it, its sessions: state, name, `branch · age` on the right. A session that needs you has
   its question under it. Every new claude / codex gets its own worktree (named for you), so agents
   never edit the same files.
+- The active session keeps its selection fill and **▸** marker as you move the mouse.
+  Hover is a quieter fill; keyboard browsing uses **›** independently, including on sleeping rows.
 - Things that need you sort to the top; everything else keeps its place. Agents asleep (see
   Settings) show `zzZ … asleep`; open one and its pane says it's waking until the agent is back.
   With the keys in the sidebar, the highlight on a sleeping agent shows its last screen without
@@ -165,35 +176,48 @@ split beside a session stays with it.
 - An agent's subagents are listed under its row; the `▾ 3 subagents` heading (or **Hide
   subagents** in its menu) folds them away.
 - The sidebar's foot: **+ new** opens a plain shell, just like `Ctrl+Space n`;
-  **actions** lists everything else (settings included).
+  **actions** lists common commands (settings included); **All keys** opens the full reference.
 - `⇆` under a row names a file that this checkout and another have each changed since their
   branches parted (a merge conflict waiting to happen); more than two are one line with a count.
 - Drag a group's name, or a session, up or down to reorder (what needs you still comes first);
   drop a session on another group (its name or one of its sessions) to move it there, within its
   section. Click to fold or open. With the sidebar focused
   (`Ctrl+Space e`), a row's menu letters work directly (the sidebar's foot lists them): `x` (or
-  Delete) closes, `r` renames. Settings says which seshi you're on.
+  Delete) asks to close, `r` renames. Settings distinguishes installed, window and daemon versions.
 
 The leader key is `Ctrl+Space`. Press it and a sky-blue pill appears at the end of the tab row
-(the pane you're in turns sky too); press a key, or wait a moment (or press `?`) for the key map.
-In the key map a key runs its command, Tab searches them all by name, and keys marked `›` open a
+(the pane you're in turns sky too); press a key, or wait a moment for the compact key map.
+In that overview a key runs its command, Tab searches leader commands, and keys marked `›` open a
 second step (`w` worktrees: new, switch, merge, delete; Backspace goes back).
+Press **Ctrl+Space**, release, then **?** for **All shortcuts**. Type to find a key,
+action or screen; arrows, page keys, Home/End and the wheel scroll. It uses your actual
+bindings, preserves aliases and includes shortcuts that work without the leader.
+See [contextual shortcuts](docs/shortcuts.md) for every screen's controls, also shown in-app.
+The table below lists the default leader bindings; custom bindings appear in All shortcuts.
 
 | keys (after the leader) | action |
 |---|---|
 | `j` | **inbox**: what needs you (answer a question with its number, Enter goes there), then every session; type to find one |
+| `m` / `i` | follow-up to the current agent / explain its status |
 | `n` / `p` | a shell right where you are (cd and run what you like; it groups itself) / a shell beside this one |
 | `c` | start a fleet: a goal, and the agent that commands it |
 | `z` (or `b`) / `x` | hide or show the sidebar / close |
 | arrows | focus the pane that way (left past the edge: the sidebar). `Alt`+arrows do it without the leader (Settings → General turns that off) |
-| `v` / `-` / `H J K L` | split right / split down / resize |
+| `v` or the pipe key (Shift+backslash) / `-` / `H J K L` | split right / split down / resize left, down, up, right |
 | `t` / `r` / `]` `[` / `X` | **tabs**: new tab (a shell where you are) / rename it in its pill (or double-click it) / next, previous / close it. `Alt+1`–`9` (no leader) goes to a tab |
 | `w` / `f` / `d` | worktrees › / files / changes |
-| `e` / `Space` / `a` | focus the sidebar / command palette / actions |
+| `W` | open the worktree picker directly; choose a worktree or type a new branch |
+| `e` / `Space` or `:` / `a` | focus the sidebar / command palette / actions |
 | `F` / `/` / `B` | find a file / search the code / switch branch |
 | `R` / `V` | rename a session / paste the clipboard's image |
-| `y` / `{` `}` / `b` | select text with keys / previous, next command in the history / sidebar on or off |
-| `,` / `?` / `N` / `q` | settings / key map / history / quit (agents keep running) |
+| `y` / `{` `}` / `PageUp` `PageDown` | select text with keys / previous, next command in history / scroll half a pane |
+| `,` / `?` / `N` / `q` | settings / All shortcuts / notification history / detach (agents keep running) |
+| `Ctrl+R` | reload configuration |
+| `Ctrl+Space` | send the configured leader key to the program |
+| `Ctrl+V` | paste the clipboard's image (alias for `V`) |
+
+Without the leader: **Alt+1–9** selects tabs; **Alt+arrows** moves pane focus
+when enabled in Settings. All shortcuts shows changes to these bindings too.
 
 In **Files**: Enter puts the path in the agent's prompt, `e` opens it in your editor (`editor`
 in config; nvim, helix … open inside seshi), `y` copies the path. In **Changes**: `c` commit,
@@ -205,7 +229,8 @@ Everything also works with the mouse. Hold Shift to select text with your termin
 ## Panes are real terminals
 
 - **Scroll:** the wheel, or `PageUp` / `PageDown` at a prompt (full-screen programs keep those
-  keys), or `Shift+PageUp` / `Shift+PageDown` anywhere. A scrollbar shows when there's history;
+  keys). Outside full-screen mode, `Shift+PageUp` / `Shift+PageDown` scroll half-pages and
+  `Ctrl+Shift+Up` / `Ctrl+Shift+Down` scroll individual lines. A scrollbar shows when there's history;
   click or drag it. Typing (or clicking for the program) goes back to the bottom.
 - **Mouse:** programs that use it (vim, lazygit, htop, full-screen agents) get clicks, wheel and
   drags. Hold Shift to select text yourself.
@@ -217,7 +242,7 @@ Everything also works with the mouse. Hold Shift to select text with your termin
   reach programs exactly, as native key records. Shift+Enter is still a newline for agents.
 - **Resize:** text re-wraps to the new width (history included). Programs' cursor shape (bar,
   block, underline) shows. Synchronized redraws are drawn whole, so agents don't flicker.
-- **Closing** a pane ends everything running in it, instantly.
+- **Closing** a pane ends everything running in it after you confirm.
 
 ## Alerts
 
@@ -389,9 +414,15 @@ workflows. Editable Planner / Worker / Reviewer starters are included.
 See [agent profiles](docs/features/agent-profiles.md).
 
 **Workflows:** open **Workflows** in the command palette or profiles sheet.
-Select your planner, worker and reviewer profiles, approve the plan in **Runs**,
-then let build/review repeat for up to three rounds in one task worktree.
-Repo instructions can select a workflow automatically for ordinary requests.
+Select your planner, worker and reviewer profiles, then choose **Setup** (`u`).
+Review and **Copy instructions** (`c`), paste them into `AGENTS.md` or `CLAUDE.md`,
+and ask existing sessions to read the updated instructions. Their ordinary implementation
+requests can then select your saved workflow. Setup previews instructions; it does not edit files.
+Press Enter on a workflow to enter a task and Enter again to start. Review its plan
+from **Inbox → Review plan** or **Runs**, then explicitly **Approve plan** (`a`).
+Build/review repeat for up to three rounds in one task worktree. The sidebar shows
+planning, building/reviewing round and questions; click a workflow label to open its run.
+Profiles, Workflows and Runs share a drawer on the right, with the work visible beside it.
 See [setup, prompts and recovery](docs/features/workflows/usage.md).
 
 ```sh
@@ -508,10 +539,14 @@ them. It says so first when ticked ones hold uncommitted changes, which would be
 | `h j k l`, arrows, `w b`, `0 ^ $`, `g G`, `H M L` | move |
 | `Ctrl-u/d`, `Ctrl-b/f`, `PgUp/PgDn`, wheel | scroll |
 | `v` / `V` | select characters / lines |
-| `y`, `Enter` | copy selection (or the current line) and leave |
+| `y`, `Enter` with selection | copy selection and leave; without selection, `y` copies the line and Enter exits without copying |
 | `/` `?` then `n` `N` | search forward / backward (smart case) |
 | `Tab` / `Shift+Tab` | keep this selection and go to the next / previous pane of the split, the same search there; `y` then copies them all, each under its pane's name |
 | `q`, `Esc` | leave |
+
+`Esc` clears an active selection before exiting; **Ctrl+C** exits immediately.
+Without a selection, `y` or `Y` copies the current line; Enter exits without copying.
+**Ctrl+Y / Ctrl+E** scroll one line up / down. Full details: [Copy mode controls](docs/shortcuts.md#copy-mode).
 
 Copies go to the system clipboard and, through OSC 52, to your outer terminal (works over SSH).
 
@@ -531,6 +566,11 @@ these sources, in order:
 3. **Activity**: recent output that isn't the echo of your own typing.
 
 A turn that finishes while you're looking elsewhere is **done** until you focus that pane.
+An unanswered Codex queued question takes priority over its working spinner and shows
+**needs you**. Finished prose that mentions the interrupt shortcut does not count as active
+work. Terminal bells do not replace the status icon or add musical-note history entries.
+Click a status icon/tag (or `<leader> i`) for a plain-language explanation and the ages of
+hook, screen and process evidence; a status without confirmation is shown as uncertain.
 
 **An agent seshi doesn't know** (a newer CLI, or one you start with your own alias): right-click
 its pane and pick **"… is an agent"**, or run `seshi teach` in it (`seshi teach 4` for pane 4).

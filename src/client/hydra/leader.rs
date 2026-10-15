@@ -226,7 +226,7 @@ pub(in crate::client) fn draw_keymap(app: &mut App, f: &mut Frame, area: Rect, t
             let lend = put(buf, lx, y, &[seg(label, cs.fg(t.text))], gx + col_w);
             let extra = match a {
                 Action::Jump if needs > 0 => Some((format!("● {needs}"), t.blocked)),
-                Action::Settings if app.update_available.is_some() => Some(("●".to_string(), t.accent)),
+                Action::Settings if app.update_available.is_some() || app.restart_pending() => Some(("●".to_string(), t.accent)),
                 _ => None,
             };
             if let Some((e, ec)) = extra {
@@ -282,7 +282,7 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
         let end = put(buf, r.x + 4, yy, &[seg(*label, ls)], r.right() - 6);
         if *a == Action::Jump && needs > 0 {
             put(buf, end + 1, yy, &[seg(format!("● {needs}"), st.fg(t.blocked).add_modifier(Modifier::BOLD))], r.right() - 6);
-        } else if *a == Action::Settings && app.update_available.is_some() {
+        } else if *a == Action::Settings && (app.update_available.is_some() || app.restart_pending()) {
             put(buf, end + 1, yy, &[seg("●", st.fg(t.accent).add_modifier(Modifier::BOLD))], r.right() - 6);
         }
         let key = k(app, a);

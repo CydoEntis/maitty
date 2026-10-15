@@ -160,6 +160,7 @@ fn row_height(row: &GoRow, compose: Option<&Compose>, box_rows: u16, asking: Opt
         GoRow::Ask(_) => 4,
         GoRow::Heads(_) => 4,
         GoRow::Done(_) => 4,
+        GoRow::Workflow(_) => 4,
         _ => 1,
     }
 }
@@ -176,7 +177,7 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
     let motion = app.motion_on();
     let mut gliding: Option<(u16, Rect)> = None;
     let heads = heads_up(app);
-    let rows = goto_rows(&model, &query, heads.len());
+    let rows = goto_rows(&model, &query, heads.len(), &app.snap.workflows);
     let look = Look::of(&app.cfg.ui);
     let c = Style::default().bg(t.card);
     let (x, w) = (inside.x + 2, inside.width.saturating_sub(4));
@@ -251,6 +252,11 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
                     y += 1;
                 }
                 continue;
+            }
+            GoRow::Workflow(id) => {
+                let Some(run) = app.snap.workflows.iter().find(|r| r.id == *id) else { continue };
+                head_line(buf, vec![seg(format!("● {} · plan approval", run.name), st.fg(t.blocked).add_modifier(Modifier::BOLD))], vec![]);
+                put(buf, x + 3, y + 1, &[seg(truncate(&run.goal, w.saturating_sub(4) as usize), c.fg(t.text))], x + w);
             }
             GoRow::Ask(term) => {
                 let Some((p, _, s)) = find(&model, *term) else { continue };
@@ -365,6 +371,9 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
         }
         if row.pickable() {
             hit(app, Rect { x: x - 1, y, width: w + 2, height: hgt.saturating_sub(1).max(1) }, HyHit::GoPick(i));
+        }
+        if let GoRow::Workflow(id) = row {
+            btn(app, buf, x + 3, y + 2, "Review plan", "Enter", BtnKind::Primary, HyHit::WorkflowRun(*id), x + w);
         }
         y += hgt;
     }

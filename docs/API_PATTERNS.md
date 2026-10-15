@@ -127,7 +127,7 @@ the pane's process tree or `SESHI_PANE_TOKEN`.
 
 `seshi workflow` and `seshi_workflow_*` MCP tools expose saved workflow execution;
 see [usage](features/workflows/usage.md). Workflow commands and snapshots use
-protocol 38. Only the authenticated active pane may submit a stage report;
+protocol 39. Only the authenticated active pane may submit a stage report;
 approve/retry/cancel are human controls. Validate and freeze profiles before launch.
 
 A new capability adds: a `Command` variant (and any new `ServerMsg` /
@@ -145,3 +145,7 @@ the hook message separately from socket I/O so its effective status is testable.
 
 Codex's queued unanswered question takes precedence over its working spinner,
 including with turn-end-only hooks. Clearing it restores ongoing work detection.
+
+Snapshots include the daemon package version. Term evidence includes the latest
+process observation time; screen evidence refreshes on repeated observations
+without changing the status start time or repeating transition alerts.

@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Bump whenever a message shape changes; client and daemon refuse to talk across versions.
-pub const PROTOCOL_VERSION: u32 = 38;
+pub const PROTOCOL_VERSION: u32 = 39;
 
 pub type TermId = u32;
 pub type WsId = u32;
@@ -286,6 +286,8 @@ impl Status {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Snapshot {
     #[serde(default)]
+    pub daemon_version: String,
+    #[serde(default)]
     pub workflows: Vec<crate::workflows::Run>,
     pub workspaces: Vec<WorkspaceInfo>,
     pub active_ws: Option<WsId>,
@@ -440,6 +442,9 @@ pub struct TermInfo {
     pub why_screen: String,
     #[serde(default)]
     pub why_screen_at: u64,
+    /// Last completed process observation (unix seconds; 0: not observed).
+    #[serde(default)]
+    pub why_process_at: u64,
     /// The process running in it (0: not known).
     #[serde(default)]
     pub pid: u32,

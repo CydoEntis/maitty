@@ -24,6 +24,7 @@ mod background;
 mod input;
 mod view_keys;
 mod themes;
+mod shortcuts;
 
 use crate::config::{Config, Keymap};
 use crate::ipc;
@@ -119,6 +120,7 @@ enum Mode {
     Why { term: TermId, side: bool },
     /// The leader's key map (or its second step), typed to search.
     KeyMap(Box<hydra::KeyMap>),
+    Shortcuts { query: String, scroll: usize },
     /// Every command with its key (the sidebar's "a actions").
     Actions { sel: usize },
     /// A tab being renamed in its pill.
@@ -292,6 +294,7 @@ enum PickTarget {
 pub struct App {
     /// A newer release, found when seshi opened or since (the Update button shows).
     update_available: Option<String>,
+    installed_version: Option<Result<String, String>>,
     /// What changed in it (and any releases between), for the update dialog.
     update_notes: Vec<String>,
     /// When seshi last asked whether a newer release is out.
@@ -300,8 +303,6 @@ pub struct App {
     updating: bool,
     /// Asking, because you said to, whether a newer seshi is out.
     update_checking: bool,
-    /// Installed a newer seshi: start it here once this one has closed.
-    restart: Option<PathBuf>,
     /// When this window last had to attach to the server again.
     reattached: Option<Instant>,
     cfg: Config,
@@ -312,7 +313,7 @@ pub struct App {
     /// The session the note is about (an agent finished or needs you): clicking it goes there.
     notice_term: Option<TermId>,
     /// What happened lately, newest last: (unix secs, pane, kind, text). Kinds: '!' needs
-    /// you, '✓' finished, '♪' bell, 'i' a message, 'x' an error.
+    /// you, '✓' finished, 'i' a message, 'x' an error.
     pub(super) history: std::collections::VecDeque<(u64, Option<TermId>, char, String)>,
     /// When the right button last went down (menus open on press or release, once).
     right_down: Option<Instant>,
@@ -392,23 +393,13 @@ pub struct App {
     cursor_sent: u8,
 }
 
-/// Set on a seshi started by an in-app update, so it may restart a server too old to talk to.
-pub const UPDATED_ENV: &str = "SESHI_UPDATED";
-
 pub fn run(opts: Options) -> Result<()> {
     crate::proc::ahead_of_the_panes();
     let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build()?;
-    let restart = rt.block_on(run_async(opts))?;
-    drop(rt);
-    // Updated: the new seshi takes over this terminal, with the same arguments.
-    if let Some(exe) = restart {
-        let status = std::process::Command::new(&exe).args(std::env::args_os().skip(1)).env(UPDATED_ENV, "1").status()?;
-        std::process::exit(status.code().unwrap_or(0));
-    }
-    Ok(())
+    rt.block_on(run_async(opts))
 }
 
-async fn run_async(opts: Options) -> Result<Option<PathBuf>> {
+async fn run_async(opts: Options) -> Result<()> {
     let (mut reader, mut writer) = ipc::open_or_spawn(true).await?;
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<ClientMsg>();
     tokio::spawn(async move {
@@ -426,6 +417,7 @@ async fn run_async(opts: Options) -> Result<Option<PathBuf>> {
         app.spawn_bg(|| Bg::Synced(crate::sync::pull().unwrap_or(false)));
     }
     app.check_for_update(false);
+    app.refresh_installed_version();
     if let Some(e) = err {
         app.notify(format!("config error: {e}"), true);
     }
@@ -448,13 +440,10 @@ async fn run_async(opts: Options) -> Result<Option<PathBuf>> {
 
     restore_terminal();
     result?;
-    if let Some(exe) = app.restart.take() {
-        return Ok(Some(exe));
-    }
     if let Some(reason) = app.quit {
         println!("[{reason}]");
     }
-    Ok(None)
+    Ok(())
 }
 
 /// Whether seshi asked the terminal for the kitty keyboard protocol (so it gives it back).
@@ -503,11 +492,11 @@ impl App {
         let keymap = cfg.keymap();
         let mut app = App {
             update_available: None,
+            installed_version: None,
             update_notes: Vec::new(),
             update_checked: None,
             updating: false,
             update_checking: false,
-            restart: None,
             reattached: None,
             theme: cfg.theme(),
             sidebar: cfg.ui.sidebar,
@@ -739,27 +728,31 @@ impl App {
         true
     }
 
-    /// Download the newest seshi in the background, then restart this window into it (the
-    /// sessions keep running in the server).
+    /// Installing must not interrupt agents, including across protocol changes.
     fn start_update(&mut self) {
         if self.updating {
             return;
         }
         self.updating = true;
-        self.notify("Updating seshi… the window restarts when it's done".into(), false);
+        self.notify("Installing update… restart after active tasks finish.".into(), false);
         self.spawn_bg(|| {
             let r = crate::update::install_latest();
             Bg::Then(Box::new(move |app: &mut App| match r {
-                Ok((v, exe)) => {
-                    app.restart = Some(exe);
-                    app.quit = Some(format!("updated to {v}"));
-                }
+                Ok((v, _)) => app.update_installed(v),
                 Err(e) => {
                     app.updating = false;
                     app.notify(format!("Update failed: {e:#}"), true);
                 }
             }))
         });
+    }
+
+    fn update_installed(&mut self, version: String) {
+        self.updating = false;
+        self.installed_version = Some(Ok(version.clone()));
+        self.update_available = None;
+        self.update_notes.clear();
+        self.notify(format!("Installed seshi {version}. This window and sessions keep running; restart after active tasks finish."), false);
     }
 
     fn notify(&mut self, msg: String, error: bool) {
@@ -800,12 +793,30 @@ impl App {
             self.notify("Checking for updates…".into(), false);
         }
         self.spawn_bg(move || {
+            let installed = crate::update::installed_version();
             let latest = crate::update::latest_tag();
-            let newer = latest.as_ref().ok().filter(|tag| crate::update::is_newer(tag)).map(|tag| tag.trim_start_matches('v').to_string());
+            let current = installed.as_deref().unwrap_or(env!("CARGO_PKG_VERSION"));
+            let newer = latest.as_ref().ok().filter(|tag| crate::update::newer_than(tag, current)).map(|tag| tag.trim_start_matches('v').to_string());
             // Only asked for when there is something new: one more request, now and then.
             let notes = if newer.is_some() { crate::update::changes_since_this() } else { Vec::new() };
-            Bg::Then(Box::new(move |app: &mut App| app.update_checked_now(asked, latest.map(|_| newer), notes)))
+            Bg::Then(Box::new(move |app: &mut App| {
+                app.installed_version = Some(installed);
+                app.update_checked_now(asked, latest.map(|_| newer), notes);
+            }))
         });
+    }
+
+    fn refresh_installed_version(&self) {
+        self.spawn_bg(|| {
+            let installed = crate::update::installed_version();
+            Bg::Then(Box::new(move |app| app.installed_version = Some(installed)))
+        });
+    }
+
+    fn restart_pending(&self) -> bool {
+        self.installed_version.as_ref().and_then(|r| r.as_ref().ok()).is_some_and(|v| {
+            v != env!("CARGO_PKG_VERSION") || (!self.snap.daemon_version.is_empty() && *v != self.snap.daemon_version)
+        })
     }
 
     /// What a check for a newer seshi found: the newer version, none, or why it couldn't
@@ -821,7 +832,14 @@ impl App {
                 self.update_notes = notes;
             }
             Ok(Some(v)) if asked => self.notify(format!("seshi {v} is out: Update now is in Settings"), false),
-            Ok(None) if asked => self.notify(format!("seshi {} is the latest", env!("CARGO_PKG_VERSION")), false),
+            Ok(None) => {
+                self.update_available = None;
+                self.update_notes.clear();
+                if asked {
+                    let version = self.installed_version.as_ref().and_then(|r| r.as_ref().ok()).map(String::as_str).unwrap_or(env!("CARGO_PKG_VERSION"));
+                    self.notify(format!("Installed seshi {version} is the latest{}", if self.restart_pending() { "; restart pending" } else { "" }), false);
+                }
+            }
             Err(e) if asked => self.notify(format!("Couldn't check for updates: {e}"), true),
             _ => {}
         }
@@ -838,7 +856,7 @@ impl App {
             sub: String::new(),
             what: format!("{} → {new}", env!("CARGO_PKG_VERSION")),
             detail: String::new(),
-            note: "Your sessions keep running; this window restarts into the new version.".into(),
+            note: "Sessions keep running on the current daemon. Restart it after tasks finish to load daemon fixes.".into(),
             list: self.update_notes.clone(),
             yes: "Update now".into(),
             key: 'u',

@@ -23,6 +23,7 @@ pub(super) struct WorkflowView {
     pub busy: bool,
     pub error: Option<String>,
     pub confirm: Option<WorkflowAction>,
+    pub setup: Option<Workflow>,
 }
 
 impl WorkflowView {
@@ -41,7 +42,7 @@ impl WorkflowView {
 
 impl App {
     pub(super) fn open_workflows_at(&mut self, dir: PathBuf, runs: bool) {
-        if ipc::remote().is_some() {
+        if !runs && ipc::remote().is_some() {
             self.notify(
                 "Workflow setup is local; run Seshi on the remote host.".into(),
                 true,
@@ -60,15 +61,27 @@ impl App {
             project: false,
             field: 0,
             task: None,
-            busy: true,
+            busy: !runs,
             error: None,
             confirm: None,
+            setup: None,
         }));
-        self.refresh_workflows(dir);
+        if !runs { self.refresh_workflows(dir); }
     }
 
     pub(super) fn open_workflows(&mut self, runs: bool) {
         self.open_workflows_at(self.hy_target_dir(), runs);
+    }
+
+    pub(super) fn open_workflow_run(&mut self, id: u64) {
+        let Some(run) = self.snap.workflows.iter().find(|r| r.id == id) else {
+            self.notify("Workflow run is no longer available.".into(), true);
+            return;
+        };
+        let dir = run.source.clone();
+        let sel = self.snap.workflows.iter().rev().position(|r| r.id == id).unwrap_or(0);
+        self.open_workflows_at(dir, true);
+        if let Mode::Workflows(view) = &mut self.mode { view.sel = sel; }
     }
 
     fn refresh_workflows(&mut self, dir: PathBuf) {
@@ -154,7 +167,23 @@ impl App {
         if view.busy && key.code != KeyCode::Esc {
             return;
         }
-        if let Some(action) = view.confirm {
+        if let Some(workflow) = &view.setup {
+            match key.code {
+                KeyCode::Esc => { view.setup = None; view.scroll = 0; }
+                KeyCode::PageDown | KeyCode::Down => view.scroll = view.scroll.saturating_add(5),
+                KeyCode::PageUp | KeyCode::Up => view.scroll = view.scroll.saturating_sub(5),
+                KeyCode::Char('c') => {
+                    let text = activation_instructions(workflow);
+                    self.spawn_bg(move || {
+                        let copied = super::copy::to_clipboard(&text);
+                        Bg::Then(Box::new(move |app| app.notify(if copied {
+                            "Instructions copied. Review and paste into AGENTS.md or CLAUDE.md; ask existing sessions to read them.".into()
+                        } else { "Couldn't copy instructions. The preview is still available.".into() }, !copied)))
+                    });
+                }
+                _ => {}
+            }
+        } else if let Some(action) = view.confirm {
             view.confirm = None;
             if matches!(key.code, KeyCode::Enter | KeyCode::Char('y'))
                 && let Some(run) = runs(self, &view).get(view.sel)
@@ -260,6 +289,7 @@ impl App {
                     return;
                 }
                 KeyCode::Char('w') => {
+                    if view.entries.is_none() { self.open_workflows_at(view.dir.clone(), false); return; }
                     view.runs = false;
                     view.sel = 0;
                     view.scroll = 0;
@@ -293,6 +323,14 @@ impl App {
                                 view.error = None;
                             }
                             Err(e) => view.error = Some(e.to_string()),
+                        }
+                    }
+                }
+                KeyCode::Char('u') if !view.runs => {
+                    if let Some(entry) = view.entries.as_ref().and_then(|v| v.get(view.sel)) {
+                        match entry.workflow.profiles(&view.profiles) {
+                            Ok(_) => { view.setup = Some(entry.workflow.clone()); view.scroll = 0; view.error = None; }
+                            Err(error) => view.error = Some(error.to_string()),
                         }
                     }
                 }
@@ -359,6 +397,23 @@ impl App {
     }
 }
 
+pub(super) fn activation_instructions(workflow: &Workflow) -> String {
+    format!("For implementation tasks, use Seshi's `{0}` workflow. Unless already executing an assigned workflow stage, run `seshi workflow show {0}` and start it with a self-contained task using `seshi workflow run {0} -- \"<task>\"`. Monitor the returned id with `seshi workflow status <id>` and tell me when the plan needs approval. Do not approve it yourself or start duplicate runs while waiting. If assigned a stage, follow that stage instead of starting another workflow.", workflow.name)
+}
+
+pub(super) fn stage_badge(app: &App, run: &wf::Run) -> String {
+    if run_label(app, run) == "needs you" { return format!("Needs your answer · {}", run.stage.label()); }
+    match run.state {
+        State::Approval => "Needs plan approval".into(),
+        State::Running => match run.stage {
+            wf::Stage::Plan => "Planning".into(),
+            wf::Stage::Build => format!("Building {}/3", run.round),
+            wf::Stage::Review => format!("Reviewing {}/3", run.round),
+        },
+        _ => format!("{} · {}", run.state.label(), run.stage.label()),
+    }
+}
+
 fn runs<'a>(app: &'a App, _view: &WorkflowView) -> Vec<&'a wf::Run> {
     // The Runs tab is intentionally a machine-wide list, like the sidebar.
     app.snap.workflows.iter().rev().collect()
@@ -409,7 +464,15 @@ pub(super) fn draw_workflows(
     let (x, right) = (r.x + 2, r.right().saturating_sub(2));
     let bottom = r.bottom().saturating_sub(5);
     let mut y = r.y + 3;
-    if let Some(editor) = &view.editor {
+    if let Some(workflow) = &view.setup {
+        let text = format!("Use in this project: {}\nPlan: {} → your approval\nBuild: {} → Review: {} (up to 3 rounds)\n\nReview and paste into AGENTS.md or CLAUDE.md:\n\n{}\n\nAsk existing sessions to read the updated instructions. Profiles keep their native permissions.\nProject: {}", workflow.name, workflow.planner, workflow.worker, workflow.reviewer, activation_instructions(workflow), view.dir.display());
+        let lines = super::views::wrap(&text, right.saturating_sub(x) as usize);
+        let count = bottom.saturating_sub(y) as usize;
+        let start = view.scroll.min(lines.len().saturating_sub(count.max(1)));
+        for line in lines.into_iter().skip(start).take(count) {
+            put(buf, x, y, &[seg(line, style.fg(t.text))], right); y += 1;
+        }
+    } else if let Some(editor) = &view.editor {
         for (i, (name, value)) in [
             ("NAME", editor.name.as_str()),
             ("PLANNER", &editor.planner),
@@ -474,7 +537,7 @@ pub(super) fn draw_workflows(
             x,
             y,
             &[seg(
-                "Choose the roles, then give them a task.",
+                "1 Roles → 2 Setup → 3 Run a task.",
                 style.fg(t.muted),
             )],
             right,
@@ -652,6 +715,9 @@ fn draw_footer(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, view: &Workf
         );
     } else if view.busy {
         put(buf, x, y, &[seg("Working…", style.fg(t.muted))], right);
+    } else if view.setup.is_some() {
+        btn(app, buf, x, y, "Copy instructions", "c", BtnKind::Primary, HyHit::WorkflowKey('c'), right);
+        put(buf, x, y + 1, &hints(t, &[("PgUp/PgDn", "scroll"), ("Esc", "back")]), right);
     } else if view.editor.is_some() {
         btn(
             app,
@@ -741,7 +807,7 @@ fn draw_footer(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, view: &Workf
         }
     } else {
         let mut bx = x;
-        for (title, key) in [("New", 'n'), ("Edit", 'e')] {
+        for (title, key) in [("New", 'n'), ("Edit", 'e'), ("Setup", 'u')] {
             bx = btn(
                 app,
                 buf,

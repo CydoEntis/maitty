@@ -4,12 +4,19 @@ Open **Workflows** in the command palette (Ctrl+Space, then Space), or open
 **Agent profiles** and select **Workflows**. **Runs** shows progress and reports.
 The sheet slides in from the right and obeys Settings → Motion.
 
+Stage and round labels appear beside associated sessions. Pending plans also
+appear in **Inbox**; **Review plan** opens the exact run in **Runs** for approval.
+
 ## First setup
 
 Choose **Claude starter** or **Codex starter** to save a `feature` workflow and
 any missing Planner, Worker and Reviewer profiles. Existing profiles stay intact.
 Choose **Edit** to select your own profile for each stage, or **New** to create a
 different workflow. Tab moves fields, arrows select profiles/scope, Ctrl+S saves.
+Choose **Setup** (`u`) to preview selected roles and repository instructions.
+**Copy instructions** (`c`) copies the reviewed snippet for `AGENTS.md` or
+`CLAUDE.md`; no instruction file is changed automatically. Page Up/Down scrolls
+the preview and Esc returns to the list.
 New definitions can be personal or project-specific. A project definition replaces
 a personal definition with the same name. The equivalent CLI setup is:
 

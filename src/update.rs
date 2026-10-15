@@ -38,7 +38,31 @@ fn version(s: &str) -> Option<(u64, u64, u64)> {
 
 /// Whether the release `tag` is newer than this build.
 pub fn is_newer(tag: &str) -> bool {
-    matches!((version(tag), version(env!("CARGO_PKG_VERSION"))), (Some(a), Some(b)) if a > b)
+    newer_than(tag, env!("CARGO_PKG_VERSION"))
+}
+
+pub fn newer_than(tag: &str, current: &str) -> bool {
+    matches!((version(tag), version(current)), (Some(a), Some(b)) if a > b)
+}
+
+/// Updates may have moved the running image aside while replacing this path.
+fn installed_path(exe: &Path) -> PathBuf {
+    let name = exe.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    if name.starts_with("seshi.old") && name.ends_with(".exe") {
+        exe.with_file_name("seshi.exe")
+    } else if let Some(path) = exe.to_str().and_then(|s| s.strip_suffix(" (deleted)")) {
+        PathBuf::from(path)
+    } else {
+        exe.to_path_buf()
+    }
+}
+
+pub fn installed_version() -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("finding installed Seshi: {e}"))?;
+    let text = crate::proc::run(Command::new(installed_path(&exe)).arg("--version"))?;
+    let value = text.trim().strip_prefix("seshi ").ok_or("installed program did not report a Seshi version")?;
+    if version(value).is_none() || !value.chars().all(|c| c.is_ascii_alphanumeric() || ".-+".contains(c)) { return Err("installed Seshi reported an invalid version".into()); }
+    Ok(value.to_string())
 }
 
 fn gh_signed_in() -> bool {
@@ -269,6 +293,17 @@ mod tests {
         assert!(is_newer("v999.0.0"));
         assert!(!is_newer(&format!("v{}", env!("CARGO_PKG_VERSION"))), "the same version isn't newer");
         assert!(!is_newer("v0.0.1"));
+    }
+
+    #[test]
+    fn installed_copy_and_available_release_are_distinct_from_the_running_image() {
+        let folder = Path::new("bin");
+        assert_eq!(installed_path(&folder.join("seshi.old.exe")), folder.join("seshi.exe"));
+        assert_eq!(installed_path(&folder.join("seshi.old-2.exe")), folder.join("seshi.exe"));
+        assert_eq!(installed_path(&folder.join("seshi.exe")), folder.join("seshi.exe"));
+        assert_eq!(installed_path(Path::new("bin/seshi (deleted)")), PathBuf::from("bin/seshi"));
+        assert!(newer_than("v0.30.0", "0.29.1"));
+        assert!(!newer_than("v0.30.0", "0.30.0"), "an installed release is not another available update");
     }
 
     #[test]

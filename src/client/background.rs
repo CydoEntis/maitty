@@ -197,7 +197,7 @@ impl App {
         }
     }
 
-    /// Note what changed between two states: agents that now need you or finished, bells.
+    /// Note what changed between two states: agents that now need you or finished.
     pub(super) fn remember_changes(&mut self, new: &crate::protocol::Snapshot) {
         let mut events = Vec::new();
         for (id, t) in &new.terms {
@@ -214,9 +214,6 @@ impl App {
                     }
                     _ => {}
                 }
-            }
-            if t.bell && !old.is_some_and(|o| o.bell) {
-                events.push((*id, '♪', format!("{who} rang the bell")));
             }
         }
         for (id, k, text) in events {

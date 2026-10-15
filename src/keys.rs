@@ -234,7 +234,7 @@ pub enum Action {
     /// Scroll to the command before (or after) the one at the top of the view.
     PrevPrompt,
     NextPrompt,
-    /// What happened lately: who finished, who asked, bells, messages.
+    /// What happened lately: who finished, who asked, messages.
     History,
     /// Move the sidebar cursor (-1 up, 1 down); bare keys then work on the sidebar.
     SideMove(i8),
@@ -245,7 +245,7 @@ pub enum Action {
     PaneInfo,
     SendPrefix,
     KillServer,
-    /// Install the newest seshi and restart this window into it.
+    /// Install the newest seshi without interrupting running sessions.
     Update,
     /// Ask now whether a newer seshi is out, without waiting for the next check.
     CheckUpdate,

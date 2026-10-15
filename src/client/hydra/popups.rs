@@ -396,6 +396,7 @@ pub(in crate::client) enum GoRow {
     Head(&'static str),
     /// An agent asking you: its question and answers on the line.
     Ask(TermId),
+    Workflow(u64),
     /// One that finished and you haven't looked at: what it said.
     Done(TermId),
     /// Two checkouts changed the same file (index into `heads_up`).
@@ -409,13 +410,14 @@ impl GoRow {
     }
 }
 
-pub(in crate::client) fn goto_rows(model: &[Proj], q: &str, heads: usize) -> Vec<GoRow> {
+pub(in crate::client) fn goto_rows(model: &[Proj], q: &str, heads: usize, runs: &[crate::workflows::Run]) -> Vec<GoRow> {
     let q = q.trim();
     let mut out = Vec::new();
     if q.is_empty() {
         let waiting = jump_list(model);
         let of = |st: Status| waiting.iter().filter(|(s, ..)| s.status == st).map(|(s, ..)| s.term).collect::<Vec<_>>();
         out.push(GoRow::Head("NEEDS YOU"));
+        out.extend(runs.iter().filter(|r| r.state == crate::workflows::State::Approval).map(|r| GoRow::Workflow(r.id)));
         out.extend(of(Status::Blocked).into_iter().map(GoRow::Ask));
         out.push(GoRow::Head("JUST FINISHED"));
         out.extend(of(Status::Done).into_iter().map(GoRow::Done));
@@ -438,6 +440,7 @@ pub(in crate::client) fn goto_rows(model: &[Proj], q: &str, heads: usize) -> Vec
     found.sort_by_key(|(_, s)| (rank(s.status), s.term));
     found.dedup_by_key(|(_, s)| s.term);
     out.push(GoRow::Head("FOUND"));
+    out.extend(runs.iter().filter(|r| r.state == crate::workflows::State::Approval && hit(&format!("{} {}", r.name, r.goal))).map(|r| GoRow::Workflow(r.id)));
     out.extend(found.into_iter().map(|(pi, s)| GoRow::Sess(pi, s.term)));
     out
 }
@@ -467,7 +470,6 @@ pub(in crate::client) fn draw_history(app: &mut App, f: &mut Frame, area: Rect, 
         let (g, gc) = match kind {
             '!' => ("●", t.blocked),
             '✓' => ("✓", t.done),
-            '♪' => ("♪", t.blocked),
             'x' => ("✕", t.err),
             _ => ("·", t.muted),
         };

@@ -719,6 +719,11 @@ impl Daemon {
                 for f in found {
                     let Some(t) = self.terms.get_mut(&f.term) else { continue };
                     // Redraw for memory only when it moved by a few MB.
+                    let observed_at = term::unix_now();
+                    if t.last_process != observed_at {
+                        t.last_process = observed_at;
+                        self.dirty = true;
+                    }
                     if t.mem.abs_diff(f.mem) > 4 << 20 {
                         t.mem = f.mem;
                         self.dirty = true;
@@ -1106,6 +1111,7 @@ impl Daemon {
                     why_hook_at: t.last_hook.as_ref().map(|h| h.1).unwrap_or(0),
                     why_screen: t.last_screen.as_ref().map(|h| h.0.clone()).unwrap_or_default(),
                     why_screen_at: t.last_screen.as_ref().map(|h| h.1).unwrap_or(0),
+                    why_process_at: t.last_process,
                     pid: t.pid.unwrap_or(0),
                     asleep: t.asleep,
                     win32_input: t.win32_input,
@@ -1119,6 +1125,7 @@ impl Daemon {
             })
             .collect();
         Snapshot {
+            daemon_version: env!("CARGO_PKG_VERSION").into(),
             workflows: self.workflows.clone(),
             workspaces: self.workspaces.clone(),
             active_ws: self.active_ws,
