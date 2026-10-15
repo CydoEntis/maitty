@@ -19,7 +19,7 @@ Acceptance: genuine activity shows working with or without notify hooks,
 finished prose and stale footers remain finished, queued questions still need
 attention, and new Codex launches with config/profile options get the default
 worktree while resume/fork and explicit locations stay put. Status: verified
-locally, unreleased. Regressions failed before fixes; the ordered gate passed:
+locally for v0.30.1. Regressions failed before fixes; the ordered gate passed:
 `cargo build`, `cargo test` (279 passed / four ignored), clippy with warnings
 denied, and Linux/macOS cross-checks. README and the agent status/worktree contract
 are updated. Real-agent live verification remains outstanding; no installed
