@@ -777,6 +777,7 @@ impl Daemon {
                         }
                         t.status = if f.agent.is_some() { Status::Idle } else { Status::None };
                         t.status_since = term::unix_now();
+                        t.last_turn_end = Instant::now();
                         t.status_why = if f.agent.is_some() { "process: an agent started".into() } else { String::new() };
                         if f.agent.is_none() {
                             t.session = None;

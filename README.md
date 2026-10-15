@@ -524,6 +524,12 @@ New worktrees go to `{repo_parent}/{repo}-worktrees/{branch}` (set `[worktree] d
 local or `origin/` branch is checked out instead of created. Set `[worktree] command = "claude"`
 to start an agent in every new worktree.
 
+With **Own worktree per agent** enabled (the default), typing `codex` in a Seshi
+shell in the main checkout creates a worktree, including with `-c` configuration
+or `-p` profile options. `codex resume` and `codex fork` stay in the current folder;
+explicit `--cd` and Codex's own `--worktree` are honored. Starting inside an existing
+linked worktree reuses it. This shell integration applies to shells opened by Seshi.
+
 **Cleaning up.** Closing the last session in a worktree seshi made removes its folder (never
 with uncommitted changes; the branch is kept unless it's merged). One left behind by a session
 that crashed is removed the same way a few minutes later, once nothing in it exists only there.
@@ -568,7 +574,10 @@ these sources, in order:
 A turn that finishes while you're looking elsewhere is **done** until you focus that pane.
 An unanswered Codex queued question takes priority over its working spinner and shows
 **needs you**. Finished prose that mentions the interrupt shortcut does not count as active
-work. Terminal bells do not replace the status icon or add musical-note history entries.
+work. Codex reports turn completion through its notify hook; Seshi detects the next
+turn's activity footer, including soft wraps and background-terminal details. New
+input after a finished turn allows work detection immediately or after a delayed start.
+Terminal bells do not replace the status icon or add musical-note history entries.
 Click a status icon/tag (or `<leader> i`) for a plain-language explanation and the ages of
 hook, screen and process evidence; a status without confirmation is shown as uncertain.
 

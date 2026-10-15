@@ -137,6 +137,8 @@ pub struct Term {
     pub progress_off: Option<Instant>,
     /// When a hook last said "working" (late duplicate permission pings are ignored).
     pub last_working_hook: Option<Instant>,
+    /// The last turn-end hook (or pane start), compared to input without wall-clock rounding.
+    pub last_turn_end: Instant,
     /// When it last started needing you (cleared when it stops).
     pub blocked_at: Option<Instant>,
     /// Processes known to run inside this pane (trusted to report its status).
@@ -563,6 +565,7 @@ impl Term {
             started_by: None,
             progress_off: None,
             last_working_hook: None,
+            last_turn_end: now,
             blocked_at: None,
             trusted: std::collections::HashSet::new(),
             token,
@@ -775,12 +778,19 @@ impl Term {
         &self.parser.callbacks().title
     }
 
-    /// The bottom `n` rows of the screen as text, for status patterns.
+    /// The bottom `n` rows for status patterns, joining soft wraps but keeping hard newlines.
     pub fn tail_text(&self, n: u16) -> String {
         let screen = self.parser.screen();
         let rows: Vec<String> = screen.rows(0, self.cols).collect();
         let start = rows.len().saturating_sub(n as usize);
-        rows[start..].join("\n")
+        let mut text = String::new();
+        for (i, row) in rows.iter().enumerate().skip(start) {
+            if i > start && !screen.row_wrapped((i - 1) as u16) {
+                text.push('\n');
+            }
+            text.push_str(row);
+        }
+        text
     }
 }
 

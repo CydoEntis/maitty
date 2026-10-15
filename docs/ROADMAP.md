@@ -11,6 +11,20 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
+User-requested Codex consistency fix: detect native activity footers with
+background-terminal metadata and soft wraps; recognize new turns without
+whole-second rounding or a thirty-second startup deadline; distinguish Codex
+config/profile flags from Claude continue/print when allocating worktrees.
+Acceptance: genuine activity shows working with or without notify hooks,
+finished prose and stale footers remain finished, queued questions still need
+attention, and new Codex launches with config/profile options get the default
+worktree while resume/fork and explicit locations stay put. Status: verified
+locally for v0.30.1. Regressions failed before fixes; the ordered gate passed:
+`cargo build`, `cargo test` (279 passed / four ignored), clippy with warnings
+denied, and Linux/macOS cross-checks. README and the agent status/worktree contract
+are updated. Real-agent live verification remains outstanding; no installed
+daemon or agent was replaced or restarted.
+
 User-requested shortcut/documentation audit: All keys must expose every configured
 leader/global binding, aliases and contextual controls. Keep the compact leader
 overview and add a searchable full reference from Actions, palette and leader + `?`.

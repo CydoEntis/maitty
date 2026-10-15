@@ -146,6 +146,18 @@ the hook message separately from socket I/O so its effective status is testable.
 Codex's queued unanswered question takes precedence over its working spinner,
 including with turn-end-only hooks. Clearing it restores ongoing work detection.
 
+For Codex's turn-end-only hooks, compare subsequent pane input to the accepted
+turn end using monotonic instants. Keep that boundary when done becomes seen/idle;
+do not impose a startup deadline or let a stale activity footer reopen the turn.
+Screen patterns read logical lines across soft wraps, retaining hard newlines.
+Codex activity matching accepts trailing background-terminal metadata.
+
+Shell `agent-dir` classification is agent-specific: Codex `-c`/`-p` configure
+new sessions; Claude's continue/print flags remain exclusions. Consume option
+values before checking Codex subcommands. Resume/fork and explicit Codex
+directory/worktree options retain the requested location. Worktree allocation
+still requires the authenticated pane shell and the existing per-agent setting.
+
 Snapshots include the daemon package version. Term evidence includes the latest
 process observation time; screen evidence refreshes on repeated observations
 without changing the status start time or repeating transition alerts.
