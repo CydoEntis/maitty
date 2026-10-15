@@ -50,11 +50,9 @@ const QUEUED_TURN_STARTS_WITHIN: Duration = Duration::from_secs(60);
 pub(super) const SUBAGENTS_QUIET_AT_MOST: Duration = Duration::from_secs(60 * 60);
 /// A permission ping this soon after a "working" is Claude repeating one already answered.
 const REPEATED_PROMPT_WITHIN: Duration = Duration::from_secs(5);
-/// The progress indicator gone this long with no turn-end: the turn was cancelled (Esc).
 /// Agents whose hooks report only the end of a turn.
 const HOOKS_END_ONLY: &[&str] = &["codex"];
-/// A turn starts from something you typed: only that long after it is the screen checked.
-const TURN_START_WITHIN: Duration = Duration::from_secs(30);
+/// The progress indicator gone this long with no turn-end: the turn was cancelled (Esc).
 const CANCELLED_AFTER: Duration = Duration::from_secs(2);
 /// An agent read from its screen (no hooks) is done only once its screen has been still this
 /// long: working ones redraw a timer every second.
@@ -149,6 +147,9 @@ impl Daemon {
         }
         let Some(t) = self.terms.get_mut(&term) else { return };
         let now = Instant::now();
+        if matches!(status, HookStatus::Done | HookStatus::Idle) {
+            t.last_turn_end = now;
+        }
         let new = match status {
             HookStatus::Same => {
                 // A subagent finished: if the turn was waiting on it, it's done now.
@@ -503,9 +504,8 @@ impl Daemon {
                 // next turn shows on screen only.
                 if HOOKS_END_ONLY.contains(&name.as_str())
                     && matches!(t.status, Status::Idle | Status::Done)
-                    && t.last_input.elapsed() < TURN_START_WITHIN
                     // Typed since it finished: not the last turn's line still on screen.
-                    && t.last_input.elapsed().as_secs() < term::unix_now().saturating_sub(t.status_since)
+                    && t.last_input > t.last_turn_end
                     && let Some(d) = self.agents.iter().find(|a| &a.name == name)
                     && let Some(r) = d.working.iter().find(|r| r.is_match(&t.tail_text(rows)))
                 {

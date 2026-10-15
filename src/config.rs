@@ -629,7 +629,7 @@ pub fn builtin_agents() -> Vec<AgentDef> {
             &["codex"],
             &["@openai/codex"],
             // Finished answers can discuss the shortcut; only a complete activity row counts.
-            &[r"(?m)^\s*(?:•\s*)?[^()\r\n]+ \((?:\d+[smh][^()\r\n]*[•·-]\s*)?esc to interrupt[^()\r\n]*\)\s*$"],
+            &[r"(?m)^[ \t]*(?:•[ \t]*)?[^()\r\n]+ \((?:\d+[smh][^()\r\n]*[•·-][ \t]*)?esc to interrupt[^()\r\n]*\)(?:[ \t]+[·•][ \t]+[^\r\n]*)?[ \t]*$"],
             &[r"Allow command\?", r"Would you like to (run|make|apply)", r"approve this", r"Trust this folder\?", r"› 1\. Yes"],
         ), "codex resume {session}", "codex resume --last"),
         agent("gemini", &["gemini"], &["@google/gemini-cli"], &[r"esc to cancel"], &[r"Allow execution", r"Apply this change\?"]),
