@@ -68,9 +68,48 @@ const SUBCOMMANDS: [&str; 20] = [
 ];
 
 /// Whether `agent args…` starts new work (which gets its own worktree).
-pub(crate) fn starts_new_work(args: &[String]) -> bool {
+pub(crate) fn starts_new_work(agent: &str, args: &[String]) -> bool {
+    if agent == "codex" {
+        return codex_starts_new_work(args);
+    }
     let sub = args.first().is_some_and(|a| SUBCOMMANDS.contains(&a.as_str()));
     !sub && !args.iter().any(|a| NOT_NEW_WORK.contains(&a.as_str()) || a.starts_with("--resume=") || a.starts_with("--worktree="))
+}
+
+const CODEX_SUBCOMMANDS: &[&str] = &[
+    "agents", "exec", "e", "review", "login", "logout", "mcp", "mcp-server", "plugin", "app-server", "remote-control", "app",
+    "completion", "update", "doctor", "sandbox", "debug", "apply", "a", "resume", "queue", "archive", "delete", "migrate-rollouts",
+    "unarchive", "fork", "cloud", "exec-server", "features", "help",
+];
+const CODEX_VALUE_OPTIONS: &[&str] = &[
+    "-c", "--config", "-p", "--profile", "-m", "--model", "-i", "--image", "-s", "--sandbox", "-a", "--ask-for-approval",
+    "--remote", "--remote-auth-token-env", "--local-provider", "--add-dir", "--enable", "--disable",
+];
+
+fn codex_starts_new_work(args: &[String]) -> bool {
+    let mut args = args.iter();
+    let mut has_prompt = false;
+    while let Some(arg) = args.next() {
+        if arg == "--" {
+            return true;
+        }
+        if matches!(arg.as_str(), "-h" | "--help" | "-v" | "-V" | "--version" | "-w" | "--worktree" | "-C" | "--cd")
+            || arg.starts_with("--worktree=") || arg.starts_with("--cd=") || arg.starts_with("-C")
+        {
+            return false;
+        }
+        // Codex uses -c/-p for configuration/profile, unlike Claude's continue/print.
+        // Their values can also be command names, so consume them before looking for one.
+        if CODEX_VALUE_OPTIONS.contains(&arg.as_str()) {
+            args.next();
+        } else if !arg.starts_with('-') && !has_prompt {
+            if CODEX_SUBCOMMANDS.contains(&arg.as_str()) {
+                return false;
+            }
+            has_prompt = true;
+        }
+    }
+    true
 }
 
 /// `seshi agent-dir <agent> [args…]`, run by a pane's shell just before it starts an agent:
@@ -78,7 +117,7 @@ pub(crate) fn starts_new_work(args: &[String]) -> bool {
 /// fails: the agent starts either way.
 pub fn agent_dir(cmd: &[String]) {
     let args = cmd.get(1..).unwrap_or_default();
-    if std::env::var_os("SESHI_TERM_ID").is_none() || !starts_new_work(args) {
+    if std::env::var_os("SESHI_TERM_ID").is_none() || !starts_new_work(cmd.first().map(String::as_str).unwrap_or_default(), args) {
         return;
     }
     let Ok(dir) = std::env::current_dir() else { return };
@@ -1520,10 +1559,24 @@ mod tests {
 
     #[test]
     fn only_new_work_gets_a_worktree() {
-        let w = |a: &[&str]| super::starts_new_work(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        let w = |a: &[&str]| super::starts_new_work("claude", &a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
         assert!(w(&[]) && w(&["fix the login page"]) && w(&["--model", "opus"]) && w(&["update the readme"]), "a new session or a task");
         assert!(!w(&["--continue"]) && !w(&["-r"]) && !w(&["resume"]), "an earlier conversation stays in its folder");
         assert!(!w(&["--version"]) && !w(&["-p", "what's 2+2"]) && !w(&["mcp", "list"]) && !w(&["update"]), "not work: help, one-shots, subcommands");
+    }
+
+    #[test]
+    fn codex_config_and_profile_options_still_start_new_work() {
+        let w = |a: &[&str]| super::starts_new_work("codex", &a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        for args in [vec![], vec!["-c", "model=\"example\""], vec!["-p", "feature"], vec!["--profile", "resume"],
+            vec!["--config=model=\"example\"", "build login"], vec!["-pfeature"], vec!["--", "--resume"]] {
+            assert!(w(&args), "new Codex work: {args:?}");
+        }
+        for args in [vec!["resume", "--last"], vec!["-m", "example", "resume", "--last"], vec!["fork", "--last"],
+            vec!["--profile", "feature", "review"], vec!["--version"], vec!["mcp", "list"], vec!["--worktree"],
+            vec!["-C", "somewhere"], vec!["--cd=somewhere"], vec!["-Csomewhere"], vec!["fix login", "--cd", "somewhere"]] {
+            assert!(!w(&args), "Codex stays in the requested folder: {args:?}");
+        }
     }
 
     #[test]

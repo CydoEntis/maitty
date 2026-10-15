@@ -1063,6 +1063,59 @@ fn repeated_status_observations_refresh_evidence_without_restarting_the_turn() {
 }
 
 #[test]
+fn codex_detects_work_with_background_terminals_and_wrapped_footers() {
+    let (mut d, _rx) = daemon();
+    let id = pane(&mut d);
+    let mut observed = Vec::new();
+    for hooked in [false, true] {
+        for cols in [160, 32] {
+            for suffix in ["", " · 1 background terminal running · /ps to view · /stop to close"] {
+                let t = d.terms.get_mut(&id).unwrap();
+                t.resize(cols, 24);
+                t.agent = Some("codex".into()); t.hooked = hooked; t.status = Status::Done;
+                t.status_since = term::unix_now() - 10;
+                t.last_input = Instant::now();
+                t.parser.process(b"\x1b[2J\x1b[H"); t.parser.process(&b"\r\n".repeat(30));
+                t.parser.process(format!("• Working (2m 40s • esc to interrupt){suffix}\r\n> Ask Codex to do anything").as_bytes());
+                d.update_statuses();
+                observed.push((hooked, cols, suffix, d.terms[&id].status));
+            }
+        }
+    }
+    close(&mut d, &[id]);
+    assert!(observed.iter().all(|(_, _, _, status)| *status == Status::Working), "native Codex activity must survive metadata and soft wraps: {observed:?}");
+}
+
+#[test]
+fn codex_can_start_its_next_turn_without_waiting_for_the_wall_clock() {
+    let (mut d, _rx) = daemon();
+    let id = pane(&mut d);
+    d.hook(id, "codex".into(), HookStatus::Done, "agent-turn-complete");
+    let t = d.terms.get_mut(&id).unwrap();
+    // A backwards clock makes the same zero-second interval as a prompt sent immediately.
+    t.status_since = u64::MAX;
+    t.last_input = Instant::now();
+    t.parser.process(&b"\r\n".repeat(30));
+    t.parser.process("• Working (1s • esc to interrupt)\r\n> Ask Codex to do anything".as_bytes());
+    d.update_statuses();
+    let mut observed = vec![d.terms[&id].status];
+    d.hook(id, "codex".into(), HookStatus::Done, "agent-turn-complete");
+    d.update_statuses();
+    observed.push(d.terms[&id].status);
+    d.set_status(id, Status::Idle, "you're looking at it");
+    d.update_statuses();
+    observed.push(d.terms[&id].status);
+    // A slow start is still a new turn; there is no thirty-second deadline on its footer.
+    let t = d.terms.get_mut(&id).unwrap();
+    t.last_turn_end = Instant::now() - Duration::from_secs(60);
+    t.last_input = Instant::now() - Duration::from_secs(45);
+    d.update_statuses();
+    observed.push(d.terms[&id].status);
+    close(&mut d, &[id]);
+    assert_eq!(observed, [Status::Working, Status::Done, Status::Idle, Status::Working], "new input starts work immediately or after a delay; a stale footer stays finished, even after being seen");
+}
+
+#[test]
 fn codex_status_ignores_activity_in_a_finished_answer() {
     let (mut d, _rx) = daemon();
     let id = pane(&mut d);
