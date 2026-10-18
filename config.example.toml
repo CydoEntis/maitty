@@ -4,14 +4,6 @@
 
 prefix = "ctrl+space"
 
-# Saved planner → your approval → worker → reviewer sequences.
-# Create a starter in the Workflows sheet, or: seshi workflow init --agent codex
-# [[workflows]]
-# name = "feature"
-# planner = "codex-planner"
-# worker = "codex-worker"
-# reviewer = "codex-reviewer"
-
 # Browse all built-in names in Settings > Appearance > Theme.
 # Families and variants: docs/theme-sources.md (gruvbox is Dark; tokyo-night is Night).
 theme = "seshi-dark"
@@ -167,17 +159,6 @@ A = "new-worktree:claude"   # worktree picker; whatever you open or create start
 # model = "opus"
 # prompt = "Review {task} for bugs and risky changes. Don't edit anything."
 # where = "worktree"
-
-# Agent profiles: create/edit in New -> Ctrl+P, or the command palette's Agent profiles.
-# Project overrides use the same [[profiles]] tables in .seshi.toml, replacing by name.
-# See docs/features/agent-profiles.md for native workflow export and import.
-# [[profiles]]
-# name = "planner"
-# agent = "claude"             # claude | codex
-# model = "opus"               # blank: the runner's configured default
-# effort = "medium"            # blank | low | medium | high | xhigh | max
-# instructions = "Investigate the request and produce a plan. Do not implement it."
-# skills = []                  # names of already installed skills
 
 [mcp]
 approve = "never"       # may agents (through `seshi mcp`) answer "yes" to prompts? never | safe | always

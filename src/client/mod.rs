@@ -16,9 +16,7 @@ mod pick;
 mod recipes;
 mod render;
 mod tasks;
-mod profiles;
 mod text_input;
-mod workflows;
 mod views;
 mod actions;
 mod background;
@@ -75,8 +73,6 @@ enum Mode {
     Prefix { since: Instant },
     /// Jump list (`commands: false`) or command palette (`commands: true`).
     Picker { query: String, sel: usize, commands: bool },
-    Profiles(Box<profiles::ProfilesView>),
-    Workflows(Box<workflows::WorkflowView>),
     Prompt { kind: PromptKind, input: String },
     Copy(Box<copy::Copy>),
     /// Pick an existing worktree of the repo, or type a branch to create one.
@@ -297,8 +293,6 @@ pub struct App {
     /// When this window last had to attach to the server again.
     reattached: Option<Instant>,
     cfg: Config,
-    profile_projects: HashMap<PathBuf, Result<Vec<crate::profiles::Profile>, String>>,
-    agent_sheets: workflows::AgentSheets,
     theme: Theme,
     keymap: Keymap,
     notice: Option<(String, Instant, bool)>,
@@ -497,8 +491,6 @@ impl App {
             sheet_frac: 1.0,
             keymap,
             cfg,
-            profile_projects: HashMap::new(),
-            agent_sheets: workflows::AgentSheets::default(),
             notice: None,
             notice_term: None,
             history: Default::default(),

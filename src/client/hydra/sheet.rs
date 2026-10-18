@@ -8,8 +8,6 @@ use crate::client::overlap::Overlap;
 /// What the sheet shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::client) enum SheetKind {
-    Profiles,
-    Workflows,
     Settings,
     Inbox,
     Changes,
@@ -25,11 +23,7 @@ pub(super) const WIDE_AT: u16 = 200;
 /// The sheet that's open, if any: the Inbox while you're in it (or writing a follow-up in
 /// one of its rows), else Changes.
 pub(in crate::client) fn open_sheet(app: &App) -> Option<SheetKind> {
-    if matches!(app.mode, Mode::Profiles(_)) {
-        Some(SheetKind::Profiles)
-    } else if matches!(app.mode, Mode::Workflows(_)) {
-        Some(SheetKind::Workflows)
-    } else if matches!(app.mode, Mode::HySettings(_)) {
+    if matches!(app.mode, Mode::HySettings(_)) {
         Some(SheetKind::Settings)
     } else if inbox_place(app).is_some() {
         Some(SheetKind::Inbox)
@@ -71,19 +65,6 @@ pub(in crate::client) fn heads_up(app: &App) -> Vec<(PathBuf, Overlap)> {
 
 pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t: &Theme) {
     let (title, close) = match kind {
-        SheetKind::Profiles => (match &app.mode {
-            Mode::Profiles(v) if v.editor.as_ref().is_some_and(|e| e.original.is_some()) => "Edit profile",
-            Mode::Profiles(v) if v.editor.is_some() => "New profile",
-            Mode::Profiles(v) if v.import_path.is_some() => "Import profile",
-            _ => "Agent profiles",
-        }, HyHit::Close),
-        SheetKind::Workflows => (match &app.mode {
-            Mode::Workflows(v) if v.runs => "Workflow runs",
-            Mode::Workflows(v) if v.setup.is_some() => "Workflow setup",
-            Mode::Workflows(v) if v.task.is_some() => "Run workflow",
-            Mode::Workflows(v) if v.editor.is_some() => if v.original.is_some() { "Edit workflow" } else { "New workflow" },
-            _ => "Workflows",
-        }, HyHit::Close),
         SheetKind::Settings => ("Settings", HyHit::Close),
         SheetKind::Inbox => ("Inbox", HyHit::Close),
         SheetKind::Changes | SheetKind::Both => ("Changes", HyHit::ViewClose),
@@ -102,25 +83,11 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
         put(buf, inside.x + 1, inside.y + 1, &[seg("Make the window wider", Style::default().fg(t.muted).bg(t.card))], inside.right());
         return;
     }
-    if matches!(kind, SheetKind::Profiles | SheetKind::Workflows | SheetKind::Settings) && r.height < 18 {
+    if kind == SheetKind::Settings && r.height < 18 {
         put(buf, inside.x + 1, inside.y + 1, &[seg("Make the window taller", Style::default().fg(t.muted).bg(t.card))], inside.right());
         return;
     }
     match kind {
-        SheetKind::Profiles => {
-            if let Mode::Profiles(v) = &app.mode {
-                let v = (**v).clone();
-                crate::client::workflows::draw_tabs(app, buf, r, t, 0);
-                crate::client::profiles::draw_profiles(app, buf, r, t, &v);
-            }
-        }
-        SheetKind::Workflows => {
-            if let Mode::Workflows(v) = &app.mode {
-                let v = (**v).clone();
-                crate::client::workflows::draw_tabs(app, buf, r, t, if v.runs { 2 } else { 1 });
-                crate::client::workflows::draw_workflows(app, buf, r, t, &v);
-            }
-        }
         SheetKind::Settings => {
             if let Mode::HySettings(v) = &app.mode {
                 let v = (**v).clone();
@@ -188,7 +155,7 @@ fn row_height(row: &GoRow, compose: Option<&Compose>, box_rows: u16, asking: Opt
         GoRow::Ask(_) => 4,
         GoRow::Heads(_) => 4,
         GoRow::Done(_) => 4,
-        GoRow::Workflow(_) => 4,
+
         _ => 1,
     }
 }
@@ -205,7 +172,7 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
     let motion = app.motion_on();
     let mut gliding: Option<(u16, Rect)> = None;
     let heads = heads_up(app);
-    let rows = goto_rows(&model, &query, heads.len(), &app.snap.workflows);
+    let rows = goto_rows(&model, &query, heads.len());
     let look = Look::of(&app.cfg.ui);
     let c = Style::default().bg(t.card);
     let (x, w) = (inside.x + 2, inside.width.saturating_sub(4));
@@ -280,11 +247,6 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
                     y += 1;
                 }
                 continue;
-            }
-            GoRow::Workflow(id) => {
-                let Some(run) = app.snap.workflows.iter().find(|r| r.id == *id) else { continue };
-                head_line(buf, vec![seg(format!("● {} · plan approval", run.name), st.fg(t.blocked).add_modifier(Modifier::BOLD))], vec![]);
-                put(buf, x + 3, y + 1, &[seg(truncate(&run.goal, w.saturating_sub(4) as usize), c.fg(t.text))], x + w);
             }
             GoRow::Ask(term) => {
                 let Some((p, _, s)) = find(&model, *term) else { continue };
@@ -399,9 +361,6 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
         }
         if row.pickable() {
             hit(app, Rect { x: x - 1, y, width: w + 2, height: hgt.saturating_sub(1).max(1) }, HyHit::GoPick(i));
-        }
-        if let GoRow::Workflow(id) = row {
-            btn(app, buf, x + 3, y + 2, "Review plan", "Enter", BtnKind::Primary, HyHit::WorkflowRun(*id), x + w);
         }
         y += hgt;
     }

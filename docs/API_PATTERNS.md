@@ -121,14 +121,9 @@ the pane's process tree or `SESHI_PANE_TOKEN`.
 
 ## Project-specific: feature/module structure
 
-`seshi profile list|run|export|import` is the local profile interface; see
-[agent profiles](features/agent-profiles.md). Launches use the existing
-`NewWorkspace` / worktree commands, so the wire protocol is unchanged.
-
-`seshi workflow` and `seshi_workflow_*` MCP tools expose saved workflow execution;
-see [usage](features/workflows/usage.md). Workflow commands and snapshots use
-protocol 39. Only the authenticated active pane may submit a stage report;
-approve/retry/cancel are human controls. Validate and freeze profiles before launch.
+Saved role profiles and sequenced planner/worker/reviewer workflows are not part
+of Seshi's interface. Sessions, ordinary agent launches, fleet helpers, and
+MCP session controls remain supported. The wire protocol is version 40.
 
 A new capability adds: a `Command` variant (and any new `ServerMsg` /
 snapshot field) in `protocol.rs` with a `PROTOCOL_VERSION` bump; handling in

@@ -10,8 +10,6 @@ use std::path::PathBuf;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Saved {
-    #[serde(default)]
-    pub workflows: Vec<crate::workflows::Run>,
     pub workspaces: Vec<SavedWs>,
     /// Index into `workspaces`.
     pub active: usize,
@@ -153,4 +151,16 @@ pub fn take_output(term: TermId) -> Option<Vec<u8>> {
     let bytes = std::fs::read(&path).ok()?;
     let _ = std::fs::remove_file(&path);
     Some(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Saved;
+
+    #[test]
+    fn sessions_saved_with_workflow_runs_still_restore_the_workspace() {
+        let saved: Saved = serde_json::from_str(r#"{"workflows":[{"id":7}],"workspaces":[],"active":0,"made_worktrees":[]}"#)
+            .expect("unknown legacy workflow data is ignored");
+        assert!(saved.workspaces.is_empty());
+    }
 }

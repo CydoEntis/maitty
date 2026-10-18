@@ -107,44 +107,6 @@ pub fn ahead_of_the_panes() {
     }
 }
 
-/// Interactive agents inherit this pane's terminal. Pass role instructions as argv,
-/// bypassing the shell so Windows' legacy quote handling cannot change their contents.
-pub fn agent(tool: &str, args: &[String]) -> anyhow::Result<Command> {
-    #[cfg(windows)]
-    {
-        if let Some(path) = std::env::var_os("PATH") {
-            for dir in std::env::split_paths(&path) {
-                let exe = dir.join(format!("{tool}.exe"));
-                if exe.is_file() {
-                    let mut command = Command::new(exe);
-                    command.args(args);
-                    return Ok(command);
-                }
-                // npm's .cmd launcher forwards to this script. Run the same Node entry
-                // directly; cmd.exe cannot safely forward arbitrary instruction text.
-                let script = match tool {
-                    "codex" => "node_modules/@openai/codex/bin/codex.js",
-                    "claude" => "node_modules/@anthropic-ai/claude-code/cli.js",
-                    _ => anyhow::bail!("unsupported agent: {tool}"),
-                };
-                if dir.join(format!("{tool}.cmd")).is_file() && dir.join(script).is_file() {
-                    let node = dir.join("node.exe");
-                    let mut command = Command::new(if node.is_file() { node.into_os_string() } else { "node".into() });
-                    command.arg(dir.join(script)).args(args);
-                    return Ok(command);
-                }
-            }
-        }
-        anyhow::bail!("cannot find a native or npm installation of {tool} on PATH")
-    }
-    #[cfg(not(windows))]
-    {
-        let mut command = Command::new(tool);
-        command.args(args);
-        Ok(command)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

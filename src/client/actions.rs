@@ -6,7 +6,7 @@ impl App {
     pub(super) fn act(&mut self, a: Action) {
         // These read files on this machine; over ssh the files are on the other one.
         if crate::ipc::remote().is_some()
-            && matches!(a, Action::Files | Action::Changes | Action::Find(_) | Action::Branches | Action::PasteImage | Action::Profiles | Action::AgentStatusSetup)
+            && matches!(a, Action::Files | Action::Changes | Action::Find(_) | Action::Branches | Action::PasteImage | Action::AgentStatusSetup)
         {
             self.notify(format!("{} isn't available over ssh yet (agents, panes and worktrees are)", a.describe()), true);
             return;
@@ -19,9 +19,6 @@ impl App {
         match a {
             Action::PasteImage => self.paste_image(),
             Action::Find(tab) => self.open_find(tab),
-            Action::Profiles => self.open_profiles(),
-            Action::Workflows => self.open_workflows(false),
-            Action::WorkflowRuns => self.open_workflows(true),
             Action::AgentStatusSetup => self.menu("Agent status · choose app, any model".into(), vec![
                 ("Set up Codex status hooks".into(), menu::Act::InstallStatus("codex".into())),
                 ("Set up Pi status hooks".into(), menu::Act::InstallStatus("pi".into())),
@@ -217,9 +214,6 @@ impl App {
             Action::StopAgent,
             Action::Message,
             Action::Why,
-            Action::Profiles,
-            Action::Workflows,
-            Action::WorkflowRuns,
             Action::AgentStatusSetup,
             Action::Files,
             Action::Find(0),

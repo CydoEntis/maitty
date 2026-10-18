@@ -14,7 +14,6 @@ mod restore;
 mod status;
 mod usage;
 mod worktrees;
-mod workflows;
 
 use status::*;
 use worktrees::*;
@@ -67,8 +66,6 @@ const MASS_EXIT_WINDOW: Duration = Duration::from_secs(5);
 
 #[allow(clippy::large_enum_variant)]
 pub enum Ev {
-    WorkflowPrepared { run: u64, result: Result<workflows::Prepared, String> },
-    WorkflowLaunch { run: u64, result: Result<String, String> },
     Connected(ClientId, mpsc::Sender<ServerMsg>, bool),
     /// The connection's request comes from inside this pane (with this secret).
     From(ClientId, TermId, String),
@@ -152,7 +149,6 @@ impl Client {
 }
 
 struct Daemon {
-    workflows: Vec<crate::workflows::Run>,
     cfg: Config,
     agents: Vec<CompiledAgent>,
     terms: HashMap<TermId, Term>,
@@ -389,10 +385,6 @@ impl Daemon {
     /// The grant a command needs.
     fn may_command(&self, client: ClientId, cmd: &Command) -> anyhow::Result<()> {
         match cmd {
-            Command::WorkflowStart { .. } => self.may(client, Grant::Start, None),
-            Command::WorkflowControl { .. } if self.clients.get(&client).is_some_and(|c| c.from.is_some()) => {
-                anyhow::bail!("workflow approval, retry and cancellation are human controls; use the Runs sheet or a terminal outside Seshi's panes")
-            }
             Command::NewWorkspace { .. }
             | Command::NewTab { .. }
             | Command::Split { .. }
@@ -453,7 +445,6 @@ impl Daemon {
         scan::start(scan.clone(), tx.clone());
         let hook_jobs = hook_thread(tx.clone());
         Daemon {
-            workflows: Vec::new(),
             cfg,
             agents,
             terms: HashMap::new(),
@@ -506,7 +497,6 @@ impl Daemon {
                 }
                 _ = tick.tick() => {
                     self.update_statuses();
-                    self.update_workflows();
                     self.settled_alerts();
                     self.phone_alerts();
                     self.auto_continue();
@@ -542,7 +532,7 @@ impl Daemon {
                 // The user closed everything, so start fresh next time. A mass exit is a
                 // crash or shutdown: leave the saved session for restore.
                 if !self.mass_exit() {
-                    if self.workflows.is_empty() { persist::forget(); } else { self.persist(true); }
+                    persist::forget();
                 }
                 self.broadcast(|_| true, ServerMsg::Bye);
                 tokio::time::sleep(Duration::from_millis(100)).await;
@@ -558,7 +548,6 @@ impl Daemon {
     }
 
     fn should_exit(&self) -> bool {
-        if self.workflows.iter().any(|r| !r.state.terminal()) { return false; }
         // A window still showing seshi (empty projects, the splash) keeps it open: closing
         // the last pane mustn't close the app under you.
         if !self.terms.is_empty() || self.pending_ops > 0 || self.clients.values().any(|c| c.attach) {
@@ -644,8 +633,6 @@ impl Daemon {
     fn handle(&mut self, ev: Ev) {
         self.drop_lagging_clients();
         match ev {
-            Ev::WorkflowPrepared { run, result } => self.workflow_prepared(run, result),
-            Ev::WorkflowLaunch { run, result } => self.workflow_launched(run, result),
             Ev::Connected(id, tx, attach) => {
                 let c = Client { tx, attach, from: None, behind: std::cell::Cell::new(false) };
                 if attach {
@@ -1144,7 +1131,6 @@ impl Daemon {
             .collect();
         Snapshot {
             daemon_version: env!("CARGO_PKG_VERSION").into(),
-            workflows: self.workflows.clone(),
             workspaces: self.workspaces.clone(),
             active_ws: self.active_ws,
             terms,
@@ -1202,8 +1188,7 @@ impl Daemon {
         let by = self.starter(client);
         let most = self.cfg.mcp.helpers_at_once;
         if by.is_some() && most > 0 && !let_through {
-            let busy = self.terms.values().filter(|t| t.started_by.is_some() && (t.status == Status::Working || t.born.elapsed() < HELPER_SETTLES)).count()
-                + self.workflows.iter().filter(|r| r.state == crate::workflows::State::Preparing).count();
+            let busy = self.terms.values().filter(|t| t.started_by.is_some() && (t.status == Status::Working || t.born.elapsed() < HELPER_SETTLES)).count();
             if busy >= most {
                 anyhow::bail!("{busy} helpers are already working, and {most} at once is the limit (Settings, Agents). Wait for one to finish, then start this one.");
             }

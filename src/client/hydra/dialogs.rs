@@ -118,9 +118,7 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
     chips(app, buf, r.y + 4, &agents, np.a, HyHit::NpRun);
     lab(buf, r.y + 6, "MODEL", 2);
     let models = if agent.starts_with('★') || agent.starts_with('◇') { Vec::new() } else { np_models(app, &agent) };
-    if let Some(profile) = super::super::profiles::selected(app, np.p, &agent) {
-        put(buf, r.x + 14, r.y + 6, &[seg(profile.summary(), muted)], r.right());
-    } else if let Some(p) = preset_of(app, &agent) {
+    if let Some(p) = preset_of(app, &agent) {
         let m = if p.model.is_empty() { "its default".to_string() } else { p.model.clone() };
         put(buf, r.x + 14, r.y + 6, &[seg(format!("{m} (from the preset)"), muted)], r.right());
     } else if models.is_empty() {
@@ -172,13 +170,6 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
         Some(p) => format!("{agent} runs in {}.", p.name),
     };
     let c = Style::default().bg(t.card);
-    let what = if let Some(profile) = super::super::profiles::selected(app, np.p, &agent) {
-        format!("{what} Fresh {} session. Requested skills: {}. Profiles shows the role instructions.", profile.agent.command(), if profile.skills.is_empty() { "none".into() } else { profile.skills.join(", ") })
-    } else { what };
-    let what = match app.profiles_for(np.p) {
-        Err(e) => format!("Profiles unavailable: {e}"),
-        Ok(_) => what,
-    };
     let what = match if agent.starts_with('◇') { None } else { np_command(app, &agent, np.model, &np.task) } {
         _ if np.fleet && (agent == "shell" || agent.starts_with('⚙')) => "A fleet needs an agent to command it.".to_string(),
         _ if np.fleet => format!("{agent} is the commander: it splits the goal up and starts helpers in their own worktrees. {what}"),
@@ -189,8 +180,7 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
         put(buf, r.x + 3, r.y + 14 + i as u16, &[seg(l, c.fg(t.text))], r.right() - 2);
     }
     let gx = btn(app, buf, r.x + 3, r.y + 18, if np.task.trim().is_empty() && !np.fleet { "Open" } else { "Start" }, "Enter", BtnKind::Primary, HyHit::NpGo, r.right());
-    let gx = btn(app, buf, gx + 2, r.y + 18, "Profiles", "Ctrl+P", BtnKind::Normal, HyHit::Profiles, r.right());
-    put(buf, gx + 3, r.y + 18, &hints(t, &[("↑↓", "rows"), ("←→", "choose"), ("Esc", if np.fleet { "close" } else { "close, keeps the task" })]), r.right());
+    put(buf, gx + 2, r.y + 18, &hints(t, &[("↑↓", "rows"), ("←→", "choose"), ("Esc", if np.fleet { "close" } else { "close, keeps the task" })]), r.right());
 }
 
 // Talk ----------------------------------------------------------------------------------------

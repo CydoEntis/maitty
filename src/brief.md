@@ -5,8 +5,8 @@ it up, start helpers to do the pieces, keep track of them, and report back. You 
 coordinating. The helpers do the work.
 
 Use seshi's tools if you have them (`seshi_list`, `seshi_start`, `seshi_send`,
-`seshi_wait`, `seshi_read`). If you don't, the same things are shell commands, shown
-below. Session numbers come from `seshi ls` or `seshi_list`.
+`seshi_wait`, `seshi_read`). If you don't, the same things are shell commands,
+shown below. Session numbers come from `seshi ls` or `seshi_list`.
 
 ## Split the goal
 

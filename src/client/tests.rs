@@ -113,7 +113,7 @@ mod design_tests {
         let rate = rate_buf.to_str().unwrap();
         let mut claude = term(1, Some("claude"), Status::Blocked, root);
         claude.branch = Some("main".into());
-        claude.subagents = vec!["Explore".into(), "workflow-subagent".into(), "workflow-subagent".into(), "workflow-subagent".into()];
+        claude.subagents = vec!["Explore".into(), "planner".into(), "builder".into(), "reviewer".into()];
         claude.summary = "Fix flaky checkout test".into();
         claude.root = Some(PathBuf::from(root));
         claude.top = Some(PathBuf::from(root));
@@ -195,7 +195,7 @@ mod hydra_tests {
         let rows = shortcuts::entries(&app);
         assert_eq!(rows[0].1, "C-a");
         assert!(!rows.iter().any(|(scope, key, _)| scope == "After leader" && key == "v"));
-        assert!(rows.iter().any(|(scope, key, label)| scope == "After leader" && key == "g" && label == "Workflows"));
+        assert!(rows.iter().any(|(scope, key, label)| scope == "After leader" && key == "g" && label == "Command palette"));
         assert!(rows.iter().any(|(scope, key, label)| scope == "Without leader" && key == "M-0" && label.contains("my-agent --review")));
         app.cfg.keys.replace_defaults = true;
         app.keymap = app.cfg.keymap();
@@ -219,7 +219,7 @@ mod hydra_tests {
             draw(&mut app, w, h);
             app.on_mouse(MouseEvent { kind: MouseEventKind::ScrollDown, column: w / 2, row: h / 2, modifiers: KeyModifiers::NONE });
             assert!(matches!(app.mode, Mode::Shortcuts { scroll: 1, .. }));
-            for (query, expected) in [("workflow setup", "WORKFLOW SETUP"), ("profiles", "PROFILES"),
+            for (query, expected) in [("settings", "SETTINGS"), ("sidebar", "SIDEBAR"),
                 ("copy mode", "COPY MODE"), ("without leader", "WITHOUT LEADER"),
                 ("Ctrl+Space", "START HERE"), ("Alt+1", "WITHOUT LEADER"), ("no match zzqq", "No shortcuts match")] {
                 app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
@@ -237,20 +237,19 @@ mod hydra_tests {
     }
 
     #[test]
-    fn all_keys_renders_bindings_on_keycaps() {
+    fn all_keys_renders_bindings_as_keycaps_separate_from_actions() {
         let (_, mut app) = super::design_tests::render_with(100, 30);
-        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
-        app.on_key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE));
+        app.open_shortcuts();
         let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
         terminal.draw(|frame| render::draw(&mut app, frame)).unwrap();
         let buffer = terminal.backend().buffer();
-        let key = (0..30).find_map(|y| {
-            (0..94).find_map(|x| {
-                let text: String = (x..x + 7).map(|column| buffer[(column, y)].symbol()).collect();
-                (text == "C-Space").then_some((x, y))
+        let keycap = (0..30).any(|y| {
+            (0..100).any(|x| {
+                let cell = &buffer[(x, y)];
+                cell.symbol() == "j" && cell.bg == app.theme.btn
             })
-        }).expect("leader key is listed");
-        assert!(buffer[key].modifier.contains(ratatui::style::Modifier::BOLD), "binding is drawn with keycap emphasis");
+        });
+        assert!(keycap, "the Inbox binding should be visually rendered on a raised keycap");
     }
 
     #[test]
@@ -404,85 +403,6 @@ mod hydra_tests {
     }
 
     #[test]
-    fn workflow_setup_prepares_the_selected_profiles_and_instructions() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let roles: Vec<_> = ["my-planner", "my-worker", "my-reviewer"].iter().enumerate().map(|(i, name)| {
-            let mut profile = crate::profiles::starter(crate::profiles::Runner::Codex, i);
-            profile.name = (*name).into();
-            crate::profiles::Resolved { profile, project: false }
-        }).collect();
-        let workflow = crate::workflows::Workflow { name: "my-feature".into(), planner: "my-planner".into(), worker: "my-worker".into(), reviewer: "my-reviewer".into() };
-        let instructions = workflows::activation_instructions(&workflow);
-        assert!(instructions.contains("seshi workflow run my-feature") && instructions.contains("Do not approve it yourself") && instructions.contains("assigned workflow stage"));
-        app.mode = Mode::Workflows(Box::new(workflows::WorkflowView {
-            dir: PathBuf::from("."), entries: Some(vec![crate::workflows::ResolvedWorkflow { workflow, project: true }]), profiles: roles,
-            runs: false, sel: 0, scroll: 0, editor: None, original: None, project: true, field: 0, task: None, busy: false, error: None, confirm: None, setup: None, run: None, report: 0, picker: None, cursor: None,
-        }));
-        let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
-        app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::Workflows(v) if v.setup.as_ref().is_some_and(|w| w.name == "my-feature")));
-        for (width, height) in [(80, 24), (100, 30), (160, 45)] {
-            let output = draw(&mut app, width, height); show(&output);
-            assert!(output.contains("Use in this project") && output.contains("my-planner") && output.contains("Copy instructions"));
-            assert!(output.contains("AGENTS.md") && output.contains("CLAUDE.md"));
-        }
-        assert!(rx.try_recv().is_err(), "reviewing instructions never starts or approves a run");
-        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::Workflows(v) if v.setup.is_none() && v.task.is_none()));
-    }
-
-    #[test]
-    fn inbox_plan_approval_opens_the_exact_workflow_run() {
-        for mouse in [false, true] {
-            let (_, mut app) = super::design_tests::render_with(160, 45);
-            let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
-            let mut pending = crate::workflows::tests::run();
-            pending.id = 41; pending.state = crate::workflows::State::Approval; pending.term = None; pending.finished.clear(); pending.plan = "Plan for the selected task".into(); pending.parent = Some(2);
-            let mut newer = pending.clone(); newer.id = 99; newer.state = crate::workflows::State::Complete;
-            app.snap.workflows = vec![pending, newer];
-            app.open_goto();
-            let rows = hydra::goto_rows(&app.hy_model(), "", 0, &app.snap.workflows);
-            let selected = rows.iter().position(|r| *r == hydra::GoRow::Workflow(41)).expect("approval exists without a stage pane");
-            app.mode = Mode::GoTo { query: String::new(), sel: selected };
-            let output = draw(&mut app, 100, 30); show(&output);
-            assert!(output.contains("plan approval") && output.contains("Review plan"));
-            if mouse {
-                let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::WorkflowRun(41))).then_some(*r)).unwrap();
-                app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.x, row: at.y, modifiers: KeyModifiers::NONE });
-            } else { app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)); }
-            assert!(matches!(&app.mode, Mode::Workflows(v) if v.runs && v.sel == 1 && !v.busy));
-            let output = draw(&mut app, 100, 30); show(&output);
-            assert!(output.contains("Plan for the selected task") && output.contains("Approve plan"));
-            app.on_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
-            assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::WorkflowControl { run: 41, action: WorkflowAction::Approve }))));
-            assert!(hydra::goto_rows(&app.hy_model(), "", 0, &app.snap.workflows).contains(&hydra::GoRow::Workflow(41)), "approval stays until the daemon advances it");
-            app.snap.workflows[0].state = crate::workflows::State::Ready;
-            assert!(!hydra::goto_rows(&app.hy_model(), "", 0, &app.snap.workflows).contains(&hydra::GoRow::Workflow(41)));
-        }
-    }
-
-    #[test]
-    fn workflow_stage_labels_follow_the_current_session_and_round() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let mut run = crate::workflows::tests::run(); run.parent = Some(2); run.term = Some(2); run.state = crate::workflows::State::Running;
-        app.snap.terms.get_mut(&2).unwrap().status = Status::Working;
-        app.snap.workflows.push(run);
-        for (stage, state, round, label) in [
-            (crate::workflows::Stage::Plan, crate::workflows::State::Running, 0, "Planning"),
-            (crate::workflows::Stage::Build, crate::workflows::State::Running, 1, "Building 1/3"),
-            (crate::workflows::Stage::Review, crate::workflows::State::Running, 2, "Reviewing 2/3"),
-            (crate::workflows::Stage::Plan, crate::workflows::State::Approval, 0, "Needs plan approval"),
-        ] {
-            let run = &mut app.snap.workflows[0]; run.stage = stage; run.state = state; run.round = round;
-            let output = draw(&mut app, 160, 45); show(&output);
-            assert!(output.contains(label), "{label} is visible beside its session");
-        }
-        app.snap.workflows[0].state = crate::workflows::State::Running;
-        app.snap.terms.get_mut(&2).unwrap().status = Status::Blocked;
-        assert!(workflows::stage_badge(&app, &app.snap.workflows[0]).starts_with("Needs your answer"));
-    }
-
-    #[test]
     #[ignore = "opt-in release-mode performance measurement; no wall-clock CI threshold"]
     fn session_interactions_under_heavy_output() {
         const PANES: u32 = 8;
@@ -573,8 +493,8 @@ mod hydra_tests {
         // Rows: state and name, branch · age on the right, its question underneath.
         assert!(text.contains("● claude") && text.contains("main · 3m"), "state, then the name; branch · age on the right");
         assert!(text.contains("Run npm test -- checkout?"), "the question under the agent");
-        assert!(text.contains("↳ Explore"), "subagents under their agent");
-        assert!(text.contains("▾ 4 subagents") && text.matches("↳ workflow-subagent").count() == 3, "each one listed, under a heading that folds them");
+        assert!(text.contains("Explore"), "subagents under their agent");
+        assert!(text.contains("▾ 4 subagents") && text.contains("● planner") && text.contains("● builder") && text.contains("● reviewer"), "live helper roles are visible with status markers");
         assert!(text.contains("⣾ rate") && text.contains("rate-limit · 2m"), "a worktree's session is named after it");
         assert!(!text.contains("Rate limit /login"), "under a session only its question, as in the redesign");
         assert!(text.contains("› shell") && !text.contains("shell 2"), "a shell in the project's folder is just 'shell', no age");
@@ -909,244 +829,6 @@ mod hydra_tests {
         app.on_key(key(KeyCode::Esc));
         app.hy_new(0, false);
         assert!(matches!(&app.mode, Mode::HyPane(np) if np.task == "add tests"), "Esc keeps the task as a draft");
-    }
-
-
-    #[test]
-    fn profiles_preview_project_overrides_and_launch_a_fresh_role() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let (tx, mut rx) = mpsc::unbounded_channel();
-        app.out = tx;
-        let personal = crate::profiles::starter(crate::profiles::Runner::Claude, 2);
-        let mut local = personal.clone();
-        local.agent = crate::profiles::Runner::Codex;
-        local.model = "chosen-model".into();
-        local.skills = vec!["ponytail".into()];
-        app.cfg.profiles = vec![personal];
-        let dir = app.hy_model()[0].path.clone();
-        app.profile_projects.insert(dir.clone(), Ok(vec![local.clone()]));
-        let entries = app.profiles_for(0).unwrap();
-        app.mode = Mode::Profiles(Box::new(profiles::ProfilesView { dir, entries: Some(entries), error: None, sel: 0, scroll: 0, editor: None, busy: false, import_path: None }));
-        let screen = draw(&mut app, 110, 30);
-        show(&screen);
-        assert!(screen.contains("Agent profiles") && screen.contains("chosen-model") && screen.contains("project"));
-        app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
-        let screen = draw(&mut app, 110, 30);
-        assert!(screen.contains("codex · chosen-model · medium") && screen.contains("Fresh codex session"));
-        app.on_paste("Review the change with 'quotes', $text and a new\nline".into());
-        assert!(rx.try_recv().is_err(), "pasted task stays in the chooser");
-        let Mode::HyPane(mut np) = app.mode.clone() else { panic!("expected the launch chooser") };
-        assert_eq!(np.task, "Review the change with 'quotes', $text and a new\nline");
-        np.place = Some(2);
-        let encoded = crate::profiles::encode_task(&np.task).unwrap();
-        app.hy_pane_go(&np);
-        let commands: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
-        let command = commands.iter().find_map(|c| match c { ClientMsg::Command(Command::NewWorkspace { cmd: Some(cmd), .. }) => Some(cmd), _ => None }).unwrap();
-        assert!(command.contains("profile run") && command.contains(&local.name) && command.contains(&encoded));
-        assert!(!command.contains("--resume") && !command.contains("$text"));
-    }
-
-    #[test]
-    fn profiles_starters_edit_with_keyboard_and_preserve_multiline_pastes() {
-        let (_, mut app) = super::design_tests::render_with(110, 30);
-        app.mode = Mode::Profiles(Box::new(profiles::ProfilesView { dir: PathBuf::from("."), entries: Some(Vec::new()), error: None, sel: 0, scroll: 0, editor: None, busy: false, import_path: None }));
-        app.on_key(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::Profiles(v) if v.editor.as_ref().is_some_and(|e| e.profile.agent == crate::profiles::Runner::Codex && e.profile.name == "codex-planner")));
-        for _ in 0..6 { app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)); }
-        app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
-        app.on_paste("Read the code.\nMake a plan.".into());
-        assert!(matches!(&app.mode, Mode::Profiles(v) if v.editor.as_ref().is_some_and(|e| e.profile.instructions == "Read the code.\nMake a plan.")));
-        let screen = draw(&mut app, 80, 24);
-        show(&screen);
-        assert!(screen.contains("NAME") && screen.contains("INSTRUCTIONS") && screen.contains("Ctrl+S"));
-        for (width, height) in [(1, 1), (20, 6), (40, 15)] { draw(&mut app, width, height); }
-    }
-
-    #[test]
-    fn profiles_use_the_selected_checkout_for_overrides_and_review() {
-        let (_, mut app) = super::design_tests::render_with(110, 30);
-        let project = app.hy_model()[0].clone();
-        let worktree = project.wts.iter().find(|w| !w.main).unwrap().path.clone();
-        let personal = crate::profiles::starter(crate::profiles::Runner::Codex, 2);
-        let mut local = personal.clone();
-        local.model = "worktree-model".into();
-        app.cfg.profiles = vec![personal];
-        app.profile_projects.insert(project.path.clone(), Ok(Vec::new()));
-        app.profile_projects.insert(worktree.clone(), Ok(vec![local.clone()]));
-        let entries = crate::profiles::resolve(&app.cfg.profiles, &[local]).unwrap();
-        app.mode = Mode::Profiles(Box::new(profiles::ProfilesView { dir: worktree.clone(), entries: Some(entries), error: None, sel: 0, scroll: 0, editor: None, busy: false, import_path: None }));
-        app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
-        assert_eq!(app.profile_dir(0), Some(worktree));
-        assert_eq!(app.profiles_for(0).unwrap()[0].profile.model, "worktree-model");
-        let screen = draw(&mut app, 80, 24);
-        show(&screen);
-        assert!(screen.contains("worktree-model"));
-        assert!(matches!(&app.mode, Mode::HyPane(np) if np.place.is_some_and(|p| p >= 3)));
-    }
-
-    #[test]
-    fn workflow_mouse_editing_chooses_profiles_and_keeps_the_draft() {
-        let (_, mut app) = super::design_tests::render_with(100, 30);
-        app.open_workflows(false);
-        let Mode::Workflows(v) = &mut app.mode else { unreachable!() };
-        v.busy = false;
-        v.profiles = (0..3).map(|i| crate::profiles::Resolved { profile: crate::profiles::starter(crate::profiles::Runner::Codex, i), project: false }).collect();
-        v.entries = Some(vec![crate::workflows::ResolvedWorkflow { workflow: crate::workflows::Workflow { name: "feature".into(), planner: "codex-planner".into(), worker: "codex-worker".into(), reviewer: "codex-reviewer".into() }, project: false }]);
-        for (width, height) in [(80, 24), (100, 30), (160, 45)] {
-            let output = draw(&mut app, width, height); show(&output);
-            assert!(output.contains("feature") && output.contains("Run"));
-        }
-        let click = |app: &mut App, wanted: hydra::HyHit| {
-            let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(wanted)).then_some(*r)).expect("control is visible");
-            app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.x, row: at.y, modifiers: KeyModifiers::NONE });
-        };
-        click(&mut app, hydra::HyHit::WorkflowRow(0));
-        click(&mut app, hydra::HyHit::WorkflowRow(0));
-        assert!(matches!(&app.mode, Mode::Workflows(v) if v.editor.is_some()), "double-click opens the workflow");
-        let output = draw(&mut app, 80, 24); show(&output);
-        assert!(output.contains("PLANNER") && output.contains("Save"));
-        click(&mut app, hydra::HyHit::WorkflowField(1));
-        let output = draw(&mut app, 80, 24); show(&output);
-        assert!(output.contains("Choose a profile") && output.contains("codex-reviewer"));
-        click(&mut app, hydra::HyHit::WorkflowProfile(2));
-        assert!(matches!(&app.mode, Mode::Workflows(v) if v.picker.is_none() && v.editor.as_ref().is_some_and(|e| e.planner == "codex-reviewer")));
-        draw(&mut app, 80, 24);
-        click(&mut app, hydra::HyHit::WorkflowTab(0));
-        draw(&mut app, 80, 24);
-        click(&mut app, hydra::HyHit::WorkflowTab(1));
-        assert!(matches!(&app.mode, Mode::Workflows(v) if v.field == 1 && v.editor.as_ref().is_some_and(|e| e.planner == "codex-reviewer")), "mouse tab navigation retains the exact draft");
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::Workflows(v) if v.field == 2), "Tab inside the editor changes fields");
-        for _ in 0..2 { app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT)); }
-        app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
-        app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
-        assert!(matches!(&app.mode, Mode::Workflows(v) if !v.busy && v.error.is_some() && v.editor.as_ref().is_some_and(|e| e.name.is_empty() && e.planner == "codex-reviewer")), "invalid saves preserve the selected roles and edited name");
-    }
-
-    #[test]
-    fn profile_editor_handles_unicode_insertion_and_keeps_invalid_drafts() {
-        let (_, mut app) = super::design_tests::render_with(100, 30);
-        app.mode = Mode::Profiles(Box::new(profiles::ProfilesView { dir: PathBuf::from("."), entries: Some(Vec::new()), error: None, sel: 0, scroll: 0, editor: None, busy: false, import_path: None }));
-        app.on_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
-        app.on_paste("café".into());
-        for code in [KeyCode::Home, KeyCode::Right, KeyCode::Delete] { app.on_key(KeyEvent::new(code, KeyModifiers::NONE)); }
-        app.on_paste("Ω".into());
-        app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
-        assert!(matches!(&app.mode, Mode::Profiles(v) if !v.busy && v.error.is_some() && v.editor.as_ref().is_some_and(|e| e.profile.name == "cΩfé")), "failed validation preserves the edited Unicode text");
-        for _ in 0..6 { app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)); }
-        app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
-        app.on_paste("Read the code.\nMake a plan.".into());
-        app.on_key(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE));
-        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
-        app.on_paste("!".into());
-        assert!(matches!(&app.mode, Mode::Profiles(v) if v.editor.as_ref().is_some_and(|e| e.field == 6 && e.profile.instructions == "R!ead the code.\nMake a plan.")));
-        let output = draw(&mut app, 80, 24); show(&output);
-        assert!(output.contains("R!▏ead the code.") && output.contains("Make a plan."), "instructions are a visible multiline editor");
-    }
-
-    #[test]
-    fn workflow_reports_scroll_and_controls_stay_bound_to_the_open_run() {
-        let (_, mut app) = super::design_tests::render_with(100, 30);
-        let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
-        let mut run = crate::workflows::tests::run(); run.state = crate::workflows::State::Approval;
-        run.plan = (0..60).map(|i| format!("Plan line {i:02}\n")).collect();
-        run.work = "Worker verification evidence".into(); run.review = "Reviewer findings".into();
-        app.snap.workflows = vec![run.clone()];
-        app.open_workflow_run(1);
-        for (width, height) in [(80, 24), (100, 30), (160, 45)] {
-            let output = draw(&mut app, width, height); show(&output);
-            assert!(output.contains("Plan line 00") && output.contains("Back to runs"));
-        }
-        app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
-        let output = draw(&mut app, 80, 24); show(&output);
-        assert!(output.contains("Plan line 59"), "the full plan is reachable");
-        let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::AgentSheetBody)).then_some(*r)).unwrap();
-        let before = match &app.mode { Mode::Workflows(v) => v.scroll, _ => unreachable!() };
-        app.on_mouse(MouseEvent { kind: MouseEventKind::ScrollUp, column: at.x, row: at.y + 8, modifiers: KeyModifiers::NONE });
-        assert!(matches!(&app.mode, Mode::Workflows(v) if v.scroll < before), "the wheel scrolls the report");
-        run.id = 99; run.name = "another-task".into(); app.snap.workflows.push(run);
-        app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
-        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        assert!(matches!(rx.try_recv(), Ok(ClientMsg::Command(Command::WorkflowControl { run: 1, action: WorkflowAction::Cancel }))), "a new run cannot redirect a pending control");
-        app.on_key(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
-        let output = draw(&mut app, 80, 24); show(&output);
-        assert!(output.contains("Worker verification evidence"));
-        app.on_key(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::NONE));
-        assert!(draw(&mut app, 80, 24).contains("Reviewer findings"));
-        assert!(rx.try_recv().is_err(), "browsing report pages has no command side effects");
-    }
-
-    #[test]
-    fn agent_sheet_navigation_opens_items_and_keeps_drafts_between_tabs() {
-        let (_, mut app) = super::design_tests::render_with(110, 30);
-        let profile = crate::profiles::starter(crate::profiles::Runner::Codex, 0);
-        app.mode = Mode::Profiles(Box::new(profiles::ProfilesView { dir: PathBuf::from("."), entries: Some(vec![crate::profiles::Resolved { profile, project: false }]), error: None, sel: 0, scroll: 0, editor: None, busy: false, import_path: None }));
-        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::Profiles(v) if v.editor.is_some()), "Enter opens the saved role for editing; launching has its own action");
-        app.on_paste("-draft".into());
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::CONTROL));
-        assert!(matches!(&app.mode, Mode::Workflows(v) if !v.runs), "Ctrl+Tab changes sections from an editor");
-        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::CONTROL | KeyModifiers::SHIFT));
-        assert!(matches!(&app.mode, Mode::Profiles(v) if v.editor.as_ref().is_some_and(|e| e.profile.name.ends_with("-draft"))), "switching sections preserves the draft");
-        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::Workflows(v) if !v.runs), "Tab moves between sections from the list");
-    }
-
-    #[test]
-    fn workflow_run_enter_opens_reports_without_focusing_or_approving() {
-        let (_, mut app) = super::design_tests::render_with(110, 30);
-        let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
-        let mut run = crate::workflows::tests::run();
-        run.state = crate::workflows::State::Approval; run.term = Some(1); run.plan = "Read the entire proposed plan".into();
-        app.snap.workflows = vec![run];
-        app.open_workflows(true);
-        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::Workflows(v) if v.runs), "Enter opens run details instead of leaving for its terminal");
-        let output = draw(&mut app, 110, 30); show(&output);
-        assert!(output.contains("Read the entire proposed plan") && output.contains("Goal") && output.contains("Plan") && output.contains("Review"));
-        assert!(rx.try_recv().is_err(), "reading a run never focuses a pane or approves its plan");
-        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::Workflows(v) if v.runs), "Back returns to Runs before closing the sheet");
-    }
-
-    #[test]
-    fn profiles_and_workflows_use_the_right_sheet_and_human_run_controls() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
-        app.mode = Mode::Profiles(Box::new(profiles::ProfilesView { dir: PathBuf::from("."), entries: Some(Vec::new()), error: None, sel: 0, scroll: 0, editor: None, busy: false, import_path: None }));
-        let o = draw(&mut app, 160, 45); show(&o);
-        assert!(o.contains("Agent profiles") && o.contains("Workflows") && o.contains("Saved roles for fresh"));
-        let grid = hydra::grid(&app, Rect::new(0, 0, 160, 45));
-        assert!(grid.sheet.x > grid.panes.x && grid.sheet.right() == 159);
-        let close = app.hits.iter().find_map(|(r, h)| matches!(h, Hit::Hy(hydra::HyHit::WorkflowTab(1))).then_some(*r)).unwrap();
-        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: close.x + 1, row: close.y, modifiers: KeyModifiers::NONE });
-        let Mode::Workflows(v) = &mut app.mode else { panic!("workflow tab opens the editor") };
-        v.busy = false; v.entries = Some(vec![crate::workflows::ResolvedWorkflow { workflow: crate::workflows::Workflow { name: "feature".into(), planner: "my-plan".into(), worker: "my-worker".into(), reviewer: "my-reviewer".into() }, project: false }]);
-        v.profiles = (0..3).map(|i| {
-            let mut profile = crate::profiles::starter(crate::profiles::Runner::Codex, i);
-            profile.name = ["my-plan", "my-worker", "my-reviewer"][i].into();
-            crate::profiles::Resolved { profile, project: false }
-        }).collect();
-        for (w, h) in [(80, 24), (100, 30), (160, 45), (240, 60)] {
-            let o = draw(&mut app, w, h); show(&o);
-            assert!(o.contains("feature") && o.contains("my-plan") && o.contains("approval"));
-        }
-        app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
-        app.on_paste("Build password reset".into());
-        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::WorkflowStart { name, goal, .. }) if name == "feature" && goal == "Build password reset")));
-        let mut run = crate::workflows::tests::run(); run.state = crate::workflows::State::Approval; run.plan = "Approved only after the person reads this plan".into(); run.term = None;
-        app.snap.workflows.push(run);
-        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        let o = draw(&mut app, 100, 30); show(&o);
-        assert!(o.contains("Approve plan") && o.contains("Approved only after"));
-        app.on_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
-        assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::WorkflowControl { run: 1, action: WorkflowAction::Approve }))));
-        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::Workflows(v) if v.runs));
-        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(matches!(app.mode, Mode::Normal));
     }
 
     #[test]
@@ -1688,7 +1370,7 @@ mod hydra_tests {
             let screen = draw(&mut app, w, h);
             show(&screen);
             assert!(screen.contains("Show sidebar"));
-            for action in [Action::Profiles, Action::Workflows, Action::WorkflowRuns, Action::Palette, Action::AgentStatusSetup] {
+            for action in [Action::Palette, Action::AgentStatusSetup] {
                 let index = hydra::action_items().iter().position(|(_, a)| *a == action).expect("agent features and all commands are discoverable");
                 assert!(app.hits.iter().any(|(_, target)| *target == Hit::Hy(hydra::HyHit::ActionRow(index))));
             }
@@ -2168,6 +1850,33 @@ mod hydra_tests {
             assert_eq!(col(&name(2)), col(&name(1)) + 2, "a helper steps in under its commander");
             assert_eq!(col(&name(3)), col(&name(1)), "a session in another group doesn't");
         }
+    }
+
+    #[test]
+    fn live_helper_roles_have_distinct_theme_colors_and_working_markers() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.hy_fresh();
+        let mut terminal = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        terminal.draw(|f| render::draw(&mut app, f)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let color_at = |name: &str| {
+            let row = |y| (0..160).map(|x| buf[(x, y)].symbol()).collect::<String>();
+            let y = (0..45).find(|&y| row(y).contains(name)).unwrap_or_else(|| panic!("{name} helper row"));
+            let x = row(y)[..row(y).find(name).unwrap()].chars().count() as u16;
+            let marker = (0..x).find(|&x| buf[(x, y)].symbol() == "●").unwrap_or_else(|| panic!("{name} working marker"));
+            (buf[(x, y)].fg, buf[(marker, y)].fg)
+        };
+        let (planner, planner_status) = color_at("planner");
+        let (builder, builder_status) = color_at("builder");
+        let (reviewer, reviewer_status) = color_at("reviewer");
+        assert_eq!(
+            [planner, builder, reviewer],
+            [ratatui::style::Color::Rgb(0, 205, 210), ratatui::style::Color::Rgb(160, 120, 255), ratatui::style::Color::Rgb(240, 90, 190)],
+            "role colors use cyan, violet and magenta-pink instead of status colors"
+        );
+        assert!(planner != builder && builder != reviewer && reviewer != planner, "roles have distinct theme identity colors");
+        assert!([planner, builder, reviewer].into_iter().all(|color| color != app.theme.idle), "role colors stay distinct from idle");
+        assert_eq!([planner_status, builder_status, reviewer_status], [app.theme.working; 3], "each active helper keeps the working signal");
     }
 
     #[test]
@@ -2664,7 +2373,7 @@ mod hydra_tests {
         assert!(o.contains("▾ 4 subagents"));
         app.on_hy_hit(hydra::HyHit::ToggleSubs(with_subs), false);
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("▸ 4 subagents") && !o.contains("↳ workflow-subagent"), "folded");
+        assert!(o.contains("▸ 4 subagents") && !o.contains("planner"), "folded");
         assert!(app.session_items(with_subs).unwrap().1.iter().any(|(l, a)| l == "Show subagents" && *a == crate::client::menu::Act::ToggleSubs(with_subs)));
     }
 
@@ -2964,7 +2673,7 @@ mod hydra_tests {
         show(&o);
         assert!(o.contains("FOUND 1 ─") && o.contains("rate  codex · shop-api"), "typing finds what matches");
         let Mode::GoTo { query, sel } = app.mode.clone() else { panic!("still open") };
-        let rows = hydra::goto_rows(&app.hy_model(), &query, 0, &app.snap.workflows);
+        let rows = hydra::goto_rows(&app.hy_model(), &query, 0);
         assert!(matches!(rows[sel], hydra::GoRow::Sess(..)), "it lands on the matching session");
         app.on_key(key(KeyCode::Enter));
         assert!(matches!(app.mode, Mode::Normal), "Enter goes there");
@@ -3100,26 +2809,26 @@ mod hydra_tests {
     }
 
     #[test]
-    fn many_shared_files_are_one_line_and_never_ahead_of_the_agents() {
+    fn overlapping_files_stay_in_the_inbox_instead_of_cluttering_the_sidebar() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let model = app.hy_model();
         let p = model.iter().find(|p| p.git && p.wts.len() >= 2).expect("a repo with a worktree").clone();
         let names: Vec<String> = p.wts.iter().map(|w| w.name.clone()).collect();
         let shared = |n: usize| (0..n).map(|i| crate::client::overlap::Overlap { file: format!("src/file{i}.ts"), checkouts: names.clone() }).collect::<Vec<_>>();
-        // Sixty files changed in both checkouts: a count under each row, not sixty lines.
+        // Sixty overlapping changes remain available in the Inbox without crowding the sidebar.
         app.hy.overlaps.insert(p.path.clone(), shared(60));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("⇆ 60 shared files") && !o.contains("⇆ file0.ts"), "counted");
+        assert!(!o.contains("shared files") && !o.contains("file0.ts"), "sidebar stays focused on sessions");
         let lines = hydra::side_lines(&app, &app.hy_model(), &app.theme);
         assert!(lines.len() < 20, "the sidebar stays short: {} lines", lines.len());
-        // A couple are still named.
+        // A couple are still available through the Inbox.
         app.hy.overlaps.insert(p.path.clone(), shared(2));
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("⇆ file0.ts") && o.contains("⇆ file1.ts") && !o.contains("shared files"));
+        assert!(!o.contains("file0.ts") && !o.contains("file1.ts"));
         // In the Inbox they come after what needs you and what finished, however many.
         app.hy.overlaps.insert(p.path.clone(), shared(60));
-        let rows = hydra::goto_rows(&app.hy_model(), "", hydra::heads_up(&app).len(), &app.snap.workflows);
+        let rows = hydra::goto_rows(&app.hy_model(), "", hydra::heads_up(&app).len());
         let at = |want: &str| rows.iter().position(|r| matches!(r, hydra::GoRow::Head(h) if *h == want)).unwrap_or_else(|| panic!("{want} is a section"));
         assert!(at("NEEDS YOU") < at("JUST FINISHED") && at("JUST FINISHED") < at("HEADS UP"));
     }
@@ -3137,14 +2846,14 @@ mod hydra_tests {
         app.hy_fresh();
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("⇆ checkout.ts"), "a quiet tag under the agents' rows");
+        assert!(!o.contains("checkout.ts"), "worktree overlap labels stay out of the sidebar");
         // In the Inbox: HEADS UP, with what you can do about it.
         app.act(Action::Jump);
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("HEADS UP") && o.contains("both changed checkout.ts") && o.contains("both diffs") && o.contains(" dismiss"), "the heads-up row");
         let Mode::GoTo { query, .. } = app.mode.clone() else { panic!("the Inbox") };
-        let rows = hydra::goto_rows(&app.hy_model(), &query, 1, &app.snap.workflows);
+        let rows = hydra::goto_rows(&app.hy_model(), &query, 1);
         let at = rows.iter().position(|r| matches!(r, hydra::GoRow::Heads(_))).unwrap();
         app.mode = Mode::GoTo { query: String::new(), sel: at };
         // d: both diffs in the sheet.
@@ -3165,7 +2874,7 @@ mod hydra_tests {
         t.status = Status::Done;
         app.hy_fresh();
         app.act(Action::Jump);
-        let rows = hydra::goto_rows(&app.hy_model(), "", 0, &app.snap.workflows);
+        let rows = hydra::goto_rows(&app.hy_model(), "", 0);
         let done = rows.iter().position(|r| matches!(r, hydra::GoRow::Done(_))).expect("a finished row");
         app.mode = Mode::GoTo { query: String::new(), sel: done };
         let o = draw(&mut app, 160, 45);
