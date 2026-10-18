@@ -159,8 +159,12 @@ test("OpenCode TUI v1 scopes shared-backend blockers, helper completion and rout
     await bridge.api.default.tui(api);
     await flush();
     assert.equal(bridge.reports.at(-1).status, "working");
+    await emit("session.status", { sessionID: "child", status: { type: "busy" } });
+    assert.ok(bridge.reports.some((report) => report.event === "SubagentStart" && report.payload.agent_id === "child"), "reports the active child under its selected parent");
+    await emit("session.idle", { sessionID: "child" });
+    assert.ok(bridge.reports.some((report) => report.event === "SubagentStop" && report.payload.agent_id === "child"), "removes the child when it finishes");
     await emit("question.asked", { sessionID: "other", id: "unrelated" });
-    assert.equal(bridge.reports.at(-1).status, "working");
+    assert.ok(bridge.reports.some((report) => report.event === "opencode.tui" && report.status === "working"), "the parent remains working while another session asks a question");
     await emit("question.asked", { sessionID: "child", id: "q1" });
     assert.equal(bridge.reports.at(-1).status, "blocked");
     await emit("session.idle", { sessionID: "child" });
@@ -184,6 +188,7 @@ test("OpenCode TUI v1 scopes shared-backend blockers, helper completion and rout
 test("OpenCode TUI v2 never attributes another pane's events or emits fake initial completion", async () => {
   const bridge = await adapter("opencode-tui");
   const sessions = new Map([["root", { id: "root" }], ["child", { id: "child", parentID: "root" }], ["other", { id: "other" }]]);
+  const sessionStatuses = new Map([["root", "idle"], ["child", "idle"], ["other", "idle"]]);
   let route = { type: "session", sessionID: "root" };
   let receive;
   const api = {
@@ -191,7 +196,7 @@ test("OpenCode TUI v2 never attributes another pane's events or emits fake initi
     data: {
       session: {
         get: (id) => sessions.get(id), family: (id) => id === "root" ? ["child"] : [],
-        status: () => "idle", permission: { list: () => [] }, form: { list: () => [] },
+        status: (id) => sessionStatuses.get(id) ?? "idle", permission: { list: () => [] }, form: { list: () => [] },
       },
       listen: (callback) => { receive = callback; return () => { receive = undefined; }; },
     },
@@ -203,6 +208,12 @@ test("OpenCode TUI v2 never attributes another pane's events or emits fake initi
     assert.ok(!bridge.reports.some((r) => r.status === "done"));
     await emit("session.execution.started", { sessionID: "root" });
     assert.equal(bridge.reports.at(-1).status, "working");
+    sessionStatuses.set("child", "running");
+    await emit("session.execution.started", { sessionID: "child" });
+    assert.ok(bridge.reports.some((report) => report.event === "SubagentStart" && report.payload.agent_id === "child"), `reports a running descendant: ${JSON.stringify(bridge.reports)}`);
+    sessionStatuses.set("child", "idle");
+    await emit("session.execution.succeeded", { sessionID: "child" });
+    assert.ok(bridge.reports.some((report) => report.event === "SubagentStop" && report.payload.agent_id === "child"), "clears the descendant when it settles");
     await emit("form.created", { form: { sessionID: "other", id: "unrelated" } });
     assert.equal(bridge.reports.at(-1).status, "working");
     await emit("form.created", { form: { sessionID: "child", id: "q1" } });

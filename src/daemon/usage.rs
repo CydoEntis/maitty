@@ -117,6 +117,13 @@ impl Daemon {
                 t.subagents = pane.subagents;
                 self.dirty = true;
             }
+            if t.subagents.is_empty() {
+                t.subagent_seen = None;
+            } else {
+                // Disk polling is Codex's lifecycle source: unlike native hooks, it
+                // must refresh the same liveness timestamp while a helper is active.
+                t.subagent_seen = Some(Instant::now());
+            }
             if let Some(u) = pane.usage.filter(|u| t.usage != *u) {
                 t.usage = u;
                 self.dirty = true;

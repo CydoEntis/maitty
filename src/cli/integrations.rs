@@ -128,7 +128,7 @@ fn mastracode_at(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<P
         ("PermissionRequest", "blocked"),
         ("PermissionResult", "working"),
         ("SubagentStart", "working"),
-        ("SubagentEnd", "working"),
+        ("SubagentEnd", "same"),
         ("Interrupt", "idle"),
         ("AgentEnd", "done"),
         ("Stop", "done"),
@@ -189,6 +189,7 @@ fn kimi_at(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<PathBuf
             ("Stop", "done"),
             ("Interrupt", "idle"),
             ("SubagentStart", "working"),
+            ("SubagentStop", "same"),
             ("PreCompact", "working"),
         ] {
             let mut table = toml_edit::Table::new();
@@ -360,6 +361,8 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(&mastra).unwrap()).unwrap();
         assert_eq!(root["hooks"]["Stop"].as_array().unwrap().len(), 2);
         assert_eq!(root["hooks"]["PermissionRequest"][0]["timeout"], 10000);
+        assert!(root["hooks"]["SubagentStart"][0]["command"].as_str().unwrap().ends_with("--status working"));
+        assert!(root["hooks"]["SubagentEnd"][0]["command"].as_str().unwrap().ends_with("--status same"));
         assert!(
             root["hooks"]["PermissionRequest"][0].get("hooks").is_none(),
             "Mastracode uses flat command arrays"
@@ -377,7 +380,8 @@ mod tests {
         let text = std::fs::read_to_string(&kimi).unwrap();
         assert!(text.contains("# keep my config"));
         let root: toml::Value = toml::from_str(&text).unwrap();
-        assert_eq!(root["hooks"].as_array().unwrap().len(), 13);
+        assert!(root["hooks"].as_array().unwrap().iter().any(|hook| hook["event"].as_str() == Some("SubagentStart")));
+        assert!(root["hooks"].as_array().unwrap().iter().any(|hook| hook["event"].as_str() == Some("SubagentStop")));
         kimi_at(&kimi, "/bin/seshi", true).unwrap();
         let root: toml::Value = toml::from_str(&std::fs::read_to_string(&kimi).unwrap()).unwrap();
         assert_eq!(root["hooks"].as_array().unwrap().len(), 1);

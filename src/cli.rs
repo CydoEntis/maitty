@@ -744,7 +744,7 @@ pub fn status_from_hook(payload: &Value) -> Option<HookStatus> {
         // Gemini CLI.
         "BeforeAgent" | "BeforeTool" | "AfterTool" => HookStatus::Working,
         "AfterAgent" => HookStatus::Done,
-        "SubagentStop" => HookStatus::Same,
+        "SubagentStop" | "SubagentEnd" => HookStatus::Same,
         "PermissionRequest" => HookStatus::Blocked,
         "Notification" => {
             let kind = payload.get("notification_type").and_then(Value::as_str).unwrap_or("");
@@ -894,8 +894,8 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
     // news about that subagent, not about the session: it keeps the subagent listed as
     // running, and only a question it asks changes the session's state. Its transcript's
     // name, model and last words aren't the session's.
-    let tracks_helpers = matches!(origin.agent.as_str(), "claude" | "qwen");
-    let lifecycle = tracks_helpers && matches!(event.as_str(), "SubagentStart" | "SubagentStop");
+    let tracks_helpers = matches!(origin.agent.as_str(), "claude" | "qwen" | "kimi" | "mastracode" | "opencode");
+    let lifecycle = tracks_helpers && matches!(event.as_str(), "SubagentStart" | "SubagentStop" | "SubagentEnd");
     let inner_id = tracks_helpers.then(|| field(&["agent_id"]).or_else(|| {
         transcript.as_deref().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().into_owned()).filter(|s| s.starts_with("agent-"))
     })).flatten();
@@ -904,7 +904,7 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
     let subagent = (lifecycle || inner).then(|| Subagent {
         id: field(&["agent_id", "subagent_id", "tool_use_id"]).or(inner_id).unwrap_or_default(),
         kind: field(&["agent_type", "subagent_type", "agent_name"]).unwrap_or_else(|| "subagent".into()),
-        start: event != "SubagentStop",
+        start: !matches!(event.as_str(), "SubagentStop" | "SubagentEnd"),
     });
     let session_facts = !inner;
     let prompt = field(&["prompt"]).filter(|_| session_facts).map(|p| one_line(&p, 160));
@@ -1615,6 +1615,22 @@ mod tests {
         assert_eq!(st(serde_json::json!({"type": "question.rejected"})), Some(H::Working));
         assert_eq!(st(serde_json::json!({"type": "session.error"})), Some(H::Done));
         assert_eq!(st(serde_json::json!({"type": "agent-turn-complete"})), Some(H::Done), "codex unchanged");
+    }
+
+    #[test]
+    fn native_helper_events_from_kimi_and_mastracode_reach_the_parent() {
+        use crate::protocol::{HookStatus as H, Subagent};
+        let start = json!({"hook_event_name":"SubagentStart","session_id":"root","agent_name":"Explore"});
+        let origin = super::HookOrigin { term: 9, agent: "kimi".into(), pid: 10, token: String::new() };
+        let ClientMsg::Hook { subagent, status, .. } = super::hook_message(origin, &start, H::Working) else { panic!("expected hook") };
+        assert_eq!(status, H::Working);
+        assert_eq!(subagent, Some(Subagent { id: String::new(), kind: "Explore".into(), start: true }));
+
+        let end = json!({"hook_event_name":"SubagentEnd","session_id":"root","agent_id":"child","agent_type":"review"});
+        let origin = super::HookOrigin { term: 9, agent: "mastracode".into(), pid: 10, token: String::new() };
+        let ClientMsg::Hook { subagent, status, .. } = super::hook_message(origin, &end, H::Same) else { panic!("expected hook") };
+        assert_eq!(status, H::Same);
+        assert_eq!(subagent, Some(Subagent { id: "child".into(), kind: "review".into(), start: false }));
     }
 
     #[test]
