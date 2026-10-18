@@ -75,11 +75,9 @@ impl Daemon {
         if self.codex_busy || self.last_codex.elapsed() < CODEX_EVERY {
             return;
         }
-        let panes: Vec<(TermId, PathBuf)> = self
-            .terms
-            .values()
+        let panes: Vec<_> = self.terms.values()
             .filter(|t| t.agent.as_deref() == Some("codex"))
-            .map(|t| (t.id, t.head.as_ref().map(|h| h.top.clone()).unwrap_or_else(|| t.cwd.clone())))
+            .map(|t| (t.id, t.session.clone()))
             .collect();
         if panes.is_empty() {
             return;
@@ -89,39 +87,37 @@ impl Daemon {
         let tx = self.tx.clone();
         tokio::task::spawn_blocking(move || {
             let sessions = codex_recent_sessions();
-            let mut usage = Vec::new();
+            let mut facts = Vec::new();
             let mut limits = None;
-            let mut subagents = Vec::new();
-            for (term, dir) in panes {
-                // The session you talk to, not one of its subagents (they run in the same folder).
-                let Some(root) = sessions.iter().find(|s| s.parent.is_none() && s.cwd.as_deref().is_some_and(|c| same_path(c, &dir))) else { continue };
-                let tail = read_tail(&root.file, CODEX_TAIL);
-                let (u, l) = codex_facts(&tail);
-                if let Some(u) = u {
-                    usage.push((term, u));
+            for (term, session) in &panes {
+                let mut pane = CodexPaneFacts { term: *term, session: session.clone(), usage: None, subagents: Vec::new() };
+                let owners = panes.iter().filter(|(_, id)| id == session).count();
+                if let Some(root) = codex_root(&sessions, pane.session.as_deref()).filter(|_| owners == 1) {
+                    let tail = read_tail(&root.file, CODEX_TAIL);
+                    let (u, l) = codex_facts(&tail);
+                    pane.usage = u;
+                    limits = limits.or(l);
+                    pane.subagents = codex_helpers(root, &tail, &sessions);
                 }
-                limits = limits.or(l);
-                subagents.push((term, codex_helpers(root, &tail, &sessions)));
+                facts.push(pane);
             }
-            let _ = tx.blocking_send(Ev::CodexUsage { usage, limits, subagents });
+            let _ = tx.blocking_send(Ev::CodexUsage { facts, limits });
         });
     }
 
-    pub(super) fn codex_usage(&mut self, usage: Vec<(TermId, Usage)>, limits: Option<Vec<Limit>>, subagents: Vec<(TermId, Vec<(String, String)>)>) {
+    pub(super) fn codex_usage(&mut self, facts: Vec<CodexPaneFacts>, limits: Option<Vec<Limit>>) {
         self.codex_busy = false;
-        // Codex has no hooks for its subagents: they're read off its session files instead.
-        for (term, subs) in subagents {
-            if let Some(t) = self.terms.get_mut(&term)
-                && t.subagents != subs
-            {
-                t.subagents = subs;
+        for pane in facts {
+            let Some(t) = self.terms.get_mut(&pane.term) else { continue };
+            // A new thread or another agent may have replaced the one read in the background.
+            if !pane.belongs_to(t.agent.as_deref(), t.session.as_deref()) {
+                continue;
+            }
+            if t.subagents != pane.subagents {
+                t.subagents = pane.subagents;
                 self.dirty = true;
             }
-        }
-        for (term, u) in usage {
-            if let Some(t) = self.terms.get_mut(&term)
-                && t.usage != u
-            {
+            if let Some(u) = pane.usage.filter(|u| t.usage != *u) {
                 t.usage = u;
                 self.dirty = true;
             }
@@ -169,6 +165,27 @@ impl Daemon {
             self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{agent}'s limit reset: told it to continue (pane {term})")));
         }
     }
+}
+
+/// A disk snapshot is tied to the thread that owned the pane when polling began.
+#[derive(Debug)]
+pub(crate) struct CodexPaneFacts {
+    pub term: TermId,
+    pub session: Option<String>,
+    pub usage: Option<Usage>,
+    pub subagents: Vec<(String, String)>,
+}
+
+impl CodexPaneFacts {
+    fn belongs_to(&self, agent: Option<&str>, session: Option<&str>) -> bool {
+        agent == Some("codex") && session == self.session.as_deref()
+    }
+}
+
+fn codex_root<'a>(sessions: &'a [CodexSession], session: Option<&str>) -> Option<&'a CodexSession> {
+    // Folder membership cannot establish ownership when several agents share a checkout.
+    let id = session?;
+    sessions.iter().find(|s| s.parent.is_none() && s.id == id)
 }
 
 /// Codex's sessions folder (`$CODEX_HOME/sessions`, else `~/.codex/sessions`).
@@ -391,6 +408,20 @@ mod tests {
         assert!((day[0].cost - 1.25).abs() < 1e-9);
         assert_eq!((day[1].agent.as_str(), day[1].turns), ("codex", 1));
         assert_eq!((day[2].agent.as_str(), day[2].turns, day[2].working_secs), ("gemini", 0, 0), "cost without a turn still counts");
+    }
+
+    #[test]
+    fn codex_helpers_belong_to_the_exact_thread_even_in_the_same_folder() {
+        let root = |id: &str| CodexSession { file: PathBuf::new(), cwd: Some(PathBuf::from("same-project")), id: id.into(), parent: None, name: String::new(), modified: std::time::SystemTime::UNIX_EPOCH };
+        let sessions = vec![root("newest"), root("older")];
+        assert_eq!(codex_root(&sessions, Some("older")).unwrap().id, "older");
+        assert_eq!(codex_root(&sessions, Some("newest")).unwrap().id, "newest");
+        assert!(codex_root(&sessions, None).is_none());
+        assert!(codex_root(&sessions, Some("unknown")).is_none());
+        let pane = CodexPaneFacts { term: 1, session: Some("older".into()), usage: None, subagents: Vec::new() };
+        assert!(pane.belongs_to(Some("codex"), Some("older")));
+        assert!(!pane.belongs_to(Some("codex"), Some("newest")));
+        assert!(!pane.belongs_to(Some("pi"), Some("older")));
     }
 
     #[test]

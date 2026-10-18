@@ -2,6 +2,7 @@
 
 use crate::ipc;
 pub(crate) mod workflow;
+pub(crate) mod integrations;
 use crate::layout::Dir;
 use crate::protocol::*;
 use anyhow::{Context, Result, anyhow, bail};
@@ -758,6 +759,11 @@ pub fn status_from_hook(payload: &Value) -> Option<HookStatus> {
         "Stop" => HookStatus::Done,
         "SessionStart" => HookStatus::Idle,
         "SessionEnd" => HookStatus::Gone,
+        "pi.agent_start" | "pi.ui_prompt_end" => HookStatus::Working,
+        "pi.ui_prompt_start" => HookStatus::Blocked,
+        "pi.agent_settled" => HookStatus::Done,
+        "pi.session_start" => HookStatus::Idle,
+        "pi.session_shutdown" => HookStatus::Gone,
         // opencode (its plugin passes the event).
         "" if payload.get("type").and_then(Value::as_str).is_some_and(|t| t.contains('.')) => {
             let ty = payload.get("type").and_then(Value::as_str).unwrap_or("");
@@ -765,9 +771,9 @@ pub fn status_from_hook(payload: &Value) -> Option<HookStatus> {
             match ty {
                 "session.status" if state == "busy" || state == "retry" => HookStatus::Working,
                 "session.status" if state == "idle" => HookStatus::Done,
-                "session.idle" => HookStatus::Done,
+                "session.idle" | "session.error" => HookStatus::Done,
                 "permission.asked" | "permission.updated" | "question.asked" => HookStatus::Blocked,
-                "permission.replied" => HookStatus::Working,
+                "permission.replied" | "question.replied" | "question.rejected" => HookStatus::Working,
                 "session.created" => HookStatus::Idle,
                 "session.deleted" => HookStatus::Gone,
                 _ => return None,
@@ -821,6 +827,7 @@ fn parse_status(s: &str) -> Option<HookStatus> {
         "blocked" | "waiting" | "input" => HookStatus::Blocked,
         "done" | "finished" => HookStatus::Done,
         "idle" => HookStatus::Idle,
+        "same" => HookStatus::Same,
         "gone" | "exit" | "end" => HookStatus::Gone,
         _ => return None,
     })
@@ -831,7 +838,7 @@ pub fn hook(agent: &str, status: Option<&str>, payload: Option<&str>) -> Result<
     let Some(term) = std::env::var("SESHI_TERM_ID").ok().and_then(|s| s.parse::<TermId>().ok()) else {
         return Ok(());
     };
-    let mut payload_json = Value::Null;
+    let mut payload_json = payload.and_then(|raw| serde_json::from_str(raw).ok()).unwrap_or(Value::Null);
     let status = match status {
         Some(s) => parse_status(s).ok_or_else(|| anyhow!("unknown status {s}"))?,
         None => {
@@ -881,16 +888,17 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
     let field = |names: &[&str]| names.iter().find_map(|n| payload_json.get(*n)?.as_str().map(str::to_string));
     let session = field(&["session_id", "thread-id", "thread_id", "conversation_id"]);
     let cwd = field(&["cwd"]).map(PathBuf::from);
-    let mut event = field(&["hook_event_name"]).unwrap_or_default();
+    let mut event = field(&["hook_event_name", "type"]).unwrap_or_default();
     let transcript = field(&["transcript_path"]).map(PathBuf::from);
     // A hook fired inside a subagent (it has an agent id, or its own agent-… transcript) is
     // news about that subagent, not about the session: it keeps the subagent listed as
     // running, and only a question it asks changes the session's state. Its transcript's
     // name, model and last words aren't the session's.
-    let lifecycle = matches!(event.as_str(), "SubagentStart" | "SubagentStop");
-    let inner_id = field(&["agent_id"]).or_else(|| {
+    let tracks_helpers = matches!(origin.agent.as_str(), "claude" | "qwen");
+    let lifecycle = tracks_helpers && matches!(event.as_str(), "SubagentStart" | "SubagentStop");
+    let inner_id = tracks_helpers.then(|| field(&["agent_id"]).or_else(|| {
         transcript.as_deref().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().into_owned()).filter(|s| s.starts_with("agent-"))
-    });
+    })).flatten();
     let inner = !lifecycle && inner_id.is_some();
     let status = if inner && status != HookStatus::Blocked { HookStatus::Same } else { status };
     let subagent = (lifecycle || inner).then(|| Subagent {
@@ -938,29 +946,8 @@ fn home_settings(env: &str, dir: &str) -> PathBuf {
 
 /// opencode has no command hooks: a plugin hands each event to `seshi hook opencode`.
 fn opencode_plugin(uninstall: bool) -> Result<PathBuf> {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().join(".config")).unwrap_or_default());
-    let path = base.join("opencode").join("plugins").join("seshi.js");
-    if uninstall {
-        let _ = std::fs::remove_file(&path);
-        return Ok(path);
-    }
     let exe = this_exe()?;
-    let js = format!(
-        "// Written by `seshi integrate opencode`: tells seshi what opencode is doing (inert outside seshi).\n\
-export const Seshi = async ({{ $, directory }}) => ({{\n\
-  event: async ({{ event }}) => {{\n\
-    if (!process.env.SESHI_TERM_ID) return\n\
-    await $`{exe} hook opencode ${{JSON.stringify({{ ...event, cwd: directory }})}}`.quiet().nothrow()\n\
-  }},\n\
-}})\n"
-    );
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    crate::config::write_atomic(&path, js)?;
-    Ok(path)
+    integrations::install_opencode(&exe, uninstall)
 }
 
 const CLAUDE_EVENTS: &[(&str, Option<&str>)] = &[
@@ -1415,6 +1402,19 @@ pub fn integrate(agent: &str, uninstall: bool) -> Result<()> {
             println!("{} seshi's opencode plugin: {}", if uninstall { "removed" } else { "wrote" }, path.display());
             Ok(())
         }
+        "pi" | "omp" | "mastracode" | "kilo" | "kimi" => {
+            let path = match agent {
+                "pi" => integrations::install_pi(&exe, uninstall)?,
+                "omp" => integrations::install_omp(&exe, uninstall)?,
+                "mastracode" => integrations::install_mastracode(&exe, uninstall)?,
+                "kilo" => integrations::install_kilo(&exe, uninstall)?,
+                "kimi" => integrations::install_kimi(&exe, uninstall)?,
+                _ => unreachable!(),
+            };
+            println!("{} seshi's {agent} status integration: {}", if uninstall { "removed" } else { "wrote" }, path.display());
+            println!("Restart {agent} to load it. Status follows the session, including z.ai and DeepSeek models.");
+            Ok(())
+        }
         "codex" => {
             let path = codex_config();
             match codex_notify(&path, &exe, uninstall)? {
@@ -1611,7 +1611,27 @@ mod tests {
         assert_eq!(st(serde_json::json!({"type": "session.status", "properties": {"status": {"type": "busy"}}})), Some(H::Working), "opencode");
         assert_eq!(st(serde_json::json!({"type": "permission.asked", "properties": {}})), Some(H::Blocked));
         assert_eq!(st(serde_json::json!({"type": "session.idle", "properties": {}})), Some(H::Done));
+        assert_eq!(st(serde_json::json!({"type": "question.replied"})), Some(H::Working));
+        assert_eq!(st(serde_json::json!({"type": "question.rejected"})), Some(H::Working));
+        assert_eq!(st(serde_json::json!({"type": "session.error"})), Some(H::Done));
         assert_eq!(st(serde_json::json!({"type": "agent-turn-complete"})), Some(H::Done), "codex unchanged");
+    }
+
+    #[test]
+    fn pi_native_events_map_to_status_with_evidence_and_no_conversation_payload() {
+        use crate::protocol::HookStatus as H;
+        for (event, expected) in [("pi.session_start", H::Idle), ("pi.agent_start", H::Working), ("pi.ui_prompt_start", H::Blocked), ("pi.ui_prompt_end", H::Working), ("pi.agent_settled", H::Done), ("pi.session_shutdown", H::Gone)] {
+            let payload = json!({"hook_event_name":event,"cwd":"/project"});
+            assert_eq!(super::status_from_hook(&payload), Some(expected));
+            let origin = super::HookOrigin { term: 7, agent: "pi".into(), pid: 10, token: String::new() };
+            let ClientMsg::Hook { event: evidence, prompt, said, .. } = super::hook_message(origin, &payload, expected) else { panic!("expected hook") };
+            assert_eq!(evidence, event);
+            assert!(prompt.is_none() && said.is_none());
+        }
+        let payload = json!({"type":"question.asked"});
+        let origin = super::HookOrigin { term: 7, agent: "opencode".into(), pid: 10, token: String::new() };
+        let ClientMsg::Hook { event, .. } = super::hook_message(origin, &payload, H::Blocked) else { panic!("expected hook") };
+        assert_eq!(event, "question.asked");
     }
 
     #[test]

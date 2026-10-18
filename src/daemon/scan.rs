@@ -231,7 +231,8 @@ fn scan(sys: &System, roots: &[(TermId, u32)], agents: &[CompiledAgent]) -> Vec<
 }
 
 fn match_agent(name: &str, cmd: &[std::ffi::OsString], agents: &[CompiledAgent]) -> Option<String> {
-    if let Some(a) = agents.iter().find(|a| a.process.iter().any(|p| p == name)) {
+    if let Some(a) = agents.iter().find(|a| a.process.iter().any(|p| p == name)
+        || (a.builtin_process && a.name == "muse" && name.strip_prefix("muse-bin-").is_some_and(|v| v.starts_with(|c: char| c.is_ascii_digit())))) {
         return Some(a.name.clone());
     }
     if agents.iter().all(|a| a.cmdline.is_empty()) || cmd.is_empty() {
@@ -240,8 +241,40 @@ fn match_agent(name: &str, cmd: &[std::ffi::OsString], agents: &[CompiledAgent])
     let line = cmd.iter().map(|s| s.to_string_lossy()).collect::<Vec<_>>().join(" ");
     agents
         .iter()
-        .find(|a| a.cmdline.iter().any(|c| line.contains(c.as_str())))
+        .find(|a| {
+            if !a.builtin_process {
+                return a.cmdline.iter().any(|c| line.contains(c.as_str()));
+            }
+            entrypoint(name, cmd).is_some_and(|entry| {
+                let entry = entry.replace('\\', "/").to_ascii_lowercase();
+                a.cmdline.iter().any(|c| entry.contains(&c.replace('\\', "/").to_ascii_lowercase()))
+                    && ["/cli.js", "/cli.mjs", "/cli", "/codex.js", "/bin.js", "/index.js", "/letta.js", "/main.py", "/main.mjs", "/opencode", "/opencode.exe", "/amp", "/auggie", "/grok", "/aider", "/hermes", "/hermes-agent", "/cline", "/cline.exe", "/.cline"]
+                        .iter().any(|suffix| entry.ends_with(suffix))
+            })
+        })
         .map(|a| a.name.clone())
+}
+
+/// Inspect only the interpreter's executed file. Search and eval arguments often quote
+/// agent package names while inspecting another session.
+fn entrypoint<'a>(name: &str, cmd: &'a [std::ffi::OsString]) -> Option<std::borrow::Cow<'a, str>> {
+    if !["node", "nodejs", "bun", "deno", "python", "python3", "python3.11", "python3.12", "python3.13", "python3.14"].contains(&name) {
+        return None;
+    }
+    for arg in cmd.iter().skip(1) {
+        let arg = arg.to_string_lossy();
+        if ["-e", "--eval", "-p", "--print", "-c", "-m", "--test", "test"].contains(&arg.as_ref()) {
+            return None;
+        }
+        if arg.starts_with('-') {
+            if ["-r", "--require", "--import", "--loader", "--experimental-loader", "--inspect-port"].contains(&arg.as_ref()) {
+                return None;
+            }
+            continue;
+        }
+        return Some(arg);
+    }
+    None
 }
 
 #[cfg(test)]
@@ -285,5 +318,44 @@ mod remote_tests {
         assert_eq!(host("ssh ssh://me@host:22").as_deref(), Some("host"));
         assert_eq!(host("mosh --ssh=ssh -p 22 me@remote").as_deref(), Some("remote"));
         assert_eq!(host("ssh -V"), None);
+    }
+}
+
+#[cfg(test)]
+mod agent_tests {
+    #[test]
+    fn all_herdr_agents_and_existing_agents_have_process_identity() {
+        let agents = crate::config::Config::default().agent_defs();
+        assert_eq!(agents.len(), 29);
+        for agent in &agents {
+            let process = &agent.process[0];
+            assert_eq!(super::match_agent(process, &[], &agents).as_deref(), Some(agent.name.as_str()));
+        }
+        for process in ["muse-bin-0.9.3", "muse-bin-1"] {
+            assert_eq!(super::match_agent(process, &[], &agents).as_deref(), Some("muse"));
+        }
+        for (name, args) in [
+            ("rg", vec!["rg", "@openai/codex"]),
+            ("powershell", vec!["powershell", "-Command", "node /npm/@openai/codex/bin/cli.js"]),
+            ("node", vec!["node", "-e", "/npm/@openai/codex/bin/cli.js"]),
+            ("node", vec!["node", "--test", "/npm/@openai/codex/bin/cli.js"]),
+            ("node", vec!["node", "inspect.js", "/npm/@openai/codex/bin/cli.js"]),
+            ("node", vec!["node", "/npm/@openai/codex/cli.test.js"]),
+        ] {
+            let cmd = args.into_iter().map(Into::into).collect::<Vec<_>>();
+            assert_eq!(super::match_agent(name, &cmd, &agents), None, "{cmd:?}");
+        }
+    }
+
+    #[test]
+    fn recognizes_current_pi_and_deepseek_node_packages() {
+        let agents = crate::config::Config::default().agent_defs();
+        for (package, expected) in [("@earendil-works/pi-coding-agent/dist/bundle/cli.js", "pi"), ("@mariozechner/pi-coding-agent/dist/cli.js", "pi"), ("@deepseek-ai/dsh/lib/bin.js", "deepseek"), ("opencode-ai/bin/opencode", "opencode"),
+            ("@openai/codex/bin/codex.js", "codex"), ("@cline/cli-windows-x64/bin/cline.exe", "cline"),
+            ("@oh-my-pi/pi-coding-agent/dist/cli.js", "omp"), ("mastracode/dist/cli.js", "mastracode"),
+            ("@moonshot-ai/kimi-code/dist/main.mjs", "kimi"), ("@letta-ai/letta-code/letta.js", "letta")] {
+            let cmd = ["node".into(), format!("C:/npm/node_modules/{package}").into()];
+            assert_eq!(super::match_agent("node", &cmd, &agents).as_deref(), Some(expected));
+        }
     }
 }

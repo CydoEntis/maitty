@@ -41,7 +41,7 @@ pub(super) const UNASKED_QUESTION_GONE_AFTER: Duration = Duration::from_secs(8);
 static CHOICES: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"(?m)^[\s│┃]*[❯>]?\s*1\.\s+\S").unwrap());
 /// Codex can keep working while an asynchronous question waits in its composer.
 static CODEX_QUEUED_QUESTION: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(crate::config::CODEX_QUEUED_QUESTION_PATTERN).unwrap());
-const CODEX_QUESTION_WHY: &str = "screen: Codex has an unanswered queued question";
+const CODEX_QUESTION_WHY: &str = "screen: Codex has an unanswered question";
 /// A "done" held while subagents run is let through once none has been heard from for this
 /// long (one died without saying so). Background agents can run, and wait on CI, for a while.
 /// After a queued follow-up goes in, the agent has this long to say it has started on it
@@ -52,6 +52,10 @@ pub(super) const SUBAGENTS_QUIET_AT_MOST: Duration = Duration::from_secs(60 * 60
 const REPEATED_PROMPT_WITHIN: Duration = Duration::from_secs(5);
 /// Agents whose hooks report only the end of a turn.
 const HOOKS_END_ONLY: &[&str] = &["codex"];
+/// These adapters report every reply/dismissal, including custom extension dialogs.
+const NATIVE_PROMPT_LIFECYCLE: &[&str] = &["pi", "omp", "mastracode", "opencode", "kilo", "kimi"];
+const FULL_LIFECYCLE_HOOKS: &[&str] = &["pi", "omp", "mastracode", "opencode", "kilo", "kimi"];
+const VISIBLE_BLOCKER_WHY: &str = "screen: a live agent dialog needs you";
 /// The progress indicator gone this long with no turn-end: the turn was cancelled (Esc).
 const CANCELLED_AFTER: Duration = Duration::from_secs(2);
 /// An agent read from its screen (no hooks) is done only once its screen has been still this
@@ -118,6 +122,9 @@ impl Daemon {
                     if let Some(id) = session.filter(|s| {
                         !s.is_empty() && s.len() < 128 && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
                     }) {
+                        if t.session.as_deref() != Some(&id) {
+                            t.subagents.clear();
+                        }
                         t.session = Some(id);
                     }
                     // An agent stays in the group of the folder it started in: only its first
@@ -136,6 +143,7 @@ impl Daemon {
         if let Some(t) = self.terms.get_mut(&term) {
             let name = if event.is_empty() { "status report".to_string() } else { event.to_string() };
             t.last_hook = Some((name, term::unix_now()));
+            t.last_hook_at = Some(Instant::now());
             self.dirty = true;
         }
         let focused = self.focused_term() == Some(term) && self.has_viewer();
@@ -146,9 +154,13 @@ impl Daemon {
             return;
         }
         let Some(t) = self.terms.get_mut(&term) else { return };
+        t.screen_blocked_from = None;
         let now = Instant::now();
         if matches!(status, HookStatus::Done | HookStatus::Idle) {
             t.last_turn_end = now;
+            if agent == "codex" {
+                t.ended_activity = self.agents.iter().find(|a| a.name == "codex").and_then(|d| d.working.iter().find_map(|r| r.find(&t.tail_text(t.rows)).map(|m| m.as_str().to_owned())));
+            }
         }
         let new = match status {
             HookStatus::Same => {
@@ -177,6 +189,7 @@ impl Daemon {
             HookStatus::Idle if std::mem::take(&mut t.restore_unseen) && !focused => Status::Done,
             HookStatus::Gone => {
                 t.hooked = false;
+                t.hooked_process_seen = false;
                 t.agent = None;
                 t.session = None;
                 t.summary.clear();
@@ -196,6 +209,7 @@ impl Daemon {
         };
         t.hooked = true;
         if !agent.is_empty() {
+            if t.agent.as_deref() != Some(&agent) { t.hooked_process_seen = false; }
             t.agent = Some(agent);
         }
         if new == Status::Working {
@@ -319,18 +333,16 @@ impl Daemon {
             // A turn has started: the next queued follow-up waits for this one to end.
             if new == Status::Working {
                 t.queue_sent = None;
+                t.alerted = None;
             }
         }
         if matches!(new, Status::Blocked | Status::Done) {
             self.broadcast(|c| c.attach, ServerMsg::Attention { term, status: new });
-            if new == Status::Blocked {
-                self.alert(term, new);
-            } else if !self.is_helper(term)
+            if (new != Status::Done || !self.is_helper(term))
                 && let Some(t) = self.terms.get_mut(&term)
+                && let Some(delay) = crate::alert::settle_delay(new)
             {
-                // Finished waits, to see whether it stays finished. One that another
-                // agent started isn't said at all: that agent is the one waiting on it.
-                t.alert_due = Some(std::time::Instant::now() + crate::alert::FINISHED_SETTLES);
+                t.alert_due = Some((new, std::time::Instant::now() + delay));
             }
         }
     }
@@ -340,14 +352,14 @@ impl Daemon {
         self.terms.get(&term).and_then(|t| t.started_by).is_some_and(|by| self.terms.contains_key(&by))
     }
 
-    /// Agents that finished a while ago and are still finished: say so now.
+    /// Pending alerts only ring while the matching attention status is still current.
     pub(super) fn settled_alerts(&mut self) {
         let now = std::time::Instant::now();
-        let due: Vec<TermId> = self.terms.values().filter(|t| t.alert_due.is_some_and(|at| at <= now)).map(|t| t.id).collect();
-        for term in due {
-            let still = self.terms.get_mut(&term).is_some_and(|t| t.alert_due.take().is_some() && t.status == Status::Done);
+        let due: Vec<_> = self.terms.values().filter_map(|t| t.alert_due.filter(|(_, at)| *at <= now).map(|(status, _)| (t.id, status))).collect();
+        for (term, status) in due {
+            let still = self.terms.get_mut(&term).is_some_and(|t| t.alert_due.take().is_some() && t.status == status);
             if still {
-                self.alert(term, Status::Done);
+                self.alert(term, status);
             }
         }
     }
@@ -436,8 +448,26 @@ impl Daemon {
         let rows = self.cfg.detection.pattern_rows;
         let mut changes = Vec::new();
         let mut still_working = Vec::new();
+        let mut screen_blocks = Vec::new();
         for t in self.terms.values() {
             let Some(name) = &t.agent else { continue };
+            let def = self.agents.iter().find(|a| &a.name == name);
+            let screen = t.tail_text(t.rows);
+            let signal = if def.is_some_and(|d| d.builtin_screen) {
+                crate::detection::detect(name, crate::detection::DetectionInput { screen: &screen, osc_title: &t.parser.callbacks().title, osc_progress: &t.parser.callbacks().progress })
+            } else { crate::detection::Signal::default() };
+            if signal.skip { continue; }
+            if t.hooked && !FULL_LIFECYCLE_HOOKS.contains(&name.as_str()) {
+                if signal.visible_blocker && signal.status == Some(Status::Blocked) && t.last_output >= t.last_turn_end {
+                    screen_blocks.push((t.id, t.status));
+                    changes.push((t.id, Status::Blocked, VISIBLE_BLOCKER_WHY.into()));
+                    continue;
+                }
+                if t.status == Status::Blocked && t.status_why == VISIBLE_BLOCKER_WHY {
+                    changes.push((t.id, t.screen_blocked_from.unwrap_or(Status::Idle), "screen: live dialog dismissed".into()));
+                    continue;
+                }
+            }
             if name == "codex" && CODEX_QUEUED_QUESTION.is_match(&t.tail_text(rows)) {
                 changes.push((t.id, Status::Blocked, CODEX_QUESTION_WHY.into()));
                 continue;
@@ -474,6 +504,7 @@ impl Daemon {
                 // it was asked, the pane has gone quiet, and no question shows on screen, it's
                 // over.
                 if t.status == Status::Blocked
+                    && !NATIVE_PROMPT_LIFECYCLE.contains(&name.as_str())
                     && t.blocked_at.is_some_and(|b| t.last_input > b)
                     && t.last_input.elapsed() > QUESTION_GONE_AFTER
                     && t.last_output.elapsed() > QUESTION_GONE_AFTER
@@ -487,6 +518,7 @@ impl Daemon {
                 // A permission ask that auto mode (or the agent) settled by itself also sends
                 // no hook: a while on, with no question on screen at all, it's over.
                 if t.status == Status::Blocked
+                    && !NATIVE_PROMPT_LIFECYCLE.contains(&name.as_str())
                     && t.blocked_at.is_some_and(|b| b.elapsed() > UNASKED_QUESTION_GONE_AFTER)
                     && !self.questions.iter().any(|(q, ..)| q.term == t.id)
                 {
@@ -505,15 +537,15 @@ impl Daemon {
                 if HOOKS_END_ONLY.contains(&name.as_str())
                     && matches!(t.status, Status::Idle | Status::Done)
                     // Typed since it finished: not the last turn's line still on screen.
-                    && t.last_input > t.last_turn_end
                     && let Some(d) = self.agents.iter().find(|a| &a.name == name)
                     && let Some(r) = d.working.iter().find(|r| r.is_match(&t.tail_text(rows)))
+                    && (t.last_input > t.last_turn_end || (t.last_output > t.last_turn_end
+                        && t.ended_activity.as_deref() != r.find(&t.tail_text(rows)).map(|m| m.as_str())))
                 {
                     changes.push((t.id, Status::Working, format!("screen: matched `{}`", r.as_str())));
                 }
                 continue;
             }
-            let def = self.agents.iter().find(|a| &a.name == name);
             let text = t.tail_text(rows);
             let blocked = def.and_then(|d| d.blocked.iter().find(|r| r.is_match(&text)));
             let working: Option<String> = match def {
@@ -525,7 +557,11 @@ impl Daemon {
             // printed under it): working until the screen has also gone still, so it doesn't
             // flip to done (and alert) and back on every check.
             let still_going = t.status == Status::Working && t.last_output.elapsed() < SCREEN_DONE_QUIET;
-            let (new, why) = if let Some(r) = blocked {
+            let (new, why) = if let Some(status) = signal.status {
+                let status = if status == Status::Idle && !signal.visible_idle && still_going { Status::Working }
+                    else if status == Status::Idle && Some(t.id) != focused && matches!(t.status, Status::Working | Status::Done) { Status::Done } else { status };
+                (status, format!("screen: {} rule `{}`", name, signal.rule))
+            } else if let Some(r) = blocked {
                 (Status::Blocked, format!("screen: matched `{}`", r.as_str()))
             } else if let Some(why) = working {
                 (Status::Working, why)
@@ -545,6 +581,9 @@ impl Daemon {
                 t.done_held = Some(Instant::now());
             }
             self.set_status(id, Status::Working, "one of its own agents is still running");
+        }
+        for (id, before) in screen_blocks {
+            if let Some(t) = self.terms.get_mut(&id) && before != Status::Blocked { t.screen_blocked_from = Some(before); }
         }
         for (id, s, why) in changes {
             if s != Status::Working
