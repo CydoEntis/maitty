@@ -31,8 +31,8 @@ agent row menu (making an existing agent the commander), the sidebar, the daemon
 - A helper that needs you still goes to the top of its group and shows in the Inbox.
 - Its instructions say how to work a repo's plan and tickets in order when there are
   any; Seshi does not depend on the roadmap skill.
-- The link between a commander and its helpers survives a daemon restart, a helper or
-  commander waking from sleep, and a move into a worktree.
+- The link between a commander and its helpers survives a daemon restart, recovery of a
+  legacy session left asleep by an older version, and a move into a worktree.
 - "Started by" is only set by the daemon, from a pane whose secret checked out
   (`AGENTS.md`, project non-negotiable 5).
 

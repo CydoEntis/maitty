@@ -34,11 +34,9 @@ impl App {
                 let first = !self.got_state;
                 self.got_state = true;
                 if !first {
-                    self.note_wakes(&s);
                     self.remember_changes(&s);
                 }
                 self.snap = s;
-                self.settle_waking();
                 if first {
                     self.on_first_state();
                 }
@@ -182,21 +180,6 @@ impl App {
         let what = if status == Status::Blocked { "needs you" } else { "finished" };
         self.notify(format!("{who} {what}"), false);
         self.notice_term = Some(term);
-    }
-
-    /// A sleeping agent you open is replaced by a new pane that resumes it. That pane is
-    /// blank until the agent has started again: note it, so it can say it's waking.
-    fn note_wakes(&mut self, new: &crate::protocol::Snapshot) {
-        let slept: Vec<&TermInfo> = self.snap.terms.values().filter(|t| t.asleep && !new.terms.contains_key(&t.id)).collect();
-        let now = Instant::now();
-        let style = self.wake_style();
-        // No two wakes rain alike.
-        let seed = self.started.elapsed().as_nanos() as u64;
-        for t in new.terms.values().filter(|t| !self.snap.terms.contains_key(&t.id)) {
-            if slept.iter().any(|o| o.agent == t.agent && o.cwd == t.cwd) {
-                self.waking.insert(t.id, hydra::Wake::new(now, style, u64::from(t.id) ^ seed));
-            }
-        }
     }
 
     /// Note what changed between two states: agents that now need you or finished.
