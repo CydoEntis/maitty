@@ -89,6 +89,36 @@ fn codex_disk_results_cannot_cross_panes_or_survive_a_thread_change() {
 }
 
 #[test]
+fn disk_reported_helpers_keep_an_unhooked_codex_parent_working() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    {
+        let parent = d.terms.get_mut(&t).unwrap();
+        parent.agent = Some("codex".into());
+        parent.session = Some("root".into());
+        parent.status = Status::Idle;
+    }
+    let facts = |subagents| usage::CodexPaneFacts {
+        term: t,
+        session: Some("root".into()),
+        usage: None,
+        subagents,
+    };
+
+    d.codex_usage(vec![facts(vec![("child".into(), "planner".into())])], None);
+    assert!(d.terms[&t].subagent_seen.is_some(), "disk polling supplies helper liveness");
+    d.update_statuses();
+    assert_eq!(d.terms[&t].status, Status::Working, "the parent remains visibly active without hooks");
+
+    d.codex_usage(vec![facts(Vec::new())], None);
+    assert!(d.terms[&t].subagent_seen.is_none(), "a completed helper clears its liveness timestamp");
+    d.terms.get_mut(&t).unwrap().last_output = Instant::now() - Duration::from_secs(10);
+    d.update_statuses();
+    assert_ne!(d.terms[&t].status, Status::Working, "the parent settles after the helper disappears");
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn status_reports_need_the_pane_secret() {
     let (mut d, mut rx) = daemon();
     let t = pane(&mut d);

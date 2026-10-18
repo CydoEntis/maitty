@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 const execute = promisify(execFile);
 const executable = __SESHI_EXE__;
 const worked = new Set();
+const OPENCODE_HELPER_LABEL = "OpenCode subagent";
 
 const ROUTE_POLL_INTERVAL_MS = 100;
 const SELECTION_RETRY_DELAYS_MS = [100, 400, 1_000];
@@ -20,6 +21,22 @@ async function requestOnce(sessionID, state, _seq, isCurrent = () => true) {
     if (!isCurrent()) return true;
     await execute(executable, ["hook", "opencode", payload, "--status", status], { timeout: 2000, windowsHide: true });
     if (state === "idle") worked.delete(sessionID);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function requestHelperOnce(sessionID, id, name, start, isCurrent = () => true) {
+  if (!process.env.SESHI_TERM_ID || !sessionID || !id || !isCurrent()) return true;
+  const event = start ? "SubagentStart" : "SubagentStop";
+  const payload = JSON.stringify({
+    hook_event_name: event, session_id: sessionID, agent_id: id,
+    agent_type: name,
+  });
+  try {
+    if (!isCurrent()) return true;
+    await execute(executable, ["hook", "opencode", payload, "--status", start ? "working" : "same"], { timeout: 2000, windowsHide: true });
     return true;
   } catch {
     return false;
@@ -102,6 +119,12 @@ async function tui(api) {
     return new Set([...ctx.statuses.keys(), ...[...ctx.blockers.values()].map((r) => r.sessionID)]);
   }
 
+  function activeHelpers(ctx) {
+    return new Map([...ctx.statuses.keys()]
+      .filter((id) => id !== ctx.selected && root(ctx, id) === ctx.selected)
+      .map((id) => [id, OPENCODE_HELPER_LABEL]));
+  }
+
   function state(ctx) {
     if (ctx.settled) return "idle";
     for (const request of ctx.blockers.values()) {
@@ -133,6 +156,27 @@ async function tui(api) {
         if (!isCurrent()) return;
         ctx.selectionPending = false;
         ctx.lastState = undefined;
+      }
+      const members = [...owners(ctx)];
+      const treeReady = ctx.hydrated && members.every((id) => root(ctx, id) !== undefined);
+      if (treeReady) {
+        const helpers = activeHelpers(ctx);
+        for (const [id, name] of ctx.reportedHelpers) {
+          if (helpers.has(id)) continue;
+          if (!await requestHelperOnce(selected, id, name, false, isCurrent)) {
+            ctx.retryAt = Date.now() + 500;
+            return;
+          }
+          ctx.reportedHelpers.delete(id);
+        }
+        for (const [id, name] of helpers) {
+          if (ctx.reportedHelpers.has(id)) continue;
+          if (!await requestHelperOnce(selected, id, name, true, isCurrent)) {
+            ctx.retryAt = Date.now() + 500;
+            return;
+          }
+          ctx.reportedHelpers.set(id, name);
+        }
       }
       const value = state(ctx);
       if (value === undefined || value === ctx.lastState) return;
@@ -316,7 +360,7 @@ async function tui(api) {
       context?.controller?.abort();
       const ctx = {
         route: id, boundary, controller: new AbortController(), sessions: new Map(), lookups: new Map(),
-        statuses: new Map(), blockers: new Map(), errors: new Set(), deleted: new Set(),
+        statuses: new Map(), blockers: new Map(), errors: new Set(), deleted: new Set(), reportedHelpers: new Map(),
         events: [], hydrated: false, loading: false, resolving: false,
         retryAt: Infinity, selectionAt: 0, retryIndex: 0,
       };
@@ -378,6 +422,7 @@ function setup(api) {
   let retryIndex = 0;
   let nextSelectionAt = 0;
   let state = "idle";
+  const reportedHelpers = new Map();
   let retryTimer;
   const sessions = new Map();
   let blockers = new Map();
@@ -409,7 +454,26 @@ function setup(api) {
     const isCurrent = () => !disposed && revision === generation && !!sessionID && current() === sessionID;
     chain = chain.then(async () => {
       if (!isCurrent()) return;
-      const delivered = await requestOnce(sessionID, value, value === undefined ? undefined : ++sequence, isCurrent);
+      const helpers = new Map(api.data.session.family(sessionID)
+        .filter((id) => id !== sessionID && api.data.session.status(id) === "running")
+        .map((id) => [id, OPENCODE_HELPER_LABEL]));
+      let reported = reportedHelpers.get(sessionID);
+      if (!reported) {
+        reported = new Map();
+        reportedHelpers.set(sessionID, reported);
+      }
+      for (const [id, name] of reported) {
+        if (helpers.has(id)) continue;
+        if (!await requestHelperOnce(sessionID, id, name, false, isCurrent)) { scheduleStateRetry(); return; }
+        reported.delete(id);
+      }
+      for (const [id, name] of helpers) {
+        if (reported.has(id)) continue;
+        if (!await requestHelperOnce(sessionID, id, name, true, isCurrent)) { scheduleStateRetry(); return; }
+        reported.set(id, name);
+      }
+      const current = blockers.size ? "blocked" : helpers.size ? "working" : value;
+      const delivered = await requestOnce(sessionID, current, value === undefined ? undefined : ++sequence, isCurrent);
       if (!delivered) scheduleStateRetry();
     }).catch(() => scheduleStateRetry());
   }
@@ -534,16 +598,13 @@ function setup(api) {
         changeBlocker(id, "form", data.id, false);
         break;
       case "session.execution.started":
-        if (id !== selected) return;
-        state = "working";
+        if (id === selected) state = "working";
         break;
       case "session.execution.succeeded":
       case "session.execution.interrupted":
-        if (id !== selected) return;
-        state = "idle";
+        if (id === selected) state = "idle";
         break;
       case "session.execution.failed":
-        if (id !== selected) return;
         state = "blocked";
         break;
       default:
