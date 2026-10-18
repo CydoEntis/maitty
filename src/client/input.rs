@@ -61,13 +61,6 @@ impl App {
                 }
             }
             Mode::HyPane(np) => np.task.push_str(&s.replace("\r\n", "\n")),
-            Mode::Workflows(v) => v.paste(&s),
-            Mode::Profiles(v) => {
-                if let Some(path) = &mut v.import_path { path.push_str(s.lines().next().unwrap_or("")); }
-                else if let Some(editor) = &mut v.editor {
-                    editor.paste(&s.replace("\r\n", "\n"));
-                }
-            },
             Mode::Prompt { input, .. } | Mode::Picker { query: input, .. } | Mode::Worktrees { query: input, .. } => {
                 input.push_str(s.lines().next().unwrap_or(""));
             }
@@ -174,8 +167,6 @@ impl App {
             }
             Mode::Finder(fd) => self.on_finder_key(*fd, &k),
             Mode::HyPane(np) => self.on_hy_pane_key(np, &k),
-            Mode::Profiles(v) => self.on_profiles_key(*v, &k),
-            Mode::Workflows(v) => self.on_workflows_key(*v, &k),
             Mode::HySettings(_) => self.hy_settings_key(&k),
             Mode::Themes { query, sel, saving } => self.on_theme_key(query, sel, saving, &k),
             Mode::Spinners(_) => self.on_spinner_key(&k),
@@ -718,18 +709,6 @@ impl App {
                     && matches!(sheet_hit, Some(Hit::Hy(hydra::HyHit::SettingsBody | hydra::HyHit::SetRow(_) | hydra::HyHit::SetVal(_, _) | hydra::HyHit::SetTab(_))))
                 {
                     self.hy_settings_key(&KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
-                    self.dirty = true;
-                    return;
-                }
-                if matches!(sheet_hit, Some(Hit::Hy(hydra::HyHit::AgentSheetBody | hydra::HyHit::ProfileRow(_) | hydra::HyHit::WorkflowRow(_) | hydra::HyHit::WorkflowProfile(_)))) {
-                    let list = matches!(sheet_hit, Some(Hit::Hy(hydra::HyHit::ProfileRow(_) | hydra::HyHit::WorkflowRow(_) | hydra::HyHit::WorkflowProfile(_))));
-                    let code = if list { if up { KeyCode::Up } else { KeyCode::Down } } else if up { KeyCode::PageUp } else { KeyCode::PageDown };
-                    let key = KeyEvent::new(code, KeyModifiers::NONE);
-                    match self.mode.clone() {
-                        Mode::Profiles(v) => self.on_profiles_key(*v, &key),
-                        Mode::Workflows(v) => self.on_workflows_key(*v, &key),
-                        _ => {}
-                    }
                     self.dirty = true;
                     return;
                 }

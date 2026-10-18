@@ -44,11 +44,6 @@ impl Kept {
 impl Daemon {
     /// `new` took `old`'s place: the sessions `old` started are still its fleet.
     fn takes_over_fleet(&mut self, old: TermId, new: TermId) {
-        for run in &mut self.workflows {
-            if run.parent == Some(old) { run.parent = Some(new); }
-            if run.term == Some(old) { run.term = Some(new); }
-            for term in &mut run.finished { if *term == old { *term = new; } }
-        }
         for t in self.terms.values_mut().filter(|t| t.started_by == Some(old)) {
             t.started_by = Some(new);
         }
@@ -149,7 +144,7 @@ impl Daemon {
             })
             .collect();
         let active = self.workspaces.iter().position(|w| Some(w.id) == self.active_ws).unwrap_or(0);
-        persist::Saved { workflows: self.workflows.clone(), workspaces, active, made_worktrees: self.made_worktrees.clone() }
+        persist::Saved { workspaces, active, made_worktrees: self.made_worktrees.clone() }
     }
 
     /// The agent a command line starts (`codex "…"`, `"C:\…\claude.exe" …`), by its program,
@@ -259,16 +254,6 @@ impl Daemon {
         for (term, by) in started {
             // Its commander didn't come back: it's on its own.
             self.started(term, ids.get(&by).copied());
-        }
-        self.workflows = saved.workflows;
-        for run in &mut self.workflows {
-            run.parent = run.parent.and_then(|id| ids.get(&id).copied());
-            run.term = run.term.and_then(|id| ids.get(&id).copied());
-            run.finished = run.finished.iter().filter_map(|id| ids.get(id).copied()).collect();
-            if matches!(run.state, crate::workflows::State::Preparing | crate::workflows::State::Ready | crate::workflows::State::Running) {
-                run.state = crate::workflows::State::Interrupted;
-                run.note = "Daemon restarted. Close the previous stage pane, then explicitly retry this stage. Files and reports are kept.".into();
-            }
         }
         self.active_ws = self.workspaces.get(saved.active).or(self.workspaces.first()).map(|w| w.id);
         self.dirty = true;

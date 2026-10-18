@@ -10,8 +10,6 @@ mod gitfs;
 mod ipc;
 mod mcp;
 mod project;
-mod profiles;
-mod workflows;
 mod keys;
 mod layout;
 mod proc;
@@ -42,16 +40,6 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Run saved planner, worker and reviewer sequences.
-    Workflow {
-        #[command(subcommand)]
-        cmd: cli::workflow::WorkflowCmd,
-    },
-    /// Configure reusable Claude Code and Codex roles.
-    Profile {
-        #[command(subcommand)]
-        cmd: ProfileCmd,
-    },
     /// Attach to the running server (starting it if needed).
     Attach { path: Option<PathBuf> },
     /// Run the server in the foreground (normally started automatically).
@@ -257,53 +245,6 @@ enum ConfigCmd {
     Example,
 }
 
-#[derive(Subcommand)]
-enum ProfileCmd {
-    /// Print the effective profiles for this checkout.
-    List,
-    /// Start a fresh interactive agent with the named profile in this checkout.
-    Run {
-        name: String,
-        #[arg(last = true)] task: Vec<String>,
-        #[arg(long, hide = true, conflicts_with = "task")] encoded_task: Option<String>,
-    },
-    /// Export a profile to a native agent file for use by workflows.
-    Export { name: String, #[arg(long)] project: bool },
-    /// Import supported fields from a native agent file without changing the source.
-    Import { path: PathBuf, #[arg(long)] project: bool },
-}
-
-fn profile_command(cmd: ProfileCmd) -> anyhow::Result<()> {
-    anyhow::ensure!(ipc::remote().is_none(), "agent profiles operate on this machine; run this command on the remote host");
-    if let ProfileCmd::Run { name, task, encoded_task } = cmd {
-        let task = match encoded_task { Some(encoded) => profiles::decode_task(&encoded)?, None => task.join(" ") };
-        return profiles::run(&name, &task);
-    }
-    let cfg = config::Config::load()?;
-    let dir = std::env::current_dir()?;
-    match cmd {
-        ProfileCmd::List => {
-            for p in profiles::load(&cfg, &dir)? {
-                println!("{} · {} · {}", p.profile.name, p.profile.summary(), if p.project { "project" } else { "personal" });
-            }
-        }
-        ProfileCmd::Export { name, project } => {
-            let list = profiles::load(&cfg, &dir)?;
-            let p = list.iter().find(|p| p.profile.name == name).ok_or_else(|| anyhow::anyhow!("no profile named {name}"))?;
-            let path = if project { profiles::export(&p.profile, &dir)? } else { profiles::export_personal(&p.profile)? };
-            println!("exported {}", path.display());
-        }
-        ProfileCmd::Import { path, project } => {
-            let p = profiles::import(&path)?;
-            let target = if project { dir.join(project::FILE) } else { config::profile_path()? };
-            profiles::save(&target, None, &p)?;
-            println!("imported {} into {}", p.name, target.display());
-        }
-        ProfileCmd::Run { .. } => unreachable!(),
-    }
-    Ok(())
-}
-
 fn main() {
     let args = Args::parse();
     if let Some(r) = &args.remote {
@@ -322,8 +263,6 @@ fn main() {
         std::process::exit(2);
     }
     let result = match args.cmd {
-        Some(Cmd::Profile { cmd }) => profile_command(cmd),
-        Some(Cmd::Workflow { cmd }) => cli::workflow::command(cmd),
         None => open_client(args.path),
         Some(Cmd::Attach { path }) => open_client(path),
         Some(Cmd::Daemon) => daemon::run(),

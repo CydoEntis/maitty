@@ -232,23 +232,8 @@ config.example.toml
 
 ## Project-specific: patterns and conventions
 
-Agent profiles live in `profiles.rs` (validation, scope resolution, persistence,
-native definitions and launch arguments) and `client/profiles.rs` (setup and
-preview). `seshi profile run` runs inside a daemon-owned pane; `proc::agent`
-passes arguments directly to the native CLI or its npm Node entry on Windows.
-Profile filesystem work runs in `spawn_bg`; no new IPC message shapes are needed.
-See [agent profiles](features/agent-profiles.md) for the public contract.
-
-`client/text_input.rs` owns cursor editing and input display for profile fields,
-workflow names and task entry. Drawer section drafts are cached in client-only
-`AgentSheets`; run detail/control targets use run ids rather than list positions.
-
-`workflows.rs` owns saved workflows and pure stage transitions;
-`daemon/workflows.rs` owns execution, authenticated reports and background
-handoff preparation. `cli/workflow.rs` exposes commands and the native stage
-launcher; `client/workflows.rs` owns the sheet and human controls. Runs travel in
-versioned snapshots and are persisted with sessions. See
-[workflow spec](features/workflows/spec.md) and [usage](features/workflows/usage.md).
+`client/text_input.rs` owns cursor editing and input display shared by task and
+spinner settings fields.
 
 `client/shortcuts.rs` derives the full shortcut reference from the active keymap
 and embeds `docs/shortcuts.md` for contextual controls. The compact leader

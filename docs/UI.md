@@ -108,8 +108,8 @@ both render the same sessions, tabs, splits and sheets. Cards is the default. Fl
 zones with no gaps, a persistent bottom status line, and Tab / Shift+Tab to switch focus between sidebar
 and panes; Esc returns focus to the sidebar. Everything after the leader
 key (`Ctrl+Space` by default; keys follow herdr's where they overlap). Views:
-inbox (`j`) and settings (`,`) use the right-hand sheet; Profiles and Workflows
-are there too. The command palette (`Space`), keys (`?`), files, branches and new
+inbox (`j`) and settings (`,`) use the right-hand sheet. The command palette (`Space`),
+keys (`?`), files, branches and new
 agent use popups. Minimum supported size is about
 80×24; popups clamp to the screen. Mouse: click, right-click menus, drag
 dividers, scroll; Ctrl+click opens paths.
@@ -119,9 +119,9 @@ The high-fidelity flat-layout reference and its interaction spec are preserved i
 
 The sidebar's **+ new** uses the same shell action as leader + `n`, including
 its configured key hint. Keep **Actions** available at the top right, including
-without a sidebar or session. Offer clickable Profiles, Workflows, Runs, agent
-status setup (including Codex), Settings and All commands; every palette row is clickable and
-wheel-scrollable. Include configured commands, retaining existing confirmations.
+without a sidebar or session. Offer clickable agent status setup (including Codex),
+Settings and All commands; every palette row is clickable and wheel-scrollable.
+Include configured commands, retaining existing confirmations.
 
 When an update is available, show the accent dot beside **Actions**, its
 **Settings** row and the **General** settings tab to guide users to the update.
@@ -148,11 +148,9 @@ come from [shortcuts.md](shortcuts.md), embedded in the app so both stay identic
 
 ## Project-specific: UI conventions
 
-<!-- local: user requested right-hand Profiles/Workflows sheets and distinct active, keyboard and hover sidebar states. -->
-
 - Popups are centred `panel()`s with an accent title bar and `Esc close`; the
-  screen behind is dimmed. Settings, Profiles and Workflows use the right-hand
-  sliding sheet, with the working panes visible beside it when the window allows.
+  screen behind is dimmed. Settings uses the right-hand sliding sheet, with the
+  working panes visible beside it when the window allows.
   Settings keeps its General, Sessions, Appearance, Agents and Keys sections in
   the sheet; its update controls and keyboard and mouse editing stay available.
 - Selection uses the theme's selection fill and a marker; never the accent
@@ -193,23 +191,15 @@ Hiding the full sidebar leaves a seven-column rail on the configured side.
 Show each session's status and first two non-space title characters, including
 sessions in folded groups. Reuse the working spinner and blocked/done colors.
 Keep active selection distinct from hover; reveal project and full title on hover.
-Click rows to focus/wake; retain keyboard browsing and wheel scrolling. Keep the
+Click rows to focus or resume a legacy sleeping session; retain keyboard browsing and wheel scrolling. Keep the
 total blocked count visible even when its rows are off-screen. Provide a mouse
 expand control and retain Actions. The rail is the collapsed state of the same
 layout, not another layout.
 
-## Project-specific: workflow sheet
-
-The workflow sheet has profile selectors, task entry, reports, human plan
-approval, retry and cancellation; see [usage](features/workflows/usage.md).
-Make section tabs clickable and keyboard-reachable; preserve drafts/selections
-between sections. Enter/double-click opens editing or run details. Keep Launch,
-Run and Open pane separate from opening an item. Role selectors open a profile
-picker; show complete run reports with explicit approval and Back controls.
-Keep errors above action rows, including at 80×24. Text cursors must stay visible.
-Setup previews and copies repository instructions without editing files. Show
-workflow stage/round labels beside associated sessions. Pending plan approvals
-also appear in Inbox and open the exact run for review before human approval.
+Show active helper rows under their owning agent, with an orange working dot.
+Color planner cyan, builder violet and reviewer magenta-pink; use distinct
+deterministic role colors for other helpers. Keep helper role colors separate
+from agent status colors: green done, orange working, red needs-you and gray idle.
 
 ## Project-specific: frame presentation
 

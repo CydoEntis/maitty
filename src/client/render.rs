@@ -108,7 +108,6 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             let np = np.clone();
             super::hydra::draw_new_pane(app, f, area, &t, &np);
         }
-        Mode::Profiles(_) | Mode::Workflows(_) => {} // Drawn in the right sheet.
         Mode::HySettings(_) => {} // Drawn in the right sheet.
         Mode::Themes { query, sel, saving } => {
             let (query, sel, saving) = (query.clone(), *sel, *saving);

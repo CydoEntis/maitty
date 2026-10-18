@@ -45,9 +45,11 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
 - **Status at a glance.** Working (amber, its name shimmering), needs you (red), done (green until
   you look), idle. An alert or a sound tells you when one needs you or finishes out of view.
   Click a sidebar status icon or pane status tag to see why, the evidence's age and any uncertainty.
-- **Saved workflows.** Use your own planner, worker and reviewer profiles. Review the plan
-  before approving it; build and review repeat for at most three rounds. Setup prepares
-  repository instructions; sidebar stage labels and Inbox plan approvals keep progress visible.
+- **Subagents under their agent.** What an agent has running shows under its row
+  (`↳ reconcile_audit`, repeats counted): Claude's from its hooks, Codex's from its session
+  files (each subagent by its task's name, and `goal` while `/goal` is driving it). Helper roles
+  use cyan for planning, violet for building and magenta-pink for reviewing, distinct from the
+  green, amber, red and gray agent status colors.
 - **Usage and limits.** Each agent's card shows how full its context is and what its session
   has cost, and its sidebar row shows the context once it's past half. An agent stopped by a limit
   is told "continue" once the limit resets (Settings → Continue after a limit). Claude's numbers
@@ -115,10 +117,9 @@ From source (any platform with Rust): `cargo install --git https://github.com/Cy
 ## Use
 
 Click **Actions** at the top right (also at the foot of the sidebar) to open
-**Profiles**, **Workflows**, **Workflow runs**, **Set up agent status**, Settings
-or **All commands**. The top button stays available with the sidebar hidden or
-no sessions open. All commands supports clicking rows and scrolling with the wheel,
-including configured custom commands.
+**Set up agent status**, Settings or **All commands**. The top button stays available
+with the sidebar hidden or no sessions open. All commands supports clicking rows and
+scrolling with the wheel, including configured custom commands.
 
 ```sh
 seshi            # attach (starts the server if needed); opens the current dir
@@ -401,29 +402,6 @@ Set-Alias hy "$env:USERPROFILE\.cargo\bin\seshi.exe"   # PowerShell ($PROFILE)
 ```
 
 ## Configure
-
-**Agent profiles:** press **Ctrl+P** in **New**, or choose
-**Agent profiles** in the command palette. Create personal Claude Code / Codex
-roles, override them per project, and export native agent files for your
-workflows. Editable Planner / Worker / Reviewer starters are included.
-Enter or double-click edits a role; **Launch** (`l`) opens a task chooser.
-See [agent profiles](docs/features/agent-profiles.md).
-
-**Workflows:** open **Workflows** in the command palette or profiles sheet.
-Select your planner, worker and reviewer profiles, then choose **Setup** (`u`).
-Review and **Copy instructions** (`c`), paste them into `AGENTS.md` or `CLAUDE.md`,
-and ask existing sessions to read the updated instructions. Their ordinary implementation
-requests can then select your saved workflow. Setup previews instructions; it does not edit files.
-Enter or double-click edits a workflow; click its role fields to choose profiles.
-Choose **Run** (`s`), enter a task, then Enter to start. Review its plan
-from **Inbox → Review plan** or **Runs**, then explicitly **Approve plan** (`a`).
-Build/review repeat for up to three rounds in one task worktree. The sidebar shows
-planning, building/reviewing round and questions; click a workflow label to open its run.
-Profiles, Workflows and Runs share a drawer on the right, with the work visible beside it.
-Click tabs, use Tab/Shift+Tab from lists, or Ctrl+Tab/Ctrl+Shift+Tab from any section.
-Switching sections keeps your draft and position. Open a run with Enter to read its
-Goal, Plan, Build and Review reports; **Open pane** is separate. Esc goes back first.
-See [setup, prompts and recovery](docs/features/workflows/usage.md).
 
 ```sh
 seshi config init   # writes the annotated example to the config path

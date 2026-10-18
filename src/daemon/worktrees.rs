@@ -273,7 +273,6 @@ impl Daemon {
     /// Whether any session is in this checkout.
     pub(super) fn runs_in(&self, top: &std::path::Path) -> bool {
         self.terms.values().any(|t| t.head.as_ref().is_some_and(|h| same_path(&h.top, top)))
-            || self.workflows.iter().any(|r| same_path(&r.dir, top))
     }
 
     /// A clean-up's worktrees, sorted into the ones to remove (folder, even with uncommitted

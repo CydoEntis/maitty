@@ -186,7 +186,8 @@ pub(in crate::client) enum Line {
     /// A dim line under an agent: what it's on, its question, a subagent. Shares the
     /// agent's highlight.
     Note(String, Color, TermId),
-    Workflow(String, u64, bool),
+    /// A live helper, with a working marker and a colour keyed to its role.
+    Subagent(String, Color, TermId),
     /// The heading over a session's subagents: how many, and whether they're listed.
     Subs(TermId, usize, bool),
     /// Nothing running in a folder project.
@@ -229,7 +230,7 @@ pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme
     if !s.subagents.is_empty() {
         out.push(Line::Subs(s.term, s.subagents.len(), !subs_closed));
         if !subs_closed {
-            out.extend(s.subagents.iter().take(SUBS_LISTED).map(|sub| Line::Note(format!("  ↳ {sub}"), notes_c, s.term)));
+            out.extend(s.subagents.iter().take(SUBS_LISTED).map(|sub| Line::Subagent(sub.clone(), subagent_color(sub), s.term)));
             if s.subagents.len() > SUBS_LISTED {
                 out.push(Line::Note(format!("  +{} more", s.subagents.len() - SUBS_LISTED), notes_c, s.term));
             }
@@ -237,11 +238,22 @@ pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme
     }
 }
 
-/// This many of a session's subagents are named; a workflow's fleet past that is counted.
+fn subagent_color(kind: &str) -> Color {
+    let palette = [Color::Rgb(0, 205, 210), Color::Rgb(160, 120, 255), Color::Rgb(240, 90, 190)];
+    let normalized = kind.to_ascii_lowercase();
+    let role = normalized.split(|c: char| !c.is_ascii_alphanumeric()).find(|part| !part.is_empty()).unwrap_or("");
+    let index = match role {
+        "planner" => 0,
+        "builder" => 1,
+        "reviewer" => 2,
+        _ => normalized.bytes().fold(0usize, |sum, byte| sum.wrapping_add(usize::from(byte))) % palette.len(),
+    };
+    palette[index]
+}
+
+/// This many of a session's native helper agents are named before they are counted.
 const SUBS_LISTED: usize = 8;
 
-/// This many files shared with another checkout are named under a row; more are counted.
-const OVERLAPS_LISTED: usize = 2;
 /// A helper's row steps in this far under the session that started it, per level.
 const FLEET_INDENT: u16 = 2;
 /// Deeper helpers stay at this level: the names need the width more than the tree does.
@@ -252,8 +264,6 @@ type Rows = Vec<(usize, usize)>;
 
 pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec<Line> {
     let mut out = Vec::new();
-    // Once for the whole sidebar: this is built on every frame.
-    let heads = heads_up(app);
     for (pi, p) in model.iter().enumerate() {
         if pi == 0 || model[pi - 1].kind != p.kind {
             let n = model.iter().filter(|q| q.kind == p.kind).map(|q| q.sessions().count()).sum();
@@ -303,26 +313,6 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
             out.push(Line::Sess(pi, wi, si, depth));
             let s = &p.wts[wi].sessions[si];
             session_lines(s, app.hy.subs_closed.contains(&s.term), t, &mut out);
-            for run in app.snap.workflows.iter().filter(|r| r.parent == Some(s.term) || r.term == Some(s.term)
-                || (r.parent.is_none() && r.term.is_none() && r.finished.last() == Some(&s.term))) {
-                out.push(Line::Workflow(format!("{} · {}", crate::client::workflows::stage_badge(app, run), run.name), run.id, run.state == crate::workflows::State::Approval));
-            }
-            // A file another checkout changed too: a quiet tag under the row. More than a
-            // couple are one line with a count (the Inbox lists them): a long branch can share
-            // dozens, and a wall of them pushes every other session off the sidebar.
-            if s.is_agent {
-                let shared: Vec<&str> = heads
-                    .iter()
-                    .filter(|(repo, o)| repo == &p.path && o.checkouts.contains(&p.wts[wi].name))
-                    .map(|(_, o)| o.file.rsplit('/').next().unwrap_or(&o.file))
-                    .collect();
-                let tag = blend(t.blocked, t.text, 0.45);
-                if shared.len() > OVERLAPS_LISTED {
-                    out.push(Line::Note(format!("⇆ {} shared files", shared.len()), tag, s.term));
-                } else {
-                    out.extend(shared.iter().map(|name| Line::Note(format!("⇆ {name}"), tag, s.term)));
-                }
-            }
         }
         if !any && aside.is_empty() {
             out.push(Line::Empty(pi));
@@ -429,7 +419,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
         let last = indents.last().copied().unwrap_or(0);
         indents.push(match l {
             Line::Sess(.., depth) => u16::from(*depth) * FLEET_INDENT,
-            Line::Note(..) | Line::Subs(..) | Line::Workflow(..) => last,
+            Line::Note(..) | Line::Subagent(..) | Line::Subs(..) => last,
             _ => 0,
         });
     }
@@ -593,15 +583,31 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     row_menu_button(app, buf, Rect { x: right.saturating_sub(1), y, width: 1, height: 1 }, bg, t, HyHit::RowMenuSess(s.term));
                 }
             }
-            Line::Workflow(text, run, approval) => {
-                put(buf, x0 + 5 + indent, y, &[seg(truncate(text, w.saturating_sub(9 + indent) as usize), Style::default().bg(pb).fg(if *approval { t.blocked } else { t.muted }))], right);
-                hit(app, row, HyHit::WorkflowRun(*run));
-            }
             Line::Note(text, c, term) => {
                 if small {
                     continue;
                 }
                 put(buf, x0 + 7 + indent, y, &[seg(truncate(text, w.saturating_sub(11 + indent) as usize), Style::default().bg(pb).fg(*c).add_modifier(Modifier::ITALIC))], right);
+                hit(app, row, HyHit::Session(*term));
+            }
+            Line::Subagent(name, color, term) => {
+                if small {
+                    continue;
+                }
+                let base = Style::default().bg(pb);
+                let available = w.saturating_sub(11 + indent) as usize;
+                let label = truncate(name, available.saturating_sub(6));
+                put(
+                    buf,
+                    x0 + 7 + indent,
+                    y,
+                    &[
+                        seg("  ↳ ", base.fg(t.muted)),
+                        seg("● ", base.fg(t.working).add_modifier(Modifier::BOLD)),
+                        seg(label, base.fg(*color).add_modifier(Modifier::BOLD)),
+                    ],
+                    right,
+                );
                 hit(app, row, HyHit::Session(*term));
             }
             // Nothing running: one click starts a shell there.

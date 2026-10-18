@@ -41,31 +41,11 @@ fn fail(s: impl Into<String>) -> Value {
 }
 
 fn tools() -> Value {
-    let id = json!({ "type": "integer", "description": "The session id (from seshi_list)." });
+    let id = json!({ "type": "integer", "description": "The session id (from the session list)." });
     json!([
         {
-            "name": "seshi_workflow_list",
-            "description": "List saved workflows and their exact planner, worker and reviewer profiles for this project. Follow the repository's instruction to choose a workflow; assigned workflow stages must not start a nested workflow.",
-            "inputSchema": { "type": "object", "properties": {} }
-        },
-        {
-            "name": "seshi_workflow_show",
-            "description": "Read a saved workflow's selected profiles, human plan approval gate and instructions for starting and monitoring it.",
-            "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] }
-        },
-        {
-            "name": "seshi_workflow_start",
-            "description": "Start a saved workflow on a task in its own worktree. Returns a run id. The daemon runs its profiles in order; the person must approve the plan in the Runs sheet. Do not approve it yourself.",
-            "inputSchema": { "type": "object", "properties": { "name": { "type": "string" }, "task": { "type": "string" } }, "required": ["name", "task"] }
-        },
-        {
-            "name": "seshi_workflow_status",
-            "description": "Read a workflow run's progress, reports and question/approval state in this project. Report when it needs the person; do not start a duplicate run while waiting.",
-            "inputSchema": { "type": "object", "properties": { "run": { "type": "integer", "minimum": 1 } }, "required": ["run"] }
-        },
-        {
             "name": "seshi_list",
-            "description": "List the agent and shell sessions running in seshi (in this project, unless seshi is set to allow all): id, agent, status (working / needs-you / done / idle), branch and folder, what it's on, and the question it's asking if it needs an answer.",
+            "description": "List sessions in the caller's project, with their status and current task.",
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
@@ -174,29 +154,6 @@ impl Server {
 
     fn call(&self, name: &str, args: &Value) -> Value {
         let r = match name {
-            "seshi_workflow_list" => std::env::current_dir().map_err(anyhow::Error::from).and_then(|dir| crate::cli::workflow::definitions(&dir))
-                .map(|list| list.iter().map(|w| crate::workflows::show(&w.workflow)).collect::<Vec<_>>().join("\n"))
-                .map_err(|e| format!("{e:#}")),
-            "seshi_workflow_show" => (|| {
-                let name = args.get("name").and_then(Value::as_str).ok_or("give the workflow name")?;
-                let dir = std::env::current_dir().map_err(|e| e.to_string())?;
-                let list = crate::cli::workflow::definitions(&dir).map_err(|e| format!("{e:#}"))?;
-                let workflow = list.iter().find(|w| w.workflow.name == name).ok_or("no workflow with that name")?;
-                Ok(crate::workflows::show(&workflow.workflow))
-            })(),
-            "seshi_workflow_start" => (|| {
-                let name = args.get("name").and_then(Value::as_str).ok_or("give the workflow name")?;
-                let task = args.get("task").and_then(Value::as_str).ok_or("give the task")?;
-                crate::cli::workflow::start(name.into(), task.into(), std::env::current_dir().map_err(|e| e.to_string())?).map_err(|e| format!("{e:#}"))
-            })(),
-            "seshi_workflow_status" => (|| {
-                let id = args.get("run").and_then(Value::as_u64).ok_or("give the run id")?;
-                let snap = self.snapshot()?;
-                let run = snap.workflows.iter().find(|r| r.id == id).ok_or("no such workflow run")?;
-                let root = crate::gitfs::head(&run.source).map(|h| h.main_root).unwrap_or_else(|| run.source.clone());
-                if self.cfg.mcp.scope != "all" && norm(&root) != norm(&self.root) { return Err("workflow is in another project".into()); }
-                Ok(crate::cli::workflow::describe(run))
-            })(),
             "seshi_list" => self.list(),
             "seshi_read" => self.read(args),
             "seshi_send" => self.send(args),
@@ -393,7 +350,7 @@ pub fn run() -> Result<()> {
                 "protocolVersion": params.get("protocolVersion").cloned().unwrap_or(json!("2025-06-18")),
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": "seshi", "version": env!("CARGO_PKG_VERSION") },
-                "instructions": "seshi runs your user's coding agents side by side. Follow repository AGENTS.md/CLAUDE.md instructions to select a saved workflow using seshi_workflow_list/show/start/status. Workflows select the exact profiles and require human plan approval; assigned stages must not start nested workflows. Otherwise use seshi_list/read/send/start for helpers. Don't answer prompts unless the user allows it."
+                "instructions": "seshi runs your user's coding agents side by side. Use seshi_list/read/send/start for helpers. Don't answer prompts unless the user allows it."
             })),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": tools() })),

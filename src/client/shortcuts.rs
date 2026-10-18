@@ -1,6 +1,6 @@
 //! All configured bindings and the contextual reference, shared with the user docs.
 
-use super::design::{keycaps, put, seg};
+use super::design::{put, seg};
 use super::*;
 use ratatui::{
     Frame,
@@ -85,45 +85,101 @@ fn search_text(text: &str) -> String {
         .replace("pgdn", "pagedown")
 }
 
-enum ShortcutLine {
-    Text(String),
-    Entry { keys: String, action: String },
-}
-
-fn lines(app: &App, query: &str, width: usize) -> Vec<ShortcutLine> {
+fn matching_entries(app: &App, query: &str) -> Vec<(String, String, String)> {
     let words: Vec<_> = search_text(query)
         .split_whitespace()
         .map(str::to_string)
         .collect();
+    entries(app)
+        .into_iter()
+        .filter(|(scope, keys, action)| {
+            let hay = search_text(&format!("{scope} {keys} {action}"));
+            words.iter().all(|word| hay.contains(word))
+        })
+        .collect()
+}
+
+fn key_parts(keys: &str) -> Vec<String> {
+    keys.split([',', '/'])
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn entry_lines(
+    width: usize,
+    keys: &str,
+    action: &str,
+    theme: &Theme,
+) -> Vec<Vec<super::design::Seg>> {
+    let style = Style::default().bg(theme.card);
+    let mut key_runs = Vec::new();
+    let parts = key_parts(keys);
+    for (index, part) in parts.iter().enumerate() {
+        if index > 0 {
+            key_runs.push(seg("/", style.fg(theme.muted)));
+        }
+        key_runs.extend(super::design::keycap(theme, part));
+    }
+    if parts.is_empty() {
+        key_runs.push(seg(keys, style.fg(theme.muted)));
+    }
+
+    let key_width = super::design::segs_width(&key_runs) as usize + 2;
+    let action_style = style.fg(theme.text);
+    if key_width > 28 || key_width >= width.saturating_sub(8) {
+        let mut lines = vec![key_runs];
+        lines.extend(
+            super::views::wrap(action, width.saturating_sub(2).max(1))
+                .into_iter()
+                .map(|line| vec![seg("  ", style), seg(line, action_style)]),
+        );
+        return lines;
+    }
+
+    let wrapped = super::views::wrap(action, width.saturating_sub(key_width).max(1));
+    let mut lines = Vec::with_capacity(wrapped.len().max(1));
+    if let Some(first) = wrapped.first() {
+        let mut line = key_runs;
+        line.push(seg("  ", style));
+        line.push(seg(first.clone(), action_style));
+        lines.push(line);
+    }
+    lines.extend(
+        wrapped
+            .into_iter()
+            .skip(1)
+            .map(|text| vec![seg(" ".repeat(key_width), style), seg(text, action_style)]),
+    );
+    lines
+}
+
+fn lines(app: &App, query: &str, width: usize, theme: &Theme) -> Vec<Vec<super::design::Seg>> {
+    let matches = matching_entries(app, query);
     let mut out = Vec::new();
     let mut previous = String::new();
-    for (scope, keys, action) in entries(app) {
-        let hay = search_text(&format!("{scope} {keys} {action}"));
-        if !words.iter().all(|word| hay.contains(word)) {
-            continue;
-        }
-        if scope != previous {
-            if !out.is_empty() {
-                out.push(ShortcutLine::Text(String::new()));
+    for (scope, keys, action) in &matches {
+        if *scope != previous {
+            if !previous.is_empty() {
+                out.push(Vec::new());
             }
-            out.push(ShortcutLine::Text(scope.to_uppercase()));
-            previous = scope;
+            out.push(vec![seg(
+                scope.to_uppercase(),
+                Style::default()
+                    .bg(theme.card)
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            )]);
+            previous = scope.clone();
         }
-        if keys == "Search by name" {
-            out.push(ShortcutLine::Text(format!("{keys}  {action}")));
-            continue;
-        }
-        let key_width = keys.chars().count().saturating_add(2);
-        let action_width = width.saturating_sub(key_width.saturating_add(2)).max(8);
-        let mut wrapped = super::views::wrap(&action, action_width);
-        if let Some(first) = wrapped.first().cloned() {
-            out.push(ShortcutLine::Entry { keys, action: first });
-            let indent = " ".repeat(key_width + 2);
-            out.extend(wrapped.drain(1..).map(|line| ShortcutLine::Text(format!("{indent}{line}"))));
-        }
+        out.extend(entry_lines(width.saturating_sub(1), keys, action, theme));
     }
-    if out.is_empty() {
-        out.push(ShortcutLine::Text("No shortcuts match. Ctrl+U clears the search.".into()));
+    if matches.is_empty() {
+        return vec![vec![seg(
+            "No shortcuts match. Ctrl+U clears the search.",
+            Style::default().bg(theme.card).fg(theme.muted),
+        )]];
     }
     out
 }
@@ -210,39 +266,24 @@ pub(super) fn draw_shortcuts(
         width: r.width.saturating_sub(4),
         height: r.height.saturating_sub(7),
     };
-    let rows = lines(app, query, body.width.max(1) as usize);
-    let scroll = scroll.min(rows.len().saturating_sub(body.height as usize));
+    let text = lines(app, query, body.width.max(1) as usize, theme);
+    let scroll = scroll.min(text.len().saturating_sub(body.height as usize));
     if let Mode::Shortcuts { scroll: saved, .. } = &mut app.mode {
         *saved = scroll;
     }
-    for (i, line) in rows
+    for (row, line) in text
         .iter()
         .skip(scroll)
         .take(body.height as usize)
         .enumerate()
     {
-        let y = body.y + i as u16;
-        let segs = match line {
-            ShortcutLine::Text(text) => vec![seg(text, style.fg(theme.text))],
-            ShortcutLine::Entry { keys, action } => {
-                let mut segs = keycaps(theme, keys, theme.card);
-                segs.push(seg(format!("  {action}"), style.fg(theme.text)));
-                segs
-            }
-        };
-        put(
-            buf,
-            body.x,
-            y,
-            &segs,
-            body.right(),
-        );
+        put(buf, body.x, body.y + row as u16, line, body.right());
     }
     let count = format!(
         "{}–{} / {} lines · C- = Ctrl, M- = Alt",
         scroll + 1,
-        (scroll + body.height as usize).min(rows.len()),
-        rows.len()
+        (scroll + body.height as usize).min(text.len()),
+        text.len()
     );
     put(
         buf,

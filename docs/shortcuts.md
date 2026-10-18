@@ -7,7 +7,7 @@ page keys, Home/End and the mouse wheel scroll. Ctrl+U clears; Esc closes.
 `C-` means Ctrl, `M-` means Alt. The [README](../README.md#use) lists the defaults.
 
 Mouse entry: **Actions** stays at the top right even with the sidebar hidden.
-It opens Profiles, Workflows, Runs, agent status setup, Settings and All commands.
+It opens agent status setup, Settings and All commands.
 Click a command to run it; the wheel scrolls the palette. Configured custom
 bindings also appear as clickable commands. Close buttons dismiss overlays.
 
@@ -70,97 +70,17 @@ or another program follow that program's own help.
 | --- | --- |
 | Tab / Down, Shift+Tab / Up | Next or previous field |
 | Left, Right | Change the selected option |
-| Ctrl+P | Open Agent profiles |
 | Ctrl+U | Clear task text |
 | b | Toggle beside when outside the task text field |
 | Enter, Esc | Start, or cancel |
-
-## Profiles
-
-| Keys | Action |
-| --- | --- |
-| Tab / Shift+Tab, Left / Right in lists | Next or previous Profiles / Workflows / Runs section |
-| Ctrl+Tab / Ctrl+Shift+Tab anywhere in the drawer | Next or previous section; retain selection, draft and report position |
-| Up, Down, PgUp, PgDn | Select profile; scroll its preview |
-| n, e, p | New profile, edit, create/edit project override |
-| 1, 2, 3 | Claude planner, worker, reviewer starters |
-| 4, 5, 6 | Codex planner, worker, reviewer starters |
-| i, x, Ctrl+R | Import native definition, export selected profile, reload definitions |
-| w, r | Open Workflows or Runs |
-| Enter / e, double-click profile | Open the selected profile for editing |
-| l, Esc | Launch chooser with selected profile, or close |
-
-## Profile editor and import
-
-| Keys | Action |
-| --- | --- |
-| Tab / Shift+Tab | Next or previous editor field |
-| Up / Down | Change field; in instructions, move between text lines |
-| Left, Right, Space | Change runner or scope on those fields |
-| Left / Right, Home / End, Delete / Backspace in text | Move cursor, go to text bounds, delete after/before cursor |
-| Ctrl+U, Enter | Clear editor text field; newline in instructions |
-| Ctrl+S, Esc | Save editor, or discard editor changes |
-| Type, Backspace, Enter, Esc in import path | Edit path, import it, or cancel import |
-
-## Workflows
-
-| Keys | Action |
-| --- | --- |
-| Up, Down | Select workflow |
-| Tab / Shift+Tab, Left / Right | Next or previous drawer section |
-| Ctrl+Tab / Ctrl+Shift+Tab | Change section from lists, editors, task entry or reports; retain drafts |
-| p, w, r, Ctrl+R | Profiles, Workflows, Runs, reload definitions |
-| n, e, u | New workflow, edit roles, Setup preview |
-| 1, 2 | Create Claude or Codex starter workflow |
-| Enter / e, double-click workflow | Open the selected workflow for editing |
-| s | Enter a task for the selected workflow |
-| Enter in task, Shift+Enter | Start the workflow; insert a task newline |
-| Left / Right, Up / Down, Home / End, Delete / Backspace in task | Move cursor or edit task text |
-| Ctrl+U | Clear task text |
-| Esc | Cancel task, return from editor/Setup, or close sheet |
-
-## Workflow editor
-
-| Keys | Action |
-| --- | --- |
-| Tab / Down, Shift+Tab / Up | Next or previous field |
-| Left, Right | Choose planner, worker or reviewer profile; change scope |
-| Enter / Space on a role field, click role | Open its profile picker; arrows/Home/End select, Enter or click chooses, Esc returns |
-| Space | Change scope on the scope field |
-| Left / Right, Home / End, Delete / Backspace in name | Move cursor or edit text |
-| Ctrl+U, Ctrl+S, Esc | Clear name, save workflow, discard edits |
-
-## Workflow setup
-
-| Keys | Action |
-| --- | --- |
-| c | Copy repository instructions for review and pasting into AGENTS.md or CLAUDE.md |
-| Up / PgUp, Down / PgDn | Scroll instructions |
-| Esc | Return to workflow list |
-
-## Workflow runs
-
-| Keys | Action |
-| --- | --- |
-| Up, Down | Select run in the list |
-| Enter, double-click run | Open run details with its Goal, Plan, Build and Review reports |
-| 1–4, Tab / Shift+Tab, Left / Right in details | Choose report |
-| Up / Down, PgUp / PgDn, Home / End, wheel in details | Scroll the full report, jump to start/end |
-| Ctrl+Tab / Ctrl+Shift+Tab | Change drawer section without losing the open run or scroll position |
-| a | Approve selected plan after reading it; navigation never approves |
-| c, t | Ask to cancel run, or retry a failed/interrupted stage |
-| o | Open selected run's current or most recent stage pane |
-| p, w, r, Ctrl+R in the list | Profiles, Workflows, Runs, refresh definitions |
-| Enter / y in confirmation | Confirm retry or cancellation; any other key cancels the confirmation |
-| Esc | Return from details to Runs; from the list, close the drawer |
 
 ## Inbox
 
 | Keys | Action |
 | --- | --- |
-| Type, Backspace | Filter by project, session or workflow task |
+| Type, Backspace | Filter by project or session |
 | Up, Down, PgUp, PgDn | Choose a row |
-| Enter | Open session or selected workflow's plan for review |
+| Enter | Open the selected session |
 | 1–9 | Answer selected agent question when search is empty |
 | m | Follow-up to selected asking/finished agent when search is empty |
 | d, M, x | Finished worktree: diff, ask to merge, ask to discard; empty search |
