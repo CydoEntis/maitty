@@ -17,6 +17,7 @@ mod recipes;
 mod render;
 mod tasks;
 mod profiles;
+mod text_input;
 mod workflows;
 mod views;
 mod actions;
@@ -24,6 +25,7 @@ mod background;
 mod input;
 mod view_keys;
 mod themes;
+mod spinners;
 mod shortcuts;
 
 use crate::config::{Config, Keymap};
@@ -98,6 +100,7 @@ enum Mode {
     /// Seshi layout: the settings overlay.
     HySettings(Box<design::SettingsView>),
     Themes { query: String, sel: usize, saving: bool },
+    Spinners(Box<spinners::Picker>),
     /// Seshi layout: keyboard cursor in the sidebar; bare keys act like leader keys.
     Side,
     /// A right-click menu (seshi layout).
@@ -307,6 +310,7 @@ pub struct App {
     reattached: Option<Instant>,
     cfg: Config,
     profile_projects: HashMap<PathBuf, Result<Vec<crate::profiles::Profile>, String>>,
+    agent_sheets: workflows::AgentSheets,
     theme: Theme,
     keymap: Keymap,
     notice: Option<(String, Instant, bool)>,
@@ -336,8 +340,8 @@ pub struct App {
     /// soon doesn't ring twice.
     alerted: HashMap<TermId, (Status, Instant)>,
     last_alert: Option<Instant>,
-    /// Agents that finished, and when to say so if they're still finished then.
-    settling: HashMap<TermId, Instant>,
+    /// Only ring if the pending status still matches the latest snapshot at its deadline.
+    settling: HashMap<TermId, (Status, Instant)>,
     /// Panes that took a sleeping agent's place, and when: blank until the agent is back up,
     /// so they say they're waking.
     waking: HashMap<TermId, hydra::Wake>,
@@ -510,6 +514,7 @@ impl App {
             keymap,
             cfg,
             profile_projects: HashMap::new(),
+            agent_sheets: workflows::AgentSheets::default(),
             notice: None,
             notice_term: None,
             history: Default::default(),
@@ -666,8 +671,8 @@ impl App {
                     }
                     let frame = self.spinner_frame();
                     self.settle_waking();
-                    self.settle_finished();
-                    if frame != last_frame && (self.any_working() || !self.waking.is_empty()) {
+                    self.settle_alerts();
+                    if frame != last_frame && (self.any_working() || !self.waking.is_empty() || matches!(self.mode, Mode::Spinners(_))) {
                         last_frame = frame;
                         self.dirty = true;
                     }

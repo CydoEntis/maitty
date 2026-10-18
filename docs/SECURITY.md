@@ -129,5 +129,14 @@ never uploads.
 
 ## Project-specific: tooling
 
+Bundled Herdr detection rules and adapted integration code are pinned to a
+reviewed source commit; provenance and Apache terms live in
+`vendor/herdr-detection/NOTICE.md` and LICENSE. No remote rules are executed or
+downloaded. Native JavaScript adapters invoke the installed Seshi executable with
+an argument array and inherited pane authentication; they do not forward prompt
+or answer text. Setup rejects non-regular owned-file targets and preserves
+unowned extensions/hooks. OpenCode's JSONC editor uses pinned jsonc-parser 0.33.1
+to retain native comments/settings, with invalid-config preflight tests.
+
 `cargo audit` (install with `cargo install cargo-audit`) before releases; GitHub
 push protection for secrets. Not yet in CI (there is no CI yet).

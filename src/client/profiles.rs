@@ -3,6 +3,7 @@
 use super::design::{BtnKind, fill, put, seg};
 use super::hydra::{HyHit, btn, hints, hit};
 use super::*;
+use super::text_input::{insert as insert_text, key as text_key};
 use crate::profiles::{Profile, Resolved, Runner};
 use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 
@@ -17,6 +18,7 @@ pub(super) struct Editor {
     pub skills: String,
     pub project: bool,
     pub field: usize,
+    pub cursor: Option<usize>,
 }
 
 impl Editor {
@@ -27,6 +29,7 @@ impl Editor {
             project,
             original,
             field: 0,
+            cursor: None,
         }
     }
 
@@ -56,6 +59,13 @@ impl Editor {
             .into(),
             _ => self.profile.instructions.clone(),
         }
+    }
+
+    pub fn paste(&mut self, text: &str) {
+        let text = if self.field == INSTRUCTIONS_FIELD { text } else { text.lines().next().unwrap_or_default() };
+        let mut cursor = self.cursor;
+        if let Some(input) = self.input() { insert_text(input, &mut cursor, text); }
+        self.cursor = cursor;
     }
 }
 
@@ -116,7 +126,7 @@ impl App {
         }
     }
 
-    fn refresh_profiles(&mut self, dir: PathBuf, reload_config: bool) {
+    pub(super) fn refresh_profiles(&mut self, dir: PathBuf, reload_config: bool) {
         let cfg = self.cfg.clone();
         self.spawn_bg(move || {
             let cfg = if reload_config {
@@ -153,12 +163,14 @@ impl App {
                 if let Mode::Profiles(view) = &mut app.mode
                     && view.dir == dir
                 {
+                    // A navigation refresh must not unlock or clear an in-flight save.
+                    if view.busy { return; }
                     view.busy = false;
                     match resolved {
                         Ok(entries) => {
                             view.sel = view.sel.min(entries.len().saturating_sub(1));
                             view.entries = Some(entries);
-                            view.error = None;
+                            if view.editor.is_none() && view.import_path.is_none() { view.error = None; }
                         }
                         Err(error) => {
                             view.error = Some(error);
@@ -187,6 +199,10 @@ impl App {
             Some(self.hy_target_dir())
         };
         let dir = project.unwrap_or_else(|| self.here_dir());
+        self.open_profiles_at(dir);
+    }
+
+    pub(super) fn open_profiles_at(&mut self, dir: PathBuf) {
         self.mode = Mode::Profiles(Box::new(ProfilesView {
             dir: dir.clone(),
             entries: None,
@@ -279,6 +295,10 @@ impl App {
     }
 
     pub(super) fn on_profiles_key(&mut self, mut view: ProfilesView, k: &KeyEvent) {
+        if let Some(tab) = super::workflows::sheet_tab_key(k, 0, view.editor.is_none() && view.import_path.is_none()) {
+            self.switch_agent_sheet(tab);
+            return;
+        }
         if view.busy {
             self.mode = Mode::Profiles(Box::new(view));
             return;
@@ -323,9 +343,9 @@ impl App {
                     view.error = None;
                 }
                 KeyCode::Char('s') if ctrl => self.save_profile_editor(&mut view),
-                KeyCode::Tab | KeyCode::Down => editor.field = (editor.field + 1) % EDIT_FIELDS,
-                KeyCode::BackTab | KeyCode::Up => {
-                    editor.field = (editor.field + EDIT_FIELDS - 1) % EDIT_FIELDS
+                KeyCode::Tab | KeyCode::Down if k.code == KeyCode::Tab || editor.field != INSTRUCTIONS_FIELD => { editor.field = (editor.field + 1) % EDIT_FIELDS; editor.cursor = None; }
+                KeyCode::BackTab | KeyCode::Up if k.code == KeyCode::BackTab || editor.field != INSTRUCTIONS_FIELD => {
+                    editor.field = (editor.field + EDIT_FIELDS - 1) % EDIT_FIELDS; editor.cursor = None;
                 }
                 KeyCode::Left | KeyCode::Right | KeyCode::Char(' ')
                     if matches!(editor.field, 1 | 5) =>
@@ -341,24 +361,13 @@ impl App {
                     }
                 }
                 KeyCode::Enter if editor.field == INSTRUCTIONS_FIELD => {
-                    editor.profile.instructions.push('\n')
+                    insert_text(&mut editor.profile.instructions, &mut editor.cursor, "\n");
                 }
-                KeyCode::Backspace => {
-                    if let Some(input) = editor.input() {
-                        input.pop();
-                    }
+                _ => {
+                    let mut cursor = editor.cursor;
+                    if let Some(input) = editor.input() { text_key(input, &mut cursor, k); }
+                    editor.cursor = cursor;
                 }
-                KeyCode::Char('u') if ctrl => {
-                    if let Some(input) = editor.input() {
-                        input.clear();
-                    }
-                }
-                KeyCode::Char(c) if !ctrl => {
-                    if let Some(input) = editor.input() {
-                        input.push(c);
-                    }
-                }
-                _ => {}
             }
         } else {
             let entries = view.entries.as_deref().unwrap_or_default();
@@ -380,8 +389,8 @@ impl App {
                 KeyCode::Char('n') => {
                     view.editor = Some(Editor::new(Profile::default(), false, None))
                 }
-                KeyCode::Char('w') => { self.open_workflows_at(view.dir, false); return; }
-                KeyCode::Char('r') if !ctrl => { self.open_workflows_at(view.dir, true); return; }
+                KeyCode::Char('w') => { self.switch_agent_sheet(1); return; }
+                KeyCode::Char('r') if !ctrl => { self.switch_agent_sheet(2); return; }
                 KeyCode::Char('i') => view.import_path = Some(String::new()),
                 KeyCode::Char(c @ '1'..='6') => {
                     let i = (c as u8 - b'1') as usize;
@@ -394,7 +403,7 @@ impl App {
                         None,
                     ));
                 }
-                KeyCode::Char('e' | 'p') => {
+                KeyCode::Enter | KeyCode::Char('e' | 'p') => {
                     if let Some(entry) = entries.get(view.sel) {
                         let project = entry.project || k.code == KeyCode::Char('p');
                         let original = if project == entry.project {
@@ -412,7 +421,7 @@ impl App {
                     self.refresh_profiles(dir, true);
                     return;
                 }
-                KeyCode::Enter => {
+                KeyCode::Char('l') => {
                     if let Some(entry) = entries.get(view.sel) {
                         let model = self.hy_model();
                         let p = model.iter().position(|p| {
@@ -494,8 +503,10 @@ pub(super) fn draw_profiles(
     t: &Theme,
     view: &ProfilesView,
 ) {
+    hit(app, Rect { x: r.x + 2, y: r.y + 3, width: r.width.saturating_sub(4), height: r.height.saturating_sub(8) }, HyHit::AgentSheetBody);
+    let content = Rect { height: r.height.saturating_sub(if view.error.is_some() { 2 } else { 0 }), ..r };
     let y = if let Some(editor) = &view.editor {
-        draw_profile_editor(app, buf, r, t, editor)
+        draw_profile_editor(app, buf, content, t, editor)
     } else if let Some(path) = &view.import_path {
         put(
             buf,
@@ -519,8 +530,8 @@ pub(super) fn draw_profiles(
         );
         r.y + 6
     } else {
-        let y = draw_profile_rows(app, buf, r, t, view);
-        draw_profile_starters(app, buf, r, t, y)
+        let y = draw_profile_rows(app, buf, content, t, view);
+        draw_profile_starters(app, buf, content, t, y)
     };
     if let Some(error) = &view.error {
         for (i, line) in super::views::wrap(error, r.width.saturating_sub(6) as usize)
@@ -531,7 +542,7 @@ pub(super) fn draw_profiles(
             put(
                 buf,
                 r.x + 3,
-                y.min(r.bottom().saturating_sub(5)) + i as u16,
+                y.min(r.bottom().saturating_sub(6)) + i as u16,
                 &[seg(line, Style::default().bg(t.card).fg(t.err))],
                 r.right().saturating_sub(3),
             );
@@ -569,17 +580,32 @@ fn draw_profile_editor(
             height: 1,
         };
         let background = if on { t.card2 } else { t.card };
+        if field == INSTRUCTIONS_FIELD {
+            let st = Style::default().bg(t.card);
+            put(buf, r.x + 3, y, &[seg("INSTRUCTIONS", st.fg(if on { t.accent } else { t.muted }))], r.right().saturating_sub(3));
+            y += 1;
+            let height = r.bottom().saturating_sub(y + 5).max(1);
+            let area = Rect { x: r.x + 2, y, width: r.width.saturating_sub(4), height };
+            fill(buf, area, background);
+            let text = if on { super::text_input::caret(&editor.profile.instructions, editor.cursor) } else { editor.profile.instructions.clone() };
+            let lines = super::text_input::lines(&text, area.width.saturating_sub(2) as usize);
+            let caret = if on { lines.iter().position(|l| l.contains('▏')).unwrap_or(0) } else { 0 };
+            let start = caret.saturating_sub(height as usize - 1);
+            for (i, line) in lines.into_iter().skip(start).take(height as usize).enumerate() {
+                put(buf, area.x + 1, y + i as u16, &[seg(line, Style::default().bg(background).fg(t.text))], area.right().saturating_sub(1));
+            }
+            hit(app, area, HyHit::ProfileField(field));
+            return y + height;
+        }
         fill(buf, row, background);
         let st = Style::default().bg(background);
-        let text = editor.value(field).replace('\n', " ↵ ");
+        let value = editor.value(field);
         let room = r.width.saturating_sub(20) as usize;
-        let text = if on && text.chars().count() > room {
-            text.chars()
-                .skip(text.chars().count().saturating_sub(room))
-                .collect()
-        } else {
-            text
-        };
+        let text = if on && !matches!(field, 1 | 5) {
+            super::text_input::window(&value, editor.cursor, room)
+        } else if field == 1 || (field == 5 && editor.original.is_none()) {
+            format!("{value}  ↔")
+        } else { value };
         put(
             buf,
             r.x + 3,
@@ -590,7 +616,6 @@ fn draw_profile_editor(
                     st.fg(if on { t.accent } else { t.muted }),
                 ),
                 seg(text, st.fg(t.strong)),
-                seg(if on { "█" } else { "" }, st.fg(t.accent)),
             ],
             r.right().saturating_sub(3),
         );
@@ -616,21 +641,21 @@ fn draw_profile_editor(
 fn draw_profile_rows(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, view: &ProfilesView) -> u16 {
     let st = Style::default().bg(t.card);
     let right = r.right().saturating_sub(2);
-    for (i, line) in ["Saved roles for fresh agent sessions.", "Enter chooses a task; this session stays as is."].iter().enumerate() {
+    for (i, line) in ["Saved roles for fresh agent sessions.", "Enter edits. Launch starts a new session."].iter().enumerate() {
         put(buf, r.x + 2, r.y + 3 + i as u16, &[seg(*line, st.fg(t.muted))], right);
     }
     let mut y = r.y + 6;
     let entries = view.entries.as_deref().unwrap_or_default();
-    let visible = (r.height.saturating_sub(19) as usize).clamp(1, 5);
+    let visible = (r.height.saturating_sub(17) as usize).clamp(1, 5);
     let start = view.sel.saturating_sub(visible - 1);
     for (i, entry) in entries.iter().enumerate().skip(start).take(visible) {
         let row = Rect { x: r.x + 2, y, width: r.width.saturating_sub(4), height: 1 };
         let rs = super::hydra::list_row(app, buf, row, i == view.sel, t);
-        put(buf, r.x + 4, y, &[seg(format!("{} ? {}", entry.profile.name, if entry.project { "project" } else { "personal" }), rs.fg(t.strong))], right);
+        put(buf, r.x + 4, y, &[seg(format!("{} · {}", entry.profile.name, if entry.project { "project" } else { "personal" }), rs.fg(t.strong))], right);
         hit(app, row, HyHit::ProfileRow(i)); y += 1;
     }
     if entries.is_empty() {
-        put(buf, r.x + 2, y, &[seg(if view.entries.is_none() { "Loading profiles?" } else { "Choose a starter below or press n." }, st.fg(t.muted))], right); y += 1;
+        put(buf, r.x + 2, y, &[seg(if view.entries.is_none() { "Loading profiles…" } else { "Choose a starter below or press n." }, st.fg(t.muted))], right); y += 1;
     }
     if let Some(entry) = entries.get(view.sel) {
         y += 1;
@@ -646,6 +671,7 @@ fn draw_profile_rows(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, view: 
 
 fn draw_profile_starters(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, mut y: u16) -> u16 {
     for (runner, offset) in [("Claude", 0), ("Codex", 3)] {
+        if y >= r.bottom().saturating_sub(4) { break; }
         put(buf, r.x + 2, y, &[seg(runner, Style::default().bg(t.card).fg(t.muted))], r.right().saturating_sub(2));
         let mut x = r.x + 9;
         for (i, role) in ["Planner", "Worker", "Reviewer"].iter().enumerate() {
@@ -661,10 +687,11 @@ fn draw_profile_footer(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, view
     let y = r.bottom().saturating_sub(4);
     let right = r.right().saturating_sub(2);
     if view.busy {
-        put(buf, r.x + 2, y, &[seg("Working?", Style::default().bg(t.card).fg(t.muted))], right);
+        put(buf, r.x + 2, y, &[seg("Saving…", Style::default().bg(t.card).fg(t.muted))], right);
     } else if view.editor.is_some() {
-        btn(app, buf, r.x + 2, y, "Save", "Ctrl+S", BtnKind::Primary, HyHit::ProfileKey('s'), right);
-        put(buf, r.x + 2, y + 1, &hints(t, &[("Tab", "field"), ("??", "choose"), ("Enter", "newline")]), right);
+        let bx = btn(app, buf, r.x + 2, y, "Save", "Ctrl+S", BtnKind::Primary, HyHit::ProfileKey('s'), right) + 1;
+        btn(app, buf, bx, y, "Back", "Esc", BtnKind::Normal, HyHit::ProfileKey('\u{1b}'), right);
+        put(buf, r.x + 2, y + 1, &hints(t, &[("Tab", "field"), ("←→", "choose"), ("Enter", "newline")]), right);
     } else if view.import_path.is_some() {
         put(buf, r.x + 2, y, &hints(t, &[("Enter", "import"), ("Esc", "cancel")]), right);
     } else {
@@ -673,9 +700,9 @@ fn draw_profile_footer(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, view
             x = btn(app, buf, x, y, title, &key.to_string(), BtnKind::Normal, HyHit::ProfileKey(key), right) + 1;
         }
         let mut x = r.x + 2;
-        for (title, key) in [("Export", 'x'), ("Import", 'i'), ("Launch", '\n')] {
-            x = btn(app, buf, x, y + 1, title, if key == '\n' { "Enter" } else if key == 'x' { "x" } else { "i" }, BtnKind::Normal, HyHit::ProfileKey(key), right) + 1;
+        for (title, key) in [("Export", 'x'), ("Import", 'i'), ("Launch", 'l')] {
+            x = btn(app, buf, x, y + 1, title, &key.to_string(), BtnKind::Normal, HyHit::ProfileKey(key), right) + 1;
         }
     }
-    put(buf, r.x + 2, y + 2, &hints(t, &[("??", "choose"), ("PgUp/Dn", "details"), ("Esc", "close")]), right);
+    put(buf, r.x + 2, y + 2, &hints(t, if view.editor.is_some() || view.import_path.is_some() { &[("Esc", "back"), ("Ctrl+Tab", "section")] } else { &[("Enter", "edit"), ("Tab", "section"), ("Esc", "close")] }), right);
 }

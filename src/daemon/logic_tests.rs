@@ -60,6 +60,35 @@ fn close(d: &mut Daemon, terms: &[TermId]) {
 }
 
 #[test]
+fn codex_disk_results_cannot_cross_panes_or_survive_a_thread_change() {
+    let (mut d, _) = daemon();
+    let a = pane(&mut d);
+    let b = pane(&mut d);
+    for (term, session) in [(a, "root-a"), (b, "root-b")] {
+        let t = d.terms.get_mut(&term).unwrap();
+        t.agent = Some("codex".into());
+        t.session = Some(session.into());
+    }
+    let facts = |term, session: &str, name: &str| usage::CodexPaneFacts {
+        term, session: Some(session.into()), usage: None,
+        subagents: vec![(format!("{session}-child"), name.into())],
+    };
+    d.codex_usage(vec![facts(a, "root-a", "planner"), facts(b, "root-b", "reviewer")], None);
+    assert_eq!(d.terms[&a].subagents, vec![("root-a-child".into(), "planner".into())]);
+    assert_eq!(d.terms[&b].subagents, vec![("root-b-child".into(), "reviewer".into())]);
+    let t = d.terms.get_mut(&a).unwrap();
+    t.session = Some("replacement".into());
+    t.subagents.clear();
+    d.codex_usage(vec![facts(a, "root-a", "stale helper")], None);
+    assert!(d.terms[&a].subagents.is_empty());
+    d.terms.get_mut(&b).unwrap().agent = Some("pi".into());
+    d.terms.get_mut(&b).unwrap().subagents.clear();
+    d.codex_usage(vec![facts(b, "root-b", "wrong agent")], None);
+    assert!(d.terms[&b].subagents.is_empty());
+    close(&mut d, &[a, b]);
+}
+
+#[test]
 fn status_reports_need_the_pane_secret() {
     let (mut d, mut rx) = daemon();
     let t = pane(&mut d);
@@ -359,6 +388,31 @@ fn only_so_many_helpers_work_at_once() {
 }
 
 #[test]
+fn with_no_window_a_transient_question_cannot_ring_after_work_resumes() {
+    let (mut d, _) = daemon();
+    let term = pane(&mut d);
+    d.terms.get_mut(&term).unwrap().agent = Some("pi".into());
+    d.set_status(term, Status::Working, "test");
+    d.set_status(term, Status::Blocked, "test");
+    assert!(d.terms[&term].alerted.is_none());
+    assert_eq!(d.terms[&term].alert_due.unwrap().0, Status::Blocked);
+    d.set_status(term, Status::Working, "test");
+    assert!(d.terms[&term].alert_due.is_none());
+    d.settled_alerts();
+    assert!(d.terms[&term].alerted.is_none());
+    // Even an obsolete queued deadline must match the current status.
+    d.terms.get_mut(&term).unwrap().alert_due = Some((Status::Blocked, Instant::now() - Duration::from_millis(1)));
+    d.settled_alerts();
+    assert!(d.terms[&term].alerted.is_none());
+    // A real question remains red and gets one request sound after settling.
+    d.set_status(term, Status::Blocked, "test");
+    d.terms.get_mut(&term).unwrap().alert_due.as_mut().unwrap().1 = Instant::now() - Duration::from_millis(1);
+    d.settled_alerts();
+    assert_eq!(d.terms[&term].alerted.unwrap().0, Status::Blocked);
+    close(&mut d, &[term]);
+}
+
+#[test]
 fn with_no_window_open_finished_waits_and_a_helper_stays_quiet() {
     let (mut d, _rx) = daemon();
     let (commander, helper) = (pane(&mut d), pane(&mut d));
@@ -366,7 +420,7 @@ fn with_no_window_open_finished_waits_and_a_helper_stays_quiet() {
         d.terms.get_mut(&t).unwrap().agent = Some("claude".into());
     }
     let rang = |d: &Daemon, t: TermId| d.terms[&t].alerted.map(|(s, _)| s);
-    let overdue = |d: &mut Daemon, t: TermId| d.terms.get_mut(&t).unwrap().alert_due = Some(Instant::now() - Duration::from_millis(1));
+    let overdue = |d: &mut Daemon, t: TermId| d.terms.get_mut(&t).unwrap().alert_due.as_mut().unwrap().1 = Instant::now() - Duration::from_millis(1);
     // Finished: not said yet.
     d.set_status(commander, Status::Working, "test");
     d.set_status(commander, Status::Done, "test");
@@ -386,11 +440,14 @@ fn with_no_window_open_finished_waits_and_a_helper_stays_quiet() {
     d.set_status(helper, Status::Working, "test");
     d.set_status(helper, Status::Done, "test");
     assert!(d.terms[&helper].alert_due.is_none() && rang(&d, helper).is_none());
-    // Needing you is said at once, helper or not (once the last ring is a few seconds old).
+    // A stable question rings for helpers too.
     for t in [commander, helper] {
         d.terms.get_mut(&t).unwrap().alerted = None;
     }
     d.set_status(helper, Status::Blocked, "test");
+    assert!(rang(&d, helper).is_none());
+    overdue(&mut d, helper);
+    d.settled_alerts();
     assert_eq!(rang(&d, helper), Some(Status::Blocked));
     close(&mut d, &[commander, helper]);
 }
@@ -1116,6 +1173,44 @@ fn codex_can_start_its_next_turn_without_waiting_for_the_wall_clock() {
 }
 
 #[test]
+fn codex_live_footer_restarts_work_without_new_keyboard_input() {
+    let (mut d, _rx) = daemon();
+    let id = pane(&mut d);
+    let t = d.terms.get_mut(&id).unwrap();
+    t.agent = Some("codex".into());
+    t.output(format!("\x1b[2J\x1b[H{}Working (3m 11s • esc to interrupt) · 3 background terminals running · /ps to view · /stop to close\r\n› Ask Codex to do anything", "\r\n".repeat(30)).as_bytes());
+    d.hook(id, "codex".into(), HookStatus::Done, "agent-turn-complete");
+    d.update_statuses();
+    let mut observed = vec![d.terms[&id].status];
+    let t = d.terms.get_mut(&id).unwrap();
+    t.output(format!("\x1b[2J\x1b[H{}Working (3m 12s • esc to interrupt) · 3 background terminals running · /ps to view · /stop to close\r\n› Ask Codex to do anything", "\r\n".repeat(30)).as_bytes());
+    d.update_statuses(); observed.push(d.terms[&id].status);
+    close(&mut d, &[id]);
+    assert_eq!(observed, [Status::Done, Status::Working], "an unchanged old footer stays finished; an advancing live footer is working even without new keys");
+}
+
+#[test]
+fn native_hooks_cannot_keep_an_exited_agent_working_or_hide_its_replacement() {
+    let (mut d, _rx) = daemon();
+    let id = pane(&mut d);
+    let found = |agent: Option<&str>| scan::Found { term: id, process: "powershell".into(), agent: agent.map(str::to_string), cwd: None, agent_cwd: None, mem: 0, cpu: 0.0, remote: None };
+    d.hook(id, "pi".into(), HookStatus::Working, "pi.agent_start");
+    d.handle(Ev::Scan(vec![found(None)]));
+    let startup = d.terms[&id].status;
+    d.handle(Ev::Scan(vec![found(Some("pi"))]));
+    d.handle(Ev::Scan(vec![found(None)]));
+    let exited = (d.terms[&id].status, d.terms[&id].agent.clone(), d.terms[&id].hooked);
+    d.hook(id, "codex".into(), HookStatus::Working, "native");
+    d.terms.get_mut(&id).unwrap().last_hook_at = Some(Instant::now() - Duration::from_secs(4));
+    d.handle(Ev::Scan(vec![found(Some("opencode"))]));
+    let replacement = (d.terms[&id].agent.clone(), d.terms[&id].hooked, d.terms[&id].status);
+    close(&mut d, &[id]);
+    assert_eq!(startup, Status::Working, "initial process scan can lag a native hook");
+    assert_eq!(exited, (Status::None, None, false));
+    assert_eq!(replacement, (Some("opencode".into()), false, Status::Idle));
+}
+
+#[test]
 fn codex_status_ignores_activity_in_a_finished_answer() {
     let (mut d, _rx) = daemon();
     let id = pane(&mut d);
@@ -1166,6 +1261,51 @@ fn codex_queued_questions_need_attention_even_while_work_continues() {
     observed.push((true, d.terms[&id].status));
     close(&mut d, &[id]);
     assert_eq!(observed, [(false, Status::Blocked), (false, Status::Working), (true, Status::Blocked), (true, Status::Working), (true, Status::Working)], "questions take precedence with or without hooks, then ongoing work resumes; prose and zero questions do not block");
+}
+
+#[test]
+fn native_pi_and_opencode_questions_stay_blocked_until_their_reply_event() {
+    let (mut d, _rx) = daemon();
+    let id = pane(&mut d);
+    let mut observed = Vec::new();
+    for agent in ["pi", "opencode"] {
+        d.hook(id, agent.into(), HookStatus::Working, "native start");
+        d.hook(id, agent.into(), HookStatus::Blocked, "native question");
+        let t = d.terms.get_mut(&id).unwrap();
+        t.parser.process(b"\x1b[2J\x1b[HCustom extension dialog\r\nPick a project");
+        t.blocked_at = Some(Instant::now() - Duration::from_secs(20));
+        t.last_input = Instant::now() - Duration::from_secs(10);
+        t.last_output = t.last_input;
+        d.update_statuses();
+        observed.push(d.terms[&id].status);
+        d.hook(id, agent.into(), HookStatus::Working, "native reply");
+        observed.push(d.terms[&id].status);
+        d.hook(id, agent.into(), HookStatus::Done, "native settled");
+        observed.push(d.terms[&id].status);
+    }
+    close(&mut d, &[id]);
+    assert_eq!(observed, [Status::Blocked, Status::Working, Status::Done, Status::Blocked, Status::Working, Status::Done]);
+}
+
+#[test]
+fn codex_expanded_question_overrides_working_until_dismissed() {
+    let (mut d, _rx) = daemon();
+    let id = pane(&mut d);
+    let mut observed = Vec::new();
+    for hooked in [false, true] {
+        let t = d.terms.get_mut(&id).unwrap();
+        t.agent = Some("codex".into()); t.hooked = hooked; t.status = Status::Working;
+        t.parser.process(b"\x1b[2J\x1b[H");
+        t.parser.process(&b"\r\n".repeat(30));
+        t.parser.process("Working (8m 01s - esc to interrupt)\r\nChoose an app:\r\n> 1. Pi / OpenCode\r\nenter submit   ctrl+] skip   shift+↔ main prompt".as_bytes());
+        d.update_statuses(); observed.push(d.terms[&id].status);
+        let t = d.terms.get_mut(&id).unwrap();
+        t.parser.process(b"\x1b[2J\x1b[H"); t.parser.process(&b"\r\n".repeat(30));
+        t.parser.process(b"Working (8m 02s - esc to interrupt)");
+        d.update_statuses(); observed.push(d.terms[&id].status);
+    }
+    close(&mut d, &[id]);
+    assert_eq!(observed, [Status::Blocked, Status::Working, Status::Blocked, Status::Working]);
 }
 
 #[test]

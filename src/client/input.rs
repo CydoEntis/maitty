@@ -65,8 +65,7 @@ impl App {
             Mode::Profiles(v) => {
                 if let Some(path) = &mut v.import_path { path.push_str(s.lines().next().unwrap_or("")); }
                 else if let Some(editor) = &mut v.editor {
-                    let multiline = editor.field == 6;
-                    if let Some(input) = editor.input() { input.push_str(if multiline { &s } else { s.lines().next().unwrap_or("") }); }
+                    editor.paste(&s.replace("\r\n", "\n"));
                 }
             },
             Mode::Prompt { input, .. } | Mode::Picker { query: input, .. } | Mode::Worktrees { query: input, .. } => {
@@ -85,6 +84,7 @@ impl App {
                 *sel = 0;
             }
             Mode::Themes { saving: true, .. } => {}
+            Mode::Spinners(view) => view.paste(&s),
             Mode::Branch(v) => v.query.push_str(s.lines().next().unwrap_or("").trim()),
             Mode::Finder(fd) => {
                 fd.q.push_str(s.lines().next().unwrap_or("").trim());
@@ -174,6 +174,7 @@ impl App {
             Mode::Workflows(v) => self.on_workflows_key(*v, &k),
             Mode::HySettings(_) => self.hy_settings_key(&k),
             Mode::Themes { query, sel, saving } => self.on_theme_key(query, sel, saving, &k),
+            Mode::Spinners(_) => self.on_spinner_key(&k),
             Mode::Side => self.on_side_key(&k),
             Mode::HyMenu(m) => self.on_hy_menu_key(*m, &k),
             Mode::Find(v) => self.on_find_key(*v, &k),
@@ -703,12 +704,41 @@ impl App {
             }
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
                 let up = m.kind == MouseEventKind::ScrollUp;
+                if matches!(self.mode, Mode::Picker { .. } | Mode::Actions { .. }) {
+                    self.on_key(KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
+                    self.dirty = true;
+                    return;
+                }
+                let sheet_hit = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
+                if matches!(self.mode, Mode::HySettings(_))
+                    && matches!(sheet_hit, Some(Hit::Hy(hydra::HyHit::SettingsBody | hydra::HyHit::SetRow(_) | hydra::HyHit::SetVal(_, _) | hydra::HyHit::SetTab(_))))
+                {
+                    self.hy_settings_key(&KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
+                    self.dirty = true;
+                    return;
+                }
+                if matches!(sheet_hit, Some(Hit::Hy(hydra::HyHit::AgentSheetBody | hydra::HyHit::ProfileRow(_) | hydra::HyHit::WorkflowRow(_) | hydra::HyHit::WorkflowProfile(_)))) {
+                    let list = matches!(sheet_hit, Some(Hit::Hy(hydra::HyHit::ProfileRow(_) | hydra::HyHit::WorkflowRow(_) | hydra::HyHit::WorkflowProfile(_))));
+                    let code = if list { if up { KeyCode::Up } else { KeyCode::Down } } else if up { KeyCode::PageUp } else { KeyCode::PageDown };
+                    let key = KeyEvent::new(code, KeyModifiers::NONE);
+                    match self.mode.clone() {
+                        Mode::Profiles(v) => self.on_profiles_key(*v, &key),
+                        Mode::Workflows(v) => self.on_workflows_key(*v, &key),
+                        _ => {}
+                    }
+                    self.dirty = true;
+                    return;
+                }
                 if let Mode::Shortcuts { query, scroll } = self.mode.clone() {
                     self.on_shortcuts_key(query, scroll, &KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
                     return;
                 }
                 if let Mode::Themes { query, sel, saving } = self.mode.clone() {
                     self.on_theme_key(query, sel, saving, &KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
+                    return;
+                }
+                if matches!(self.mode, Mode::Spinners(_)) {
+                    self.on_spinner_key(&KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
                     return;
                 }
                 if self.hy.preview_rect.contains(pos)

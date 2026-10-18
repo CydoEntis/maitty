@@ -60,6 +60,7 @@ pub enum Act {
     Tidy(Vec<(PathBuf, bool)>),
     /// Install the newest seshi without interrupting the running sessions.
     Update,
+    InstallStatus(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -479,6 +480,16 @@ impl App {
                 self.cmd(Command::NewWorkspace { cwd: Some(cwd), name: None, cmd: None });
             }
             Act::Update => self.start_update(),
+            Act::InstallStatus(agent) => {
+                self.notify(format!("setting up {agent} status…"), false);
+                self.spawn_bg(move || {
+                    let result = crate::cli::integrations::install_status(&agent);
+                    super::Bg::Then(Box::new(move |app: &mut App| match result {
+                        Ok(_) => app.notify(format!("{agent} status installed; restart {agent} to load it (Pi also supports /reload)"), false),
+                        Err(e) => app.notify(format!("couldn't set up {agent} status: {e:#}"), true),
+                    }))
+                });
+            }
             Act::GitInit(dir) => {
                 self.notify("making it a git repo…".into(), false);
                 self.spawn_bg(move || {

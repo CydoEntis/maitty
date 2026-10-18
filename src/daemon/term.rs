@@ -20,9 +20,15 @@ pub struct Callbacks {
     pub copied: Option<String>,
     /// The program rang the bell.
     pub rang: bool,
+    pub progress: String,
 }
 
 impl vt100::Callbacks for Callbacks {
+    fn unhandled_osc(&mut self, _: &mut vt100::Screen, params: &[&[u8]]) {
+        if params.first() == Some(&b"9".as_slice()) && params.get(1) == Some(&b"4".as_slice()) {
+            self.progress = params.iter().skip(1).map(|part| String::from_utf8_lossy(part)).collect::<Vec<_>>().join(";");
+        }
+    }
     fn set_window_title(&mut self, _: &mut vt100::Screen, title: &[u8]) {
         self.title = String::from_utf8_lossy(title).trim().to_string();
         self.title_changed = true;
@@ -96,14 +102,16 @@ pub struct Term {
     /// The last hook it reported (its event) and the last thing the screen showed that
     /// changed its status, each with when (unix seconds): the evidence "why" lays out.
     pub last_hook: Option<(String, u64)>,
+    pub last_hook_at: Option<Instant>,
+    pub hooked_process_seen: bool,
     pub last_screen: Option<(String, u64)>,
     pub last_process: u64,
     /// The status (by when it began) a phone alert went out for, so it goes once.
     pub phoned: u64,
     /// The last desktop alert the server rang for it (no window open): its status, when.
     pub alerted: Option<(Status, std::time::Instant)>,
-    /// It finished: say so then, if it's still finished (see `alert::FINISHED_SETTLES`).
-    pub alert_due: Option<std::time::Instant>,
+    /// The queued attention status and when it can ring if still current.
+    pub alert_due: Option<(Status, std::time::Instant)>,
     /// Hooks reported for this agent session: trust them over heuristics.
     pub hooked: bool,
     pub last_output: Instant,
@@ -139,6 +147,9 @@ pub struct Term {
     pub last_working_hook: Option<Instant>,
     /// The last turn-end hook (or pane start), compared to input without wall-clock rounding.
     pub last_turn_end: Instant,
+    /// Activity present at turn end must not reopen that turn unless its live footer changes.
+    pub ended_activity: Option<String>,
+    pub screen_blocked_from: Option<Status>,
     /// When it last started needing you (cleared when it stops).
     pub blocked_at: Option<Instant>,
     /// Processes known to run inside this pane (trusted to report its status).
@@ -541,6 +552,8 @@ impl Term {
             status_since: unix_now(),
             status_why: String::new(),
             last_hook: None,
+            last_hook_at: None,
+            hooked_process_seen: false,
             last_screen: None,
             last_process: 0,
             phoned: 0,
@@ -566,6 +579,8 @@ impl Term {
             progress_off: None,
             last_working_hook: None,
             last_turn_end: now,
+            ended_activity: None,
+            screen_blocked_from: None,
             blocked_at: None,
             trusted: std::collections::HashSet::new(),
             token,

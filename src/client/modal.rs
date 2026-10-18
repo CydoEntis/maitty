@@ -20,6 +20,7 @@ pub enum Kind {
     Program(&'static [&'static str]),
     /// A folder: Enter opens the folder browser to pick one.
     Folder,
+    Spinner,
 }
 
 /// Editors seshi offers when they're installed.
@@ -118,6 +119,7 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "ui.focus_border", label: "Focus border", kind: Kind::Choice(&["accent", "bright", "none"]), cat: Cat::Appearance, help: "How the pane you're in is outlined." },
     Setting { path: "ui.pill_caps", label: "Round pill ends", kind: Kind::Bool, cat: Cat::Appearance, help: "Tabs and buttons get round ends. Needs a Nerd Font; turn off for square ends." },
     Setting { path: "theme", label: "Theme", kind: Kind::Choice(crate::theme::BUILTIN), cat: Cat::Appearance, help: "Enter to search and preview themes. Enter in the browser applies your choice." },
+    Setting { path: "ui.spinner", label: "Working spinner", kind: Kind::Spinner, cat: Cat::Appearance, help: "Choose an animated working indicator, use a static icon, or enter custom frames. Other status icons keep their meaning." },
     // Agents
     Setting { path: "worktree.per_agent", label: "Own worktree per agent", kind: Kind::Bool, cat: Cat::Agents, help: "Agents started in a repo's main folder (+ New, the quick prompt, or claude/codex typed in a shell) get their own branch and folder." },
     Setting { path: "worktree.command", label: "Start in new worktrees", kind: Kind::Text, cat: Cat::Agents, help: "A command to run in every new worktree (e.g. claude). Empty: a shell." },
@@ -141,6 +143,9 @@ pub fn current(cfg: &Config, path: &str) -> Option<toml::Value> {
 }
 
 pub fn display(cfg: &Config, s: &Setting) -> String {
+    if s.kind == Kind::Spinner {
+        return crate::config::spinner_name(&cfg.ui.spinner).into();
+    }
     match (s.kind, current(cfg, s.path)) {
         (Kind::Key, Some(toml::Value::String(k))) => {
             k.parse::<crate::keys::KeySpec>().map(|k| k.to_string()).unwrap_or(k)
@@ -176,7 +181,7 @@ pub fn step(cfg: &Config, s: &Setting, dir: i64) -> Option<toml_edit::Value> {
             let next = &opts[((i + dir).rem_euclid(opts.len() as i64)) as usize];
             (if next == "default" { "" } else { next.as_str() }).into()
         }
-        Kind::Text | Kind::Key | Kind::Folder => return None,
+        Kind::Text | Kind::Key | Kind::Folder | Kind::Spinner => return None,
     })
 }
 
@@ -271,6 +276,35 @@ mod tests {
         app.on_bg(bg_rx.blocking_recv().unwrap());
         assert_eq!(app.cfg.theme, "zenbones-light");
         assert!(matches!(&app.mode, super::super::Mode::Themes { query, saving: false, .. } if query == "solarized dark"));
+        // SAFETY: this existing config-save test owns SESHI_CONFIG; all prior jobs have completed.
+        unsafe { std::env::set_var("SESHI_CONFIG", &file) };
+        app.open_spinners();
+        app.spinner_pick(2);
+        app.on_key(super::super::KeyEvent::new(super::super::KeyCode::Enter, super::super::KeyModifiers::NONE));
+        assert!(matches!(&app.mode, super::super::Mode::Spinners(v) if v.saving));
+        app.on_bg(bg_rx.blocking_recv().unwrap());
+        assert_eq!(app.cfg.ui.spinner, ["|", "/", "-", "\\"]);
+        assert_eq!(Config::load().unwrap().ui.spinner, app.cfg.ui.spinner);
+        let saved_spinner = app.cfg.ui.spinner.clone();
+        // SAFETY: the spinner save job completed before changing this test's isolated path.
+        unsafe { std::env::set_var("SESHI_CONFIG", &dir) };
+        app.open_spinners();
+        app.on_key(super::super::KeyEvent::new(super::super::KeyCode::End, super::super::KeyModifiers::NONE));
+        app.on_key(super::super::KeyEvent::new(super::super::KeyCode::Enter, super::super::KeyModifiers::NONE));
+        app.on_key(super::super::KeyEvent::new(super::super::KeyCode::Char('u'), super::super::KeyModifiers::CONTROL));
+        app.on_paste("a b c".into());
+        app.on_key(super::super::KeyEvent::new(super::super::KeyCode::Enter, super::super::KeyModifiers::NONE));
+        app.on_bg(bg_rx.blocking_recv().unwrap());
+        assert_eq!(app.cfg.ui.spinner, saved_spinner, "a failed save keeps the applied choice");
+        assert!(matches!(&app.mode, super::super::Mode::Spinners(v) if !v.saving));
+        // SAFETY: the failed save job completed before restoring the isolated test file.
+        unsafe { std::env::set_var("SESHI_CONFIG", &file) };
+        app.on_key(super::super::KeyEvent::new(super::super::KeyCode::Enter, super::super::KeyModifiers::NONE));
+        app.on_bg(bg_rx.blocking_recv().unwrap());
+        assert_eq!(app.cfg.ui.spinner, ["a", "b", "c"], "the custom draft survives a failed save");
+        let legacy_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"];
+        write("ui.spinner", legacy_frames.into_iter().collect::<toml_edit::Array>().into()).unwrap();
+        assert_eq!(Config::load().unwrap().ui.spinner, legacy_frames, "custom frames must not be silently migrated");
         unsafe { std::env::remove_var("SESHI_CONFIG") };
         assert!(out.contains("# my notes") && out.contains("# my ui notes"), "{out}");
         assert!(out.contains("which_key_delay_ms = 500"), "{out}");

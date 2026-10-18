@@ -102,16 +102,20 @@ config (`[icons]`), with Nerd Font glyphs where present.
 
 ## Project-specific: layout and navigation
 
-One layout: a sidebar of projects and their sessions (left or right), panes on
+The terminal client has one layout: a sidebar of projects and their sessions (left or right), panes on
 the rest (tabs and splits), and a one-line bottom bar. Everything after the leader
-key (`Ctrl+Space` by default; keys follow herdr's where they overlap). Popups:
-inbox (`j`), command palette (`Space`), keys (`?`), settings (`,`), files, changes,
-branches, new agent. Minimum supported size is about
+key (`Ctrl+Space` by default; keys follow herdr's where they overlap). Views:
+inbox (`j`) and settings (`,`) use the right-hand sheet; Profiles and Workflows
+are there too. The command palette (`Space`), keys (`?`), files, branches and new
+agent use popups. Minimum supported size is about
 80×24; popups clamp to the screen. Mouse: click, right-click menus, drag
 dividers, scroll; Ctrl+click opens paths.
 
 The sidebar's **+ new** uses the same shell action as leader + `n`, including
-its configured key hint. **Actions** includes a clickable Settings row.
+its configured key hint. Keep **Actions** available at the top right, including
+without a sidebar or session. Offer clickable Profiles, Workflows, Runs, agent
+status setup, Settings and All commands; every palette row is clickable and
+wheel-scrollable. Include configured commands, retaining existing confirmations.
 
 When an update is available, show the accent dot beside **Actions**, its
 **Settings** row and the **General** settings tab to guide users to the update.
@@ -141,9 +145,10 @@ come from [shortcuts.md](shortcuts.md), embedded in the app so both stay identic
 <!-- local: user requested right-hand Profiles/Workflows sheets and distinct active, keyboard and hover sidebar states. -->
 
 - Popups are centred `panel()`s with an accent title bar and `Esc close`; the
-  screen behind is dimmed.
-  Profiles and Workflows use the existing right-hand sheet instead, with Profiles,
-  Workflows and Runs tabs and the working panes visible beside them.
+  screen behind is dimmed. Settings, Profiles and Workflows use the right-hand
+  sliding sheet, with the working panes visible beside it when the window allows.
+  Settings keeps its General, Sessions, Appearance, Agents and Keys sections in
+  the sheet; its update controls and keyboard and mouse editing stay available.
 - Selection uses the theme's selection fill and a marker; never the accent
   colour as a row fill. The sidebar keeps active `▸` and keyboard `›` distinct.
 - Every popup row is clickable and keyboard-reachable; every key is shown as a
@@ -166,10 +171,36 @@ Saving runs in a background task; failure keeps the selection and shows a toast.
 The preview shows built-in defaults; configured overrides still apply after saving.
 See [theme sources](theme-sources.md) for upstream palettes and local UI adaptations.
 
+## Project-specific: working spinner picker
+
+Appearance's Working spinner opens a mouse/keyboard picker with animated preset
+previews, an applied marker, Static and Custom. Preview leaves the active config
+unchanged. Enter or a repeated row click applies; Esc/close returns to the same
+settings row. Custom accepts space-separated frames, cursor editing, paste and
+Ctrl+U. Retain invalid drafts and show inline errors. Save in a background task;
+disable duplicate saves and retain the draft on failure. Choices affect only the
+working glyph; blocked/done/idle status colors and icons keep their meaning.
+
+## Project-specific: collapsed sidebar
+
+Hiding the full sidebar leaves a seven-column rail on the configured side.
+Show each session's status and first two non-space title characters, including
+sessions in folded groups. Reuse the working spinner and blocked/done colors.
+Keep active selection distinct from hover; reveal project and full title on hover.
+Click rows to focus/wake; retain keyboard browsing and wheel scrolling. Keep the
+total blocked count visible even when its rows are off-screen. Provide a mouse
+expand control and retain Actions. The rail is the collapsed state of the same
+layout, not another layout.
+
 ## Project-specific: workflow sheet
 
 The workflow sheet has profile selectors, task entry, reports, human plan
 approval, retry and cancellation; see [usage](features/workflows/usage.md).
+Make section tabs clickable and keyboard-reachable; preserve drafts/selections
+between sections. Enter/double-click opens editing or run details. Keep Launch,
+Run and Open pane separate from opening an item. Role selectors open a profile
+picker; show complete run reports with explicit approval and Back controls.
+Keep errors above action rows, including at 80×24. Text cursors must stay visible.
 Setup previews and copies repository instructions without editing files. Show
 workflow stage/round labels beside associated sessions. Pending plan approvals
 also appear in Inbox and open the exact run for review before human approval.
@@ -179,3 +210,7 @@ also appear in Inbox and open the exact run for review before human approval.
 Wrap each outer terminal frame in synchronized-update markers; end the update
 even when drawing fails. An unfinished child update from the previous frame
 must not delay switching to another session.
+
+Keep pane padding and the card interior on the same surface as a terminal app
+when at least three screen corners use one explicit background color. Preserve
+the pane insets; isolated colored panels keep their existing theme treatment.

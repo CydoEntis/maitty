@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 pub const EXAMPLE: &str = include_str!("../config.example.toml");
-pub const CODEX_QUEUED_QUESTION_PATTERN: &str = r"(?m)^\s*\?\s+[1-9][0-9]*\s+questions?\s*$";
+pub const CODEX_QUEUED_QUESTION_PATTERN: &str = r"(?m)^[ \t]*\?[ \t]+[1-9][0-9]*[ \t]+questions?[ \t]*$|^[ \t]*enter[ \t]+submit[ \t]+ctrl\+\][ \t]+skip[ \t]+shift\+[^\r\n]*main prompt[ \t]*$";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -487,7 +487,7 @@ impl Default for Ui {
             which_key_delay_ms: 600,
             which_key: true,
             mouse: true,
-            spinner: SPINNER.map(String::from).to_vec(),
+            spinner: SPINNERS[0].1.iter().map(|frame| (*frame).into()).collect(),
             workspace_colors: ["#a593ff", "#5aa9ff", "#ff7ab6", "#3dd6c0", "#e8c565", "#ff9f6b", "#c792ea", "#7fd8a4"]
                 .map(String::from)
                 .to_vec(),
@@ -541,10 +541,56 @@ impl Default for Worktree {
     }
 }
 
-/// The working animation: full-height braille, so it sits in the middle of its cell.
-const SPINNER: [&str; 8] = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"];
-/// The one before, in the top three rows of the cell (it looked high next to text).
-const OLD_SPINNER: [&str; 8] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"];
+pub const SPINNERS: &[(&str, &[&str])] = &[
+    ("Braille", &["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]),
+    ("Dots", &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
+    ("Line (ASCII)", &["|", "/", "-", "\\"]),
+    ("Circle", &["◴", "◷", "◶", "◵"]),
+    ("Arrows", &["←", "↖", "↑", "↗", "→", "↘", "↓", "↙"]),
+    ("Pulse", &["·", "•", "●", "•"]),
+    ("Blocks", &["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃", "▂"]),
+    ("Static", &[]),
+];
+pub const MAX_SPINNER_FRAMES: usize = 64;
+
+pub fn spinner_name(frames: &[String]) -> &'static str {
+    SPINNERS.iter().find(|(_, preset)| frames == *preset).map_or("Custom", |(name, _)| name)
+}
+
+pub fn validate_spinner(frames: &[String]) -> Result<()> {
+    use unicode_width::UnicodeWidthStr;
+    anyhow::ensure!(frames.len() <= MAX_SPINNER_FRAMES, "a working spinner can have at most {MAX_SPINNER_FRAMES} frames");
+    anyhow::ensure!(frames.iter().all(|frame| !frame.trim().is_empty() && !frame.chars().any(char::is_control) && frame.width() == 1),
+        "each spinner frame must fit one terminal column and contain no control characters");
+    Ok(())
+}
+
+pub fn parse_spinner(text: &str) -> Result<Vec<String>> {
+    anyhow::ensure!(!text.chars().any(|c| c.is_control() && !c.is_whitespace()), "spinner frames cannot contain control characters");
+    let frames = text.split_whitespace().map(String::from).collect::<Vec<_>>();
+    validate_spinner(&frames)?;
+    Ok(frames)
+}
+
+#[cfg(test)]
+mod spinner_tests {
+    use super::*;
+
+    #[test]
+    fn presets_and_custom_frames_are_safe_single_column_indicators() {
+        for (name, frames) in SPINNERS {
+            let frames = frames.iter().map(|frame| (*frame).into()).collect::<Vec<_>>();
+            validate_spinner(&frames).unwrap();
+            assert_eq!(spinner_name(&frames), *name);
+        }
+        assert_eq!(parse_spinner("| / - \\").unwrap(), ["|", "/", "-", "\\"]);
+        assert_eq!(parse_spinner("e\u{301} x").unwrap(), ["e\u{301}", "x"]);
+        for frames in [vec!["".into()], vec![" ".into()], vec!["🌈".into()], vec!["\x1b[31m".into()], vec!["a".into(); MAX_SPINNER_FRAMES+1]] {
+            assert!(validate_spinner(&frames).is_err());
+        }
+        assert!(parse_spinner("\x1b[31m").is_err());
+    }
+}
 
 /// The "done" icon before it became a green dot.
 const OLD_DONE_ICON: &str = "✓";
@@ -610,7 +656,7 @@ pub fn builtin_agents() -> Vec<AgentDef> {
     vec![
         resumable(agent(
             "claude",
-            &["claude"],
+            &["claude", "claude-code"],
             &["@anthropic-ai/claude-code", "claude-code/cli"],
             // "esc to interrupt", or the spinner line: "Misting… (5s · ↓ 219 tokens)".
             &[r"esc to interrupt", r"…\s*\(\d+[smh][^)]*tokens"],
@@ -633,22 +679,33 @@ pub fn builtin_agents() -> Vec<AgentDef> {
             &[r"Allow command\?", r"Would you like to (run|make|apply)", r"approve this", r"Trust this folder\?", r"› 1\. Yes"],
         ), "codex resume {session}", "codex resume --last"),
         agent("gemini", &["gemini"], &["@google/gemini-cli"], &[r"esc to cancel"], &[r"Allow execution", r"Apply this change\?"]),
-        resumable(agent("opencode", &["opencode"], &["opencode-ai"], &[r"esc interrupt"], &[r"Permission required"]), "opencode --session {session}", "opencode --continue"),
+        resumable(agent("opencode", &["opencode", "opencode2", "open-code"], &["opencode-ai"], &[r"esc interrupt"], &[r"Permission required"]), "opencode --session {session}", "opencode --continue"),
         agent("cursor", &["cursor-agent"], &[], &[r"ctrl\+c to stop"], &[r"Run this command\?"]),
-        resumable(agent("copilot", &["copilot"], &["@github/copilot"], &[r"esc to cancel"], &[r"Do you want to"]), "copilot --resume {session}", "copilot --continue"),
-        agent("amp", &["amp"], &["@sourcegraph/amp"], &[r"esc to cancel"], &[r"Allow\?"]),
-        agent("qwen", &["qwen"], &["@qwen-code/qwen-code"], &[r"esc to cancel"], &[r"Allow execution"]),
+        resumable(agent("copilot", &["copilot", "github-copilot", "ghcs"], &["@github/copilot"], &[r"esc to cancel"], &[r"Do you want to"]), "copilot --resume {session}", "copilot --continue"),
+        agent("amp", &["amp", "amp-local"], &["@sourcegraph/amp"], &[r"esc to cancel"], &[r"Allow\?"]),
+        agent("qwen", &["qwen", "qwen-code"], &["@qwen-code/qwen-code"], &[r"esc to cancel"], &[r"Allow execution"]),
         agent("aider", &["aider"], &["aider-chat", "\\aider", "/aider"], &[], &[r"\(Y\)es/\(N\)o"]),
         agent("goose", &["goose"], &[], &[], &[]),
         agent("crush", &["crush"], &[], &[], &[]),
         agent("droid", &["droid"], &[], &[], &[]),
-        agent("pi", &["pi"], &["@mariozechner/pi"], &[], &[]),
-        agent("kiro", &["kiro-cli", "q"], &[], &[], &[]),
-        agent("grok", &["grok"], &["@vibe-kit/grok-cli", "grok-cli"], &[r"esc to interrupt"], &[r"Do you want to"]),
+        agent("pi", &["pi"], &["@mariozechner/pi-coding-agent", "@earendil-works/pi-coding-agent"], &[], &[]),
+        agent("kiro", &["kiro-cli", "kiro", "q"], &[], &[], &[]),
+        agent("grok", &["grok", "grok-build"], &["@vibe-kit/grok-cli", "grok-cli"], &[r"esc to interrupt"], &[r"Do you want to"]),
         agent("auggie", &["auggie"], &["@augmentcode/auggie"], &[], &[]),
-        agent("kimi", &["kimi"], &["kimi-cli"], &[], &[]),
+        agent("kimi", &["kimi", "kimi-code"], &["kimi-cli", "@moonshot-ai/kimi-code"], &[], &[]),
         // The DeepSeek harness (dsh-TUI), whatever alias starts it.
-        agent("deepseek", &["dsh", "dsh-tui", "deepseek"], &["dsh-tui", "deepseek-harness"], &[r"esc to interrupt", r"esc to cancel"], &[r"Do you want to", r"\(y/n\)"]),
+        agent("deepseek", &["dsh", "dsh-tui", "deepseek"], &["@deepseek-ai/dsh", "dsh-tui", "deepseek-harness"], &[r"esc to interrupt", r"esc to cancel"], &[r"Do you want to", r"\(y/n\)"]),
+        agent("devin", &["devin", "devin-cli"], &[], &[], &[]),
+        agent("agy", &["agy", "antigravity", "antigravity-cli"], &[], &[], &[]),
+        agent("cline", &["cline", ".cline"], &["@cline/cli", "/cline/bin/"], &[], &[]),
+        agent("omp", &["omp"], &["@oh-my-pi/pi-coding-agent"], &[], &[]),
+        agent("mastracode", &["mastracode", "mastra-code"], &["mastracode/dist/cli"], &[], &[]),
+        agent("hermes", &["hermes", "hermes-agent"], &["hermes_cli/main.py", "/bin/hermes", "/bin/hermes-agent"], &[], &[]),
+        agent("kilo", &["kilo", "kilo-code"], &["@kilocode/cli"], &[], &[]),
+        agent("qodercli", &["qodercli", "qoderclicn", "qoder", "qodercn"], &[], &[], &[]),
+        agent("letta", &["letta", "letta-code"], &["@letta-ai/letta-code"], &[], &[]),
+        agent("maki", &["maki"], &[], &[], &[]),
+        agent("muse", &["muse", "muse-code", "muse-cli"], &[], &[], &[]),
     ]
 }
 
@@ -881,9 +938,7 @@ impl Config {
         if cfg.icons.shell == OLD_SHELL_ICON {
             cfg.icons.shell = Icons::default().shell;
         }
-        if cfg.ui.spinner == OLD_SPINNER {
-            cfg.ui.spinner = Ui::default().spinner;
-        }
+        validate_spinner(&cfg.ui.spinner)?;
         crate::profiles::validate(&cfg.profiles)?;
         crate::workflows::validate(&cfg.workflows)?;
         Ok(cfg)
@@ -1038,6 +1093,10 @@ impl Config {
         defs.into_iter()
             .filter(|d| d.enabled != Some(false))
             .map(|d| CompiledAgent {
+                builtin_process: !self.agents_replace_defaults && builtin_agents().iter().any(|a| a.name == d.name)
+                    && !self.agents.iter().any(|a| a.name == d.name && !a.cmdline.is_empty()),
+                builtin_screen: !self.agents_replace_defaults && builtin_agents().iter().any(|a| a.name == d.name)
+                    && !self.agents.iter().any(|a| a.name == d.name && (!a.working_patterns.is_empty() || !a.blocked_patterns.is_empty())),
                 process: d.process.iter().map(|p| p.to_ascii_lowercase()).collect(),
                 cmdline: d.cmdline.clone(),
                 blocked: re(&d.blocked_patterns),
@@ -1053,6 +1112,8 @@ impl Config {
 #[derive(Debug, Clone)]
 pub struct CompiledAgent {
     pub name: String,
+    pub builtin_screen: bool,
+    pub builtin_process: bool,
     pub process: Vec<String>,
     pub cmdline: Vec<String>,
     pub blocked: Vec<Regex>,

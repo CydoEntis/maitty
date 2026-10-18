@@ -99,6 +99,18 @@ Tests never touch the user's real config (`SESHI_CONFIG` or in-memory configs).
 
 ## Project-specific: interaction performance
 
+Native Pi/OMP/OpenCode/Kilo adapters also run without an installed agent, network, or real
+status socket: `node --experimental-vm-modules --test src/cli/integrations.test.mjs`.
+The VM supplies the process-launch boundary and executes the bundled adapters.
+Cover nested dialogs, event ordering, helper versus parent completion, unrelated
+sessions, reporting failures/recovery and inert behavior outside Seshi. CI runs
+these adapter tests on Windows and Linux; Node's VM flag is test-only.
+Cover OpenCode TUI V1/V2 selection, initial idle, shared-backend isolation and
+disposal. Exercise OMP retry/continuation timers deterministically. Rust tests
+validate Kimi/Mastracode config shapes, OpenCode JSONC retention/migration, all
+29 process identities, all 22 bundled screen manifests and Codex's wrapped footer
+with/without completion hooks. Use the exact screenshot footer as a regression.
+
 Run `cargo test --release session_interactions_under_heavy_output -- --ignored --nocapture`
 for the opt-in interaction benchmark. It feeds eight panes with output while
 interleaving acknowledged session switches, scrollback and resize/rewrap. It

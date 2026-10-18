@@ -28,6 +28,7 @@ jobs:
       # shells (ConPTY) at once. It also names a stuck test in the log.
       - run: cargo test --locked -- --test-threads=1
       - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: node --experimental-vm-modules --test src/cli/integrations.test.mjs
 
   macos:
     name: check (macOS)

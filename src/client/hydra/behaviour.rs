@@ -459,7 +459,10 @@ impl App {
                 }
             }
             Action::CloseTab => self.close_tab(self.hy.tab),
-            Action::ToggleSidebar => self.sidebar = !self.sidebar,
+            Action::ToggleSidebar => {
+                self.sidebar = !self.sidebar;
+                self.hy.follow = true;
+            }
             Action::RenameWorkspace => {
                 if let Some(t) = self.hy.cursor.or(focused) {
                     self.menu_do(crate::client::menu::Act::RenamePane(t));
@@ -1178,10 +1181,17 @@ impl App {
             }
             HyHit::TabClose(i) => self.close_tab(i),
             HyHit::SideFocus => self.act(Action::BrowseTree),
+            HyHit::ExpandSidebar => self.act(Action::ToggleSidebar),
             HyHit::TabNew => self.act(Action::NewTab),
             HyHit::Actions => self.act(Action::Actions),
             HyHit::NewShell => self.act(Action::ShellHere),
             HyHit::ActionRow(i) => self.actions_run(i),
+            HyHit::PickRow(i) => {
+                if let Mode::Picker { query, commands, .. } = self.mode.clone() {
+                    self.mode = Mode::Picker { query, sel: i, commands };
+                    self.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                }
+            }
             HyHit::Leader => self.open_keymap(None),
             HyHit::KeyRow(i) => {
                 if let Mode::KeyMap(km) = &self.mode {
@@ -1193,7 +1203,10 @@ impl App {
                 }
             }
             HyHit::Close => {
-                if let Mode::Themes { query, sel, saving } = self.mode.clone() {
+                if matches!(self.mode, Mode::Spinners(_)) {
+                    if let Mode::Spinners(view) = &self.mode && view.saving { return; }
+                    self.back_to_setting("ui.spinner");
+                } else if let Mode::Themes { query, sel, saving } = self.mode.clone() {
                     self.on_theme_key(query, sel, saving, &KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
                 } else {
                     self.mode = Mode::Normal;
@@ -1201,6 +1214,7 @@ impl App {
             }
             HyHit::ViewClose => self.view = None,
             HyHit::Noop => {}
+            HyHit::SettingsBody => {}
             HyHit::FinderPick(i) => {
                 if let Mode::Finder(fd) = &self.mode {
                     let mut fd = (**fd).clone();
@@ -1215,35 +1229,56 @@ impl App {
             HyHit::Profiles => self.open_profiles(),
             HyHit::WorkflowRun(run) => self.open_workflow_run(run),
             HyHit::WorkflowTab(tab) => {
-                let dir = match &self.mode {
-                    Mode::Profiles(v) => v.dir.clone(),
-                    Mode::Workflows(v) => v.dir.clone(),
-                    _ => self.hy_target_dir(),
-                };
-                if tab == 0 { self.open_profiles(); } else { self.open_workflows_at(dir, tab == 2); }
+                self.switch_agent_sheet(tab);
             }
             HyHit::WorkflowRow(i) => {
                 if let Mode::Workflows(v) = &mut self.mode { v.sel = i; v.scroll = 0; }
+                if double && let Mode::Workflows(v) = &self.mode {
+                    self.on_workflows_key((**v).clone(), &KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                }
             }
             HyHit::WorkflowField(i) => {
-                if let Mode::Workflows(v) = &mut self.mode { v.field = i; }
+                if let Mode::Workflows(v) = &mut self.mode { v.field = i; v.cursor = None; }
+                if (1..=3).contains(&i) && let Mode::Workflows(v) = &self.mode {
+                    self.on_workflows_key((**v).clone(), &KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                } else if i == 4 && let Mode::Workflows(v) = &self.mode {
+                    self.on_workflows_key((**v).clone(), &KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+                }
+            }
+            HyHit::WorkflowProfile(i) => {
+                if let Mode::Workflows(v) = &mut self.mode && v.picker.is_some() { v.picker = Some(i); }
+                if let Mode::Workflows(v) = &self.mode {
+                    self.on_workflows_key((**v).clone(), &KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                }
+            }
+            HyHit::AgentSheetBody => {}
+            HyHit::WorkflowReport(i) => {
+                if let Mode::Workflows(v) = &mut self.mode { v.report = i.min(3); v.scroll = 0; }
             }
             HyHit::WorkflowKey(c) => {
                 if let Mode::Workflows(v) = &self.mode {
                     let v = (**v).clone();
-                    self.on_workflows_key(v, &KeyEvent::new(if c == '\n' { KeyCode::Enter } else { KeyCode::Char(c) }, if c == 's' { KeyModifiers::CONTROL } else { KeyModifiers::NONE }));
+                    let code = match c { '\n' => KeyCode::Enter, '\u{1b}' => KeyCode::Esc, c => KeyCode::Char(c) };
+                    let modifiers = if c == 's' && v.editor.is_some() { KeyModifiers::CONTROL } else { KeyModifiers::NONE };
+                    self.on_workflows_key(v, &KeyEvent::new(code, modifiers));
                 }
             }
             HyHit::ProfileRow(i) => {
                 if let Mode::Profiles(v) = &mut self.mode { v.sel = i; v.scroll = 0; }
+                if double && let Mode::Profiles(v) = &self.mode {
+                    self.on_profiles_key((**v).clone(), &KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                }
             }
             HyHit::ProfileField(i) => {
-                if let Mode::Profiles(v) = &mut self.mode && let Some(e) = &mut v.editor { e.field = i; }
+                if let Mode::Profiles(v) = &mut self.mode && let Some(e) = &mut v.editor { e.field = i; e.cursor = None; }
+                if matches!(i, 1 | 5) && let Mode::Profiles(v) = &self.mode {
+                    self.on_profiles_key((**v).clone(), &KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+                }
             }
             HyHit::ProfileKey(c) => {
                 if let Mode::Profiles(v) = &self.mode {
                     let modifiers = if c == 's' { KeyModifiers::CONTROL } else { KeyModifiers::NONE };
-                    self.on_profiles_key((**v).clone(), &KeyEvent::new(if c == '\n' { KeyCode::Enter } else { KeyCode::Char(c) }, modifiers));
+                    self.on_profiles_key((**v).clone(), &KeyEvent::new(match c { '\n' => KeyCode::Enter, '\u{1b}' => KeyCode::Esc, c => KeyCode::Char(c) }, modifiers));
                 }
             }
             HyHit::NpTask => {
@@ -1299,6 +1334,7 @@ impl App {
                     v.capturing = false;
                 }
             }
+            HyHit::SpinnerPick(i) => self.spinner_pick(i),
             HyHit::ThemePick(i) => {
                 if let Mode::Themes { query, sel, saving } = self.mode.clone() {
                     if saving { return; }
@@ -1394,7 +1430,7 @@ impl App {
         }
     }
 
-    /// A key for the settings overlay (shared with clicks).
+    /// A key for the settings sheet (shared with clicks).
     pub(in crate::client) fn hy_settings_key(&mut self, k: &KeyEvent) {
         let Mode::HySettings(v) = self.mode.clone() else { return };
         let mut v = *v;

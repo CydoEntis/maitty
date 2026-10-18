@@ -227,6 +227,7 @@ pub enum Action {
     Profiles,
     Workflows,
     WorkflowRuns,
+    AgentStatusSetup,
     /// Switch the branch of the checkout you're in.
     Branches,
     /// A shell in the folder of the session you're on, straight away.
@@ -319,6 +320,7 @@ impl Action {
             Action::Profiles => "Agent profiles".into(),
             Action::Workflows => "Workflows".into(),
             Action::WorkflowRuns => "Workflow runs".into(),
+            Action::AgentStatusSetup => "Set up agent status".into(),
             Action::Branches => "Switch branch".into(),
             Action::ShellHere => "New session (a shell here)".into(),
             Action::PrevPrompt => "Jump to the previous command in history".into(),
@@ -396,6 +398,7 @@ impl Action {
             Action::Profiles => "profiles".into(),
             Action::Workflows => "workflows".into(),
             Action::WorkflowRuns => "workflow-runs".into(),
+            Action::AgentStatusSetup => "agent-status-setup".into(),
             Action::Branches => "switch-branch".into(),
             Action::ShellHere => "shell-here".into(),
             Action::PrevPrompt => "prev-prompt".into(),
@@ -490,6 +493,7 @@ impl FromStr for Action {
             "profiles" => Action::Profiles,
             "workflows" => Action::Workflows,
             "workflow-runs" => Action::WorkflowRuns,
+            "agent-status-setup" => Action::AgentStatusSetup,
             "switch-branch" => Action::Branches,
             "shell-here" => Action::ShellHere,
             "prev-prompt" => Action::PrevPrompt,

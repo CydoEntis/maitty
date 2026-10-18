@@ -109,13 +109,14 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             super::hydra::draw_new_pane(app, f, area, &t, &np);
         }
         Mode::Profiles(_) | Mode::Workflows(_) => {} // Drawn in the right sheet.
-        Mode::HySettings(v) => {
-            let v = (**v).clone();
-            super::hydra::draw_settings(app, f, area, &t, &v);
-        }
+        Mode::HySettings(_) => {} // Drawn in the right sheet.
         Mode::Themes { query, sel, saving } => {
             let (query, sel, saving) = (query.clone(), *sel, *saving);
             super::themes::draw_themes(app, f, area, &t, &query, sel, saving);
+        }
+        Mode::Spinners(view) => {
+            let view = (**view).clone();
+            super::spinners::draw(app, f, area, &t, &view);
         }
         Mode::Picker { query, sel, commands } => {
             let (query, sel, commands) = (query.clone(), *sel, *commands);
@@ -304,6 +305,46 @@ pub(super) fn vt_color(c: vt100::Color) -> Color {
         vt100::Color::Idx(i) => Color::Indexed(i),
         vt100::Color::Rgb(r, g, b) => Color::Rgb(r, g, b),
     }
+}
+
+/// Use a terminal app's background for the card only when it fills nearly the whole screen.
+pub(super) fn terminal_surface_bg(screen: &vt100::Screen, default_bg: Color) -> Color {
+    const MIN_MATCHING_CORNERS: usize = 3;
+
+    let (rows, cols) = screen.size();
+    if rows == 0 || cols == 0 {
+        return default_bg;
+    }
+    let palette = PALETTE.read().map(|palette| *palette).unwrap_or(None);
+    let panel = PANEL.read().map(|panel| *panel).unwrap_or(None);
+    let corners = [
+        (0, 0),
+        (0, cols - 1),
+        (rows - 1, 0),
+        (rows - 1, cols - 1),
+    ];
+    let backgrounds: [Option<Color>; 4] = corners.map(|(row, col)| {
+        let cell = screen.cell(row, col)?;
+        let mut bg = if cell.inverse() {
+            themed(vt_color(cell.fgcolor()), &palette)
+        } else {
+            themed(vt_color(cell.bgcolor()), &palette)
+        };
+        if bg == Color::Reset {
+            return None;
+        }
+        if bg == Color::Indexed(8) {
+            bg = panel.unwrap_or(bg);
+        }
+        Some(bg)
+    });
+
+    for bg in backgrounds.iter().flatten() {
+        if backgrounds.iter().filter(|sample| sample.as_ref() == Some(bg)).count() >= MIN_MATCHING_CORNERS {
+            return *bg;
+        }
+    }
+    default_bg
 }
 
 /// Draw a terminal screen. Cells with the default background get `default_bg` (the

@@ -52,7 +52,9 @@ sidebar_position = "left"   # left | right
 which_key = false         # a keys popup if you pause after the leader (? always shows them)
 which_key_delay_ms = 350
 mouse = true
-# spinner = []              # empty = static icons.working
+# Working spinner: Settings > Appearance > Working spinner has animated previews.
+# spinner = ["|", "/", "-", "\\"] # custom frames, each one terminal column
+# spinner = []              # static icons.working; at most 64 custom frames
 workspace_colors = ["#89b4fa", "#a6e3a1", "#cba6f7", "#fab387", "#94e2d5", "#f5c2e7", "#f9e2af", "#f38ba8"]
 
 [restore]

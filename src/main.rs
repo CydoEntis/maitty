@@ -5,6 +5,7 @@ mod clock;
 mod client;
 mod config;
 mod daemon;
+mod detection;
 mod gitfs;
 mod ipc;
 mod mcp;
@@ -148,7 +149,7 @@ enum Cmd {
     },
     /// Install status hooks into an agent's config.
     Integrate {
-        /// claude or codex
+        /// claude, codex, gemini, qwen, pi, omp, opencode, mastracode, kilo or kimi
         agent: String,
         #[arg(long)]
         uninstall: bool,

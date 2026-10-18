@@ -19,6 +19,7 @@ impl App {
         }
         match msg {
             ServerMsg::State(s) => {
+                self.settling.retain(|id, (status, _)| s.terms.get(id).is_some_and(|t| t.status == *status));
                 self.parsers.retain(|id, _| s.terms.contains_key(id));
                 for (id, t) in &s.terms {
                     if !self.parsers.contains_key(id) {
@@ -88,12 +89,10 @@ impl App {
             }
             ServerMsg::Attention { term, status } => {
                 self.settling.remove(&term);
-                if status == Status::Blocked {
-                    self.alert_now(term, status);
-                } else if !self.is_helper(term) {
-                    // Finished waits, to see whether it stays finished. One that another
-                    // agent started isn't said at all: that agent is the one waiting on it.
-                    self.settling.insert(term, Instant::now() + crate::alert::FINISHED_SETTLES);
+                if (status != Status::Done || !self.is_helper(term))
+                    && let Some(delay) = crate::alert::settle_delay(status)
+                {
+                    self.settling.insert(term, (status, Instant::now() + delay));
                 }
             }
             ServerMsg::Clipboard { term, text } => {
@@ -146,23 +145,26 @@ impl App {
         self.snap.terms.get(&term).and_then(|t| t.started_by).is_some_and(|by| self.snap.terms.contains_key(&by))
     }
 
-    /// Agents that finished a while ago and are still finished: say so now.
-    pub(super) fn settle_finished(&mut self) {
+    /// Recheck queued alerts after short-lived prompts and automatic continuations settle.
+    pub(super) fn settle_alerts(&mut self) {
         let now = Instant::now();
-        let due: Vec<TermId> = self.settling.iter().filter(|(_, at)| **at <= now).map(|(t, _)| *t).collect();
-        for term in due {
+        let due: Vec<_> = self.settling.iter().filter(|(_, (_, at))| *at <= now).map(|(t, (s, _))| (*t, *s)).collect();
+        for (term, status) in due {
             self.settling.remove(&term);
-            if self.snap.terms.get(&term).is_some_and(|t| t.status == Status::Done) {
-                self.alert_now(term, Status::Done);
+            if self.snap.terms.get(&term).is_some_and(|t| t.status == status) {
+                self.alert_now(term, status);
                 self.dirty = true;
             }
         }
     }
 
-    /// An agent you're not looking at needs you or has finished: seshi's sound and its own
-    /// note. (With no window open the server shows a desktop notification instead.)
+    /// Questions ring even in the focused pane; completion only rings away from it.
+    /// With no window open the server shows a desktop notification instead.
     fn alert_now(&mut self, term: TermId, status: Status) {
-        if self.focused() == Some(term) && self.window_focused {
+        if !self.snap.terms.get(&term).is_some_and(|t| t.status == status) {
+            return;
+        }
+        if status == Status::Done && self.focused() == Some(term) && self.window_focused {
             return;
         }
         // The same news again soon, or another agent just rang: the note says it, quietly.
@@ -207,6 +209,9 @@ impl App {
             let who = if place.is_empty() { name } else { format!("{name} in {place}") };
             if old.is_some_and(|o| o.status != t.status) {
                 match t.status {
+                    Status::Working => {
+                        self.alerted.remove(id);
+                    }
                     Status::Blocked => events.push((*id, '!', format!("{who} needs you"))),
                     Status::Done => {
                         let said = t.said.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string();

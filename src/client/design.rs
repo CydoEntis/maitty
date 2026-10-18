@@ -686,6 +686,7 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
         SRow::Bind { label, .. } => key_rows().into_iter().find(|(_, items)| items.iter().any(|(l, _)| l == label)).map(|(g, _)| g).unwrap_or("KEYS"),
         SRow::Setting(s) => match s.path {
             "theme" => "THEME",
+            "ui.spinner" => "STATUS INDICATORS",
             "prefix" | "ui.mouse" | "ui.which_key" => "INPUT",
             "ui.sidebar_position" | "ui.splash" => "LAYOUT",
             "ui.update_check" => "UPDATES",
@@ -771,6 +772,10 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
             }
             let cur = super::modal::current(cfg, s.path);
             match s.kind {
+                Kind::Spinner => vec![
+                    seg(format!(" {} ", super::modal::display(cfg, s)), Style::default().fg(t.working)),
+                    seg("Enter browse", Style::default().fg(t.accent)),
+                ],
                 Kind::Bool => {
                     if cur.and_then(|v| v.as_bool()).unwrap_or(false) {
                         super::hydra::chip("● on ", Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD))
