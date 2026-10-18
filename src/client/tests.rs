@@ -237,6 +237,57 @@ mod hydra_tests {
     }
 
     #[test]
+    fn collapsed_sidebar_keeps_status_focus_mouse_access_and_overflow_attention() {
+        for (w, h) in [(80, 24), (100, 30), (160, 45)] {
+            for position in ["left", "right"] {
+                let (_, mut app) = super::design_tests::render_with(w, h);
+                app.cfg.ui.sidebar_position = position.into();
+                app.sidebar = false;
+                app.snap.terms.get_mut(&2).unwrap().label = "Review payments".into();
+                app.hy_fresh();
+                app.cfg.ui.motion = false;
+                app.hy_focus(1);
+                app.mode = Mode::Normal;
+                let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
+                let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+                terminal.draw(|f| render::draw(&mut app, f)).unwrap();
+                let rail = app.hy.side_rect;
+                assert_eq!(rail.width, 7);
+                assert_eq!(app.hy.row_y.len(), 3);
+                let y = app.hy.row_y[&1];
+                let hover_y = app.hy.row_y[&2];
+                let active_bg = terminal.backend().buffer()[(rail.x + 3, y)].bg;
+                assert_eq!(terminal.backend().buffer()[(rail.x + 1, y)].fg, app.theme.blocked);
+                assert_eq!(terminal.backend().buffer()[(rail.x + 3, y)].fg, app.theme.blocked);
+                app.on_mouse(MouseEvent { kind: MouseEventKind::Moved, column: rail.x + 3, row: hover_y, modifiers: KeyModifiers::NONE });
+                terminal.draw(|f| render::draw(&mut app, f)).unwrap();
+                assert_eq!(terminal.backend().buffer()[(rail.x + 3, y)].bg, active_bg);
+                assert_ne!(terminal.backend().buffer()[(rail.x + 3, hover_y)].bg, active_bg);
+                assert_eq!(app.focused(), Some(1));
+                let screen = draw(&mut app, w, h); show(&screen);
+                assert!(screen.contains("Review payments"), "hover reveals the full name");
+                for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+                    app.on_mouse(MouseEvent { kind, column: rail.x + 3, row: hover_y, modifiers: KeyModifiers::NONE });
+                }
+                assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 }))));
+                // More sessions than fit: the blocked total remains visible off screen.
+                for id in 4..40 { let mut t = app.snap.terms[&2].clone(); t.id = id; app.snap.terms.insert(id, t);
+                    app.snap.workspaces[0].tabs.push(TabInfo { id: 100 + id, name: String::new(), layout: crate::layout::Node::Leaf(id), focus: id });
+                }
+                app.hy.side_scroll = 30; app.hy.follow = false;
+                let screen = draw(&mut app, w, h);
+                assert!(screen.contains("\u{25cf}1"));
+                assert!(!app.hy.row_y.contains_key(&1));
+                let (expand, _) = app.hits.iter().find(|(_, h)| *h == Hit::Hy(hydra::HyHit::ExpandSidebar)).unwrap();
+                app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: expand.x, row: expand.y, modifiers: KeyModifiers::NONE });
+                assert!(app.sidebar);
+                draw(&mut app, w, h);
+                assert!(app.hy.side_rect.width > rail.width);
+            }
+        }
+    }
+
+    #[test]
     fn active_sidebar_selection_survives_hover_and_keyboard_browsing() {
         let (_, mut app) = super::design_tests::render_with(120, 30);
         let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
@@ -348,7 +399,7 @@ mod hydra_tests {
         assert!(instructions.contains("seshi workflow run my-feature") && instructions.contains("Do not approve it yourself") && instructions.contains("assigned workflow stage"));
         app.mode = Mode::Workflows(Box::new(workflows::WorkflowView {
             dir: PathBuf::from("."), entries: Some(vec![crate::workflows::ResolvedWorkflow { workflow, project: true }]), profiles: roles,
-            runs: false, sel: 0, scroll: 0, editor: None, original: None, project: true, field: 0, task: None, busy: false, error: None, confirm: None, setup: None,
+            runs: false, sel: 0, scroll: 0, editor: None, original: None, project: true, field: 0, task: None, busy: false, error: None, confirm: None, setup: None, run: None, report: 0, picker: None, cursor: None,
         }));
         let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
         app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::NONE));
@@ -672,8 +723,28 @@ mod hydra_tests {
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let (_, inner) = app.panes[0];
         let buf = term.backend().buffer();
+        assert_eq!(buf[(inner.x - 1, inner.y)].bg, hydra::pane_bg(&app.theme), "a small contrasting panel does not recolor the card padding");
         assert_eq!(buf[(inner.x, inner.y)].bg, app.theme.card2, "not a light grey slab");
         assert_eq!(buf[(inner.x + 13, inner.y)].bg, hydra::pane_bg(&app.theme), "the rest on the card's ground");
+    }
+
+    #[test]
+    fn a_terminal_surface_background_fills_card_padding() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let surface = ratatui::style::Color::Rgb(8, 9, 10);
+        let mut parser = vt100::Parser::new(20, 80, 0);
+        parser.process(b"\x1b[48;2;8;9;10m\x1b[2J");
+        app.parsers.insert(1, parser);
+
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(160, 45)).unwrap();
+        terminal.draw(|frame| render::draw(&mut app, frame)).unwrap();
+
+        let (_, inner) = app.panes[0];
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(inner.x - 1, inner.y)].bg, surface, "the padding shares the terminal's solid surface");
+        assert_eq!(buffer[(inner.x, inner.y)].bg, surface, "the terminal canvas keeps its background");
+        assert_eq!(buffer[(inner.x + inner.width, inner.y)].bg, surface, "the opposite padding stays visible without a seam");
+        show(&draw(&mut app, 160, 45));
     }
 
     #[test]
@@ -842,7 +913,7 @@ mod hydra_tests {
         let screen = draw(&mut app, 110, 30);
         show(&screen);
         assert!(screen.contains("Agent profiles") && screen.contains("chosen-model") && screen.contains("project"));
-        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
         let screen = draw(&mut app, 110, 30);
         assert!(screen.contains("codex · chosen-model · medium") && screen.contains("Fresh codex session"));
         app.on_paste("Review the change with 'quotes', $text and a new\nline".into());
@@ -887,13 +958,139 @@ mod hydra_tests {
         app.profile_projects.insert(worktree.clone(), Ok(vec![local.clone()]));
         let entries = crate::profiles::resolve(&app.cfg.profiles, &[local]).unwrap();
         app.mode = Mode::Profiles(Box::new(profiles::ProfilesView { dir: worktree.clone(), entries: Some(entries), error: None, sel: 0, scroll: 0, editor: None, busy: false, import_path: None }));
-        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
         assert_eq!(app.profile_dir(0), Some(worktree));
         assert_eq!(app.profiles_for(0).unwrap()[0].profile.model, "worktree-model");
         let screen = draw(&mut app, 80, 24);
         show(&screen);
         assert!(screen.contains("worktree-model"));
         assert!(matches!(&app.mode, Mode::HyPane(np) if np.place.is_some_and(|p| p >= 3)));
+    }
+
+    #[test]
+    fn workflow_mouse_editing_chooses_profiles_and_keeps_the_draft() {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        app.open_workflows(false);
+        let Mode::Workflows(v) = &mut app.mode else { unreachable!() };
+        v.busy = false;
+        v.profiles = (0..3).map(|i| crate::profiles::Resolved { profile: crate::profiles::starter(crate::profiles::Runner::Codex, i), project: false }).collect();
+        v.entries = Some(vec![crate::workflows::ResolvedWorkflow { workflow: crate::workflows::Workflow { name: "feature".into(), planner: "codex-planner".into(), worker: "codex-worker".into(), reviewer: "codex-reviewer".into() }, project: false }]);
+        for (width, height) in [(80, 24), (100, 30), (160, 45)] {
+            let output = draw(&mut app, width, height); show(&output);
+            assert!(output.contains("feature") && output.contains("Run"));
+        }
+        let click = |app: &mut App, wanted: hydra::HyHit| {
+            let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(wanted)).then_some(*r)).expect("control is visible");
+            app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.x, row: at.y, modifiers: KeyModifiers::NONE });
+        };
+        click(&mut app, hydra::HyHit::WorkflowRow(0));
+        click(&mut app, hydra::HyHit::WorkflowRow(0));
+        assert!(matches!(&app.mode, Mode::Workflows(v) if v.editor.is_some()), "double-click opens the workflow");
+        let output = draw(&mut app, 80, 24); show(&output);
+        assert!(output.contains("PLANNER") && output.contains("Save"));
+        click(&mut app, hydra::HyHit::WorkflowField(1));
+        let output = draw(&mut app, 80, 24); show(&output);
+        assert!(output.contains("Choose a profile") && output.contains("codex-reviewer"));
+        click(&mut app, hydra::HyHit::WorkflowProfile(2));
+        assert!(matches!(&app.mode, Mode::Workflows(v) if v.picker.is_none() && v.editor.as_ref().is_some_and(|e| e.planner == "codex-reviewer")));
+        draw(&mut app, 80, 24);
+        click(&mut app, hydra::HyHit::WorkflowTab(0));
+        draw(&mut app, 80, 24);
+        click(&mut app, hydra::HyHit::WorkflowTab(1));
+        assert!(matches!(&app.mode, Mode::Workflows(v) if v.field == 1 && v.editor.as_ref().is_some_and(|e| e.planner == "codex-reviewer")), "mouse tab navigation retains the exact draft");
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert!(matches!(&app.mode, Mode::Workflows(v) if v.field == 2), "Tab inside the editor changes fields");
+        for _ in 0..2 { app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT)); }
+        app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+        assert!(matches!(&app.mode, Mode::Workflows(v) if !v.busy && v.error.is_some() && v.editor.as_ref().is_some_and(|e| e.name.is_empty() && e.planner == "codex-reviewer")), "invalid saves preserve the selected roles and edited name");
+    }
+
+    #[test]
+    fn profile_editor_handles_unicode_insertion_and_keeps_invalid_drafts() {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        app.mode = Mode::Profiles(Box::new(profiles::ProfilesView { dir: PathBuf::from("."), entries: Some(Vec::new()), error: None, sel: 0, scroll: 0, editor: None, busy: false, import_path: None }));
+        app.on_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
+        app.on_paste("café".into());
+        for code in [KeyCode::Home, KeyCode::Right, KeyCode::Delete] { app.on_key(KeyEvent::new(code, KeyModifiers::NONE)); }
+        app.on_paste("Ω".into());
+        app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+        assert!(matches!(&app.mode, Mode::Profiles(v) if !v.busy && v.error.is_some() && v.editor.as_ref().is_some_and(|e| e.profile.name == "cΩfé")), "failed validation preserves the edited Unicode text");
+        for _ in 0..6 { app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)); }
+        app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        app.on_paste("Read the code.\nMake a plan.".into());
+        app.on_key(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE));
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        app.on_paste("!".into());
+        assert!(matches!(&app.mode, Mode::Profiles(v) if v.editor.as_ref().is_some_and(|e| e.field == 6 && e.profile.instructions == "R!ead the code.\nMake a plan.")));
+        let output = draw(&mut app, 80, 24); show(&output);
+        assert!(output.contains("R!▏ead the code.") && output.contains("Make a plan."), "instructions are a visible multiline editor");
+    }
+
+    #[test]
+    fn workflow_reports_scroll_and_controls_stay_bound_to_the_open_run() {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
+        let mut run = crate::workflows::tests::run(); run.state = crate::workflows::State::Approval;
+        run.plan = (0..60).map(|i| format!("Plan line {i:02}\n")).collect();
+        run.work = "Worker verification evidence".into(); run.review = "Reviewer findings".into();
+        app.snap.workflows = vec![run.clone()];
+        app.open_workflow_run(1);
+        for (width, height) in [(80, 24), (100, 30), (160, 45)] {
+            let output = draw(&mut app, width, height); show(&output);
+            assert!(output.contains("Plan line 00") && output.contains("Back to runs"));
+        }
+        app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
+        let output = draw(&mut app, 80, 24); show(&output);
+        assert!(output.contains("Plan line 59"), "the full plan is reachable");
+        let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::AgentSheetBody)).then_some(*r)).unwrap();
+        let before = match &app.mode { Mode::Workflows(v) => v.scroll, _ => unreachable!() };
+        app.on_mouse(MouseEvent { kind: MouseEventKind::ScrollUp, column: at.x, row: at.y + 8, modifiers: KeyModifiers::NONE });
+        assert!(matches!(&app.mode, Mode::Workflows(v) if v.scroll < before), "the wheel scrolls the report");
+        run.id = 99; run.name = "another-task".into(); app.snap.workflows.push(run);
+        app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(rx.try_recv(), Ok(ClientMsg::Command(Command::WorkflowControl { run: 1, action: WorkflowAction::Cancel }))), "a new run cannot redirect a pending control");
+        app.on_key(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
+        let output = draw(&mut app, 80, 24); show(&output);
+        assert!(output.contains("Worker verification evidence"));
+        app.on_key(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::NONE));
+        assert!(draw(&mut app, 80, 24).contains("Reviewer findings"));
+        assert!(rx.try_recv().is_err(), "browsing report pages has no command side effects");
+    }
+
+    #[test]
+    fn agent_sheet_navigation_opens_items_and_keeps_drafts_between_tabs() {
+        let (_, mut app) = super::design_tests::render_with(110, 30);
+        let profile = crate::profiles::starter(crate::profiles::Runner::Codex, 0);
+        app.mode = Mode::Profiles(Box::new(profiles::ProfilesView { dir: PathBuf::from("."), entries: Some(vec![crate::profiles::Resolved { profile, project: false }]), error: None, sel: 0, scroll: 0, editor: None, busy: false, import_path: None }));
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(&app.mode, Mode::Profiles(v) if v.editor.is_some()), "Enter opens the saved role for editing; launching has its own action");
+        app.on_paste("-draft".into());
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::CONTROL));
+        assert!(matches!(&app.mode, Mode::Workflows(v) if !v.runs), "Ctrl+Tab changes sections from an editor");
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::CONTROL | KeyModifiers::SHIFT));
+        assert!(matches!(&app.mode, Mode::Profiles(v) if v.editor.as_ref().is_some_and(|e| e.profile.name.ends_with("-draft"))), "switching sections preserves the draft");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert!(matches!(&app.mode, Mode::Workflows(v) if !v.runs), "Tab moves between sections from the list");
+    }
+
+    #[test]
+    fn workflow_run_enter_opens_reports_without_focusing_or_approving() {
+        let (_, mut app) = super::design_tests::render_with(110, 30);
+        let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
+        let mut run = crate::workflows::tests::run();
+        run.state = crate::workflows::State::Approval; run.term = Some(1); run.plan = "Read the entire proposed plan".into();
+        app.snap.workflows = vec![run];
+        app.open_workflows(true);
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(&app.mode, Mode::Workflows(v) if v.runs), "Enter opens run details instead of leaving for its terminal");
+        let output = draw(&mut app, 110, 30); show(&output);
+        assert!(output.contains("Read the entire proposed plan") && output.contains("Goal") && output.contains("Plan") && output.contains("Review"));
+        assert!(rx.try_recv().is_err(), "reading a run never focuses a pane or approves its plan");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(matches!(&app.mode, Mode::Workflows(v) if v.runs), "Back returns to Runs before closing the sheet");
     }
 
     #[test]
@@ -918,16 +1115,19 @@ mod hydra_tests {
             let o = draw(&mut app, w, h); show(&o);
             assert!(o.contains("feature") && o.contains("my-plan") && o.contains("approval"));
         }
-        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
         app.on_paste("Build password reset".into());
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::WorkflowStart { name, goal, .. }) if name == "feature" && goal == "Build password reset")));
         let mut run = crate::workflows::tests::run(); run.state = crate::workflows::State::Approval; run.plan = "Approved only after the person reads this plan".into(); run.term = None;
         app.snap.workflows.push(run);
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let o = draw(&mut app, 100, 30); show(&o);
-        assert!(o.contains("Approve plan") && o.contains("PLAN"));
+        assert!(o.contains("Approve plan") && o.contains("Approved only after"));
         app.on_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
         assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::WorkflowControl { run: 1, action: WorkflowAction::Approve }))));
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(matches!(&app.mode, Mode::Workflows(v) if v.runs));
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::Normal));
     }
@@ -1255,7 +1455,8 @@ mod hydra_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("PANES") && o.contains("Card edges") && o.contains("PREVIEW"), "the pane settings first, with their preview");
-        for _ in 0..13 {
+        let theme_row = design::settings_rows(modal::Cat::Appearance).iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme")).unwrap();
+        for _ in 0..theme_row {
             app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
         }
         let o = draw(&mut app, 160, 45);
@@ -1437,6 +1638,50 @@ mod hydra_tests {
     }
 
     #[test]
+    fn mouse_can_reach_agent_sheets_and_every_palette_command_without_sidebar() {
+        for (w, h) in [(80, 24), (100, 30), (160, 45)] {
+            let (_, mut app) = super::design_tests::render_with(w, h);
+            app.sidebar = false;
+            draw(&mut app, w, h);
+            let click = |app: &mut App, hit| {
+                let (r, _) = app.hits.iter().rev().find(|(_, target)| *target == Hit::Hy(hit)).expect("visible mouse control");
+                let (column, row) = (r.x, r.y);
+                app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column, row, modifiers: KeyModifiers::NONE });
+            };
+            click(&mut app, hydra::HyHit::Actions);
+            assert!(matches!(app.mode, Mode::Actions { .. }));
+            let screen = draw(&mut app, w, h);
+            show(&screen);
+            assert!(screen.contains("Show sidebar"));
+            for action in [Action::Profiles, Action::Workflows, Action::WorkflowRuns, Action::Palette, Action::AgentStatusSetup] {
+                let index = hydra::action_items().iter().position(|(_, a)| *a == action).expect("agent features and all commands are discoverable");
+                assert!(app.hits.iter().any(|(_, target)| *target == Hit::Hy(hydra::HyHit::ActionRow(index))));
+            }
+            let index = hydra::action_items().iter().position(|(_, a)| *a == Action::Palette).unwrap();
+            click(&mut app, hydra::HyHit::ActionRow(index));
+            let commands = app.pick_items("", true);
+            for index in 0..commands.len() {
+                app.mode = Mode::Picker { query: String::new(), sel: index, commands: true };
+                draw(&mut app, w, h);
+                assert!(app.hits.iter().any(|(_, target)| *target == Hit::Hy(hydra::HyHit::PickRow(index))), "every command can be scrolled into view");
+            }
+            let index = commands.iter().position(|item| matches!(item.target, PickTarget::Command(Action::Help))).unwrap();
+            app.mode = Mode::Picker { query: String::new(), sel: index, commands: true };
+            draw(&mut app, w, h);
+            click(&mut app, hydra::HyHit::PickRow(index));
+            assert!(matches!(app.mode, Mode::Shortcuts { .. }));
+            app.act(Action::AgentStatusSetup);
+            let screen = draw(&mut app, w, h); show(&screen);
+            assert!(screen.contains("Set up Pi status hooks") && screen.contains("Set up OpenCode status hooks"));
+            for index in 0..2 {
+                assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Hy(hydra::HyHit::MenuPick(index))));
+            }
+            app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+            assert_eq!(app.mode, Mode::Normal);
+        }
+    }
+
+    #[test]
     fn the_new_button_and_leader_n_start_the_same_plain_shell() {
         for cursor in [None, Some(2)] {
             for by_mouse in [false, true] {
@@ -1487,6 +1732,27 @@ mod hydra_tests {
             app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
             assert_eq!(app.mode, Mode::Normal);
         }
+    }
+
+    #[test]
+    fn settings_open_in_the_right_sheet_and_tabs_are_mouse_reachable() {
+        for (width, height) in [(80, 24), (100, 30), (160, 45)] {
+            let (_, mut app) = super::design_tests::render_with(width, height);
+            app.act(Action::Settings);
+            let screen = draw(&mut app, width, height);
+            show(&screen);
+            let grid = hydra::grid(&app, Rect::new(0, 0, width, height));
+            assert!(grid.sheet.width > 0 && grid.sheet.right() == width - 1, "Settings occupies the right sheet at {width}x{height}");
+            let general = if grid.sheet.width < 54 { "Gen" } else { "General" };
+            assert!(screen.contains("Settings") && screen.contains(general), "Settings renders in the sheet at {width}x{height}");
+        }
+
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        app.act(Action::Settings);
+        draw(&mut app, 100, 30);
+        let (x, y) = app.hits.iter().find_map(|(r, hit)| (*hit == Hit::Hy(hydra::HyHit::SetTab(2))).then_some((r.x, r.y))).expect("Appearance tab is clickable");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x, row: y, modifiers: KeyModifiers::NONE });
+        assert!(matches!(&app.mode, Mode::HySettings(view) if view.cat == 2), "mouse opens Appearance without closing the sheet");
     }
 
     #[test]
@@ -2400,8 +2666,8 @@ mod hydra_tests {
             app.on_server(crate::protocol::ServerMsg::Attention { term, status });
         };
         let due = |app: &mut App, term: TermId| {
-            app.settling.insert(term, Instant::now() - Duration::from_millis(1));
-            app.settle_finished();
+            app.settling.get_mut(&term).unwrap().1 = Instant::now() - Duration::from_millis(1);
+            app.settle_alerts();
         };
         // codex (2), not the session you're on.
         app.notice = None;
@@ -2415,12 +2681,14 @@ mod hydra_tests {
         attention(&mut app, 2, Status::Done);
         due(&mut app, 2);
         assert!(app.notice.as_ref().is_some_and(|(m, ..)| m.ends_with("finished")) && app.alerted.contains_key(&2));
-        // Needs you is said at once, and cancels a finish that was waiting.
+        // A stable question replaces the pending finish, without ringing twice.
         app.notice = None;
         app.alerted.clear();
         app.last_alert = None;
         attention(&mut app, 2, Status::Done);
         attention(&mut app, 2, Status::Blocked);
+        assert!(app.notice.is_none());
+        due(&mut app, 2);
         assert!(app.notice.as_ref().is_some_and(|(m, ..)| m.ends_with("needs you")) && !app.settling.contains_key(&2));
         // A session another agent started: its finish is that agent's news, not yours.
         app.notice = None;
@@ -2431,12 +2699,55 @@ mod hydra_tests {
         app.alerted.clear();
         app.last_alert = None;
         attention(&mut app, 2, Status::Blocked);
+        due(&mut app, 2);
         assert!(app.notice.as_ref().is_some_and(|(m, ..)| m.ends_with("needs you")));
         // Its starter gone: it's yours again.
         app.notice = None;
         app.snap.terms.get_mut(&2).unwrap().started_by = Some(999);
         attention(&mut app, 2, Status::Done);
         assert!(app.settling.contains_key(&2));
+    }
+
+    #[test]
+    fn transient_or_stale_blockers_never_ring_while_working() {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        app.notice = None;
+        app.snap.terms.get_mut(&2).unwrap().status = Status::Blocked;
+        app.on_server(ServerMsg::Attention { term: 2, status: Status::Blocked });
+        assert!(!app.alerted.contains_key(&2) && app.notice.is_none(), "a transient ask must settle before ringing");
+        let mut working = app.snap.clone();
+        working.terms.get_mut(&2).unwrap().status = Status::Working;
+        app.on_server(ServerMsg::State(working));
+        app.settle_alerts();
+        assert!(!app.alerted.contains_key(&2) && app.notice.is_none());
+        // Attention can arrive after a newer working snapshot.
+        app.on_server(ServerMsg::Attention { term: 2, status: Status::Blocked });
+        let due = app.settling.get_mut(&2).unwrap();
+        due.1 = Instant::now() - Duration::from_millis(1);
+        app.settle_alerts();
+        assert!(!app.alerted.contains_key(&2) && app.notice.is_none(), "stale attention must agree with the snapshot");
+    }
+
+    #[test]
+    fn focused_blockers_ring_and_a_new_turn_can_ask_again() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let id = app.focused().unwrap();
+        app.window_focused = true;
+        app.on_server(ServerMsg::Attention { term: id, status: Status::Blocked });
+        app.settling.get_mut(&id).unwrap().1 = Instant::now() - Duration::from_millis(1);
+        app.settle_alerts();
+        assert!(app.alerted.contains_key(&id), "a focused blocking question still needs its request sound");
+        app.last_alert = Some(Instant::now() - Duration::from_secs(5));
+        let mut next = app.snap.clone();
+        next.terms.get_mut(&id).unwrap().status = Status::Working;
+        app.on_server(ServerMsg::State(next));
+        app.on_server(ServerMsg::Attention { term: id, status: Status::Blocked });
+        let mut blocked = app.snap.clone();
+        blocked.terms.get_mut(&id).unwrap().status = Status::Blocked;
+        app.on_server(ServerMsg::State(blocked));
+        app.settling.get_mut(&id).unwrap().1 = Instant::now() - Duration::from_millis(1);
+        app.settle_alerts();
+        assert!(app.alerted[&id].1.elapsed() < Duration::from_secs(1), "a new turn's question is new news");
     }
 
     #[test]

@@ -10,6 +10,7 @@ use crate::client::overlap::Overlap;
 pub(in crate::client) enum SheetKind {
     Profiles,
     Workflows,
+    Settings,
     Inbox,
     Changes,
     /// Both diffs of a heads-up's file.
@@ -28,6 +29,8 @@ pub(in crate::client) fn open_sheet(app: &App) -> Option<SheetKind> {
         Some(SheetKind::Profiles)
     } else if matches!(app.mode, Mode::Workflows(_)) {
         Some(SheetKind::Workflows)
+    } else if matches!(app.mode, Mode::HySettings(_)) {
+        Some(SheetKind::Settings)
     } else if inbox_place(app).is_some() {
         Some(SheetKind::Inbox)
     } else if matches!(app.view, Some(crate::client::View::Changes(_))) {
@@ -68,8 +71,20 @@ pub(in crate::client) fn heads_up(app: &App) -> Vec<(PathBuf, Overlap)> {
 
 pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t: &Theme) {
     let (title, close) = match kind {
-        SheetKind::Profiles => ("Agent profiles", HyHit::Close),
-        SheetKind::Workflows => ("Workflows", HyHit::Close),
+        SheetKind::Profiles => (match &app.mode {
+            Mode::Profiles(v) if v.editor.as_ref().is_some_and(|e| e.original.is_some()) => "Edit profile",
+            Mode::Profiles(v) if v.editor.is_some() => "New profile",
+            Mode::Profiles(v) if v.import_path.is_some() => "Import profile",
+            _ => "Agent profiles",
+        }, HyHit::Close),
+        SheetKind::Workflows => (match &app.mode {
+            Mode::Workflows(v) if v.runs => "Workflow runs",
+            Mode::Workflows(v) if v.setup.is_some() => "Workflow setup",
+            Mode::Workflows(v) if v.task.is_some() => "Run workflow",
+            Mode::Workflows(v) if v.editor.is_some() => if v.original.is_some() { "Edit workflow" } else { "New workflow" },
+            _ => "Workflows",
+        }, HyHit::Close),
+        SheetKind::Settings => ("Settings", HyHit::Close),
         SheetKind::Inbox => ("Inbox", HyHit::Close),
         SheetKind::Changes | SheetKind::Both => ("Changes", HyHit::ViewClose),
     };
@@ -80,7 +95,11 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     let inside = card(app, buf, r, &c, t);
     // Clicks inside it stay in it.
     hit(app, inside, HyHit::Noop);
-    if matches!(kind, SheetKind::Profiles | SheetKind::Workflows) && r.height < 18 {
+    if kind == SheetKind::Settings && r.width < 44 {
+        put(buf, inside.x + 1, inside.y + 1, &[seg("Make the window wider", Style::default().fg(t.muted).bg(t.card))], inside.right());
+        return;
+    }
+    if matches!(kind, SheetKind::Profiles | SheetKind::Workflows | SheetKind::Settings) && r.height < 18 {
         put(buf, inside.x + 1, inside.y + 1, &[seg("Make the window taller", Style::default().fg(t.muted).bg(t.card))], inside.right());
         return;
     }
@@ -97,6 +116,12 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
                 let v = (**v).clone();
                 crate::client::workflows::draw_tabs(app, buf, r, t, if v.runs { 2 } else { 1 });
                 crate::client::workflows::draw_workflows(app, buf, r, t, &v);
+            }
+        }
+        SheetKind::Settings => {
+            if let Mode::HySettings(v) = &app.mode {
+                let v = (**v).clone();
+                crate::client::hydra::draw_settings(app, buf, inside, t, &v);
             }
         }
         SheetKind::Inbox => draw_inbox(app, buf, inside, t),

@@ -6,7 +6,7 @@ impl App {
     pub(super) fn act(&mut self, a: Action) {
         // These read files on this machine; over ssh the files are on the other one.
         if crate::ipc::remote().is_some()
-            && matches!(a, Action::Files | Action::Changes | Action::Find(_) | Action::Branches | Action::PasteImage | Action::Profiles)
+            && matches!(a, Action::Files | Action::Changes | Action::Find(_) | Action::Branches | Action::PasteImage | Action::Profiles | Action::AgentStatusSetup)
         {
             self.notify(format!("{} isn't available over ssh yet (agents, panes and worktrees are)", a.describe()), true);
             return;
@@ -22,6 +22,14 @@ impl App {
             Action::Profiles => self.open_profiles(),
             Action::Workflows => self.open_workflows(false),
             Action::WorkflowRuns => self.open_workflows(true),
+            Action::AgentStatusSetup => self.menu("Agent status · choose app, any model".into(), vec![
+                ("Set up Pi status hooks".into(), menu::Act::InstallStatus("pi".into())),
+                ("Set up OpenCode status hooks".into(), menu::Act::InstallStatus("opencode".into())),
+                ("Set up OMP status hooks".into(), menu::Act::InstallStatus("omp".into())),
+                ("Set up Mastracode status hooks".into(), menu::Act::InstallStatus("mastracode".into())),
+                ("Set up Kilo status hooks".into(), menu::Act::InstallStatus("kilo".into())),
+                ("Set up Kimi status hooks".into(), menu::Act::InstallStatus("kimi".into())),
+            ], (3, 3)),
             Action::Branches => self.open_branches(None),
             Action::History => self.mode = Mode::History { sel: 0 },
             Action::SpawnTab(c) => {
@@ -170,7 +178,7 @@ impl App {
     /// Every command worth offering in the palette, plus your own spawn bindings.
     pub(super) fn palette_commands(&self) -> Vec<Action> {
         use crate::layout::Dir;
-        vec![
+        let mut actions = vec![
             Action::Jump,
             Action::BrowseTree,
             Action::NewPane,
@@ -178,6 +186,14 @@ impl App {
             Action::ShellHere,
             Action::SplitRight,
             Action::SplitDown,
+            Action::SplitLeft,
+            Action::SplitUp,
+            Action::FocusNext,
+            Action::FocusPrev,
+            Action::Resize(Dir::Left),
+            Action::Resize(Dir::Right),
+            Action::Resize(Dir::Up),
+            Action::Resize(Dir::Down),
             Action::Focus(Dir::Left),
             Action::Focus(Dir::Right),
             Action::Focus(Dir::Up),
@@ -188,16 +204,33 @@ impl App {
             Action::NextTab,
             Action::PrevTab,
             Action::CloseTab,
+            Action::RenameTab,
+            Action::NewWorkspace,
+            Action::CloseWorkspace,
             Action::RenameWorkspace,
+            Action::NewWorktree(None),
+            Action::RemoveWorktree,
+            Action::Worktrees,
+            Action::NewSession,
+            Action::CloseSplit,
+            Action::StopAgent,
+            Action::Message,
+            Action::Why,
             Action::Profiles,
             Action::Workflows,
             Action::WorkflowRuns,
+            Action::AgentStatusSetup,
             Action::Files,
             Action::Find(0),
             Action::Find(1),
             Action::Changes,
             Action::Branches,
             Action::CopyMode,
+            Action::Search,
+            Action::ScrollUp,
+            Action::ScrollDown,
+            Action::PrevPrompt,
+            Action::NextPrompt,
             Action::PasteImage,
             Action::History,
             Action::Settings,
@@ -208,7 +241,15 @@ impl App {
             Action::CheckUpdate,
             Action::TidyWorktrees,
             Action::Detach,
-        ]
+        ];
+        let mut bound: Vec<_> = self.keymap.prefixed.iter().chain(self.keymap.global.iter()).collect();
+        bound.sort_by_key(|(key, _)| key.to_config());
+        for (_, action) in bound {
+            if !matches!(action, Action::None | Action::Palette | Action::Actions | Action::SendPrefix | Action::SideMove(_)) && !actions.contains(action) {
+                actions.push(action.clone());
+            }
+        }
+        actions
     }
 
     /// The workspace a command applies to: the one on screen.

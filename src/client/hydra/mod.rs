@@ -1,7 +1,8 @@
 //! The Seshi layout, from the design handoff: projects (git repos) in the sidebar, each
 //! project's worktrees with the sessions running in them, and the focused session full size
-//! (optionally split with a second). Everything else is a centred overlay over a dimmed
-//! screen: jump, open a folder, new pane, talk, settings and keys.
+//! (optionally split with a second). Most tools are centred overlays over a dimmed
+//! screen: jump, new pane, talk and keys. Settings, profiles, workflows and review
+//! use a right-hand sheet beside the panes.
 //!
 //! The daemon only knows workspaces, tabs and terminals. Here every terminal is a session;
 //! its project and worktree come from where it runs (`TermInfo::root` / `top`), so a shell
@@ -925,6 +926,9 @@ pub(super) enum HyHit {
     WorkflowRun(u64),
     WorkflowRow(usize),
     WorkflowField(usize),
+    WorkflowProfile(usize),
+    WorkflowReport(usize),
+    AgentSheetBody,
     WorkflowKey(char),
     ProfileRow(usize),
     ProfileField(usize),
@@ -932,10 +936,12 @@ pub(super) enum HyHit {
     NpTask,
     NpModel(usize),
     SetTab(usize),
+    SettingsBody,
     SetRow(usize),
     /// Settings row, value index.
     SetVal(usize, usize),
     ThemePick(usize),
+    SpinnerPick(usize),
     /// A button on the splash screen.
     SplashKey(char),
     /// A right-click menu item.
@@ -946,6 +952,7 @@ pub(super) enum HyHit {
     SideEdge,
     /// The sidebar's empty space: the keys go to it.
     SideFocus,
+    ExpandSidebar,
     /// Install the newer seshi (in Settings › General).
     Update,
     /// Ask now whether a newer seshi is out (the same place, when none is known).
@@ -958,6 +965,7 @@ pub(super) enum HyHit {
     Actions,
     /// A row of the actions list.
     ActionRow(usize),
+    PickRow(usize),
     /// The leader pill (leader mode is on): the key map.
     Leader,
     /// A key in the key map (its row in the shown list).
@@ -1001,6 +1009,7 @@ pub(super) fn k(app: &App, a: &Action) -> String {
     }
 }
 
+mod rail;
 mod behaviour;
 mod card;
 mod dialogs;

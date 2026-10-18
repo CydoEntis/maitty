@@ -1,6 +1,6 @@
 # Agent profiles
 
-Open **Agent profiles** from the command palette, or press **Ctrl+P** in
+Click **Actions → Profiles**, open **Agent profiles** from the command palette, or press **Ctrl+P** in
 **New**. Create a role, or choose one of six editable
 Planner / Worker / Reviewer starters for Claude Code and Codex. The starters
 use medium effort; Claude uses `opus` / `sonnet` aliases and Codex uses its
@@ -42,7 +42,12 @@ not a separate permission boundary.
 
 ## Launch and workflow use
 
-Enter on a profile opens **New** with that role selected. It appears with a `◇`
+Enter or double-click a profile to edit it. Tab changes editor fields; text fields
+support cursor movement, Home/End, Delete and Backspace. Instructions are multiline,
+with Enter for newlines and Up/Down for text lines. Ctrl+S saves; failures retain
+the draft. Click runner/scope values to change them where editable.
+
+**Launch** (`l`) opens **New** with that role selected. It appears with a `◇`
 in the RUN row. Opening profiles from an existing worktree keeps that checkout
 selected for the new agent, so a reviewer can inspect the worker's actual changes.
 Choose a task and checkout, then launch. The preview resolves the selected
@@ -83,4 +88,7 @@ does not create an independently sandboxed subagent.
 Profile setup is local; it is unavailable over SSH. Profiles are not offered in
 the race chooser. Setup opens in the right-hand sheet beside the panes. Its
 Workflows tab connects saved profiles into sequences; see [workflows](workflows/usage.md).
-Selecting a profile alone still starts a fresh session without sequencing.
+Launching a profile starts a fresh session without sequencing.
+Switch sections with the tabs, Tab/Shift+Tab from lists, or Ctrl+Tab and
+Ctrl+Shift+Tab from editors. Unsaved drafts and selections survive section changes
+while the drawer stays open. Esc backs out of the editor before closing the drawer.

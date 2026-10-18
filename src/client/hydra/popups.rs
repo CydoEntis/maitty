@@ -361,6 +361,7 @@ pub(in crate::client) fn draw_palette(app: &mut App, f: &mut Frame, area: Rect, 
         let caps = keycaps(t, &key, bg);
         let kw = segs_width(&caps);
         put(buf, rr.right().saturating_sub(kw + 2), y, &caps, rr.right());
+        hit(app, rr, HyHit::PickRow(i));
     }
     if items.is_empty() {
         put(buf, list.x + 2, list.y, &[seg("nothing matches", Style::default().bg(t.card).fg(t.muted).add_modifier(Modifier::ITALIC))], list.right());

@@ -10,6 +10,7 @@ pub(in crate::client) fn side_w(width: u16) -> u16 {
 
 /// The narrowest the sidebar (sliding) or the sheet is drawn; below it, it's only space.
 const SIDE_DRAWN_FROM: u16 = 12;
+pub(super) const RAIL_WIDTH: u16 = 7;
 pub(in crate::client) const SHEET_DRAWN_FROM: u16 = 24;
 /// The narrowest a pane is drawn while it grows in.
 const PANE_DRAWN_FROM: u16 = 8;
@@ -37,7 +38,8 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
     let (mx, my, gx) = if look.tiled { (0, 0, 0) } else { (1, 1, 1) };
     let inner = Rect { x: area.x + mx, y: area.y + my, width: area.width.saturating_sub(2 * mx), height: area.height.saturating_sub(2 * my) };
     let full = app.hy.saved.side_w.unwrap_or_else(|| side_w(area.width)).clamp(SIDE_MIN, SIDE_MAX).min(inner.width / 2);
-    let sw = (full as f32 * app.side_frac).round() as u16;
+    let rail = RAIL_WIDTH.min(full);
+    let sw = rail + ((full - rail) as f32 * app.side_frac).round() as u16;
     let right_side = app.cfg.ui.sidebar_position == "right";
     let gap = if sw > 0 { gx } else { 0 };
     let col_w = inner.width.saturating_sub(sw + gap);
@@ -69,7 +71,9 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     fill(f.buffer_mut(), area, t.bg);
     let g = grid(app, area);
     // Too narrow mid-slide to draw anything sensible: just the room it takes.
-    if g.side.width >= SIDE_DRAWN_FROM {
+    if !app.sidebar {
+        rail::draw(app, f.buffer_mut(), g.side, &model, t);
+    } else if g.side.width >= SIDE_DRAWN_FROM {
         draw_side(app, f.buffer_mut(), g.side, &model, t);
         // The gap beside the sidebar: drag it. It lights up while you point at it.
         if app.hy.drag == Some(Drag::Side) || hovered(app, g.edge) {
@@ -86,6 +90,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     if g.panes.width > 0 {
         draw_main(app, f, Rect { width: g.panes.width, ..col }, &model, t);
     }
+    rail::hint(app, f.buffer_mut(), g.panes, &model, t);
     if let Some(kind) = open_sheet(app).filter(|_| g.sheet.width >= SHEET_DRAWN_FROM) {
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
     }
@@ -676,6 +681,7 @@ pub(in crate::client) fn peeked(app: &App, focus: TermId) -> Option<TermId> {
 }
 
 pub(in crate::client) fn draw_main(app: &mut App, f: &mut Frame, area: Rect, model: &[Proj], t: &Theme) {
+    draw_tab_bar(app, f.buffer_mut(), Rect { height: 1, ..area }, t);
     let Some(focus) = app.focused() else {
         let nk = k(app, &Action::ShellHere);
         put(f.buffer_mut(), area.x + 4, area.y + 3, &[seg(format!("Nothing open. Press {} {nk} for a new session.", app.keymap.prefix.to_string().replace("C-", "Ctrl+")), Style::default().fg(t.muted))], area.right());
@@ -688,7 +694,6 @@ pub(in crate::client) fn draw_main(app: &mut App, f: &mut Frame, area: Rect, mod
         tab.used = tick;
     }
     let look = Look::of(&app.cfg.ui);
-    draw_tab_bar(app, f.buffer_mut(), Rect { height: 1, ..area }, t);
     let skip = if look.tiled { 1 } else { 2 };
     let area = Rect { y: area.y + skip, height: area.height.saturating_sub(skip), ..area };
     // Between cards: `gap` rows stacked, as many columns side by side.
@@ -841,13 +846,14 @@ pub(in crate::client) fn draw_tab_bar(app: &mut App, buf: &mut Buffer, r: Rect, 
         }
         pill(look, segs, t.sky(), t.bg)
     } else {
-        Vec::new()
+        let label = if app.update_available.is_some() || app.restart_pending() { " Actions ● " } else { " Actions " };
+        pill(look, vec![seg(label, Style::default().fg(t.accent).add_modifier(Modifier::BOLD))], t.card, t.bg)
     };
     let rw = segs_width(&right);
     let rx = r.right().saturating_sub(rw);
     if rw > 0 {
         put(buf, rx, r.y, &right, r.right());
-        hit(app, Rect { x: rx, y: r.y, width: rw, height: 1 }, HyHit::Leader);
+        hit(app, Rect { x: rx, y: r.y, width: rw, height: 1 }, if armed(app) { HyHit::Leader } else { HyHit::Actions });
     }
     let mut x = r.x;
     let tabs = app.session_tabs();
@@ -994,6 +1000,9 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     c.close = Some(HyHit::CloseSplit(term));
     c.foot = foot;
     c.foot_r = foot_r;
+    if let Some(parser) = app.parsers.get(&term) {
+        c.bg = crate::client::render::terminal_surface_bg(parser.screen(), c.bg);
+    }
     if focused {
         c = c.lit(border);
         c.title_fg = if flash > 0.0 { blend(t.accent, flare, flash) } else { t.accent };

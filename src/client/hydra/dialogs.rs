@@ -246,20 +246,33 @@ pub(in crate::client) fn set_chip(app: &mut App, row: &SRow, vi: usize) {
     app.save_setting(s.path, v);
 }
 
-pub(in crate::client) fn draw_settings(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, v: &SettingsView) {
+pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, v: &SettingsView) {
     use crate::client::design::settings_group;
     use crate::client::modal::Cat;
-    let buf = f.buffer_mut();
-    dim_all(buf, area, t);
     let look = Look::of(&app.cfg.ui);
-    let r = panel(app, buf, area, 84, 40.min(area.height.saturating_sub(2)), "Settings", &[], t);
+    hit(app, r, HyHit::SettingsBody);
     let c = Style::default().bg(t.card);
     // Tabs: the current one a pill; General carries a dot when an update is ready.
+    let compact_tabs = r.width < 68;
     let mut x = r.x + 3;
     for (i, cat) in Cat::ALL.iter().enumerate() {
         let on = i == v.cat;
         let dot = *cat == Cat::General && (app.update_available.is_some() || app.restart_pending());
-        let mut segs = vec![seg(format!(" {} ", cat.label()), Style::default().fg(if on { t.acc_ink } else { t.text }).add_modifier(if on { Modifier::BOLD } else { Modifier::empty() }))];
+        let label = if r.width < 54 {
+            match cat {
+                Cat::General => "Gen",
+                Cat::Sessions => "Sess",
+                Cat::Appearance => "Look",
+                Cat::Agents => "Agent",
+                Cat::Keys => "Keys",
+            }
+        } else if compact_tabs && *cat == Cat::Appearance {
+            "Look"
+        } else {
+            cat.label()
+        };
+        let tab_label = if compact_tabs { label.to_string() } else { format!(" {label} ") };
+        let mut segs = vec![seg(tab_label, Style::default().fg(if on { t.acc_ink } else { t.text }).add_modifier(if on { Modifier::BOLD } else { Modifier::empty() }))];
         if dot {
             segs.push(seg("● ", Style::default().fg(if on { t.acc_ink } else { t.accent }).add_modifier(Modifier::BOLD)));
         }
@@ -320,7 +333,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, f: &mut Frame, area: Rect,
     let cat = Cat::ALL[v.cat.min(Cat::ALL.len() - 1)];
     let rows = crate::client::design::settings_rows(cat);
     let lx = r.x + 6;
-    let vx = r.x + 34;
+    let vx = r.x + if r.width >= 68 { 34 } else { (r.width * 54 / 100).max(19) };
     // What the selected row does (shown under it).
     let help = match rows.get(v.sel) {
         Some(SRow::Setting(s)) => s.help.to_string(),
@@ -352,7 +365,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, f: &mut Frame, area: Rect,
     }
     let top = r.y + 8;
     // Appearance keeps room at the foot for its preview.
-    let preview = cat == Cat::Appearance && r.height >= 30;
+    let preview = cat == Cat::Appearance && r.height >= 30 && r.width >= 46;
     let h = r.height.saturating_sub(if preview { 19 } else { 14 }) as usize;
     let at = lines.iter().position(|l| matches!(l, L::Row(i) if *i == v.sel)).unwrap_or(0);
     let start = (at + 2).saturating_sub(h);

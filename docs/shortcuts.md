@@ -6,6 +6,11 @@ aliases and custom commands. Type to filter by key, action or screen name; arrow
 page keys, Home/End and the mouse wheel scroll. Ctrl+U clears; Esc closes.
 `C-` means Ctrl, `M-` means Alt. The [README](../README.md#use) lists the defaults.
 
+Mouse entry: **Actions** stays at the top right even with the sidebar hidden.
+It opens Profiles, Workflows, Runs, agent status setup, Settings and All commands.
+Click a command to run it; the wheel scrolls the palette. Configured custom
+bindings also appear as clickable commands. Close buttons dismiss overlays.
+
 These tables are also embedded in the app's All keys reference. Keys below act
 inside the named screen, without the leader. Ordinary typing edits the focused
 text field; Backspace removes a character. Keys sent to Claude, Codex, your shell
@@ -74,20 +79,25 @@ or another program follow that program's own help.
 
 | Keys | Action |
 | --- | --- |
+| Tab / Shift+Tab, Left / Right in lists | Next or previous Profiles / Workflows / Runs section |
+| Ctrl+Tab / Ctrl+Shift+Tab anywhere in the drawer | Next or previous section; retain selection, draft and report position |
 | Up, Down, PgUp, PgDn | Select profile; scroll its preview |
 | n, e, p | New profile, edit, create/edit project override |
 | 1, 2, 3 | Claude planner, worker, reviewer starters |
 | 4, 5, 6 | Codex planner, worker, reviewer starters |
 | i, x, Ctrl+R | Import native definition, export selected profile, reload definitions |
 | w, r | Open Workflows or Runs |
-| Enter, Esc | Return to New with selected profile, or close |
+| Enter / e, double-click profile | Open the selected profile for editing |
+| l, Esc | Launch chooser with selected profile, or close |
 
 ## Profile editor and import
 
 | Keys | Action |
 | --- | --- |
-| Tab / Down, Shift+Tab / Up | Next or previous editor field |
+| Tab / Shift+Tab | Next or previous editor field |
+| Up / Down | Change field; in instructions, move between text lines |
 | Left, Right, Space | Change runner or scope on those fields |
+| Left / Right, Home / End, Delete / Backspace in text | Move cursor, go to text bounds, delete after/before cursor |
 | Ctrl+U, Enter | Clear editor text field; newline in instructions |
 | Ctrl+S, Esc | Save editor, or discard editor changes |
 | Type, Backspace, Enter, Esc in import path | Edit path, import it, or cancel import |
@@ -96,11 +106,16 @@ or another program follow that program's own help.
 
 | Keys | Action |
 | --- | --- |
-| Up, Down, PgUp, PgDn | Select workflow; scroll report |
+| Up, Down | Select workflow |
+| Tab / Shift+Tab, Left / Right | Next or previous drawer section |
+| Ctrl+Tab / Ctrl+Shift+Tab | Change section from lists, editors, task entry or reports; retain drafts |
 | p, w, r, Ctrl+R | Profiles, Workflows, Runs, reload definitions |
 | n, e, u | New workflow, edit roles, Setup preview |
 | 1, 2 | Create Claude or Codex starter workflow |
-| Enter | Enter a task; Enter again starts the workflow |
+| Enter / e, double-click workflow | Open the selected workflow for editing |
+| s | Enter a task for the selected workflow |
+| Enter in task, Shift+Enter | Start the workflow; insert a task newline |
+| Left / Right, Up / Down, Home / End, Delete / Backspace in task | Move cursor or edit task text |
 | Ctrl+U | Clear task text |
 | Esc | Cancel task, return from editor/Setup, or close sheet |
 
@@ -110,7 +125,9 @@ or another program follow that program's own help.
 | --- | --- |
 | Tab / Down, Shift+Tab / Up | Next or previous field |
 | Left, Right | Choose planner, worker or reviewer profile; change scope |
+| Enter / Space on a role field, click role | Open its profile picker; arrows/Home/End select, Enter or click chooses, Esc returns |
 | Space | Change scope on the scope field |
+| Left / Right, Home / End, Delete / Backspace in name | Move cursor or edit text |
 | Ctrl+U, Ctrl+S, Esc | Clear name, save workflow, discard edits |
 
 ## Workflow setup
@@ -125,13 +142,17 @@ or another program follow that program's own help.
 
 | Keys | Action |
 | --- | --- |
-| Up, Down, PgUp, PgDn | Select run; scroll plan or report |
+| Up, Down | Select run in the list |
+| Enter, double-click run | Open run details with its Goal, Plan, Build and Review reports |
+| 1–4, Tab / Shift+Tab, Left / Right in details | Choose report |
+| Up / Down, PgUp / PgDn, Home / End, wheel in details | Scroll the full report, jump to start/end |
+| Ctrl+Tab / Ctrl+Shift+Tab | Change drawer section without losing the open run or scroll position |
 | a | Approve selected plan after reading it; navigation never approves |
 | c, t | Ask to cancel run, or retry a failed/interrupted stage |
-| Enter, o | Open selected run's current or most recent stage pane |
-| p, w, r, Ctrl+R | Profiles, Workflows, Runs, refresh definitions |
+| o | Open selected run's current or most recent stage pane |
+| p, w, r, Ctrl+R in the list | Profiles, Workflows, Runs, refresh definitions |
 | Enter / y in confirmation | Confirm retry or cancellation; any other key cancels the confirmation |
-| Esc | Close sheet |
+| Esc | Return from details to Runs; from the list, close the drawer |
 
 ## Inbox
 
@@ -227,6 +248,10 @@ or another program follow that program's own help.
 | Type, Backspace, Ctrl+U in themes | Filter themes, clear filter |
 | Up, Down, PgUp, PgDn, Home, End in themes | Preview themes |
 | Enter, Esc in themes | Save theme, or return without saving |
+| Up, Down, wheel, Home / PgUp, End / PgDn in working spinners | Preview styles; go to first/last choice |
+| Enter, Esc in working spinners | Apply preset / edit Custom; return without applying |
+| Left, Right, Home, End, Backspace, Delete, Ctrl+U in custom frames | Edit cursor position, delete, or clear |
+| Paste, Enter, Esc in custom frames | Insert frames, save, or cancel editing |
 | Esc in settings | Close Settings |
 
 ## Copy mode
@@ -247,6 +272,11 @@ or another program follow that program's own help.
 | Esc, q, Ctrl+C | Esc clears selection first, then exits; q or Ctrl+C exits |
 
 ## Terminal scrolling and mouse
+
+Hiding the sidebar retains a compact session rail: click initials to focus,
+hover for the full title, wheel to scroll, and click its chevron to expand.
+Status glyphs/colors and the total blocked count remain visible. The existing
+sidebar toggle switches between the full sidebar and rail.
 
 | Keys | Action |
 | --- | --- |
