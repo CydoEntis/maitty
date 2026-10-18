@@ -46,3 +46,15 @@ for name in sorted(os.listdir(SRC)):
             d.text((px, py + 1), sym, font=f, fill=rgb(fg, DEFAULT_FG), stroke_width=0, )
     img.save(os.path.join(OUT, name.replace(".json", ".png")), optimize=True)
     print("wrote", name.replace(".json", ".png"), img.size)
+
+names = ["02-main.png", "05-split.png", "03-go-to.png", "04-palette.png", "06-keys.png", "07-settings.png"]
+frames = [Image.open(os.path.join(OUT, name)) for name in names]
+frames[0].save(
+    os.path.join(OUT, "demo.gif"),
+    save_all=True,
+    append_images=frames[1:],
+    duration=[2200, 2000, 2200, 1800, 2000, 2200],
+    loop=0,
+    optimize=True,
+)
+print("wrote demo.gif from synthetic TestBackend frames")

@@ -22,7 +22,7 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     let area = f.area();
     let t = app.theme.clone();
     set_palette(t.ansi, t.ansi.map(|_| t.card2));
-    super::hydra::set_round(app.cfg.ui.pill_caps);
+    super::hydra::set_round(app.cfg.ui.pill_caps && app.cfg.ui.layout != "flat");
     // The terminal's own background (its window padding) matches ours while we run.
     if let Color::Rgb(r, g, b) = t.bg
         && app.osc_bg != Some(t.bg)

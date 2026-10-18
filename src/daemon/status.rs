@@ -80,7 +80,21 @@ impl Daemon {
             None => {}
         }
                 if let Some(t) = self.terms.get_mut(&term) {
+                    // A helper's first event can be the first reliable source of the parent ID.
+                    // Set the thread before recording its helper, or the later ID check clears it.
+                    if let Some(id) = session.as_ref().filter(|s| {
+                        !s.is_empty() && s.len() < 128 && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+                    }) {
+                        if t.session.as_deref() != Some(id) {
+                            t.subagents.clear();
+                            t.subagent_hooks_seen = false;
+                        }
+                        t.session = Some(id.clone());
+                    }
                     if let Some(sa) = subagent {
+                        if agent == "codex" && matches!(event.as_str(), "SubagentStart" | "SubagentStop") {
+                            t.subagent_hooks_seen = true;
+                        }
                         t.subagent_seen = Some(Instant::now());
                         if sa.start {
                             // Its start, or news from one already running (listed once; one

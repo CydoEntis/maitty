@@ -129,9 +129,11 @@ pub struct Term {
     pub head: Option<crate::gitfs::Head>,
     /// Running subagents: (id, kind).
     pub subagents: Vec<(String, String)>,
+    /// Codex's native lifecycle hooks have become authoritative for this thread.
+    pub subagent_hooks_seen: bool,
     /// The shell reports its directory itself (OSC 7 / 9;9); trust that over process scans.
     pub cwd_reported: bool,
-    /// Stopped on purpose to save memory; wakes (resumed) when focused.
+    /// Stopped by an older Seshi version; resumes when focused.
     pub asleep: bool,
     /// Text and background colour answered to OSC 10 / 11 queries.
     colors: ((u8, u8, u8), (u8, u8, u8)),
@@ -569,6 +571,7 @@ impl Term {
             said: String::new(),
             head: crate::gitfs::head(spec.cwd),
             subagents: Vec::new(),
+            subagent_hooks_seen: false,
             cwd_reported: false,
             asleep: false,
             win32_input: false,

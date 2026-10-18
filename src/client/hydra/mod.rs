@@ -963,6 +963,9 @@ pub(super) enum HyHit {
     TidyGo,
     /// The sidebar's "a actions".
     Actions,
+    StatusSettings,
+    StatusInbox,
+    StatusKeys,
     /// A row of the actions list.
     ActionRow(usize),
     PickRow(usize),
@@ -1021,9 +1024,6 @@ mod screen;
 mod sheet;
 mod splash;
 mod tidy;
-mod wake;
-
-pub(in crate::client) use self::wake::{Wake, WakeStyle};
 pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, screen::*, splash::*, sheet::*, popover::*, heads::*, tidy::*};
 
 

@@ -71,7 +71,7 @@ src/
     commands.rs  commands from clients and the CLI
     status.rs    hook reports (checked on their own thread) and screen detection
     worktrees.rs making and trusting worktrees, spares, hooks, cleanup
-    restore.rs   saving and restoring sessions, sleeping and waking agents
+    restore.rs   saving sessions and recovering agents left asleep by older versions
     term.rs      one pane: PTY, input thread, vt100 emulator
     scan.rs, git.rs, persist.rs
   client/        the UI

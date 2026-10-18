@@ -119,6 +119,44 @@ fn disk_reported_helpers_keep_an_unhooked_codex_parent_working() {
 }
 
 #[test]
+fn codex_live_helper_hooks_attach_the_first_child_and_outvote_stale_disk_data() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let secret = d.terms[&t].token.clone();
+    let mut start = report(t, &secret, 0, HookStatus::Working, "SubagentStart");
+    if let ClientMsg::Hook { agent, session, subagent, .. } = &mut start {
+        *agent = "codex".into();
+        *session = Some("parent-thread".into());
+        *subagent = Some(crate::protocol::Subagent { id: "child-thread".into(), kind: "reviewer".into(), start: true });
+    }
+    d.apply_hook(start, Some(true), Vec::new());
+    assert_eq!(d.terms[&t].session.as_deref(), Some("parent-thread"));
+    assert_eq!(d.terms[&t].subagents, vec![("child-thread".into(), "reviewer".into())]);
+    assert!(d.terms[&t].subagent_hooks_seen);
+
+    let facts = |subagents| usage::CodexPaneFacts {
+        term: t,
+        session: Some("parent-thread".into()),
+        usage: None,
+        subagents,
+    };
+    d.codex_usage(vec![facts(Vec::new())], None);
+    assert_eq!(d.terms[&t].subagents.len(), 1, "an empty disk snapshot cannot erase the live hook entry");
+
+    let mut stop = report(t, &secret, 0, HookStatus::Same, "SubagentStop");
+    if let ClientMsg::Hook { agent, session, subagent, .. } = &mut stop {
+        *agent = "codex".into();
+        *session = Some("parent-thread".into());
+        *subagent = Some(crate::protocol::Subagent { id: "child-thread".into(), kind: "reviewer".into(), start: false });
+    }
+    d.apply_hook(stop, Some(true), Vec::new());
+    assert!(d.terms[&t].subagents.is_empty());
+    d.codex_usage(vec![facts(vec![("child-thread".into(), "stale reviewer".into())])], None);
+    assert!(d.terms[&t].subagents.is_empty(), "stale disk data cannot resurrect a stopped helper");
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn status_reports_need_the_pane_secret() {
     let (mut d, mut rx) = daemon();
     let t = pane(&mut d);

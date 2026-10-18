@@ -157,7 +157,11 @@ impl App {
         }
         match self.mode.clone() {
             Mode::Normal => {
-                if spec == self.keymap.prefix {
+                if hydra::Look::of(&self.cfg.ui).flat && matches!(k.code, KeyCode::Tab | KeyCode::BackTab | KeyCode::Esc) {
+                    self.mode = Mode::Side;
+                    self.hy.cursor = self.focused();
+                    self.hy.cursor_proj = None;
+                } else if spec == self.keymap.prefix {
                     self.mode = Mode::Prefix { since: Instant::now() };
                 } else if let Some(a) = self.keymap.global.get(&spec).cloned() {
                     self.act(a);

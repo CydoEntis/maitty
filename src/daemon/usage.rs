@@ -113,13 +113,24 @@ impl Daemon {
             if !pane.belongs_to(t.agent.as_deref(), t.session.as_deref()) {
                 continue;
             }
-            if t.subagents != pane.subagents {
+            if t.subagent_hooks_seen {
+                // Native events are live; Codex's rollout files can lag behind a stop event.
+                // Keep only the synthetic goal marker from disk, never resurrect a stopped helper.
+                let before = t.subagents.clone();
+                t.subagents.retain(|(id, _)| id != "goal");
+                if let Some(goal) = pane.subagents.iter().find(|(id, _)| id == "goal") {
+                    t.subagents.push(goal.clone());
+                }
+                if t.subagents != before {
+                    self.dirty = true;
+                }
+            } else if t.subagents != pane.subagents {
                 t.subagents = pane.subagents;
                 self.dirty = true;
             }
             if t.subagents.is_empty() {
                 t.subagent_seen = None;
-            } else {
+            } else if !t.subagent_hooks_seen {
                 // Disk polling is Codex's lifecycle source: unlike native hooks, it
                 // must refresh the same liveness timestamp while a helper is active.
                 t.subagent_seen = Some(Instant::now());

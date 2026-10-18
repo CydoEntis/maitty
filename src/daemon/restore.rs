@@ -1,9 +1,9 @@
-//! Saving sessions as they change, and rebuilding them after a restart; sleeping and waking agents.
+//! Saving and rebuilding sessions; recovering agents left asleep by older versions.
 
 use super::*;
 
-/// What makes a pane the same session to you when its process is replaced (woken from
-/// sleep, moved to another folder): who it is and what you called it.
+/// What makes a pane the same session to you when its process is replaced (resumed after
+/// older-version sleep, moved to another folder): who it is and what you called it.
 struct Kept {
     agent: Option<String>,
     session: Option<String>,
@@ -284,31 +284,6 @@ impl Daemon {
         };
         // Under the account it was started as: its conversation is in that account's folder.
         resume.map(|cmd| t.account.as_deref().map(|a| self.cfg.as_account(a, &cmd)).unwrap_or(cmd))
-    }
-
-    /// Stop agents that have sat finished or idle longer than `sleep_after` (never the
-    /// focused one, and only ones that can be resumed).
-    pub(super) fn sleep_idle(&mut self) {
-        let Some(after) = self.cfg.sleep_secs() else { return };
-        let now = term::unix_now();
-        // The one on screen stays awake; with no window open, nobody is looking.
-        let focused = if self.has_viewer() { self.focused_term() } else { None };
-        let sleepy: Vec<TermId> = self
-            .terms
-            .values()
-            .filter(|t| !t.asleep && t.agent.is_some() && Some(t.id) != focused)
-            .filter(|t| matches!(t.status, Status::Idle | Status::Done) && now.saturating_sub(t.status_since) >= after)
-            .filter(|t| self.resume_cmd(t).is_some())
-            .map(|t| t.id)
-            .collect();
-        for id in sleepy {
-            if let Some(t) = self.terms.get_mut(&id) {
-                tracing::info!("putting {} to sleep", id);
-                t.asleep = true;
-                t.kill_tree();
-                self.dirty = true;
-            }
-        }
     }
 
     /// Bring a sleeping agent back: start its resume command in the same spot.

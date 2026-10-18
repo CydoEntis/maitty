@@ -214,7 +214,7 @@ mod hydra_tests {
             assert!(output.contains("All shortcuts") && output.contains("AFTER LEADER") && output.contains("Esc"));
             app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
             let output = draw(&mut app, w, h);
-            assert!(output.contains("folder picker"), "the end of the reference is reachable");
+            assert!(output.contains("Complete current directory"), "the end of the reference is reachable");
             app.on_key(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE));
             draw(&mut app, w, h);
             app.on_mouse(MouseEvent { kind: MouseEventKind::ScrollDown, column: w / 2, row: h / 2, modifiers: KeyModifiers::NONE });
@@ -234,6 +234,23 @@ mod hydra_tests {
             app.actions_run(hydra::action_items().iter().position(|(_, a)| *a == Action::Help).unwrap());
             assert!(matches!(app.mode, Mode::Shortcuts { .. }), "Actions → All keys reaches the full reference too");
         }
+    }
+
+    #[test]
+    fn all_keys_renders_bindings_on_keycaps() {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        app.on_key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE));
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        terminal.draw(|frame| render::draw(&mut app, frame)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let key = (0..30).find_map(|y| {
+            (0..94).find_map(|x| {
+                let text: String = (x..x + 7).map(|column| buffer[(column, y)].symbol()).collect();
+                (text == "C-Space").then_some((x, y))
+            })
+        }).expect("leader key is listed");
+        assert!(buffer[key].modifier.contains(ratatui::style::Modifier::BOLD), "binding is drawn with keycap emphasis");
     }
 
     #[test]
@@ -1233,6 +1250,24 @@ mod hydra_tests {
     }
 
     #[test]
+    fn split_intent_survives_the_focus_change_to_its_target_pane() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.hy.tabs.clear();
+        app.hy_place(1, None);
+
+        app.menu_do(menu::Act::Split(2, crate::layout::Dir::Down));
+        app.hy_place(2, Some(1));
+        assert!(app.hy.pending_split.is_some(), "focusing the pane chosen in the context menu must not consume the pending split");
+
+        app.snap.terms.insert(4, app.snap.terms[&3].clone());
+        app.snap.terms.get_mut(&4).unwrap().id = 4;
+        app.hy_place(4, Some(2));
+        let layout = &app.hy.tabs[app.hy.tab].layout;
+        assert!(matches!(layout, crate::layout::Node::Split { horizontal: false, .. }), "Split down must remain vertical after the focus event");
+        assert_eq!(layout.leaves(), vec![2, 4]);
+    }
+
+    #[test]
     fn a_session_has_tabs_of_its_own() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // claude (1), codex (2), and a shell (3).
@@ -1672,7 +1707,7 @@ mod hydra_tests {
             assert!(matches!(app.mode, Mode::Shortcuts { .. }));
             app.act(Action::AgentStatusSetup);
             let screen = draw(&mut app, w, h); show(&screen);
-            assert!(screen.contains("Set up Pi status hooks") && screen.contains("Set up OpenCode status hooks"));
+            assert!(screen.contains("Set up Codex status hooks") && screen.contains("Set up Pi status hooks") && screen.contains("Set up OpenCode status hooks"));
             for index in 0..2 {
                 assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Hy(hydra::HyHit::MenuPick(index))));
             }
@@ -1799,6 +1834,32 @@ mod hydra_tests {
         let side: String = lines.iter().map(|l| l.chars().take(30).collect::<String>() + "\n").collect();
         assert!(!side.contains("main · 3m") && !side.contains("Run npm test"), "no meta or questions in the slim sidebar: {side}");
         assert!(o.contains("+ new") && o.contains("actions"), "new and actions fit a slim sidebar");
+    }
+
+    #[test]
+    fn flat_layout_keeps_the_same_sessions_and_exposes_focus_zone_controls() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.cfg.ui.layout = "flat".into();
+        let main = draw(&mut app, 160, 45);
+        show(&main);
+        assert!(main.lines().next().unwrap().starts_with("▎"), "flat has no outside margin and keeps a zone bar");
+        assert!(main.contains("claude") && main.contains("AGENTS 2"), "the existing sessions remain visible");
+        assert!(main.contains(" PANE ") && main.contains("settings") && main.contains("actions"), "the footer names focus and keeps mouse-accessible controls");
+        assert!(!main.contains('╭') && !main.contains('╮') && !main.contains('╰') && !main.contains('╯'), "flat uses square zones without card borders");
+        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Hy(hydra::HyHit::StatusSettings)), "Settings is clickable from the flat status line");
+        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Hy(hydra::HyHit::Actions)), "Actions is clickable from the flat status line");
+
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(app.mode, Mode::Side, "Tab focuses the sidebar");
+        let sidebar = draw(&mut app, 160, 45);
+        assert!(sidebar.contains(" SIDEBAR "), "the footer explicitly shows sidebar focus");
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(app.mode, Mode::Normal, "Tab returns focus to the pane");
+
+        app.act(Action::Settings);
+        let settings = draw(&mut app, 160, 45);
+        assert!(settings.contains("Settings") && settings.contains("Esc close"), "the Settings sheet reaches the top and has its square status row");
+        assert!(app.hits.iter().any(|(rect, hit)| rect.y == 0 && *hit == Hit::Hy(hydra::HyHit::Close)), "the flat sheet close control is mouse reachable at row zero");
     }
 
     #[test]
@@ -2566,7 +2627,8 @@ mod hydra_tests {
         assert_eq!(hydra::peeked(&app, 1), Some(2));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("the last thing codex said before it slept") && o.contains("zzZ asleep") && o.contains("Enter or a click"), "a look at it");
+        assert!(o.contains("the last thing codex said before it slept"), "a look at it");
+        assert!(!o.contains("to wake it"), "legacy recovery has no wake-up overlay");
         let woke = std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, crate::protocol::ClientMsg::Command(crate::protocol::Command::FocusPane { term: 2 }) | crate::protocol::ClientMsg::Input { term: 2, .. } | crate::protocol::ClientMsg::Command(crate::protocol::Command::ResizePane { term: 2, .. })));
         assert!(!woke, "looking sends it nothing: it stays asleep");
         assert!(!app.panes.iter().any(|(t, _)| *t == 2), "and its size is left alone");
@@ -2843,46 +2905,14 @@ mod hydra_tests {
     }
 
     #[test]
-    fn a_woken_agents_pane_says_its_waking_until_the_agent_is_back() {
+    fn legacy_sleep_recovery_keeps_the_saved_screen_without_a_wake_overlay() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.got_state = true;
-        // The short one: the rain has tests of its own (hydra::wake).
-        app.cfg.ui.wake_animation = "simple".into();
         app.snap.terms.get_mut(&1).unwrap().asleep = true;
+        app.parsers.get_mut(&1).unwrap().process(b"Saved terminal contents\r\n");
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("zzZ asleep") && !o.contains("waking up"));
-        // You click it: the server starts it again in a new pane (9) in its place, blank so far.
-        let woken = |hook_at: u64| {
-            let mut s = app.snap.clone();
-            let mut t = s.terms.remove(&1).unwrap();
-            (t.id, t.asleep, t.status, t.why_hook_at) = (9, false, Status::Idle, hook_at);
-            s.terms.insert(9, t);
-            let tab = &mut s.workspaces[0].tabs[0];
-            tab.layout = tab.layout.map_leaves(&mut |id| Some(if id == 1 { 9 } else { id })).unwrap();
-            tab.focus = 9;
-            s
-        };
-        let (blank, back) = (woken(0), woken(1));
-        app.on_server(crate::protocol::ServerMsg::State(blank));
-        assert!(app.waking.contains_key(&9), "the pane that took its place");
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(o.contains("waking up · picking up where it left off") && o.contains("waking ") && !o.contains("zzZ asleep"), "it says so (in its title too) instead of sitting blank");
-        // Its hooks report: it's back, and the note goes.
-        app.on_server(crate::protocol::ServerMsg::State(back));
-        assert!(super::woken(&app.snap.terms[&9], app.parsers.get(&9)) && app.waking[&9].ready.is_some(), "its hooks have reported: the transition can finish");
-        // A short fade, then it's an ordinary pane.
-        std::thread::sleep(std::time::Duration::from_millis(320));
-        app.on_server(crate::protocol::ServerMsg::State(app.snap.clone()));
-        assert!(!app.waking.contains_key(&9) && !draw(&mut app, 160, 45).contains("waking up"));
-        // An agent with no hooks counts as back once it has drawn its screen.
-        let mut drawn = vt100::Parser::new(20, 80, 0);
-        drawn.process(b"Welcome back\r\n> \r\nesc to interrupt\r\n");
-        let mut quiet = app.snap.terms[&9].clone();
-        quiet.why_hook_at = 0;
-        assert!(super::woken(&quiet, Some(&drawn)) && !super::woken(&quiet, Some(&vt100::Parser::new(20, 80, 0))));
-        // A pane that's simply new isn't waking.
-        assert!(!app.waking.contains_key(&2));
+        assert!(o.contains("Saved terminal contents"), "the last screen remains readable");
+        assert!(!o.contains("waking up") && !o.contains("to wake it"), "there is no wake screen or animation");
     }
 
     #[test]
@@ -3405,7 +3435,7 @@ mod settings_splash_tests {
         app.splash = false;
         app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 0, sel: 1, editing: None, capturing: false, scroll: 0 }));
         let settings = draw(&mut app);
-        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 2, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 2, sel: 7, editing: None, capturing: false, scroll: 0 }));
         let keys = draw(&mut app);
         if std::env::var("SESHI_SHOW").is_ok() {
             println!("{splash}\n{settings}\n{keys}");

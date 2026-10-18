@@ -91,7 +91,6 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "ui.mouse", label: "Mouse", kind: Kind::Bool, cat: Cat::General, help: "Click, hover, scroll and drag. Hold Shift to select text with your terminal instead." },
     Setting { path: "ui.alt_arrows", label: "Alt+arrows move between panes", kind: Kind::Bool, cat: Cat::General, help: "Without the leader. Turn it off if your shell jumps words with Alt+arrows." },
     Setting { path: "ui.motion", label: "Motion", kind: Kind::Bool, cat: Cat::General, help: "The sidebar and the sheet slide in, the highlight glides, toasts slide and fade (under 150 ms). Always off over SSH." },
-    Setting { path: "ui.wake_animation", label: "Wake-up animation", kind: Kind::Choice(&["on", "simple", "off"]), cat: Cat::General, help: "What a pane plays as its sleeping agent wakes. on: rain that dissolves into its screen. simple: a note, then a fade. With Motion off, on is simple." },
     Setting { path: "ui.which_key", label: "Keys after a pause", kind: Kind::Bool, cat: Cat::General, help: "After the leader key, show every shortcut if you pause." },
     Setting { path: "ui.sidebar_position", label: "Sidebar side", kind: Kind::Choice(&["left", "right"]), cat: Cat::General, help: "Which edge the sidebar sits on." },
     Setting { path: "ui.start_dir", label: "Start folder", kind: Kind::Folder, cat: Cat::General, help: "Where plain `seshi` opens (and the shell after you close everything). Empty: wherever you run it. ~ is home." },
@@ -109,10 +108,10 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "restore.enabled", label: "Bring sessions back after a restart", kind: Kind::Bool, cat: Cat::Sessions, help: "Agents keep going in the background; after a reboot seshi rebuilds your sessions." },
     Setting { path: "restore.agents", label: "Resume agents", kind: Kind::Bool, cat: Cat::Sessions, help: "Restart agents in their last conversation (claude --resume, codex resume)." },
     Setting { path: "restore.commands", label: "Re-run commands", kind: Kind::Bool, cat: Cat::Sessions, help: "Run again the commands sessions were started with (lazygit, a dev server, ...)." },
-    Setting { path: "sleep_after", label: "Put idle agents to sleep", kind: Kind::Choice(&["never", "15m", "1h", "4h"]), cat: Cat::Sessions, help: "Agents sitting idle this long are stopped to save memory; opening one resumes it where it was." },
     Setting { path: "scrollback", label: "Scrollback lines", kind: Kind::Int { step: 1000, min: 1000, max: 100_000 }, cat: Cat::Sessions, help: "How much history each session keeps for scrolling and search." },
     // Appearance
-    Setting { path: "ui.panes", label: "Layout", kind: Kind::Choice(&["floating", "tiled"]), cat: Cat::Appearance, help: "Gaps and rounded borders between panes. Tiled packs them edge to edge." },
+    Setting { path: "ui.layout", label: "Layout", kind: Kind::Choice(&["cards", "flat"]), cat: Cat::Appearance, help: "Cards keeps floating or tiled panes. Flat uses full-bleed square zones." },
+    Setting { path: "ui.panes", label: "Cards spacing", kind: Kind::Choice(&["floating", "tiled"]), cat: Cat::Appearance, help: "Gaps and rounded borders between panes in Cards layout. Tiled packs them edge to edge." },
     Setting { path: "ui.corners", label: "Card edges", kind: Kind::Choice(&["flush", "rounded"]), cat: Cat::Appearance, help: "Flush: the line sits on the card's edge, its colour right up to it. Rounded: a centred line with round corners (a thin strip of background shows inside it)." },
     Setting { path: "ui.gap", label: "Gap", kind: Kind::Choice(&["0", "1", "2"]), cat: Cat::Appearance, help: "Space between floating panes, in rows stacked and columns side by side." },
     Setting { path: "ui.dim", label: "Dim unfocused", kind: Kind::Choice(&["off", "subtle", "40%", "60%"]), cat: Cat::Appearance, help: "How far the panes you're not in fade. Their colours stay recognisable." },
@@ -231,6 +230,8 @@ mod tests {
     #[test]
     fn settings_step_and_display() {
         let cfg = Config::default();
+        assert!(SETTINGS.iter().all(|s| s.path != "sleep_after"), "automatic agent sleep is no longer configurable");
+        assert!(SETTINGS.iter().all(|s| s.path != "ui.wake_animation"), "wake animations are no longer configurable");
         for s in SETTINGS.iter().filter(|s| s.path != "shell") {
             // `shell` is unset by default (seshi picks one), so it has no value yet.
             assert!(current(&cfg, s.path).is_some(), "missing setting {}", s.path);

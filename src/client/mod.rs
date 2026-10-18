@@ -49,8 +49,6 @@ use tokio::sync::mpsc;
 /// How often an open window asks again whether a newer seshi is out.
 const UPDATE_CHECK_EVERY: Duration = Duration::from_secs(3 * 60 * 60);
 const TICK: Duration = Duration::from_millis(50);
-/// How often a pane playing its wake-up is redrawn.
-const WAKE_FRAME: Duration = Duration::from_millis(33);
 /// The shortest time between two frames (about 80 a second at most).
 const MIN_FRAME: Duration = Duration::from_millis(12);
 /// Keys of one paste come this close together (Windows); typing never does.
@@ -63,16 +61,6 @@ const NOTICE_FOR: Duration = Duration::from_secs(5);
 const SERVER_BURST: usize = 512;
 /// Losing the server twice within this long is the server going, not a hiccup: stop.
 const REATTACH_AT_MOST_EVERY: Duration = Duration::from_secs(10);
-/// A pane stops saying it's waking after this long, whatever the agent has or hasn't shown.
-const WAKING_AT_MOST: Duration = Duration::from_secs(30);
-/// Rows with something on them that count as the agent having drawn its screen.
-const WOKEN_ROWS: usize = 3;
-
-/// Whether a just-woken pane's agent is back: its hooks have reported, or (an agent with no
-/// hooks) it has drawn its screen.
-fn woken(t: &TermInfo, screen: Option<&vt100::Parser>) -> bool {
-    t.why_hook_at > 0 || screen.is_some_and(|p| p.screen().contents().lines().filter(|l| !l.trim().is_empty()).count() >= WOKEN_ROWS)
-}
 /// Two clicks this close together are a double-click.
 pub(super) const DOUBLE_CLICK: Duration = Duration::from_millis(400);
 
@@ -342,9 +330,6 @@ pub struct App {
     last_alert: Option<Instant>,
     /// Only ring if the pending status still matches the latest snapshot at its deadline.
     settling: HashMap<TermId, (Status, Instant)>,
-    /// Panes that took a sleeping agent's place, and when: blank until the agent is back up,
-    /// so they say they're waking.
-    waking: HashMap<TermId, hydra::Wake>,
     /// What's moving, and how far the sidebar and the sheet are in this frame (0 to 1).
     motion: motion::Motion,
     side_frac: f32,
@@ -507,7 +492,6 @@ impl App {
             alerted: HashMap::new(),
             last_alert: None,
             settling: HashMap::new(),
-            waking: HashMap::new(),
             motion: motion::Motion::default(),
             side_frac: 1.0,
             sheet_frac: 1.0,
@@ -586,7 +570,6 @@ impl App {
         loop {
             let hold = self.sync_hold_until();
             let next_draw = tokio::time::Instant::from_std((last_draw + frame).max(hold.unwrap_or(last_draw)));
-            let wake_moving = self.wake_moving();
             tokio::select! {
                 _ = tokio::time::sleep_until(next_draw), if self.dirty => {}
                 ev = events.next() => match ev {
@@ -654,10 +637,6 @@ impl App {
                         self.quit.get_or_insert_with(|| "server exited".into());
                     }
                 },
-                // The wake-up rain wants more frames than the tick gives.
-                _ = tokio::time::sleep(WAKE_FRAME), if wake_moving => {
-                    self.dirty = true;
-                },
                 _ = tick.tick() => {
                     if self.update_checked.is_some_and(|at| at.elapsed() >= UPDATE_CHECK_EVERY) {
                         self.check_for_update(false);
@@ -670,9 +649,8 @@ impl App {
                         self.dirty = true;
                     }
                     let frame = self.spinner_frame();
-                    self.settle_waking();
                     self.settle_alerts();
-                    if frame != last_frame && (self.any_working() || !self.waking.is_empty() || matches!(self.mode, Mode::Spinners(_))) {
+                    if frame != last_frame && (self.any_working() || matches!(self.mode, Mode::Spinners(_))) {
                         last_frame = frame;
                         self.dirty = true;
                     }
@@ -702,7 +680,7 @@ impl App {
                 ended?;
                 self.sync_sizes();
                 // Something's moving: the next frame too.
-                if self.motion.moving() || self.toast_moving() || self.wake_moving() {
+                if self.motion.moving() || self.toast_moving() {
                     self.dirty = true;
                 }
             }
@@ -886,30 +864,6 @@ impl App {
         let hold = hydra::toast_hold(*err, self.notice_term.is_some());
         let e = at.elapsed();
         self.motion_on() && (e < motion::TOAST_IN.max(motion::TOAST_FLASH) || (e + motion::TOAST_FADE >= hold && e < hold))
-    }
-
-    /// Panes whose agent is back (or that have waited long enough) stop saying they're waking.
-    fn settle_waking(&mut self) {
-        let now = Instant::now();
-        let (snap, parsers) = (&self.snap, &self.parsers);
-        self.waking.retain(|term, wake| {
-            let Some(t) = snap.terms.get(term) else { return false };
-            if wake.ready.is_none() && (woken(t, parsers.get(term)) || wake.started.elapsed() >= WAKING_AT_MOST) {
-                wake.ready = Some(now);
-            }
-            !wake.done(now)
-        });
-    }
-
-    /// How a waking pane's transition plays, from the settings.
-    fn wake_style(&self) -> hydra::WakeStyle {
-        hydra::WakeStyle::of(&self.cfg.ui.wake_animation, self.cfg.ui.motion && crate::ipc::remote().is_none())
-    }
-
-    /// A waking pane is mid-transition: it needs every frame, not only the spinner's.
-    fn wake_moving(&self) -> bool {
-        let now = Instant::now();
-        self.waking.values().any(|w| w.animating(now))
     }
 
     fn spinner_frame(&self) -> u64 {
