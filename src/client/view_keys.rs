@@ -402,6 +402,12 @@ impl App {
             self.open_themes();
             return true;
         }
+        if matches!(&row, Some(design::SRow::Setting(s)) if s.kind == Kind::Spinner)
+            && matches!(k.code, KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Left | KeyCode::Right | KeyCode::Char('h' | 'l'))
+        {
+            self.open_spinners();
+            return true;
+        }
         let step = |app: &mut App, dir: i64| {
             if let Some(design::SRow::Setting(s)) = &row
                 && let Some(val) = modal::step(&app.cfg, s, dir)

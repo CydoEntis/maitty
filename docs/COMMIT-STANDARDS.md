@@ -119,7 +119,9 @@ presets), `mcp`, `ssh`, `docs`, `deps`. Example: `feat(ui): go-to switcher`.
 
 ## Project-specific: branches and tickets
 
-Work goes to `dev`; `main` is for releases. No ticket ids (no tracker yet).
+Work goes to `dev`; `main` is for releases. Track work in GitHub Issues on
+`CydoEntis/seshi`, label tickets by phase, and link them from the plan. Include
+the issue number (`#123`) in a commit when it addresses a ticket.
 History before this doc uses plain-sentence messages; Conventional Commits apply
 from here on.
 

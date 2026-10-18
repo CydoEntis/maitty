@@ -36,6 +36,7 @@ type ClientId = u64;
 
 /// How often the daemon looks at its timers (statuses, saves, git, sleep).
 const TICK: Duration = Duration::from_millis(250);
+const INTEGRATION_STARTUP_GRACE: Duration = Duration::from_secs(3);
 /// How often each workspace's git state is read again.
 const GIT_POLL_EVERY: Duration = Duration::from_secs(3);
 /// How often a changed session is saved to disk.
@@ -91,7 +92,7 @@ pub enum Ev {
     WorktreeRemoved { client: ClientId, path: PathBuf, result: Result<(), String> },
     /// Numbers read from Codex's session files (`usage::poll_codex`).
     /// What Codex's session files say: usage, limits, and what runs under each pane's session.
-    CodexUsage { usage: Vec<(TermId, Usage)>, limits: Option<Vec<Limit>>, subagents: Vec<(TermId, Vec<(String, String)>)> },
+    CodexUsage { facts: Vec<usage::CodexPaneFacts>, limits: Option<Vec<Limit>> },
     /// A worktree made for an agent started from a shell (`Command::AgentWorktree`).
     AgentWorktreeMade { client: ClientId, result: Result<PathBuf, String> },
     /// A worktree removed (or kept) after its last pane closed.
@@ -748,9 +749,26 @@ impl Daemon {
                         t.refresh_head();
                         self.dirty = true;
                     }
-                    // Hooks own the agent identity while they're reporting.
+                    // Hooks own live sessions, not processes that have exited. Allow the
+                    // process scanner to catch up to a newly loaded native integration.
+                    let mut hook_expired = false;
                     if t.hooked && t.agent.is_some() {
-                        continue;
+                        if t.agent == f.agent {
+                            t.hooked_process_seen = true;
+                            continue;
+                        }
+                        let custom = !self.agents.iter().any(|a| Some(&a.name) == t.agent.as_ref());
+                        if custom || (!t.hooked_process_seen && t.last_hook_at.is_some_and(|at| at.elapsed() < INTEGRATION_STARTUP_GRACE)) {
+                            continue;
+                        }
+                        t.hooked = false;
+                        t.hooked_process_seen = false;
+                        t.subagents.clear();
+                        t.done_held = None;
+                        t.alert_due = None;
+                        t.progress_off = None;
+                        t.screen_blocked_from = None;
+                        hook_expired = true;
                     }
                     // A sleeping agent has no process to find. It's still that agent: without
                     // this it turned into a terminal, and woke as a bare shell.
@@ -760,7 +778,7 @@ impl Daemon {
                     // Started as this agent (woken, moved, restored) and its process isn't up
                     // yet: it is still that agent, not a shell that lost its name and its
                     // conversation.
-                    if f.agent.is_none() && t.agent.is_some() && t.born.elapsed() < AGENT_SHOWS_WITHIN {
+                    if !hook_expired && f.agent.is_none() && t.agent.is_some() && t.born.elapsed() < AGENT_SHOWS_WITHIN {
                         continue;
                     }
                     if t.agent != f.agent {
@@ -963,7 +981,7 @@ impl Daemon {
                 self.poll_git_soon();
                 self.dirty = true;
             }
-            Ev::CodexUsage { usage, limits, subagents } => self.codex_usage(usage, limits, subagents),
+            Ev::CodexUsage { facts, limits } => self.codex_usage(facts, limits),
             Ev::WorktreeRemoved { client, path, result } => {
                 self.pending_ops -= 1;
                 match result {

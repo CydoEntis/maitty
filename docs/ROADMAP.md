@@ -2,14 +2,119 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-05 at `9cfde2c` on `dev`.
-Verify: `cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
+Last reconciled: 2026-10-16 at `63b1a72` on `dev`.
+Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Seshi is a terminal multiplexer built for running many coding agents at once: see
 which ones need you, jump to them, and keep them running when you leave. See
 `AGENTS.md` for the mission and `docs/ARCHITECTURE.md` for how it is built.
 
 ## Now
+
+The published base is v0.30.1 (`63b1a72`), shared by `dev` and `main`. The
+unreleased items below are local working-tree changes; they are not part of that
+base and must be preserved or isolated before new implementation work.
+
+User-requested pane padding polish: preserve the pane insets while matching the
+card and padding to a terminal app's solid surface when at least three screen
+corners share an explicit background. Isolated colored panels keep their theme
+treatment. Implemented and verified locally: focused UI regressions pass and the
+full gate passes (309 tests passed, four ignored; build, clippy and both
+cross-checks passed). Not released.
+
+User-requested Settings drawer: move Settings from its centered modal into the
+existing right-hand sliding sheet. Keep all categories, setting editors, update
+controls, mouse access and keyboard navigation. Implemented and verified locally,
+unreleased. The rendered UI and mouse category navigation were checked at
+80×24, 100×30 and 160×45. The ordered gate passed: build, 308 tests (four
+ignored), strict clippy, Linux x64 check and macOS ARM check. This adds no wire
+shape, dependency, migration or permission change.
+
+User-requested working-spinner selection and Pi/DeepSeek scrolling correction:
+add an Appearance picker with animated presets, Static and validated custom
+frames, preserve saved choices, and investigate wheel/keyboard transcript
+scrolling in Pi's regular/fullscreen modes. Also scope Codex helpers to exact
+owning threads and retain a compact status/session rail when the sidebar hides.
+User-reported spurious sounds also add blocked-sound debounce and exact status
+checks in the client and headless daemon. Red status remains immediate.
+Spinner selection, exact Codex helper ownership, collapsed rail and sound-race
+correction: verified locally, unreleased. Ordered build, full tests (307 passed,
+four ignored), strict all-target clippy, Linux x64 and macOS ARM cross-checks
+passed; ten Node adapter tests passed. The transient/stale blocker regression
+failed before the fix. Client and headless daemon tests prove cancellation on
+resumed work and stable focused/helper questions. Rendered frames were inspected
+at 80×24, 100×30 and 160×45, including left/right rail, hover/focus, off-screen
+attention and custom frames. An isolated live server verified rail expansion
+and saved the ASCII spinner through Settings; the saved array was checked on
+disk. Its owned processes stopped and reveal registration stayed unchanged.
+README, shortcut, UI, config, architecture and status contracts are current.
+These additions introduce no dependency, migration, permission or wire change;
+no FILL decisions were filled. No production session was restarted or real
+provider job requested.
+
+Pi scrolling remains open: regular/fullscreen Pi 0.87.1 and default fullscreen
+Pi 1.2.0 scrolled with wheel and Page Up using a saved synthetic transcript on
+Windows. The user reports the failure on Linux with Seshi 0.30.0/Pi 1.2.0.
+Await the failing pane's copied “Pane info (scrolling, mouse)” diagnostic before
+claiming a fix there; no speculative scroll-routing change was applied.
+
+User-requested Herdr status audit and Codex working correction: use the pinned
+Herdr source to cover its 24 identities and 22 screen manifests, add the missing
+OMP/Mastracode/Kilo/Kimi native setup, and scope OpenCode TUI V1/V2 reports to the
+selected session. Preserve native question lifecycles, recognize Codex automatic
+follow-up work and release hook authority on recognized process exit. Questions
+ring in the focused pane; completion waits one second and new turns reset dedup.
+Status: verified locally, unreleased. Ordered build, tests (299 passed / four
+ignored), strict clippy and Linux/macOS cross-checks passed; ten Node adapter
+tests passed. Rendered status frames were inspected. A named isolated live
+server showed the screenshot's wrapped footer working, expanded question blocked,
+answer working, completion idle, and process exit with no agent status. Its
+owned daemon/panes were stopped; the reveal registration remained unchanged.
+No paid provider job or production session was started/restarted. The source
+audit records remaining differences instead of claiming identical behavior.
+New dependency: pinned jsonc-parser 0.33.1 for comment-preserving OpenCode config.
+Apache source notices ship with release archives. No wire shape, migration or
+permission changes; no documentation decision markers were filled.
+See [audit and verification limits](herdr-status-audit.md).
+
+User-requested mouse access and provider-independent status correction: expose
+Profiles, Workflows, Runs, status setup and all commands through Actions, retain
+Actions without the sidebar/sessions, make palette commands clickable and
+wheel-scrollable, and include configured commands. Recognize current Pi/DeepSeek
+packages; install Pi/OpenCode native lifecycle adapters through mouse or CLI.
+Keep native questions blocked until answered, retain pending OpenCode asks across
+busy events and helper completion, and recognize Codex's expanded question dialog.
+Needs-you retains the red blocked dot/text; bells do not replace state. Scope
+includes the user's z.ai/DeepSeek models inside Pi/OpenCode. Status: verified
+locally, unreleased. The ordered build/test (290 passed / four ignored), clippy,
+Linux and macOS cross-checks pass, as do three Node adapter tests. Native adapter
+tests run in CI on Windows/Linux. An initial Windows run hit an access violation
+alongside a PowerShell out-of-memory error; isolated failing cases and complete
+subsequent gates passed. Rendered mouse flows fit 80×24, 100×30 and 160×45.
+A named isolated live server verified mouse entry, section changes, palette
+scrolling, hidden-sidebar access and adapter installation into test directories.
+A Pi adapter probe through the real authenticated hook socket remained blocked
+beyond the old quiet timeout and became idle on settlement, with event evidence.
+No real provider task was launched; existing authenticated Pi/OpenCode sessions
+were not restarted. The owned test process tree was stopped. README, shortcut,
+UI/API/architecture contracts and [status setup](agent-status.md) are updated;
+no dependencies, new permissions or wire shapes were added. Proposed wording
+follow-up, awaiting user direction: rename "shared files" to "overlapping files".
+
+User-requested workflow usability correction: navigate Profiles, Workflows and
+Runs with mouse/keyboard, retain drafts between sections, open/edit saved items,
+choose role profiles with a picker, and read full run reports before explicit
+controls. Separate Enter/open from Launch/Run/Open pane; provide Back, cursor
+editing, multiline instructions and report scrolling at 80×24. Status: verified
+locally, unreleased. Navigation regressions fail before fixes; the ordered build,
+test (284 passed / four ignored), clippy and Linux/macOS cross-check gate passed.
+Rendered flows inspected at 80×24, 100×30 and 160×45. A named isolated server at
+80×24 verified palette entry, keyboard/mouse section changes, role selection,
+profile/workflow saves and draft retention; saved values were checked on disk.
+Report browsing and controls bound to exact run ids are covered by render/input
+tests. The test server was cleaned up; no real agent run was launched, no remote
+change was made, and the user's daemon was not restarted. README, usage, UI,
+architecture and the embedded shortcut reference are updated.
 
 User-requested Codex consistency fix: detect native activity footers with
 background-terminal metadata and soft wraps; recognize new turns without
@@ -39,7 +144,7 @@ Live terminal/clipboard verification remains outstanding as described below.
 Release target: v0.30.0.
 
 User-authorized work: [clear session state and workflow controls](features/session-clarity/intent.md)
-([spec](features/session-clarity/spec.md)), extending active phase 9. Keep sidebar
+([spec](features/session-clarity/spec.md)), shipped in v0.30.0. Keep sidebar
 selection independent of hover; distinguish update versions; expose status
 evidence; prepare workflow instructions; show stages and Inbox approvals; measure
 switching, scrolling and resizing under output. Extends existing status/workflow
@@ -72,7 +177,7 @@ by automatic approval review; no live verification claimed. Status: verified
 locally for v0.29.1.
 
 Current user-requested work: [saved profile workflows](features/workflows/intent.md)
-([spec](features/workflows/spec.md)), extending phase 9. Select custom planner,
+([spec](features/workflows/spec.md)), shipped in v0.30.0. Select custom planner,
 worker and reviewer profiles; approve the plan; run at most three build/review
 rounds; keep durable progress; expose a right-side drawer and CLI/MCP entry points.
 Status: implemented for v0.29.0. The full gate passed (263 tests passed,
@@ -149,65 +254,49 @@ notification history, `seshi doctor`, more agent types, BEL tracking.
 
 #13, #14, #15, #16, #17, #18
 
-### 7 — Test-week feedback · in progress
+### 7 — Test-week feedback · complete 2026-10-16 at `63b1a72`
 
-What a week of daily use turns up. Bugs found were fixed straight away (0.3.1–0.6.6). #19 is
-done. Chosen 2026-10-05 after comparing with tuios, in this order:
+All accepted Phase 7 issues are closed and their changes are on `dev`. The five
+remaining proposals (#23, #27, #29, #30 and #31) were canceled on 2026-10-17
+and their issues closed. They are out of scope, not unfinished Phase 7 work.
 
-Done: #20 sidebar sections (0.7.0), #21 Inbox (0.7.5), #22 Claude Code agent teams (0.7.7);
-#25 teach an agent / Codex setup / DeepSeek built in (0.7.1, 0.7.6); #24 ask-human (0.7.8).
+### 8 — Agent loop and design v4 · reconciled
 
-Next, in order:
+The v4 design handoff is implemented and shipped. The later proposed bundle mixed
+work that is now shipped, features explicitly cut in [Out](#out), and team/persona
+design deferred to v5 in [Later](#later). Phase 8 is historical and does not gate
+new work; any remaining item must be re-approved and planned as a new scope.
 
-1. #25 (rest) Hooks for Gemini, opencode, Qwen in one command
-2. #24 (rest) Per-pane permissions for what an agent may do through seshi
-3. #28 Scrollback: jump between commands (0.8.1), multi-pane copy (0.9.1) — done
-4. #26 Layouts: split, grid, main and stack, columns; popups — done (0.9.0); tabs 1-9 are the workspaces
-
-On hold (2026-10-05, the user's call): #31 package managers (AUR name and account to decide),
-#23 more machines, #27 graphics, #29 extras, #30 web terminal and SSH server mode.
-
-### 8 — Back, and new: the agent loop from task to merged · waiting on designs
-
-Chosen 2026-10-09. Designs first: `docs/design-brief-v4.md` goes to the designer; nothing here is
-built before its design is in. Coming back (cut the same day, wanted after all): quick follow-up,
-tickets (GitHub, Linear, Plane), the queue, pull requests and Ship, dev server per worktree,
-checkpoints (off by default); SSH remotes and config sync are back already, as they were. New, in this order: two agents touching
-the same files, review and merge from the Inbox, why this status, today on the splash, alerts on
-your phone (ntfy, off by default).
-
-### 9 — One agent runs a fleet for you · active
+### 9 — One agent runs a fleet for you · complete 2026-10-16 at `63b1a72`
 
 [A commander that runs a fleet of agents](features/fleet/intent.md): you give one agent a goal; it starts
 helpers, briefs them, checks on them and reports back.
 
-Exit when:
-- every ticket below is closed and its change is on `dev`;
-- the Verify line above passes on `dev`;
-- live check: start a fleet with a goal, the commander starts two helpers, and both sit indented under it in the sidebar.
+Tickets #32–#38 are closed, their changes are on `dev`, and the feature shipped
+in v0.20.0. The full verification gate passes on the reconciled base. The live
+two-helper sidebar check remains an unverified, non-blocking follow-up in
+[Later](#later).
 
-1. #32 — record which session started a session
-2. #33 — `seshi brief` prints the commander's instructions · can run alongside 1
-3. #34 — keep the started-by link when a session is replaced · after 1
-4. #35 — keep the started-by link across a restart · after 1
-5. #36 — helpers sit under the session that started them · after 1
-6. #37 — start a fleet from the actions list · after 2
-7. #38 — make an agent the commander from its row menu · after 2
-
-### 10 — Borrowed from T3 Code · next
+### 10 — Borrowed from T3 Code · complete 2026-10-16 at `63b1a72`
 
 Chosen 2026-10-12, after reading `pingdotgg/t3code`. Done: a worktree's `on_create` finishes before
 anything starts in it (0.25.1).
 
-Also built, not yet released: queued follow-ups (the queue, back from the 2026-10-09 cut; sent
+Shipped by v0.26.0: queued follow-ups (the queue, back from the 2026-10-09 cut; sent
 when the turn ends, never into a question), named accounts (an agent entry with its own `env`),
 snapshots before each turn (checkpoints, back from the same cut; a restore keeps what's there
 first), and auto-settle and snooze (decided 2026-10-12: a session idle for `settle_after`, or
 whose branch's work is merged, folds into a collapsed `settled` line at the foot of its
 project; snooze sends one there until a time you pick; one that needs you always comes back).
 
-Exit check, still owed: each of the four used for real in a day's work, not only in tests.
-Known gap: a squash-merged branch isn't seen as merged (it settles on the idle timer).
+The real-day-use check and the known squash-merge detection gap remain visible in
+[Later](#later); neither is on the current work path.
+
+### 11 — Optional desktop client, shared session engine · declined 2026-10-17
+
+The user canceled this direction before implementation and chose to keep Seshi
+terminal-first, using T3 Code when they want a chat-first GUI. No code, tickets,
+branch, or worktree were created. Revisit only through a new proposal.
 
 ## In scope
 
@@ -232,17 +321,17 @@ Everything below is shipped on `dev` unless marked.
 - Agents talk to agents (MCP server `seshi mcp`) — shipped — `src/mcp.rs`
 - `seshi send --wait`, `seshi wait`, `seshi read` — shipped — `src/cli.rs`
 - At most a set number of helpers working at once (`[mcp] helpers_at_once`) — shipped 0.25.0 — `Daemon::starting` in `src/daemon/mod.rs`
-- A commander runs a fleet: one agent starts, briefs and checks helpers, which sit under it in the sidebar — active — [intent](features/fleet/intent.md), #32–#38
+- A commander runs a fleet: one agent starts, briefs and checks helpers, which sit under it in the sidebar — shipped in v0.20.0 — [intent](features/fleet/intent.md), #32–#38
 
-**The UI (one layout, ADR-0004)**
-- Floating look: rounded cards with gaps, title and state in the border, unfocused cards faded, pill tabs, no app footer; floating or tiled, corners, gap, dim, focus border, pill ends in Settings — done, unreleased — `src/client/hydra/card.rs`, `screen.rs`, ADR-0007
+**The TUI (one layout, ADR-0007)**
+- Floating look: rounded cards with gaps, title and state in the border, unfocused cards faded, pill tabs, no app footer; floating or tiled, corners, gap, dim, focus border, pill ends in Settings — shipped by v0.30.1 — `src/client/hydra/card.rs`, `screen.rs`, ADR-0007
 - Sidebar card: projects → sessions, state glyph + name, branch · age, question under it, attention sort, helpers indented under the session that started them, keyboard and mouse, row letter keys, `a actions` / `, settings` foot — shipped — `src/client/hydra/screen.rs` `draw_side`
 - Panes: tabs as pills (named in their pill), any number of splits (grid for 3+), drag the gap between them, ✕ in the border — shipped — `src/client/hydra/screen.rs` `draw_session`
 - Inbox (what needs you first, type to go anywhere), command palette (plain-word commands), key map (searchable, second steps), actions list — shipped — `draw_goto`, `draw_palette`, `src/client/hydra/leader.rs`
 - Right-click menus, confirm before closing, toasts — shipped — `src/client/menu.rs`
 - Splash: Resume / New shell here — shipped — `draw_splash`
 - Settings popup grouped by section, key rebinding, themes with contrast audit — shipped — `draw_settings`, `src/theme.rs`
-- Leader keys (a shell is `n`, only kept features have keys), Alt+arrows without the leader, armed pill in sky — done, unreleased — `src/keys.rs` `DEFAULT_PREFIX_KEYS`, ADR-0009
+- Leader keys (a shell is `n`, only kept features have keys), Alt+arrows without the leader, armed pill in sky — shipped by v0.30.1 — `src/keys.rs` `DEFAULT_PREFIX_KEYS`, ADR-0009
 - Copy on select with toast, copy mode, Ctrl+click paths, paste images — shipped — `src/client/copy.rs`, `src/client/pick.rs`
 
 **Code and git**
@@ -259,8 +348,8 @@ Everything below is shipped on `dev` unless marked.
 - Merge that cleans up (the worktree and its branch go) — shipped 0.11.0 — `src/client/view_keys.rs`
 
 **Identity**
-- Renamed hydra → Seshi: command, folders, `SESHI_*`, `.seshi.toml`, MCP, releases; one-time move of an old install — done, unreleased — `config::migrate_old_names`, ADR-0008
-- Seshi Walnut (default), Seshi Night and Seshi Day themes; block SESHI wordmark on the splash — done, unreleased — `src/theme.rs`, `src/client/hydra/splash.rs`
+- Renamed hydra → Seshi: command, folders, `SESHI_*`, `.seshi.toml`, MCP, releases; one-time move of an old install — shipped by v0.30.1 — `config::migrate_old_names`, ADR-0008
+- Seshi Walnut (default), Seshi Night and Seshi Day themes; block SESHI wordmark on the splash — shipped by v0.30.1 — `src/theme.rs`, `src/client/hydra/splash.rs`
 
 **Extras**
 - One alert when an agent needs you or finishes: seshi's own two sounds and a note in the window; a desktop notification only with no window open; notification history — shipped — `src/alert.rs`
@@ -274,11 +363,15 @@ Everything below is shipped on `dev` unless marked.
 
 ## Out
 
-- Features cut 2026-10-09 (the user's call: they repeated something else or weren't used): open project, go to, next agent that needs you, arrange panes, undo automatic workspace, the map, ideas, races, run a preset as a list (presets stay in the new-agent dialog), past chats, agent tools, extensions, and the tmux stand-in for Claude agent teams. Bringing one back needs a new decision. Memory per session was on this list and came back 2026-10-12 as the load line under a busy session (the user's call, after a day of finding the heavy agent by hand); races were asked about again the same day and stay cut. (Talk / reply / answer, the quick prompt, tickets, the queue, checkpoints, SSH remotes, config sync, the dev-server runner and the pull-request view with Ship were cut the same day and are coming back in phase 8, redesigned.)
+- Features cut 2026-10-09 remain out unless re-approved: open project, go to, next agent that needs you, arrange panes, undo automatic workspace, the map, ideas, races, run a preset as a list (presets stay in the new-agent dialog), past chats, agent tools, extensions, and the tmux stand-in for Claude agent teams. Memory per session later returned as the load line under a busy session. Items explicitly restored since the cut are listed in In scope; races remain cut.
 - Desktop notifications while a seshi window is open, the terminal bell on an alert, and choosing among system sounds (or your own sound file) — cut 2026-10-11 (the user's call: three overlapping alerts, two of them the Windows error ding). Bringing one back needs a new decision.
-- Other UI layouts (workspaces, tree, dock, sidebar) — declined 2026-10-03: one layout to build and test (ADR-0004, now ADR-0007: floating and tiled are styles of it). Bringing them back needs a new decision.
+- Separate desktop GUI client — declined 2026-10-17: keep Seshi terminal-first and use T3 Code when a chat-first GUI is wanted. Revisit only through a new proposal (ADR-0011).
+- Other terminal UI layouts (workspaces, tree, dock, alternate sidebar) — declined 2026-10-03: one TUI layout to build and test (ADR-0004, now ADR-0007: floating and tiled are styles of it).
+- Phase 7 proposals canceled 2026-10-17: named hosts and remote panes/agents (#23); terminal graphics and Kitty keyboard protocol (#27); launcher, templates, recording/replay, screenshots and key display (#29); web terminal and SSH server mode (#30); package-manager distribution (#31). Revisit only through a new proposal. This does not remove shipped SSH remote-client support.
 
 ## Later
+
+- Non-blocking validation follow-ups: run the Phase 9 live fleet check with two helpers visible under the commander; use the four Phase 10 features in real work; address the squash-merged-branch detection gap.
 
 - Personas (a saved name, brief, agent, model and permissions) — deferred 2026-10-11: the user wants to think about them more. Comes back when the user decides what a persona holds.
 - The designed team view, threads between agents, take over and hand back, pause the fleet, stop all, cost per fleet — deferred 2026-10-11: waiting on the design from [design brief v5](design-brief-v5.md). Comes back when the prototype is in.
@@ -291,6 +384,8 @@ Everything below is shipped on `dev` unless marked.
 - [ADR-0009](docs/adr/0009-leader-keys-after-the-cut.md) — Leader keys: a shell is one key, and only kept features have keys (supersedes ADR-0006). Rules out: keys for features that don't exist; defaults that differ from the key map shown in the app.
 - [ADR-0008](docs/adr/0008-rename-to-seshi.md) — The app is called Seshi; an old hydra install is brought over once. Rules out: new code or paths under the old name.
 - [ADR-0007](docs/adr/0007-floating-and-tiled-styles.md) — One layout, drawn floating or tiled (supersedes ADR-0004). Rules out: other layouts, styles that move or hide parts of the UI.
+- [ADR-0010](docs/adr/0010-optional-desktop-client.md) — Offer an optional desktop client. Superseded by ADR-0011.
+- [ADR-0011](docs/adr/0011-keep-seshi-terminal-first.md) — Keep Seshi terminal-first. Rules out: adding a separate desktop GUI client to this project.
 
 ## Rules
 

@@ -64,6 +64,10 @@ Settings live in `config.toml` (`%APPDATA%\seshi\` on Windows,
 `~/.config/seshi/` elsewhere), with `config.local.toml` beside it for
 machine-only values. `config.example.toml` documents every key.
 
+`ui.spinner` is an array of up to 64 single-column frame strings; an empty array
+uses `icons.working` without animation. Settings → Appearance → Working spinner
+offers presets and a custom editor. Preserve explicit custom frames on reload.
+
 Agent profiles use `[[profiles]]` in these files, with project overrides in
 `.seshi.toml`. See [agent profiles](features/agent-profiles.md) for fields,
 precedence, setup and native exports. Personal Codex exports honor `CODEX_HOME`.
@@ -87,9 +91,14 @@ it reads:
 | `SESHI_SSH`, `SESHI_REMOTE_CMD` | replace `ssh` / the remote `seshi` command | user |
 | `SESHI_TERM_ID`, `SESHI_PANE_TOKEN` | the pane's id and secret, set inside every pane | daemon |
 | `SESHI_SHOW` | tests print rendered frames | developer |
+| `PI_CODING_AGENT_DIR` | Pi/OMP native agent configuration directory; do not share between the two apps | user / agent app |
+| `PI_CONFIG_DIR` | OMP config folder below the user's home, default `.omp` | user / OMP |
+| `KIMI_CODE_HOME` | Kimi config directory, default `~/.kimi-code` | user / Kimi |
+| `XDG_CONFIG_HOME`, `XDG_STATE_HOME` | native OpenCode configuration/state roots; Kilo's config also uses the config root | user / OS |
 | `EDITOR`, `VISUAL`, `SHELL`, `COMSPEC` | editor and shell defaults | OS / user |
 
 ## Project-specific: environments
 
-Local only: Seshi is a desktop tool. Builds come from `cargo install --path .`
-(no published releases yet). `dev` is the working branch.
+Local only: Seshi is a desktop tool. Development builds use `cargo install --path .`;
+release archives and installers are published through the GitHub release workflow.
+`dev` is the working branch.

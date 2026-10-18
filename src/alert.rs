@@ -99,7 +99,17 @@ pub const SAME_AGAIN_AFTER: std::time::Duration = std::time::Duration::from_secs
 /// "Finished" waits this long before it's said. An agent running helpers of its own
 /// finishes a turn and starts the next by itself, over and over; one still finished after
 /// this is really waiting for you.
-pub const FINISHED_SETTLES: std::time::Duration = std::time::Duration::from_secs(20);
+pub const FINISHED_SETTLES: std::time::Duration = std::time::Duration::from_secs(1);
+/// Auto-approved prompts can disappear before a person could respond to them.
+const NEEDS_SETTLES: std::time::Duration = std::time::Duration::from_millis(300);
+
+pub fn settle_delay(status: crate::protocol::Status) -> Option<std::time::Duration> {
+    match status {
+        crate::protocol::Status::Blocked => Some(NEEDS_SETTLES),
+        crate::protocol::Status::Done => Some(FINISHED_SETTLES),
+        _ => None,
+    }
+}
 /// Several agents at once ring once.
 pub const ANY_AGAIN_AFTER: std::time::Duration = std::time::Duration::from_secs(4);
 

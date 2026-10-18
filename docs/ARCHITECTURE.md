@@ -176,6 +176,8 @@ Rust, edition 2024, stable toolchain. Key libraries: `tokio` (async runtime),
 format) over `tokio-util` length-delimited frames, `serde`/`toml`/`toml_edit`
 (config), `sysinfo` (process trees, memory), `ignore` + `regex` (file search),
 `arboard` (clipboard), `clap` (CLI), `anyhow` (errors), `tracing` (logs).
+`jsonc-parser` 0.33.1 with CST/serde support edits OpenCode's native JSONC plugin
+lists while retaining comments and settings; serde_json alone cannot preserve them.
 `vt100` is a patched copy in `vendor/vt100` (see its `SESHI.md`; wired in with
 `[patch.crates-io]`): keep its changes there and listed in that file.
 Rules for the language live in `docs/stack/rust.md`.
@@ -195,6 +197,10 @@ Rules for the language live in `docs/stack/rust.md`.
 - **Presentation:** `client/hydra/` (the layout and its popups),
   `client/design.rs` (shared drawing helpers), `client/render.rs`, and the
   feature views in `client/` (files, changes, branches, …).
+
+`client/spinners.rs` owns the working-spinner picker, previews and background
+saves. Presets and frame validation live in `config.rs`; `ui.spinner` remains the
+existing persisted array consumed by the shared status-icon renderer.
 
 The client never touches a PTY; the daemon never draws. They meet only through
 `protocol.rs` messages.
@@ -233,6 +239,10 @@ passes arguments directly to the native CLI or its npm Node entry on Windows.
 Profile filesystem work runs in `spawn_bg`; no new IPC message shapes are needed.
 See [agent profiles](features/agent-profiles.md) for the public contract.
 
+`client/text_input.rs` owns cursor editing and input display for profile fields,
+workflow names and task entry. Drawer section drafts are cached in client-only
+`AgentSheets`; run detail/control targets use run ids rather than list positions.
+
 `workflows.rs` owns saved workflows and pure stage transitions;
 `daemon/workflows.rs` owns execution, authenticated reports and background
 handoff preparation. `cli/workflow.rs` exposes commands and the native stage
@@ -244,6 +254,19 @@ versioned snapshots and are persisted with sessions. See
 and embeds `docs/shortcuts.md` for contextual controls. The compact leader
 overview remains in `client/hydra/leader.rs`; `Action::Help` opens the full reference.
 
+`detection/` evaluates the pinned 22 Herdr screen manifests in
+`vendor/herdr-detection/` using agent-owned screen regions, OSC fields, priorities
+and nested gates. It performs no I/O. `daemon/status.rs` arbitrates that evidence
+against trusted lifecycle reports; custom screen regex overrides remain supported.
+Source provenance and redistribution terms are in the vendor NOTICE and LICENSE.
+
+`cli/integrations.rs` installs Pi/OMP extensions, OpenCode server/TUI bridges,
+Kilo's plugin and native Kimi/Mastracode hook configurations. OpenCode configuration
+editing lives in `cli/opencode_config.rs` and preserves its V1-to-V2 migration.
+Actions invokes installation through
+`spawn_bg`; adapters send authenticated `seshi hook` reports and remain inert
+outside Seshi. No provider-specific status adapter is needed.
+
 - **Commands and snapshots.** The client sends `Command`s; the daemon answers
   with full `Snapshot`s plus per-pane output. The client derives its view model
   (`hy_model`) from the snapshot each frame instead of caching parallel state.
@@ -251,14 +274,16 @@ overview remains in `client/hydra/leader.rs`; `Action::Help` opens the full refe
   …); each mode has a `draw_*` and an `on_*_key` function.
 - **Hit testing.** Drawing registers clickable rects (`hit(app, rect, HyHit::…)`);
   mouse handling looks them up, so drawing and clicking can't drift.
+  `client/hydra/rail.rs` renders the collapsed sidebar from the same session
+  model and status glyphs; it shares focus, hit testing and scroll state.
 - **Background work.** Slow work runs in `spawn_bg` and returns a `Bg` message.
 - **Other programs** go through `proc.rs` (`proc::git`, `proc::run`, `proc::shell`,
   `proc::quiet`), never a hand-built `Command` with its own window flag or error parsing.
 - **Filterable popups** use `query_list` + `list_row` (client/hydra/popups.rs).
 - **Cards and pills** come from `card.rs`: `card()` for every pane, the sidebar and popups
   (title in the border, ✕ on the right), `pill()` / `row_pill()` for tabs, buttons and
-  selected rows. Colours follow the design's rule: accent = focus, amber = needs you, sky =
-  leader mode, red = destructive.
+  selected rows. Use accent for focus, the working colour for work, red for needs-you,
+  sky for leader mode and red for destructive actions.
 - **Popups** use the shared `panel()` helper (a lit card with ✕), `dim_all` behind, and
   `hints()` for the key line.
 
@@ -267,4 +292,5 @@ Decisions: [0001 daemon owns sessions](adr/0001-daemon-owns-sessions.md),
 [0002 portable-pty + vt100](adr/0002-portable-pty-and-vt100.md),
 [0003 msgpack over local sockets](adr/0003-msgpack-over-local-sockets.md),
 [0004 one layout](adr/0004-one-layout.md),
-[0005 herdr-compatible keys](adr/0005-herdr-compatible-keys.md).
+[0005 herdr-compatible keys](adr/0005-herdr-compatible-keys.md),
+[0011 keep Seshi terminal-first](adr/0011-keep-seshi-terminal-first.md).

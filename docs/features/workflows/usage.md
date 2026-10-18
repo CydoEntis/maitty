@@ -1,8 +1,16 @@
 # Using workflows
 
-Open **Workflows** in the command palette (Ctrl+Space, then Space), or open
+Click **Actions → Workflows**, open **Workflows** in the command palette
+(Ctrl+Space, then Space), or open
 **Agent profiles** and select **Workflows**. **Runs** shows progress and reports.
 The sheet slides in from the right and obeys Settings → Motion.
+
+Click a section tab, or use Tab/Shift+Tab or Left/Right from a list. Ctrl+Tab and
+Ctrl+Shift+Tab switch sections from editors and reports too. Each section retains
+its selection, unsaved draft and report position while the drawer stays open.
+Enter or double-click opens a profile/workflow for editing, or a run's details.
+Launching is separate: **Launch** (`l`) for a profile, **Run** (`s`) for a workflow.
+Esc backs out of an editor or detail view before it closes the drawer.
 
 Stage and round labels appear beside associated sessions. Pending plans also
 appear in **Inbox**; **Review plan** opens the exact run in **Runs** for approval.
@@ -13,6 +21,10 @@ Choose **Claude starter** or **Codex starter** to save a `feature` workflow and
 any missing Planner, Worker and Reviewer profiles. Existing profiles stay intact.
 Choose **Edit** to select your own profile for each stage, or **New** to create a
 different workflow. Tab moves fields, arrows select profiles/scope, Ctrl+S saves.
+Click a role field or press Enter/Space on it to open the profile picker. Choose
+with arrows and Enter, or click the profile. Name and task fields support cursor
+movement, Home/End, Delete and Backspace; pastes insert at the cursor. Profile
+instructions use a multiline editor. Saving failures keep the draft visible.
 Choose **Setup** (`u`) to preview selected roles and repository instructions.
 **Copy instructions** (`c`) copies the reviewed snippet for `AGENTS.md` or
 `CLAUDE.md`; no instruction file is changed automatically. Page Up/Down scrolls
@@ -61,6 +73,12 @@ profiles, including your own custom roles; the coordinator does not guess them.
 4. The reviewer checks the actual checkout and evidence. A passing review ends
    the run. Findings return to the worker; after three build/review rounds,
    unresolved findings end the run as failed for you to inspect.
+
+In Runs, Enter opens the selected run. Goal, Plan, Build and Review buttons
+show complete reports; Tab/Left/Right or 1–4 changes the report. Page keys and
+the wheel scroll; Home/End reaches the bounds. Opening and reading never approve
+a plan. **Open pane** (`o`) is a separate action. Controls stay tied to the open
+run even if newer runs arrive; Esc returns to the list.
 
 Stages are fresh native sessions in the same task checkout. They read `goal.md`,
 `plan.md`, `worker.md` and `review.md` from their handoff directory. Profiles may

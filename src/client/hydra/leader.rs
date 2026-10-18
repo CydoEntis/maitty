@@ -28,6 +28,11 @@ pub(in crate::client) fn action_items() -> Vec<(&'static str, Action)> {
         ("New tab", Action::NewTab),
         ("Start a fleet", Action::StartFleet),
         ("Inbox", Action::Jump),
+        ("Profiles", Action::Profiles),
+        ("Workflows", Action::Workflows),
+        ("Workflow runs", Action::WorkflowRuns),
+        ("All commands", Action::Palette),
+        ("Set up agent status", Action::AgentStatusSetup),
         ("Hide sidebar", Action::ToggleSidebar),
         ("Settings", Action::Settings),
         ("All keys", Action::Help),
@@ -255,7 +260,7 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
     let w = 40.min(area.width.saturating_sub(4));
     let h = (items.len() as u16 + 5).min(area.height.saturating_sub(2));
     let side = grid(app, area).side;
-    let x = if side.width > 0 { side.x + 1 } else { area.x + 3 };
+    let x = (if side.width > 0 { side.x + 1 } else { area.x + 3 }).min(area.right().saturating_sub(w));
     let y = area.bottom().saturating_sub(4 + h).max(area.y);
     let r = Rect { x, y, width: w, height: h };
     let mut c = Card::new(t, "Actions").lit(t.accent);
@@ -279,7 +284,8 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
         if on {
             ls = ls.add_modifier(Modifier::BOLD);
         }
-        let end = put(buf, r.x + 4, yy, &[seg(*label, ls)], r.right() - 6);
+        let label = if *a == Action::ToggleSidebar && !app.sidebar { "Show sidebar" } else { *label };
+        let end = put(buf, r.x + 4, yy, &[seg(label, ls)], r.right() - 6);
         if *a == Action::Jump && needs > 0 {
             put(buf, end + 1, yy, &[seg(format!("● {needs}"), st.fg(t.blocked).add_modifier(Modifier::BOLD))], r.right() - 6);
         } else if *a == Action::Settings && (app.update_available.is_some() || app.restart_pending()) {

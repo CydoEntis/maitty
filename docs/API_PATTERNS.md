@@ -143,14 +143,36 @@ shell or dev server. Background commands do not turn `Done` back into `Working`.
 Continue tracking actual subagents through their own lifecycle reports. Prepare
 the hook message separately from socket I/O so its effective status is testable.
 
-Codex's queued unanswered question takes precedence over its working spinner,
+Codex's queued or expanded unanswered question takes precedence over its working spinner,
 including with turn-end-only hooks. Clearing it restores ongoing work detection.
+
+Pi/OpenCode native adapters retain blocked status until their reply/dismissal
+events; quiet-screen heuristics must not clear native dialogs. Pi finishes on
+`agent_settled`, after automatic continuation. OpenCode preserves pending asks
+across busy events and resolves session ancestry so a helper finishing cannot
+finish its parent. Status payloads include event evidence, not conversation text;
+explicit status overrides retain that evidence. Existing pane authentication applies.
+
+Full lifecycle authority applies to Pi, OMP, Mastracode, OpenCode, Kilo and Kimi.
+For other hook sources, a fresh agent-owned blocker can override stale hook state.
+The bundled Herdr manifest rules preserve status in transcript/history viewers.
+OpenCode interactive TUI V1/V2 bridges report only the selected session/subtree;
+shared serve/web/attach processes must not claim another pane's status.
+`--status same` records session metadata without inventing a status transition.
+
+Bind Codex disk usage/helpers to the exact thread ID reported by the pane's
+authenticated integration. Never infer helper ownership from a shared working
+directory. Unknown or multiply-owned thread IDs show no disk helpers. Discard
+background results after a pane changes thread or agent; clear helpers when a
+new thread is accepted. This uses internal daemon events, not a wire change.
 
 For Codex's turn-end-only hooks, compare subsequent pane input to the accepted
 turn end using monotonic instants. Keep that boundary when done becomes seen/idle;
 do not impose a startup deadline or let a stale activity footer reopen the turn.
 Screen patterns read logical lines across soft wraps, retaining hard newlines.
 Codex activity matching accepts trailing background-terminal metadata.
+An advancing activity footer after an accepted end also starts automatic follow-up
+work without keyboard input; an unchanged completed footer stays finished.
 
 Shell `agent-dir` classification is agent-specific: Codex `-c`/`-p` configure
 new sessions; Claude's continue/print flags remain exclusions. Consume option
@@ -161,3 +183,10 @@ still requires the authenticated pane shell and the existing per-agent setting.
 Snapshots include the daemon package version. Term evidence includes the latest
 process observation time; screen evidence refreshes on repeated observations
 without changing the status start time or repeating transition alerts.
+
+Publish attention status immediately, but debounce its sound: blocked waits
+300 ms and done waits one second. Queue the expected status with its deadline
+in both client and daemon. Cancel on a different snapshot/status or pane removal;
+recheck the exact status before ringing. Transient auto-approved asks and stale
+attention messages must not ring while the agent is working. Helper completion
+stays quiet; helper questions may ring after the same blocked delay.

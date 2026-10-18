@@ -262,8 +262,9 @@ has to be right, and sessions survive the UI closing.
 3. **Windows is a first-class target.** Every change builds and behaves on
    Windows (ConPTY, named pipes, PowerShell) as well as Linux and macOS; the
    cross-checks in the gate are not optional.
-4. **One layout.** The `seshi` layout is the only UI. Floating and tiled are two
-   styles of drawing it (ADR 0007); don't add other layouts or switches between them.
+4. **Seshi is terminal-first.** The `seshi` terminal layout is its only user
+   interface. Floating and tiled are two drawing styles (ADR 0007). Do not add a
+   separate desktop GUI client (ADR 0011).
 5. **Status reports are only trusted from the pane itself**: its process tree, or
    its `SESHI_PANE_TOKEN`. Never accept a status change from an unverified source.
 6. **No blocking work on the UI thread.** Git, file walks, network and process

@@ -33,3 +33,5 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0007](0007-floating-and-tiled-styles.md) | One layout, drawn floating or tiled | Accepted |
 | [0008](0008-rename-to-seshi.md) | The app is called Seshi | Accepted |
 | [0009](0009-leader-keys-after-the-cut.md) | Leader keys: a shell is one key, and only kept features have keys | Accepted |
+| [0010](0010-optional-desktop-client.md) | Offer an optional desktop client over the shared session engine | Superseded by 0011 |
+| [0011](0011-keep-seshi-terminal-first.md) | Keep Seshi terminal-first | Accepted |

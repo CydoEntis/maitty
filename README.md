@@ -130,6 +130,12 @@ From source (any platform with Rust): `cargo install --git https://github.com/Cy
 
 ## Use
 
+Click **Actions** at the top right (also at the foot of the sidebar) to open
+**Profiles**, **Workflows**, **Workflow runs**, **Set up agent status**, Settings
+or **All commands**. The top button stays available with the sidebar hidden or
+no sessions open. All commands supports clicking rows and scrolling with the wheel,
+including configured custom commands.
+
 ```sh
 seshi            # attach (starts the server if needed); opens the current dir
 seshi ~/code/api # open or switch to that directory
@@ -167,6 +173,9 @@ split beside a session stays with it.
   never edit the same files.
 - The active session keeps its selection fill and **▸** marker as you move the mouse.
   Hover is a quieter fill; keyboard browsing uses **›** independently, including on sleeping rows.
+- Hiding the sidebar leaves a slim rail with status indicators and two-letter titles.
+  Click to switch sessions, hover for full names, scroll to reach more, and use the
+  chevron to expand. Its red count includes blocked agents outside the visible rows.
 - Things that need you sort to the top; everything else keeps its place. Agents asleep (see
   Settings) show `zzZ … asleep`; open one and its pane says it's waking until the agent is back.
   With the keys in the sidebar, the highlight on a sleeping agent shows its last screen without
@@ -246,9 +255,9 @@ Everything also works with the mouse. Hold Shift to select text with your termin
 
 ## Alerts
 
-One alert when an agent you're not looking at needs you or finishes: seshi's own sound (two
-rising notes for needs you, one for finished) and a note inside seshi. Needs you is said at
-once. Finished waits twenty seconds and is only said if the agent is still finished then, so one
+Questions ring even in the focused pane; completion rings when you're away from it.
+Seshi uses two rising notes for needs you and one for finished, with an in-app note for
+other panes. Needs you is said at once. Finished waits one second and is only said if the agent is still finished then, so one
 that carries on by itself stays quiet; a session another agent started isn't said when it
 finishes at all, since that agent is the one waiting for it. With no seshi window
 open, the server plays the sound and shows a desktop notification instead. `[notify] sound =
@@ -377,9 +386,15 @@ working ● 1 finished`) and buttons: Resume where you left off (`r`), New sessi
 Turn it off in Settings → General. Settings → General → Start folder sets where plain `seshi`
 opens (e.g. `~/code`); empty means wherever you run it.
 
-`Ctrl+Space ,` opens **Settings**, with tabs (Tab cycles): General · Sessions · Appearance · Agents ·
+`Ctrl+Space ,` opens **Settings** in a right-hand drawer that slides beside the panes
+(on a narrow window it uses the pane column). Sections (Tab cycles): General ? Sessions ? Appearance ? Agents ?
 Keys. Values are chips you click (or ←→ / Enter). Appearance has pane controls and a **Theme**
-control: press Enter to browse 63 themes. Type a name or flavor to filter, use arrows or
+browser. **Working spinner** previews Braille, Dots, Line (ASCII), Circle, Arrows,
+Pulse, Blocks and Static. Choose **Custom** to type or paste space-separated frames.
+Each frame must fit one terminal column; up to 64 frames are supported. Enter
+applies the choice, Esc cancels, and the change takes effect immediately.
+
+The Theme control opens a browser of 63 themes. Type a name or flavor to filter, use arrows or
 PgUp/PgDn to move, and preview the palette before pressing Enter to apply it. Click a row
 to preview and click it again to apply; Esc returns without changing your theme.
 
@@ -411,6 +426,7 @@ Set-Alias hy "$env:USERPROFILE\.cargo\bin\seshi.exe"   # PowerShell ($PROFILE)
 **Agent profiles** in the command palette. Create personal Claude Code / Codex
 roles, override them per project, and export native agent files for your
 workflows. Editable Planner / Worker / Reviewer starters are included.
+Enter or double-click edits a role; **Launch** (`l`) opens a task chooser.
 See [agent profiles](docs/features/agent-profiles.md).
 
 **Workflows:** open **Workflows** in the command palette or profiles sheet.
@@ -418,11 +434,15 @@ Select your planner, worker and reviewer profiles, then choose **Setup** (`u`).
 Review and **Copy instructions** (`c`), paste them into `AGENTS.md` or `CLAUDE.md`,
 and ask existing sessions to read the updated instructions. Their ordinary implementation
 requests can then select your saved workflow. Setup previews instructions; it does not edit files.
-Press Enter on a workflow to enter a task and Enter again to start. Review its plan
+Enter or double-click edits a workflow; click its role fields to choose profiles.
+Choose **Run** (`s`), enter a task, then Enter to start. Review its plan
 from **Inbox → Review plan** or **Runs**, then explicitly **Approve plan** (`a`).
 Build/review repeat for up to three rounds in one task worktree. The sidebar shows
 planning, building/reviewing round and questions; click a workflow label to open its run.
 Profiles, Workflows and Runs share a drawer on the right, with the work visible beside it.
+Click tabs, use Tab/Shift+Tab from lists, or Ctrl+Tab/Ctrl+Shift+Tab from any section.
+Switching sections keeps your draft and position. Open a run with Enter to read its
+Goal, Plan, Build and Review reports; **Open pane** is separate. Esc goes back first.
 See [setup, prompts and recovery](docs/features/workflows/usage.md).
 
 ```sh
@@ -561,22 +581,33 @@ Copies go to the system clipboard and, through OSC 52, to your outer terminal (w
 Each pane's process tree is scanned about once a second. Detected agents get a status from
 these sources, in order:
 
-1. **Hooks**, which are exact. `seshi integrate claude` adds hooks to `~/.claude/settings.json`.
+1. **Native hooks** report lifecycle events. `seshi integrate claude` adds hooks to `~/.claude/settings.json`.
    They stay inert outside seshi panes and are tagged so a re-run or `--uninstall` replaces them cleanly.
    Any tool can report its own state with `seshi hook <name> --status working|blocked|done|idle`.
    `seshi integrate gemini` and `seshi integrate qwen` do the same for Gemini CLI and Qwen Code;
-   `seshi integrate opencode` writes a small opencode plugin that tells seshi what it's doing.
+   `seshi integrate opencode` writes a small OpenCode plugin that tells seshi what it's doing.
+   `seshi integrate pi` installs Pi's native extension. Both can also be installed
+   with the mouse through **Actions → Set up agent status**. Restart OpenCode or
+   reload Pi after setup. Status follows the app with any provider, including
+   z.ai and DeepSeek; see [status setup and requirements](docs/agent-status.md).
    For Codex, `seshi integrate codex` sets seshi as its `notify` (in `~/.codex/config.toml`;
    another program's notify is left alone).
-2. **Screen patterns**: regexes matched against the bottom of the screen, such as "esc to interrupt".
+2. **Screen evidence**: 22 pinned Herdr manifests match live screen regions, OSC
+   titles/progress and paired dialog controls. A fresh visible blocker can override
+   non-authoritative hook state; a transcript viewer preserves the previous state.
 3. **Activity**: recent output that isn't the echo of your own typing.
 
 A turn that finishes while you're looking elsewhere is **done** until you focus that pane.
-An unanswered Codex queued question takes priority over its working spinner and shows
+An unanswered Codex queued or expanded question takes priority over its working spinner and shows
 **needs you**. Finished prose that mentions the interrupt shortcut does not count as active
 work. Codex reports turn completion through its notify hook; Seshi detects the next
 turn's activity footer, including soft wraps and background-terminal details. New
 input after a finished turn allows work detection immediately or after a delayed start.
+An advancing footer also detects automatic follow-up work without keyboard input.
+Hook authority ends when a recognized agent's process exits. Seshi recognizes
+Herdr's 24 agent identities plus its five additional existing agents; OMP,
+Mastracode, Kilo and Kimi native status setup is also available through Actions.
+See the [pinned source audit and compatibility limits](docs/herdr-status-audit.md).
 Terminal bells do not replace the status icon or add musical-note history entries.
 Click a status icon/tag (or `<leader> i`) for a plain-language explanation and the ages of
 hook, screen and process evidence; a status without confirmation is shown as uncertain.
