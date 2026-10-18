@@ -13,12 +13,22 @@ impl App {
     /// a new tab, in the tab that already shows it, or in place of the one you were on.
     pub(in crate::client) fn hy_place(&mut self, f: TermId, prev: Option<TermId>) {
         use crate::layout::{Dir, Node};
-        let beside = self
-            .hy
-            .pending_split
-            .take()
-            .filter(|(p, at)| *p != f && at.elapsed().as_secs() < 20 && self.snap.terms.contains_key(p))
-            .map(|(p, _)| p);
+        let beside = match self.hy.pending_split {
+            Some((p, _)) if p == f => None,
+            Some((p, at)) => {
+                self.hy.pending_split = None;
+                if prev == Some(p) && at.elapsed().as_secs() < 20 && self.snap.terms.contains_key(&p) {
+                    Some(p)
+                } else {
+                    self.hy.split_dir = None;
+                    None
+                }
+            }
+            None => {
+                self.hy.split_dir = None;
+                None
+            }
+        };
         let new_tab = self.hy.new_tab.take().filter(|(at, _)| at.elapsed().as_secs() < 60).map(|(_, owner)| owner);
         let take_out = |tabs: &mut Vec<HyTab>, f: TermId| {
             for tab in tabs.iter_mut() {
@@ -535,6 +545,7 @@ impl App {
         }
         let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
         match k.code {
+            KeyCode::Tab | KeyCode::BackTab if crate::client::hydra::Look::of(&self.cfg.ui).flat => self.hy_side_leave(),
             KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => self.hy_side_move(-1),
             KeyCode::Down | KeyCode::Char('j') if !k.modifiers.contains(KeyModifiers::CONTROL) => self.hy_side_move(1),
             KeyCode::Home => {
@@ -1184,6 +1195,9 @@ impl App {
             HyHit::ExpandSidebar => self.act(Action::ToggleSidebar),
             HyHit::TabNew => self.act(Action::NewTab),
             HyHit::Actions => self.act(Action::Actions),
+            HyHit::StatusSettings => self.act(Action::Settings),
+            HyHit::StatusInbox => self.act(Action::Jump),
+            HyHit::StatusKeys => self.act(Action::Help),
             HyHit::NewShell => self.act(Action::ShellHere),
             HyHit::ActionRow(i) => self.actions_run(i),
             HyHit::PickRow(i) => {

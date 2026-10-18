@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-18 at `ed1e985` on `dev`.
+Last reconciled: 2026-10-18 at `4167f40` on `dev`.
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Seshi is a terminal multiplexer built for running many coding agents at once: see
@@ -11,13 +11,7 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The published base is v0.31.0 (`ed1e985`). The agent-fleet status`r`ncorrection below is verified locally and being prepared for v0.32.0.`r`n`r`nUser-requested agent fleet visibility: keep a session visibly working while its
-helpers run, and list helpers under the correct parent when supported by the
-agent integration. Codex disk polling refreshes helper liveness; OpenCode TUI
-reports active child sessions; Kimi and Mastracode native lifecycle events are
-recognized. The isolated worktree passed build, 311 tests (4 ignored), strict
-Clippy, Linux x64 and macOS ARM checks, and all 10 Node adapter tests. PR and
-v0.32.0 release are pending.
+The published base is v0.32.0. The next release integrates flat rendering, manual-only session recovery, broader helper visibility and native lifecycle hooks, directional splits, and keycap-style shortcut help. The work is on the release branch and must pass the full gate before it is marked shipped.
 
 User-requested pane padding polish: preserve the pane insets while matching the
 card and padding to a terminal app's solid surface when at least three screen
@@ -303,6 +297,15 @@ The user canceled this direction before implementation and chose to keep Seshi
 terminal-first, using T3 Code when they want a chat-first GUI. No code, tickets,
 branch, or worktree were created. Revisit only through a new proposal.
 
+### 12 — Flat rendering style · in progress on `feat/flat-layout`
+
+Add an optional full-bleed Flat style from the supplied design handoff. Keep the
+Cards layout as default and share session state, tabs, splits, sheets, status and
+mouse behavior. Acceptance: choose Cards or Flat in Appearance; flat surfaces
+have square edges and no gaps, a bottom status line, keyboard focus zones,
+working mouse targets and sensible narrow-screen behavior; docs and tests cover
+the option; the verification gate passes before the phase ships.
+
 ## In scope
 
 Everything below is shipped on `dev` unless marked.
@@ -328,7 +331,8 @@ Everything below is shipped on `dev` unless marked.
 - At most a set number of helpers working at once (`[mcp] helpers_at_once`) — shipped 0.25.0 — `Daemon::starting` in `src/daemon/mod.rs`
 - A commander runs a fleet: one agent starts, briefs and checks helpers, which sit under it in the sidebar — shipped in v0.20.0 — [intent](features/fleet/intent.md), #32–#38
 
-**The TUI (one layout, ADR-0007)**
+**The TUI (one shared session layout; ADR-0007, superseded by ADR-0012)**
+- Flat rendering style: square, full-bleed sidebar, tabs, panes and sheets; bottom status line and sidebar/pane focus zones — in progress in Phase 12 — `src/client/hydra/screen.rs`, ADR-0012
 - Floating look: rounded cards with gaps, title and state in the border, unfocused cards faded, pill tabs, no app footer; floating or tiled, corners, gap, dim, focus border, pill ends in Settings — shipped by v0.30.1 — `src/client/hydra/card.rs`, `screen.rs`, ADR-0007
 - Sidebar card: projects → sessions, state glyph + name, branch · age, question under it, attention sort, helpers indented under the session that started them, keyboard and mouse, row letter keys, `a actions` / `, settings` foot — shipped — `src/client/hydra/screen.rs` `draw_side`
 - Panes: tabs as pills (named in their pill), any number of splits (grid for 3+), drag the gap between them, ✕ in the border — shipped — `src/client/hydra/screen.rs` `draw_session`
@@ -371,7 +375,7 @@ Everything below is shipped on `dev` unless marked.
 - Features cut 2026-10-09 remain out unless re-approved: open project, go to, next agent that needs you, arrange panes, undo automatic workspace, the map, ideas, races, run a preset as a list (presets stay in the new-agent dialog), past chats, agent tools, extensions, and the tmux stand-in for Claude agent teams. Memory per session later returned as the load line under a busy session. Items explicitly restored since the cut are listed in In scope; races remain cut.
 - Desktop notifications while a seshi window is open, the terminal bell on an alert, and choosing among system sounds (or your own sound file) — cut 2026-10-11 (the user's call: three overlapping alerts, two of them the Windows error ding). Bringing one back needs a new decision.
 - Separate desktop GUI client — declined 2026-10-17: keep Seshi terminal-first and use T3 Code when a chat-first GUI is wanted. Revisit only through a new proposal (ADR-0011).
-- Other terminal UI layouts (workspaces, tree, dock, alternate sidebar) — declined 2026-10-03: one TUI layout to build and test (ADR-0004, now ADR-0007: floating and tiled are styles of it).
+- Other structural terminal layouts (workspaces, tree, dock, alternate sidebar) — declined 2026-10-03. Flat is an accepted rendering style of the shared session layout, per ADR-0012; it does not introduce another session model.
 - Phase 7 proposals canceled 2026-10-17: named hosts and remote panes/agents (#23); terminal graphics and Kitty keyboard protocol (#27); launcher, templates, recording/replay, screenshots and key display (#29); web terminal and SSH server mode (#30); package-manager distribution (#31). Revisit only through a new proposal. This does not remove shipped SSH remote-client support.
 
 ## Later
@@ -388,7 +392,8 @@ Everything below is shipped on `dev` unless marked.
 - [ADR-0003](docs/adr/0003-msgpack-over-local-sockets.md) — msgpack frames over local sockets, versioned. Rules out: unversioned message changes; network listeners.
 - [ADR-0009](docs/adr/0009-leader-keys-after-the-cut.md) — Leader keys: a shell is one key, and only kept features have keys (supersedes ADR-0006). Rules out: keys for features that don't exist; defaults that differ from the key map shown in the app.
 - [ADR-0008](docs/adr/0008-rename-to-seshi.md) — The app is called Seshi; an old hydra install is brought over once. Rules out: new code or paths under the old name.
-- [ADR-0007](docs/adr/0007-floating-and-tiled-styles.md) — One layout, drawn floating or tiled (supersedes ADR-0004). Rules out: other layouts, styles that move or hide parts of the UI.
+- [ADR-0007](docs/adr/0007-floating-and-tiled-styles.md) — Cards layout, drawn floating or tiled (supersedes ADR-0004); superseded by ADR-0012.
+- [ADR-0012](docs/adr/0012-flat-rendering-style.md) — Add a flat rendering style over the shared session layout; Cards stays default.
 - [ADR-0010](docs/adr/0010-optional-desktop-client.md) — Offer an optional desktop client. Superseded by ADR-0011.
 - [ADR-0011](docs/adr/0011-keep-seshi-terminal-first.md) — Keep Seshi terminal-first. Rules out: adding a separate desktop GUI client to this project.
 
@@ -398,7 +403,7 @@ Everything below is shipped on `dev` unless marked.
 - Status reports need the pane's token or its process chain — `src/daemon/mod.rs` hook handling — AGENTS.md non-negotiable 5
 - Nothing in a cloned repo runs without the user's approval — `src/project.rs` — SECURITY.md
 - Client and daemon refuse to talk across protocol versions — `src/protocol.rs` `PROTOCOL_VERSION`, checked on `Hello` — ADR-0003
-- Config always loads the seshi layout — `src/config.rs` `Config::load` — ADR-0007
+- Config selects the Cards or Flat rendering style while sharing the session layout — `src/config.rs` `Ui.layout`, `src/client/hydra/card.rs` `Look::of` — ADR-0012
 - Every built-in theme passes the contrast audit — `cargo test` (theme audit test in `src/theme.rs`) — readability
 - Both platform sides compile — `cargo check --target x86_64-unknown-linux-gnu` / `aarch64-apple-darwin` — AGENTS.md non-negotiable 3
 - clippy is clean — `cargo clippy --all-targets -- -D warnings` — CODE-STANDARDS

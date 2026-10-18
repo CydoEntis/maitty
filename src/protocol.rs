@@ -448,7 +448,7 @@ pub struct TermInfo {
     /// The process running in it (0: not known).
     #[serde(default)]
     pub pid: u32,
-    /// Put to sleep after sitting idle; focusing it (or typing) wakes it, resumed.
+    /// Left asleep by an older daemon; focusing it (or typing) resumes its conversation.
     pub asleep: bool,
     /// Windows' console layer asked for native key records (win32-input-mode), so keys
     /// plain VT can't express (Ctrl+Shift+letter, Ctrl+Enter) can be sent exactly.

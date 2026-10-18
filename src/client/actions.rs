@@ -23,6 +23,7 @@ impl App {
             Action::Workflows => self.open_workflows(false),
             Action::WorkflowRuns => self.open_workflows(true),
             Action::AgentStatusSetup => self.menu("Agent status · choose app, any model".into(), vec![
+                ("Set up Codex status hooks".into(), menu::Act::InstallStatus("codex".into())),
                 ("Set up Pi status hooks".into(), menu::Act::InstallStatus("pi".into())),
                 ("Set up OpenCode status hooks".into(), menu::Act::InstallStatus("opencode".into())),
                 ("Set up OMP status hooks".into(), menu::Act::InstallStatus("omp".into())),

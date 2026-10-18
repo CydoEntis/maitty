@@ -102,8 +102,11 @@ config (`[icons]`), with Nerd Font glyphs where present.
 
 ## Project-specific: layout and navigation
 
-The terminal client has one layout: a sidebar of projects and their sessions (left or right), panes on
-the rest (tabs and splits), and a one-line bottom bar. Everything after the leader
+The terminal client has one session layout: a sidebar of projects and their sessions (left or right), panes on
+the rest (tabs and splits), and a one-line bottom bar. Settings > Appearance > Layout selects Cards or Flat;
+both render the same sessions, tabs, splits and sheets. Cards is the default. Flat uses square, full-bleed
+zones with no gaps, a persistent bottom status line, and Tab / Shift+Tab to switch focus between sidebar
+and panes; Esc returns focus to the sidebar. Everything after the leader
 key (`Ctrl+Space` by default; keys follow herdr's where they overlap). Views:
 inbox (`j`) and settings (`,`) use the right-hand sheet; Profiles and Workflows
 are there too. The command palette (`Space`), keys (`?`), files, branches and new
@@ -111,10 +114,13 @@ agent use popups. Minimum supported size is about
 80×24; popups clamp to the screen. Mouse: click, right-click menus, drag
 dividers, scroll; Ctrl+click opens paths.
 
+The high-fidelity flat-layout reference and its interaction spec are preserved in
+[`docs/design/flat/README.md`](design/flat/README.md); keep the implementation aligned with it.
+
 The sidebar's **+ new** uses the same shell action as leader + `n`, including
 its configured key hint. Keep **Actions** available at the top right, including
 without a sidebar or session. Offer clickable Profiles, Workflows, Runs, agent
-status setup, Settings and All commands; every palette row is clickable and
+status setup (including Codex), Settings and All commands; every palette row is clickable and
 wheel-scrollable. Include configured commands, retaining existing confirmations.
 
 When an update is available, show the accent dot beside **Actions**, its

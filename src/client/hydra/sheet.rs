@@ -18,9 +18,9 @@ pub(in crate::client) enum SheetKind {
 }
 
 /// Its width beside the panes, and from `WIDE_AT` columns on.
-const SHEET_W: u16 = 72;
-const SHEET_W_WIDE: u16 = 96;
-const WIDE_AT: u16 = 200;
+pub(super) const SHEET_W: u16 = 72;
+pub(super) const SHEET_W_WIDE: u16 = 96;
+pub(super) const WIDE_AT: u16 = 200;
 
 /// The sheet that's open, if any: the Inbox while you're in it (or writing a follow-up in
 /// one of its rows), else Changes.
@@ -91,6 +91,9 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     let mut c = Card::new(t, title).lit(t.accent);
     // Changes paints the desk's ground (its diff colours are tuned for it).
     c.bg = if kind == SheetKind::Changes { t.bg } else { t.card };
+    if Look::of(&app.cfg.ui).flat {
+        c.foot_r = vec![seg("Esc close", Style::default().fg(t.muted).bg(t.card))];
+    }
     c.close = Some(close);
     let inside = card(app, buf, r, &c, t);
     // Clicks inside it stay in it.

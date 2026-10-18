@@ -34,7 +34,7 @@ use tokio::sync::mpsc;
 
 type ClientId = u64;
 
-/// How often the daemon looks at its timers (statuses, saves, git, sleep).
+/// How often the daemon looks at its timers (statuses, saves and git).
 const TICK: Duration = Duration::from_millis(250);
 const INTEGRATION_STARTUP_GRACE: Duration = Duration::from_secs(3);
 /// How often each workspace's git state is read again.
@@ -43,8 +43,8 @@ const GIT_POLL_EVERY: Duration = Duration::from_secs(3);
 const SAVE_EVERY: Duration = Duration::from_secs(2);
 /// How often panes' new output is saved to disk (what's lost if the server is killed).
 const OUTPUT_SAVE_EVERY: Duration = Duration::from_secs(30);
-/// How often idle agents are checked for putting to sleep.
-const SLEEP_CHECK_EVERY: Duration = Duration::from_secs(30);
+/// How often sessions are checked for settling into their project's folded group.
+const SETTLE_CHECK_EVERY: Duration = Duration::from_secs(30);
 /// A pane's CPU share is passed on when it has moved this many points.
 const CPU_STEP: f32 = 5.0;
 /// How long a pane started as an agent may take to show that agent's process.
@@ -200,7 +200,7 @@ struct Daemon {
     adopt: Option<(PathBuf, TermId)>,
     /// The spare's folder, handed over: its on_create hook already ran.
     adopted: Option<PathBuf>,
-    last_sleep_check: Instant,
+    last_settle_check: Instant,
     last_worktree_sweep: Instant,
     /// The last automatic workspace move, for undo.
     auto_undo: Option<AutoUndo>,
@@ -486,7 +486,7 @@ impl Daemon {
             spare_making: false,
             adopt: None,
             adopted: None,
-            last_sleep_check: Instant::now(),
+            last_settle_check: Instant::now(),
             last_worktree_sweep: crate::clock::ago(WORKTREE_SWEEP_EVERY - WORKTREE_SWEEP_FIRST),
             natural_exits: Vec::new(),
             auto_undo: None,
@@ -511,9 +511,8 @@ impl Daemon {
                     self.phone_alerts();
                     self.auto_continue();
                     self.poll_codex();
-                    if self.last_sleep_check.elapsed() >= SLEEP_CHECK_EVERY {
-                        self.last_sleep_check = Instant::now();
-                        self.sleep_idle();
+                    if self.last_settle_check.elapsed() >= SETTLE_CHECK_EVERY {
+                        self.last_settle_check = Instant::now();
                         self.settle_idle();
                     }
                     self.poll_git();
@@ -705,7 +704,7 @@ impl Daemon {
                 self.broadcast(|c| c.attach, ServerMsg::Output { term: tid, data });
             }
             Ev::Exited(tid) => {
-                // A sleeping agent's process was stopped on purpose; its pane stays.
+                // A legacy sleeping agent's process was stopped on purpose; its pane stays.
                 if self.terms.get(&tid).is_some_and(|t| t.asleep) {
                     return;
                 }

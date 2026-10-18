@@ -1,10 +1,13 @@
 # Handoff: Seshi wake-up transition
 
+> Retired: automatic idle sleeping and this wake-up transition are no longer part of Seshi.
+> The HTML and notes below remain only as a historical design reference.
+
 ## Overview
-This is the transition a pane plays when a sleeping session wakes up (`zzZ asleep` → `○ idle`). Matrix-style rain fills the pane, then dissolves from the centre outwards. A "waking up" pill and a progress bar sit over it, and then the scrollback replays line by line.
+This historical concept covered recovering a session left asleep by an older Seshi version (`zzZ asleep` → `○ idle`). Newer Seshi versions no longer stop idle agents automatically and recover without a dedicated screen or animation. The original concept used Matrix-style rain, a dissolve, a progress pill, and line-by-line scrollback replay.
 
 ## About the design file
-`Seshi Wake Up.dc.html` is an **HTML reference**: a 160×45 cell grid drawn on a canvas. Open it in a browser with `support.js` beside it. Click the pane, or press Enter, to wake the session; click again to put it to sleep.
+`Seshi Wake Up.dc.html` is an **HTML reference**: a 160×45 cell grid drawn on a canvas. Open it in a browser with `support.js` beside it. The sleeping state represents a session left behind by an older version; click the pane or press Enter to preview its recovery.
 
 Rebuild it in the TUI renderer, cell by cell. Everything is plain characters with fg/bg colours, plus bold on the rain heads. The logic class in the file is the reference implementation: look for `frame()`, `initRain()` and `toggle()`.
 
@@ -70,8 +73,8 @@ Centred in the pane, two lines with one blank row between:
 
 ## Input
 - **Wake:** click anywhere in the pane, or press Enter or Space while it's focused. A wake can also start on its own when an agent is resumed (e.g. from the Inbox).
-- **Sleep:** reverting to asleep is instant, with no animation.
-- **Reduced motion** (spec only; the reference doesn't do this yet): skip Rain and Dissolve, fade the scrollback in over 300 ms, and switch the state directly. Offer this as a setting: Appearance › Motion › Wake-up animation (on / simple / off).
+- The prototype can reset to its asleep reference state; the app has no automatic sleep action.
+- **Reduced motion** (historical spec): skip Rain and Dissolve, fade the scrollback in over 300 ms, and switch the state directly. The former Wake-up animation setting has been removed.
 
 ## Colours (as in the screenshot theme; map to roles)
 | Role | Hex | Use |

@@ -27,9 +27,6 @@ pub struct Config {
     pub presets: Vec<Preset>,
     pub profiles: Vec<crate::profiles::Profile>,
     pub workflows: Vec<crate::workflows::Workflow>,
-    /// Put agents to sleep after sitting finished or idle this long ("15m", "1h", "4h",
-    /// "never"); they resume where they were when you open them.
-    pub sleep_after: String,
     /// Fold an agent into its project's settled group once it has sat finished or idle this
     /// long ("12h", "3d", "never"), or once its branch's work is merged.
     pub settle_after: String,
@@ -90,9 +87,6 @@ pub struct Ui {
     /// Short slides and glides (the sidebar, the sheet, the highlight, toasts). Always off
     /// over SSH.
     pub motion: bool,
-    /// What a pane plays as its sleeping agent wakes: "on" (rain that dissolves into its
-    /// screen), "simple" (a note, then a fade) or "off". With `motion` off, "on" is simple.
-    pub wake_animation: String,
     /// Alt+arrows move between panes without the leader (off: they go to the program, for
     /// shells that jump words with them).
     pub alt_arrows: bool,
@@ -101,6 +95,8 @@ pub struct Ui {
     pub start_dir: String,
     /// Sidebar sessions (and worktrees) that need you go first; the rest keep their place.
     pub attention_sort: bool,
+    /// "cards" keeps the standard hydra look; "flat" draws full-bleed square zones.
+    pub layout: String,
     /// Panes as cards with gaps between them ("floating"), or packed edge to edge ("tiled").
     pub panes: String,
     /// Card edges: "flush" (lines on the card's edge, its colour right up to them) or "rounded"
@@ -446,7 +442,6 @@ impl Default for Config {
         Config {
             prefix: "ctrl+space".into(),
             editor: String::new(),
-            sleep_after: "never".into(),
             settle_after: "3d".into(),
             teach_agents: true,
             mcp: Mcp::default(),
@@ -494,10 +489,10 @@ impl Default for Ui {
             splash: true,
             update_check: true,
             motion: true,
-            wake_animation: "on".into(),
             alt_arrows: true,
             start_dir: String::new(),
             attention_sort: true,
+            layout: "cards".into(),
             panes: "floating".into(),
             corners: "flush".into(),
             gap: "1".into(),
@@ -887,11 +882,6 @@ fn copy_renamed(from: &Path, to: &Path, old: &str) {
 }
 
 impl Config {
-    /// `sleep_after` in seconds; None for never.
-    pub fn sleep_secs(&self) -> Option<u64> {
-        span_secs(&self.sleep_after)
-    }
-
     /// `settle_after` in seconds; `None` is never.
     pub fn settle_secs(&self) -> Option<u64> {
         span_secs(&self.settle_after)
@@ -1279,21 +1269,30 @@ shell = \"pwsh\"
     }
 
     #[test]
-    fn sleep_after_parses() {
-        let mut c = Config::default();
-        assert_eq!(c.sleep_secs(), None);
-        for (v, want) in [("15m", Some(900)), ("1h", Some(3600)), ("30s", Some(30)), ("20", Some(1200)), ("never", None), ("0m", None)] {
-            c.sleep_after = v.into();
-            assert_eq!(c.sleep_secs(), want, "{v}");
-        }
-    }
-
-    #[test]
     fn example_config_parses_and_binds() {
         let c: Config = toml::from_str(EXAMPLE).expect("config.example.toml must parse");
         let km = c.keymap();
         assert!(km.warnings.is_empty(), "{:?}", km.warnings);
         assert!(!c.agent_defs().is_empty());
+    }
+
+    #[test]
+    fn older_ui_configs_default_to_cards_layout() {
+        let cfg: Config = toml::from_str("[ui]\npanes = 'tiled'").unwrap();
+        assert_eq!(cfg.ui.layout, "cards");
+        assert_eq!(cfg.ui.panes, "tiled");
+    }
+
+    #[test]
+    fn old_sleep_after_setting_is_ignored() {
+        let c: Config = toml::from_str("sleep_after = '15m'").expect("older config remains readable");
+        assert_eq!(c.settle_after, "3d");
+    }
+
+    #[test]
+    fn old_wake_animation_setting_is_ignored() {
+        let c: Config = toml::from_str("[ui]\nwake_animation = 'off'").expect("older config remains readable");
+        assert!(c.ui.motion);
     }
 
     #[test]

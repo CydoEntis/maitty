@@ -17,26 +17,9 @@
   <a href="#script-it">Script it</a>
 </p>
 
-<p align="center"><img src="docs/media/demo.gif" alt="seshi: jumping to the agent that needs you, splitting a pane, keys and settings" width="900"></p>
+<p align="center"><img src="docs/media/demo.gif" alt="Seshi demo: fake coding-agent sessions, inbox, split panes, shortcuts and settings" width="900"></p>
 
-<table>
-  <tr>
-    <td><img src="docs/media/02-main.png" alt="An agent asking a question, with one-key answers"></td>
-    <td><img src="docs/media/03-go-to.png" alt="The inbox: what needs you, and any session by typing"></td>
-  </tr>
-  <tr>
-    <td align="center">An agent needs you: answer with one key</td>
-    <td align="center">Go to any session by typing</td>
-  </tr>
-  <tr>
-    <td><img src="docs/media/05-split.png" alt="An agent and a shell side by side"></td>
-    <td><img src="docs/media/06-keys.png" alt="The compact leader shortcut overview"></td>
-  </tr>
-  <tr>
-    <td align="center">Split panes</td>
-    <td align="center">Leader shortcut overview</td>
-  </tr>
-</table>
+<p align="center"><sub>Demo screens use synthetic project names, prompts, paths and agent output; no real session data is shown.</sub></p>
 
 Run Claude Code, Codex, Gemini and friends side by side, see which ones need you, jump to them,
 and keep them running when you close the window. Native on Windows, macOS and Linux (Omarchy
@@ -49,16 +32,17 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
   in the right folders and resumes agents (`claude --resume <id>`, `codex resume --last`, ...).
   Each pane's recent output is kept on disk too, so its history is still there to scroll
   back through, above a line marking the restart.
-- **One screen for everything.** Floating cards: a full-height sidebar of your projects and the
-  sessions in each, tabs as pills above the panes, and every pane a card with its name,
-  state and ✕ in its border; the one you're in is lit, the others fade. The leader is
+- **One screen for everything.** Choose **Cards** or **Flat** in Settings → Appearance → Layout.
+  Cards (the default) shows a full-height sidebar, pill tabs and pane cards. Flat draws those
+  same sessions and panes edge to edge, with square surfaces and a bottom status line; Tab and
+  Shift+Tab move focus between the sidebar and panes, and Esc returns to the sidebar. The leader is
   `Ctrl+Space`: a sky-blue pill says it's armed, a pause shows the compact overview,
   and `?` opens the searchable **All shortcuts** reference.
 - **Find anything.** `<leader> j` is the inbox: what needs you first, then type to go to any
   project or session. `<leader> Space` is a command palette in plain words, `a actions`
   at the foot of the sidebar lists common commands. `<leader> ?` lists every configured
   binding (including aliases), global shortcuts and controls inside each screen.
-- **Status at a glance.** Working (yellow, its name shimmering), needs you (red), done (green until
+- **Status at a glance.** Working (amber, its name shimmering), needs you (red), done (green until
   you look), idle. An alert or a sound tells you when one needs you or finishes out of view.
   Click a sidebar status icon or pane status tag to see why, the evidence's age and any uncertainty.
 - **Saved workflows.** Use your own planner, worker and reviewer profiles. Review the plan
@@ -176,10 +160,9 @@ split beside a session stays with it.
 - Hiding the sidebar leaves a slim rail with status indicators and two-letter titles.
   Click to switch sessions, hover for full names, scroll to reach more, and use the
   chevron to expand. Its red count includes blocked agents outside the visible rows.
-- Things that need you sort to the top; everything else keeps its place. Agents asleep (see
-  Settings) show `zzZ … asleep`; open one and its pane says it's waking until the agent is back.
-  With the keys in the sidebar, the highlight on a sleeping agent shows its last screen without
-  waking it.
+- Things that need you sort to the top; everything else keeps its place. A session left asleep
+  by an older Seshi version shows `zzZ … asleep`; open it to resume the conversation. The saved
+  terminal screen stays visible while you browse the session.
 - A session taking a real share of the machine says so in its pane's title, beside its state
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
 - An agent's subagents are listed under its row; the `▾ 3 subagents` heading (or **Hide
@@ -276,16 +259,12 @@ That works for the note inside seshi and the desktop notification on Windows and
 Omarchy / Hyprland the window is brought forward too); on macOS, install
 `terminal-notifier` for clickable ones.
 
-## Sleep
+## Resuming older sleeping sessions
 
-`sleep_after = "1h"` (Settings → Sessions) stops agents that have sat finished or idle that long,
-to save memory. They keep their place; open one and it resumes its conversation
-(`claude --resume`, `codex resume`).
-
-While it wakes, its pane plays a short transition: rain that dissolves from the centre, a
-"waking up" note with a progress bar, then its screen coming back line by line. A slow agent
-holds the dissolve until it's back. Settings → Wake-up animation (`ui.wake_animation`) is
-`on`, `simple` (the note, then a fade) or `off`; with Motion off, `on` is `simple`.
+Seshi no longer stops idle agents automatically; they keep running until you close them or
+their own agent process exits. If a session was already asleep under an older Seshi version,
+open it to resume its conversation (`claude --resume`, `codex resume`). Recovery shows its
+saved terminal screen without a separate wake screen or animation.
 
 ## Settled and snoozed
 
@@ -388,13 +367,14 @@ opens (e.g. `~/code`); empty means wherever you run it.
 
 `Ctrl+Space ,` opens **Settings** in a right-hand drawer that slides beside the panes
 (on a narrow window it uses the pane column). Sections (Tab cycles): General ? Sessions ? Appearance ? Agents ?
-Keys. Values are chips you click (or ←→ / Enter). Appearance has pane controls and a **Theme**
+Keys. Values are chips you click (or ←→ / Enter). Appearance has **Layout** (Cards or Flat),
+Cards pane controls and a **Theme**
 browser. **Working spinner** previews Braille, Dots, Line (ASCII), Circle, Arrows,
 Pulse, Blocks and Static. Choose **Custom** to type or paste space-separated frames.
 Each frame must fit one terminal column; up to 64 frames are supported. Enter
 applies the choice, Esc cancels, and the change takes effect immediately.
 
-The Theme control opens a browser of 63 themes. Type a name or flavor to filter, use arrows or
+The Theme control opens a browser of 65 themes. Type a name or flavor to filter, use arrows or
 PgUp/PgDn to move, and preview the palette before pressing Enter to apply it. Click a row
 to preview and click it again to apply; Esc returns without changing your theme.
 
@@ -403,7 +383,7 @@ Tokyo Night Night/Storm/Moon/Day, Solarized Dark/Light, One Dark, One Half Dark/
 Kanagawa Wave/Dragon/Lotus, Ayu Dark/Mirage/Light, Night Owl, Nightfly, Moonfly,
 Everforest Dark/Light, Rosé Pine/Moon/Dawn, Cobalt2, Jellybeans, Iceberg, Sonokai,
 Shades of Purple, Panda, Lucario, Gotham, Apprentice, and Zenbones Dark/Light, alongside
-Seshi Walnut (the default), Seshi Night/Day, Harbor/Day, Moss/Day, Ember/Ash,
+Seshi Dark (the default) and Seshi Light, Seshi Walnut/Night/Day, Harbor/Day, Moss/Day, Ember/Ash,
 Ink/Paper, Arcade, Hydra, Tinkery/Light, Aurora, Moonlit, and the existing themes. [Palette sources and variant notes](docs/theme-sources.md).
 New palettes theme ANSI agent output; explicit RGB output keeps the program's colors.
 UI text and status colors are adapted for contrast. Existing theme overrides remain active.
@@ -586,12 +566,13 @@ these sources, in order:
    Any tool can report its own state with `seshi hook <name> --status working|blocked|done|idle`.
    `seshi integrate gemini` and `seshi integrate qwen` do the same for Gemini CLI and Qwen Code;
    `seshi integrate opencode` writes a small OpenCode plugin that tells seshi what it's doing.
-   `seshi integrate pi` installs Pi's native extension. Both can also be installed
-   with the mouse through **Actions → Set up agent status**. Restart OpenCode or
-   reload Pi after setup. Status follows the app with any provider, including
+   `seshi integrate pi` installs Pi's native extension. These, and Codex's hooks, can also
+   be installed with the mouse through **Actions → Set up agent status**. Restart Codex or
+   OpenCode after setup, or reload Pi. Status follows the app with any provider, including
    z.ai and DeepSeek; see [status setup and requirements](docs/agent-status.md).
-   For Codex, `seshi integrate codex` sets seshi as its `notify` (in `~/.codex/config.toml`;
-   another program's notify is left alone).
+   For Codex, `seshi integrate codex` adds native `SubagentStart` / `SubagentStop`
+   hooks in `~/.codex/config.toml`, so helper events carry their parent session ID;
+   it also configures `notify` when free, preserving another program's notify.
 2. **Screen evidence**: 22 pinned Herdr manifests match live screen regions, OSC
    titles/progress and paired dialog controls. A fresh visible blocker can override
    non-authoritative hook state; a transcript viewer preserves the previous state.
@@ -604,6 +585,8 @@ work. Codex reports turn completion through its notify hook; Seshi detects the n
 turn's activity footer, including soft wraps and background-terminal details. New
 input after a finished turn allows work detection immediately or after a delayed start.
 An advancing footer also detects automatic follow-up work without keyboard input.
+Native Codex subagent hooks attach every helper to its parent pane as soon as it
+starts and remove it when it stops.
 Hook authority ends when a recognized agent's process exits. Seshi recognizes
 Herdr's 24 agent identities plus its five additional existing agents; OMP,
 Mastracode, Kilo and Kimi native status setup is also available through Actions.

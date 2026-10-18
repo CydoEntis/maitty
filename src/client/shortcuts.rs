@@ -1,6 +1,6 @@
 //! All configured bindings and the contextual reference, shared with the user docs.
 
-use super::design::{put, seg};
+use super::design::{keycaps, put, seg};
 use super::*;
 use ratatui::{
     Frame,
@@ -85,7 +85,12 @@ fn search_text(text: &str) -> String {
         .replace("pgdn", "pagedown")
 }
 
-fn lines(app: &App, query: &str, width: usize) -> Vec<String> {
+enum ShortcutLine {
+    Text(String),
+    Entry { keys: String, action: String },
+}
+
+fn lines(app: &App, query: &str, width: usize) -> Vec<ShortcutLine> {
     let words: Vec<_> = search_text(query)
         .split_whitespace()
         .map(str::to_string)
@@ -99,15 +104,26 @@ fn lines(app: &App, query: &str, width: usize) -> Vec<String> {
         }
         if scope != previous {
             if !out.is_empty() {
-                out.push(String::new());
+                out.push(ShortcutLine::Text(String::new()));
             }
-            out.push(scope.to_uppercase());
+            out.push(ShortcutLine::Text(scope.to_uppercase()));
             previous = scope;
         }
-        out.extend(super::views::wrap(&format!("{keys}  —  {action}"), width));
+        if keys == "Search by name" {
+            out.push(ShortcutLine::Text(format!("{keys}  {action}")));
+            continue;
+        }
+        let key_width = keys.chars().count().saturating_add(2);
+        let action_width = width.saturating_sub(key_width.saturating_add(2)).max(8);
+        let mut wrapped = super::views::wrap(&action, action_width);
+        if let Some(first) = wrapped.first().cloned() {
+            out.push(ShortcutLine::Entry { keys, action: first });
+            let indent = " ".repeat(key_width + 2);
+            out.extend(wrapped.drain(1..).map(|line| ShortcutLine::Text(format!("{indent}{line}"))));
+        }
     }
     if out.is_empty() {
-        out.push("No shortcuts match. Ctrl+U clears the search.".into());
+        out.push(ShortcutLine::Text("No shortcuts match. Ctrl+U clears the search.".into()));
     }
     out
 }
@@ -194,30 +210,39 @@ pub(super) fn draw_shortcuts(
         width: r.width.saturating_sub(4),
         height: r.height.saturating_sub(7),
     };
-    let text = lines(app, query, body.width.max(1) as usize);
-    let scroll = scroll.min(text.len().saturating_sub(body.height as usize));
+    let rows = lines(app, query, body.width.max(1) as usize);
+    let scroll = scroll.min(rows.len().saturating_sub(body.height as usize));
     if let Mode::Shortcuts { scroll: saved, .. } = &mut app.mode {
         *saved = scroll;
     }
-    for (i, line) in text
+    for (i, line) in rows
         .iter()
         .skip(scroll)
         .take(body.height as usize)
         .enumerate()
     {
+        let y = body.y + i as u16;
+        let segs = match line {
+            ShortcutLine::Text(text) => vec![seg(text, style.fg(theme.text))],
+            ShortcutLine::Entry { keys, action } => {
+                let mut segs = keycaps(theme, keys, theme.card);
+                segs.push(seg(format!("  {action}"), style.fg(theme.text)));
+                segs
+            }
+        };
         put(
             buf,
             body.x,
-            body.y + i as u16,
-            &[seg(line, style.fg(theme.text))],
+            y,
+            &segs,
             body.right(),
         );
     }
     let count = format!(
         "{}–{} / {} lines · C- = Ctrl, M- = Alt",
         scroll + 1,
-        (scroll + body.height as usize).min(text.len()),
-        text.len()
+        (scroll + body.height as usize).min(rows.len()),
+        rows.len()
     );
     put(
         buf,

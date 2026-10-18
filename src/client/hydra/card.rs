@@ -56,6 +56,10 @@ pub(in crate::client) fn pane_bg(t: &Theme) -> Color {
     blend(t.bg, t.sidebar_bg, 0.7)
 }
 
+pub(in crate::client) fn flat_pane_bg(t: &Theme) -> Color {
+    blend(t.bg, Color::Rgb(0, 0, 0), 0.4)
+}
+
 /// A state's colour on a card or tab: working reads as plain text, the rest as their state.
 pub(in crate::client) fn state_color(t: &Theme, st: Status) -> Color {
     match st {
@@ -67,6 +71,7 @@ pub(in crate::client) fn state_color(t: &Theme, st: Status) -> Color {
 /// How the cards are laid out and drawn, from the settings.
 #[derive(Clone, Copy)]
 pub(in crate::client) struct Look {
+    pub flat: bool,
     pub tiled: bool,
     pub rounded: bool,
     /// Rows between stacked cards, and columns between cards side by side.
@@ -77,18 +82,20 @@ pub(in crate::client) struct Look {
 
 impl Look {
     pub fn of(ui: &crate::config::Ui) -> Look {
-        let tiled = ui.panes == "tiled";
+        let flat = ui.layout == "flat";
+        let tiled = ui.panes == "tiled" || flat;
         Look {
+            flat,
             tiled,
             rounded: ui.corners == "rounded",
             gap: if tiled { 0 } else { ui.gap.parse().unwrap_or(1).min(2) },
-            dim: match ui.dim.as_str() {
+            dim: if flat { 0.0 } else { match ui.dim.as_str() {
                 "off" => 0.0,
                 "subtle" => DIM_SUBTLE,
                 "60%" => DIM_STRONG,
                 _ => DIM_DEFAULT,
-            },
-            caps: ui.pill_caps,
+            } },
+            caps: ui.pill_caps && !flat,
         }
     }
 }
@@ -174,8 +181,6 @@ pub(in crate::client) struct Card<'a> {
     pub sub: &'a str,
     pub state: Option<Status>,
     pub state_hit: Option<HyHit>,
-    /// Its sleeping agent is waking: said in place of the state.
-    pub waking: bool,
     /// A short note left of the state (what it's taking of the machine), in its colour.
     /// Dropped first when the title needs the room.
     pub note: Option<(String, Color)>,
@@ -193,7 +198,7 @@ pub(in crate::client) struct Card<'a> {
 
 impl<'a> Card<'a> {
     pub fn new(t: &Theme, title: &'a str) -> Card<'a> {
-        Card { title, sub: "", state: None, state_hit: None, waking: false, note: None, close: None, border: t.line, bold: false, title_fg: t.text, bg: pane_bg(t), foot: Vec::new(), foot_r: Vec::new() }
+        Card { title, sub: "", state: None, state_hit: None, note: None, close: None, border: t.line, bold: false, title_fg: t.text, bg: pane_bg(t), foot: Vec::new(), foot_r: Vec::new() }
     }
 
     /// The focused look: the border and title in `c`, bold.
@@ -218,6 +223,57 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
     let r = r.intersection(buf.area);
     if r.width < 4 || r.height < 2 {
         return Rect { width: 0, height: 0, ..r };
+    }
+    if look.flat {
+        fill(buf, r, c.bg);
+        let edge = if c.bold { t.accent } else { t.line };
+        for y in r.top()..r.bottom() {
+            if let Some(cell) = buf.cell_mut((r.x, y)) {
+                cell.set_symbol("▎").set_style(Style::default().fg(edge).bg(c.bg));
+            }
+        }
+        if !c.title.is_empty() && r.width > 4 {
+            let title = truncate(c.title, r.width.saturating_sub(6) as usize);
+            put(buf, r.x + 3, r.y, &[seg(title, Style::default().fg(c.title_fg).add_modifier(Modifier::BOLD).bg(c.bg))], r.right().saturating_sub(3));
+        }
+        let mut right = Vec::new();
+        if let Some(st) = c.state {
+            right.push(seg(format!("{} {}", glyph(app, st), state_label(st)), Style::default().fg(state_color(t, st)).add_modifier(Modifier::BOLD).bg(c.bg)));
+        }
+        if c.close.is_some() {
+            right.push(seg("  ✕ ", Style::default().fg(t.muted).bg(c.bg)));
+        }
+        let right_width = segs_width(&right);
+        if right_width > 0 {
+            put(buf, r.right().saturating_sub(right_width + 1), r.y, &right, r.right());
+            if let (Some(h), Some(st)) = (c.state_hit, c.state) {
+                let width = (glyph(app, st).width() + state_label(st).width() + 1) as u16;
+                hit(app, Rect { x: r.right().saturating_sub(right_width + 1), y: r.y, width: width.min(right_width), height: 1 }, h);
+            }
+            if let Some(h) = c.close {
+                hit(app, Rect { x: r.right().saturating_sub(4), y: r.y, width: 3, height: 1 }, h);
+            }
+        }
+        if !c.title.is_empty() && r.width > 8 {
+            let max_width = r.width.saturating_sub(8 + right_width) as usize;
+            let mut title = truncate(c.title, max_width.max(1));
+            if !c.sub.is_empty() && title.width() + c.sub.width() + 3 < max_width {
+                title.push_str(&format!("  {}", c.sub));
+            }
+            put(buf, r.x + 3, r.y, &[seg(title, Style::default().fg(c.title_fg).add_modifier(Modifier::BOLD).bg(c.bg))], r.right().saturating_sub(right_width + 2));
+        }
+        let inside = Rect { x: r.x + 1, y: r.y + 1, width: r.width.saturating_sub(2), height: r.height.saturating_sub(2) };
+        if r.height >= 3 {
+            let y = r.bottom() - 1;
+            let right_width = segs_width(&c.foot_r);
+            if right_width > 0 && right_width + 2 < r.width {
+                let segs: Vec<Seg> = c.foot_r.iter().map(|(s, st)| (s.clone(), if st.bg.is_none() { st.bg(c.bg) } else { *st })).collect();
+                put(buf, r.right().saturating_sub(right_width + 1), y, &segs, r.right());
+            }
+            let segs: Vec<Seg> = c.foot.iter().map(|(s, st)| (s.clone(), if st.bg.is_none() { st.bg(c.bg) } else { *st })).collect();
+            put(buf, r.x + 3, y, &segs, r.right().saturating_sub(right_width + 2));
+        }
+        return inside;
     }
     fill(buf, Rect { x: r.x + 1, y: r.y + 1, width: r.width - 2, height: r.height - 2 }, c.bg);
     let mut b = Style::default().fg(c.border);
@@ -252,10 +308,7 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
                 out.push(seg(edges.top, b));
             }
         }
-        if c.waking {
-            let label = if short { "" } else { " waking" };
-            out.push(seg(format!(" {}{label} ", glyph(app, Status::Working)), desk.fg(t.accent).add_modifier(Modifier::BOLD)));
-        } else if let Some(st) = c.state {
+        if let Some(st) = c.state {
             let mut s = desk.fg(state_color(t, st));
             if st == Status::Blocked {
                 s = s.add_modifier(Modifier::BOLD);
@@ -263,7 +316,7 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
             let label = if short { String::new() } else { format!(" {}", state_label(st)) };
             out.push(seg(format!(" {}{label} ", glyph(app, st)), s));
         }
-        if (c.state.is_some() || c.waking) && c.close.is_some() {
+        if c.state.is_some() && c.close.is_some() {
             out.push(seg(edges.top, b));
         }
         if c.close.is_some() {

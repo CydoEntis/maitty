@@ -1,6 +1,6 @@
 # 0007. One layout, drawn floating or tiled
 
-- **Status:** Accepted
+- **Status:** Superseded by 0012
 - **Date:** 2026-10-09
 
 ## Context

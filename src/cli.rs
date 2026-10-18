@@ -894,7 +894,7 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
     // news about that subagent, not about the session: it keeps the subagent listed as
     // running, and only a question it asks changes the session's state. Its transcript's
     // name, model and last words aren't the session's.
-    let tracks_helpers = matches!(origin.agent.as_str(), "claude" | "qwen" | "kimi" | "mastracode" | "opencode");
+    let tracks_helpers = matches!(origin.agent.as_str(), "claude" | "codex" | "qwen" | "kimi" | "mastracode" | "opencode");
     let lifecycle = tracks_helpers && matches!(event.as_str(), "SubagentStart" | "SubagentStop" | "SubagentEnd");
     let inner_id = tracks_helpers.then(|| field(&["agent_id"]).or_else(|| {
         transcript.as_deref().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().into_owned()).filter(|s| s.starts_with("agent-"))
@@ -906,9 +906,10 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
         kind: field(&["agent_type", "subagent_type", "agent_name"]).unwrap_or_else(|| "subagent".into()),
         start: !matches!(event.as_str(), "SubagentStop" | "SubagentEnd"),
     });
-    let session_facts = !inner;
-    let prompt = field(&["prompt"]).filter(|_| session_facts).map(|p| one_line(&p, 160));
-    let transcript = transcript.filter(|_| session_facts);
+    let parent_facts = !inner;
+    let turn_facts = parent_facts && !lifecycle;
+    let prompt = field(&["prompt"]).filter(|_| turn_facts).map(|p| one_line(&p, 160));
+    let transcript = transcript.filter(|_| turn_facts);
     let (model, name) = transcript.as_deref().map(transcript_facts).unwrap_or_default();
     if event == "Notification"
         && let Some(kind) = field(&["notification_type"])
@@ -918,9 +919,9 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
     let said = field(&["last_assistant_message", "last-assistant-message"])
         .or_else(|| transcript.as_deref().and_then(last_assistant_text))
         .map(|s| s.trim().chars().take(2000).collect::<String>())
-        .filter(|s| !s.is_empty() && session_facts);
-    let session = session.filter(|_| session_facts);
-    let cwd = cwd.filter(|_| session_facts);
+        .filter(|s| !s.is_empty() && turn_facts);
+    let session = session.filter(|_| parent_facts);
+    let cwd = cwd.filter(|_| parent_facts);
     let HookOrigin { term, agent, pid, token } = origin;
     ClientMsg::Hook { term, agent, status, session, cwd, prompt, said, subagent, event, pid, token, transcript, model, name }
 }
@@ -1354,6 +1355,16 @@ fn codex_notify(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<Co
     Ok(if uninstall { CodexNotify::Removed } else { CodexNotify::Set })
 }
 
+pub(super) fn install_codex_status(exe: &str, uninstall: bool) -> Result<PathBuf> {
+    let path = codex_config();
+    integrations::codex_hooks_at(&path, exe, uninstall)?;
+    match codex_notify(&path, exe, uninstall)? {
+        CodexNotify::Theirs(other) => tracing::info!("left Codex's existing notify command untouched: {other}"),
+        CodexNotify::Set | CodexNotify::Removed => {}
+    }
+    Ok(path)
+}
+
 pub fn integrate(agent: &str, uninstall: bool) -> Result<()> {
     let exe = this_exe()?;
     match agent {
@@ -1416,16 +1427,9 @@ pub fn integrate(agent: &str, uninstall: bool) -> Result<()> {
             Ok(())
         }
         "codex" => {
-            let path = codex_config();
-            match codex_notify(&path, &exe, uninstall)? {
-                CodexNotify::Set => println!("set seshi as Codex's notify in {}: it reports finished turns", path.display()),
-                CodexNotify::Removed => println!("removed seshi's notify from {}", path.display()),
-                CodexNotify::Theirs(other) => println!(
-                    "{} already has notify = {other}; not touching it. To add seshi, make it run:\n  \"{exe}\" hook codex",
-                    path.display()
-                ),
-            }
-            println!("Working / needs-you come from Codex's screen.");
+            let path = install_codex_status(&exe, uninstall)?;
+            println!("{} Seshi's Codex status hooks in {}", if uninstall { "removed" } else { "installed" }, path.display());
+            println!("Live subagent events are tracked; any other Codex notify command is preserved.");
             Ok(())
         }
         other => bail!("no integration for `{other}`; any agent can call `seshi hook {other} --status <working|blocked|done|idle>`"),
@@ -1631,6 +1635,34 @@ mod tests {
         let ClientMsg::Hook { subagent, status, .. } = super::hook_message(origin, &end, H::Same) else { panic!("expected hook") };
         assert_eq!(status, H::Same);
         assert_eq!(subagent, Some(Subagent { id: "child".into(), kind: "review".into(), start: false }));
+    }
+
+    #[test]
+    fn codex_native_helper_events_reach_the_owning_parent_session() {
+        use crate::protocol::{HookStatus as H, Subagent};
+        let payload = json!({
+            "hook_event_name": "SubagentStart",
+            "session_id": "parent-thread",
+            "agent_id": "child-thread",
+            "agent_type": "reviewer",
+            "cwd": "/project",
+            "last_assistant_message": "child result must not become the parent summary",
+        });
+        assert_eq!(super::status_from_hook(&payload), Some(H::Working));
+        let origin = super::HookOrigin { term: 4, agent: "codex".into(), pid: 12, token: "pane-token".into() };
+        let ClientMsg::Hook { session, cwd, subagent, status, said, .. } = super::hook_message(origin, &payload, H::Working) else { panic!("expected hook") };
+        assert_eq!(status, H::Working);
+        assert_eq!(session.as_deref(), Some("parent-thread"));
+        assert_eq!(cwd.as_deref(), Some(std::path::Path::new("/project")));
+        assert_eq!(subagent, Some(Subagent { id: "child-thread".into(), kind: "reviewer".into(), start: true }));
+        assert!(said.is_none(), "helper output is not attributed to the parent conversation");
+
+        let stop = json!({"hook_event_name":"SubagentStop","session_id":"parent-thread","agent_id":"child-thread","agent_type":"reviewer"});
+        assert_eq!(super::status_from_hook(&stop), Some(H::Same));
+        let origin = super::HookOrigin { term: 4, agent: "codex".into(), pid: 12, token: "pane-token".into() };
+        let ClientMsg::Hook { session, subagent, .. } = super::hook_message(origin, &stop, H::Same) else { panic!("expected hook") };
+        assert_eq!(session.as_deref(), Some("parent-thread"));
+        assert_eq!(subagent, Some(Subagent { id: "child-thread".into(), kind: "reviewer".into(), start: false }));
     }
 
     #[test]

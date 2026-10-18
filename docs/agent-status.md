@@ -1,24 +1,33 @@
 # Agent status setup
 
-Choose **Actions → Set up agent status**, then click **Pi**, **OpenCode**, **OMP**,
+Choose **Actions → Set up agent status**, then click **Codex**, **Pi**, **OpenCode**, **OMP**,
 **Mastracode**, **Kilo** or **Kimi**.
 The same commands are available in **Actions → All commands**. Setup installs
 only Seshi's adapter; it preserves other extensions and refuses to overwrite a
 different file named `seshi.js`. It does not interrupt an agent or restart the daemon.
 
-Restart OpenCode after installation. In Pi, use `/reload` or restart it.
+Restart Codex and OpenCode after installation. In Pi, use `/reload` or restart it.
 The CLI equivalents, including removal, are:
 
 ```sh
 seshi integrate pi
+seshi integrate codex
 seshi integrate opencode
 seshi integrate omp
 seshi integrate mastracode
 seshi integrate kilo
 seshi integrate kimi
 seshi integrate pi --uninstall
+seshi integrate codex --uninstall
 seshi integrate opencode --uninstall
 ```
+
+Codex installs native `SubagentStart` and `SubagentStop` hooks in
+`$CODEX_HOME/config.toml` (or `~/.codex/config.toml`). Each event carries the
+parent session ID and helper identity, so helpers appear under the correct pane
+while they are running. Seshi preserves existing Codex hooks and another
+program's `notify` command; turn completion still uses `notify` when that key is
+available.
 
 Pi loads `~/.pi/agent/extensions/seshi.js` (or
 `$PI_CODING_AGENT_DIR/extensions/seshi.js`). Use a current Pi with
@@ -88,19 +97,20 @@ Seshi retains its four-second global sound spacing and two-minute same-news
 deduplication; its delivery settings and multiple-client acknowledgements differ
 from Herdr.
 
-Codex helpers belong to a specific thread, not a project folder. Seshi shows
-them after its authenticated integration identifies that pane's thread (the
-turn-end notifier can first identify it after a turn finishes). Until then it
-omits helpers rather than borrowing another session's. Two panes reporting the
-same thread ID are ambiguous and show no disk helpers.
+Codex helpers belong to a specific thread, not a project folder. Native
+`SubagentStart` events identify the parent thread and helper before the parent
+turn ends. Older Codex setups without those hooks rely on local session files
+and the turn-end notifier to identify the thread; Seshi omits helpers rather
+than borrowing another session's. If two panes report the same thread ID, disk
+fallback is ambiguous and is omitted.
 
 When a trusted integration reports active helpers, Seshi keeps the parent
-session working until they finish or go quiet. Codex helper liveness comes from
-its local session files; Claude, Qwen, Kimi and Mastracode report helper
-lifecycle events through their native hooks; OpenCode's selected-session bridge
-reports active child sessions. Provider/model choice does not change the host
-integration. Other agents still get their own working/needs-you/done status,
-but Seshi cannot list hidden helpers unless the agent exposes their lifecycle.
+session working until they finish or go quiet. Codex, Claude, Qwen, Kimi and
+Mastracode report helper lifecycle events through native hooks; OpenCode's
+selected-session bridge reports active child sessions. Provider/model choice
+does not change the host integration. Other agents still get their own
+working/needs-you/done status, but Seshi cannot list hidden helpers unless the
+agent exposes their lifecycle.
 
 Installing a new executable does not replace an already-running window or
 daemon. **Settings → General** shows installed/window/daemon versions and a

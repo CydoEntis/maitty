@@ -2,8 +2,8 @@
 //! colours; the theme only paints hydra's chrome (sidebar, title bars, status line).
 //!
 //! The roles follow the design handoff: `surf` for chrome, `card`/`card2` for panels and
-//! action rows, `btn`/`hov` for buttons and the hovered row, `acc` (lime in the default
-//! theme) for focus, `needs` (amber) only for "needs you".
+//! action rows, `btn`/`hov` for buttons and the hovered row, `acc` (teal in Seshi Dark
+//! theme) for focus, `needs` (red) only for "needs you".
 
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
@@ -60,9 +60,11 @@ pub struct Theme {
 pub struct ThemeOverrides(pub BTreeMap<String, String>);
 
 /// The theme when none is chosen.
-pub const DEFAULT: &str = "seshi-walnut";
+pub const DEFAULT: &str = "seshi-dark";
 
 pub const BUILTIN: &[&str] = &[
+    "seshi-dark",
+    "seshi-light",
     "seshi-walnut",
     "seshi-night",
     "seshi-day",
@@ -130,6 +132,8 @@ pub const BUILTIN: &[&str] = &[
 
 /// The themes shown by name in Settings, Seshi's own first.
 pub const DESIGN: &[(&str, &str)] = &[
+    ("seshi-dark", "Seshi Dark"),
+    ("seshi-light", "Seshi Light"),
     ("seshi-walnut", "Seshi Walnut"),
     ("seshi-night", "Seshi Night"),
     ("seshi-day", "Seshi Day"),
@@ -431,6 +435,24 @@ impl Theme {
 
     pub fn named(name: &str) -> Theme {
         match name {
+            "seshi-dark" => Theme::design(
+                [
+                    "#10141b", "#dce4ee", "#141a23", "#1a222d", "#202a37", "#344252", "#8695a8", "#c1ccda",
+                    "#f4f7fb", "#43c7c4", "#0c2022", "#f1ad4f", "#92d477", "#ff6678", "#273443", "#314456",
+                ],
+                ["#8e9cf5", "#65b6e8", "#e581b5", "#4dc8c1"],
+                ["#ff6678", "#92d477", "#f1ad4f", "#65b6e8", "#bb93f5", "#4dc8c1", "#8695a8"],
+            )
+            .with_err("#ff6678"),
+            "seshi-light" => Theme::design(
+                [
+                    "#f5f7fa", "#243244", "#e9eef4", "#ffffff", "#edf2f7", "#c8d2de", "#68788b", "#43546a",
+                    "#172536", "#087f86", "#f5ffff", "#915300", "#287844", "#c33343", "#dfe7ef", "#d4e0e9",
+                ],
+                ["#6753b7", "#087f86", "#af3973", "#2c6e9d"],
+                ["#c33343", "#287844", "#915300", "#2c6e9d", "#7350a8", "#087f86", "#68788b"],
+            )
+            .with_err("#b3263a"),
             // A walnut-cased keyboard with chocolate keys: brown grounds, turquoise for focus,
             // the red, orange and lemon-lime run for needs you, working and done, cream text,
             // lemon (ws[1]) for leader mode.
@@ -937,6 +959,7 @@ mod audit {
             let t = Theme::named(n);
             let active = mix(t.sidebar_bg, t.accent, 0.16);
             let hover = mix(t.sidebar_bg, t.text, 0.10);
+            let flat_terminal = mix(t.bg, Color::Black, 0.4);
             let checks: Vec<(&str, Color, Color, f64)> = vec![
                 ("text on bg", t.text, t.bg, 4.5),
                 ("strong on bg", t.strong, t.bg, 7.0),
@@ -944,6 +967,12 @@ mod audit {
                 ("muted on sidebar", t.muted, t.sidebar_bg, 3.0),
                 ("text on card", t.text, t.card, 4.5),
                 ("text on card2", t.text, t.card2, 4.0),
+                ("strong on flat terminal", t.strong, flat_terminal, 4.5),
+                ("text on flat terminal", t.text, flat_terminal, 4.5),
+                ("muted on flat terminal", t.muted, flat_terminal, 3.0),
+                ("blocked on flat terminal", t.blocked, flat_terminal, 3.0),
+                ("done on flat terminal", t.done, flat_terminal, 3.0),
+                ("working on flat terminal", t.working, flat_terminal, 4.5),
                 ("strong on btn", t.strong, t.btn, 4.5),
                 ("accent on btn (keys)", t.accent, t.btn, 3.0),
                 ("ink on accent", t.acc_ink, t.accent, 4.5),

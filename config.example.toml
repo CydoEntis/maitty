@@ -14,14 +14,11 @@ prefix = "ctrl+space"
 
 # Browse all built-in names in Settings > Appearance > Theme.
 # Families and variants: docs/theme-sources.md (gruvbox is Dark; tokyo-night is Night).
-theme = "seshi-walnut"
+theme = "seshi-dark"
 
 # Shell for new panes. Default: pwsh / powershell on Windows, $SHELL elsewhere.
 # shell = "pwsh.exe"
 # shell_args = ["-NoLogo"]
-
-# Put agents to sleep after sitting idle this long: "15m", "1h", "4h" or "never".
-# sleep_after = "never"
 
 # Editor for "open in editor" (e). Empty: $VISUAL, $EDITOR, then code.
 # editor = "nvim"
@@ -49,6 +46,8 @@ start_dir = ""              # where plain `seshi` opens, e.g. "~/code" (empty: w
 attention_sort = true       # sidebar: sessions that need you first, the rest keep their place
 sidebar = true              # <leader> b
 sidebar_position = "left"   # left | right
+layout = "cards"            # cards | flat
+panes = "floating"          # floating | tiled; applies to Cards layout
 which_key = false         # a keys popup if you pause after the leader (? always shows them)
 which_key_delay_ms = 350
 mouse = true
