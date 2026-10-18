@@ -94,6 +94,14 @@ turn-end notifier can first identify it after a turn finishes). Until then it
 omits helpers rather than borrowing another session's. Two panes reporting the
 same thread ID are ambiguous and show no disk helpers.
 
+When a trusted integration reports active helpers, Seshi keeps the parent
+session working until they finish or go quiet. Codex helper liveness comes from
+its local session files; Claude, Qwen, Kimi and Mastracode report helper
+lifecycle events through their native hooks; OpenCode's selected-session bridge
+reports active child sessions. Provider/model choice does not change the host
+integration. Other agents still get their own working/needs-you/done status,
+but Seshi cannot list hidden helpers unless the agent exposes their lifecycle.
+
 Installing a new executable does not replace an already-running window or
 daemon. **Settings → General** shows installed/window/daemon versions and a
 restart-pending notice. Restart the daemon only when its sessions are safe to

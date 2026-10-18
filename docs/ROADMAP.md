@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-17 at `5c247dc` on `dev`.
+Last reconciled: 2026-10-18 at `ed1e985` on `dev`.
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Seshi is a terminal multiplexer built for running many coding agents at once: see
@@ -11,20 +11,25 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The published base is v0.30.1 (`63b1a72`). The unreleased work below is merged
-to `dev` and is being prepared for v0.31.0; it is not yet in the published base.
+The published base is v0.31.0 (`ed1e985`). The agent-fleet status`r`ncorrection below is verified locally and being prepared for v0.32.0.`r`n`r`nUser-requested agent fleet visibility: keep a session visibly working while its
+helpers run, and list helpers under the correct parent when supported by the
+agent integration. Codex disk polling refreshes helper liveness; OpenCode TUI
+reports active child sessions; Kimi and Mastracode native lifecycle events are
+recognized. The isolated worktree passed build, 311 tests (4 ignored), strict
+Clippy, Linux x64 and macOS ARM checks, and all 10 Node adapter tests. PR and
+v0.32.0 release are pending.
 
 User-requested pane padding polish: preserve the pane insets while matching the
 card and padding to a terminal app's solid surface when at least three screen
 corners share an explicit background. Isolated colored panels keep their theme
 treatment. Implemented and verified on `dev`: focused UI regressions pass and the
 full gate passes (309 tests passed, four ignored; build, clippy and both
-cross-checks passed). Pending v0.31.0 release.
+cross-checks passed). Shipped in v0.31.0.
 
 User-requested Settings drawer: move Settings from its centered modal into the
 existing right-hand sliding sheet. Keep all categories, setting editors, update
 controls, mouse access and keyboard navigation. Implemented and verified on
-`dev`, pending v0.31.0 release. The rendered UI and mouse category navigation
+`dev`, shipped in v0.31.0. The rendered UI and mouse category navigation
 were checked at 80×24, 100×30 and 160×45. The ordered gate passed: build, 308 tests (four
 ignored), strict clippy, Linux x64 check and macOS ARM check. This adds no wire
 shape, dependency, migration or permission change.
@@ -37,7 +42,7 @@ owning threads and retain a compact status/session rail when the sidebar hides.
 User-reported spurious sounds also add blocked-sound debounce and exact status
 checks in the client and headless daemon. Red status remains immediate.
 Spinner selection, exact Codex helper ownership, collapsed rail and sound-race
-correction: merged to `dev`, pending v0.31.0 release. Ordered build, full tests (307 passed,
+correction: merged to `dev`, shipped in v0.31.0. Ordered build, full tests (307 passed,
 four ignored), strict all-target clippy, Linux x64 and macOS ARM cross-checks
 passed; ten Node adapter tests passed. The transient/stale blocker regression
 failed before the fix. Client and headless daemon tests prove cancellation on
@@ -63,7 +68,7 @@ OMP/Mastracode/Kilo/Kimi native setup, and scope OpenCode TUI V1/V2 reports to t
 selected session. Preserve native question lifecycles, recognize Codex automatic
 follow-up work and release hook authority on recognized process exit. Questions
 ring in the focused pane; completion waits one second and new turns reset dedup.
-Status: merged to `dev`, pending v0.31.0 release. Ordered build, tests
+Status: merged to `dev`, shipped in v0.31.0. Ordered build, tests
 (299 passed / four
 ignored), strict clippy and Linux/macOS cross-checks passed; ten Node adapter
 tests passed. Rendered status frames were inspected. A named isolated live
@@ -86,7 +91,7 @@ Keep native questions blocked until answered, retain pending OpenCode asks acros
 busy events and helper completion, and recognize Codex's expanded question dialog.
 Needs-you retains the red blocked dot/text; bells do not replace state. Scope
 includes the user's z.ai/DeepSeek models inside Pi/OpenCode. Status: merged to
-`dev`, pending v0.31.0 release. The ordered build/test (290 passed / four ignored), clippy,
+`dev`, shipped in v0.31.0. The ordered build/test (290 passed / four ignored), clippy,
 Linux and macOS cross-checks pass, as do three Node adapter tests. Native adapter
 tests run in CI on Windows/Linux. An initial Windows run hit an access violation
 alongside a PowerShell out-of-memory error; isolated failing cases and complete
@@ -106,7 +111,7 @@ Runs with mouse/keyboard, retain drafts between sections, open/edit saved items,
 choose role profiles with a picker, and read full run reports before explicit
 controls. Separate Enter/open from Launch/Run/Open pane; provide Back, cursor
 editing, multiline instructions and report scrolling at 80×24. Status: merged to
-`dev`, pending v0.31.0 release. Navigation regressions fail before fixes; the ordered build,
+`dev`, shipped in v0.31.0. Navigation regressions fail before fixes; the ordered build,
 test (284 passed / four ignored), clippy and Linux/macOS cross-check gate passed.
 Rendered flows inspected at 80×24, 100×30 and 160×45. A named isolated server at
 80×24 verified palette entry, keyboard/mouse section changes, role selection,

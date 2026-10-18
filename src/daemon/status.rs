@@ -477,6 +477,16 @@ impl Daemon {
                 changes.push((t.id, if working { Status::Working } else if Some(t.id) == focused { Status::Idle } else { Status::Done }, "screen: queued question answered".into()));
                 continue;
             }
+            // Any trusted adapter may report child agents without using lifecycle
+            // hooks (Codex is discovered from its local session files). Keep the
+            // parent visibly working while a recently observed child is active.
+            if matches!(t.status, Status::Idle | Status::Done)
+                && !t.subagents.is_empty()
+                && t.subagent_seen.is_some_and(|s| s.elapsed() <= SUBAGENTS_QUIET_AT_MOST)
+            {
+                still_working.push(t.id);
+                continue;
+            }
             if t.hooked {
                 if t.status == Status::Working
                     && let Some(pattern) = self.agents.iter().find(|a| &a.name == name).and_then(|d| d.working.iter().find(|r| r.is_match(&t.tail_text(rows))))
@@ -485,13 +495,6 @@ impl Daemon {
                 }
                 if t.status == Status::Done && Some(t.id) == focused {
                     changes.push((t.id, Status::Idle, "you're looking at it".to_string()));
-                }
-                // An agent with one of its own still running in the background is still
-                // working, whatever ended its turn (it answered you and went back to waiting
-                // for them). The hold lets their finishing end it, as it would have.
-                if matches!(t.status, Status::Idle | Status::Done) && !t.subagents.is_empty() && t.subagent_seen.is_some_and(|s| s.elapsed() <= SUBAGENTS_QUIET_AT_MOST) {
-                    still_working.push(t.id);
-                    continue;
                 }
                 // Subagents went quiet for good (one died without reporting): don't hold "done"
                 // forever.
