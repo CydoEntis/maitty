@@ -1,8 +1,8 @@
 //! The Seshi layout, from the design handoff: projects (git repos) in the sidebar, each
 //! project's worktrees with the sessions running in them, and the focused session full size
 //! (optionally split with a second). Most tools are centred overlays over a dimmed
-//! screen: jump, new pane, talk and keys. Settings, profiles, workflows and review
-//! use a right-hand sheet beside the panes.
+//! screen: jump, new pane, talk and keys. Settings and review use a right-hand sheet
+//! beside the panes.
 //!
 //! The daemon only knows workspaces, tabs and terminals. Here every terminal is a session;
 //! its project and worktree come from where it runs (`TermInfo::root` / `top`), so a shell
@@ -921,18 +921,6 @@ pub(super) enum HyHit {
     NpBeside(usize),
     NpWhere(usize),
     NpGo,
-    Profiles,
-    WorkflowTab(u8),
-    WorkflowRun(u64),
-    WorkflowRow(usize),
-    WorkflowField(usize),
-    WorkflowProfile(usize),
-    WorkflowReport(usize),
-    AgentSheetBody,
-    WorkflowKey(char),
-    ProfileRow(usize),
-    ProfileField(usize),
-    ProfileKey(char),
     NpTask,
     NpModel(usize),
     SetTab(usize),

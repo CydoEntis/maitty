@@ -21,7 +21,7 @@ switching, scrolling and resizing under sustained output.
 
 The daemon owns sessions and status. Do not restart agents, answer questions,
 approve plans, modify instruction files or change native permissions automatically.
-Reuse Settings, the status popover, workflow sheet and Inbox. Carry the pending
+Reuse Settings, the status popover and Inbox. Carry the pending
 false-working and bell-removal fixes forward.
 
 ## Out of scope

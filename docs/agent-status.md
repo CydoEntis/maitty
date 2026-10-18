@@ -105,10 +105,11 @@ than borrowing another session's. If two panes report the same thread ID, disk
 fallback is ambiguous and is omitted.
 
 When a trusted integration reports active helpers, Seshi keeps the parent
-session working until they finish or go quiet. Codex, Claude, Qwen, Kimi and
-Mastracode report helper lifecycle events through native hooks; OpenCode's
-selected-session bridge reports active child sessions. Provider/model choice
-does not change the host integration. Other agents still get their own
+session working until they finish or go quiet. Codex uses native lifecycle hooks
+when installed, with thread-specific local session files as fallback; Claude,
+Qwen, Kimi and Mastracode report helper lifecycle events through native hooks;
+OpenCode's selected-session bridge reports active child sessions. Provider/model
+choice does not change the host integration. Other agents still get their own
 working/needs-you/done status, but Seshi cannot list hidden helpers unless the
 agent exposes their lifecycle.
 

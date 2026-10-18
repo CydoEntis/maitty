@@ -1,4 +1,4 @@
-//! Cursor editing shared by profile fields, workflow names and task entry.
+//! Cursor editing shared by editable text fields and task entry.
 //! Positions count characters so editing never splits a UTF-8 code point.
 
 use super::{KeyCode, KeyEvent, KeyModifiers};
@@ -117,30 +117,4 @@ pub(super) fn window(text: &str, cursor: Option<usize>, width: usize) -> String 
             used <= width
         })
         .collect()
-}
-
-/// Preserve blank lines and indentation while keeping every input character reachable.
-pub(super) fn lines(text: &str, width: usize) -> Vec<String> {
-    const TAB_COLUMNS: usize = 4;
-    let width = width.max(1);
-    let mut result = Vec::new();
-    for line in text.split('\n') {
-        let mut row = String::new();
-        let mut used = 0;
-        for c in line
-            .replace('\t', &" ".repeat(TAB_COLUMNS))
-            .chars()
-            .filter(|c| *c != '\r')
-        {
-            let cells = c.width().unwrap_or(0);
-            if used + cells > width && !row.is_empty() {
-                result.push(std::mem::take(&mut row));
-                used = 0;
-            }
-            row.push(c);
-            used += cells;
-        }
-        result.push(row);
-    }
-    result
 }

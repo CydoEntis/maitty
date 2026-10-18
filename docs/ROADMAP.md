@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-18 at `4167f40` on `dev`.
+Last reconciled: 2026-10-18 at `0c7cc33` on `dev`.
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Seshi is a terminal multiplexer built for running many coding agents at once: see
@@ -11,7 +11,12 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The published base is v0.32.0. The next release integrates flat rendering, manual-only session recovery, broader helper visibility and native lifecycle hooks, directional splits, and keycap-style shortcut help. The work is on the release branch and must pass the full gate before it is marked shipped.
+The published base is v0.33.0. The v0.34.0 release candidate reconciles local work with current `dev`: Flat layout, role-colored visible helpers, shortcut keycaps, removal of profile/workflow UI and automatic idle-sleep settings, removal of the wake screen, and README/UI contract updates. This work must pass the full verification gate before it is marked shipped.
+
+The v0.34.0 candidate passes the ordered release gate: 291 tests passed, four
+ignored; build, strict clippy, Linux x64 and macOS ARM checks passed. The flat
+layout frame was inspected with the test renderer. Do not mark it shipped until
+the release lands on `main`.
 
 User-requested pane padding polish: preserve the pane insets while matching the
 card and padding to a terminal app's solid surface when at least three screen
@@ -100,20 +105,10 @@ UI/API/architecture contracts and [status setup](agent-status.md) are updated;
 no dependencies, new permissions or wire shapes were added. Proposed wording
 follow-up, awaiting user direction: rename "shared files" to "overlapping files".
 
-User-requested workflow usability correction: navigate Profiles, Workflows and
-Runs with mouse/keyboard, retain drafts between sections, open/edit saved items,
-choose role profiles with a picker, and read full run reports before explicit
-controls. Separate Enter/open from Launch/Run/Open pane; provide Back, cursor
-editing, multiline instructions and report scrolling at 80×24. Status: merged to
-`dev`, shipped in v0.31.0. Navigation regressions fail before fixes; the ordered build,
-test (284 passed / four ignored), clippy and Linux/macOS cross-check gate passed.
-Rendered flows inspected at 80×24, 100×30 and 160×45. A named isolated server at
-80×24 verified palette entry, keyboard/mouse section changes, role selection,
-profile/workflow saves and draft retention; saved values were checked on disk.
-Report browsing and controls bound to exact run ids are covered by render/input
-tests. The test server was cleaned up; no real agent run was launched, no remote
-change was made, and the user's daemon was not restarted. README, usage, UI,
-architecture and the embedded shortcut reference are updated.
+The user subsequently chose to remove Seshi's profile and workflow feature so the
+terminal multiplexer stays focused. v0.34 removes that UI, its runner and config
+surface; this supersedes the earlier v0.31 workflow implementation. Old profile
+and workflow config tables remain ignored when loading existing config files.
 
 User-requested Codex consistency fix: detect native activity footers with
 background-terminal metadata and soft wraps; recognize new turns without
@@ -174,17 +169,6 @@ tests ignored; lint and both cross-checks passed). The missing-badge regression
 fails against the previous behavior. The live nested-server check was blocked
 by automatic approval review; no live verification claimed. Status: verified
 locally for v0.29.1.
-
-Current user-requested work: [saved profile workflows](features/workflows/intent.md)
-([spec](features/workflows/spec.md)), shipped in v0.30.0. Select custom planner,
-worker and reviewer profiles; approve the plan; run at most three build/review
-rounds; keep durable progress; expose a right-side drawer and CLI/MCP entry points.
-Status: implemented for v0.29.0. The full gate passed (263 tests passed,
-three existing tests ignored; lint and Linux/macOS cross-checks passed). Named
-servers verified approval, restart recovery, handoffs, completion and the
-three-round limit with controlled stub agents. The live 80×24 UI check covered
-mouse tabs, editing, task preview/cancel and detach. Real-agent daily use remains
-a follow-up after release.
 
 Also requested: fix top-to-bottom repaint during ordinary session switches and
 show Codex's queued unanswered questions as needs-you while its spinner continues.
@@ -297,7 +281,7 @@ The user canceled this direction before implementation and chose to keep Seshi
 terminal-first, using T3 Code when they want a chat-first GUI. No code, tickets,
 branch, or worktree were created. Revisit only through a new proposal.
 
-### 12 — Flat rendering style · in progress on `feat/flat-layout`
+### 12 — Flat rendering style · included in v0.34.0 candidate
 
 Add an optional full-bleed Flat style from the supplied design handoff. Keep the
 Cards layout as default and share session state, tabs, splits, sheets, status and
@@ -317,11 +301,9 @@ Everything below is shipped on `dev` unless marked.
 - SSH remotes (`--remote host`) — shipped — `src/ipc.rs` `connect_remote`
 
 **Agents**
-- Personal and project agent profiles for Claude Code and Codex, setup UI,
-  fresh launches and native workflow exports/imports — integrated for 0.28.0;
-  verification gate passed in the release worktree — `src/profiles.rs`, `src/client/profiles.rs`; contract:
-  [agent profiles](features/agent-profiles.md). Automatic workflow sequencing is
-  outside this slice.
+- Personal and project agent profiles / saved workflows — removed from Seshi in
+  the v0.34.0 release candidate at the user's direction; legacy config tables are
+  ignored, and old saved-run data is tolerated during session restore.
 - Status detection: working / needs you / done (until seen) / idle, from screen patterns, OSC progress and agent hooks — shipped — `src/daemon/scan.rs`, `seshi hook` in `src/cli.rs`
 - Trusted status reports (process tree or `SESHI_PANE_TOKEN`) — shipped — `src/daemon/term.rs`, `src/cli.rs`
 - Agent kinds: Claude, Codex, Gemini, OpenCode, Cursor, Copilot, Amp, Qwen, Aider, Goose, Crush, Droid, Pi, Kiro, Grok, custom `[[agents]]` — shipped — `src/config.rs`
@@ -352,7 +334,7 @@ Everything below is shipped on `dev` unless marked.
 - Tasks (a worktree's review: commit, merge, PR, throw away) — shipped — `src/client/tasks.rs`
 - Own worktree for `claude`/`codex` typed into a shell in a repo's main folder — shipped 0.9.12 — `seshi agent-dir`, `daemon/term.rs` `agent_functions`
 - Usage and limits meter, context per agent, continue after a limit — shipped 0.10.0 — `seshi statusline`, `src/daemon/usage.rs`
-- The wake-up transition (rain, a dissolve from the centre, the screen back line by line; `ui.wake_animation`) — shipped 0.27.0 — `src/client/hydra/wake.rs`, spec in `docs/design/wake/`
+- The wake-up transition (rain, dissolve and line-by-line reveal; `ui.wake_animation`) — removed in the v0.34.0 candidate; legacy sleeping sessions resume directly without an animation.
 - A session's share of the machine (CPU and memory) in its pane's title when it's large — shipped 0.25.0, moved off the sidebar row 0.26.2 — `src/daemon/scan.rs`, `load_note` in `src/client/hydra/screen.rs`
 - Merge that cleans up (the worktree and its branch go) — shipped 0.11.0 — `src/client/view_keys.rs`
 
@@ -415,9 +397,6 @@ Docs: `AGENTS.md`, `docs/` (architecture, standards, testing, security, UI, API 
 Design references: [design brief](design-brief.md), [design brief v3](design-brief-v3.md).
 Glossary: none yet.
 Feature docs: `docs/features/`. Each live intent is linked from In scope or a phase.
-Agent profiles: [usage and contract](features/agent-profiles.md).
-Profile workflows: [intent](features/workflows/intent.md),
-[spec](features/workflows/spec.md), [usage](features/workflows/usage.md).
 Session clarity: [intent](features/session-clarity/intent.md),
 [spec](features/session-clarity/spec.md).
 

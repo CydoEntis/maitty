@@ -629,7 +629,7 @@ impl App {
 
     /// Go to, opened on its first row you can pick (what needs you, when anything does).
     pub(in crate::client) fn open_goto(&mut self) {
-        let rows = goto_rows(&self.hy_model(), "", heads_up(self).len(), &self.snap.workflows);
+        let rows = goto_rows(&self.hy_model(), "", heads_up(self).len());
         let sel = rows.iter().position(GoRow::pickable).unwrap_or(0);
         self.mode = Mode::GoTo { query: String::new(), sel };
     }
@@ -792,18 +792,7 @@ impl App {
             }
         }
         let task = if np.fleet { crate::brief::commander_prompt(&np.task) } else { np.task.clone() };
-        let cmd = if let Some(profile) = super::super::profiles::selected(self, np.p, &agent) {
-            if self.profile_dir(np.p).is_some_and(|dir| !self.profile_projects.contains_key(&dir)) {
-                self.load_profile_project(np.p);
-                self.notify("Reading profiles for this checkout; press Enter again when ready.".into(), false);
-                return;
-            }
-            if let Err(e) = profile.validate() { self.notify(e.to_string(), true); return; }
-            match super::super::profiles::launch_command(&self.cfg, &profile, &task) {
-                Ok(command) => Some(command),
-                Err(e) => { self.notify(e.to_string(), true); return; }
-            }
-        } else { np_command(self, &agent, np.model, &task) };
+        let cmd = np_command(self, &agent, np.model, &task);
         if !np.fleet && !self.hy.saved.draft.is_empty() {
             self.hy.saved.draft.clear();
             self.hy.save();
@@ -849,7 +838,7 @@ impl App {
 
     pub(in crate::client) fn on_goto_key(&mut self, mut query: String, mut sel: usize, k: &KeyEvent) {
         let model = self.hy_model();
-        let rows = goto_rows(&model, &query, heads_up(self).len(), &self.snap.workflows);
+        let rows = goto_rows(&model, &query, heads_up(self).len());
         // Headings aren't rows you land on.
         let land = |sel: usize, down: bool| -> usize {
             let n = rows.len();
@@ -953,7 +942,6 @@ impl App {
                     Some(GoRow::Ask(t) | GoRow::Done(t)) => self.hy_focus(*t),
                     Some(GoRow::Head(_) | GoRow::Heads(_)) => {}
                     Some(GoRow::Sess(_, t)) => self.hy_focus(*t),
-                    Some(GoRow::Workflow(run)) => self.open_workflow_run(*run),
                     // A project: its most urgent session, or a shell there.
                     None => {}
                 }
@@ -966,7 +954,7 @@ impl App {
             KeyCode::Char(c) if !k.modifiers.contains(KeyModifiers::CONTROL) => {
                 query.push(c);
                 // Land on the first session that matches, when there is one.
-                let rows = goto_rows(&model, &query, heads_up(self).len(), &self.snap.workflows);
+                let rows = goto_rows(&model, &query, heads_up(self).len());
                 sel = rows.iter().position(GoRow::pickable).unwrap_or(0);
             }
             _ => {}
@@ -1009,7 +997,6 @@ impl App {
         let mut np = NewPaneHy::new(p, beside);
         np.task = self.hy.saved.draft.clone();
         self.mode = Mode::HyPane(np);
-        self.load_profile_project(p);
     }
 
     pub(in crate::client) fn on_hy_pane_key(&mut self, mut np: NewPaneHy, k: &KeyEvent) {
@@ -1036,7 +1023,6 @@ impl App {
             }
         };
         match k.code {
-            KeyCode::Char('p') if ctrl => { self.mode = Mode::HyPane(np); self.open_profiles(); return; }
             KeyCode::Esc => {
                 // The task stays for next time (a fleet's goal isn't one).
                 if !np.fleet && self.hy.saved.draft != np.task {
@@ -1084,10 +1070,7 @@ impl App {
             },
             _ => {}
         }
-        let project_changed = match &self.mode { Mode::HyPane(old) => old.p != np.p || old.place != np.place, _ => false };
-        let project = np.p;
         self.mode = Mode::HyPane(np);
-        if project_changed { self.load_profile_project(project); }
     }
 
     /// Keys on the splash: move between its buttons, Enter picks one, or a button's own key.
@@ -1240,61 +1223,6 @@ impl App {
                 let name = self.snap.terms.get(&term).map(|t| t.display_name()).unwrap_or_default();
                 self.inbox_answer(term, key, &name);
             }
-            HyHit::Profiles => self.open_profiles(),
-            HyHit::WorkflowRun(run) => self.open_workflow_run(run),
-            HyHit::WorkflowTab(tab) => {
-                self.switch_agent_sheet(tab);
-            }
-            HyHit::WorkflowRow(i) => {
-                if let Mode::Workflows(v) = &mut self.mode { v.sel = i; v.scroll = 0; }
-                if double && let Mode::Workflows(v) = &self.mode {
-                    self.on_workflows_key((**v).clone(), &KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-                }
-            }
-            HyHit::WorkflowField(i) => {
-                if let Mode::Workflows(v) = &mut self.mode { v.field = i; v.cursor = None; }
-                if (1..=3).contains(&i) && let Mode::Workflows(v) = &self.mode {
-                    self.on_workflows_key((**v).clone(), &KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-                } else if i == 4 && let Mode::Workflows(v) = &self.mode {
-                    self.on_workflows_key((**v).clone(), &KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
-                }
-            }
-            HyHit::WorkflowProfile(i) => {
-                if let Mode::Workflows(v) = &mut self.mode && v.picker.is_some() { v.picker = Some(i); }
-                if let Mode::Workflows(v) = &self.mode {
-                    self.on_workflows_key((**v).clone(), &KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-                }
-            }
-            HyHit::AgentSheetBody => {}
-            HyHit::WorkflowReport(i) => {
-                if let Mode::Workflows(v) = &mut self.mode { v.report = i.min(3); v.scroll = 0; }
-            }
-            HyHit::WorkflowKey(c) => {
-                if let Mode::Workflows(v) = &self.mode {
-                    let v = (**v).clone();
-                    let code = match c { '\n' => KeyCode::Enter, '\u{1b}' => KeyCode::Esc, c => KeyCode::Char(c) };
-                    let modifiers = if c == 's' && v.editor.is_some() { KeyModifiers::CONTROL } else { KeyModifiers::NONE };
-                    self.on_workflows_key(v, &KeyEvent::new(code, modifiers));
-                }
-            }
-            HyHit::ProfileRow(i) => {
-                if let Mode::Profiles(v) = &mut self.mode { v.sel = i; v.scroll = 0; }
-                if double && let Mode::Profiles(v) = &self.mode {
-                    self.on_profiles_key((**v).clone(), &KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-                }
-            }
-            HyHit::ProfileField(i) => {
-                if let Mode::Profiles(v) = &mut self.mode && let Some(e) = &mut v.editor { e.field = i; e.cursor = None; }
-                if matches!(i, 1 | 5) && let Mode::Profiles(v) = &self.mode {
-                    self.on_profiles_key((**v).clone(), &KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
-                }
-            }
-            HyHit::ProfileKey(c) => {
-                if let Mode::Profiles(v) = &self.mode {
-                    let modifiers = if c == 's' { KeyModifiers::CONTROL } else { KeyModifiers::NONE };
-                    self.on_profiles_key((**v).clone(), &KeyEvent::new(match c { '\n' => KeyCode::Enter, '\u{1b}' => KeyCode::Esc, c => KeyCode::Char(c) }, modifiers));
-                }
-            }
             HyHit::NpTask => {
                 if let Mode::HyPane(np) = &mut self.mode {
                     np.row = 0;
@@ -1331,8 +1259,6 @@ impl App {
                         }
                     }
                 }
-                if matches!(h, HyHit::NpProj(_) | HyHit::NpWhere(_))
-                    && let Mode::HyPane(np) = &self.mode { self.load_profile_project(np.p); }
             }
             HyHit::NpGo => {
                 if let Mode::HyPane(np) = &self.mode {

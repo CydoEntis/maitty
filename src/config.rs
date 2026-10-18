@@ -25,8 +25,6 @@ pub struct Config {
     pub recipes: Vec<Recipe>,
     /// Saved launches: an agent, a model and a prompt, e.g. "commit and push" (Ctrl+Space .).
     pub presets: Vec<Preset>,
-    pub profiles: Vec<crate::profiles::Profile>,
-    pub workflows: Vec<crate::workflows::Workflow>,
     /// Fold an agent into its project's settled group once it has sat finished or idle this
     /// long ("12h", "3d", "never"), or once its branch's work is merged.
     pub settle_after: String,
@@ -447,8 +445,6 @@ impl Default for Config {
             mcp: Mcp::default(),
             recipes: Vec::new(),
             presets: Vec::new(),
-            profiles: Vec::new(),
-            workflows: Vec::new(),
             theme: crate::theme::DEFAULT.into(),
             theme_overrides: ThemeOverrides::default(),
             shell: None,
@@ -734,37 +730,6 @@ pub fn write_atomic(path: &std::path::Path, data: impl AsRef<[u8]>) -> std::io::
     })
 }
 
-/// Edit the personal profiles in the file that currently supplies them.
-pub fn profile_path() -> Result<PathBuf> {
-    array_path("profiles")
-}
-
-pub fn workflow_path() -> Result<PathBuf> {
-    array_path("workflows")
-}
-
-fn array_path(key: &str) -> Result<PathBuf> {
-    let path = config_path();
-    if std::env::var_os("SESHI_CONFIG").is_some() { return Ok(path); }
-    let local = path.with_file_name("config.local.toml");
-    match std::fs::read_to_string(&local) {
-        Ok(text) => {
-            let table: toml::Table = toml::from_str(&text).context("parsing machine-local settings")?;
-            Ok(if table.contains_key(key) { local } else { path })
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(path),
-        Err(e) => Err(e).context("reading machine-local settings"),
-    }
-}
-
-pub fn native_agent_dir(runner: crate::profiles::Runner) -> Result<PathBuf> {
-    if runner == crate::profiles::Runner::Codex && let Some(dir) = std::env::var_os("CODEX_HOME") {
-        return Ok(PathBuf::from(dir).join("agents"));
-    }
-    let home = directories::BaseDirs::new().context("finding your home folder")?;
-    let folder = if runner == crate::profiles::Runner::Claude { ".claude" } else { ".codex" };
-    Ok(home.home_dir().join(folder).join("agents"))
-}
 
 /// Read a JSON state file; one that's there but won't parse is kept as `<name>.bak` (so a
 /// bad write or a hand edit loses nothing) and the defaults are used.
@@ -929,8 +894,6 @@ impl Config {
             cfg.icons.shell = Icons::default().shell;
         }
         validate_spinner(&cfg.ui.spinner)?;
-        crate::profiles::validate(&cfg.profiles)?;
-        crate::workflows::validate(&cfg.workflows)?;
         Ok(cfg)
     }
 
@@ -1167,6 +1130,14 @@ mod tests {
         assert!(c.notify.sound && c.notify.phone_after == 90);
         let c: super::Config = toml::from_str("[notify]\nsound = false\n").unwrap();
         assert!(!c.notify.sound);
+    }
+
+    #[test]
+    fn removed_profile_and_workflow_tables_are_ignored_without_rewriting_them() {
+        let old = "[[profiles]]\nname='planner'\nagent='codex'\nmodel='gpt-5'\n\n[[workflows]]\nname='feature'\nplanner='planner'\nworker='worker'\nreviewer='reviewer'\n";
+        let cfg: super::Config = toml::from_str(old).expect("legacy user settings remain readable");
+        assert_eq!(cfg.theme, super::Config::default().theme);
+        assert!(old.contains("[[profiles]]") && old.contains("[[workflows]]"), "loading does not edit the user's config text");
     }
 
     #[test]
