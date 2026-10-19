@@ -290,6 +290,35 @@ have square edges and no gaps, a bottom status line, keyboard focus zones,
 working mouse targets and sensible narrow-screen behavior; docs and tests cover
 the option; the verification gate passes before the phase ships.
 
+### 13 — Borrowed from T3 Code, round two · proposed 2026-10-19
+
+Approved by the user 2026-10-19 after a second read of `pingdotgg/t3code`. Not started; no tickets yet. One item.
+
+- **Handoff:** `seshi handoff <pane> --to <agent>` starts another agent in the same worktree with a
+  short text brief (the first prompt, branch, changed files, a tail of recent output). Text only; it
+  does not carry the old agent's native context, and says so. Built from `seshi worktree` and
+  `seshi send`, so no wire change is expected.
+- Phone alerts are not part of this phase: ntfy alerts already ship (`[notify] phone_topic`). An earlier
+  draft of this phase listed them by mistake.
+- Acceptance: a ticket, tests, docs and a passing verification gate before it is marked shipped.
+
+Done outside the phase: saved pane output no longer races at shutdown (saves run one at a time,
+newest wins, fsynced) and restored history starts at a clean line.
+
+### 14 — Design v5 cleanup pass · done on this branch, awaiting merge
+
+The user supplied the v5 cleanup handoff ([`design/v5/README.md`](design/v5/README.md); `seshi-app.js`
+is the spec) on 2026-10-19 and approved following it where it differs from older UI rules, including
+dropping model, context and cost from Seshi's own chrome. One commit per step, each with the full gate:
+
+1. One background (terminal default or solid) — done on this branch.
+2. Spacing (1-column margin and gap; sidebar has no footer) — done on this branch.
+3. Each fact shows once (pane title, status line holds path/branch/PR) — done on this branch, except the PR, server and `⇆` tags, which step 6 moves into the status line.
+4. Colour jobs (working is never amber; neutral selection tint and `▎` bar) — done on this branch (sidebar, sheet and popup lists).
+5. Exactly one lit edge — done on this branch.
+6. Status line in both layouts — done on this branch, without the `#PR` and dev-server tags (no data yet).
+7. Settings › General sections — done on this branch.
+
 ## In scope
 
 Everything below is shipped on `dev` unless marked.

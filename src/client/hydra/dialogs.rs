@@ -281,43 +281,73 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         hit(app, tr, HyHit::SetTab(i));
         x += w + 1;
     }
-    // Which seshi this is, and the way to the next one.
-    let mut ver = vec![seg(format!("seshi {}", env!("CARGO_PKG_VERSION")), c.fg(t.muted))];
-    if let Some(new) = &app.update_available {
-        ver.push(seg(format!(" → {new}  "), c.fg(t.accent).add_modifier(Modifier::BOLD)));
-    }
-    // Under the tabs, at the right.
-    let vw = segs_width(&ver);
-    // Beside it: the newer one to install, or a way to ask for one now (it's otherwise
-    // only looked for when the window opens and every few hours).
-    let (label, primary, what) = match (&app.update_available, app.updating, app.update_checking) {
+    // One line: which seshi this is, whether it is current, whether the daemon matches, and the
+    // way to ask again (or to install what was found). More only when something is off.
+    let window = env!("CARGO_PKG_VERSION");
+    let daemon = if app.snap.daemon_version.is_empty() { "unknown".to_string() } else { app.snap.daemon_version.clone() };
+    let daemon = daemon.as_str();
+    let (action, primary, what) = match (&app.update_available, app.updating, app.update_checking) {
         (Some(_), true, _) => ("updating…", true, HyHit::Update),
         (Some(_), ..) => ("Update now", true, HyHit::Update),
         (None, _, true) => ("checking…", false, HyHit::Noop),
-        (None, ..) => ("Check for updates", false, HyHit::CheckUpdate),
+        (None, ..) => ("check now", false, HyHit::CheckUpdate),
     };
-    let uw = segs_width(&button_pill(look, t, label, "", primary, false, t.card));
-    let gap = if app.update_available.is_some() { 0 } else { 2 };
-    let vx = r.right().saturating_sub(vw + gap + uw + 4);
+    let dot = c.fg(t.muted);
+    let known = daemon != "unknown";
+    let mismatch = known && daemon != window;
+    let daemon_note = if mismatch { Some(seg(format!("daemon {daemon}"), c.fg(t.accent))) } else if known { Some(seg("daemon and window match", dot)) } else { None };
+    let mut ver = vec![seg(format!("seshi {window}"), c.fg(t.strong).add_modifier(Modifier::BOLD)), seg("  ·  ", dot)];
     let vy = r.y + 4;
-    put(buf, vx, vy, &ver, r.right() - 3);
-    let ur = Rect { x: vx + vw + gap, y: vy, width: uw, height: 1 };
-    let update = button_pill(look, t, label, "", primary, hovered(app, ur), t.card);
-    put(buf, ur.x, vy, &update, r.right() - 3);
-    hit(app, ur, what);
-    let installed = match &app.installed_version {
-        Some(Ok(v)) => v.as_str(),
-        Some(Err(_)) => "unavailable",
-        None => "checking…",
+    let mut vx;
+    let act = |app: &mut App, buf: &mut Buffer, vx: u16| -> u16 {
+        let ar = Rect { x: vx, y: vy, width: action.width() as u16 + if primary { 4 } else { 2 }, height: 1 };
+        let end = if primary {
+            let btn = button_pill(look, t, action, "", true, hovered(app, ar), t.card);
+            put(buf, vx, vy, &btn, r.right() - 3)
+        } else if what == HyHit::CheckUpdate {
+            put(buf, vx, vy, &[seg("u", c.fg(t.accent).add_modifier(Modifier::BOLD)), seg(" check now", if hovered(app, ar) { c.fg(t.text) } else { dot })], r.right() - 3)
+        } else {
+            put(buf, vx, vy, &[seg(action, dot)], r.right() - 3)
+        };
+        hit(app, Rect { x: ar.x, y: vy, width: end.saturating_sub(ar.x).max(1), height: 1 }, what);
+        end
     };
-    let daemon = if app.snap.daemon_version.is_empty() { "unknown" } else { &app.snap.daemon_version };
+    if let Some(new) = &app.update_available {
+        // What was found, and the way to install it, first; the daemon only if it differs.
+        ver.push(seg(format!("{new} is out"), c.fg(t.accent).add_modifier(Modifier::BOLD)));
+        ver.push(seg("  ·  ", dot));
+        vx = put(buf, r.x + 4, vy, &ver, r.right() - 3);
+        vx = act(app, buf, vx);
+        if mismatch {
+            put(buf, vx, vy, &[seg("  ·  ", dot), seg(format!("daemon {daemon}"), c.fg(t.accent))], r.right() - 3);
+        }
+    } else {
+        ver.push(seg("up to date", dot));
+        ver.push(seg("  ·  ", dot));
+        if let Some(note) = daemon_note {
+            ver.push(note);
+            ver.push(seg("  ·  ", dot));
+        }
+        vx = put(buf, r.x + 4, vy, &ver, r.right() - 3);
+        act(app, buf, vx);
+    }
+    // Detail lines only when versions differ or something needs saying.
     let host = crate::ipc::remote().map(|h| format!("Remote daemon ({h})")).unwrap_or_else(|| "Running daemon".into());
-    put(buf, r.x + 4, r.y + 5, &[seg(format!("Installed here: {installed}   This window: {}", env!("CARGO_PKG_VERSION")), c.fg(t.muted))], r.right() - 3);
-    put(buf, r.x + 4, r.y + 6, &[seg(format!("{host}: {daemon}"), c.fg(t.muted))], r.right() - 3);
+    let mut lines_used = 0u16;
+    let mut say = |buf: &mut Buffer, text: String, style: Style| {
+        lines_used += 1;
+        put(buf, r.x + 4, vy + lines_used, &[seg(text, style)], r.right() - 3);
+    };
+    match &app.installed_version {
+        Some(Ok(v)) if v != window => say(buf, format!("Installed here: {v}   This window: {window}"), c.fg(t.muted)),
+        Some(Err(error)) => say(buf, format!("Installed here: unavailable ({error})"), c.fg(t.err)),
+        _ => {}
+    }
+    if mismatch || !known {
+        say(buf, format!("{host}: {daemon}"), c.fg(t.muted));
+    }
     if app.restart_pending() {
-        put(buf, r.x + 4, r.y + 7, &[seg("Restart pending — restart after active tasks finish.", c.fg(t.accent).add_modifier(Modifier::BOLD))], r.right() - 3);
-    } else if let Some(Err(error)) = &app.installed_version {
-        put(buf, r.x + 4, r.y + 7, &[seg(format!("Version check failed: {error}"), c.fg(t.err))], r.right() - 3);
+        say(buf, "Restart pending — restart after active tasks finish.".into(), c.fg(t.accent).add_modifier(Modifier::BOLD));
     }
     hline(buf, r.x + 3, r.y + 3, r.width.saturating_sub(6), t, t.card);
     let cat = Cat::ALL[v.cat.min(Cat::ALL.len() - 1)];
@@ -353,7 +383,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         lines.push(L::Row(i));
         lines.push(L::Blank);
     }
-    let top = r.y + 8;
+    let top = r.y + 6 + lines_used;
     // Appearance keeps room at the foot for its preview.
     let preview = cat == Cat::Appearance && r.height >= 30 && r.width >= 46;
     let h = r.height.saturating_sub(if preview { 19 } else { 14 }) as usize;
@@ -364,13 +394,15 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         match line {
             L::Blank => {}
             L::Head(g) => {
-                put(buf, r.x + 4, y, &[seg(*g, c.fg(t.muted).add_modifier(Modifier::BOLD))], r.right());
+                // A dim caps heading and a rule out to the edge.
+                let end = put(buf, r.x + 4, y, &[seg(*g, c.fg(t.muted).add_modifier(Modifier::BOLD)), seg(" ", c)], r.right());
+                hline(buf, end, y, (r.right().saturating_sub(3)).saturating_sub(end), t, t.card);
             }
             L::Row(i) => {
                 let row = &rows[*i];
                 let sel = *i == v.sel;
                 let rr = Rect { x: r.x + 3, y, width: r.width.saturating_sub(6), height: 1 };
-                let bg = if sel || hovered(app, rr) { t.hov } else { t.card };
+                let bg = if sel { t.sel_on(t.card) } else if hovered(app, rr) { t.hover_on(t.card) } else { t.card };
                 if bg != t.card {
                     row_pill(look, buf, rr.x, y, rr.width, bg, t.card);
                 }

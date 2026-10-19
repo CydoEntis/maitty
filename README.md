@@ -32,7 +32,7 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
   in the right folders and resumes agents (`claude --resume <id>`, `codex resume --last`, ...).
   Each pane's recent output is kept on disk too, so its history is still there to scroll
   back through, above a line marking the restart.
-- **One screen for everything.** Choose **Cards** or **Flat** in Settings → Appearance → Layout.
+- **One screen for everything.** Choose **Cards** or **Flat** in Settings → General → Layout.
   Cards (the default) shows a full-height sidebar, pill tabs and pane cards. Flat draws those
   same sessions and panes edge to edge, with square surfaces and a bottom status line; Tab and
   Shift+Tab move focus between the sidebar and panes, and Esc returns to the sidebar. The leader is
@@ -40,21 +40,20 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
   and `?` opens the searchable **All shortcuts** reference.
 - **Find anything.** `<leader> j` is the inbox: what needs you first, then type to go to any
   project or session. `<leader> Space` is a command palette in plain words, `a actions`
-  at the foot of the sidebar lists common commands. `<leader> ?` lists every configured
+  in the status line lists common commands. `<leader> ?` lists every configured
   binding (including aliases), global shortcuts and controls inside each screen.
-- **Status at a glance.** Working (amber, its name shimmering), needs you (red), done (green until
+- **Status at a glance.** Working (a quiet orange, its name shimmering), needs you (the theme's alert colour), done (green until
   you look), idle. An alert or a sound tells you when one needs you or finishes out of view.
   Click a sidebar status icon or pane status tag to see why, the evidence's age and any uncertainty.
 - **Subagents under their agent.** What an agent has running shows under its row
   (`↳ reconcile_audit`, repeats counted): Claude's from its hooks, Codex's from its session
-  files (each subagent by its task's name, and `goal` while `/goal` is driving it). Helper roles
-  use cyan for planning, violet for building and magenta-pink for reviewing, distinct from the
-  green, amber, red and gray agent status colors.
-- **Usage and limits.** Each agent's card shows how full its context is and what its session
-  has cost, and its sidebar row shows the context once it's past half. An agent stopped by a limit
-  is told "continue" once the limit resets (Settings → Continue after a limit). Claude's numbers
-  come from its status line: `seshi integrate claude` makes seshi's run first and then yours,
-  which looks the same as before.
+  files (each subagent by its task's name, and `goal` while `/goal` is driving it). Helpers show an icon
+  for what they are doing (`✎` planning, a book researching, `⚙` building, `⚖` reviewing) in the
+  working orange, not a colour per role.
+- **Limits.** An agent stopped by a limit is told "continue" once the limit resets (Settings →
+  Continue after a limit), and its card says when. Model, context and cost are the agent's own
+  status line to show; seshi doesn't repeat them. Claude's limit numbers come from its status line:
+  `seshi integrate claude` makes seshi's run first and then yours, which looks the same as before.
 - **Detection without setup.** The process tree finds `claude`, `codex`, `gemini`, `opencode`,
   `cursor-agent`, `copilot`, `amp`, `qwen`, `aider` and others, and screen patterns tell
   working from blocked. Hooks (`seshi integrate claude`) make it exact.
@@ -116,7 +115,7 @@ From source (any platform with Rust): `cargo install --git https://github.com/Cy
 
 ## Use
 
-Click **Actions** at the top right (also at the foot of the sidebar) to open
+Click **Actions** at the top right (or `a` in the status line) to open
 **Set up agent status**, Settings or **All commands**. The top button stays available
 with the sidebar hidden or no sessions open. All commands supports clicking rows and
 scrolling with the wheel, including configured custom commands.
@@ -138,7 +137,7 @@ split beside a session stays with it.
 ╭──────────────────────────────╮
 │                              │
 │  ● shop-api              ● 1 │
-│   ● claude      main · 3m    │
+│   ● claude              3m   │
 │     Allow running npm test?  │
 │   ⠹ calm-heron          2m   │
 │   › shell                    │
@@ -146,18 +145,17 @@ split beside a session stays with it.
 │  ● web-shop                  │
 │   ✓ quick-fox          40s   │
 │                              │
-│  ──────────────────────────  │
-│  + new             actions   │
 ╰──────────────────────────────╯
 ```
 
 - A project is its dot (in its colour) and name; `● 1` on the right when something there needs
   you, `no git` outside a repo.
-- Under it, its sessions: state, name, `branch · age` on the right. A session that needs you has
+- Under it, its sessions: state, name, `agent · age` on the right (just the age when the name is the agent). A session that needs you has
   its question under it. Every new claude / codex gets its own worktree (named for you), so agents
   never edit the same files.
-- The active session keeps its selection fill and **▸** marker as you move the mouse.
-  Hover is a quieter fill; keyboard browsing uses **›** independently, including on sleeping rows.
+- One row is selected: a neutral tint with a **▎** bar at its left edge (lime while the sidebar has
+  the keys, dim when a pane does). The open session keeps a dim bar while you browse with the
+  keyboard, including on sleeping rows. Hover is a quieter tint.
 - Hiding the sidebar leaves a slim rail with status indicators and two-letter titles.
   Click to switch sessions, hover for full names, scroll to reach more, and use the
   chevron to expand. Its red count includes blocked agents outside the visible rows.
@@ -168,14 +166,15 @@ split beside a session stays with it.
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
 - An agent's subagents are listed under its row; the `▾ 3 subagents` heading (or **Hide
   subagents** in its menu) folds them away.
-- The sidebar's foot: **+ new** opens a plain shell, just like `Ctrl+Space n`;
-  **actions** lists common commands (settings included); **All keys** opens the full reference.
+- The status line along the bottom has `j inbox`, `a actions` (common commands, settings
+  included), `,` settings and `?` keys (the full reference). A plain shell is the sidebar's **+ new** (cards),
+  `Ctrl+Space n` or a project's **+**.
 - `⇆` under a row names a file that this checkout and another have each changed since their
   branches parted (a merge conflict waiting to happen); more than two are one line with a count.
 - Drag a group's name, or a session, up or down to reorder (what needs you still comes first);
   drop a session on another group (its name or one of its sessions) to move it there, within its
   section. Click to fold or open. With the sidebar focused
-  (`Ctrl+Space e`), a row's menu letters work directly (the sidebar's foot lists them): `x` (or
+  (`Ctrl+Space e`), a row's menu letters work directly (a row's menu lists them): `x` (or
   Delete) asks to close, `r` renames. Settings distinguishes installed, window and daemon versions.
 
 The leader key is `Ctrl+Space`. Press it and a sky-blue pill appears at the end of the tab row
@@ -368,7 +367,9 @@ opens (e.g. `~/code`); empty means wherever you run it.
 
 `Ctrl+Space ,` opens **Settings** in a right-hand drawer that slides beside the panes
 (on a narrow window it uses the pane column). Sections (Tab cycles): General ? Sessions ? Appearance ? Agents ?
-Keys. Values are chips you click (or ←→ / Enter). Appearance has **Layout** (Cards or Flat),
+Keys. Values are chips you click (or ←→ / Enter). General is in sections (INPUT, LAYOUT, SHELL, UPDATES): **Layout** (Cards or Flat) and **Background**
+(your terminal's own, so transparency shows through evenly, or solid) are in LAYOUT, and one line at the
+top says which seshi this is and whether it is current (`u` checks now). Appearance has the
 Cards pane controls and a **Theme**
 browser. **Working spinner** previews Braille, Dots, Line (ASCII), Circle, Arrows,
 Pulse, Blocks and Static. Choose **Custom** to type or paste space-separated frames.

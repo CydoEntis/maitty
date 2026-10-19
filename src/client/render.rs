@@ -24,7 +24,9 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     set_palette(t.ansi, t.ansi.map(|_| t.card2));
     super::hydra::set_round(app.cfg.ui.pill_caps && app.cfg.ui.layout != "flat");
     // The terminal's own background (its window padding) matches ours while we run.
+    let terminal_bg = app.cfg.ui.background != "solid";
     if let Color::Rgb(r, g, b) = t.bg
+        && !terminal_bg
         && app.osc_bg != Some(t.bg)
         && !cfg!(test)
     {
@@ -48,6 +50,21 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     }
     super::hydra::draw(app, f, area, &t);
     draw_overlays(app, f, area, &t);
+    if terminal_bg {
+        use_terminal_background(f.buffer_mut(), t.bg);
+    }
+}
+
+/// Hand every cell on the theme's ground back to the terminal's own background (SGR 49), so
+/// transparency or a background image looks the same under all of seshi's chrome. Done last,
+/// after everything that blends colours has drawn. Raised tones (sheets, modals, the status
+/// line) and the colours programs paint for themselves are not `bg`, so they stay.
+fn use_terminal_background(buf: &mut ratatui::buffer::Buffer, bg: Color) {
+    for cell in buf.content.iter_mut() {
+        if cell.bg == bg {
+            cell.bg = Color::Reset;
+        }
+    }
 }
 
 fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::Theme) {

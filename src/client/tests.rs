@@ -320,15 +320,17 @@ mod hydra_tests {
             terminal.draw(|f| render::draw(&mut app, f)).unwrap();
             assert_eq!(app.focused(), Some(1), "hover never changes the active pane");
             assert_eq!(terminal.backend().buffer()[(x + 8, active_y)].bg, active_bg);
-            assert_eq!(terminal.backend().buffer()[(x + 3, active_y)].symbol(), "▸");
+            assert_eq!(terminal.backend().buffer()[(x + 1, active_y)].symbol(), "▎");
         }
         app.on_mouse(MouseEvent { kind: MouseEventKind::Moved, column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         assert_ne!(terminal.backend().buffer()[(x + 8, hover_y)].bg, active_bg, "hover has its own quieter style");
         app.hy_side_set(hydra::SideItem::Sess(2));
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
-        assert_eq!(terminal.backend().buffer()[(x + 3, active_y)].symbol(), "▸");
-        assert_eq!(terminal.backend().buffer()[(x + 3, hover_y)].symbol(), "›");
+        let buf = terminal.backend().buffer();
+        assert_eq!(buf[(x + 1, active_y)].symbol(), "▎", "the open row keeps a bar");
+        assert_eq!(buf[(x + 1, hover_y)].symbol(), "▎", "and so does the one under the keyboard");
+        assert_eq!((buf[(x + 1, hover_y)].fg, buf[(x + 1, active_y)].fg), (app.theme.accent, app.theme.muted), "lime for the cursor, dim for the open one");
         app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
         app.on_mouse(MouseEvent { kind: MouseEventKind::Up(MouseButton::Left), column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
         assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 }))));
@@ -336,11 +338,11 @@ mod hydra_tests {
         app.hy_sync();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         assert_eq!(app.focused(), Some(2));
-        assert_eq!(terminal.backend().buffer()[(x + 3, hover_y)].symbol(), "▸");
+        assert_eq!(terminal.backend().buffer()[(x + 1, hover_y)].symbol(), "▎");
         app.snap.terms.get_mut(&2).unwrap().asleep = true;
         app.hy_fresh();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
-        assert_eq!(terminal.backend().buffer()[(x + 3, hover_y)].symbol(), "▸", "sleep glyphs leave the active marker visible");
+        assert_eq!(terminal.backend().buffer()[(x + 1, hover_y)].symbol(), "▎", "sleep glyphs leave the selection bar visible");
     }
 
     #[test]
@@ -475,27 +477,26 @@ mod hydra_tests {
         show(&text);
         let lines: Vec<&str> = text.lines().collect();
         assert!(!text.contains(">_ seshi"), "no logo");
-        // The floating grid: a row of margin, the sidebar card the full height two columns in,
-        // tab pills one row down, the cards below a row of air.
+        // The floating grid: a row of margin, the sidebar card the full height a column in, the
+        // tab pills on its top row, the cards directly under them.
         assert!(lines[0].trim().is_empty(), "a row of margin on top");
         assert!(lines[1].starts_with("  ▁▁"), "the sidebar card, a column in: {}", lines[1]);
-        assert!(lines[2].contains(" 1 ") && !lines[2].contains("claude") && lines[2].contains(" + ") && !lines[2].contains('▯'), "an unnamed tab is its number; +; no layout switch: {}", lines[2]);
-        assert!(lines[4].contains("▁ claude ▁ Fix flaky checkout test · shop-api · main") && lines[4].contains("● needs you ▁ ✕ ▁"), "title, project · branch, state and ✕ set into the card's border: {}", lines[4]);
-        assert!(lines[6].contains("> fix the flaky checkout test"), "the terminal a row below the border, inset");
-        assert!(text.contains("shop-api · ⎇ main"), "folder and branch in the card's footer");
-        assert!(!text.contains("needs you   a inbox"), "no app footer");
-        assert!(text.contains("+ new") && text.contains("actions") && !text.contains('\u{f013}'), "the sidebar's foot: new on the left, actions (settings is in there) on the right");
+        assert!(lines[1].contains(" 1 ") && !lines[1].contains("claude") && lines[1].contains(" + ") && !lines[1].contains('▯'), "an unnamed tab is its number; +; no layout switch: {}", lines[1]);
+        assert!(lines[2].contains("▁ claude ▁ Fix flaky checkout test · shop-api ▁") && lines[2].contains("● needs you ▁ ✕ ▁"), "name, repo, state and ✕ set into the card's border: {}", lines[2]);
+        assert!(lines[4].contains("> fix the flaky checkout test"), "the terminal a row below the border, inset");
+        assert!(text.contains("⎇ main") && !text.contains("shop-api · ⎇ main"), "the branch is in the status line, not a card footer");
+        assert!(text.contains("+ new") && text.contains("actions") && !text.contains('\u{f013}'), "a new button under the sidebar's top edge; the status line carries actions");
         // Projects and their sessions, nothing in between.
         assert!(text.contains("▾ shop-api") && text.contains("● 1"), "a project: its fold arrow and name, what needs you on the right");
         assert!(text.contains("AGENTS 2 ─") && text.contains("TERMINALS 1 ─") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "a heading per section");
         assert!(!text.contains("main folder"), "no 'main folder' wording");
         assert!(!text.contains("+ open a project"), "opening a project is in the header now");
         // Rows: state and name, branch · age on the right, its question underneath.
-        assert!(text.contains("● claude") && text.contains("main · 3m"), "state, then the name; branch · age on the right");
+        assert!(text.contains("● claude") && text.contains(" 3m") && !text.contains("main · 3m"), "state, then the name; age on the right (the agent too when the name isn't it), no branch");
         assert!(text.contains("Run npm test -- checkout?"), "the question under the agent");
         assert!(text.contains("Explore"), "subagents under their agent");
-        assert!(text.contains("▾ 4 subagents") && text.contains("● planner") && text.contains("● builder") && text.contains("● reviewer"), "live helper roles are visible with status markers");
-        assert!(text.contains("⣾ rate") && text.contains("rate-limit · 2m"), "a worktree's session is named after it");
+        assert!(text.contains("▾ 4 subagents") && text.contains("✎ planner") && text.contains("⚙ builder") && text.contains("⚖ reviewer"), "live helpers are visible with an icon for what each is doing");
+        assert!(text.contains("⣾ rate") && text.contains(" 2m"), "a worktree's session is named after it");
         assert!(!text.contains("Rate limit /login"), "under a session only its question, as in the redesign");
         assert!(text.contains("› shell") && !text.contains("shell 2"), "a shell in the project's folder is just 'shell', no age");
         assert!(!text.contains("session"), "no 'session' wording on screen");
@@ -632,7 +633,7 @@ mod hydra_tests {
         // The sidebar: sessions right under their project, worktree sessions tagged.
         let o = draw(&mut app, 160, 45);
         assert!(!o.contains("WORKTREES") && !o.contains("BRANCHES"), "no folder headings");
-        assert!(o.contains("rate") && o.contains("rate-limit · "), "a worktree session is named after it");
+        assert!(o.contains("rate") && o.contains(" · 2m"), "a worktree session is named after it, with its agent and age");
 
         // Resizing the sidebar, within its limits.
         let before = app.hy.side_rect.width;
@@ -660,9 +661,9 @@ mod hydra_tests {
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let (_, inner) = app.panes[0];
         let buf = term.backend().buffer();
-        assert_eq!(buf[(inner.x - 1, inner.y)].bg, hydra::pane_bg(&app.theme), "a small contrasting panel does not recolor the card padding");
+        assert_eq!(buf[(inner.x - 1, inner.y)].bg, ratatui::style::Color::Reset, "a small contrasting panel does not recolor the card padding");
         assert_eq!(buf[(inner.x, inner.y)].bg, app.theme.card2, "not a light grey slab");
-        assert_eq!(buf[(inner.x + 13, inner.y)].bg, hydra::pane_bg(&app.theme), "the rest on the card's ground");
+        assert_eq!(buf[(inner.x + 13, inner.y)].bg, ratatui::style::Color::Reset, "the rest on the card's ground");
     }
 
     #[test]
@@ -858,7 +859,7 @@ mod hydra_tests {
         app.hy_fresh();
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("shop-api · main") && o.contains("opus 4.5"), "project · branch in the card's title, the model in its footer");
+        assert!(o.contains("shop-api") && !o.contains("opus 4.5"), "the repo in the card's title; the model is the agent's own to show");
         assert!(o.contains("Fix the login flow"), "its name stays");
         assert!(!o.contains("› now add a test for it"), "one line under a row, no more");
     }
@@ -1412,7 +1413,8 @@ mod hydra_tests {
                 let screen = draw(&mut app, 100, 30);
                 show(&screen);
                 if by_mouse {
-                    let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::NewShell)).then_some((r.x, r.y))).expect("+ new is clickable");
+                    assert!(screen.contains("+ new"), "a visible new button");
+                    let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::NewShell)).then_some((r.x + 1, r.y))).expect("+ new is clickable");
                     app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
                 } else {
                     app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
@@ -1515,7 +1517,8 @@ mod hydra_tests {
         assert!(lines[1].starts_with("  ▁") && lines[1].trim().chars().filter(|c| *c == '▁').count() == 24, "a slim sidebar: {}", lines[1]);
         let side: String = lines.iter().map(|l| l.chars().take(30).collect::<String>() + "\n").collect();
         assert!(!side.contains("main · 3m") && !side.contains("Run npm test"), "no meta or questions in the slim sidebar: {side}");
-        assert!(o.contains("+ new") && o.contains("actions"), "new and actions fit a slim sidebar");
+        assert!(o.contains("+ new") && o.contains("Actions"), "the new button fits a slim sidebar, which still has no foot");
+        assert!(o.lines().last().is_some_and(|l| l.contains("? keys") && !l.contains("inbox")), "a narrow status line keeps only the count and keys");
     }
 
     #[test]
@@ -1612,13 +1615,14 @@ mod hydra_tests {
     }
 
     #[test]
-    fn the_sidebars_foot_is_the_same_with_the_keys_in_it() {
+    fn the_sidebar_has_no_foot_and_the_status_line_teaches_the_keys() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.hy_side_set(hydra::SideItem::Sess(2));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        // A row's keys are in its menu; the foot stays new and actions.
-        assert!(o.contains("+ new") && o.contains("actions") && !o.contains("x close") && !o.contains("Esc back"));
+        // A row's keys are in its menu; the status line has the global ones.
+        let rows: Vec<&str> = o.lines().collect();
+        assert!(rows[2].contains("+ new") && !rows[43].contains("+ new") && o.contains("actions") && !o.contains("x close") && !o.contains("Esc back"), "new is at the top, nothing at the foot");
     }
 
     #[test]
@@ -1853,30 +1857,25 @@ mod hydra_tests {
     }
 
     #[test]
-    fn live_helper_roles_have_distinct_theme_colors_and_working_markers() {
+    fn live_helpers_show_what_they_are_doing_by_icon_in_the_working_colour() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.hy_fresh();
         let mut terminal = Terminal::new(TestBackend::new(160, 45)).unwrap();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = terminal.backend().buffer().clone();
-        let color_at = |name: &str| {
+        let at = |name: &str| {
             let row = |y| (0..160).map(|x| buf[(x, y)].symbol()).collect::<String>();
             let y = (0..45).find(|&y| row(y).contains(name)).unwrap_or_else(|| panic!("{name} helper row"));
             let x = row(y)[..row(y).find(name).unwrap()].chars().count() as u16;
-            let marker = (0..x).find(|&x| buf[(x, y)].symbol() == "●").unwrap_or_else(|| panic!("{name} working marker"));
-            (buf[(x, y)].fg, buf[(marker, y)].fg)
+            // The icon sits two cells before the name; the name is the plain text colour.
+            (buf[(x - 2, y)].symbol().to_string(), buf[(x - 2, y)].fg, buf[(x, y)].fg)
         };
-        let (planner, planner_status) = color_at("planner");
-        let (builder, builder_status) = color_at("builder");
-        let (reviewer, reviewer_status) = color_at("reviewer");
-        assert_eq!(
-            [planner, builder, reviewer],
-            [ratatui::style::Color::Rgb(0, 205, 210), ratatui::style::Color::Rgb(160, 120, 255), ratatui::style::Color::Rgb(240, 90, 190)],
-            "role colors use cyan, violet and magenta-pink instead of status colors"
-        );
-        assert!(planner != builder && builder != reviewer && reviewer != planner, "roles have distinct theme identity colors");
-        assert!([planner, builder, reviewer].into_iter().all(|color| color != app.theme.idle), "role colors stay distinct from idle");
-        assert_eq!([planner_status, builder_status, reviewer_status], [app.theme.working; 3], "each active helper keeps the working signal");
+        let (planner, builder, reviewer) = (at("planner"), at("builder"), at("reviewer"));
+        assert_eq!([planner.0.as_str(), builder.0.as_str(), reviewer.0.as_str()], ["✎", "⚙", "⚖"], "an icon for each role");
+        let working = app.theme.status(Status::Working);
+        assert_eq!([planner.1, builder.1, reviewer.1], [working; 3], "the icon wears the working colour");
+        assert_eq!([planner.2, builder.2, reviewer.2], [app.theme.text; 3], "the names are one neutral colour, not a colour per role");
+        assert_ne!(working, app.theme.working, "eased, so quieter than the raw orange");
     }
 
     #[test]
@@ -1961,8 +1960,7 @@ mod hydra_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(!o.contains("claude 5h"), "no plan limits on screen");
-        assert!(o.contains("ctx 76% · $1.20"), "context and cost on its bar");
-        assert!(o.contains("76% "), "a filling context on its row");
+        assert!(!o.contains("ctx 76%") && !o.contains("$1.20") && !o.contains("76% "), "context and cost are the agent's own to show");
         app.snap.terms.get_mut(&agent).unwrap().resume_at = Some(now + 600);
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("resumes in 10m") || o.contains("resumes in 9m"), "waiting on a limit, on its row");
@@ -1995,7 +1993,7 @@ mod hydra_tests {
         // Settings: the version, the new one, and the button.
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains(&format!("seshi {} → 9.9.9", env!("CARGO_PKG_VERSION"))) && o.contains("Update now"), "the button by the version");
+        assert!(o.contains(&format!("seshi {}", env!("CARGO_PKG_VERSION"))) && o.contains("9.9.9 is out") && o.contains("Update now"), "the button by the version");
         // Clicking asks first: from this version to the new one, and what changed.
         let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::Update)).then_some((r.x + 1, r.y))).expect("it can be clicked");
         app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
@@ -2415,14 +2413,15 @@ mod hydra_tests {
             for (status, want) in [(Status::Blocked, t.on_lit(t.blocked)), (Status::Done, t.on_lit(t.done))] {
                 app.snap.terms.get_mut(&1).unwrap().status = status;
                 let (fg, bg) = name_fg(&mut app, "claude");
-                assert_eq!(bg, t.hov, "{theme}: the row is lit");
+                assert_eq!(bg, t.sel_bg(), "{theme}: the row is lit");
                 assert_eq!(fg, want, "{theme}: {status:?} keeps its colour on the lit row");
                 assert!(crate::theme::contrast(fg, bg) >= 3.0, "{theme}: and reads there");
             }
-            // Working shimmers between its colour and a brighter one, never plain white.
+            // Working is neutral: never the amber of needs-you or the green of done.
             app.snap.terms.get_mut(&1).unwrap().status = Status::Working;
-            let (fg, _) = name_fg(&mut app, "claude");
-            assert!(fg != t.strong, "{theme}: working isn't white on the lit row");
+            let (fg, bg) = name_fg(&mut app, "claude");
+            assert!(fg != t.blocked && fg != t.done, "{theme}: working isn't a state colour on the lit row");
+            assert!(crate::theme::contrast(fg, bg) >= 3.0, "{theme}: and reads there");
             // No state to show: bright, as before.
             app.snap.terms.get_mut(&1).unwrap().status = Status::Idle;
             assert_eq!(name_fg(&mut app, "claude").0, t.strong, "{theme}: idle is plain bright text");
@@ -2592,7 +2591,7 @@ mod hydra_tests {
         app.act(Action::Settings);
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains(&format!("seshi {}", env!("CARGO_PKG_VERSION"))) && o.contains("Check for updates"));
+        assert!(o.contains(&format!("seshi {}", env!("CARGO_PKG_VERSION"))) && o.contains("up to date") && o.contains("u check now"));
         assert!(app.hits.iter().any(|(_, h)| *h == Hit::Hy(hydra::HyHit::CheckUpdate)), "it can be clicked");
         // While it's asking, the button says so and can't be pressed twice.
         app.update_checking = true;
@@ -2819,13 +2818,15 @@ mod hydra_tests {
         app.hy.overlaps.insert(p.path.clone(), shared(60));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(!o.contains("shared files") && !o.contains("file0.ts"), "sidebar stays focused on sessions");
+        let above_status: String = o.lines().take(44).collect::<Vec<_>>().join("\n");
+        assert!(!above_status.contains("shared files") && !above_status.contains("file0.ts"), "sidebar stays focused on sessions");
         let lines = hydra::side_lines(&app, &app.hy_model(), &app.theme);
         assert!(lines.len() < 20, "the sidebar stays short: {} lines", lines.len());
         // A couple are still available through the Inbox.
         app.hy.overlaps.insert(p.path.clone(), shared(2));
         let o = draw(&mut app, 160, 45);
-        assert!(!o.contains("file0.ts") && !o.contains("file1.ts"));
+        let above_status: String = o.lines().take(44).collect::<Vec<_>>().join("\n");
+        assert!(!above_status.contains("file0.ts") && !above_status.contains("file1.ts"));
         // In the Inbox they come after what needs you and what finished, however many.
         app.hy.overlaps.insert(p.path.clone(), shared(60));
         let rows = hydra::goto_rows(&app.hy_model(), "", hydra::heads_up(&app).len());
@@ -2846,7 +2847,9 @@ mod hydra_tests {
         app.hy_fresh();
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(!o.contains("checkout.ts"), "worktree overlap labels stay out of the sidebar");
+        let above_status: String = o.lines().take(44).collect::<Vec<_>>().join("\n");
+        assert!(!above_status.contains("checkout.ts"), "worktree overlap labels stay out of the sidebar");
+        assert!(o.lines().nth(44).is_some_and(|l| l.contains("⇆ src/checkout.ts")), "the selected session's heads-up is in the status line");
         // In the Inbox: HEADS UP, with what you can do about it.
         app.act(Action::Jump);
         let o = draw(&mut app, 160, 45);
@@ -2911,6 +2914,72 @@ mod hydra_tests {
     }
 
     #[test]
+    fn the_background_setting_picks_the_terminals_or_a_painted_ground() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let gap = |app: &mut App| {
+            let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+            term.draw(|f| render::draw(app, f)).unwrap();
+            term.backend().buffer()[(0, 0)].bg
+        };
+        assert_eq!(gap(&mut app), ratatui::style::Color::Reset, "terminal: SGR 49 under the chrome");
+        app.cfg.ui.background = "solid".into();
+        assert_eq!(gap(&mut app), app.theme.bg, "solid: the theme's own ground");
+    }
+
+    #[test]
+    fn the_status_line_fits_what_the_right_side_leaves() {
+        let (wide, mut app) = super::design_tests::render_with(160, 45);
+        let last = |text: &str| text.lines().last().unwrap_or_default().to_string();
+        let wide = last(&wide);
+        assert!(wide.contains("/code/shop-api") && wide.contains("⎇ main") && wide.contains("j inbox") && wide.contains(", settings"), "{wide}");
+        assert!(!wide.contains("PANE") && !wide.contains("SIDEBAR"), "the zone badge is flat's: {wide}");
+        let narrow = last(&draw(&mut app, 100, 30));
+        assert!(narrow.contains("⎇ main") && !narrow.contains("/code/shop-api") && !narrow.contains("inbox"), "below 140 columns the path goes and the right shrinks: {narrow}");
+        app.cfg.ui.layout = "flat".into();
+        let flat = last(&draw(&mut app, 160, 45));
+        assert!(flat.contains("PANE") || flat.contains("SIDEBAR"), "flat names its zone: {flat}");
+    }
+
+    #[test]
+    fn general_settings_are_in_sections_under_one_version_line() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("up to date") && o.contains("u check now"), "one version line");
+        assert!(!o.contains("Installed here") && !o.contains("This window"), "the detail lines only show when something differs");
+        let rows = design::settings_rows(modal::Cat::General);
+        let sections: Vec<(&str, &str)> = rows.iter().filter_map(|r| match r { design::SRow::Setting(s) => Some((design::settings_group(r), s.label)), _ => None }).collect();
+        let pos = |label: &str| sections.iter().position(|(_, l)| *l == label).unwrap_or_else(|| panic!("{label} is on the General page"));
+        assert_eq!(sections[pos("Leader key")].0, "INPUT");
+        assert_eq!(sections[pos("Layout")].0, "LAYOUT");
+        assert_eq!(sections[pos("Editor")].0, "SHELL");
+        assert!(pos("Leader key") < pos("Mouse") && pos("Mouse") < pos("Keys after a pause") && pos("Keys after a pause") < pos("Layout"), "input first");
+        assert!(pos("Layout") < pos("Background") && pos("Background") < pos("Sidebar side") && pos("Sidebar side") < pos("Splash screen"), "then layout, background, sidebar side, splash");
+        assert!(pos("Splash screen") < pos("Editor") && pos("Editor") < pos("Shell"), "then the shell");
+        assert!(o.contains("INPUT ─"), "a heading has its rule");
+    }
+
+    #[test]
+    fn only_what_has_the_keyboard_is_lit() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let lit_edges = |app: &mut App| {
+            let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+            term.draw(|f| render::draw(app, f)).unwrap();
+            let buf = term.backend().buffer().clone();
+            let (_, pane) = app.pane_frames[0];
+            let accent = app.theme.accent;
+            // The pane card's left edge, then anything else on screen to its right (the sheet).
+            let pane_lit = (pane.y + 1..pane.bottom() - 1).any(|y| buf[(pane.x, y)].fg == accent);
+            let sheet_lit = (0..45u16).any(|y| (pane.right()..160u16).any(|x| buf[(x, y)].fg == accent && matches!(buf[(x, y)].symbol(), "▕" | "▏" | "│")));
+            (pane_lit, sheet_lit)
+        };
+        assert_eq!(lit_edges(&mut app), (true, false), "the pane has the keys: its edge is lit");
+        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 0, sel: 1, editing: None, capturing: false, scroll: 0 }));
+        assert_eq!(lit_edges(&mut app), (false, true), "settings has them: the sheet is lit, the pane is not");
+    }
+
+    #[test]
     fn a_card_is_filled_up_to_its_line() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
@@ -2921,7 +2990,7 @@ mod hydra_tests {
         let side = app.hy.side_rect;
         let y = side.y + side.height / 2;
         assert_eq!(buf[(side.x, y)].symbol(), "▕", "the line hugs the card");
-        assert_ne!(buf[(side.x, y)].bg, buf[(side.x + 1, y)].bg, "outside the line: the desk; inside: the card");
+        assert_eq!(buf[(side.x, y)].bg, buf[(side.x + 1, y)].bg, "one ground: the line, not a second grey, marks the card");
         assert_eq!(buf[(side.x, side.y)].symbol(), " ", "the corner is where the two lines meet");
         // Rounded keeps the centred line.
         app.cfg.ui.corners = "rounded".into();
@@ -2952,7 +3021,7 @@ mod hydra_tests {
         let t = &app.theme;
         assert_eq!(name_at("claude"), Some(t.blocked), "needs you: its colour");
         let codex = name_at("rate-limit").or_else(|| name_at("rate")).expect("the working codex in the sidebar (named for its worktree)");
-        assert!(codex != t.text && codex != t.blocked, "working: the shimmer in the working colour, not plain text: {codex:?}");
+        assert!(codex != t.blocked && codex != t.done, "working is neutral, never amber or green: {codex:?}");
     }
 
     #[test]
@@ -3144,7 +3213,7 @@ mod settings_splash_tests {
         app.splash = false;
         app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 0, sel: 1, editing: None, capturing: false, scroll: 0 }));
         let settings = draw(&mut app);
-        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 2, sel: 7, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 2, sel: 8, editing: None, capturing: false, scroll: 0 }));
         let keys = draw(&mut app);
         if std::env::var("SESHI_SHOW").is_ok() {
             println!("{splash}\n{settings}\n{keys}");

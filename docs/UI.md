@@ -117,24 +117,30 @@ dividers, scroll; Ctrl+click opens paths.
 The high-fidelity flat-layout reference and its interaction spec are preserved in
 [`docs/design/flat/README.md`](design/flat/README.md); keep the implementation aligned with it.
 
-The sidebar's **+ new** uses the same shell action as leader + `n`, including
-its configured key hint. Keep **Actions** available at the top right, including
+The sidebar has no footer; the status line along the bottom of both layouts holds the global hints
+(`j inbox`, `a actions`, `,` settings, `?` keys). A **+ new** button on the sidebar's top row (cards),
+a project's **+** and leader + `n` open a plain shell; every control stays reachable by mouse. Keep **Actions** available at the top right, including
 without a sidebar or session. Offer clickable agent status setup (including Codex),
 Settings and All commands; every palette row is clickable and wheel-scrollable.
 Include configured commands, retaining existing confirmations.
 
-When an update is available, show the accent dot beside **Actions**, its
+When an update is available, show the accent dot beside **Actions** (top right and in the status line), its
 **Settings** row and the **General** settings tab to guide users to the update.
 
 Retain the working, needs-you, done or idle icon when a terminal rings. Terminal
 bells do not add sidebar indicators or history entries.
 
-Keep the active sidebar session filled with `hov` and marked `▸`, independently
-of mouse hover or keyboard browsing. Hover uses a quieter fill; the keyboard
-target uses `›`. Preserve agent status icons and colors in each state.
+Mark one selected sidebar row: the one under the keyboard while the sidebar has the keys,
+else the open session. It gets a neutral tint (`sel_bg`: the background a step toward the text)
+and a `▎` bar at its left edge, lime while the sidebar has the keys and dim when a pane or a sheet
+does. The open session keeps a dim bar while another row is under the keyboard. Hover uses a
+quieter tint (`hover_bg`). Preserve agent status icons and colors in each state.
 
-Settings shows installed, window and daemon versions separately, with a labeled
-remote daemon and a restart-pending notice when versions differ. Keep the update
+Settings opens on General with one version line (`seshi 0.34.0 · up to date · daemon and window
+match · u check now`; with an update, the version, what is out and **Update now**). Installed, window and
+daemon versions are listed separately, with a labeled remote daemon and a restart-pending notice,
+only when they differ or can't be read. General is in sections (INPUT, LAYOUT, SHELL, UPDATES), each a
+dim caps heading with a rule; Layout and Background live in LAYOUT. Keep the update
 dots until that mismatch is resolved. Installing an update leaves this window and
 the daemon running. Never restart the daemon automatically, even on a protocol mismatch.
 Status icons and pane status tags open the existing evidence popover, with a
@@ -146,6 +152,49 @@ including aliases and custom commands. Show palette-only commands without
 inventing bindings. Keep the delayed leader overview compact. Contextual keys
 come from [shortcuts.md](shortcuts.md), embedded in the app so both stay identical.
 
+## Project-specific: background
+
+Chrome (gaps, card insides, the sidebar, the pane area) sits on one ground. Settings >
+Appearance > Background picks it: **terminal** (the default) hands that ground back to the
+terminal's own background (SGR 49), so transparency or a background image looks the same under
+all of it; **solid** paints it the theme's `bg`. Only the sheet, modals and the status line are a
+painted, raised tone. The swap is one last pass over the frame (`use_terminal_background` in
+`client/render.rs`), so drawing code keeps using `t.bg` and blending still works. The v5 handoff in
+[`docs/design/v5/README.md`](design/v5/README.md) is the reference.
+
+## Project-specific: each fact once
+
+Show each fact in one place. The session name is the sidebar row and the pane title; the repo
+follows it in the title (after what the agent is working on, which nothing else shows). The agent
+is the sidebar row's meta, before the age, and is left out when the name is the agent. Where it
+runs, its branch, PR, dev server and `⇆` tag belong to the status line. Model, context and cost
+are the agent's own status line, so seshi's chrome never repeats them. The pane has no footer row.
+
+## Project-specific: colour jobs
+
+Each colour does one job. Lime (`accent`) is focus: the lit edge and the focused title. The
+theme's `blocked` colour is needs-you and nothing else (the v5 design makes it amber; each
+theme picks its own). Red (`err`) is failed, crashed or destructive, and a
+machine load past its threshold. Green (`done`) is done. Sky is leader mode. **Working keeps its
+orange, eased:** `Theme::status(Working)` is the theme's working colour mixed 35% toward the muted
+text, so it sits quieter than needs-you. It shows on the status glyph and a helper's icon; names
+shimmer in a neutral tone, not orange. A paused limit and ordinary CPU/RAM load are dim.
+
+## Project-specific: one lit edge and the status line
+
+Only what has the keyboard is lit: the focused pane's border (cards) or bar (flat), or, while a
+sheet is open, the sheet. The pane then drops to a `line` border and fades; the sidebar's
+selection bar goes dim. Unfocused panes fade by the Dim setting (30% by default; "40%" in an older
+config counts as 30%).
+
+The bottom row is the status line in both layouts, on the raised `card` tone. Left: in flat a zone
+badge (`SIDEBAR` / `PANE`), then the selected session's path, `⎇ branch` and a `⇆ file` heads-up.
+Right: `● n needs you`, then `j inbox   a actions   , settings   ? keys`, with an accent dot after
+`actions` when an update waits. The right side keeps its room; the left fills the rest, dropping
+the path first (it never shows below 140 columns) and then tags from the end. Below 140 columns the
+right becomes `● n   ? keys`. The design also shows `#PR ✓/✕` and a dev-server tag; seshi has no
+data for either yet.
+
 ## Project-specific: UI conventions
 
 - Popups are centred `panel()`s with an accent title bar and `Esc close`; the
@@ -153,8 +202,8 @@ come from [shortcuts.md](shortcuts.md), embedded in the app so both stay identic
   working panes visible beside it when the window allows.
   Settings keeps its General, Sessions, Appearance, Agents and Keys sections in
   the sheet; its update controls and keyboard and mouse editing stay available.
-- Selection uses the theme's selection fill and a marker; never the accent
-  colour as a row fill. The sidebar keeps active `▸` and keyboard `›` distinct.
+- Selection is a neutral tint (`sel_on` of the surface it sits on) with a lime `▎` bar;
+  never the accent colour as a row fill.
 - Every popup row is clickable and keyboard-reachable; every key is shown as a
   keycap somewhere (hints line, keys screen, palette).
 - Short-lived notes are toasts above the bottom bar; destructive actions ask
@@ -196,10 +245,9 @@ total blocked count visible even when its rows are off-screen. Provide a mouse
 expand control and retain Actions. The rail is the collapsed state of the same
 layout, not another layout.
 
-Show active helper rows under their owning agent, with an orange working dot.
-Color planner cyan, builder violet and reviewer magenta-pink; use distinct
-deterministic role colors for other helpers. Keep helper role colors separate
-from agent status colors: green done, orange working, red needs-you and gray idle.
+Show active helper rows under their owning agent: an icon for what the helper is doing
+(`✎` planning, a book researching (Nerd Font `\u{f02d}`, else `▤`), `⚙` building, `⚖` reviewing, `●` otherwise) in the eased working
+orange, then its name in the plain text colour. Roles are told apart by icon, never by colour.
 
 ## Project-specific: frame presentation
 

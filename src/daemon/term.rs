@@ -722,6 +722,11 @@ impl Term {
         seed.extend(self.ring.drain(..));
         let excess = seed.len().saturating_sub(self.ring_cap);
         self.ring = seed.into_iter().skip(excess).collect();
+        // A full ring was cut from the front at an arbitrary byte, so start it at a clean line.
+        if excess > 0 || self.ring.len() >= self.ring_cap {
+            let cut = clean_start(self.ring.make_contiguous());
+            self.ring.drain(..cut);
+        }
     }
 
     pub fn replay(&self) -> Vec<u8> {
@@ -864,8 +869,32 @@ pub fn same_secret(a: &str, b: &str) -> bool {
     !a.is_empty() && a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
 }
 
+/// How many leading bytes of output cut at a random byte to drop so what's left starts at a
+/// line, not mid-character or mid-escape-sequence. Looks only a short way for a newline, and
+/// otherwise just drops the stray bytes of a split UTF-8 character.
+fn clean_start(buf: &[u8]) -> usize {
+    const LOOK: usize = 4096;
+    if let Some(nl) = buf.iter().take(LOOK).position(|&b| b == b'\n') {
+        return nl + 1;
+    }
+    buf.iter().take_while(|&&b| b & 0xC0 == 0x80).count()
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_cut_history_starts_at_a_clean_line() {
+        let cut = "ʼ".as_bytes()[1..].to_vec();
+        let mut mid_char = cut.clone();
+        mid_char.extend_from_slice(b"abc");
+        assert_eq!(super::clean_start(&mid_char), 1, "a split character's tail is dropped");
+        let mut mid_escape = b"8;5;1mtext\r\nnext line".to_vec();
+        assert_eq!(super::clean_start(&mid_escape), 12, "a half escape sequence goes with its line");
+        mid_escape.clear();
+        assert_eq!(super::clean_start(&mid_escape), 0);
+        assert_eq!(super::clean_start(b"whole line\r\n"), 12, "a clean start loses only its first line");
+    }
+
     #[test]
     fn a_zsh_pane_hands_back_to_your_files_then_wraps_agents() {
         let env = super::zsh_env(&["claude".into()]);
