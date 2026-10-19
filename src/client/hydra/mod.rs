@@ -326,9 +326,6 @@ pub(super) struct Session {
     pub asleep: bool,
     /// Subagents it's running right now.
     pub subagents: Vec<String>,
-    pub model: String,
-    /// How full its context is, 0–100, when it says.
-    pub context: Option<f32>,
     /// Stopped by a plan limit: seshi says "continue" then (unix seconds).
     pub resume_at: Option<u64>,
     /// The session whose agent started this one (its commander), if one did.
@@ -489,20 +486,6 @@ pub(super) fn until(at: u64) -> String {
         _ => format!("{}d", s / 86_400),
     }
 }
-
-/// How full a context (or used a limit) is worth showing, and in what colour.
-pub(super) fn fullness(t: &crate::theme::Theme, pct: f32) -> Color {
-    if pct >= 90.0 {
-        t.blocked
-    } else if pct >= 70.0 {
-        t.working
-    } else {
-        t.muted
-    }
-}
-
-/// A context this full is shown on the sidebar row (below it, only on the pane's bar).
-pub(super) const CONTEXT_SHOWN_FROM: f32 = 50.0;
 
 /// An agent's numbered choices on screen ("❯ 1. Yes", "  2. Yes, and always allow …"),
 /// shortened for buttons. Falls back to Yes / Always / No.
@@ -673,8 +656,6 @@ impl App {
                     is_agent: t.agent.is_some(),
                     asleep: t.asleep,
                     subagents: t.subagents.clone(),
-                    model: t.model.clone(),
-                    context: t.usage.context,
                     resume_at: t.resume_at,
                     started_by: t.started_by,
                     queued: t.queued.clone(),

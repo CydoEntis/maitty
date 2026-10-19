@@ -157,6 +157,14 @@ painted, raised tone. The swap is one last pass over the frame (`use_terminal_ba
 `client/render.rs`), so drawing code keeps using `t.bg` and blending still works. The v5 handoff in
 [`docs/design/v5/README.md`](design/v5/README.md) is the reference.
 
+## Project-specific: each fact once
+
+Show each fact in one place. The session name is the sidebar row and the pane title; the repo
+follows it in the title (after what the agent is working on, which nothing else shows). The agent
+is the sidebar row's meta, before the age, and is left out when the name is the agent. Where it
+runs, its branch, PR, dev server and `⇆` tag belong to the status line. Model, context and cost
+are the agent's own status line, so seshi's chrome never repeats them. The pane has no footer row.
+
 ## Project-specific: UI conventions
 
 - Popups are centred `panel()`s with an accent title bar and `Esc close`; the

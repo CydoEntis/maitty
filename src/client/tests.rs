@@ -480,9 +480,9 @@ mod hydra_tests {
         assert!(lines[0].trim().is_empty(), "a row of margin on top");
         assert!(lines[1].starts_with("  ▁▁"), "the sidebar card, a column in: {}", lines[1]);
         assert!(lines[1].contains(" 1 ") && !lines[1].contains("claude") && lines[1].contains(" + ") && !lines[1].contains('▯'), "an unnamed tab is its number; +; no layout switch: {}", lines[1]);
-        assert!(lines[2].contains("▁ claude ▁ Fix flaky checkout test · shop-api · main") && lines[2].contains("● needs you ▁ ✕ ▁"), "title, project · branch, state and ✕ set into the card's border: {}", lines[2]);
+        assert!(lines[2].contains("▁ claude ▁ Fix flaky checkout test · shop-api ▁") && lines[2].contains("● needs you ▁ ✕ ▁"), "name, repo, state and ✕ set into the card's border: {}", lines[2]);
         assert!(lines[4].contains("> fix the flaky checkout test"), "the terminal a row below the border, inset");
-        assert!(text.contains("shop-api · ⎇ main"), "folder and branch in the card's footer");
+        assert!(text.contains("⎇ main") && !text.contains("shop-api · ⎇ main"), "the branch is in the status line, not a card footer");
         assert!(!text.contains("+ new") && text.contains("actions") && !text.contains('\u{f013}'), "no sidebar foot; the status line carries actions");
         // Projects and their sessions, nothing in between.
         assert!(text.contains("▾ shop-api") && text.contains("● 1"), "a project: its fold arrow and name, what needs you on the right");
@@ -490,11 +490,11 @@ mod hydra_tests {
         assert!(!text.contains("main folder"), "no 'main folder' wording");
         assert!(!text.contains("+ open a project"), "opening a project is in the header now");
         // Rows: state and name, branch · age on the right, its question underneath.
-        assert!(text.contains("● claude") && text.contains("main · 3m"), "state, then the name; branch · age on the right");
+        assert!(text.contains("● claude") && text.contains(" 3m") && !text.contains("main · 3m"), "state, then the name; age on the right (the agent too when the name isn't it), no branch");
         assert!(text.contains("Run npm test -- checkout?"), "the question under the agent");
         assert!(text.contains("Explore"), "subagents under their agent");
         assert!(text.contains("▾ 4 subagents") && text.contains("● planner") && text.contains("● builder") && text.contains("● reviewer"), "live helper roles are visible with status markers");
-        assert!(text.contains("⣾ rate") && text.contains("rate-limit · 2m"), "a worktree's session is named after it");
+        assert!(text.contains("⣾ rate") && text.contains(" 2m"), "a worktree's session is named after it");
         assert!(!text.contains("Rate limit /login"), "under a session only its question, as in the redesign");
         assert!(text.contains("› shell") && !text.contains("shell 2"), "a shell in the project's folder is just 'shell', no age");
         assert!(!text.contains("session"), "no 'session' wording on screen");
@@ -631,7 +631,7 @@ mod hydra_tests {
         // The sidebar: sessions right under their project, worktree sessions tagged.
         let o = draw(&mut app, 160, 45);
         assert!(!o.contains("WORKTREES") && !o.contains("BRANCHES"), "no folder headings");
-        assert!(o.contains("rate") && o.contains("rate-limit · "), "a worktree session is named after it");
+        assert!(o.contains("rate") && o.contains(" · 2m"), "a worktree session is named after it, with its agent and age");
 
         // Resizing the sidebar, within its limits.
         let before = app.hy.side_rect.width;
@@ -857,7 +857,7 @@ mod hydra_tests {
         app.hy_fresh();
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("shop-api · main") && o.contains("opus 4.5"), "project · branch in the card's title, the model in its footer");
+        assert!(o.contains("shop-api") && !o.contains("opus 4.5"), "the repo in the card's title; the model is the agent's own to show");
         assert!(o.contains("Fix the login flow"), "its name stays");
         assert!(!o.contains("› now add a test for it"), "one line under a row, no more");
     }
@@ -1952,8 +1952,7 @@ mod hydra_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(!o.contains("claude 5h"), "no plan limits on screen");
-        assert!(o.contains("ctx 76% · $1.20"), "context and cost on its bar");
-        assert!(o.contains("76% "), "a filling context on its row");
+        assert!(!o.contains("ctx 76%") && !o.contains("$1.20") && !o.contains("76% "), "context and cost are the agent's own to show");
         app.snap.terms.get_mut(&agent).unwrap().resume_at = Some(now + 600);
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("resumes in 10m") || o.contains("resumes in 9m"), "waiting on a limit, on its row");

@@ -50,11 +50,10 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
   files (each subagent by its task's name, and `goal` while `/goal` is driving it). Helper roles
   use cyan for planning, violet for building and magenta-pink for reviewing, distinct from the
   green, amber, red and gray agent status colors.
-- **Usage and limits.** Each agent's card shows how full its context is and what its session
-  has cost, and its sidebar row shows the context once it's past half. An agent stopped by a limit
-  is told "continue" once the limit resets (Settings → Continue after a limit). Claude's numbers
-  come from its status line: `seshi integrate claude` makes seshi's run first and then yours,
-  which looks the same as before.
+- **Limits.** An agent stopped by a limit is told "continue" once the limit resets (Settings →
+  Continue after a limit), and its card says when. Model, context and cost are the agent's own
+  status line to show; seshi doesn't repeat them. Claude's limit numbers come from its status line:
+  `seshi integrate claude` makes seshi's run first and then yours, which looks the same as before.
 - **Detection without setup.** The process tree finds `claude`, `codex`, `gemini`, `opencode`,
   `cursor-agent`, `copilot`, `amp`, `qwen`, `aider` and others, and screen patterns tell
   working from blocked. Hooks (`seshi integrate claude`) make it exact.
@@ -138,7 +137,7 @@ split beside a session stays with it.
 ╭──────────────────────────────╮
 │                              │
 │  ● shop-api              ● 1 │
-│   ● claude      main · 3m    │
+│   ● claude              3m   │
 │     Allow running npm test?  │
 │   ⠹ calm-heron          2m   │
 │   › shell                    │
@@ -151,7 +150,7 @@ split beside a session stays with it.
 
 - A project is its dot (in its colour) and name; `● 1` on the right when something there needs
   you, `no git` outside a repo.
-- Under it, its sessions: state, name, `branch · age` on the right. A session that needs you has
+- Under it, its sessions: state, name, `agent · age` on the right (just the age when the name is the agent). A session that needs you has
   its question under it. Every new claude / codex gets its own worktree (named for you), so agents
   never edit the same files.
 - The active session keeps its selection fill and **▸** marker as you move the mouse.
