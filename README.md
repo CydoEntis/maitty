@@ -167,8 +167,8 @@ split beside a session stays with it.
 - An agent's subagents are listed under its row; the `▾ 3 subagents` heading (or **Hide
   subagents** in its menu) folds them away.
 - The status line along the bottom has `j inbox`, `a actions` (common commands, settings
-  included), `,` settings and `?` keys (the full reference). A plain shell is `Ctrl+Space n` or a
-  project's **+**.
+  included), `,` settings and `?` keys (the full reference). A plain shell is the sidebar's **+ new** (cards),
+  `Ctrl+Space n` or a project's **+**.
 - `⇆` under a row names a file that this checkout and another have each changed since their
   branches parted (a merge conflict waiting to happen); more than two are one line with a count.
 - Drag a group's name, or a session, up or down to reorder (what needs you still comes first);

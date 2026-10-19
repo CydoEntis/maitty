@@ -485,7 +485,7 @@ mod hydra_tests {
         assert!(lines[2].contains("▁ claude ▁ Fix flaky checkout test · shop-api ▁") && lines[2].contains("● needs you ▁ ✕ ▁"), "name, repo, state and ✕ set into the card's border: {}", lines[2]);
         assert!(lines[4].contains("> fix the flaky checkout test"), "the terminal a row below the border, inset");
         assert!(text.contains("⎇ main") && !text.contains("shop-api · ⎇ main"), "the branch is in the status line, not a card footer");
-        assert!(!text.contains("+ new") && text.contains("actions") && !text.contains('\u{f013}'), "no sidebar foot; the status line carries actions");
+        assert!(text.contains("+ new") && text.contains("actions") && !text.contains('\u{f013}'), "a new button under the sidebar's top edge; the status line carries actions");
         // Projects and their sessions, nothing in between.
         assert!(text.contains("▾ shop-api") && text.contains("● 1"), "a project: its fold arrow and name, what needs you on the right");
         assert!(text.contains("AGENTS 2 ─") && text.contains("TERMINALS 1 ─") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "a heading per section");
@@ -1400,22 +1400,31 @@ mod hydra_tests {
     }
 
     #[test]
-    fn leader_n_starts_a_plain_shell_in_the_selected_project() {
+    fn the_new_button_and_leader_n_start_the_same_plain_shell() {
         for cursor in [None, Some(2)] {
-            let (_, mut app) = super::design_tests::render_with(100, 30);
-            let (tx, mut rx) = mpsc::unbounded_channel();
-            app.out = tx;
-            app.hy.cursor = cursor;
-            app.mode = if cursor.is_some() { Mode::Side } else { Mode::Normal };
-            let selected = &app.snap.terms[&cursor.or(app.focused()).unwrap()];
-            let expected = selected.root.clone().unwrap_or_else(|| selected.cwd.clone());
-            show(&draw(&mut app, 100, 30));
-            app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
-            app.on_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
-            assert_eq!(app.mode, Mode::Normal, "new opens a shell immediately");
-            let commands: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).filter_map(|m| match m { ClientMsg::Command(c) => Some(c), _ => None }).collect();
-            assert!(matches!(commands.as_slice(), [Command::NewWorkspace { cwd: Some(cwd), name: None, cmd: None }] if cwd == &expected), "one plain shell in the selected project: {commands:?}");
-            assert!(app.hy.pending_split.is_none(), "the new session opens full screen");
+            for by_mouse in [false, true] {
+                let (_, mut app) = super::design_tests::render_with(100, 30);
+                let (tx, mut rx) = mpsc::unbounded_channel();
+                app.out = tx;
+                app.hy.cursor = cursor;
+                app.mode = if cursor.is_some() { Mode::Side } else { Mode::Normal };
+                let selected = &app.snap.terms[&cursor.or(app.focused()).unwrap()];
+                let expected = selected.root.clone().unwrap_or_else(|| selected.cwd.clone());
+                let screen = draw(&mut app, 100, 30);
+                show(&screen);
+                if by_mouse {
+                    assert!(screen.contains("+ new"), "a visible new button");
+                    let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::NewShell)).then_some((r.x + 1, r.y))).expect("+ new is clickable");
+                    app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
+                } else {
+                    app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+                    app.on_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
+                }
+                assert_eq!(app.mode, Mode::Normal, "new opens a shell immediately");
+                let commands: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).filter_map(|m| match m { ClientMsg::Command(c) => Some(c), _ => None }).collect();
+                assert!(matches!(commands.as_slice(), [Command::NewWorkspace { cwd: Some(cwd), name: None, cmd: None }] if cwd == &expected), "one plain shell in the selected project: {commands:?}");
+                assert!(app.hy.pending_split.is_none(), "the new session opens full screen");
+            }
         }
     }
 
@@ -1508,7 +1517,7 @@ mod hydra_tests {
         assert!(lines[1].starts_with("  ▁") && lines[1].trim().chars().filter(|c| *c == '▁').count() == 24, "a slim sidebar: {}", lines[1]);
         let side: String = lines.iter().map(|l| l.chars().take(30).collect::<String>() + "\n").collect();
         assert!(!side.contains("main · 3m") && !side.contains("Run npm test"), "no meta or questions in the slim sidebar: {side}");
-        assert!(!o.contains("+ new") && o.contains("Actions"), "no sidebar foot, even a slim one");
+        assert!(o.contains("+ new") && o.contains("Actions"), "the new button fits a slim sidebar, which still has no foot");
         assert!(o.lines().last().is_some_and(|l| l.contains("? keys") && !l.contains("inbox")), "a narrow status line keeps only the count and keys");
     }
 
@@ -1612,7 +1621,8 @@ mod hydra_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         // A row's keys are in its menu; the status line has the global ones.
-        assert!(!o.contains("+ new") && o.contains("actions") && !o.contains("x close") && !o.contains("Esc back"));
+        let rows: Vec<&str> = o.lines().collect();
+        assert!(rows[2].contains("+ new") && !rows[43].contains("+ new") && o.contains("actions") && !o.contains("x close") && !o.contains("Esc back"), "new is at the top, nothing at the foot");
     }
 
     #[test]

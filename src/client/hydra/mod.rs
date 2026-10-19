@@ -925,6 +925,7 @@ pub(super) enum HyHit {
     Update,
     /// Ask now whether a newer seshi is out (the same place, when none is known).
     CheckUpdate,
+    NewShell,
     Why(TermId),
     /// A row of the worktree clean-up list (tick or untick it), and its Remove button.
     TidyRow(usize),

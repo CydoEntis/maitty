@@ -118,8 +118,8 @@ The high-fidelity flat-layout reference and its interaction spec are preserved i
 [`docs/design/flat/README.md`](design/flat/README.md); keep the implementation aligned with it.
 
 The sidebar has no footer; the status line along the bottom of both layouts holds the global hints
-(`j inbox`, `a actions`, `,` settings, `?` keys). A project's **+** and leader + `n` open a plain
-shell. Keep **Actions** available at the top right, including
+(`j inbox`, `a actions`, `,` settings, `?` keys). A **+ new** button on the sidebar's top row (cards),
+a project's **+** and leader + `n` open a plain shell; every control stays reachable by mouse. Keep **Actions** available at the top right, including
 without a sidebar or session. Offer clickable agent status setup (including Codex),
 Settings and All commands; every palette row is clickable and wheel-scrollable.
 Include configured commands, retaining existing confirmations.

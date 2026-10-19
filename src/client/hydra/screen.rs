@@ -366,6 +366,26 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     app.hy.side_rect = r;
     hit(app, r, HyHit::SideFocus);
     let small = buf.area.width < NARROW;
+    // The one button the sidebar keeps: a plain shell, on the blank row under the top border so
+    // it needs no footer.
+    if !look.flat && r.height >= 6 {
+        let hot = Style::default().fg(t.accent).bg(pb).add_modifier(Modifier::BOLD);
+        let key = k(app, &Action::ShellHere);
+        let rest = Style::default().fg(t.text).bg(pb);
+        // A key that is the word's first letter is lit inside it ("new"), else it leads.
+        let segs = match "new".strip_prefix(key.as_str()) {
+            Some(tail) => vec![seg("+ ", hot), seg(key, hot), seg(tail, rest)],
+            None => vec![seg("+ ", hot), seg(key, hot), seg(" new", rest)],
+        };
+        let w = segs_width(&segs);
+        let pad = Rect { x: r.x + 2, y: r.y + 1, width: w + 2, height: 1 };
+        if hovered(app, pad) {
+            put(buf, pad.x, pad.y, &pill(look, segs, t.hover_on(pb), pb), pad.right());
+        } else {
+            put(buf, r.x + 3, r.y + 1, &segs, r.x + 3 + w);
+        }
+        hit(app, pad, HyHit::NewShell);
+    }
     let lines = side_lines(app, model, t);
     let shown: Vec<TermId> = app.hy.tabs.get(app.hy.tab).map(|t| t.layout.leaves()).unwrap_or_default();
     // In a split, the split's row (its first pane's) is the open one, whichever side you're on.
