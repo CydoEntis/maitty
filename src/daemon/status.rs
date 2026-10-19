@@ -104,14 +104,18 @@ impl Daemon {
                             }
                         } else if let Some(i) = t.subagents.iter().position(|(id, _)| !sa.id.is_empty() && *id == sa.id) {
                             t.subagents.remove(i);
-                        } else {
+                        } else if sa.id.is_empty() {
+                            // A stop with no id can only be for the last one started.
                             t.subagents.pop();
                         }
+                        // A stop for an id we never saw start (it began before seshi was
+                        // listening) must not remove a different helper that is still running.
+                        tracing::debug!("pane {term}: {} helper(s) running after {event}", t.subagents.len());
                         self.dirty = true;
                     }
                     // A turn over (or a new session) has no subagents left; a "done" while some
                     // still run is held instead (see `hook`).
-                    if matches!(status, HookStatus::Gone | HookStatus::Idle) {
+                    if matches!(status, HookStatus::Gone) || (matches!(status, HookStatus::Idle) && event != "SessionStart") {
                         t.subagents.clear();
                     }
                     if let Some(s) = said {
@@ -196,6 +200,12 @@ impl Daemon {
             // Done while subagents still run: hold it until they finish (or 3 minutes pass).
             HookStatus::Done if !t.subagents.is_empty() => {
                 t.done_held = Some(now);
+                self.dirty = true;
+                return;
+            }
+            // A session starting again (after compaction, say) while its helpers still run is
+            // the same turn carrying on, not an idle agent.
+            HookStatus::Idle if event == "SessionStart" && !t.subagents.is_empty() => {
                 self.dirty = true;
                 return;
             }
@@ -546,7 +556,9 @@ impl Daemon {
                     }
                 }
                 // The progress indicator went away and no turn-end came: cancelled (Esc).
-                if t.status == Status::Working && t.done_held.is_none() && t.progress_off.is_some_and(|p| p.elapsed() > CANCELLED_AFTER) {
+                // A progress bar that is off while helpers run is the agent waiting on them.
+                let helpers_running = !t.subagents.is_empty() && t.subagent_seen.is_some_and(|s| s.elapsed() <= SUBAGENTS_QUIET_AT_MOST);
+                if t.status == Status::Working && t.done_held.is_none() && !helpers_running && t.progress_off.is_some_and(|p| p.elapsed() > CANCELLED_AFTER) {
                     changes.push((t.id, Status::Idle, "progress bar gone, no turn end: cancelled".to_string()));
                 }
                 // Agents whose hooks only say a turn ended (Codex's notify): the start of the

@@ -96,7 +96,7 @@ impl App {
             ServerMsg::Clipboard { term, text } => {
                 let n = text.chars().count();
                 copy::to_clipboard(&text);
-                let who = self.snap.terms.get(&term).map(|t| t.display_name()).unwrap_or_default();
+                let who = self.session_name(term);
                 self.notify(format!("{who} copied {n} character{} to your clipboard", if n == 1 { "" } else { "s" }), false);
             }
             ServerMsg::Error(e) => self.notify(e, true),
@@ -187,7 +187,7 @@ impl App {
         let mut events = Vec::new();
         for (id, t) in &new.terms {
             let old = self.snap.terms.get(id);
-            let name = t.display_name();
+            let name = if t.label.trim().is_empty() { t.display_name() } else { t.label.trim().to_string() };
             let place = t.top.as_ref().or(t.root.as_ref()).and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             let who = if place.is_empty() { name } else { format!("{name} in {place}") };
             if old.is_some_and(|o| o.status != t.status) {

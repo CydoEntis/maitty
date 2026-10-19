@@ -941,8 +941,18 @@ impl App {
 
     // ---- server messages -----------------------------------------------------------
 
+    /// What the sidebar calls a session: what you renamed it to, else its worktree or folder.
+    /// Notes about a session use this, so they say the name you'd look for.
+    pub(super) fn session_name(&self, term: TermId) -> String {
+        let model = self.hy_model();
+        if let Some((_, _, s)) = hydra::find(&model, term) {
+            return s.name.clone();
+        }
+        self.snap.terms.get(&term).map(|t| if t.label.trim().is_empty() { t.display_name() } else { t.label.trim().to_string() }).unwrap_or_default()
+    }
+
     fn describe_term(&self, term: TermId) -> String {
-        let name = self.snap.terms.get(&term).map(|t| t.display_name().to_string()).unwrap_or_default();
+        let name = self.session_name(term);
         match self.snap.locate(term) {
             Some((w, t)) => {
                 let idx = w.tabs.iter().position(|x| x.id == t.id).unwrap_or(0) + 1;
