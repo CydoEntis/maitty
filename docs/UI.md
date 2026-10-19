@@ -130,9 +130,11 @@ When an update is available, show the accent dot beside **Actions** (top right a
 Retain the working, needs-you, done or idle icon when a terminal rings. Terminal
 bells do not add sidebar indicators or history entries.
 
-Keep the active sidebar session filled with `hov` and marked `▸`, independently
-of mouse hover or keyboard browsing. Hover uses a quieter fill; the keyboard
-target uses `›`. Preserve agent status icons and colors in each state.
+Mark one selected sidebar row: the one under the keyboard while the sidebar has the keys,
+else the open session. It gets a neutral tint (`sel_bg`: the background a step toward the text)
+and a `▎` bar at its left edge, lime while the sidebar has the keys and dim when a pane or a sheet
+does. The open session keeps a dim bar while another row is under the keyboard. Hover uses a
+quieter tint (`hover_bg`). Preserve agent status icons and colors in each state.
 
 Settings shows installed, window and daemon versions separately, with a labeled
 remote daemon and a restart-pending notice when versions differ. Keep the update
@@ -165,6 +167,15 @@ is the sidebar row's meta, before the age, and is left out when the name is the 
 runs, its branch, PR, dev server and `⇆` tag belong to the status line. Model, context and cost
 are the agent's own status line, so seshi's chrome never repeats them. The pane has no footer row.
 
+## Project-specific: colour jobs
+
+Each colour does one job. Lime (`accent`) is focus: the lit edge and the focused title. The
+theme's `blocked` colour is needs-you and nothing else (the v5 design makes it amber; each
+theme picks its own). Red (`err`) is failed, crashed or destructive, and a
+machine load past its threshold. Green (`done`) is done. Sky is leader mode. **Working is
+neutral:** a `text` spinner and name, never amber (`Theme::status(Working)` is `text`). A paused
+limit and ordinary CPU/RAM load are dim.
+
 ## Project-specific: UI conventions
 
 - Popups are centred `panel()`s with an accent title bar and `Esc close`; the
@@ -172,8 +183,8 @@ are the agent's own status line, so seshi's chrome never repeats them. The pane 
   working panes visible beside it when the window allows.
   Settings keeps its General, Sessions, Appearance, Agents and Keys sections in
   the sheet; its update controls and keyboard and mouse editing stay available.
-- Selection uses the theme's selection fill and a marker; never the accent
-  colour as a row fill. The sidebar keeps active `▸` and keyboard `›` distinct.
+- Selection is a neutral tint (`sel_on` of the surface it sits on) with a lime `▎` bar;
+  never the accent colour as a row fill.
 - Every popup row is clickable and keyboard-reachable; every key is shown as a
   keycap somewhere (hints line, keys screen, palette).
 - Short-lived notes are toasts above the bottom bar; destructive actions ask

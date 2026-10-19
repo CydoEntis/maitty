@@ -370,7 +370,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                 let row = &rows[*i];
                 let sel = *i == v.sel;
                 let rr = Rect { x: r.x + 3, y, width: r.width.saturating_sub(6), height: 1 };
-                let bg = if sel || hovered(app, rr) { t.hov } else { t.card };
+                let bg = if sel { t.sel_on(t.card) } else if hovered(app, rr) { t.hover_on(t.card) } else { t.card };
                 if bg != t.card {
                     row_pill(look, buf, rr.x, y, rr.width, bg, t.card);
                 }

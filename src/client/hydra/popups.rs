@@ -56,11 +56,12 @@ pub(in crate::client) fn panel(app: &mut App, buf: &mut Buffer, area: Rect, w: u
 pub(in crate::client) fn sel_row(app: &App, buf: &mut Buffer, r: Rect, y: u16, sel: bool, t: &Theme) -> Color {
     let row = Rect { x: r.x + 1, y, width: r.width.saturating_sub(2), height: 1 };
     if sel || hovered(app, row) {
-        row_pill(Look::of(&app.cfg.ui), buf, row.x, y, row.width, t.hov, t.card);
+        let bg = if sel { t.sel_on(t.card) } else { t.hover_on(t.card) };
+        row_pill(Look::of(&app.cfg.ui), buf, row.x, y, row.width, bg, t.card);
         if sel {
-            put(buf, r.x + 2, y, &[seg("›", Style::default().fg(t.accent).bg(t.hov).add_modifier(Modifier::BOLD))], r.right());
+            put(buf, r.x + 2, y, &[seg("▎", Style::default().fg(t.accent).bg(bg).add_modifier(Modifier::BOLD))], r.right());
         }
-        t.hov
+        bg
     } else {
         t.card
     }
@@ -327,7 +328,7 @@ pub(in crate::client) fn query_list(app: &mut App, buf: &mut Buffer, area: Rect,
 /// One row of a `query_list`: its background (highlighted when selected or under the
 /// mouse) and the selection marker. Returns the style to draw its text with.
 pub(in crate::client) fn list_row(app: &App, buf: &mut Buffer, rr: Rect, on: bool, t: &Theme) -> Style {
-    let bg = if on || hovered(app, rr) { t.hov } else { t.card };
+    let bg = if on { t.sel_on(t.card) } else if hovered(app, rr) { t.hover_on(t.card) } else { t.card };
     if bg == t.card {
         fill(buf, rr, bg);
     } else {
@@ -335,7 +336,7 @@ pub(in crate::client) fn list_row(app: &App, buf: &mut Buffer, rr: Rect, on: boo
     }
     let st = Style::default().bg(bg);
     if on {
-        put(buf, rr.x + 1, rr.y, &[seg("›", st.fg(t.accent).add_modifier(Modifier::BOLD))], rr.right());
+        put(buf, rr.x + 1, rr.y, &[seg("▎", st.fg(t.accent).add_modifier(Modifier::BOLD))], rr.right());
     }
     st
 }
@@ -457,7 +458,7 @@ pub(in crate::client) fn draw_history(app: &mut App, f: &mut Frame, area: Rect, 
         let y = list.y + (i - start) as u16;
         let row = Rect { y, height: 1, ..list };
         let on = i == sel;
-        let bg = if on || hovered(app, row) { t.hov } else { t.card };
+        let bg = if on { t.sel_on(t.card) } else if hovered(app, row) { t.hover_on(t.card) } else { t.card };
         fill(buf, row, bg);
         let st = Style::default().bg(bg);
         if on {

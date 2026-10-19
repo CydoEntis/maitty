@@ -320,15 +320,17 @@ mod hydra_tests {
             terminal.draw(|f| render::draw(&mut app, f)).unwrap();
             assert_eq!(app.focused(), Some(1), "hover never changes the active pane");
             assert_eq!(terminal.backend().buffer()[(x + 8, active_y)].bg, active_bg);
-            assert_eq!(terminal.backend().buffer()[(x + 3, active_y)].symbol(), "▸");
+            assert_eq!(terminal.backend().buffer()[(x + 1, active_y)].symbol(), "▎");
         }
         app.on_mouse(MouseEvent { kind: MouseEventKind::Moved, column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         assert_ne!(terminal.backend().buffer()[(x + 8, hover_y)].bg, active_bg, "hover has its own quieter style");
         app.hy_side_set(hydra::SideItem::Sess(2));
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
-        assert_eq!(terminal.backend().buffer()[(x + 3, active_y)].symbol(), "▸");
-        assert_eq!(terminal.backend().buffer()[(x + 3, hover_y)].symbol(), "›");
+        let buf = terminal.backend().buffer();
+        assert_eq!(buf[(x + 1, active_y)].symbol(), "▎", "the open row keeps a bar");
+        assert_eq!(buf[(x + 1, hover_y)].symbol(), "▎", "and so does the one under the keyboard");
+        assert_eq!((buf[(x + 1, hover_y)].fg, buf[(x + 1, active_y)].fg), (app.theme.accent, app.theme.muted), "lime for the cursor, dim for the open one");
         app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
         app.on_mouse(MouseEvent { kind: MouseEventKind::Up(MouseButton::Left), column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
         assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 }))));
@@ -336,11 +338,11 @@ mod hydra_tests {
         app.hy_sync();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         assert_eq!(app.focused(), Some(2));
-        assert_eq!(terminal.backend().buffer()[(x + 3, hover_y)].symbol(), "▸");
+        assert_eq!(terminal.backend().buffer()[(x + 1, hover_y)].symbol(), "▎");
         app.snap.terms.get_mut(&2).unwrap().asleep = true;
         app.hy_fresh();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
-        assert_eq!(terminal.backend().buffer()[(x + 3, hover_y)].symbol(), "▸", "sleep glyphs leave the active marker visible");
+        assert_eq!(terminal.backend().buffer()[(x + 1, hover_y)].symbol(), "▎", "sleep glyphs leave the selection bar visible");
     }
 
     #[test]
@@ -1867,7 +1869,7 @@ mod hydra_tests {
         );
         assert!(planner != builder && builder != reviewer && reviewer != planner, "roles have distinct theme identity colors");
         assert!([planner, builder, reviewer].into_iter().all(|color| color != app.theme.idle), "role colors stay distinct from idle");
-        assert_eq!([planner_status, builder_status, reviewer_status], [app.theme.working; 3], "each active helper keeps the working signal");
+        assert_eq!([planner_status, builder_status, reviewer_status], [app.theme.status(Status::Working); 3], "each active helper keeps the working signal");
     }
 
     #[test]
@@ -2405,14 +2407,15 @@ mod hydra_tests {
             for (status, want) in [(Status::Blocked, t.on_lit(t.blocked)), (Status::Done, t.on_lit(t.done))] {
                 app.snap.terms.get_mut(&1).unwrap().status = status;
                 let (fg, bg) = name_fg(&mut app, "claude");
-                assert_eq!(bg, t.hov, "{theme}: the row is lit");
+                assert_eq!(bg, t.sel_bg(), "{theme}: the row is lit");
                 assert_eq!(fg, want, "{theme}: {status:?} keeps its colour on the lit row");
                 assert!(crate::theme::contrast(fg, bg) >= 3.0, "{theme}: and reads there");
             }
-            // Working shimmers between its colour and a brighter one, never plain white.
+            // Working is neutral: never the amber of needs-you or the green of done.
             app.snap.terms.get_mut(&1).unwrap().status = Status::Working;
-            let (fg, _) = name_fg(&mut app, "claude");
-            assert!(fg != t.strong, "{theme}: working isn't white on the lit row");
+            let (fg, bg) = name_fg(&mut app, "claude");
+            assert!(fg != t.blocked && fg != t.done, "{theme}: working isn't a state colour on the lit row");
+            assert!(crate::theme::contrast(fg, bg) >= 3.0, "{theme}: and reads there");
             // No state to show: bright, as before.
             app.snap.terms.get_mut(&1).unwrap().status = Status::Idle;
             assert_eq!(name_fg(&mut app, "claude").0, t.strong, "{theme}: idle is plain bright text");
@@ -2955,7 +2958,7 @@ mod hydra_tests {
         let t = &app.theme;
         assert_eq!(name_at("claude"), Some(t.blocked), "needs you: its colour");
         let codex = name_at("rate-limit").or_else(|| name_at("rate")).expect("the working codex in the sidebar (named for its worktree)");
-        assert!(codex != t.text && codex != t.blocked, "working: the shimmer in the working colour, not plain text: {codex:?}");
+        assert!(codex != t.blocked && codex != t.done, "working is neutral, never amber or green: {codex:?}");
     }
 
     #[test]

@@ -404,10 +404,16 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     app.hy.proj_keys = model.iter().map(|p| p.key.clone()).collect();
 
     // Hover and keyboard browsing must never erase the session that's actually open.
-    let hover_bg = if look.flat { t.hov } else { blend(pb, t.hov, 0.4) };
+    let hover_bg = if look.flat { t.hov } else { t.hover_bg() };
     let on = app.motion_on();
     let mut gliding: Option<(u16, Rect)> = None;
     let shade = |app: &App, term: TermId, row: Rect, glide: bool| -> Option<Color> {
+        if !look.flat {
+            // One selected row: the one under the cursor while the sidebar has the keys, else
+            // the open one.
+            let picked = if focused_side { app.hy.cursor == Some(term) } else { Some(term) == focus };
+            return if picked { Some(t.sel_bg()) } else { hovered(app, row).then_some(hover_bg) };
+        }
         if Some(term) == focus { Some(t.hov) }
         else if focused_side && app.hy.cursor == Some(term) && !glide { Some(if look.flat { t.hov } else { t.card2 }) }
         else { hovered(app, row).then_some(hover_bg) }
@@ -432,7 +438,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 let open = !app.hy.saved.closed.contains(&format!("p:{}", p.key));
                 let on = focused_side && app.hy.cursor_proj.as_ref() == Some(&p.key);
                 let hov = hovered(app, row) || on;
-                let bg = if on { t.card2 } else if hov { hover_bg } else { pb };
+                let bg = if on { if look.flat { t.card2 } else { t.sel_bg() } } else if hov { hover_bg } else { pb };
                 if bg != pb {
                     row_pill(look, buf, row.x, y, row.width, bg, pb);
                 }
@@ -478,7 +484,22 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 let lit = shade(app, s.term, row, glide.is_some());
                 let bg = lit.unwrap_or(pb);
                 if lit.is_some() {
-                    row_pill(look, buf, row.x, y, row.width, bg, pb);
+                    if look.flat {
+                        row_pill(look, buf, row.x, y, row.width, bg, pb);
+                    } else {
+                        fill(buf, Rect { x: r.x + 1, y, width: r.width.saturating_sub(2), height: 1 }, bg);
+                    }
+                }
+                if !look.flat {
+                    // The selection bar: lime while the sidebar has the keys, dim when a pane
+                    // or a sheet does.
+                    let selected = lit == Some(t.sel_bg());
+                    if selected || active {
+                        let col = if selected && focused_side { t.accent } else { t.muted };
+                        if let Some(cell) = buf.cell_mut((r.x + 1, y)) {
+                            cell.set_symbol("▎").set_style(Style::default().fg(col).bg(bg));
+                        }
+                    }
                 }
                 if look.flat && lit.is_some() {
                     let bar = if s.status == Status::Blocked { t.blocked } else if focused_side && app.hy.cursor == Some(s.term) { t.accent } else { t.muted };
@@ -486,7 +507,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                         cell.set_symbol("▎").set_style(Style::default().fg(bar).bg(bg));
                     }
                 }
-                if active || keyboard {
+                if look.flat && (active || keyboard) {
                     put(buf, x0 + 3 + indent, y, &[seg(if active { "▸" } else { "›" }, Style::default().bg(bg).fg(t.strong))], x0 + 5 + indent);
                 }
                 let sel = focused_side && app.hy.cursor == Some(s.term);
@@ -531,7 +552,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 }
                 let mut left = vec![];
                 if working {
-                    let working = state(t.working);
+                    let working = state(t.text);
                     left.extend(shimmer(&s.name, app.spinner_frame(), working, blend(working, t.strong, 0.6), ns));
                 } else {
                     left.push(seg(s.name.clone(), ns));
@@ -542,7 +563,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 } else if s.asleep {
                     vec![seg("asleep", st.fg(t.muted))]
                 } else if let Some(at) = s.resume_at {
-                    vec![seg(format!("⏸ resumes in {}", until(at)), st.fg(t.working))]
+                    vec![seg(format!("⏸ resumes in {}", until(at)), st.fg(t.muted))]
                 } else if s.is_agent {
                     let col = if s.status == Status::Blocked { t.blocked } else { t.muted };
                     let first = if s.agent.is_empty() || s.agent == s.name { String::new() } else { format!("{} · ", truncate(&s.agent, 16)) };
@@ -599,7 +620,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     y,
                     &[
                         seg("  ↳ ", base.fg(t.muted)),
-                        seg("● ", base.fg(t.working).add_modifier(Modifier::BOLD)),
+                        seg("● ", base.fg(t.text).add_modifier(Modifier::BOLD)),
                         seg(label, base.fg(*color).add_modifier(Modifier::BOLD)),
                     ],
                     right,
@@ -663,7 +684,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     if let Some((gy, row)) = gliding.filter(|(gy, _)| (top..top + list_h as u16).contains(gy))
         && app.hy.row_y.get(&focus.unwrap_or_default()) != Some(&gy)
     {
-        tint_row(look, buf, row.x, gy, row.width, t.card2, pb);
+        tint_row(look, buf, row.x, gy, row.width, if look.flat { t.card2 } else { t.sel_bg() }, pb);
     }
 }
 
@@ -1012,8 +1033,8 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     c.state_hit = c.state.map(|_| HyHit::Why(term));
     // What it's taking of the machine, beside its state: where you look when the PC is slow.
     c.note = match info.resume_at {
-        Some(at) => Some((format!("⏸ limit · continues in {}", until(at)), t.working)),
-        None => load_note(info.cpu, info.mem).map(|(load, heavy)| (load, if heavy { t.working } else { t.muted })),
+        Some(at) => Some((format!("⏸ limit · continues in {}", until(at)), t.muted)),
+        None => load_note(info.cpu, info.mem).map(|(load, heavy)| (load, if heavy { t.err } else { t.muted })),
     };
     c.close = Some(HyHit::CloseSplit(term));
     if let Some(parser) = app.parsers.get(&term) {

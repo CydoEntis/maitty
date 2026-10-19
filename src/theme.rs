@@ -332,6 +332,28 @@ impl Theme {
         c
     }
 
+    /// The selected row's ground: the background a step toward the text, so it reads on any
+    /// theme without a colour of its own.
+    pub fn sel_bg(&self) -> Color {
+        mix(self.bg, self.text, 0.12)
+    }
+
+    /// The selected row's ground on a raised surface (a sheet, a popup): `ground` a step toward
+    /// the text.
+    pub fn sel_on(&self, ground: Color) -> Color {
+        mix(ground, self.text, 0.12)
+    }
+
+    /// A pointed-at row on a raised surface.
+    pub fn hover_on(&self, ground: Color) -> Color {
+        mix(ground, self.text, 0.06)
+    }
+
+    /// A pointed-at row: half as far from the background as the selection.
+    pub fn hover_bg(&self) -> Color {
+        mix(self.bg, self.text, 0.06)
+    }
+
     /// A state's colour as drawn on the lit row: itself where it reads on `hov`, else moved
     /// toward the theme's strongest text just far enough to. A row you select keeps saying
     /// its state, and no theme needs colours of its own for that (some put a red on a
@@ -339,7 +361,7 @@ impl Theme {
     pub fn on_lit(&self, state: Color) -> Color {
         let mut c = state;
         for _ in 0..LIT_STEPS {
-            if contrast(c, self.hov) >= LIT_READS {
+            if contrast(c, self.sel_bg()) >= LIT_READS && contrast(c, self.hov) >= LIT_READS {
                 break;
             }
             c = mix(c, self.strong, LIT_STEP);
@@ -900,7 +922,8 @@ impl Theme {
     pub fn status(&self, s: crate::protocol::Status) -> Color {
         use crate::protocol::Status::*;
         match s {
-            Working => self.working,
+            // Working is neutral: amber is for what needs you.
+            Working => self.text,
             Blocked => self.blocked,
             Done => self.done,
             Idle => self.idle,

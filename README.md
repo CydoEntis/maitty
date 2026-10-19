@@ -42,7 +42,7 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
   project or session. `<leader> Space` is a command palette in plain words, `a actions`
   in the status line lists common commands. `<leader> ?` lists every configured
   binding (including aliases), global shortcuts and controls inside each screen.
-- **Status at a glance.** Working (amber, its name shimmering), needs you (red), done (green until
+- **Status at a glance.** Working (neutral, its name shimmering), needs you (the theme's alert colour), done (green until
   you look), idle. An alert or a sound tells you when one needs you or finishes out of view.
   Click a sidebar status icon or pane status tag to see why, the evidence's age and any uncertainty.
 - **Subagents under their agent.** What an agent has running shows under its row
@@ -153,8 +153,9 @@ split beside a session stays with it.
 - Under it, its sessions: state, name, `agent · age` on the right (just the age when the name is the agent). A session that needs you has
   its question under it. Every new claude / codex gets its own worktree (named for you), so agents
   never edit the same files.
-- The active session keeps its selection fill and **▸** marker as you move the mouse.
-  Hover is a quieter fill; keyboard browsing uses **›** independently, including on sleeping rows.
+- One row is selected: a neutral tint with a **▎** bar at its left edge (lime while the sidebar has
+  the keys, dim when a pane does). The open session keeps a dim bar while you browse with the
+  keyboard, including on sleeping rows. Hover is a quieter tint.
 - Hiding the sidebar leaves a slim rail with status indicators and two-letter titles.
   Click to switch sessions, hover for full names, scroll to reach more, and use the
   chevron to expand. Its red count includes blocked agents outside the visible rows.
