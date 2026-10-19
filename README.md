@@ -48,7 +48,7 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
 - **Subagents under their agent.** What an agent has running shows under its row
   (`↳ reconcile_audit`, repeats counted): Claude's from its hooks, Codex's from its session
   files (each subagent by its task's name, and `goal` while `/goal` is driving it). Helpers show an icon
-  for what they are doing (`✎` planning, `◎` researching, `⚙` building, `⚖` reviewing) in the
+  for what they are doing (`✎` planning, a book researching, `⚙` building, `⚖` reviewing) in the
   working orange, not a colour per role.
 - **Limits.** An agent stopped by a limit is told "continue" once the limit resets (Settings →
   Continue after a limit), and its card says when. Model, context and cost are the agent's own

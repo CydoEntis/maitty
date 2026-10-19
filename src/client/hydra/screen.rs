@@ -215,7 +215,7 @@ pub(in crate::client) fn load_note(cpu: f32, mem: u64) -> Option<(String, bool)>
     Some((format!("▲ {cpu:.0}% CPU · {gb:.1} GB"), cpu >= LOAD_HEAVY_CPU || mem >= LOAD_HEAVY_MEM))
 }
 
-pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme, out: &mut Vec<Line>) {
+pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme, nerd: bool, out: &mut Vec<Line>) {
     let notes_c = t.muted;
     if let Some(q) = &s.question {
         out.push(Line::Note(q.clone(), blend(t.blocked, t.sidebar_bg, 0.25), s.term));
@@ -229,7 +229,7 @@ pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme
     if !s.subagents.is_empty() {
         out.push(Line::Subs(s.term, s.subagents.len(), !subs_closed));
         if !subs_closed {
-            out.extend(s.subagents.iter().take(SUBS_LISTED).map(|sub| Line::Subagent(sub.clone(), subagent_icon(sub), s.term)));
+            out.extend(s.subagents.iter().take(SUBS_LISTED).map(|sub| Line::Subagent(sub.clone(), subagent_icon(sub, nerd), s.term)));
             if s.subagents.len() > SUBS_LISTED {
                 out.push(Line::Note(format!("  +{} more", s.subagents.len() - SUBS_LISTED), notes_c, s.term));
             }
@@ -238,8 +238,9 @@ pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme
 }
 
 /// An icon for what a helper is doing, from its name: planning, researching, building or
-/// reviewing, else a plain dot.
-fn subagent_icon(kind: &str) -> &'static str {
+/// reviewing, else a plain dot. Researching is a book: the Nerd Font one when the user has that
+/// font (the setting that rounds pill ends says so), else a single-width stand-in.
+fn subagent_icon(kind: &str, nerd: bool) -> &'static str {
     let name = kind.to_ascii_lowercase();
     let has = |words: &[&str]| words.iter().any(|w| name.contains(w));
     if has(&["review", "audit", "verif"]) {
@@ -247,7 +248,7 @@ fn subagent_icon(kind: &str) -> &'static str {
     } else if has(&["plan", "architect", "design"]) {
         "✎"
     } else if has(&["research", "explore", "search", "investigat"]) {
-        "◎"
+        if nerd { "\u{f02d}" } else { "▤" }
     } else if has(&["build", "work", "implement", "fork", "fix"]) {
         "⚙"
     } else {
@@ -316,7 +317,7 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
             any = true;
             out.push(Line::Sess(pi, wi, si, depth));
             let s = &p.wts[wi].sessions[si];
-            session_lines(s, app.hy.subs_closed.contains(&s.term), t, &mut out);
+            session_lines(s, app.hy.subs_closed.contains(&s.term), t, app.cfg.ui.pill_caps, &mut out);
         }
         if !any && aside.is_empty() {
             out.push(Line::Empty(pi));
@@ -1299,3 +1300,18 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, panes: Rect
     }
 }
 
+
+#[cfg(test)]
+mod icon_tests {
+    use super::subagent_icon;
+
+    #[test]
+    fn a_helper_gets_the_icon_of_what_it_does() {
+        assert_eq!(subagent_icon("planner", false), "✎");
+        assert_eq!(subagent_icon("react:react-expert", false), "●", "nothing in the name says what it does");
+        assert_eq!(subagent_icon("Code Reviewer", false), "⚖");
+        assert_eq!(subagent_icon("worker-2", false), "⚙");
+        assert_eq!(subagent_icon("Explore", false), "▤", "a book, in a single cell without a Nerd Font");
+        assert_eq!(subagent_icon("deep-research", true), "\u{f02d}", "the Nerd Font book when it's there");
+    }
+}

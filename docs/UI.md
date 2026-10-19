@@ -246,7 +246,7 @@ expand control and retain Actions. The rail is the collapsed state of the same
 layout, not another layout.
 
 Show active helper rows under their owning agent: an icon for what the helper is doing
-(`✎` planning, `◎` researching, `⚙` building, `⚖` reviewing, `●` otherwise) in the eased working
+(`✎` planning, a book researching (Nerd Font `\u{f02d}`, else `▤`), `⚙` building, `⚖` reviewing, `●` otherwise) in the eased working
 orange, then its name in the plain text colour. Roles are told apart by icon, never by colour.
 
 ## Project-specific: frame presentation
