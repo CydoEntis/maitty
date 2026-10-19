@@ -40,7 +40,7 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
   and `?` opens the searchable **All shortcuts** reference.
 - **Find anything.** `<leader> j` is the inbox: what needs you first, then type to go to any
   project or session. `<leader> Space` is a command palette in plain words, `a actions`
-  at the foot of the sidebar lists common commands. `<leader> ?` lists every configured
+  in the status line lists common commands. `<leader> ?` lists every configured
   binding (including aliases), global shortcuts and controls inside each screen.
 - **Status at a glance.** Working (amber, its name shimmering), needs you (red), done (green until
   you look), idle. An alert or a sound tells you when one needs you or finishes out of view.
@@ -116,7 +116,7 @@ From source (any platform with Rust): `cargo install --git https://github.com/Cy
 
 ## Use
 
-Click **Actions** at the top right (also at the foot of the sidebar) to open
+Click **Actions** at the top right (or `a` in the status line) to open
 **Set up agent status**, Settings or **All commands**. The top button stays available
 with the sidebar hidden or no sessions open. All commands supports clicking rows and
 scrolling with the wheel, including configured custom commands.
@@ -146,8 +146,6 @@ split beside a session stays with it.
 │  ● web-shop                  │
 │   ✓ quick-fox          40s   │
 │                              │
-│  ──────────────────────────  │
-│  + new             actions   │
 ╰──────────────────────────────╯
 ```
 
@@ -168,14 +166,15 @@ split beside a session stays with it.
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
 - An agent's subagents are listed under its row; the `▾ 3 subagents` heading (or **Hide
   subagents** in its menu) folds them away.
-- The sidebar's foot: **+ new** opens a plain shell, just like `Ctrl+Space n`;
-  **actions** lists common commands (settings included); **All keys** opens the full reference.
+- The status line along the bottom has `j inbox`, `a actions` (common commands, settings
+  included), `,` settings and `?` keys (the full reference). A plain shell is `Ctrl+Space n` or a
+  project's **+**.
 - `⇆` under a row names a file that this checkout and another have each changed since their
   branches parted (a merge conflict waiting to happen); more than two are one line with a count.
 - Drag a group's name, or a session, up or down to reorder (what needs you still comes first);
   drop a session on another group (its name or one of its sessions) to move it there, within its
   section. Click to fold or open. With the sidebar focused
-  (`Ctrl+Space e`), a row's menu letters work directly (the sidebar's foot lists them): `x` (or
+  (`Ctrl+Space e`), a row's menu letters work directly (a row's menu lists them): `x` (or
   Delete) asks to close, `r` renames. Settings distinguishes installed, window and daemon versions.
 
 The leader key is `Ctrl+Space`. Press it and a sky-blue pill appears at the end of the tab row

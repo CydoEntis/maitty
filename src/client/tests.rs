@@ -475,16 +475,15 @@ mod hydra_tests {
         show(&text);
         let lines: Vec<&str> = text.lines().collect();
         assert!(!text.contains(">_ seshi"), "no logo");
-        // The floating grid: a row of margin, the sidebar card the full height two columns in,
-        // tab pills one row down, the cards below a row of air.
+        // The floating grid: a row of margin, the sidebar card the full height a column in, the
+        // tab pills on its top row, the cards directly under them.
         assert!(lines[0].trim().is_empty(), "a row of margin on top");
         assert!(lines[1].starts_with("  ▁▁"), "the sidebar card, a column in: {}", lines[1]);
-        assert!(lines[2].contains(" 1 ") && !lines[2].contains("claude") && lines[2].contains(" + ") && !lines[2].contains('▯'), "an unnamed tab is its number; +; no layout switch: {}", lines[2]);
-        assert!(lines[4].contains("▁ claude ▁ Fix flaky checkout test · shop-api · main") && lines[4].contains("● needs you ▁ ✕ ▁"), "title, project · branch, state and ✕ set into the card's border: {}", lines[4]);
-        assert!(lines[6].contains("> fix the flaky checkout test"), "the terminal a row below the border, inset");
+        assert!(lines[1].contains(" 1 ") && !lines[1].contains("claude") && lines[1].contains(" + ") && !lines[1].contains('▯'), "an unnamed tab is its number; +; no layout switch: {}", lines[1]);
+        assert!(lines[2].contains("▁ claude ▁ Fix flaky checkout test · shop-api · main") && lines[2].contains("● needs you ▁ ✕ ▁"), "title, project · branch, state and ✕ set into the card's border: {}", lines[2]);
+        assert!(lines[4].contains("> fix the flaky checkout test"), "the terminal a row below the border, inset");
         assert!(text.contains("shop-api · ⎇ main"), "folder and branch in the card's footer");
-        assert!(!text.contains("needs you   a inbox"), "no app footer");
-        assert!(text.contains("+ new") && text.contains("actions") && !text.contains('\u{f013}'), "the sidebar's foot: new on the left, actions (settings is in there) on the right");
+        assert!(!text.contains("+ new") && text.contains("actions") && !text.contains('\u{f013}'), "no sidebar foot; the status line carries actions");
         // Projects and their sessions, nothing in between.
         assert!(text.contains("▾ shop-api") && text.contains("● 1"), "a project: its fold arrow and name, what needs you on the right");
         assert!(text.contains("AGENTS 2 ─") && text.contains("TERMINALS 1 ─") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "a heading per section");
@@ -1399,30 +1398,22 @@ mod hydra_tests {
     }
 
     #[test]
-    fn the_new_button_and_leader_n_start_the_same_plain_shell() {
+    fn leader_n_starts_a_plain_shell_in_the_selected_project() {
         for cursor in [None, Some(2)] {
-            for by_mouse in [false, true] {
-                let (_, mut app) = super::design_tests::render_with(100, 30);
-                let (tx, mut rx) = mpsc::unbounded_channel();
-                app.out = tx;
-                app.hy.cursor = cursor;
-                app.mode = if cursor.is_some() { Mode::Side } else { Mode::Normal };
-                let selected = &app.snap.terms[&cursor.or(app.focused()).unwrap()];
-                let expected = selected.root.clone().unwrap_or_else(|| selected.cwd.clone());
-                let screen = draw(&mut app, 100, 30);
-                show(&screen);
-                if by_mouse {
-                    let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::NewShell)).then_some((r.x, r.y))).expect("+ new is clickable");
-                    app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
-                } else {
-                    app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
-                    app.on_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
-                }
-                assert_eq!(app.mode, Mode::Normal, "new opens a shell immediately");
-                let commands: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).filter_map(|m| match m { ClientMsg::Command(c) => Some(c), _ => None }).collect();
-                assert!(matches!(commands.as_slice(), [Command::NewWorkspace { cwd: Some(cwd), name: None, cmd: None }] if cwd == &expected), "one plain shell in the selected project: {commands:?}");
-                assert!(app.hy.pending_split.is_none(), "the new session opens full screen");
-            }
+            let (_, mut app) = super::design_tests::render_with(100, 30);
+            let (tx, mut rx) = mpsc::unbounded_channel();
+            app.out = tx;
+            app.hy.cursor = cursor;
+            app.mode = if cursor.is_some() { Mode::Side } else { Mode::Normal };
+            let selected = &app.snap.terms[&cursor.or(app.focused()).unwrap()];
+            let expected = selected.root.clone().unwrap_or_else(|| selected.cwd.clone());
+            show(&draw(&mut app, 100, 30));
+            app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+            app.on_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
+            assert_eq!(app.mode, Mode::Normal, "new opens a shell immediately");
+            let commands: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).filter_map(|m| match m { ClientMsg::Command(c) => Some(c), _ => None }).collect();
+            assert!(matches!(commands.as_slice(), [Command::NewWorkspace { cwd: Some(cwd), name: None, cmd: None }] if cwd == &expected), "one plain shell in the selected project: {commands:?}");
+            assert!(app.hy.pending_split.is_none(), "the new session opens full screen");
         }
     }
 
@@ -1515,7 +1506,7 @@ mod hydra_tests {
         assert!(lines[1].starts_with("  ▁") && lines[1].trim().chars().filter(|c| *c == '▁').count() == 24, "a slim sidebar: {}", lines[1]);
         let side: String = lines.iter().map(|l| l.chars().take(30).collect::<String>() + "\n").collect();
         assert!(!side.contains("main · 3m") && !side.contains("Run npm test"), "no meta or questions in the slim sidebar: {side}");
-        assert!(o.contains("+ new") && o.contains("actions"), "new and actions fit a slim sidebar");
+        assert!(!o.contains("+ new") && o.contains("actions"), "no sidebar foot, even a slim one");
     }
 
     #[test]
@@ -1612,13 +1603,13 @@ mod hydra_tests {
     }
 
     #[test]
-    fn the_sidebars_foot_is_the_same_with_the_keys_in_it() {
+    fn the_sidebar_has_no_foot_and_the_status_line_teaches_the_keys() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.hy_side_set(hydra::SideItem::Sess(2));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        // A row's keys are in its menu; the foot stays new and actions.
-        assert!(o.contains("+ new") && o.contains("actions") && !o.contains("x close") && !o.contains("Esc back"));
+        // A row's keys are in its menu; the status line has the global ones.
+        assert!(!o.contains("+ new") && o.contains("actions") && !o.contains("x close") && !o.contains("Esc back"));
     }
 
     #[test]

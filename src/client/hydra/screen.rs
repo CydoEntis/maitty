@@ -31,8 +31,8 @@ pub(in crate::client) struct Grid {
 }
 
 /// The floating grid: a margin of a column and a row, the sidebar card the full height, a
-/// column of gap, then the tab row one row down and the pane cards below a row of air. Tiled
-/// packs it all edge to edge.
+/// column of gap, then the tab row and the pane cards directly under it, a blank row and the
+/// status line at the foot. Tiled packs it all edge to edge.
 pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
     let look = Look::of(&app.cfg.ui);
     if look.flat {
@@ -61,7 +61,9 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
         return Grid { side, tabs, panes, edge, sheet };
     }
     let (mx, my, gx) = if look.tiled { (0, 0, 0) } else { (1, 1, 1) };
-    let inner = Rect { x: area.x + mx, y: area.y + my, width: area.width.saturating_sub(2 * mx), height: area.height.saturating_sub(2 * my) };
+    // The bottom row is the status line; floating cards leave a blank row above it.
+    let body = area.height.saturating_sub(1);
+    let inner = Rect { x: area.x + mx, y: area.y + my, width: area.width.saturating_sub(2 * mx), height: body.saturating_sub(2 * my) };
     let full = app.hy.saved.side_w.unwrap_or_else(|| side_w(area.width)).clamp(SIDE_MIN, SIDE_MAX).min(inner.width / 2);
     let rail = RAIL_WIDTH.min(full);
     let sw = rail + ((full - rail) as f32 * app.side_frac).round() as u16;
@@ -75,10 +77,9 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
         let side = Rect { width: sw, ..inner };
         (side, Rect { x: inner.x + sw + gap, width: col_w, ..inner }, Rect { x: side.right(), width: gap.max(1), ..inner })
     };
-    // The tab row floats one row below the top, a row of air under it.
-    let (tab_dy, air) = if look.tiled { (0, 0) } else { (1, 1) };
-    let tabs = Rect { y: col.y + tab_dy, height: 1, ..col };
-    let top = tabs.y + 1 + air;
+    // The tab row is the column's top row, the pane cards directly under it.
+    let tabs = Rect { height: 1, ..col };
+    let top = tabs.y + 1;
     let panes = Rect { y: top, height: col.bottom().saturating_sub(top), ..col };
     let (sheet, panes) = if open_sheet(app).is_some() { split_for_sheet(area.width, panes, look.gap.max(1), app.sheet_frac) } else { (Rect::default(), panes) };
     Grid { side, tabs, panes, edge, sheet }
@@ -135,9 +136,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         draw_session(app, f, r, term, true, &model, t);
     }
     draw_toast(app, f.buffer_mut(), g.panes, t);
-    if Look::of(&app.cfg.ui).flat {
-        draw_status_line(app, f.buffer_mut(), area, &model, t);
-    }
+    draw_status_line(app, f.buffer_mut(), area, &model, t);
     // Files open over everything in one tool-window size; Esc closes. (Changes is a sheet.)
     if let Some(view) = app.view.take_if(|v| matches!(v, crate::client::View::Files(_))) {
         let buf = f.buffer_mut();
@@ -371,10 +370,10 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     let shown: Vec<TermId> = app.hy.tabs.get(app.hy.tab).map(|t| t.layout.leaves()).unwrap_or_default();
     // In a split, the split's row (its first pane's) is the open one, whichever side you're on.
     let focus = app.focused().map(|f| if shown.len() > 1 && shown.contains(&f) { shown[0] } else { f });
-    // Rows: from 1 below the top border, inset 3; the foot takes the last 4 rows.
+    // Rows: from 1 below the top border, inset 3; a blank row above the bottom border.
     let (x0, w) = (r.x, r.width);
     let top = r.y + if look.flat { 1 } else { 2 };
-    let list_h = if look.flat { r.bottom().saturating_sub(top) as usize } else { r.height.saturating_sub(6) as usize };
+    let list_h = if look.flat { r.bottom().saturating_sub(top) as usize } else { r.height.saturating_sub(4) as usize };
     let right = r.right().saturating_sub(if look.flat { 1 } else { 3 });
     // Keep the focused (or cursor) row in view when it changes; otherwise the wheel rules.
     let mut scroll = app.hy.side_scroll as usize;
@@ -664,50 +663,10 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     if scroll + list_h < lines.len() {
         put(buf, r.right() - 2, top + list_h as u16 - 1, &[seg("▼", plain.fg(t.muted))], r.right() - 1);
     }
-    // The foot: a rule, then new on the left and actions on the right.
-    if look.flat || r.height < 8 {
-        return;
-    }
     if let Some((gy, row)) = gliding.filter(|(gy, _)| (top..top + list_h as u16).contains(gy))
         && app.hy.row_y.get(&focus.unwrap_or_default()) != Some(&gy)
     {
         tint_row(look, buf, row.x, gy, row.width, t.card2, pb);
-    }
-    let ry = r.bottom() - 4;
-    hline(buf, x0 + 3, ry, w.saturating_sub(6), t, pb);
-    let fy = ry + 1;
-    let hot = plain.fg(t.accent).add_modifier(Modifier::BOLD);
-    // A key that's its word's first letter is lit in the word ("actions"), else in front.
-    let label = |key: String, word: &str| -> Vec<Seg> {
-        match word.strip_prefix(key.as_str()) {
-            Some(rest) => vec![seg(key.clone(), hot), seg(rest.to_string(), plain.fg(t.text))],
-            None => vec![seg(key, hot), seg(format!(" {word}"), plain.fg(t.text))],
-        }
-    };
-    // Pointed at: a pill a cell wider than the words on each side.
-    let show = |app: &mut App, buf: &mut Buffer, x: u16, segs: Vec<Seg>, h: HyHit| {
-        let w = segs_width(&segs);
-        let pad = Rect { x: x - 1, y: fy, width: w + 2, height: 1 };
-        if hovered(app, pad) {
-            put(buf, pad.x, fy, &pill(look, segs, t.hov, pb), pad.right());
-        } else {
-            put(buf, x, fy, &segs, x + w);
-        }
-        hit(app, pad, h);
-    };
-    // New on the left: the thing you do most. Actions on the right, where everything else
-    // is (settings too), with a dot when an update is ready.
-    let mut new = vec![seg("+ ", hot)];
-    new.extend(label(k(app, &Action::ShellHere), "new"));
-    let nw = segs_width(&new);
-    show(app, buf, x0 + 3, new, HyHit::NewShell);
-    let mut actions = label(k(app, &Action::Actions), "actions");
-    if app.update_available.is_some() || app.restart_pending() {
-        actions.push(seg(" ●", hot));
-    }
-    let ax = right.saturating_sub(segs_width(&actions));
-    if ax > x0 + 3 + nw + 2 {
-        show(app, buf, ax, actions, HyHit::Actions);
     }
 }
 
@@ -733,7 +692,7 @@ pub(in crate::client) fn draw_main(app: &mut App, f: &mut Frame, area: Rect, mod
         tab.used = tick;
     }
     let look = Look::of(&app.cfg.ui);
-    let skip = if look.flat || look.tiled { 1 } else { 2 };
+    let skip = 1;
     let area = Rect { y: area.y + skip, height: area.height.saturating_sub(skip), ..area };
     // Between cards: `gap` rows stacked, as many columns side by side.
     let (gap_x, gap_y) = (look.gap, look.gap);
@@ -847,20 +806,26 @@ fn draw_status_line(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj],
     } else {
         x = put(buf, x, y, &[seg("~", plain)], area.right());
     }
-    let mut right: Vec<(String, HyHit, Color)> = Vec::new();
+    let mut right: Vec<(String, HyHit, Color, bool)> = Vec::new();
     let needs = app.snap.terms.values().filter(|term| term.status == Status::Blocked).count();
-    if needs > 0 { right.push((format!("● {needs} needs you"), HyHit::StatusInbox, t.blocked)); }
-    right.push((format!("{} inbox", k(app, &Action::Jump)), HyHit::StatusInbox, t.text));
-    right.push((format!("{} actions", k(app, &Action::Actions)), HyHit::Actions, t.text));
-    right.push((format!("{} settings", k(app, &Action::Settings)), HyHit::StatusSettings, t.text));
-    right.push((format!("{} keys", k(app, &Action::Help)), HyHit::StatusKeys, t.text));
-    let total: u16 = right.iter().map(|(s, _, _)| s.width() as u16 + 3).sum();
+    if needs > 0 { right.push((format!("● {needs} needs you"), HyHit::StatusInbox, t.blocked, false)); }
+    right.push((format!("{} inbox", k(app, &Action::Jump)), HyHit::StatusInbox, t.text, false));
+    // The accent dot marks where an update is waiting.
+    let update = app.update_available.is_some() || app.restart_pending();
+    right.push((format!("{} actions", k(app, &Action::Actions)), HyHit::Actions, t.text, update));
+    right.push((format!("{} settings", k(app, &Action::Settings)), HyHit::StatusSettings, t.text, false));
+    right.push((format!("{} keys", k(app, &Action::Help)), HyHit::StatusKeys, t.text, false));
+    let width_of = |label: &str, dot: bool| label.width() as u16 + if dot { 2 } else { 0 };
+    let total: u16 = right.iter().map(|(s, _, _, dot)| width_of(s, *dot) + 3).sum();
     let mut rx = area.right().saturating_sub(total);
     if rx < x.saturating_add(1) { rx = x.min(area.right()); }
-    for (label, target, colour) in right {
-        let width = label.width() as u16;
+    for (label, target, colour, dot) in right {
+        let width = width_of(&label, dot);
         if rx.saturating_add(width + 2) > area.right() { break; }
-        put(buf, rx + 1, y, &[seg(label, Style::default().fg(colour).bg(t.card).add_modifier(Modifier::BOLD))], area.right());
+        let end = put(buf, rx + 1, y, &[seg(label, Style::default().fg(colour).bg(t.card).add_modifier(Modifier::BOLD))], area.right());
+        if dot {
+            put(buf, end, y, &[seg(" ●", Style::default().fg(t.accent).bg(t.card).add_modifier(Modifier::BOLD))], area.right());
+        }
         hit(app, Rect { x: rx, y, width: width + 2, height: 1 }, target);
         rx = rx.saturating_add(width + 3);
     }

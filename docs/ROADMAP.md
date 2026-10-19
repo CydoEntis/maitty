@@ -314,7 +314,7 @@ is the spec) on 2026-10-19 and approved following it where it differs from older
 dropping model, context and cost from Seshi's own chrome. One commit per step, each with the full gate:
 
 1. One background (terminal default or solid) — done on this branch.
-2. Spacing (1-column margin and gap; sidebar has no footer).
+2. Spacing (1-column margin and gap; sidebar has no footer) — done on this branch.
 3. Each fact shows once (pane title, status line holds path/branch/PR).
 4. Colour jobs (working is never amber; neutral selection tint and `▎` bar).
 5. Exactly one lit edge.

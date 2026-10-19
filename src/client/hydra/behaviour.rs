@@ -1181,7 +1181,6 @@ impl App {
             HyHit::StatusSettings => self.act(Action::Settings),
             HyHit::StatusInbox => self.act(Action::Jump),
             HyHit::StatusKeys => self.act(Action::Help),
-            HyHit::NewShell => self.act(Action::ShellHere),
             HyHit::ActionRow(i) => self.actions_run(i),
             HyHit::PickRow(i) => {
                 if let Mode::Picker { query, commands, .. } = self.mode.clone() {

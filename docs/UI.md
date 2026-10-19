@@ -117,13 +117,14 @@ dividers, scroll; Ctrl+click opens paths.
 The high-fidelity flat-layout reference and its interaction spec are preserved in
 [`docs/design/flat/README.md`](design/flat/README.md); keep the implementation aligned with it.
 
-The sidebar's **+ new** uses the same shell action as leader + `n`, including
-its configured key hint. Keep **Actions** available at the top right, including
+The sidebar has no footer; the status line along the bottom of both layouts holds the global hints
+(`j inbox`, `a actions`, `,` settings, `?` keys). A project's **+** and leader + `n` open a plain
+shell. Keep **Actions** available at the top right, including
 without a sidebar or session. Offer clickable agent status setup (including Codex),
 Settings and All commands; every palette row is clickable and wheel-scrollable.
 Include configured commands, retaining existing confirmations.
 
-When an update is available, show the accent dot beside **Actions**, its
+When an update is available, show the accent dot beside **Actions** (top right and in the status line), its
 **Settings** row and the **General** settings tab to guide users to the update.
 
 Retain the working, needs-you, done or idle icon when a terminal rings. Terminal
