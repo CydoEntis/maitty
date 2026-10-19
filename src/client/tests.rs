@@ -2931,10 +2931,10 @@ mod hydra_tests {
         let (wide, mut app) = super::design_tests::render_with(160, 45);
         let last = |text: &str| text.lines().last().unwrap_or_default().to_string();
         let wide = last(&wide);
-        assert!(wide.contains("/code/shop-api") && wide.contains("⎇ main") && wide.contains("j inbox") && wide.contains(", settings"), "{wide}");
+        assert!(wide.contains("shop-api") && wide.contains("⎇ main") && wide.contains("j inbox") && wide.contains(", settings"), "{wide}");
         assert!(!wide.contains("PANE") && !wide.contains("SIDEBAR"), "the zone badge is flat's: {wide}");
         let narrow = last(&draw(&mut app, 100, 30));
-        assert!(narrow.contains("⎇ main") && !narrow.contains("/code/shop-api") && !narrow.contains("inbox"), "below 140 columns the path goes and the right shrinks: {narrow}");
+        assert!(narrow.contains("⎇ main") && !narrow.contains("shop-api") && !narrow.contains("inbox"), "below 140 columns the path goes and the right shrinks: {narrow}");
         app.cfg.ui.layout = "flat".into();
         let flat = last(&draw(&mut app, 160, 45));
         assert!(flat.contains("PANE") || flat.contains("SIDEBAR"), "flat names its zone: {flat}");
