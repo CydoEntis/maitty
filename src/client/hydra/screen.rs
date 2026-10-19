@@ -185,8 +185,8 @@ pub(in crate::client) enum Line {
     /// A dim line under an agent: what it's on, its question, a subagent. Shares the
     /// agent's highlight.
     Note(String, Color, TermId),
-    /// A live helper, with a working marker and a colour keyed to its role.
-    Subagent(String, Color, TermId),
+    /// A live helper: an icon for what it is doing, then its name.
+    Subagent(String, &'static str, TermId),
     /// The heading over a session's subagents: how many, and whether they're listed.
     Subs(TermId, usize, bool),
     /// Nothing running in a folder project.
@@ -229,7 +229,7 @@ pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme
     if !s.subagents.is_empty() {
         out.push(Line::Subs(s.term, s.subagents.len(), !subs_closed));
         if !subs_closed {
-            out.extend(s.subagents.iter().take(SUBS_LISTED).map(|sub| Line::Subagent(sub.clone(), subagent_color(sub), s.term)));
+            out.extend(s.subagents.iter().take(SUBS_LISTED).map(|sub| Line::Subagent(sub.clone(), subagent_icon(sub), s.term)));
             if s.subagents.len() > SUBS_LISTED {
                 out.push(Line::Note(format!("  +{} more", s.subagents.len() - SUBS_LISTED), notes_c, s.term));
             }
@@ -237,17 +237,22 @@ pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme
     }
 }
 
-fn subagent_color(kind: &str) -> Color {
-    let palette = [Color::Rgb(0, 205, 210), Color::Rgb(160, 120, 255), Color::Rgb(240, 90, 190)];
-    let normalized = kind.to_ascii_lowercase();
-    let role = normalized.split(|c: char| !c.is_ascii_alphanumeric()).find(|part| !part.is_empty()).unwrap_or("");
-    let index = match role {
-        "planner" => 0,
-        "builder" => 1,
-        "reviewer" => 2,
-        _ => normalized.bytes().fold(0usize, |sum, byte| sum.wrapping_add(usize::from(byte))) % palette.len(),
-    };
-    palette[index]
+/// An icon for what a helper is doing, from its name: planning, researching, building or
+/// reviewing, else a plain dot.
+fn subagent_icon(kind: &str) -> &'static str {
+    let name = kind.to_ascii_lowercase();
+    let has = |words: &[&str]| words.iter().any(|w| name.contains(w));
+    if has(&["review", "audit", "verif"]) {
+        "⚖"
+    } else if has(&["plan", "architect", "design"]) {
+        "✎"
+    } else if has(&["research", "explore", "search", "investigat"]) {
+        "◎"
+    } else if has(&["build", "work", "implement", "fork", "fix"]) {
+        "⚙"
+    } else {
+        "●"
+    }
 }
 
 /// This many of a session's native helper agents are named before they are counted.
@@ -627,7 +632,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 put(buf, x0 + 7 + indent, y, &[seg(truncate(text, w.saturating_sub(11 + indent) as usize), Style::default().bg(pb).fg(*c).add_modifier(Modifier::ITALIC))], right);
                 hit(app, row, HyHit::Session(*term));
             }
-            Line::Subagent(name, color, term) => {
+            Line::Subagent(name, icon, term) => {
                 if small {
                     continue;
                 }
@@ -640,8 +645,8 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     y,
                     &[
                         seg("  ↳ ", base.fg(t.muted)),
-                        seg("● ", base.fg(t.text).add_modifier(Modifier::BOLD)),
-                        seg(label, base.fg(*color).add_modifier(Modifier::BOLD)),
+                        seg(format!("{icon} "), base.fg(t.status(Status::Working))),
+                        seg(label, base.fg(t.text)),
                     ],
                     right,
                 );

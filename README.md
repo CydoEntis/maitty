@@ -42,14 +42,14 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
   project or session. `<leader> Space` is a command palette in plain words, `a actions`
   in the status line lists common commands. `<leader> ?` lists every configured
   binding (including aliases), global shortcuts and controls inside each screen.
-- **Status at a glance.** Working (neutral, its name shimmering), needs you (the theme's alert colour), done (green until
+- **Status at a glance.** Working (a quiet orange, its name shimmering), needs you (the theme's alert colour), done (green until
   you look), idle. An alert or a sound tells you when one needs you or finishes out of view.
   Click a sidebar status icon or pane status tag to see why, the evidence's age and any uncertainty.
 - **Subagents under their agent.** What an agent has running shows under its row
   (`↳ reconcile_audit`, repeats counted): Claude's from its hooks, Codex's from its session
-  files (each subagent by its task's name, and `goal` while `/goal` is driving it). Helper roles
-  use cyan for planning, violet for building and magenta-pink for reviewing, distinct from the
-  green, amber, red and gray agent status colors.
+  files (each subagent by its task's name, and `goal` while `/goal` is driving it). Helpers show an icon
+  for what they are doing (`✎` planning, `◎` researching, `⚙` building, `⚖` reviewing) in the
+  working orange, not a colour per role.
 - **Limits.** An agent stopped by a limit is told "continue" once the limit resets (Settings →
   Continue after a limit), and its card says when. Model, context and cost are the agent's own
   status line to show; seshi doesn't repeat them. Claude's limit numbers come from its status line:

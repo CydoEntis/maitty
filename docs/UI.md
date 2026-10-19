@@ -175,9 +175,10 @@ are the agent's own status line, so seshi's chrome never repeats them. The pane 
 Each colour does one job. Lime (`accent`) is focus: the lit edge and the focused title. The
 theme's `blocked` colour is needs-you and nothing else (the v5 design makes it amber; each
 theme picks its own). Red (`err`) is failed, crashed or destructive, and a
-machine load past its threshold. Green (`done`) is done. Sky is leader mode. **Working is
-neutral:** a `text` spinner and name, never amber (`Theme::status(Working)` is `text`). A paused
-limit and ordinary CPU/RAM load are dim.
+machine load past its threshold. Green (`done`) is done. Sky is leader mode. **Working keeps its
+orange, eased:** `Theme::status(Working)` is the theme's working colour mixed 35% toward the muted
+text, so it sits quieter than needs-you. It shows on the status glyph and a helper's icon; names
+shimmer in a neutral tone, not orange. A paused limit and ordinary CPU/RAM load are dim.
 
 ## Project-specific: one lit edge and the status line
 
@@ -244,10 +245,9 @@ total blocked count visible even when its rows are off-screen. Provide a mouse
 expand control and retain Actions. The rail is the collapsed state of the same
 layout, not another layout.
 
-Show active helper rows under their owning agent, with an orange working dot.
-Color planner cyan, builder violet and reviewer magenta-pink; use distinct
-deterministic role colors for other helpers. Keep helper role colors separate
-from agent status colors: green done, orange working, red needs-you and gray idle.
+Show active helper rows under their owning agent: an icon for what the helper is doing
+(`✎` planning, `◎` researching, `⚙` building, `⚖` reviewing, `●` otherwise) in the eased working
+orange, then its name in the plain text colour. Roles are told apart by icon, never by colour.
 
 ## Project-specific: frame presentation
 

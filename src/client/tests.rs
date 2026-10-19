@@ -495,7 +495,7 @@ mod hydra_tests {
         assert!(text.contains("● claude") && text.contains(" 3m") && !text.contains("main · 3m"), "state, then the name; age on the right (the agent too when the name isn't it), no branch");
         assert!(text.contains("Run npm test -- checkout?"), "the question under the agent");
         assert!(text.contains("Explore"), "subagents under their agent");
-        assert!(text.contains("▾ 4 subagents") && text.contains("● planner") && text.contains("● builder") && text.contains("● reviewer"), "live helper roles are visible with status markers");
+        assert!(text.contains("▾ 4 subagents") && text.contains("✎ planner") && text.contains("⚙ builder") && text.contains("⚖ reviewer"), "live helpers are visible with an icon for what each is doing");
         assert!(text.contains("⣾ rate") && text.contains(" 2m"), "a worktree's session is named after it");
         assert!(!text.contains("Rate limit /login"), "under a session only its question, as in the redesign");
         assert!(text.contains("› shell") && !text.contains("shell 2"), "a shell in the project's folder is just 'shell', no age");
@@ -1857,30 +1857,25 @@ mod hydra_tests {
     }
 
     #[test]
-    fn live_helper_roles_have_distinct_theme_colors_and_working_markers() {
+    fn live_helpers_show_what_they_are_doing_by_icon_in_the_working_colour() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.hy_fresh();
         let mut terminal = Terminal::new(TestBackend::new(160, 45)).unwrap();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = terminal.backend().buffer().clone();
-        let color_at = |name: &str| {
+        let at = |name: &str| {
             let row = |y| (0..160).map(|x| buf[(x, y)].symbol()).collect::<String>();
             let y = (0..45).find(|&y| row(y).contains(name)).unwrap_or_else(|| panic!("{name} helper row"));
             let x = row(y)[..row(y).find(name).unwrap()].chars().count() as u16;
-            let marker = (0..x).find(|&x| buf[(x, y)].symbol() == "●").unwrap_or_else(|| panic!("{name} working marker"));
-            (buf[(x, y)].fg, buf[(marker, y)].fg)
+            // The icon sits two cells before the name; the name is the plain text colour.
+            (buf[(x - 2, y)].symbol().to_string(), buf[(x - 2, y)].fg, buf[(x, y)].fg)
         };
-        let (planner, planner_status) = color_at("planner");
-        let (builder, builder_status) = color_at("builder");
-        let (reviewer, reviewer_status) = color_at("reviewer");
-        assert_eq!(
-            [planner, builder, reviewer],
-            [ratatui::style::Color::Rgb(0, 205, 210), ratatui::style::Color::Rgb(160, 120, 255), ratatui::style::Color::Rgb(240, 90, 190)],
-            "role colors use cyan, violet and magenta-pink instead of status colors"
-        );
-        assert!(planner != builder && builder != reviewer && reviewer != planner, "roles have distinct theme identity colors");
-        assert!([planner, builder, reviewer].into_iter().all(|color| color != app.theme.idle), "role colors stay distinct from idle");
-        assert_eq!([planner_status, builder_status, reviewer_status], [app.theme.status(Status::Working); 3], "each active helper keeps the working signal");
+        let (planner, builder, reviewer) = (at("planner"), at("builder"), at("reviewer"));
+        assert_eq!([planner.0.as_str(), builder.0.as_str(), reviewer.0.as_str()], ["✎", "⚙", "⚖"], "an icon for each role");
+        let working = app.theme.status(Status::Working);
+        assert_eq!([planner.1, builder.1, reviewer.1], [working; 3], "the icon wears the working colour");
+        assert_eq!([planner.2, builder.2, reviewer.2], [app.theme.text; 3], "the names are one neutral colour, not a colour per role");
+        assert_ne!(working, app.theme.working, "eased, so quieter than the raw orange");
     }
 
     #[test]

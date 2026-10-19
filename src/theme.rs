@@ -270,6 +270,9 @@ fn colors_alike(a: Color, b: Color) -> bool {
     a == b || contrast(a, b) < MIN_COLOR_CONTRAST && distance < MIN_COLOR_DISTANCE
 }
 
+/// How far the working colour is eased toward the muted text.
+const WORKING_EASE: f32 = 0.35;
+
 impl Theme {
     /// Keep terminal colors faithful to upstream, while adapting UI roles for readable chrome.
     fn palette(base: [&str; 4], ansi: [&str; 7]) -> Theme {
@@ -922,8 +925,9 @@ impl Theme {
     pub fn status(&self, s: crate::protocol::Status) -> Color {
         use crate::protocol::Status::*;
         match s {
-            // Working is neutral: amber is for what needs you.
-            Working => self.text,
+            // Working keeps its orange, eased toward the muted text so it sits quieter than
+            // needs-you.
+            Working => mix(self.working, self.muted, WORKING_EASE),
             Blocked => self.blocked,
             Done => self.done,
             Idle => self.idle,
