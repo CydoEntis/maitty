@@ -514,7 +514,7 @@ impl App {
             }
             Act::Aside(term, until) => {
                 self.cmd(Command::SetAside { term, until });
-                let who = self.snap.terms.get(&term).map(|t| t.display_name()).unwrap_or_default();
+                let who = self.session_name(term);
                 self.notify(
                     match until {
                         None => format!("{who} is back"),

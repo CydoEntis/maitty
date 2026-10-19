@@ -890,7 +890,7 @@ impl App {
             // With nothing typed, a number answers the agent you're on.
             KeyCode::Char(c @ '1'..='9') if query.is_empty() && matches!(sel_row, Some(GoRow::Ask(_))) => {
                 if let Some(GoRow::Ask(term)) = sel_row {
-                    let name = self.snap.terms.get(&term).map(|t| t.display_name()).unwrap_or_default();
+                    let name = self.session_name(term);
                     self.inbox_answer(term, c, &name);
                 }
             }
@@ -1177,11 +1177,11 @@ impl App {
             HyHit::SideFocus => self.act(Action::BrowseTree),
             HyHit::ExpandSidebar => self.act(Action::ToggleSidebar),
             HyHit::TabNew => self.act(Action::NewTab),
+            HyHit::NewShell => self.act(Action::ShellHere),
             HyHit::Actions => self.act(Action::Actions),
             HyHit::StatusSettings => self.act(Action::Settings),
             HyHit::StatusInbox => self.act(Action::Jump),
             HyHit::StatusKeys => self.act(Action::Help),
-            HyHit::NewShell => self.act(Action::ShellHere),
             HyHit::ActionRow(i) => self.actions_run(i),
             HyHit::PickRow(i) => {
                 if let Mode::Picker { query, commands, .. } = self.mode.clone() {
@@ -1220,7 +1220,7 @@ impl App {
                 }
             }
             HyHit::InboxAnswer(term, key) => {
-                let name = self.snap.terms.get(&term).map(|t| t.display_name()).unwrap_or_default();
+                let name = self.session_name(term);
                 self.inbox_answer(term, key, &name);
             }
             HyHit::NpTask => {

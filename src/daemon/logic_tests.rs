@@ -1020,6 +1020,69 @@ fn a_turn_waiting_on_background_agents_stays_working() {
 }
 
 #[test]
+fn a_progress_bar_that_goes_off_while_helpers_run_is_not_a_cancel() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let ago = |secs: u64| Instant::now().checked_sub(Duration::from_secs(secs)).unwrap();
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Working);
+        p.progress_off = Some(ago(5));
+    }
+    d.update_statuses();
+    assert_eq!(d.terms[&t].status, Status::Idle, "control: with nothing running, a bar that went off is a cancel");
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        p.status = Status::Working;
+        p.progress_off = Some(ago(5));
+        p.subagents.push(("a1".into(), "general-purpose".into()));
+        p.subagent_seen = Some(Instant::now());
+    }
+    d.update_statuses();
+    assert_eq!(d.terms[&t].status, Status::Working, "the agent is waiting on its helper, not cancelled");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_stop_for_an_unknown_helper_leaves_the_running_ones_alone() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let hook = |status: HookStatus, event: &str, id: &str, start: bool| {
+        let mut m = report(t, "", 0, status, event);
+        if let ClientMsg::Hook { subagent, .. } = &mut m {
+            *subagent = Some(Subagent { id: id.into(), kind: "general-purpose".into(), start });
+        }
+        m
+    };
+    d.apply_hook(hook(HookStatus::Working, "SubagentStart", "a1", true), Some(true), Vec::new());
+    d.apply_hook(hook(HookStatus::Working, "SubagentStart", "a2", true), Some(true), Vec::new());
+    // One that began before seshi was listening stops: nobody listed has finished.
+    d.apply_hook(hook(HookStatus::Same, "SubagentStop", "never-seen", false), Some(true), Vec::new());
+    assert_eq!(d.terms[&t].subagents.len(), 2, "both still listed");
+    d.apply_hook(hook(HookStatus::Same, "SubagentStop", "a1", false), Some(true), Vec::new());
+    assert_eq!(d.terms[&t].subagents, vec![("a2".to_string(), "general-purpose".to_string())], "only the one that stopped goes");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_session_starting_again_while_helpers_run_keeps_the_agent_working() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let plain = |status: HookStatus, event: &str| report(t, "", 0, status, event);
+    d.apply_hook(plain(HookStatus::Working, "UserPromptSubmit"), Some(true), Vec::new());
+    let mut start = plain(HookStatus::Working, "SubagentStart");
+    if let ClientMsg::Hook { subagent, .. } = &mut start {
+        *subagent = Some(Subagent { id: "a1".into(), kind: "general-purpose".into(), start: true });
+    }
+    d.apply_hook(start, Some(true), Vec::new());
+    // Compaction starts the session again in the middle of the turn.
+    d.apply_hook(plain(HookStatus::Idle, "SessionStart"), Some(true), Vec::new());
+    assert_eq!(d.terms[&t].status, Status::Working, "still working");
+    assert_eq!(d.terms[&t].subagents.len(), 1, "its helper is still listed");
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn an_agent_asks_you_and_gets_your_answer() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);

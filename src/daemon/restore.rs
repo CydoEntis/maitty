@@ -75,6 +75,7 @@ impl Daemon {
         if !self.cfg.restore.enabled {
             return;
         }
+        let ticket = persist::save_ticket();
         let live: Vec<TermId> = self.terms.values().filter(|t| !t.spare).map(|t| t.id).collect();
         let outputs: Vec<(TermId, Vec<u8>)> = self
             .terms
@@ -89,7 +90,7 @@ impl Daemon {
             return;
         }
         let save = move || {
-            if let Err(e) = persist::save_outputs(&outputs, &live) {
+            if let Err(e) = persist::save_outputs(ticket, &outputs, &live) {
                 tracing::warn!("saving panes' output: {e:#}");
             }
         };

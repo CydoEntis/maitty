@@ -311,7 +311,7 @@ fn draw_preview(buf: &mut ratatui::buffer::Buffer, area: Rect, name: &str) {
         area.x + 2,
         area.y + 3,
         &[
-            seg("● working  ", st.fg(theme.working)),
+            seg("● working  ", st.fg(theme.text)),
             seg("! needs you  ", st.fg(theme.blocked)),
             seg("✓ done  ", st.fg(theme.done)),
             seg("○ idle", st.fg(theme.idle)),

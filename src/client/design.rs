@@ -323,10 +323,10 @@ pub(super) fn draw_changes(app: &mut App, buf: &mut Buffer, area: Rect, t: &Them
         let rr = Rect { x: body.x + 1, y, width: fw - 1, height: 1 };
         let sel = matches!(row, ChangesRow::File(fi, _) if *fi == r.sel);
         if sel {
-            fill(buf, rr, t.hov);
-            put(buf, body.x + 1, y, &[seg(">", Style::default().fg(t.accent).bg(t.hov).add_modifier(Modifier::BOLD))], body.right());
+            fill(buf, rr, t.sel_on(t.bg));
+            put(buf, body.x + 1, y, &[seg("▎", Style::default().fg(t.accent).bg(t.sel_on(t.bg)).add_modifier(Modifier::BOLD))], body.right());
         }
-        let bg = if sel { t.hov } else { t.bg };
+        let bg = if sel { t.sel_on(t.bg) } else { t.bg };
         let s = Style::default().bg(bg);
         match row {
             ChangesRow::Reviewed(n) => {
@@ -472,7 +472,7 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
         let sel = *i == v.sel;
         let rr = Rect { x: body.x + 1, y, width: fw - 1, height: 1 };
         let hovered = app.hover.is_some_and(|p| rr.contains(p));
-        let bg = if sel || hovered { t.hov } else { t.bg };
+        let bg = if sel { t.sel_on(t.bg) } else if hovered { t.hover_on(t.bg) } else { t.bg };
         if sel || hovered {
             fill(buf, rr, bg);
         }
@@ -687,12 +687,12 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
         SRow::Setting(s) => match s.path {
             "theme" => "THEME",
             "ui.spinner" => "STATUS INDICATORS",
-            "prefix" | "ui.mouse" | "ui.which_key" => "INPUT",
-            "ui.sidebar_position" | "ui.splash" => "LAYOUT",
+            "prefix" | "ui.mouse" | "ui.which_key" | "ui.alt_arrows" => "INPUT",
+            "ui.layout" | "ui.background" | "ui.sidebar_position" | "ui.splash" | "ui.motion" => "LAYOUT",
             "ui.update_check" => "UPDATES",
             "shell" | "editor" | "shell_integration" | "ui.start_dir" => "SHELL",
             "ui.attention_sort" => "SIDEBAR",
-            "ui.layout" | "ui.panes" | "ui.corners" | "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pill_caps" => "PANES",
+            "ui.panes" | "ui.corners" | "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pill_caps" => "PANES",
             p if p.starts_with("notify.") => "ALERTS",
             "worktree.delete_with_last" | "worktree.per_agent" | "worktree.command" => "WORKTREES",
             p if p.starts_with("restore.") => "RESTARTS",
@@ -773,7 +773,7 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
             let cur = super::modal::current(cfg, s.path);
             match s.kind {
                 Kind::Spinner => vec![
-                    seg(format!(" {} ", super::modal::display(cfg, s)), Style::default().fg(t.working)),
+                    seg(format!(" {} ", super::modal::display(cfg, s)), Style::default().fg(t.strong)),
                     seg("Enter browse", Style::default().fg(t.accent)),
                 ],
                 Kind::Bool => {

@@ -208,7 +208,7 @@ pub(super) fn draw(app: &mut App, frame: &mut Frame, area: Rect, theme: &Theme, 
             buf,
             row.x + 3,
             row.y,
-            &[seg(format!("{glyph}  {name}"), style.fg(theme.working))],
+            &[seg(format!("{glyph}  {name}"), style.fg(theme.text))],
             row.right().saturating_sub(11),
         );
         if current == name || (i == SPINNERS.len() && current == "Custom") {
@@ -232,7 +232,7 @@ pub(super) fn draw(app: &mut App, frame: &mut Frame, area: Rect, theme: &Theme, 
         r.bottom() - 7,
         &[seg(
             format!("Preview: {glyph} working"),
-            Style::default().fg(theme.working),
+            Style::default().fg(theme.text),
         )],
         r.right() - 3,
     );

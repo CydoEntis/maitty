@@ -432,6 +432,7 @@ impl App {
             KeyCode::Char('o') => {
                 self.open_outside(crate::config::config_path(), "config.toml".into());
             }
+            KeyCode::Char('u') => self.act(Action::CheckUpdate),
             KeyCode::Enter | KeyCode::Char(' ') => match &row {
                 Some(design::SRow::Setting(s)) => match s.kind {
                     // A folder: pick it in the folder browser (Esc comes back here).

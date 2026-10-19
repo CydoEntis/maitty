@@ -219,7 +219,7 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
         }
         let on = selected && glide.is_none();
         let hov = hovered(app, head);
-        let bg = if on || hov { t.hov } else { t.card };
+        let bg = if on { t.sel_on(t.card) } else if hov { t.hover_on(t.card) } else { t.card };
         if on || hov {
             row_pill(look, buf, head.x, y, head.width, bg, t.card);
         }
@@ -365,7 +365,7 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
         y += hgt;
     }
     if let Some((gy, head)) = gliding.filter(|(gy, _)| *gy < bottom) {
-        tint_row(look, buf, head.x, gy, head.width, t.hov, t.card);
+        tint_row(look, buf, head.x, gy, head.width, t.sel_on(t.card), t.card);
     }
     let keys: &[(&str, &str)] = if query.is_empty() { &[("↑↓", "move"), ("1 2 3", "answer"), ("Enter", "go"), ("Del", "seen")] } else { &[("↑↓", "move"), ("Enter", "go to it"), ("Esc", "clear")] };
     let note = vec![seg("j", Style::default().fg(t.accent).add_modifier(Modifier::BOLD)), seg(" closes", Style::default().fg(t.muted))];

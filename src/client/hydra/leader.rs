@@ -162,9 +162,9 @@ pub(in crate::client) fn draw_keymap(app: &mut App, f: &mut Frame, area: Rect, t
             let rr = Rect { x: r.x + 3, y, width: w.saturating_sub(6), height: 1 };
             let sel = i == km.sel || hovered(app, rr);
             if sel {
-                row_pill(look, buf, rr.x, y, rr.width, t.hov, t.card);
+                row_pill(look, buf, rr.x, y, rr.width, t.sel_on(t.card), t.card);
             }
-            let bg = if sel { t.hov } else { t.card };
+            let bg = if sel { t.sel_on(t.card) } else { t.card };
             let st = Style::default().bg(bg);
             put(buf, r.x + 5, y, &keycap_pill(look, t, &key.to_string(), i == km.sel, bg), r.right());
             put(buf, r.x + 11, y, &[seg(label, st.fg(if sel { t.strong } else { t.text }).add_modifier(if sel { Modifier::BOLD } else { Modifier::empty() }))], r.x + 31);
@@ -195,9 +195,9 @@ pub(in crate::client) fn draw_keymap(app: &mut App, f: &mut Frame, area: Rect, t
             let rr = Rect { x: r.x + 3, y, width: w.saturating_sub(6), height: 1 };
             let sel = i == km.sel || hovered(app, rr);
             if sel {
-                row_pill(look, buf, rr.x, y, rr.width, t.hov, t.card);
+                row_pill(look, buf, rr.x, y, rr.width, t.sel_on(t.card), t.card);
             }
-            let bg = if sel { t.hov } else { t.card };
+            let bg = if sel { t.sel_on(t.card) } else { t.card };
             let kx = put(buf, r.x + 5, y, &keycap_pill(look, t, &key, i == km.sel, bg), r.right());
             put(buf, kx.max(r.x + 14) + 1, y, &[seg(label, Style::default().bg(bg).fg(if sel { t.strong } else { t.text }))], r.right() - 3);
             hit(app, rr, HyHit::KeyRow(i));
@@ -273,9 +273,9 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
         let rr = Rect { x: r.x + 2, y: yy, width: w.saturating_sub(4), height: 1 };
         let on = i == sel || hovered(app, rr);
         if on {
-            row_pill(look, buf, rr.x, yy, rr.width, t.hov, t.card);
+            row_pill(look, buf, rr.x, yy, rr.width, t.sel_on(t.card), t.card);
         }
-        let bg = if on { t.hov } else { t.card };
+        let bg = if on { t.sel_on(t.card) } else { t.card };
         let st = Style::default().bg(bg);
         let mut ls = st.fg(if on { t.strong } else { t.text });
         if on {
