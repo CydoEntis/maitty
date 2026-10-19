@@ -115,7 +115,7 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "ui.panes", label: "Cards spacing", kind: Kind::Choice(&["floating", "tiled"]), cat: Cat::Appearance, help: "Gaps and rounded borders between panes in Cards layout. Tiled packs them edge to edge." },
     Setting { path: "ui.corners", label: "Card edges", kind: Kind::Choice(&["flush", "rounded"]), cat: Cat::Appearance, help: "Flush: the line sits on the card's edge, its colour right up to it. Rounded: a centred line with round corners (a thin strip of background shows inside it)." },
     Setting { path: "ui.gap", label: "Gap", kind: Kind::Choice(&["0", "1", "2"]), cat: Cat::Appearance, help: "Space between floating panes, in rows stacked and columns side by side." },
-    Setting { path: "ui.dim", label: "Dim unfocused", kind: Kind::Choice(&["off", "subtle", "40%", "60%"]), cat: Cat::Appearance, help: "How far the panes you're not in fade. Their colours stay recognisable." },
+    Setting { path: "ui.dim", label: "Dim unfocused", kind: Kind::Choice(&["off", "subtle", "30%", "60%"]), cat: Cat::Appearance, help: "How far the panes you're not in fade. Their colours stay recognisable." },
     Setting { path: "ui.focus_border", label: "Focus border", kind: Kind::Choice(&["accent", "bright", "none"]), cat: Cat::Appearance, help: "How the pane you're in is outlined." },
     Setting { path: "ui.pill_caps", label: "Round pill ends", kind: Kind::Bool, cat: Cat::Appearance, help: "Tabs and buttons get round ends. Needs a Nerd Font; turn off for square ends." },
     Setting { path: "theme", label: "Theme", kind: Kind::Choice(crate::theme::BUILTIN), cat: Cat::Appearance, help: "Enter to search and preview themes. Enter in the browser applies your choice." },

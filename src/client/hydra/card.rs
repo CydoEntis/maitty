@@ -46,8 +46,8 @@ pub(in crate::client) fn chip(text: &str, st: Style) -> Vec<Seg> {
     vec![l, seg(text, st), r]
 }
 
-/// How far the inside of an unfocused card fades toward its background at "40%" (the design's 42).
-const DIM_DEFAULT: f32 = 0.42;
+/// How far the inside of an unfocused card fades toward its background at "30%" (the design's v5).
+const DIM_DEFAULT: f32 = 0.30;
 const DIM_SUBTLE: f32 = 0.2;
 const DIM_STRONG: f32 = 0.6;
 

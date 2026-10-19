@@ -176,6 +176,21 @@ machine load past its threshold. Green (`done`) is done. Sky is leader mode. **W
 neutral:** a `text` spinner and name, never amber (`Theme::status(Working)` is `text`). A paused
 limit and ordinary CPU/RAM load are dim.
 
+## Project-specific: one lit edge and the status line
+
+Only what has the keyboard is lit: the focused pane's border (cards) or bar (flat), or, while a
+sheet is open, the sheet. The pane then drops to a `line` border and fades; the sidebar's
+selection bar goes dim. Unfocused panes fade by the Dim setting (30% by default; "40%" in an older
+config counts as 30%).
+
+The bottom row is the status line in both layouts, on the raised `card` tone. Left: in flat a zone
+badge (`SIDEBAR` / `PANE`), then the selected session's path, `⎇ branch` and a `⇆ file` heads-up.
+Right: `● n needs you`, then `j inbox   a actions   , settings   ? keys`, with an accent dot after
+`actions` when an update waits. The right side keeps its room; the left fills the rest, dropping
+the path first (it never shows below 140 columns) and then tags from the end. Below 140 columns the
+right becomes `● n   ? keys`. The design also shows `#PR ✓/✕` and a dev-server tag; seshi has no
+data for either yet.
+
 ## Project-specific: UI conventions
 
 - Popups are centred `panel()`s with an accent title bar and `Esc close`; the

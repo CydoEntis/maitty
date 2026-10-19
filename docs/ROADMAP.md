@@ -317,8 +317,8 @@ dropping model, context and cost from Seshi's own chrome. One commit per step, e
 2. Spacing (1-column margin and gap; sidebar has no footer) — done on this branch.
 3. Each fact shows once (pane title, status line holds path/branch/PR) — done on this branch, except the PR, server and `⇆` tags, which step 6 moves into the status line.
 4. Colour jobs (working is never amber; neutral selection tint and `▎` bar) — done on this branch (sidebar, sheet and popup lists).
-5. Exactly one lit edge.
-6. Status line in both layouts.
+5. Exactly one lit edge — done on this branch.
+6. Status line in both layouts — done on this branch, without the `#PR` and dev-server tags (no data yet).
 7. Settings › General sections.
 
 ## In scope

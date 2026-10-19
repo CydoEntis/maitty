@@ -105,7 +105,7 @@ pub struct Ui {
     pub corners: String,
     /// Space between floating cards: "0", "1" or "2" rows stacked (and columns side by side).
     pub gap: String,
-    /// How far unfocused panes fade toward their background: "off", "subtle", "40%", "60%".
+    /// How far unfocused panes fade toward their background: "off", "subtle", "30%", "60%" ("40%" from older configs counts as 30%).
     pub dim: String,
     /// The focused card's border: "accent", "bright" or "none".
     pub focus_border: String,
@@ -496,7 +496,7 @@ impl Default for Ui {
             panes: "floating".into(),
             corners: "flush".into(),
             gap: "1".into(),
-            dim: "40%".into(),
+            dim: "30%".into(),
             focus_border: "accent".into(),
             pill_caps: true,
         }

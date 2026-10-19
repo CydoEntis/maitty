@@ -802,51 +802,89 @@ pub(in crate::client) fn draw_main(app: &mut App, f: &mut Frame, area: Rect, mod
     }
 }
 
+/// The bottom row, in both layouts: where the selected session runs, its branch and any
+/// shared-file heads-up on the left; what needs you and the global keys on the right. The right
+/// keeps its room and the left fills the rest: the path goes first (below `NARROW` it never
+/// shows), then the tags from the end.
 fn draw_status_line(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], t: &Theme) {
     if area.height == 0 || area.width < 20 { return; }
     let y = area.bottom() - 1;
-    fill(buf, Rect { x: area.x, y, width: area.width, height: 1 }, t.card);
-    let ink = Style::default().fg(t.acc_ink).bg(t.accent).add_modifier(Modifier::BOLD);
-    let plain = Style::default().fg(t.text).bg(t.card);
-    let dim = Style::default().fg(t.muted).bg(t.card);
-    let mut x = put(buf, area.x, y, &[seg(if app.mode == Mode::Side { " SIDEBAR " } else { " PANE " }, ink)], area.right());
-    x = put(buf, x, y, &[seg("  ", plain)], area.right());
-    if let Some(id) = app.focused() {
-        if let Some(info) = app.snap.terms.get(&id) {
-            let mut left = vec![seg(tilde(&info.cwd), plain)];
-            let branch = find(model, id).and_then(|(p, w, _)| (p.git && !w.branch.is_empty()).then(|| w.branch.clone())).or_else(|| info.branch.clone());
-            if let Some(branch) = branch {
-                left.push(seg("   ", dim));
-                left.push(seg(format!("⎇ {branch}"), Style::default().fg(t.done).bg(t.card)));
-            }
-            x = put(buf, x, y, &left, area.right());
-        }
-    } else {
-        x = put(buf, x, y, &[seg("~", plain)], area.right());
-    }
-    let mut right: Vec<(String, HyHit, Color, bool)> = Vec::new();
+    let flat = Look::of(&app.cfg.ui).flat;
+    let narrow = area.width < NARROW;
+    let bg = t.card;
+    fill(buf, Rect { x: area.x, y, width: area.width, height: 1 }, bg);
+    let dim = Style::default().fg(t.muted).bg(bg);
+    let bold = |c: Color| Style::default().fg(c).bg(bg).add_modifier(Modifier::BOLD);
+
+    // The right: what needs you, then each global key and what it does.
     let needs = app.snap.terms.values().filter(|term| term.status == Status::Blocked).count();
-    if needs > 0 { right.push((format!("● {needs} needs you"), HyHit::StatusInbox, t.blocked, false)); }
-    right.push((format!("{} inbox", k(app, &Action::Jump)), HyHit::StatusInbox, t.text, false));
-    // The accent dot marks where an update is waiting.
     let update = app.update_available.is_some() || app.restart_pending();
-    right.push((format!("{} actions", k(app, &Action::Actions)), HyHit::Actions, t.text, update));
-    right.push((format!("{} settings", k(app, &Action::Settings)), HyHit::StatusSettings, t.text, false));
-    right.push((format!("{} keys", k(app, &Action::Help)), HyHit::StatusKeys, t.text, false));
-    let width_of = |label: &str, dot: bool| label.width() as u16 + if dot { 2 } else { 0 };
-    let total: u16 = right.iter().map(|(s, _, _, dot)| width_of(s, *dot) + 3).sum();
-    let mut rx = area.right().saturating_sub(total);
-    if rx < x.saturating_add(1) { rx = x.min(area.right()); }
-    for (label, target, colour, dot) in right {
-        let width = width_of(&label, dot);
-        if rx.saturating_add(width + 2) > area.right() { break; }
-        let end = put(buf, rx + 1, y, &[seg(label, Style::default().fg(colour).bg(t.card).add_modifier(Modifier::BOLD))], area.right());
-        if dot {
-            put(buf, end, y, &[seg(" ●", Style::default().fg(t.accent).bg(t.card).add_modifier(Modifier::BOLD))], area.right());
-        }
-        hit(app, Rect { x: rx, y, width: width + 2, height: 1 }, target);
-        rx = rx.saturating_add(width + 3);
+    let mut right: Vec<(Vec<Seg>, HyHit)> = Vec::new();
+    if needs > 0 {
+        let label = if narrow { format!("● {needs}") } else { format!("● {needs} needs you") };
+        right.push((vec![seg(label, bold(t.blocked))], HyHit::StatusInbox));
     }
+    let key_item = |key: String, word: &str| vec![seg(key, bold(t.text)), seg(format!(" {word}"), dim)];
+    if !narrow {
+        right.push((key_item(k(app, &Action::Jump), "inbox"), HyHit::StatusInbox));
+        let mut actions = key_item(k(app, &Action::Actions), "actions");
+        if update {
+            actions.push(seg(" ●", bold(t.accent)));
+        }
+        right.push((actions, HyHit::Actions));
+        right.push((key_item(k(app, &Action::Settings), "settings"), HyHit::StatusSettings));
+    }
+    right.push((key_item(k(app, &Action::Help), "keys"), HyHit::StatusKeys));
+    const GAP: u16 = 3;
+    let total: u16 = right.iter().map(|(segs, _)| segs_width(segs)).sum::<u16>() + GAP * right.len().saturating_sub(1) as u16;
+    let rx = area.right().saturating_sub(2 + total).max(area.x);
+    let mut at = rx;
+    for (segs, target) in right {
+        let w = segs_width(&segs);
+        put(buf, at, y, &segs, area.right());
+        hit(app, Rect { x: at.saturating_sub(1), y, width: w + 2, height: 1 }, target);
+        at += w + GAP;
+    }
+
+    // The left: a zone badge in flat, then the selected session's path, branch and heads-up.
+    let mut x = area.x;
+    if flat {
+        let ink = Style::default().fg(t.acc_ink).bg(t.accent).add_modifier(Modifier::BOLD);
+        x = put(buf, x, y, &[seg(if app.mode == Mode::Side { " SIDEBAR " } else { " PANE " }, ink)], area.right());
+    }
+    x += 2;
+    let selected = if app.mode == Mode::Side { app.hy.cursor.or(app.focused()) } else { app.focused() };
+    let (path, mut tags) = match selected.and_then(|id| app.snap.terms.get(&id).map(|info| (id, info))) {
+        Some((id, info)) => {
+            let found = find(model, id);
+            let branch = found.and_then(|(p, w, _)| (p.git && !w.branch.is_empty()).then(|| w.branch.clone())).or_else(|| info.branch.clone());
+            let mut tags: Vec<(String, Color)> = branch.map(|b| (format!("⎇ {b}"), t.done)).into_iter().collect();
+            if let Some((p, w, _)) = found
+                && let Some(o) = heads_up(app).into_iter().find(|(repo, o)| *repo == p.path && o.checkouts.contains(&w.name)).map(|(_, o)| o)
+            {
+                tags.push((format!("⇆ {}", o.file), blend(t.blocked, t.text, 0.45)));
+            }
+            (tilde(&info.cwd), tags)
+        }
+        None => ("~".to_string(), Vec::new()),
+    };
+    let room = rx.saturating_sub(x + GAP);
+    let width = |tags: &[(String, Color)]| tags.iter().map(|(s, _)| s.width() as u16 + GAP).sum::<u16>();
+    while tags.len() > 1 && width(&tags) > room.saturating_sub(4) {
+        tags.pop();
+    }
+    let path_room = room.saturating_sub(width(&tags));
+    let mut left: Vec<Seg> = Vec::new();
+    if !narrow && path_room >= 4 {
+        left.push(seg(truncate(&path, path_room as usize), dim));
+    }
+    for (text, colour) in tags {
+        if !left.is_empty() {
+            left.push(seg("   ", dim));
+        }
+        left.push(seg(text, Style::default().fg(colour).bg(bg)));
+    }
+    put(buf, x, y, &left, rx.saturating_sub(GAP));
 }
 
 /// The ⋯ that opens a sidebar row's menu (for terminals that keep right-clicks).
@@ -993,7 +1031,8 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     let found = find(model, term);
     let st = info.status;
     // While the sidebar has the keys, no pane shows as focused.
-    let focused = focused && app.mode != Mode::Side;
+    // Exactly one lit edge: an open sheet has the keys, so the pane gives up its lit border.
+    let focused = focused && app.mode != Mode::Side && open_sheet(app).is_none();
     let (name, sub) = found
         .map(|(p, _, s)| {
             // What the agent is on comes first: no other place on screen says it.

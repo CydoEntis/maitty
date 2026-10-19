@@ -1508,7 +1508,8 @@ mod hydra_tests {
         assert!(lines[1].starts_with("  ▁") && lines[1].trim().chars().filter(|c| *c == '▁').count() == 24, "a slim sidebar: {}", lines[1]);
         let side: String = lines.iter().map(|l| l.chars().take(30).collect::<String>() + "\n").collect();
         assert!(!side.contains("main · 3m") && !side.contains("Run npm test"), "no meta or questions in the slim sidebar: {side}");
-        assert!(!o.contains("+ new") && o.contains("actions"), "no sidebar foot, even a slim one");
+        assert!(!o.contains("+ new") && o.contains("Actions"), "no sidebar foot, even a slim one");
+        assert!(o.lines().last().is_some_and(|l| l.contains("? keys") && !l.contains("inbox")), "a narrow status line keeps only the count and keys");
     }
 
     #[test]
@@ -2812,13 +2813,15 @@ mod hydra_tests {
         app.hy.overlaps.insert(p.path.clone(), shared(60));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(!o.contains("shared files") && !o.contains("file0.ts"), "sidebar stays focused on sessions");
+        let above_status: String = o.lines().take(44).collect::<Vec<_>>().join("\n");
+        assert!(!above_status.contains("shared files") && !above_status.contains("file0.ts"), "sidebar stays focused on sessions");
         let lines = hydra::side_lines(&app, &app.hy_model(), &app.theme);
         assert!(lines.len() < 20, "the sidebar stays short: {} lines", lines.len());
         // A couple are still available through the Inbox.
         app.hy.overlaps.insert(p.path.clone(), shared(2));
         let o = draw(&mut app, 160, 45);
-        assert!(!o.contains("file0.ts") && !o.contains("file1.ts"));
+        let above_status: String = o.lines().take(44).collect::<Vec<_>>().join("\n");
+        assert!(!above_status.contains("file0.ts") && !above_status.contains("file1.ts"));
         // In the Inbox they come after what needs you and what finished, however many.
         app.hy.overlaps.insert(p.path.clone(), shared(60));
         let rows = hydra::goto_rows(&app.hy_model(), "", hydra::heads_up(&app).len());
@@ -2839,7 +2842,9 @@ mod hydra_tests {
         app.hy_fresh();
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(!o.contains("checkout.ts"), "worktree overlap labels stay out of the sidebar");
+        let above_status: String = o.lines().take(44).collect::<Vec<_>>().join("\n");
+        assert!(!above_status.contains("checkout.ts"), "worktree overlap labels stay out of the sidebar");
+        assert!(o.lines().nth(44).is_some_and(|l| l.contains("⇆ src/checkout.ts")), "the selected session's heads-up is in the status line");
         // In the Inbox: HEADS UP, with what you can do about it.
         app.act(Action::Jump);
         let o = draw(&mut app, 160, 45);
@@ -2914,6 +2919,39 @@ mod hydra_tests {
         assert_eq!(gap(&mut app), ratatui::style::Color::Reset, "terminal: SGR 49 under the chrome");
         app.cfg.ui.background = "solid".into();
         assert_eq!(gap(&mut app), app.theme.bg, "solid: the theme's own ground");
+    }
+
+    #[test]
+    fn the_status_line_fits_what_the_right_side_leaves() {
+        let (wide, mut app) = super::design_tests::render_with(160, 45);
+        let last = |text: &str| text.lines().last().unwrap_or_default().to_string();
+        let wide = last(&wide);
+        assert!(wide.contains("/code/shop-api") && wide.contains("⎇ main") && wide.contains("j inbox") && wide.contains(", settings"), "{wide}");
+        assert!(!wide.contains("PANE") && !wide.contains("SIDEBAR"), "the zone badge is flat's: {wide}");
+        let narrow = last(&draw(&mut app, 100, 30));
+        assert!(narrow.contains("⎇ main") && !narrow.contains("/code/shop-api") && !narrow.contains("inbox"), "below 140 columns the path goes and the right shrinks: {narrow}");
+        app.cfg.ui.layout = "flat".into();
+        let flat = last(&draw(&mut app, 160, 45));
+        assert!(flat.contains("PANE") || flat.contains("SIDEBAR"), "flat names its zone: {flat}");
+    }
+
+    #[test]
+    fn only_what_has_the_keyboard_is_lit() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let lit_edges = |app: &mut App| {
+            let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+            term.draw(|f| render::draw(app, f)).unwrap();
+            let buf = term.backend().buffer().clone();
+            let (_, pane) = app.pane_frames[0];
+            let accent = app.theme.accent;
+            // The pane card's left edge, then anything else on screen to its right (the sheet).
+            let pane_lit = (pane.y + 1..pane.bottom() - 1).any(|y| buf[(pane.x, y)].fg == accent);
+            let sheet_lit = (0..45u16).any(|y| (pane.right()..160u16).any(|x| buf[(x, y)].fg == accent && matches!(buf[(x, y)].symbol(), "▕" | "▏" | "│")));
+            (pane_lit, sheet_lit)
+        };
+        assert_eq!(lit_edges(&mut app), (true, false), "the pane has the keys: its edge is lit");
+        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 0, sel: 1, editing: None, capturing: false, scroll: 0 }));
+        assert_eq!(lit_edges(&mut app), (false, true), "settings has them: the sheet is lit, the pane is not");
     }
 
     #[test]
