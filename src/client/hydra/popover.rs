@@ -260,7 +260,7 @@ impl App {
     /// Leave `text` with the server for the agent: it's typed in when this turn is over.
     pub(in crate::client) fn queue_follow_up(&mut self, term: TermId, text: &str) {
         self.cmd(Command::QueueFollowUp { term, text: text.to_string() });
-        let who = self.snap.terms.get(&term).map(|t| t.display_name()).unwrap_or_default();
+        let who = self.session_name(term);
         self.notify(format!("Queued for {who}: it goes in when this turn is over"), false);
     }
 
@@ -275,7 +275,7 @@ impl App {
             std::thread::sleep(ENTER_AFTER);
             let _ = out.send(ClientMsg::Input { term, data: b"\r".to_vec() });
         });
-        let who = self.snap.terms.get(&term).map(|t| t.display_name()).unwrap_or_default();
+        let who = self.session_name(term);
         self.notify(format!("Sent to {who} · you stayed here"), false);
     }
 

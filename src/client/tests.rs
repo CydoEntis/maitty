@@ -2961,6 +2961,19 @@ mod hydra_tests {
     }
 
     #[test]
+    fn a_finished_note_says_the_name_you_gave_the_session() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.snap.terms.get_mut(&2).unwrap().label = "Checkout rewrite".into();
+        app.hy_fresh();
+        app.snap.terms.get_mut(&2).unwrap().status = Status::Done;
+        app.on_server(crate::protocol::ServerMsg::Attention { term: 2, status: Status::Done });
+        app.settling.get_mut(&2).unwrap().1 = Instant::now() - Duration::from_millis(1);
+        app.settle_alerts();
+        let said = app.notice.as_ref().map(|(m, ..)| m.clone()).unwrap_or_default();
+        assert!(said.starts_with("Checkout rewrite") && said.ends_with("finished"), "the renamed session, not its agent: {said}");
+    }
+
+    #[test]
     fn only_what_has_the_keyboard_is_lit() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let lit_edges = |app: &mut App| {

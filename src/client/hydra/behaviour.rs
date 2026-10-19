@@ -890,7 +890,7 @@ impl App {
             // With nothing typed, a number answers the agent you're on.
             KeyCode::Char(c @ '1'..='9') if query.is_empty() && matches!(sel_row, Some(GoRow::Ask(_))) => {
                 if let Some(GoRow::Ask(term)) = sel_row {
-                    let name = self.snap.terms.get(&term).map(|t| t.display_name()).unwrap_or_default();
+                    let name = self.session_name(term);
                     self.inbox_answer(term, c, &name);
                 }
             }
@@ -1220,7 +1220,7 @@ impl App {
                 }
             }
             HyHit::InboxAnswer(term, key) => {
-                let name = self.snap.terms.get(&term).map(|t| t.display_name()).unwrap_or_default();
+                let name = self.session_name(term);
                 self.inbox_answer(term, key, &name);
             }
             HyHit::NpTask => {
