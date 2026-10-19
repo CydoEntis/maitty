@@ -290,6 +290,23 @@ have square edges and no gaps, a bottom status line, keyboard focus zones,
 working mouse targets and sensible narrow-screen behavior; docs and tests cover
 the option; the verification gate passes before the phase ships.
 
+### 13 — Borrowed from T3 Code, round two · proposed 2026-10-19
+
+Approved by the user 2026-10-19 after a second read of `pingdotgg/t3code`. Not started; no tickets yet.
+
+- **Handoff:** `seshi handoff <pane> --to <agent>` starts another agent in the same worktree with a
+  short text brief (the first prompt, branch, changed files, a tail of recent output). Text only; it
+  does not carry the old agent's native context, and says so. Built from `seshi worktree` and
+  `seshi send`, so no wire change is expected.
+- **Phone push:** an optional `[notify.push]` webhook or ntfy-style URL, sent when a pane needs you or
+  finishes while no client is attached. This brings back part of what the 2026-10-11 cut removed, by
+  the user's decision. The URL is a secret; messages are generic by default; the send runs off the UI
+  thread. Run the SECURITY checklist before building.
+- Acceptance: each has a ticket, tests, docs and a passing verification gate before it is marked shipped.
+
+Done outside the phase: saved pane output no longer races at shutdown (saves run one at a time,
+newest wins, fsynced) and restored history starts at a clean line.
+
 ## In scope
 
 Everything below is shipped on `dev` unless marked.
