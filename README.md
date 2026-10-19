@@ -32,7 +32,7 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
   in the right folders and resumes agents (`claude --resume <id>`, `codex resume --last`, ...).
   Each pane's recent output is kept on disk too, so its history is still there to scroll
   back through, above a line marking the restart.
-- **One screen for everything.** Choose **Cards** or **Flat** in Settings → Appearance → Layout.
+- **One screen for everything.** Choose **Cards** or **Flat** in Settings → General → Layout.
   Cards (the default) shows a full-height sidebar, pill tabs and pane cards. Flat draws those
   same sessions and panes edge to edge, with square surfaces and a bottom status line; Tab and
   Shift+Tab move focus between the sidebar and panes, and Esc returns to the sidebar. The leader is
@@ -367,7 +367,9 @@ opens (e.g. `~/code`); empty means wherever you run it.
 
 `Ctrl+Space ,` opens **Settings** in a right-hand drawer that slides beside the panes
 (on a narrow window it uses the pane column). Sections (Tab cycles): General ? Sessions ? Appearance ? Agents ?
-Keys. Values are chips you click (or ←→ / Enter). Appearance has **Layout** (Cards or Flat),
+Keys. Values are chips you click (or ←→ / Enter). General is in sections (INPUT, LAYOUT, SHELL, UPDATES): **Layout** (Cards or Flat) and **Background**
+(your terminal's own, so transparency shows through evenly, or solid) are in LAYOUT, and one line at the
+top says which seshi this is and whether it is current (`u` checks now). Appearance has the
 Cards pane controls and a **Theme**
 browser. **Working spinner** previews Braille, Dots, Line (ASCII), Circle, Arrows,
 Pulse, Blocks and Static. Choose **Custom** to type or paste space-separated frames.

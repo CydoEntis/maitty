@@ -1988,7 +1988,7 @@ mod hydra_tests {
         // Settings: the version, the new one, and the button.
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains(&format!("seshi {} → 9.9.9", env!("CARGO_PKG_VERSION"))) && o.contains("Update now"), "the button by the version");
+        assert!(o.contains(&format!("seshi {}", env!("CARGO_PKG_VERSION"))) && o.contains("9.9.9 is out") && o.contains("Update now"), "the button by the version");
         // Clicking asks first: from this version to the new one, and what changed.
         let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::Update)).then_some((r.x + 1, r.y))).expect("it can be clicked");
         app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
@@ -2586,7 +2586,7 @@ mod hydra_tests {
         app.act(Action::Settings);
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains(&format!("seshi {}", env!("CARGO_PKG_VERSION"))) && o.contains("Check for updates"));
+        assert!(o.contains(&format!("seshi {}", env!("CARGO_PKG_VERSION"))) && o.contains("up to date") && o.contains("u check now"));
         assert!(app.hits.iter().any(|(_, h)| *h == Hit::Hy(hydra::HyHit::CheckUpdate)), "it can be clicked");
         // While it's asking, the button says so and can't be pressed twice.
         app.update_checking = true;
@@ -2933,6 +2933,26 @@ mod hydra_tests {
         app.cfg.ui.layout = "flat".into();
         let flat = last(&draw(&mut app, 160, 45));
         assert!(flat.contains("PANE") || flat.contains("SIDEBAR"), "flat names its zone: {flat}");
+    }
+
+    #[test]
+    fn general_settings_are_in_sections_under_one_version_line() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("up to date") && o.contains("u check now"), "one version line");
+        assert!(!o.contains("Installed here") && !o.contains("This window"), "the detail lines only show when something differs");
+        let rows = design::settings_rows(modal::Cat::General);
+        let sections: Vec<(&str, &str)> = rows.iter().filter_map(|r| match r { design::SRow::Setting(s) => Some((design::settings_group(r), s.label)), _ => None }).collect();
+        let pos = |label: &str| sections.iter().position(|(_, l)| *l == label).unwrap_or_else(|| panic!("{label} is on the General page"));
+        assert_eq!(sections[pos("Leader key")].0, "INPUT");
+        assert_eq!(sections[pos("Layout")].0, "LAYOUT");
+        assert_eq!(sections[pos("Editor")].0, "SHELL");
+        assert!(pos("Leader key") < pos("Mouse") && pos("Mouse") < pos("Keys after a pause") && pos("Keys after a pause") < pos("Layout"), "input first");
+        assert!(pos("Layout") < pos("Background") && pos("Background") < pos("Sidebar side") && pos("Sidebar side") < pos("Splash screen"), "then layout, background, sidebar side, splash");
+        assert!(pos("Splash screen") < pos("Editor") && pos("Editor") < pos("Shell"), "then the shell");
+        assert!(o.contains("INPUT ─"), "a heading has its rule");
     }
 
     #[test]

@@ -136,8 +136,11 @@ and a `▎` bar at its left edge, lime while the sidebar has the keys and dim wh
 does. The open session keeps a dim bar while another row is under the keyboard. Hover uses a
 quieter tint (`hover_bg`). Preserve agent status icons and colors in each state.
 
-Settings shows installed, window and daemon versions separately, with a labeled
-remote daemon and a restart-pending notice when versions differ. Keep the update
+Settings opens on General with one version line (`seshi 0.34.0 · up to date · daemon and window
+match · u check now`; with an update, the version, what is out and **Update now**). Installed, window and
+daemon versions are listed separately, with a labeled remote daemon and a restart-pending notice,
+only when they differ or can't be read. General is in sections (INPUT, LAYOUT, SHELL, UPDATES), each a
+dim caps heading with a rule; Layout and Background live in LAYOUT. Keep the update
 dots until that mismatch is resolved. Installing an update leaves this window and
 the daemon running. Never restart the daemon automatically, even on a protocol mismatch.
 Status icons and pane status tags open the existing evidence popover, with a
