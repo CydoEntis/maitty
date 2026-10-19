@@ -146,6 +146,16 @@ including aliases and custom commands. Show palette-only commands without
 inventing bindings. Keep the delayed leader overview compact. Contextual keys
 come from [shortcuts.md](shortcuts.md), embedded in the app so both stay identical.
 
+## Project-specific: background
+
+Chrome (gaps, card insides, the sidebar, the pane area) sits on one ground. Settings >
+Appearance > Background picks it: **terminal** (the default) hands that ground back to the
+terminal's own background (SGR 49), so transparency or a background image looks the same under
+all of it; **solid** paints it the theme's `bg`. Only the sheet, modals and the status line are a
+painted, raised tone. The swap is one last pass over the frame (`use_terminal_background` in
+`client/render.rs`), so drawing code keeps using `t.bg` and blending still works. The v5 handoff in
+[`docs/design/v5/README.md`](design/v5/README.md) is the reference.
+
 ## Project-specific: UI conventions
 
 - Popups are centred `panel()`s with an accent title bar and `Esc close`; the

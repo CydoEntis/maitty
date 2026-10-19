@@ -660,9 +660,9 @@ mod hydra_tests {
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let (_, inner) = app.panes[0];
         let buf = term.backend().buffer();
-        assert_eq!(buf[(inner.x - 1, inner.y)].bg, hydra::pane_bg(&app.theme), "a small contrasting panel does not recolor the card padding");
+        assert_eq!(buf[(inner.x - 1, inner.y)].bg, ratatui::style::Color::Reset, "a small contrasting panel does not recolor the card padding");
         assert_eq!(buf[(inner.x, inner.y)].bg, app.theme.card2, "not a light grey slab");
-        assert_eq!(buf[(inner.x + 13, inner.y)].bg, hydra::pane_bg(&app.theme), "the rest on the card's ground");
+        assert_eq!(buf[(inner.x + 13, inner.y)].bg, ratatui::style::Color::Reset, "the rest on the card's ground");
     }
 
     #[test]
@@ -2911,6 +2911,19 @@ mod hydra_tests {
     }
 
     #[test]
+    fn the_background_setting_picks_the_terminals_or_a_painted_ground() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let gap = |app: &mut App| {
+            let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+            term.draw(|f| render::draw(app, f)).unwrap();
+            term.backend().buffer()[(0, 0)].bg
+        };
+        assert_eq!(gap(&mut app), ratatui::style::Color::Reset, "terminal: SGR 49 under the chrome");
+        app.cfg.ui.background = "solid".into();
+        assert_eq!(gap(&mut app), app.theme.bg, "solid: the theme's own ground");
+    }
+
+    #[test]
     fn a_card_is_filled_up_to_its_line() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
@@ -2921,7 +2934,7 @@ mod hydra_tests {
         let side = app.hy.side_rect;
         let y = side.y + side.height / 2;
         assert_eq!(buf[(side.x, y)].symbol(), "▕", "the line hugs the card");
-        assert_ne!(buf[(side.x, y)].bg, buf[(side.x + 1, y)].bg, "outside the line: the desk; inside: the card");
+        assert_eq!(buf[(side.x, y)].bg, buf[(side.x + 1, y)].bg, "one ground: the line, not a second grey, marks the card");
         assert_eq!(buf[(side.x, side.y)].symbol(), " ", "the corner is where the two lines meet");
         // Rounded keeps the centred line.
         app.cfg.ui.corners = "rounded".into();
@@ -3144,7 +3157,7 @@ mod settings_splash_tests {
         app.splash = false;
         app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 0, sel: 1, editing: None, capturing: false, scroll: 0 }));
         let settings = draw(&mut app);
-        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 2, sel: 7, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 2, sel: 8, editing: None, capturing: false, scroll: 0 }));
         let keys = draw(&mut app);
         if std::env::var("SESHI_SHOW").is_ok() {
             println!("{splash}\n{settings}\n{keys}");

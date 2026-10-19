@@ -111,6 +111,7 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "scrollback", label: "Scrollback lines", kind: Kind::Int { step: 1000, min: 1000, max: 100_000 }, cat: Cat::Sessions, help: "How much history each session keeps for scrolling and search." },
     // Appearance
     Setting { path: "ui.layout", label: "Layout", kind: Kind::Choice(&["cards", "flat"]), cat: Cat::Appearance, help: "Cards keeps floating or tiled panes. Flat uses full-bleed square zones." },
+    Setting { path: "ui.background", label: "Background", kind: Kind::Choice(&["terminal", "solid"]), cat: Cat::Appearance, help: "Terminal keeps your terminal's own background, so transparency and images look the same everywhere. Solid paints every cell." },
     Setting { path: "ui.panes", label: "Cards spacing", kind: Kind::Choice(&["floating", "tiled"]), cat: Cat::Appearance, help: "Gaps and rounded borders between panes in Cards layout. Tiled packs them edge to edge." },
     Setting { path: "ui.corners", label: "Card edges", kind: Kind::Choice(&["flush", "rounded"]), cat: Cat::Appearance, help: "Flush: the line sits on the card's edge, its colour right up to it. Rounded: a centred line with round corners (a thin strip of background shows inside it)." },
     Setting { path: "ui.gap", label: "Gap", kind: Kind::Choice(&["0", "1", "2"]), cat: Cat::Appearance, help: "Space between floating panes, in rows stacked and columns side by side." },

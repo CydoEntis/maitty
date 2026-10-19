@@ -307,6 +307,20 @@ Approved by the user 2026-10-19 after a second read of `pingdotgg/t3code`. Not s
 Done outside the phase: saved pane output no longer races at shutdown (saves run one at a time,
 newest wins, fsynced) and restored history starts at a clean line.
 
+### 14 — Design v5 cleanup pass · in progress
+
+The user supplied the v5 cleanup handoff ([`design/v5/README.md`](design/v5/README.md); `seshi-app.js`
+is the spec) on 2026-10-19 and approved following it where it differs from older UI rules, including
+dropping model, context and cost from Seshi's own chrome. One commit per step, each with the full gate:
+
+1. One background (terminal default or solid) — done on this branch.
+2. Spacing (1-column margin and gap; sidebar has no footer).
+3. Each fact shows once (pane title, status line holds path/branch/PR).
+4. Colour jobs (working is never amber; neutral selection tint and `▎` bar).
+5. Exactly one lit edge.
+6. Status line in both layouts.
+7. Settings › General sections.
+
 ## In scope
 
 Everything below is shipped on `dev` unless marked.

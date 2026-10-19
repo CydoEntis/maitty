@@ -51,9 +51,10 @@ const DIM_DEFAULT: f32 = 0.42;
 const DIM_SUBTLE: f32 = 0.2;
 const DIM_STRONG: f32 = 0.6;
 
-/// The inside of a card: the desk mixed most of the way to the surface.
+/// The inside of a card: the same ground as the gaps between cards, so a card is told apart
+/// by its edge and not by a slightly different grey.
 pub(in crate::client) fn pane_bg(t: &Theme) -> Color {
-    blend(t.bg, t.sidebar_bg, 0.7)
+    t.bg
 }
 
 pub(in crate::client) fn flat_pane_bg(t: &Theme) -> Color {

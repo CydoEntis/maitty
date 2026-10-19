@@ -95,6 +95,9 @@ pub struct Ui {
     pub attention_sort: bool,
     /// "cards" keeps the standard hydra look; "flat" draws full-bleed square zones.
     pub layout: String,
+    /// "terminal" leaves chrome on the terminal's own background (so transparency and a
+    /// background image show through evenly); "solid" paints everything the theme's `bg`.
+    pub background: String,
     /// Panes as cards with gaps between them ("floating"), or packed edge to edge ("tiled").
     pub panes: String,
     /// Card edges: "flush" (lines on the card's edge, its colour right up to them) or "rounded"
@@ -489,6 +492,7 @@ impl Default for Ui {
             start_dir: String::new(),
             attention_sort: true,
             layout: "cards".into(),
+            background: "terminal".into(),
             panes: "floating".into(),
             corners: "flush".into(),
             gap: "1".into(),
