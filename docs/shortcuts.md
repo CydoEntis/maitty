@@ -49,7 +49,8 @@ or another program follow that program's own help.
 | Right, Left | Expand project or enter session; fold project or go to session's project |
 | Enter | Toggle project or open selected session; opening a sleeping session wakes it |
 | Space | Open New for the selected project |
-| m, i, a | Follow-up to selected agent, status evidence, Actions |
+| m, i, s, a | Follow-up to selected agent, status evidence, inspect its subagent activity, Actions |
+| Up, Down in the activity inspector | Inspect the previous or next child record |
 | Delete | Ask to close the selected session or project |
 | Menu letters | Use the letters shown in the selected row's right-click menu; r renames, x closes |
 | Esc | Return keyboard focus to the active pane |

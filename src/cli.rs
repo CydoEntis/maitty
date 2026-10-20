@@ -904,6 +904,11 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
         id: field(&["agent_id", "subagent_id", "tool_use_id"]).or(inner_id).unwrap_or_default(),
         kind: field(&["agent_type", "subagent_type", "agent_name"]).unwrap_or_else(|| "subagent".into()),
         start: !matches!(event.as_str(), "SubagentStop" | "SubagentEnd"),
+        reported_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
+        task: field(&["task", "description", "prompt"]).map(|task| one_line(&task, 240)),
+        model: field(&["model", "model_id"]),
+        effort: field(&["effort", "reasoning_effort"]),
+        activity: field(&["tool_name"]).map(|tool| format!("{event}: {tool}")).or_else(|| Some(event.clone())),
     });
     let parent_facts = !inner;
     let turn_facts = parent_facts && !lifecycle;
@@ -1622,23 +1627,24 @@ mod tests {
 
     #[test]
     fn native_helper_events_from_kimi_and_mastracode_reach_the_parent() {
-        use crate::protocol::{HookStatus as H, Subagent};
-        let start = json!({"hook_event_name":"SubagentStart","session_id":"root","agent_name":"Explore"});
+        use crate::protocol::HookStatus as H;
+        let start = json!({"hook_event_name":"SubagentStart","session_id":"root","agent_name":"Explore","task":"Audit account flow","model":"opus","reasoning_effort":"high"});
         let origin = super::HookOrigin { term: 9, agent: "kimi".into(), pid: 10, token: String::new() };
         let ClientMsg::Hook { subagent, status, .. } = super::hook_message(origin, &start, H::Working) else { panic!("expected hook") };
         assert_eq!(status, H::Working);
-        assert_eq!(subagent, Some(Subagent { id: String::new(), kind: "Explore".into(), start: true }));
+        assert!(subagent.as_ref().is_some_and(|event| event.id.is_empty() && event.kind == "Explore" && event.start && event.reported_at > 0));
+        assert!(subagent.as_ref().is_some_and(|event| event.task.as_deref() == Some("Audit account flow") && event.model.as_deref() == Some("opus") && event.effort.as_deref() == Some("high")));
 
         let end = json!({"hook_event_name":"SubagentEnd","session_id":"root","agent_id":"child","agent_type":"review"});
         let origin = super::HookOrigin { term: 9, agent: "mastracode".into(), pid: 10, token: String::new() };
         let ClientMsg::Hook { subagent, status, .. } = super::hook_message(origin, &end, H::Same) else { panic!("expected hook") };
         assert_eq!(status, H::Same);
-        assert_eq!(subagent, Some(Subagent { id: "child".into(), kind: "review".into(), start: false }));
+        assert!(subagent.as_ref().is_some_and(|event| event.id == "child" && event.kind == "review" && !event.start && event.reported_at > 0));
     }
 
     #[test]
     fn codex_native_helper_events_reach_the_owning_parent_session() {
-        use crate::protocol::{HookStatus as H, Subagent};
+        use crate::protocol::HookStatus as H;
         let payload = json!({
             "hook_event_name": "SubagentStart",
             "session_id": "parent-thread",
@@ -1653,7 +1659,7 @@ mod tests {
         assert_eq!(status, H::Working);
         assert_eq!(session.as_deref(), Some("parent-thread"));
         assert_eq!(cwd.as_deref(), Some(std::path::Path::new("/project")));
-        assert_eq!(subagent, Some(Subagent { id: "child-thread".into(), kind: "reviewer".into(), start: true }));
+        assert!(subagent.as_ref().is_some_and(|event| event.id == "child-thread" && event.kind == "reviewer" && event.start));
         assert!(said.is_none(), "helper output is not attributed to the parent conversation");
 
         let stop = json!({"hook_event_name":"SubagentStop","session_id":"parent-thread","agent_id":"child-thread","agent_type":"reviewer"});
@@ -1661,7 +1667,7 @@ mod tests {
         let origin = super::HookOrigin { term: 4, agent: "codex".into(), pid: 12, token: "pane-token".into() };
         let ClientMsg::Hook { session, subagent, .. } = super::hook_message(origin, &stop, H::Same) else { panic!("expected hook") };
         assert_eq!(session.as_deref(), Some("parent-thread"));
-        assert_eq!(subagent, Some(Subagent { id: "child-thread".into(), kind: "reviewer".into(), start: false }));
+        assert!(subagent.as_ref().is_some_and(|event| event.id == "child-thread" && event.kind == "reviewer" && !event.start));
     }
 
     #[test]

@@ -1126,6 +1126,8 @@ impl Daemon {
                     started_by: t.started_by,
                     queued: t.queue.iter().cloned().collect(),
                     aside: t.aside,
+                    subagent_activity: t.subagent_activity.clone(),
+                    session: t.session.clone(),
                 })
             })
             .collect();

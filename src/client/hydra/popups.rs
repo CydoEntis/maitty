@@ -2,6 +2,78 @@
 
 use super::*;
 
+pub(in crate::client) fn draw_subagent_info(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, term: TermId, index: usize) {
+    dim_all(f.buffer_mut(), area, t);
+    let rect = panel(app, f.buffer_mut(), area, 76, 17, "Agent activity", &[], t);
+    let model = app.hy_model();
+    let activity = model.iter().find_map(|project| project.sessions().find(|session| session.term == term).and_then(|session| session.subagent_activity.get(index))).cloned();
+    let Some(activity) = activity else {
+        put(f.buffer_mut(), rect.x + 2, rect.y + 2, &[seg("This activity record is no longer available.", Style::default().fg(t.muted).bg(t.card))], rect.right());
+        return;
+    };
+    let state = match activity.state {
+        crate::protocol::SubagentState::Starting => "Starting",
+        crate::protocol::SubagentState::Working => "Working",
+        crate::protocol::SubagentState::WaitingForInput => "Waiting for input",
+        crate::protocol::SubagentState::AwaitingApproval => "Awaiting approval",
+        crate::protocol::SubagentState::Completed => "Completed",
+        crate::protocol::SubagentState::Failed => "Failed",
+        crate::protocol::SubagentState::Cancelled => "Cancelled",
+        crate::protocol::SubagentState::ConnectionLost => "Connection lost; completion unconfirmed",
+    };
+    let state_color = match activity.state {
+        crate::protocol::SubagentState::Working => t.working,
+        crate::protocol::SubagentState::WaitingForInput | crate::protocol::SubagentState::AwaitingApproval => t.blocked,
+        crate::protocol::SubagentState::Completed => t.done,
+        crate::protocol::SubagentState::Failed | crate::protocol::SubagentState::ConnectionLost => t.err,
+        crate::protocol::SubagentState::Cancelled => t.muted,
+        crate::protocol::SubagentState::Starting => t.accent,
+    };
+    let started = activity.started_at.map(|at| format!("{} ago", super::age(at))).unwrap_or_else(|| "Not reported".into());
+    let elapsed = match activity.started_at {
+        Some(started) if activity.state.active() => super::age(started),
+        Some(started) => duration_label(activity.updated_at.saturating_sub(started)),
+        _ => "Not reported".into(),
+    };
+    let rows = [
+        ("Identity", activity.id.as_str(), t.text),
+        ("Role / name", activity.name.as_str(), t.text),
+        ("Assigned task", activity.task.as_deref().unwrap_or("Not reported"), t.text),
+        ("Parent", activity.parent.as_deref().unwrap_or("Not reported"), t.text),
+        ("Model", activity.model.as_deref().unwrap_or("Not reported"), t.text),
+        ("Reasoning effort", activity.effort.as_deref().unwrap_or("Not reported"), t.text),
+        ("Status", state, state_color),
+        ("Started", started.as_str(), t.muted),
+        ("Elapsed", elapsed.as_str(), t.muted),
+        ("Latest activity", activity.latest_activity.as_deref().unwrap_or("Not reported"), t.text),
+        ("Result", activity.result.as_deref().unwrap_or("Not reported by runtime"), t.text),
+    ];
+    let buf = f.buffer_mut();
+    let max_width = rect.width.saturating_sub(4) as usize;
+    for (index, (label, value, color)) in rows.iter().enumerate() {
+        let y = rect.y + 2 + index as u16;
+        if y >= rect.bottom().saturating_sub(2) { break; }
+        let label_text = format!("{label}: ");
+        let value_width = max_width.saturating_sub(label_text.len() + 1);
+        put(buf, rect.x + 2, y, &[
+            seg(label_text, Style::default().fg(t.muted).bg(t.card)),
+            seg(truncate(value, value_width), Style::default().fg(*color).bg(t.card)),
+        ], rect.right().saturating_sub(2));
+    }
+    let hints = hints(t, &[("Esc", "close"), ("Enter", "close")]);
+    let hint_y = rect.bottom().saturating_sub(2);
+    put(buf, rect.x + 2, hint_y, &hints, rect.right().saturating_sub(2));
+}
+
+fn duration_label(seconds: u64) -> String {
+    match seconds {
+        0..=59 => format!("{seconds}s"),
+        60..=3_599 => format!("{}m", seconds / 60),
+        3_600..=86_399 => format!("{}h", seconds / 3_600),
+        _ => format!("{}d", seconds / 86_400),
+    }
+}
+
 // ---- overlays ------------------------------------------------------------------------------
 
 /// What a popup does to everything behind it: text toward its ground, all of it toward black.

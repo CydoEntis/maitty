@@ -1,23 +1,12 @@
 <h1 align="center">seshi</h1>
 
-<p align="center"><strong>Every session, one calm place.</strong> Run lots of coding agents side by side, see which ones need you, and keep them going when you leave.</p>
+<p align="center"><strong>Every coding-agent session, one calm place.</strong><br>
+Run agents side by side, see which ones need you, and return to them later.</p>
 
-<pre align="center">
-███████ ███████ ███████ ██   ██ ██
-██      ██      ██      ██   ██ ██
-███████ █████   ███████ ███████ ██
-     ██ ██           ██ ██   ██ ██
-███████ ███████ ███████ ██   ██ ██
-</pre>
+<p align="center"><a href="#install">Install</a> · <a href="#start-in-five-minutes">Quick start</a> · <a href="#why-seshi">Features</a> · <a href="#configure">Configuration</a> · <a href="https://github.com/CydoEntis/seshi/releases">Releases</a></p>
 
-<p align="center">
-  <a href="#install">Install</a> ·
-  <a href="#use">Use</a> ·
-  <a href="#configure">Configure</a> ·
-  <a href="#script-it">Script it</a>
-</p>
+<p align="center"><img src="docs/media/demo.gif" alt="Seshi showing agent sessions, status, panes and settings" width="900"></p>
 
-<p align="center"><img src="docs/media/demo.gif" alt="Seshi demo: fake coding-agent sessions, inbox, split panes, shortcuts and settings" width="900"></p>
 
 <p align="center"><sub>Demo screens use synthetic project names, prompts, paths and agent output; no real session data is shown.</sub></p>
 
@@ -34,13 +23,13 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
   back through, above a line marking the restart.
 - **One screen for everything.** Choose **Cards** or **Flat** in Settings → General → Layout.
   Cards (the default) shows a full-height sidebar, pill tabs and pane cards. Flat draws those
-  same sessions and panes edge to edge, with square surfaces and a bottom status line; Tab and
+  same sessions and panes edge to edge, with square surfaces; Tab and
   Shift+Tab move focus between the sidebar and panes, and Esc returns to the sidebar. The leader is
   `Ctrl+Space`: a sky-blue pill says it's armed, a pause shows the compact overview,
   and `?` opens the searchable **All shortcuts** reference.
 - **Find anything.** `<leader> j` is the inbox: what needs you first, then type to go to any
-  project or session. `<leader> Space` is a command palette in plain words, `a actions`
-  in the status line lists common commands. `<leader> ?` lists every configured
+  project or session. `<leader> Space` is a command palette in plain words, and **Actions** at
+  the bottom of the sidebar lists common commands. `<leader> ?` lists every configured
   binding (including aliases), global shortcuts and controls inside each screen.
 - **Status at a glance.** Working (a quiet orange, its name shimmering), needs you (the theme's alert colour), done (green until
   you look), idle. An alert or a sound tells you when one needs you or finishes out of view.
@@ -57,9 +46,6 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
 - **Detection without setup.** The process tree finds `claude`, `codex`, `gemini`, `opencode`,
   `cursor-agent`, `copilot`, `amp`, `qwen`, `aider` and others, and screen patterns tell
   working from blocked. Hooks (`seshi integrate claude`) make it exact.
-- **Subagents under their agent.** What an agent has running shows under its row
-  (`↳ reconcile_audit`, repeats counted): Claude's from its hooks, Codex's from its session
-  files (each subagent by its task's name, and `goal` while `/goal` is driving it).
 - **Git without leaving.** New agents get their own worktree, including `claude` or `codex`
   typed into a shell in a repo's main folder (turn it off with *Own worktree per agent* in
   Settings; `--continue`/`--resume` stay put). Changes (`d`) shows the diff with
@@ -73,12 +59,6 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
 
 ## Install
 
-**macOS, Linux, Omarchy / Arch:**
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/CydoEntis/seshi/main/install.sh | sh
-```
-
 **Windows (PowerShell):**
 
 ```powershell
@@ -91,8 +71,8 @@ another `seshi` comes first. No admin rights needed. `SESHI_VERSION=v0.3.0` pick
 `SESHI_INSTALL_DIR` a folder. If scripts are blocked (a locked-down work PC), download the archive
 for your machine from [Releases](https://github.com/CydoEntis/seshi/releases) and put `seshi` on your PATH.
 To update later: Seshi checks each time you open it (and every few hours while it stays
-open). When a newer version is out, dots beside **Actions**, its **Settings** row and the
-**General** tab guide you to **Update now** (also "Update seshi" in the command palette).
+open). When a newer version is out, an **Update** button appears in the tab bar. It is hidden
+when Seshi is current. You can also choose "Update seshi" in the command palette.
 Review the version and release notes, then confirm to install. The current window and daemon
 keep running. Settings shows **Installed here**, **This window**, **Running daemon** (or the
 remote host), and **Restart pending** until those versions match. After active tasks finish,
@@ -115,23 +95,17 @@ From source (any platform with Rust): `cargo install --git https://github.com/Cy
 
 ## Use
 
-Click **Actions** at the top right (or `a` in the status line) to open
-**Set up agent status**, Settings or **All commands**. The top button stays available
-with the sidebar hidden or no sessions open. All commands supports clicking rows and
+Click **Actions** at the bottom of the sidebar (or press `a`) to open
+**Set up agent status**, Settings or **All commands**. All commands supports clicking rows and
 scrolling with the wheel, including configured custom commands.
 
 ```sh
-seshi            # attach (starts the server if needed); opens the current dir
-seshi ~/code/api # open or switch to that directory
+curl -fsSL https://raw.githubusercontent.com/CydoEntis/seshi/main/install.sh | sh
 ```
 
-Agents come first in the sidebar, then terminals, then sessions on other machines (SSH). They are
-grouped by **where they are working now**: the git
-repo they're in (a subfolder counts as its repo) or the folder itself outside git, and for SSH
-the machine they're connected to. Nothing to open or set up: `cd` somewhere in a shell and it moves
-to that group; start an agent in a shell (or ssh somewhere) and it moves section. An agent stays in
-the group of the folder it started in while it runs, however many folders it works in. A pane
-split beside a session stays with it.
+The installer downloads the matching release, verifies its checksum and installs
+Seshi without administrator access. See [all releases](https://github.com/CydoEntis/seshi/releases)
+for manual installation, or run `seshi update` to update an existing install.
 
 ```
 ╭──────────────────────────────╮
@@ -155,19 +129,16 @@ split beside a session stays with it.
   never edit the same files.
 - One row is selected: a neutral tint with a **▎** bar at its left edge (lime while the sidebar has
   the keys, dim when a pane does). The open session keeps a dim bar while you browse with the
-  keyboard, including on sleeping rows. Hover is a quieter tint.
+  keyboard. Hover is a separate, quieter tint.
 - Hiding the sidebar leaves a slim rail with status indicators and two-letter titles.
   Click to switch sessions, hover for full names, scroll to reach more, and use the
   chevron to expand. Its red count includes blocked agents outside the visible rows.
-- Things that need you sort to the top; everything else keeps its place. A session left asleep
-  by an older Seshi version shows `zzZ … asleep`; open it to resume the conversation. The saved
-  terminal screen stays visible while you browse the session.
+- Things that need you sort to the top; everything else keeps its place. Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
 - A session taking a real share of the machine says so in its pane's title, beside its state
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
 - An agent's subagents are listed under its row; the `▾ 3 subagents` heading (or **Hide
   subagents** in its menu) folds them away.
-- The status line along the bottom has `j inbox`, `a actions` (common commands, settings
-  included), `,` settings and `?` keys (the full reference). A plain shell is the sidebar's **+ new** (cards),
+- The sidebar footer keeps **+ new** and **Actions** available in both layouts. A plain shell is the sidebar's **+ new**,
   `Ctrl+Space n` or a project's **+**.
 - `⇆` under a row names a file that this checkout and another have each changed since their
   branches parted (a merge conflict waiting to happen); more than two are one line with a count.
@@ -259,12 +230,11 @@ That works for the note inside seshi and the desktop notification on Windows and
 Omarchy / Hyprland the window is brought forward too); on macOS, install
 `terminal-notifier` for clickable ones.
 
-## Resuming older sleeping sessions
+## Sessions from older versions
 
 Seshi no longer stops idle agents automatically; they keep running until you close them or
-their own agent process exits. If a session was already asleep under an older Seshi version,
-open it to resume its conversation (`claude --resume`, `codex resume`). Recovery shows its
-saved terminal screen without a separate wake screen or animation.
+their own agent process exits. Sessions saved while sleeping by an older version recover when you open them. Seshi does not
+show a separate sleep screen or wake animation.
 
 ## Settled and snoozed
 
@@ -313,57 +283,28 @@ They show up in + New as `⚙ feature`.
 ## Agents that steer agents (MCP)
 
 ```sh
-seshi integrate mcp     # registers `seshi mcp` with Claude Code (prints the Codex snippet too)
+seshi                 # open the current directory
+seshi ~/code/my-app   # open a project
 ```
 
-Any agent can then use seshi's tools: `seshi_list` (sessions, status, the question each is
-asking), `seshi_read` (a screen), `seshi_send` (type a message), `seshi_answer` (a numbered
-prompt), `seshi_start` (a new agent in its own worktree; your screen stays where it was) and
-`seshi_interrupt`. There is no merge, push or delete.
-
-You decide how far that goes (Settings → Agents, or `[mcp]`):
-
-```toml
-[mcp]
-approve = "never"    # never | safe | always: may agents answer "yes" to other agents' prompts?
-safe = ["npm test", "cargo test", "git status"]   # with "safe": only prompts that mention these
-scope = "project"    # project: only sessions in the calling agent's repo | all
-```
-
-## Fleets
-
-Give one agent a goal and let it run the others. **Start a fleet** (`<leader> c`, or in `actions`) asks for the
-goal and which agent is the **commander**; the commander splits the work up, starts helpers in their
-own worktrees, checks what comes back and reports to you. Helpers sit under their commander in the
-sidebar, and one that needs you still goes to the top.
-
-An agent you're already talking to can take over as commander: **Fleet commander** in its row's
-menu (it asks first). The commander's instructions are `seshi brief`: read them, or tell any agent to "run seshi
-brief and follow it". It works best with seshi's tools set up (`seshi integrate mcp`); without them the
-commander uses the `seshi` commands from its shell. With a plan and tickets in the repo, a goal like
-"work the active phase" has it take them in order, one helper per ticket.
-
-Only so many helpers work at once (four, or what Settings → Agents → Helpers working at once
-says; 0 is no limit): each runs builds and tests of its own, and a commander that asks for more
-is told to wait for one to finish.
-
-## Sync between machines
+Use **+ new** or **Actions** at the bottom of the sidebar to start an agent,
+open a shell, split a pane, or reach Settings. For example, the CLI can start an
+agent directly:
 
 ```sh
-seshi sync setup          # first machine: makes a private GitHub repo seshi-config
-seshi sync setup          # other machines: picks it up (your old config is kept as a backup)
-seshi sync                # pull + push now (it also happens on its own)
+seshi new ~/code/my-app -- claude
+seshi worktree feature/login -- codex
 ```
 
-Shared: `config.toml`. Anything for one machine only (a shell path, keys) goes in
-`config.local.toml` next to it, which is never synced and wins over `config.toml`.
+The worktree command creates or opens a separate checkout for the task. When an
+agent asks for input, its status turns red and it appears in the Inbox. Select it,
+answer, and return to your other work.
 
-## Splash and settings
+## Essential keys
 
-seshi opens on the splash: the seshi, what happened while you were away (`● 2 need you ⠹ 3 still
-working ● 1 finished`) and buttons: Resume where you left off (`r`), New session (`n`).
-Turn it off in Settings → General. Settings → General → Start folder sets where plain `seshi`
-opens (e.g. `~/code`); empty means wherever you run it.
+The default leader is **Ctrl+Space**. Press it, release, then press the next key.
+Open the full, searchable list with **Ctrl+Space**, then **?**. The list reflects
+your configured bindings and includes controls for each screen.
 
 `Ctrl+Space ,` opens **Settings** in a right-hand drawer that slides beside the panes
 (on a narrow window it uses the pane column). Sections (Tab cycles): General ? Sessions ? Appearance ? Agents ?
@@ -392,15 +333,18 @@ UI text and status colors are adapted for contrast. Existing theme overrides rem
 On Keys, Enter then press a new key to rebind a shortcut. Changes save to `config.toml`
 with comments preserved and apply at once.
 
-## Command name clash
+Seshi groups agents and terminals by project. The sidebar shows each session's
+status, project and Git branch. Select a session to focus it; hover only previews
+it. Hide the sidebar to use the compact status rail, which still shows sessions
+and needs-you alerts.
 
-`seshi` is also the name of a Linux password-testing tool (THC-Seshi). If you have that installed,
-give this one its own name; the app doesn't care what it's called:
+The background daemon owns every terminal pane. It saves the layout and recent
+output, restores sessions after Seshi restarts, and resumes supported agents where
+their CLI provides a resume command. Closing Seshi does not close its sessions.
 
-```sh
-alias hy='~/.cargo/bin/seshi'                          # bash / zsh
-Set-Alias hy "$env:USERPROFILE\.cargo\bin\seshi.exe"   # PowerShell ($PROFILE)
-```
+In a Git repository, new agent sessions use separate worktrees by default. Use
+**Changes** to inspect a diff, mark files reviewed, commit, merge or open a pull
+request. You can change the worktree behavior in Settings.
 
 ## Configure
 
@@ -537,8 +481,8 @@ Copies go to the system clipboard and, through OSC 52, to your outer terminal (w
 
 ## Agent status
 
-Each pane's process tree is scanned about once a second. Detected agents get a status from
-these sources, in order:
+Seshi detects common command-line agents automatically and combines process,
+terminal-screen and native lifecycle evidence where available. Status means:
 
 1. **Native hooks** report lifecycle events. `seshi integrate claude` adds hooks to `~/.claude/settings.json`.
    They stay inert outside seshi panes and are tagged so a re-run or `--uninstall` replaces them cleanly.
@@ -574,103 +518,51 @@ Terminal bells do not replace the status icon or add musical-note history entrie
 Click a status icon/tag (or `<leader> i`) for a plain-language explanation and the ages of
 hook, screen and process evidence; a status without confirmation is shown as uncertain.
 
-**An agent seshi doesn't know** (a newer CLI, or one you start with your own alias): right-click
-its pane and pick **"… is an agent"**, or run `seshi teach` in it (`seshi teach 4` for pane 4).
-Seshi looks at the program actually running, whatever alias started it (or, for a node /
-python harness, its package or script), and adds it under `[[agents]]` in your config with the
-usual screen signs of working. Edit that entry to tune them.
+## Configure
 
-## Popups
-
-`seshi popup -- fzf` (or `lazygit`, `htop`, any command) opens a floating pane over everything,
-in the folder you're in; it has the keys until the command exits, then it's gone.
-
-## Agents asking you
-
-An agent (or any script in a pane) can ask you something with fixed answers and wait:
+Open Settings from **Actions** or press **Ctrl+Space**, then `,`. Choose a theme,
+layout, spinner, keys, sidebar behavior and agent settings. Settings are saved in
+your user config; `config.example.toml` lists the available options.
 
 ```sh
-seshi ask-human "Deploy to staging?" -o Yes -o "Not yet"   # prints the answer you pick
+seshi config init   # create a commented config file
+seshi config path   # print its location
+seshi doctor        # check the local setup
 ```
 
-The pane shows **needs you** (with a notification), the question is in the Inbox and on the
-pane's answer bar, and a number or click answers. Without `-o` the answers are Yes / No.
-
-## What agents may do
-
-A command an agent runs in its pane (the `seshi` CLI, or `seshi mcp`) acts as that pane, and a
-pane may by default **read** other panes, **write** (type) into them and **start** sessions. To
-also **respond** (answer another agent's prompt or question) or **admin** (close other panes,
-stop seshi), grant it: `seshi grant 4 read,write,start,respond` (`seshi grant 4 default` puts it
-back), or change the default in `[mcp] grants`. Only you can grant: not from inside a pane. These
-are guardrails for agents that behave, not a sandbox.
-
-## Script it
+Seshi also provides a CLI and MCP tools for agents and scripts:
 
 ```sh
-seshi ls [--json]                      # tree of workspaces / tabs / panes with agent status
-seshi split [--down] [-p ID] -- codex  # inside a pane, targets that pane by default
-seshi send -p 3 "run the tests"        # types text and presses Enter
-seshi read 3                           # the pane's screen as text
-seshi new ~/code/web -- claude
-seshi worktree feat/x -- claude        # worktree workspace for this pane's repo
-seshi focus 3 | close 3 | kill-server [--forget]
-seshi send -p 3 --wait "fix the bug"   # waits for the turn to end, prints the agent's reply
-seshi wait -p 3 [--regex "passed"]     # the turn ending, or text on the screen (exit 2: timeout)
-seshi worktree --move [name]           # run by an agent: move itself into a new worktree
-seshi doctor                           # check everything seshi relies on
-seshi brief                            # a commander's instructions: how an agent runs a fleet of helpers
-seshi --remote me@box                  # the UI here, agents on another machine (any command)
+seshi ls --json
+seshi split -- claude
+seshi send -p 3 "run the tests"
+seshi read 3
+seshi integrate mcp
 ```
 
-`SESHI_SOCKET=name` runs a separate server, like `tmux -L`.
+For more detail, see [status setup](docs/agent-status.md),
+[screen-specific controls](docs/shortcuts.md),
+[all configuration options](config.example.toml), and the
+[architecture overview](docs/ARCHITECTURE.md).
 
-## How it works
+## Requirements
 
-```
-seshi (TUI client) ──┐      named pipe (Windows) / unix socket
-seshi ls/send/hook ──┼──►   seshi daemon
-                      │        ├─ workspace / tab / split-tree model (source of truth)
-                      │        ├─ one PTY per pane (portable-pty → ConPTY / openpty)
-                      │        │    reader thread → vt100 parser + replay ring
-                      │        ├─ answers terminal queries (DSR/DA) itself, even with nobody attached
-                      │        ├─ process-tree scanner (sysinfo) → agent detection
-                      │        └─ status machine: hooks > screen patterns > activity
-```
+Seshi supports Windows, macOS and Linux. Use a terminal with true color for the
+intended appearance; a Nerd Font adds optional icons. Git enables worktrees,
+branch management and Changes. GitHub CLI (`gh`) enables pull-request actions.
 
-- `src/daemon/`: event-loop actor; PTYs (`term.rs`); process scan (`scan.rs`); session file
-  (`persist.rs`); git status and worktrees (`git.rs`)
-- `src/client/`: event loop, keys, actions (`mod.rs`); drawing (`render.rs`); copy mode (`copy.rs`)
-- `src/protocol.rs`: length-delimited MessagePack messages
-- `src/layout.rs`: split tree, rects, neighbour search
-- `src/config.rs`, `src/keys.rs`, `src/theme.rs`: everything user-facing
+## Build from source
 
-## Per-repo settings: `.seshi.toml`
+Install Rust, clone this repository and run:
 
-`on_create` runs in a new worktree before anything starts in it, so an agent begins with the
-install done and the `.env` in place rather than halfway through.
-
-Commit one to the repo:
-
-```toml
-[hooks]
-on_create = "npm install"        # in every new worktree
-on_remove = ""
+```sh
+cargo build --release
+cargo test
 ```
 
-Hooks don't run until you allow them: run `seshi allow` in the repo (it shows the
-commands). If they change, they wait for `seshi allow` again, so a cloned repo can't run
-code on its own. A hook is stopped after 10 minutes.
+See [architecture](docs/ARCHITECTURE.md), [testing](docs/TESTING.md) and
+[contributing standards](docs/CODE-STANDARDS.md) before changing the project.
 
-## Remote
+## License
 
-`seshi --remote me@box` runs the UI here and everything else there, over ssh (seshi must be
-installed on both; `SESHI_REMOTE_CMD` if it isn't on the far side's PATH, `SESHI_SSH="ssh -p
-2222"` for options). Panes, agents, worktrees and statuses work; views that read files (Files,
-Changes, find, branches) don't yet.
-
-## Roadmap ideas
-
-- Restore scrollback contents after a restart, not just the layout
-- Files, Changes and find over `--remote`
-- Workspace templates
+MIT.

@@ -179,6 +179,7 @@ impl App {
             Mode::GoTo { query, sel } => self.on_goto_key(query, sel, &k),
             Mode::Compose(c) => self.on_compose_key(*c, &k),
             Mode::Why { side, .. } => self.on_why_key(side, &k),
+            Mode::SubagentInfo { term, index } => self.on_subagent_info_key(term, index, &k),
             Mode::Confirm(c) => match k.code {
                 KeyCode::Enter | KeyCode::Char('y') => {
                     self.mode = Mode::Normal;

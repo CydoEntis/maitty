@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Bump whenever a message shape changes; client and daemon refuse to talk across versions.
-pub const PROTOCOL_VERSION: u32 = 40;
+pub const PROTOCOL_VERSION: u32 = 41;
 
 pub type TermId = u32;
 pub type WsId = u32;
@@ -202,6 +202,50 @@ pub struct Subagent {
     /// "Explore", "code-reviewer", …
     pub kind: String,
     pub start: bool,
+    #[serde(default)]
+    pub reported_at: u64,
+    #[serde(default)]
+    pub task: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub effort: Option<String>,
+    #[serde(default)]
+    pub activity: Option<String>,
+}
+
+/// Lifecycle evidence for one provider-reported child agent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubagentActivity {
+    pub id: String,
+    pub name: String,
+    pub parent: Option<String>,
+    pub state: SubagentState,
+    pub task: Option<String>,
+    pub model: Option<String>,
+    pub effort: Option<String>,
+    pub started_at: Option<u64>,
+    pub updated_at: u64,
+    pub latest_activity: Option<String>,
+    pub result: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SubagentState {
+    Starting,
+    Working,
+    WaitingForInput,
+    AwaitingApproval,
+    Completed,
+    Failed,
+    Cancelled,
+    ConnectionLost,
+}
+
+impl SubagentState {
+    pub fn active(self) -> bool {
+        matches!(self, Self::Starting | Self::Working | Self::WaitingForInput | Self::AwaitingApproval)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -407,6 +451,12 @@ pub struct TermInfo {
     pub linked: bool,
     /// Subagents running right now (their kinds).
     pub subagents: Vec<String>,
+    /// Persistent lifecycle records reported by the runtime.
+    #[serde(default)]
+    pub subagent_activity: Vec<SubagentActivity>,
+    /// Provider conversation ID that owns these child records.
+    #[serde(default)]
+    pub session: Option<String>,
     /// The pane whose agent started this one, if one did.
     #[serde(default)]
     pub started_by: Option<TermId>,
@@ -538,7 +588,7 @@ mod tests {
                 cwd: Some(PathBuf::from("/code/api")),
                 prompt: Some("fix it".into()),
                 said: Some("done".into()),
-                subagent: Some(Subagent { id: "s1".into(), kind: "Explore".into(), start: true }),
+                subagent: Some(Subagent { id: "s1".into(), kind: "Explore".into(), start: true, reported_at: 0, task: None, model: None, effort: None, activity: None }),
                 event: "PreToolUse".into(),
                 pid: 42,
                 token: "00ff".into(),

@@ -3,7 +3,7 @@
 
 use super::Ev;
 use crate::config::Config;
-use crate::protocol::{Status, TermId};
+use crate::protocol::{Status, SubagentActivity, TermId};
 use anyhow::{Context, Result};
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::collections::VecDeque;
@@ -131,6 +131,8 @@ pub struct Term {
     pub subagents: Vec<(String, String)>,
     /// Codex's native lifecycle hooks have become authoritative for this thread.
     pub subagent_hooks_seen: bool,
+    /// Runtime-reported child lifecycle, retained after completion for inspection.
+    pub subagent_activity: Vec<SubagentActivity>,
     /// The shell reports its directory itself (OSC 7 / 9;9); trust that over process scans.
     pub cwd_reported: bool,
     /// Stopped by an older Seshi version; resumes when focused.
@@ -572,6 +574,7 @@ impl Term {
             head: crate::gitfs::head(spec.cwd),
             subagents: Vec::new(),
             subagent_hooks_seen: false,
+            subagent_activity: Vec::new(),
             cwd_reported: false,
             asleep: false,
             win32_input: false,

@@ -123,7 +123,14 @@ the pane's process tree or `SESHI_PANE_TOKEN`.
 
 Saved role profiles and sequenced planner/worker/reviewer workflows are not part
 of Seshi's interface. Sessions, ordinary agent launches, fleet helpers, and
-MCP session controls remain supported. The wire protocol is version 40.
+MCP session controls remain supported. The wire protocol is version 41.
+
+Subagent lifecycle is carried as structured `SubagentActivity` records in each
+pane snapshot and persisted with its saved pane. Hook reports use the owning
+pane's authenticated process/token boundary. Codex disk records are accepted
+only for the exact thread ID reported by that pane; discard background polling
+results if the pane changes thread or agent. Merge by stable child ID and event
+time so duplicate or stale reports cannot replace newer lifecycle state.
 
 A new capability adds: a `Command` variant (and any new `ServerMsg` /
 snapshot field) in `protocol.rs` with a `PROTOCOL_VERSION` bump; handling in

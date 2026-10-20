@@ -72,6 +72,7 @@ fn codex_disk_results_cannot_cross_panes_or_survive_a_thread_change() {
     let facts = |term, session: &str, name: &str| usage::CodexPaneFacts {
         term, session: Some(session.into()), usage: None,
         subagents: vec![(format!("{session}-child"), name.into())],
+        subagent_activity: Vec::new(),
     };
     d.codex_usage(vec![facts(a, "root-a", "planner"), facts(b, "root-b", "reviewer")], None);
     assert_eq!(d.terms[&a].subagents, vec![("root-a-child".into(), "planner".into())]);
@@ -103,6 +104,7 @@ fn disk_reported_helpers_keep_an_unhooked_codex_parent_working() {
         session: Some("root".into()),
         usage: None,
         subagents,
+        subagent_activity: Vec::new(),
     };
 
     d.codex_usage(vec![facts(vec![("child".into(), "planner".into())])], None);
@@ -127,7 +129,7 @@ fn codex_live_helper_hooks_attach_the_first_child_and_outvote_stale_disk_data() 
     if let ClientMsg::Hook { agent, session, subagent, .. } = &mut start {
         *agent = "codex".into();
         *session = Some("parent-thread".into());
-        *subagent = Some(crate::protocol::Subagent { id: "child-thread".into(), kind: "reviewer".into(), start: true });
+        *subagent = Some(crate::protocol::Subagent { id: "child-thread".into(), kind: "reviewer".into(), start: true, reported_at: 0, task: None, model: None, effort: None, activity: None });
     }
     d.apply_hook(start, Some(true), Vec::new());
     assert_eq!(d.terms[&t].session.as_deref(), Some("parent-thread"));
@@ -139,6 +141,7 @@ fn codex_live_helper_hooks_attach_the_first_child_and_outvote_stale_disk_data() 
         session: Some("parent-thread".into()),
         usage: None,
         subagents,
+        subagent_activity: Vec::new(),
     };
     d.codex_usage(vec![facts(Vec::new())], None);
     assert_eq!(d.terms[&t].subagents.len(), 1, "an empty disk snapshot cannot erase the live hook entry");
@@ -147,7 +150,7 @@ fn codex_live_helper_hooks_attach_the_first_child_and_outvote_stale_disk_data() 
     if let ClientMsg::Hook { agent, session, subagent, .. } = &mut stop {
         *agent = "codex".into();
         *session = Some("parent-thread".into());
-        *subagent = Some(crate::protocol::Subagent { id: "child-thread".into(), kind: "reviewer".into(), start: false });
+        *subagent = Some(crate::protocol::Subagent { id: "child-thread".into(), kind: "reviewer".into(), start: false, reported_at: 0, task: None, model: None, effort: None, activity: None });
     }
     d.apply_hook(stop, Some(true), Vec::new());
     assert!(d.terms[&t].subagents.is_empty());
@@ -399,7 +402,7 @@ fn an_agent_is_working_while_one_of_its_own_runs_in_the_background() {
     let secret = d.terms[&t].token.clone();
     let mut stop = report(t, &secret, 0, HookStatus::Same, "SubagentStop");
     if let ClientMsg::Hook { subagent, .. } = &mut stop {
-        *subagent = Some(crate::protocol::Subagent { id: "a1".into(), kind: "general-purpose".into(), start: false });
+        *subagent = Some(crate::protocol::Subagent { id: "a1".into(), kind: "general-purpose".into(), start: false, reported_at: 0, task: None, model: None, effort: None, activity: None });
     }
     d.apply_hook(stop, Some(true), Vec::new());
     assert!(d.terms[&t].subagents.is_empty());
@@ -772,6 +775,32 @@ fn a_spare_fits_only_its_repo_and_its_agent() {
 fn a_fleet_comes_back_from_a_restart() {
     let (mut d, _rx) = daemon();
     let dir = std::env::temp_dir();
+    let child_activity = SubagentActivity {
+        id: "child-session".into(),
+        name: "reviewer".into(),
+        parent: Some("parent-session".into()),
+        state: SubagentState::Completed,
+        task: Some("review the patch".into()),
+        model: Some("gpt-5.6".into()),
+        effort: None,
+        started_at: Some(100),
+        updated_at: 200,
+        latest_activity: Some("review returned".into()),
+        result: Some("one finding".into()),
+    };
+    let active_activity = SubagentActivity {
+        id: "still-running".into(),
+        name: "builder".into(),
+        parent: Some("parent-session".into()),
+        state: SubagentState::Working,
+        task: Some("finish implementation".into()),
+        model: None,
+        effort: None,
+        started_at: Some(150),
+        updated_at: 180,
+        latest_activity: Some("working".into()),
+        result: None,
+    };
     // Saved ids: 70 is the commander, 71 its helper, 72 a helper whose commander (99) is gone.
     // The helpers are saved ahead of the commander, so they come back before it does.
     let ws = |id: TermId, by: Option<TermId>| persist::SavedWs {
@@ -784,7 +813,7 @@ fn a_fleet_comes_back_from_a_restart() {
             name: String::new(),
             layout: Node::Leaf(id),
             focus: id,
-            panes: [(id, persist::SavedPane { cwd: Some(dir.clone()), started_by: by, ..Default::default() })].into(),
+            panes: [(id, persist::SavedPane { cwd: Some(dir.clone()), started_by: by, subagent_activity: if id == 71 { vec![child_activity.clone(), active_activity.clone()] } else { Vec::new() }, ..Default::default() })].into(),
         }],
         active_tab: 0,
     };
@@ -792,14 +821,19 @@ fn a_fleet_comes_back_from_a_restart() {
     let [helper, orphan, commander] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
     assert!(commander != 70, "the commander has this run's id");
     assert_eq!(d.terms[&helper].started_by, Some(commander), "its helper found it again");
+    assert_eq!(d.terms[&helper].subagent_activity[0], child_activity, "completed child and result survive restoration");
+    assert_eq!(d.terms[&helper].subagent_activity[1].id, active_activity.id);
+    assert_eq!(d.terms[&helper].subagent_activity[1].state, SubagentState::ConnectionLost, "active child is unconfirmed after a daemon restart");
     assert_eq!(d.terms[&orphan].started_by, None, "a helper whose commander didn't come back is on its own");
     assert_eq!(d.terms[&commander].started_by, None);
     // And it's saved that way again.
     let saved = d.saved();
     assert_eq!(saved.workspaces[0].tabs[0].panes[&helper].started_by, Some(commander));
+    assert_eq!(saved.workspaces[0].tabs[0].panes[&helper].subagent_activity.len(), 2);
     // A session saved before fleets existed still loads.
     let old: persist::SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":null,"session":null}"#).expect("an older pane");
     assert_eq!(old.started_by, None);
+    assert!(old.subagent_activity.is_empty(), "panes saved before child activity still load");
     close(&mut d, &[helper, orphan, commander]);
 }
 
@@ -996,9 +1030,12 @@ fn a_turn_waiting_on_background_agents_stays_working() {
         }
         m
     };
-    let agent = |start: bool| Some(Subagent { id: "a1".into(), kind: "general-purpose".into(), start });
+    let agent = |start: bool| Some(Subagent { id: "a1".into(), kind: "general-purpose".into(), start, reported_at: 0, task: None, model: None, effort: None, activity: None });
     d.apply_hook(hook(HookStatus::Working, "UserPromptSubmit", None), Some(true), Vec::new());
     d.apply_hook(hook(HookStatus::Working, "SubagentStart", agent(true)), Some(true), Vec::new());
+    d.apply_hook(hook(HookStatus::Working, "SubagentStart", agent(true)), Some(true), Vec::new());
+    assert_eq!(d.terms[&t].subagent_activity.len(), 1, "repeated start events do not duplicate the record");
+    assert_eq!(d.terms[&t].subagent_activity[0].state, SubagentState::Working);
     // Claude's own turn ends ("waiting for 1 background agent"): still working.
     d.apply_hook(hook(HookStatus::Done, "Stop", None), Some(true), Vec::new());
     assert_eq!(d.terms[&t].status, Status::Working);
@@ -1015,6 +1052,7 @@ fn a_turn_waiting_on_background_agents_stays_working() {
     (term.done_held, term.subagent_seen) = (Some(ago(70)), Some(ago(70)));
     d.update_statuses();
     assert_ne!(d.terms[&t].status, Status::Working, "not held forever");
+    assert_eq!(d.terms[&t].subagent_activity[0].state, SubagentState::ConnectionLost, "quiet child is retained as unconfirmed, not completed");
     let terms: Vec<TermId> = d.terms.keys().copied().collect();
     close(&mut d, &terms);
 }
@@ -1050,7 +1088,7 @@ fn a_stop_for_an_unknown_helper_leaves_the_running_ones_alone() {
     let hook = |status: HookStatus, event: &str, id: &str, start: bool| {
         let mut m = report(t, "", 0, status, event);
         if let ClientMsg::Hook { subagent, .. } = &mut m {
-            *subagent = Some(Subagent { id: id.into(), kind: "general-purpose".into(), start });
+            *subagent = Some(Subagent { id: id.into(), kind: "general-purpose".into(), start, reported_at: 0, task: None, model: None, effort: None, activity: None });
         }
         m
     };
@@ -1072,13 +1110,43 @@ fn a_session_starting_again_while_helpers_run_keeps_the_agent_working() {
     d.apply_hook(plain(HookStatus::Working, "UserPromptSubmit"), Some(true), Vec::new());
     let mut start = plain(HookStatus::Working, "SubagentStart");
     if let ClientMsg::Hook { subagent, .. } = &mut start {
-        *subagent = Some(Subagent { id: "a1".into(), kind: "general-purpose".into(), start: true });
+        *subagent = Some(Subagent { id: "a1".into(), kind: "general-purpose".into(), start: true, reported_at: 0, task: None, model: None, effort: None, activity: None });
     }
     d.apply_hook(start, Some(true), Vec::new());
     // Compaction starts the session again in the middle of the turn.
     d.apply_hook(plain(HookStatus::Idle, "SessionStart"), Some(true), Vec::new());
     assert_eq!(d.terms[&t].status, Status::Working, "still working");
     assert_eq!(d.terms[&t].subagents.len(), 1, "its helper is still listed");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn delayed_child_start_does_not_undo_its_completion() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.terms.get_mut(&t).unwrap().session = Some("parent-thread".into());
+    let child = |start, reported_at| Some(Subagent {
+        id: "child-1".into(), kind: "reviewer".into(), start, reported_at,
+        task: Some("review the change".into()), model: Some("claude-opus".into()), effort: None,
+        activity: Some(if start { "SubagentStart" } else { "SubagentStop" }.into()),
+    });
+    let mut start = report(t, "", 0, HookStatus::Working, "SubagentStart");
+    if let ClientMsg::Hook { subagent, .. } = &mut start { *subagent = child(true, 100); }
+    d.apply_hook(start, Some(true), Vec::new());
+    let mut stop = report(t, "", 0, HookStatus::Same, "SubagentStop");
+    if let ClientMsg::Hook { subagent, .. } = &mut stop { *subagent = child(false, 200); }
+    d.apply_hook(stop, Some(true), Vec::new());
+    let mut delayed_start = report(t, "", 0, HookStatus::Working, "SubagentStart");
+    if let ClientMsg::Hook { subagent, .. } = &mut delayed_start { *subagent = child(true, 150); }
+    d.apply_hook(delayed_start, Some(true), Vec::new());
+
+    let activity = &d.terms[&t].subagent_activity[0];
+    assert_eq!(activity.state, SubagentState::Completed);
+    assert_eq!(activity.updated_at, 200);
+    assert!(d.terms[&t].subagents.is_empty(), "a delayed start cannot recreate a live child");
+    assert_eq!(activity.parent.as_deref(), Some("parent-thread"));
+    assert_eq!(activity.task.as_deref(), Some("review the change"));
+    assert_eq!(activity.model.as_deref(), Some("claude-opus"));
     close(&mut d, &[t]);
 }
 
