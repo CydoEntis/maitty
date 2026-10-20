@@ -544,7 +544,7 @@ impl App {
             return;
         }
         let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
-        match k.code {
+        match spec.code {
             KeyCode::Tab | KeyCode::BackTab if crate::client::hydra::Look::of(&self.cfg.ui).flat => self.hy_side_leave(),
             KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => self.hy_side_move(-1),
             KeyCode::Down | KeyCode::Char('j') if !k.modifiers.contains(KeyModifiers::CONTROL) => self.hy_side_move(1),
