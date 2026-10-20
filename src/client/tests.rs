@@ -525,8 +525,8 @@ mod hydra_tests {
         // Rows: state and name, branch · age on the right, its question underneath.
         assert!(text.contains("● claude") && text.contains(" 3m") && !text.contains("main · 3m"), "state, then the name; age on the right (the agent too when the name isn't it), no branch");
         assert!(text.contains("Run npm test -- checkout?"), "the question under the agent");
-        assert!(text.contains("Explore"), "subagents under their agent");
-        assert!(text.contains("▾ 4 subagents") && text.contains("✎ planner") && text.contains("⚙ builder") && text.contains("⚖ reviewer"), "live helpers are visible with an icon for what each is doing");
+        assert!(text.contains("Researching"), "the explorer is shown by its stage");
+        assert!(text.contains("\u{25be} 4 subagents") && text.contains("Planning") && text.contains("Working") && text.contains("Reviewing"), "live helpers have stage names instead of provider role labels: {text}");
         assert!(text.contains("⣾ rate") && text.contains(" 2m"), "a worktree's session is named after it");
         assert!(!text.contains("Rate limit /login"), "under a session only its question, as in the redesign");
         assert!(text.contains("› shell") && !text.contains("shell 2"), "a shell in the project's folder is just 'shell', no age");
@@ -565,36 +565,97 @@ mod hydra_tests {
     }
 
     #[test]
-    fn reported_subagents_remain_clickable_and_inspectable_after_completion() {
+    fn completed_subagents_leave_the_live_list_but_running_ones_are_inspectable() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        let term = app.snap.terms.iter().find(|(_, pane)| pane.agent.is_some()).map(|(id, _)| *id).unwrap();
+        let term = 1;
+        app.snap.terms.get_mut(&term).unwrap().subagents.clear();
         app.snap.terms.get_mut(&term).unwrap().subagent_activity = vec![SubagentActivity {
-            id: "child-42".into(),
-            name: "Reviewer".into(),
-            parent: None,
-            state: SubagentState::Completed,
-            task: Some("review the bing flow".into()),
-            model: Some("claude-opus".into()),
-            effort: None,
-            started_at: Some(100),
-            updated_at: 130,
-            latest_activity: Some("review returned".into()),
-            result: Some("one blocking finding".into()),
+            id: "child-done".into(), name: "Reviewer".into(), parent: None,
+            state: SubagentState::Completed, task: Some("review the old flow".into()),
+            model: Some("claude-opus".into()), effort: None, started_at: Some(100), updated_at: 130,
+            latest_activity: Some("review returned".into()), result: Some("old finding".into()),
+        }, SubagentActivity {
+            id: "child-live".into(), name: "general-purpose".into(), parent: None,
+            state: SubagentState::Working, task: Some("review the bing flow".into()),
+            model: Some("claude-opus".into()), effort: None, started_at: Some(100), updated_at: 130,
+            latest_activity: Some("review returned".into()), result: Some("one blocking finding".into()),
         }];
+        app.hy_fresh();
         app.hy_side_set(hydra::SideItem::Sess(term));
         app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
-        assert!(matches!(app.mode, Mode::SubagentInfo { term: found, index: 0 } if found == term), "keyboard users can open activity from the selected session");
+        assert!(matches!(app.mode, Mode::SubagentInfo { term: found, index: 0 } if found == term), "keyboard users can open live subagent details");
         app.mode = Mode::Normal;
         let sidebar = draw(&mut app, 160, 45);
-        assert!(sidebar.contains("Finished · 1") && sidebar.contains("review the bi") && sidebar.contains("✓"), "finished child and task remain visible: {sidebar}");
+        assert!(sidebar.contains("1 subagent") && sidebar.contains("review the bi"), "only the active child and its task are shown: {sidebar}");
+        assert!(!sidebar.contains("review the old flow") && !sidebar.contains("Finished"), "completed child is removed from the live list: {sidebar}");
         let target = app.hits.iter().find_map(|(_, hit)| match hit {
             Hit::Hy(hydra::HyHit::SubagentInfo(found, index)) if *found == term && *index == 0 => Some(hydra::HyHit::SubagentInfo(*found, *index)),
             _ => None,
-        }).expect("the activity row is a mouse target");
+        }).expect("the active subagent row is a mouse target");
         app.on_hy_hit(target, false);
         let inspector = draw(&mut app, 160, 45);
-        assert!(inspector.contains("review the bing flow") && inspector.contains("claude-opus") && inspector.contains("one blocking finding"), "inspector shows runtime data: {inspector}");
+        assert!(inspector.contains("review the bing flow") && inspector.contains("claude-opus") && inspector.contains("one blocking finding"), "details show runtime data: {inspector}");
         assert!(inspector.contains("Not reported"), "unknown fields are labelled instead of inherited from the parent");
+    }
+
+    #[test]
+    fn active_subagent_shows_status_and_stage_without_lifecycle_labels() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let term = 1;
+        let pane = app.snap.terms.get_mut(&term).unwrap();
+        pane.subagents.clear();
+        pane.subagent_activity = vec![SubagentActivity {
+            id: "child-general".into(),
+            name: "delegate".into(),
+            parent: None,
+            state: SubagentState::Working,
+            task: None,
+            model: None,
+            effort: None,
+            started_at: None,
+            updated_at: 0,
+            latest_activity: None,
+            result: None,
+        }];
+        app.hy_fresh();
+        app.hy_side_set(hydra::SideItem::Sess(term));
+
+        let sidebar = draw(&mut app, 160, 45);
+
+        assert!(sidebar.contains("Working"), "unknown provider roles get a useful stage label: {sidebar}");
+        assert!(!sidebar.contains("general-purpose"), "provider-internal role names stay out of the sidebar: {sidebar}");
+        assert!(!sidebar.contains("Active"), "the live list needs no redundant Active count: {sidebar}");
+
+        let mut terminal = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        terminal.draw(|frame| render::draw(&mut app, frame)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let child_y = app.hits.iter().find_map(|(rect, hit)| {
+            (*hit == Hit::Hy(hydra::HyHit::SubagentInfo(term, 0))).then_some(rect.y)
+        }).expect("the working child row is rendered");
+        let spinner_frames = &app.cfg.ui.spinner;
+        let spinner_cell = (0..160).find_map(|x| {
+            spinner_frames.iter().any(|frame| frame == buffer[(x, child_y)].symbol())
+                .then_some((x, &buffer[(x, child_y)]))
+        }).expect("the child row uses an animated spinner frame");
+        assert_eq!(spinner_cell.1.fg, app.theme.muted, "the working child marker is neutral gray");
+        let working_label = (0..153).find(|x| {
+            (0.."Working".len()).all(|offset| buffer[(x + offset as u16, child_y)].symbol() == &"Working"[offset..offset + 1])
+        }).expect("the fallback stage label is visible");
+        assert_eq!(buffer[(working_label, child_y)].fg, app.theme.muted, "the child label is visually secondary");
+        assert!(!buffer[(working_label, child_y)].modifier.contains(ratatui::style::Modifier::BOLD), "the child label is not bold");
+    }
+
+    #[test]
+    fn a_working_subagent_keeps_the_spinner_animating_without_parent_work() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let pane = app.snap.terms.get_mut(&1).unwrap();
+        pane.status = Status::None;
+        pane.subagent_activity = vec![SubagentActivity {
+            id: "child-live".into(), name: "worker".into(), parent: None,
+            state: SubagentState::Working, task: None, model: None, effort: None,
+            started_at: None, updated_at: 0, latest_activity: None, result: None,
+        }];
+        assert!(app.any_working(), "reported child work advances its configured spinner even when the parent is idle");
     }
 
 
@@ -1036,13 +1097,14 @@ mod hydra_tests {
         show(&o);
         assert_eq!(app.session_tabs().len(), 2);
         assert!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Hy(hydra::HyHit::TabPick(_)))).count() == 2 && !o.contains("2 shell"), "claude's two tabs, unnamed ones shown by number");
-        // Renamed in its pill.
+        // Rename uses the same centered text editor as pane and project names.
         app.act(Action::RenameTab);
         for c in "tests".chars() {
             key(&mut app, KeyCode::Char(c));
         }
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains(" tests█"), "typed in its pill");
+        show(&o);
+        assert!(o.contains("Rename tab") && o.contains("tests█"), "the dialog shows the draft: {o}");
         key(&mut app, KeyCode::Enter);
         let o = draw(&mut app, 160, 45);
         assert!(o.contains(" tests ") && !o.contains("2 tests"), "renamed: the pill is its name");
@@ -1518,16 +1580,17 @@ mod hydra_tests {
     }
 
     #[test]
-    fn settings_open_in_the_right_sheet_and_tabs_are_mouse_reachable() {
+    fn settings_open_as_a_centered_modal_without_reflow_and_tabs_are_mouse_reachable() {
         for (width, height) in [(80, 24), (100, 30), (160, 45)] {
             let (_, mut app) = super::design_tests::render_with(width, height);
+            let before = hydra::grid(&app, Rect::new(0, 0, width, height));
             app.act(Action::Settings);
             let screen = draw(&mut app, width, height);
             show(&screen);
             let grid = hydra::grid(&app, Rect::new(0, 0, width, height));
-            assert!(grid.sheet.width > 0 && grid.sheet.right() == width - 1, "Settings occupies the right sheet at {width}x{height}");
-            let general = if grid.sheet.width < 54 { "Gen" } else { "General" };
-            assert!(screen.contains("Settings") && screen.contains(general), "Settings renders in the sheet at {width}x{height}");
+            assert_eq!(grid.sheet.width, 0, "Settings does not create a side sheet at {width}x{height}");
+            assert_eq!(grid.panes, before.panes, "Settings leaves the workspace geometry unchanged at {width}x{height}");
+            assert!(screen.contains("Settings") && screen.contains("General"), "Settings renders in the centered modal at {width}x{height}");
         }
 
         let (_, mut app) = super::design_tests::render_with(100, 30);
@@ -1535,7 +1598,7 @@ mod hydra_tests {
         draw(&mut app, 100, 30);
         let (x, y) = app.hits.iter().find_map(|(r, hit)| (*hit == Hit::Hy(hydra::HyHit::SetTab(2))).then_some((r.x, r.y))).expect("Appearance tab is clickable");
         app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x, row: y, modifiers: KeyModifiers::NONE });
-        assert!(matches!(&app.mode, Mode::HySettings(view) if view.cat == 2), "mouse opens Appearance without closing the sheet");
+        assert!(matches!(&app.mode, Mode::HySettings(view) if view.cat == 2), "mouse opens Appearance without closing the modal");
     }
 
     #[test]
@@ -1608,8 +1671,8 @@ mod hydra_tests {
 
         app.act(Action::Settings);
         let settings = draw(&mut app, 160, 45);
-        assert!(settings.contains("Settings") && settings.contains("Esc close"), "the Settings sheet reaches the top and has its square status row");
-        assert!(app.hits.iter().any(|(rect, hit)| rect.y == 0 && *hit == Hit::Hy(hydra::HyHit::Close)), "the flat sheet close control is mouse reachable at row zero");
+        assert!(settings.contains("Settings") && settings.contains("Esc close"), "the Settings modal has its square status row");
+        assert!(app.hits.iter().any(|(rect, hit)| rect.y > 0 && *hit == Hit::Hy(hydra::HyHit::Close)), "the flat modal close control is mouse reachable");
     }
 
     #[test]
@@ -1766,6 +1829,8 @@ mod hydra_tests {
         mouse(&mut app, MouseEventKind::Up(MouseButton::Left), at);
         assert!(matches!(&app.mode, Mode::RenameTab(nt) if nt.tab == first), "renaming the first tab");
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(app.mode, Mode::Normal, "Escape closes the rename dialog");
+        draw(&mut app, 160, 45);
         // Drag the first onto the third: it moves there, and stays the one you're on.
         let (a, c) = (app.session_tabs()[0], app.session_tabs()[2]);
         let moved = app.hy.tabs[a].focus;
@@ -1925,7 +1990,7 @@ mod hydra_tests {
     }
 
     #[test]
-    fn live_helpers_show_what_they_are_doing_by_icon_in_the_working_colour() {
+    fn live_helpers_show_pipeline_stages_with_status_and_stage_icons() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.hy_fresh();
         let mut terminal = Terminal::new(TestBackend::new(160, 45)).unwrap();
@@ -1935,15 +2000,14 @@ mod hydra_tests {
             let row = |y| (0..160).map(|x| buf[(x, y)].symbol()).collect::<String>();
             let y = (0..45).find(|&y| row(y).contains(name)).unwrap_or_else(|| panic!("{name} helper row"));
             let x = row(y)[..row(y).find(name).unwrap()].chars().count() as u16;
-            // The icon sits two cells before the name; the name is the plain text colour.
-            (buf[(x - 2, y)].symbol().to_string(), buf[(x - 2, y)].fg, buf[(x, y)].fg)
+            (buf[(x - 2, y)].symbol().to_string(), buf[(x - 2, y)].fg, buf[(x, y)].fg, buf[(x - 4, y)].fg)
         };
-        let (planner, builder, reviewer) = (at("planner"), at("builder"), at("reviewer"));
-        assert_eq!([planner.0.as_str(), builder.0.as_str(), reviewer.0.as_str()], ["✎", "⚙", "⚖"], "an icon for each role");
-        let working = app.theme.status(Status::Working);
-        assert_eq!([planner.1, builder.1, reviewer.1], [working; 3], "the role icons keep the working colour");
-        assert_eq!([planner.2, builder.2, reviewer.2], [app.theme.text; 3], "the names are one neutral colour, not a colour per role");
-        assert_eq!(working, app.theme.working, "active helpers use the orange working color");
+        let (planner, builder, reviewer) = (at("Planning"), at("Working"), at("Reviewing"));
+        assert_eq!([planner.0.as_str(), builder.0.as_str(), reviewer.0.as_str()], ["\u{270e}", "\u{2699}", "\u{2696}"], "an icon for each pipeline stage");
+        let neutral = app.theme.muted;
+        assert_eq!([planner.1, builder.1, reviewer.1], [neutral; 3], "stage icons use the secondary neutral color");
+        assert_eq!([planner.2, builder.2, reviewer.2], [neutral; 3], "stage labels use the secondary neutral color");
+        assert_eq!([planner.3, builder.3, reviewer.3], [neutral; 3], "active helpers use a neutral animated status marker");
     }
 
     #[test]
@@ -2989,14 +3053,14 @@ mod hydra_tests {
             let buf = term.backend().buffer().clone();
             let (_, pane) = app.pane_frames[0];
             let accent = app.theme.accent;
-            // The pane card's left edge, then anything else on screen to its right (the sheet).
+            // The pane card's left edge and any sheet edge to its right.
             let pane_lit = (pane.y + 1..pane.bottom() - 1).any(|y| buf[(pane.x, y)].fg == accent);
             let sheet_lit = (0..45u16).any(|y| (pane.right()..160u16).any(|x| buf[(x, y)].fg == accent && matches!(buf[(x, y)].symbol(), "▕" | "▏" | "│")));
             (pane_lit, sheet_lit)
         };
         assert_eq!(lit_edges(&mut app), (true, false), "the pane has the keys: its edge is lit");
         app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 0, sel: 1, editing: None, capturing: false, scroll: 0 }));
-        assert_eq!(lit_edges(&mut app), (false, true), "settings has them: the sheet is lit, the pane is not");
+        assert_eq!(lit_edges(&mut app), (false, false), "the modal dims the workspace and overlays it without creating a sheet edge");
     }
 
     #[test]

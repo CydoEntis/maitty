@@ -106,7 +106,7 @@ config (`[icons]`), with Nerd Font glyphs where present.
 
 Seshi has one terminal interface: a sidebar of projects and sessions, with tabs and split panes in the remaining area. Settings > Appearance > Layout selects Cards or Flat; both use the same sessions, tabs, splits and sheets. Cards is the default. Flat uses square, full-bleed zones and Tab / Shift+Tab to move focus between the sidebar and panes; Esc returns focus to the sidebar. There is no application-wide footer bar. The tab row aligns with the sidebar. Keep **+ new** and **Actions** at the bottom of the sidebar in both layouts. The tab row shows **Update** only when a newer release is available.
 
-The leader is `Ctrl+Space` by default. Inbox (`j`) and Settings (`,`) use the right-hand sheet. The command palette (`Space`), shortcuts (`?`), files, branches and new agents use popups. The minimum supported size is about 80 by 24; popups clamp to the screen. Mouse users can reach every visible control; support click, right-click menus, drag dividers, scrolling and Ctrl+click paths.
+The leader is `Ctrl+Space` by default. Inbox (`j`) uses the right-hand sheet. Settings (`,`) opens as a centred modal over the workspace so the pane layout does not change. The command palette (`Space`), shortcuts (`?`), files, branches and new agents use popups. The minimum supported size is about 80 by 24; popups clamp to the screen. Mouse users can reach every visible control; support click, right-click menus, drag dividers, scrolling and Ctrl+click paths.
 
 The high-fidelity flat-layout reference and its interaction spec are preserved in [`docs/design/flat/README.md`](design/flat/README.md); update it when the implementation changes the design contract.
 
@@ -118,7 +118,7 @@ Mark one selected sidebar row independently from hover: the keyboard selection s
 
 Settings opens on General and reports installed, window and daemon versions separately, with a labeled remote daemon and restart-pending notice when they differ. General groups controls under INPUT, LAYOUT, SHELL and UPDATES. Show the update action only when an update is available; keep release notes and confirmation in the existing flow.
 
-Show reported child agents under their parent, never as independent projects. Make each child row clickable to inspect its progress. Active child work uses the orange working status marker; a separate role icon distinguishes planning, research, building or reviewing. Do not assign role colors that could be confused with done, working, blocked or idle.
+Show reported child agents under their parent, never as independent projects. Keep the sidebar list live: remove a child when its reported state is completed, failed, cancelled or unconfirmed, while retaining lifecycle evidence in daemon state. Make active child rows clickable to inspect reported task and stage details. Keep parent session status colors unchanged. Active subagents use the configured working animation in muted neutral gray; their stage icon and label are muted and non-bold. Preserve standard needs-you and error colors for blocked or failed children. Derive stage from reported role and task text, and use Working when there is not enough evidence. Do not show lifecycle group labels or counts beyond the parent heading total. Do not assign role colors that could be confused with done, working, blocked or idle.
 
 Keep update indicators until the installed program, window and daemon versions agree. Installing an update leaves current processes running; it does not interrupt sessions. Apply daemon changes after the user restarts when sessions are safe to stop.
 
@@ -133,13 +133,9 @@ Only the area with the keyboard is lit: the focused pane border (Cards), focus b
 <!-- local: user requested distinct active, keyboard and hover sidebar states, mouse-first sidebar controls and parent-owned child-agent visibility. -->
 
 - Popups are centred `panel()`s with an accent title bar and `Esc close`; the
-  screen behind is dimmed. Settings uses the right-hand sliding sheet, with the
-  working panes visible beside it when the window allows. Settings keeps its General, Sessions, Appearance, Agents and Keys sections in
-- Popups are centred `panel()`s with an accent title bar and `Esc close`; the
-  screen behind is dimmed. Settings uses the right-hand sliding sheet, with the
-  working panes visible beside it when the window allows.
-  Settings keeps its General, Sessions, Appearance, Agents and Keys sections in
-  the sheet; its update controls and keyboard and mouse editing stay available.
+  screen behind is dimmed. Settings is a centred modal that preserves the
+  workspace layout and keeps its General, Sessions, Appearance, Agents and Keys
+  sections, update controls, and keyboard and mouse editing available.
 - Selection is a neutral tint (`sel_on` of the surface it sits on) with a lime `▎` bar;
   never the accent colour as a row fill.
 - Every popup row is clickable and keyboard-reachable; every key is shown as a

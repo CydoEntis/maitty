@@ -186,7 +186,6 @@ pub(in crate::client) enum Line {
     Subagent(String, &'static str, TermId),
     /// A runtime-reported child with a stable identity and retained lifecycle.
     SubagentRecord(Box<crate::protocol::SubagentActivity>, TermId, usize),
-    SubagentGroup(&'static str, usize),
     /// The heading over a session's subagents: how many, and whether they're listed.
     Subs(TermId, usize, bool),
     /// Nothing running in a folder project.
@@ -229,32 +228,20 @@ pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme
     if !s.subagents.is_empty() || !s.subagent_activity.is_empty() {
         let has_record_for_live_name = |name: &str| s.subagent_activity.iter().any(|activity| activity.name.eq_ignore_ascii_case(name));
         let legacy: Vec<_> = s.subagents.iter().filter(|name| !has_record_for_live_name(name)).collect();
-        let active = s.subagent_activity.iter().filter(|activity| activity.state.active()).count() + legacy.len();
-        let finished = s.subagent_activity.iter().filter(|activity| !activity.state.active() && activity.state != crate::protocol::SubagentState::ConnectionLost).count();
-        let unconfirmed = s.subagent_activity.iter().filter(|activity| activity.state == crate::protocol::SubagentState::ConnectionLost).count();
-        let total = active + finished + unconfirmed;
+        let total = s.subagent_activity.iter().filter(|activity| activity.state.active()).count() + legacy.len();
         out.push(Line::Subs(s.term, total, !subs_closed));
         if !subs_closed {
             let mut shown = 0;
-            for (label, count, state_group) in [("Active", active, 0), ("Finished", finished, 1), ("Unconfirmed", unconfirmed, 2)] {
-                if count == 0 { continue; }
-                out.push(Line::SubagentGroup(label, count));
-                for (index, activity) in s.subagent_activity.iter().enumerate().filter(|(_, activity)| match state_group {
-                    0 => activity.state.active(),
-                    1 => !activity.state.active() && activity.state != crate::protocol::SubagentState::ConnectionLost,
-                    _ => activity.state == crate::protocol::SubagentState::ConnectionLost,
-                }) {
-                    if shown == SUBS_LISTED { break; }
-                    out.push(Line::SubagentRecord(Box::new(activity.clone()), s.term, index));
-                    shown += 1;
-                }
-                if state_group == 0 {
-                    for sub in &legacy {
-                        if shown == SUBS_LISTED { break; }
-                        out.push(Line::Subagent(sub.to_string(), subagent_icon(sub, nerd), s.term));
-                        shown += 1;
-                    }
-                }
+            for (index, activity) in s.subagent_activity.iter().enumerate().filter(|(_, activity)| activity.state.active()) {
+                if shown == SUBS_LISTED { break; }
+                out.push(Line::SubagentRecord(Box::new(activity.clone()), s.term, index));
+                shown += 1;
+            }
+            for sub in &legacy {
+                if shown == SUBS_LISTED { break; }
+                let (stage, icon) = subagent_stage(sub, None, nerd);
+                out.push(Line::Subagent(stage.to_string(), icon, s.term));
+                shown += 1;
             }
             if total > shown {
                 out.push(Line::Note(format!("  +{} more", total - shown), notes_c, s.term));
@@ -263,23 +250,24 @@ pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme
     }
 }
 
-/// An icon for what a helper is doing, from its name: planning, researching, building or
-/// reviewing, else a plain dot. Researching is a book: the Nerd Font one when the user has that
-/// font (the setting that rounds pill ends says so), else a single-width stand-in.
-fn subagent_icon(kind: &str, nerd: bool) -> &'static str {
-    let name = kind.to_ascii_lowercase();
-    let has = |words: &[&str]| words.iter().any(|w| name.contains(w));
+/// A compact pipeline stage inferred only from provider-reported role and task text.
+pub(super) fn subagent_stage(name: &str, task: Option<&str>, nerd: bool) -> (&'static str, &'static str) {
+    let text = format!("{name} {}", task.unwrap_or_default()).to_ascii_lowercase();
+    let has = |words: &[&str]| words.iter().any(|w| text.contains(w));
     if has(&["review", "audit", "verif"]) {
-        "⚖"
+        ("Reviewing", "⚖")
     } else if has(&["plan", "architect", "design"]) {
-        "✎"
+        ("Planning", "✎")
     } else if has(&["research", "explore", "search", "investigat"]) {
-        if nerd { "\u{f02d}" } else { "▤" }
-    } else if has(&["build", "work", "implement", "fork", "fix"]) {
-        "⚙"
+        ("Researching", if nerd { "\u{f02d}" } else { "▤" })
     } else {
-        "●"
+        ("Working", "⚙")
     }
+}
+
+fn working_frame(app: &App) -> String {
+    let frames = &app.cfg.ui.spinner;
+    frames.get(app.spinner_frame() as usize % frames.len().max(1)).cloned().unwrap_or_else(|| app.cfg.icons.working.clone())
 }
 
 /// This many of a session's native helper agents are named before they are counted.
@@ -456,7 +444,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
         let last = indents.last().copied().unwrap_or(0);
         indents.push(match l {
             Line::Sess(.., depth) => u16::from(*depth) * FLEET_INDENT,
-            Line::Note(..) | Line::Subagent(..) | Line::SubagentRecord(..) | Line::SubagentGroup(..) | Line::Subs(..) => last,
+            Line::Note(..) | Line::Subagent(..) | Line::SubagentRecord(..) | Line::Subs(..) => last,
             _ => 0,
         });
     }
@@ -627,27 +615,20 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 if small {
                     continue;
                 }
+                let spinner = working_frame(app);
                 let base = Style::default().bg(pb);
                 let available = w.saturating_sub(11 + indent) as usize;
                 let label = truncate(name, available.saturating_sub(6));
-                put(
-                    buf,
-                    x0 + 7 + indent,
-                    y,
-                    &[
-                        seg("  ↳ ", base.fg(t.muted)),
-                        seg("● ", base.fg(t.working)),
-                        seg(format!("{icon} "), base.fg(t.working)),
-                        seg(label, base.fg(t.text)),
-                    ],
-                    right,
-                );
+                let mut segs = vec![seg("  ↳ ", base.fg(t.muted)), seg(format!("{spinner} "), base.fg(t.muted))];
+                segs.push(seg(format!("{icon} "), base.fg(t.muted)));
+                segs.push(seg(label, base.fg(t.muted)));
+                put(buf, x0 + 7 + indent, y, &segs, right);
                 hit(app, row, HyHit::Session(*term));
             }
             Line::SubagentRecord(activity, term, index) => {
                 if small { continue; }
                 let state_color = match activity.state {
-                    crate::protocol::SubagentState::Working => t.working,
+                    crate::protocol::SubagentState::Working => t.muted,
                     crate::protocol::SubagentState::WaitingForInput | crate::protocol::SubagentState::AwaitingApproval => t.blocked,
                     crate::protocol::SubagentState::Completed => t.done,
                     crate::protocol::SubagentState::Failed | crate::protocol::SubagentState::ConnectionLost => t.err,
@@ -655,31 +636,30 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     crate::protocol::SubagentState::Starting => t.accent,
                 };
                 let icon = match activity.state {
-                    crate::protocol::SubagentState::Working => "●",
-                    crate::protocol::SubagentState::WaitingForInput => "?",
-                    crate::protocol::SubagentState::AwaitingApproval => "!",
-                    crate::protocol::SubagentState::Completed => "✓",
-                    crate::protocol::SubagentState::Failed => "×",
-                    crate::protocol::SubagentState::Cancelled => "–",
-                    crate::protocol::SubagentState::ConnectionLost => "?",
-                    crate::protocol::SubagentState::Starting => "◷",
+                    crate::protocol::SubagentState::Working => working_frame(app),
+                    crate::protocol::SubagentState::WaitingForInput => "?".into(),
+                    crate::protocol::SubagentState::AwaitingApproval => "!".into(),
+                    crate::protocol::SubagentState::Completed => "✓".into(),
+                    crate::protocol::SubagentState::Failed => "×".into(),
+                    crate::protocol::SubagentState::Cancelled => "–".into(),
+                    crate::protocol::SubagentState::ConnectionLost => "?".into(),
+                    crate::protocol::SubagentState::Starting => "◷".into(),
                 };
-                let role_icon = subagent_icon(&activity.name, app.cfg.ui.pill_caps);
-                let detail = activity.task.as_deref().unwrap_or(activity.name.as_str());
+                let (stage, role_icon) = subagent_stage(&activity.name, activity.task.as_deref(), app.cfg.ui.pill_caps);
+                let detail = activity.task.as_deref().filter(|task| !task.trim().is_empty()).unwrap_or(stage);
                 let label = truncate(detail, w.saturating_sub(20 + indent) as usize);
                 let st = Style::default().bg(pb);
-                put(buf, x0 + 7 + indent, y, &[
-                    seg("  ↳ ", st.fg(t.muted)),
-                    seg(format!("{icon} "), st.fg(state_color).add_modifier(Modifier::BOLD)),
-                    seg(format!("{role_icon} "), st.fg(t.text)),
-                    seg(label, st.fg(state_color).add_modifier(Modifier::BOLD)),
-                ], right);
+                let mut icon_style = st.fg(state_color);
+                let mut label_style = st.fg(state_color);
+                if activity.state != crate::protocol::SubagentState::Working {
+                    icon_style = icon_style.add_modifier(Modifier::BOLD);
+                    label_style = label_style.add_modifier(Modifier::BOLD);
+                }
+                let mut segs = vec![seg("  ↳ ", st.fg(t.muted)), seg(format!("{icon} "), icon_style)];
+                segs.push(seg(format!("{role_icon} "), st.fg(t.muted)));
+                segs.push(seg(label, label_style));
+                put(buf, x0 + 7 + indent, y, &segs, right);
                 hit(app, row, HyHit::SubagentInfo(*term, *index));
-            }
-            Line::SubagentGroup(label, n) => {
-                if small { continue; }
-                let st = Style::default().bg(pb).fg(t.muted).add_modifier(Modifier::BOLD);
-                put(buf, x0 + 7 + indent, y, &[seg(format!("  {label} · {n}"), st)], right);
             }
             // Nothing running: one click starts a shell there.
             Line::Empty(pi) => {
@@ -939,24 +919,15 @@ pub(in crate::client) fn draw_tab_bar(app: &mut App, buf: &mut Buffer, r: Rect, 
         let tab = &app.hy.tabs[i];
         let on = i == app.hy.tab;
         let state = tab_state(app, tab);
-        let editing = matches!(&app.mode, Mode::RenameTab(nt) if nt.tab == i);
-        let name = if editing {
-            match &app.mode {
-                Mode::RenameTab(nt) => nt.name.clone(),
-                _ => String::new(),
-            }
-        } else if small && !on {
+        let name = if small && !on {
             String::new()
         } else {
             tab_name(tab).unwrap_or_default()
         };
-        // Its name if you gave it one (or are typing one), else its number.
+        // Its name if you gave it one, else its number.
         let fg = if on { t.acc_ink } else { t.text };
-        let label = if name.is_empty() && !editing { format!("{}", n + 1) } else { truncate(&name, 24) };
+        let label = if name.is_empty() { format!("{}", n + 1) } else { truncate(&name, 24) };
         let mut segs = vec![seg(" ", Style::default()), seg(label, Style::default().fg(fg).add_modifier(Modifier::BOLD))];
-        if editing {
-            segs.push(seg("█", Style::default().fg(fg)));
-        }
         if let Some(st) = state {
             let c = if st == Status::Blocked { t.blocked } else if on { t.acc_ink } else { t.muted };
             let mut gs = Style::default().fg(c);
@@ -1245,15 +1216,14 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, panes: Rect
 
 #[cfg(test)]
 mod icon_tests {
-    use super::subagent_icon;
+    use super::subagent_stage;
 
     #[test]
     fn a_helper_gets_the_icon_of_what_it_does() {
-        assert_eq!(subagent_icon("planner", false), "✎");
-        assert_eq!(subagent_icon("react:react-expert", false), "●", "nothing in the name says what it does");
-        assert_eq!(subagent_icon("Code Reviewer", false), "⚖");
-        assert_eq!(subagent_icon("worker-2", false), "⚙");
-        assert_eq!(subagent_icon("Explore", false), "▤", "a book, in a single cell without a Nerd Font");
-        assert_eq!(subagent_icon("deep-research", true), "\u{f02d}", "the Nerd Font book when it's there");
+        assert_eq!(subagent_stage("planner", None, false), ("Planning", "✎"));
+        assert_eq!(subagent_stage("general-purpose", Some("Review the test changes"), false), ("Reviewing", "⚖"));
+        assert_eq!(subagent_stage("general-purpose", Some("Implement the fix"), false), ("Working", "⚙"));
+        assert_eq!(subagent_stage("Explore", None, false), ("Researching", "▤"), "a book, in a single cell without a Nerd Font");
+        assert_eq!(subagent_stage("deep-research", None, true), ("Researching", "\u{f02d}"), "the Nerd Font book when it's there");
     }
 }

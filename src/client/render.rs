@@ -128,7 +128,7 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             let np = np.clone();
             super::hydra::draw_new_pane(app, f, area, &t, &np);
         }
-        Mode::HySettings(_) => {} // Drawn in the right sheet.
+        Mode::HySettings(_) => super::hydra::draw_settings_modal(app, f.buffer_mut(), area, &t),
         Mode::Themes { query, sel, saving } => {
             let (query, sel, saving) = (query.clone(), *sel, *saving);
             super::themes::draw_themes(app, f, area, &t, &query, sel, saving);
@@ -144,6 +144,10 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
         Mode::Prompt { kind, input } => {
             let (label, input, confirm) = (kind.label().to_string(), input.clone(), kind.is_confirm());
             draw_prompt(app, f, area, &t, &label, &input, confirm)
+        }
+        Mode::RenameTab(tab) => {
+            let name = tab.name.clone();
+            draw_prompt(app, f, area, &t, "Rename tab (empty: automatic)", &name, false);
         }
         Mode::Worktrees { items, query, sel, .. } => {
             let rows = app.worktree_rows(items.as_deref(), query);
