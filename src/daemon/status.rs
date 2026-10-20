@@ -96,13 +96,44 @@ impl Daemon {
                             t.subagent_hooks_seen = true;
                         }
                         t.subagent_seen = Some(Instant::now());
+                        let current = t.subagent_activity.iter().find(|activity| activity.id == sa.id);
+                        let event_at = if sa.reported_at == 0 { term::unix_now() } else { sa.reported_at };
+                        let event_is_current = current.is_none_or(|activity| {
+                            event_at > activity.updated_at || (!sa.start && event_at == activity.updated_at)
+                                || (sa.start && activity.state.active() && event_at == activity.updated_at)
+                        });
                         if sa.start {
                             // Its start, or news from one already running (listed once; one
                             // missed while seshi was away joins the list here).
-                            if sa.id.is_empty() || !t.subagents.iter().any(|(id, _)| *id == sa.id) {
-                                t.subagents.push((sa.id, sa.kind));
+                            if event_is_current && (sa.id.is_empty() || !t.subagents.iter().any(|(id, _)| *id == sa.id)) {
+                                t.subagents.push((sa.id.clone(), sa.kind.clone()));
                             }
-                        } else if let Some(i) = t.subagents.iter().position(|(id, _)| !sa.id.is_empty() && *id == sa.id) {
+                            if !sa.id.is_empty() && event_is_current {
+                                let now = event_at;
+                                if let Some(activity) = t.subagent_activity.iter_mut().find(|a| a.id == sa.id) {
+                                    activity.state = SubagentState::Working;
+                                    activity.updated_at = now;
+                                    activity.task = sa.task.clone().or_else(|| activity.task.clone());
+                                    activity.model = sa.model.clone().or_else(|| activity.model.clone());
+                                    activity.effort = sa.effort.clone().or_else(|| activity.effort.clone());
+                                    activity.latest_activity = sa.activity.clone().or_else(|| Some("Runtime reported child activity".into()));
+                                } else {
+                                    t.subagent_activity.push(SubagentActivity {
+                                        id: sa.id.clone(),
+                                        name: sa.kind.clone(),
+                                        parent: t.session.clone(),
+                                        state: SubagentState::Working,
+                                        task: sa.task.clone(),
+                                        model: sa.model.clone(),
+                                        effort: sa.effort.clone(),
+                                        started_at: Some(now),
+                                        updated_at: now,
+                                        latest_activity: sa.activity.clone().or_else(|| Some("Runtime reported child start".into())),
+                                        result: None,
+                                    });
+                                }
+                            }
+                        } else if event_is_current && let Some(i) = t.subagents.iter().position(|(id, _)| !sa.id.is_empty() && *id == sa.id) {
                             t.subagents.remove(i);
                         } else if sa.id.is_empty() {
                             // A stop with no id can only be for the last one started.
@@ -111,12 +142,31 @@ impl Daemon {
                         // A stop for an id we never saw start (it began before seshi was
                         // listening) must not remove a different helper that is still running.
                         tracing::debug!("pane {term}: {} helper(s) running after {event}", t.subagents.len());
+                        if !sa.start && !sa.id.is_empty() && event_is_current
+                            && let Some(activity) = t.subagent_activity.iter_mut().find(|a| a.id == sa.id)
+                        {
+                            activity.state = SubagentState::Completed;
+                            activity.updated_at = event_at;
+                            activity.task = sa.task.clone().or_else(|| activity.task.clone());
+                            activity.model = sa.model.clone().or_else(|| activity.model.clone());
+                            activity.effort = sa.effort.clone().or_else(|| activity.effort.clone());
+                            activity.latest_activity = sa.activity.or_else(|| Some("Runtime reported child stop".into()));
+                        }
                         self.dirty = true;
                     }
                     // A turn over (or a new session) has no subagents left; a "done" while some
                     // still run is held instead (see `hook`).
                     if matches!(status, HookStatus::Gone) || (matches!(status, HookStatus::Idle) && event != "SessionStart") {
                         t.subagents.clear();
+                        let now = term::unix_now();
+                        for activity in &mut t.subagent_activity {
+                            if activity.state.active() {
+                                activity.state = SubagentState::ConnectionLost;
+                                activity.updated_at = now;
+                                activity.latest_activity = Some("Parent session ended before child completion was reported".into());
+                                self.dirty = true;
+                            }
+                        }
                     }
                     if let Some(s) = said {
                         t.said = s;
@@ -142,6 +192,15 @@ impl Daemon {
                     }) {
                         if t.session.as_deref() != Some(&id) {
                             t.subagents.clear();
+                            let now = term::unix_now();
+                            for activity in &mut t.subagent_activity {
+                                if activity.state.active() {
+                                    activity.state = SubagentState::ConnectionLost;
+                                    activity.updated_at = now;
+                                    activity.latest_activity = Some("Parent session changed before child completion was reported".into());
+                                    self.dirty = true;
+                                }
+                            }
                         }
                         t.session = Some(id);
                     }
@@ -615,6 +674,19 @@ impl Daemon {
             if let Some(t) = self.terms.get_mut(&id) && before != Status::Blocked { t.screen_blocked_from = Some(before); }
         }
         for (id, s, why) in changes {
+            if why == "subagents went quiet"
+                && let Some(t) = self.terms.get_mut(&id)
+            {
+                let now = term::unix_now();
+                for activity in &mut t.subagent_activity {
+                    if activity.state.active() {
+                        activity.state = SubagentState::ConnectionLost;
+                        activity.updated_at = now;
+                        activity.latest_activity = Some("Runtime stopped reporting child activity; completion unconfirmed".into());
+                        self.dirty = true;
+                    }
+                }
+            }
             if s != Status::Working
                 && let Some(t) = self.terms.get_mut(&id)
                 && t.status != s

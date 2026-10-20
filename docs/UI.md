@@ -102,101 +102,39 @@ config (`[icons]`), with Nerd Font glyphs where present.
 
 ## Project-specific: layout and navigation
 
-The terminal client has one session layout: a sidebar of projects and their sessions (left or right), panes on
-the rest (tabs and splits), and a one-line bottom bar. Settings > Appearance > Layout selects Cards or Flat;
-both render the same sessions, tabs, splits and sheets. Cards is the default. Flat uses square, full-bleed
-zones with no gaps, a persistent bottom status line, and Tab / Shift+Tab to switch focus between sidebar
-and panes; Esc returns focus to the sidebar. Everything after the leader
-key (`Ctrl+Space` by default; keys follow herdr's where they overlap). Views:
-inbox (`j`) and settings (`,`) use the right-hand sheet. The command palette (`Space`),
-keys (`?`), files, branches and new
-agent use popups. Minimum supported size is about
-80×24; popups clamp to the screen. Mouse: click, right-click menus, drag
-dividers, scroll; Ctrl+click opens paths.
+<!-- local: user requested sidebar-bottom controls, tab-row update discovery and no global footer. -->
 
-The high-fidelity flat-layout reference and its interaction spec are preserved in
-[`docs/design/flat/README.md`](design/flat/README.md); keep the implementation aligned with it.
+Seshi has one terminal interface: a sidebar of projects and sessions, with tabs and split panes in the remaining area. Settings > Appearance > Layout selects Cards or Flat; both use the same sessions, tabs, splits and sheets. Cards is the default. Flat uses square, full-bleed zones and Tab / Shift+Tab to move focus between the sidebar and panes; Esc returns focus to the sidebar. There is no application-wide footer bar. The tab row aligns with the sidebar. Keep **+ new** and **Actions** at the bottom of the sidebar in both layouts. The tab row shows **Update** only when a newer release is available.
 
-The sidebar has no footer; the status line along the bottom of both layouts holds the global hints
-(`j inbox`, `a actions`, `,` settings, `?` keys). A **+ new** button on the sidebar's top row (cards),
-a project's **+** and leader + `n` open a plain shell; every control stays reachable by mouse. Keep **Actions** available at the top right, including
-without a sidebar or session. Offer clickable agent status setup (including Codex),
-Settings and All commands; every palette row is clickable and wheel-scrollable.
-Include configured commands, retaining existing confirmations.
+The leader is `Ctrl+Space` by default. Inbox (`j`) and Settings (`,`) use the right-hand sheet. The command palette (`Space`), shortcuts (`?`), files, branches and new agents use popups. The minimum supported size is about 80 by 24; popups clamp to the screen. Mouse users can reach every visible control; support click, right-click menus, drag dividers, scrolling and Ctrl+click paths.
 
-When an update is available, show the accent dot beside **Actions** (top right and in the status line), its
-**Settings** row and the **General** settings tab to guide users to the update.
+The high-fidelity flat-layout reference and its interaction spec are preserved in [`docs/design/flat/README.md`](design/flat/README.md); update it when the implementation changes the design contract.
 
-Retain the working, needs-you, done or idle icon when a terminal rings. Terminal
-bells do not add sidebar indicators or history entries.
+The sidebar's **+ new** uses the same shell action as leader + `n`, including its configured key hint. **Actions** is in the sidebar footer and opens status setup, Settings and All commands. Every palette row is clickable and wheel-scrollable. Include configured commands and retain existing confirmations.
 
-Mark one selected sidebar row: the one under the keyboard while the sidebar has the keys,
-else the open session. It gets a neutral tint (`sel_bg`: the background a step toward the text)
-and a `▎` bar at its left edge, lime while the sidebar has the keys and dim when a pane or a sheet
-does. The open session keeps a dim bar while another row is under the keyboard. Hover uses a
-quieter tint (`hover_bg`). Preserve agent status icons and colors in each state.
+When an update is available, show **Update <version>** in the tab row and open the existing confirmation flow when clicked. Do not show the control when Seshi is current. Keep status icons and pane status tags clickable to open the evidence explanation. Terminal bells do not add sidebar indicators or history entries.
 
-Settings opens on General with one version line (`seshi 0.34.0 · up to date · daemon and window
-match · u check now`; with an update, the version, what is out and **Update now**). Installed, window and
-daemon versions are listed separately, with a labeled remote daemon and a restart-pending notice,
-only when they differ or can't be read. General is in sections (INPUT, LAYOUT, SHELL, UPDATES), each a
-dim caps heading with a rule; Layout and Background live in LAYOUT. Keep the update
-dots until that mismatch is resolved. Installing an update leaves this window and
-the daemon running. Never restart the daemon automatically, even on a protocol mismatch.
-Status icons and pane status tags open the existing evidence popover, with a
-plain-language explanation and actual report/observation ages.
+Mark one selected sidebar row independently from hover: the keyboard selection stays selected when the mouse moves; hover is a separate, quieter tint. The open session keeps a dim selection bar while another row is under the keyboard. Preserve agent status icons and colors in each state.
 
-**All keys** (`<leader> ?`, Actions or palette) opens a searchable, scrollable
-reference. List every active configured leader/global binding separately,
-including aliases and custom commands. Show palette-only commands without
-inventing bindings. Keep the delayed leader overview compact. Contextual keys
-come from [shortcuts.md](shortcuts.md), embedded in the app so both stay identical.
+Settings opens on General and reports installed, window and daemon versions separately, with a labeled remote daemon and restart-pending notice when they differ. General groups controls under INPUT, LAYOUT, SHELL and UPDATES. Show the update action only when an update is available; keep release notes and confirmation in the existing flow.
 
-## Project-specific: background
+Show reported child agents under their parent, never as independent projects. Make each child row clickable to inspect its progress. Active child work uses the orange working status marker; a separate role icon distinguishes planning, research, building or reviewing. Do not assign role colors that could be confused with done, working, blocked or idle.
 
-Chrome (gaps, card insides, the sidebar, the pane area) sits on one ground. Settings >
-Appearance > Background picks it: **terminal** (the default) hands that ground back to the
-terminal's own background (SGR 49), so transparency or a background image looks the same under
-all of it; **solid** paints it the theme's `bg`. Only the sheet, modals and the status line are a
-painted, raised tone. The swap is one last pass over the frame (`use_terminal_background` in
-`client/render.rs`), so drawing code keeps using `t.bg` and blending still works. The v5 handoff in
-[`docs/design/v5/README.md`](design/v5/README.md) is the reference.
+Keep update indicators until the installed program, window and daemon versions agree. Installing an update leaves current processes running; it does not interrupt sessions. Apply daemon changes after the user restarts when sessions are safe to stop.
 
-## Project-specific: each fact once
+**All keys** (`<leader> ?`, Actions or palette) opens a searchable, scrollable reference. List every active configured leader/global binding separately, including aliases and custom commands. Show palette-only commands without inventing bindings. Keep the delayed leader overview compact. Contextual keys come from [shortcuts.md](shortcuts.md), embedded in the app so both stay identical. Render each binding as a keycap, separate from its action text; use clear section headings and wrap long actions without making them look like additional keys.
 
-Show each fact in one place. The session name is the sidebar row and the pane title; the repo
-follows it in the title (after what the agent is working on, which nothing else shows). The agent
-is the sidebar row's meta, before the age, and is left out when the name is the agent. Where it
-runs, its branch, PR, dev server and `⇆` tag belong to the status line. Model, context and cost
-are the agent's own status line, so seshi's chrome never repeats them. The pane has no footer row.
+## Project-specific: pane focus
 
-## Project-specific: colour jobs
-
-Each colour does one job. Lime (`accent`) is focus: the lit edge and the focused title. The
-theme's `blocked` colour is needs-you and nothing else (the v5 design makes it amber; each
-theme picks its own). Red (`err`) is failed, crashed or destructive, and a
-machine load past its threshold. Green (`done`) is done. Sky is leader mode. **Working keeps its
-orange, eased:** `Theme::status(Working)` is the theme's working colour mixed 35% toward the muted
-text, so it sits quieter than needs-you. It shows on the status glyph and a helper's icon; names
-shimmer in a neutral tone, not orange. A paused limit and ordinary CPU/RAM load are dim.
-
-## Project-specific: one lit edge and the status line
-
-Only what has the keyboard is lit: the focused pane's border (cards) or bar (flat), or, while a
-sheet is open, the sheet. The pane then drops to a `line` border and fades; the sidebar's
-selection bar goes dim. Unfocused panes fade by the Dim setting (30% by default; "40%" in an older
-config counts as 30%).
-
-The bottom row is the status line in both layouts, on the raised `card` tone. Left: in flat a zone
-badge (`SIDEBAR` / `PANE`), then the selected session's path, `⎇ branch` and a `⇆ file` heads-up.
-Right: `● n needs you`, then `j inbox   a actions   , settings   ? keys`, with an accent dot after
-`actions` when an update waits. The right side keeps its room; the left fills the rest, dropping
-the path first (it never shows below 140 columns) and then tags from the end. Below 140 columns the
-right becomes `● n   ? keys`. The design also shows `#PR ✓/✕` and a dev-server tag; seshi has no
-data for either yet.
+Only the area with the keyboard is lit: the focused pane border (Cards), focus bar (Flat), or open sheet. Unfocused panes fade by the Dim setting (30% by default; "40%" in an older config counts as 30%). Do not reserve a full-width bottom row for global hints; session paths and branch details remain in the pane chrome.
 
 ## Project-specific: UI conventions
 
+<!-- local: user requested distinct active, keyboard and hover sidebar states, mouse-first sidebar controls and parent-owned child-agent visibility. -->
+
+- Popups are centred `panel()`s with an accent title bar and `Esc close`; the
+  screen behind is dimmed. Settings uses the right-hand sliding sheet, with the
+  working panes visible beside it when the window allows. Settings keeps its General, Sessions, Appearance, Agents and Keys sections in
 - Popups are centred `panel()`s with an accent title bar and `Esc close`; the
   screen behind is dimmed. Settings uses the right-hand sliding sheet, with the
   working panes visible beside it when the window allows.
@@ -206,7 +144,7 @@ data for either yet.
   never the accent colour as a row fill.
 - Every popup row is clickable and keyboard-reachable; every key is shown as a
   keycap somewhere (hints line, keys screen, palette).
-- Short-lived notes are toasts above the bottom bar; destructive actions ask
+- Short-lived notes are toasts above the pane content; destructive actions ask
   first (`Confirm`) and go last in menus.
 - Anything filled that you click or read as a control (a button, a toggle, a tab, a tag,
   a key) is drawn with `button` / `btn`, `chip` or `pill`, so its ends follow the pill

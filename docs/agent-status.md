@@ -119,6 +119,28 @@ choice does not change the host integration. Other agents still get their own
 working/needs-you/done status, but Seshi cannot list hidden helpers unless the
 agent exposes their lifecycle.
 
+When a trusted integration reports active helpers, Seshi keeps the parent
+session working until they finish or go quiet. Codex helper liveness comes from
+its local session files; Claude, Qwen, Kimi and Mastracode report helper
+lifecycle events through their native hooks; OpenCode's selected-session bridge
+reports active child sessions. Provider/model choice does not change the host
+integration. Other agents still get their own working/needs-you/done status,
+but Seshi cannot list hidden helpers unless the agent exposes their lifecycle.
+
+Lifecycle reports are retained as child activity records after completion and
+restored with the saved pane (wire protocol v41). The sidebar separates Active,
+Finished and Unconfirmed children; click a row to inspect it, or focus the parent
+in the sidebar and press `s`, then use Up/Down to browse. The inspector shows the
+reported identity, task, parent, model, effort, state, start/elapsed time and
+latest activity. Missing metadata says **Not reported**. A parent ending or a
+child going quiet without an end event is shown as unconfirmed, never completed.
+
+Codex rollout files currently report child identity, parent thread and lifecycle
+events, but not the assigned prompt, child model/effort or result. Native hook
+payloads may report task/model/effort fields; Seshi uses them only when supplied.
+The inspector does not expose hidden reasoning or claim transcript access that a
+runtime does not provide.
+
 Installing a new executable does not replace an already-running window or
 daemon. **Settings → General** shows installed/window/daemon versions and a
 restart-pending notice. Restart the daemon only when its sessions are safe to

@@ -2,7 +2,7 @@
 //! the machine) restarts. Written atomically, a few seconds after the model settles.
 
 use crate::layout::Node;
-use crate::protocol::TermId;
+use crate::protocol::{SubagentActivity, TermId};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -72,6 +72,9 @@ pub struct SavedPane {
     /// Follow-ups that were waiting for its turn to end.
     #[serde(default)]
     pub queue: Vec<String>,
+    /// Child activity records survive daemon restarts and completed turns.
+    #[serde(default)]
+    pub subagent_activity: Vec<SubagentActivity>,
 }
 
 pub fn path() -> PathBuf {

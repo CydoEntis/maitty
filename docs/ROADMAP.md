@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-18 at `0c7cc33` on `dev`.
+Last reconciled: 2026-10-19 against `origin/dev` at v0.35.0.
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Seshi is a terminal multiplexer built for running many coding agents at once: see
@@ -11,12 +11,9 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The published base is v0.33.0. The v0.34.0 release candidate reconciles local work with current `dev`: Flat layout, role-colored visible helpers, shortcut keycaps, removal of profile/workflow UI and automatic idle-sleep settings, removal of the wake screen, and README/UI contract updates. This work must pass the full verification gate before it is marked shipped.
+The latest published release on `main` is v0.35.0. This worktree was fast-forwarded to the current `origin/dev` at the v0.35.0 baseline before local changes were reapplied. The local candidate includes the Flat layout and its interaction fixes, clearer sidebar and tab controls, update discovery in the tab bar, agent-owned subagent activity, session status corrections, removal of idle sleeping UI, and the matching docs. It is not shipped until the release gate passes and the release lands on `main`.
 
-The v0.34.0 candidate passes the ordered release gate: 291 tests passed, four
-ignored; build, strict clippy, Linux x64 and macOS ARM checks passed. The flat
-layout frame was inspected with the test renderer. Do not mark it shipped until
-the release lands on `main`.
+Current verification for this candidate: Windows `cargo build`, full tests (303 passed, four ignored), strict clippy, Linux x64 and macOS ARM checks pass. User-visible terminal inspection and hosted CI are still pending. Do not mark the candidate shipped until the dev and release PRs merge and the release workflow succeeds.
 
 User-requested pane padding polish: preserve the pane insets while matching the
 card and padding to a terminal app's solid surface when at least three screen
@@ -82,7 +79,7 @@ permission changes; no documentation decision markers were filled.
 See [audit and verification limits](herdr-status-audit.md).
 
 User-requested mouse access and provider-independent status correction: expose
-Profiles, Workflows, Runs, status setup and all commands through Actions, retain
+Status setup and all commands through Actions, retain
 Actions without the sidebar/sessions, make palette commands clickable and
 wheel-scrollable, and include configured commands. Recognize current Pi/DeepSeek
 packages; install Pi/OpenCode native lifecycle adapters through mouse or CLI.
@@ -102,8 +99,7 @@ beyond the old quiet timeout and became idle on settlement, with event evidence.
 No real provider task was launched; existing authenticated Pi/OpenCode sessions
 were not restarted. The owned test process tree was stopped. README, shortcut,
 UI/API/architecture contracts and [status setup](agent-status.md) are updated;
-no dependencies, new permissions or wire shapes were added. Proposed wording
-follow-up, awaiting user direction: rename "shared files" to "overlapping files".
+no dependencies, new permissions or wire shapes were added.
 
 The user subsequently chose to remove Seshi's profile and workflow feature so the
 terminal multiplexer stays focused. v0.34 removes that UI, its runner and config
@@ -124,12 +120,7 @@ denied, and Linux/macOS cross-checks. README and the agent status/worktree contr
 are updated. Real-agent live verification remains outstanding; no installed
 daemon or agent was replaced or restarted.
 
-User-requested shortcut/documentation audit: All keys must expose every configured
-leader/global binding, aliases and contextual controls. Keep the compact leader
-overview and add a searchable full reference from Actions, palette and leader + `?`.
-Share contextual controls with [shortcuts.md](shortcuts.md); update README for
-profiles/workflows, independent selection/hover, status evidence and deferred
-update restarts. Status: implemented locally. The ordered gate passed: build,
+Historical shortcut/documentation audit: All keys expose configured bindings and contextual controls. The README and shortcut reference were rewritten; this removal deletes stale profile/workflow entries while keeping the searchable keycap reference. Status: implemented locally. The ordered gate passed: build,
 276 tests passed / four ignored, clippy with warnings denied, Linux and macOS
 cross-checks. Rendered reference inspected at 80×24, 100×30 and 160×45; tests cover
 all active bindings, aliases, replacements/unbinding, custom commands, key-name
@@ -146,7 +137,7 @@ surfaces, including the existing phase-8 status popover. Updates install without
 restarting the window or daemon. Status: implemented locally; the ordered gate
 passed (`cargo build`, 274 tests passed / four ignored, clippy with warnings
 denied, Linux and macOS cross-checks). Rendered setup, versions, evidence and
-Inbox screens inspected; sidebar checks cover sleeping sessions too. The opt-in
+Inbox screens inspected; sidebar checks cover legacy recovery states too. The opt-in
 release benchmark passed; measurements and limits are in [TESTING](TESTING.md#project-specific-interaction-performance).
 Live nested-server and clipboard checks remain outstanding after automatic
 approval review rejected the earlier launch as "blocked by policy" without a
@@ -169,6 +160,8 @@ tests ignored; lint and both cross-checks passed). The missing-badge regression
 fails against the previous behavior. The live nested-server check was blocked
 by automatic approval review; no live verification claimed. Status: verified
 locally for v0.29.1.
+
+The saved profile/workflow feature shipped in v0.30.0 and was removed from the current product on 2026-10-18. Its historical requirements are no longer an active roadmap item; Seshi remains focused on session management and status.
 
 Also requested: fix top-to-bottom repaint during ordinary session switches and
 show Codex's queued unanswered questions as needs-you while its spinner continues.
@@ -281,12 +274,12 @@ The user canceled this direction before implementation and chose to keep Seshi
 terminal-first, using T3 Code when they want a chat-first GUI. No code, tickets,
 branch, or worktree were created. Revisit only through a new proposal.
 
-### 12 — Flat rendering style · included in v0.34.0 candidate
+### 12 - Flat rendering style - included in the v0.36.0 candidate
 
 Add an optional full-bleed Flat style from the supplied design handoff. Keep the
 Cards layout as default and share session state, tabs, splits, sheets, status and
 mouse behavior. Acceptance: choose Cards or Flat in Appearance; flat surfaces
-have square edges and no gaps, a bottom status line, keyboard focus zones,
+have square edges and no gaps, keyboard focus zones,
 working mouse targets and sensible narrow-screen behavior; docs and tests cover
 the option; the verification gate passes before the phase ships.
 
@@ -343,7 +336,7 @@ Everything below is shipped on `dev` unless marked.
 - A commander runs a fleet: one agent starts, briefs and checks helpers, which sit under it in the sidebar — shipped in v0.20.0 — [intent](features/fleet/intent.md), #32–#38
 
 **The TUI (one shared session layout; ADR-0007, superseded by ADR-0012)**
-- Flat rendering style: square, full-bleed sidebar, tabs, panes and sheets; bottom status line and sidebar/pane focus zones — in progress in Phase 12 — `src/client/hydra/screen.rs`, ADR-0012
+- Flat rendering style: square, full-bleed sidebar, tabs, panes and sheets; sidebar/pane focus zones, no global footer; in progress in Phase 12; `src/client/hydra/screen.rs`, ADR-0012
 - Floating look: rounded cards with gaps, title and state in the border, unfocused cards faded, pill tabs, no app footer; floating or tiled, corners, gap, dim, focus border, pill ends in Settings — shipped by v0.30.1 — `src/client/hydra/card.rs`, `screen.rs`, ADR-0007
 - Sidebar card: projects → sessions, state glyph + name, branch · age, question under it, attention sort, helpers indented under the session that started them, keyboard and mouse, row letter keys, `a actions` / `, settings` foot — shipped — `src/client/hydra/screen.rs` `draw_side`
 - Panes: tabs as pills (named in their pill), any number of splits (grid for 3+), drag the gap between them, ✕ in the border — shipped — `src/client/hydra/screen.rs` `draw_session`
@@ -363,7 +356,7 @@ Everything below is shipped on `dev` unless marked.
 - Tasks (a worktree's review: commit, merge, PR, throw away) — shipped — `src/client/tasks.rs`
 - Own worktree for `claude`/`codex` typed into a shell in a repo's main folder — shipped 0.9.12 — `seshi agent-dir`, `daemon/term.rs` `agent_functions`
 - Usage and limits meter, context per agent, continue after a limit — shipped 0.10.0 — `seshi statusline`, `src/daemon/usage.rs`
-- The wake-up transition (rain, dissolve and line-by-line reveal; `ui.wake_animation`) — removed in the v0.34.0 candidate; legacy sleeping sessions resume directly without an animation.
+- Automatic idle sleeping and its sleep/wake screen and animation: removed; legacy recovery remains only for sessions saved by older versions.
 - A session's share of the machine (CPU and memory) in its pane's title when it's large — shipped 0.25.0, moved off the sidebar row 0.26.2 — `src/daemon/scan.rs`, `load_note` in `src/client/hydra/screen.rs`
 - Merge that cleans up (the worktree and its branch go) — shipped 0.11.0 — `src/client/view_keys.rs`
 
@@ -382,6 +375,8 @@ Everything below is shipped on `dev` unless marked.
 - `seshi doctor` — shipped — `src/cli.rs`
 
 ## Out
+
+- Saved role profiles and the planner/approval/worker/reviewer workflow runner were removed by user decision (2026-10-18). Use the agent's own configuration and external workflow tools; Seshi remains the session manager.
 
 - Features cut 2026-10-09 remain out unless re-approved: open project, go to, next agent that needs you, arrange panes, undo automatic workspace, the map, ideas, races, run a preset as a list (presets stay in the new-agent dialog), past chats, agent tools, extensions, and the tmux stand-in for Claude agent teams. Memory per session later returned as the load line under a busy session. Items explicitly restored since the cut are listed in In scope; races remain cut.
 - Desktop notifications while a seshi window is open, the terminal bell on an alert, and choosing among system sounds (or your own sound file) — cut 2026-10-11 (the user's call: three overlapping alerts, two of them the Windows error ding). Bringing one back needs a new decision.

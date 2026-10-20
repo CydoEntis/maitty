@@ -15,7 +15,7 @@ use super::design::{
 use super::render::{blend, render_screen, truncate};
 use super::{App, Hit, Mode};
 use crate::keys::Action;
-use crate::protocol::{Status, TermId, TermInfo};
+use crate::protocol::{Status, SubagentActivity, TermId, TermInfo};
 use crate::theme::Theme;
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
@@ -326,6 +326,7 @@ pub(super) struct Session {
     pub asleep: bool,
     /// Subagents it's running right now.
     pub subagents: Vec<String>,
+    pub subagent_activity: Vec<SubagentActivity>,
     /// Stopped by a plan limit: seshi says "continue" then (unix seconds).
     pub resume_at: Option<u64>,
     /// The session whose agent started this one (its commander), if one did.
@@ -656,6 +657,10 @@ impl App {
                     is_agent: t.agent.is_some(),
                     asleep: t.asleep,
                     subagents: t.subagents.clone(),
+                    subagent_activity: t.subagent_activity.iter()
+                        .filter(|activity| activity.parent.as_deref().is_none_or(|parent| Some(parent) == t.session.as_deref()))
+                        .cloned()
+                        .collect(),
                     resume_at: t.resume_at,
                     started_by: t.started_by,
                     queued: t.queued.clone(),
@@ -874,6 +879,7 @@ pub(super) enum HyHit {
     ToggleAside(usize),
     /// Fold / unfold a session's subagents.
     ToggleSubs(TermId),
+    SubagentInfo(TermId, usize),
     /// The sidebar's "+ new": a plain shell in the selected project.
     Session(TermId),
     /// An answer chip in the Inbox: send this key to that agent.
@@ -932,9 +938,6 @@ pub(super) enum HyHit {
     TidyGo,
     /// The sidebar's "a actions".
     Actions,
-    StatusSettings,
-    StatusInbox,
-    StatusKeys,
     /// A row of the actions list.
     ActionRow(usize),
     PickRow(usize),

@@ -53,6 +53,8 @@ mod design_tests {
             branch: None,
             linked: false,
             subagents: Vec::new(),
+            subagent_activity: Vec::new(),
+            session: None,
             started_by: None,
             queued: Vec::new(),
             aside: None,
@@ -481,11 +483,9 @@ mod hydra_tests {
         // tab pills on its top row, the cards directly under them.
         assert!(lines[0].trim().is_empty(), "a row of margin on top");
         assert!(lines[1].starts_with("  ▁▁"), "the sidebar card, a column in: {}", lines[1]);
+        assert!(text.contains("Fix flaky checkout test") && text.contains("claude") && text.contains("needs you"), "the active pane keeps its session title and state");
+        assert!(text.contains("+ new") && text.contains("actions"), "New and Actions stay in the sidebar foot");
         assert!(lines[1].contains(" 1 ") && !lines[1].contains("claude") && lines[1].contains(" + ") && !lines[1].contains('▯'), "an unnamed tab is its number; +; no layout switch: {}", lines[1]);
-        assert!(lines[2].contains("▁ claude ▁ Fix flaky checkout test · shop-api ▁") && lines[2].contains("● needs you ▁ ✕ ▁"), "name, repo, state and ✕ set into the card's border: {}", lines[2]);
-        assert!(lines[4].contains("> fix the flaky checkout test"), "the terminal a row below the border, inset");
-        assert!(text.contains("⎇ main") && !text.contains("shop-api · ⎇ main"), "the branch is in the status line, not a card footer");
-        assert!(text.contains("+ new") && text.contains("actions") && !text.contains('\u{f013}'), "a new button under the sidebar's top edge; the status line carries actions");
         // Projects and their sessions, nothing in between.
         assert!(text.contains("▾ shop-api") && text.contains("● 1"), "a project: its fold arrow and name, what needs you on the right");
         assert!(text.contains("AGENTS 2 ─") && text.contains("TERMINALS 1 ─") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "a heading per section");
@@ -531,6 +531,39 @@ mod hydra_tests {
         // Small windows keep it all.
         let o = draw(&mut app, 100, 30);
         assert!(!o.contains("⣿") && o.contains("New shell here"));
+    }
+
+    #[test]
+    fn reported_subagents_remain_clickable_and_inspectable_after_completion() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let term = app.snap.terms.iter().find(|(_, pane)| pane.agent.is_some()).map(|(id, _)| *id).unwrap();
+        app.snap.terms.get_mut(&term).unwrap().subagent_activity = vec![SubagentActivity {
+            id: "child-42".into(),
+            name: "Reviewer".into(),
+            parent: None,
+            state: SubagentState::Completed,
+            task: Some("review the bing flow".into()),
+            model: Some("claude-opus".into()),
+            effort: None,
+            started_at: Some(100),
+            updated_at: 130,
+            latest_activity: Some("review returned".into()),
+            result: Some("one blocking finding".into()),
+        }];
+        app.hy_side_set(hydra::SideItem::Sess(term));
+        app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
+        assert!(matches!(app.mode, Mode::SubagentInfo { term: found, index: 0 } if found == term), "keyboard users can open activity from the selected session");
+        app.mode = Mode::Normal;
+        let sidebar = draw(&mut app, 160, 45);
+        assert!(sidebar.contains("Finished · 1") && sidebar.contains("review the bi") && sidebar.contains("✓"), "finished child and task remain visible: {sidebar}");
+        let target = app.hits.iter().find_map(|(_, hit)| match hit {
+            Hit::Hy(hydra::HyHit::SubagentInfo(found, index)) if *found == term && *index == 0 => Some(hydra::HyHit::SubagentInfo(*found, *index)),
+            _ => None,
+        }).expect("the activity row is a mouse target");
+        app.on_hy_hit(target, false);
+        let inspector = draw(&mut app, 160, 45);
+        assert!(inspector.contains("review the bing flow") && inspector.contains("claude-opus") && inspector.contains("one blocking finding"), "inspector shows runtime data: {inspector}");
+        assert!(inspector.contains("Not reported"), "unknown fields are labelled instead of inherited from the parent");
     }
 
 
@@ -1517,8 +1550,8 @@ mod hydra_tests {
         assert!(lines[1].starts_with("  ▁") && lines[1].trim().chars().filter(|c| *c == '▁').count() == 24, "a slim sidebar: {}", lines[1]);
         let side: String = lines.iter().map(|l| l.chars().take(30).collect::<String>() + "\n").collect();
         assert!(!side.contains("main · 3m") && !side.contains("Run npm test"), "no meta or questions in the slim sidebar: {side}");
-        assert!(o.contains("+ new") && o.contains("Actions"), "the new button fits a slim sidebar, which still has no foot");
-        assert!(o.lines().last().is_some_and(|l| l.contains("? keys") && !l.contains("inbox")), "a narrow status line keeps only the count and keys");
+        assert!(o.contains("+ new") && o.contains("actions"), "both controls fit at the sidebar foot");
+        assert!(!o.contains("? keys") && !o.contains("inbox"), "there is no full-width status footer");
     }
 
     #[test]
@@ -1529,15 +1562,16 @@ mod hydra_tests {
         show(&main);
         assert!(main.lines().next().unwrap().starts_with("▎"), "flat has no outside margin and keeps a zone bar");
         assert!(main.contains("claude") && main.contains("AGENTS 2"), "the existing sessions remain visible");
-        assert!(main.contains(" PANE ") && main.contains("settings") && main.contains("actions"), "the footer names focus and keeps mouse-accessible controls");
+        assert!(main.contains("+ new") && main.contains("actions"), "the sidebar keeps its two mouse-accessible controls");
+        assert!(!main.lines().last().unwrap_or_default().contains("PANE"), "the full-width footer is gone");
         assert!(!main.contains('╭') && !main.contains('╮') && !main.contains('╰') && !main.contains('╯'), "flat uses square zones without card borders");
-        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Hy(hydra::HyHit::StatusSettings)), "Settings is clickable from the flat status line");
-        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Hy(hydra::HyHit::Actions)), "Actions is clickable from the flat status line");
+        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Hy(hydra::HyHit::NewShell)), "New is clickable from the sidebar foot");
+        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Hy(hydra::HyHit::Actions)), "Actions is clickable from the sidebar foot");
 
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         assert_eq!(app.mode, Mode::Side, "Tab focuses the sidebar");
         let sidebar = draw(&mut app, 160, 45);
-        assert!(sidebar.contains(" SIDEBAR "), "the footer explicitly shows sidebar focus");
+        assert!(sidebar.contains("+ new") && sidebar.contains("actions"), "sidebar navigation stays visible while focused");
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         assert_eq!(app.mode, Mode::Normal, "Tab returns focus to the pane");
 
@@ -1615,14 +1649,17 @@ mod hydra_tests {
     }
 
     #[test]
-    fn the_sidebar_has_no_foot_and_the_status_line_teaches_the_keys() {
+    fn the_sidebar_foot_keeps_new_and_actions_without_a_global_footer() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.hy_side_set(hydra::SideItem::Sess(2));
         let o = draw(&mut app, 160, 45);
         show(&o);
         // A row's keys are in its menu; the status line has the global ones.
         let rows: Vec<&str> = o.lines().collect();
-        assert!(rows[2].contains("+ new") && !rows[43].contains("+ new") && o.contains("actions") && !o.contains("x close") && !o.contains("Esc back"), "new is at the top, nothing at the foot");
+        assert!(!rows[2].contains("+ new") && o.contains("+ new") && o.contains("actions"), "new and Actions are at the foot");
+        let actions_y = app.hits.iter().find_map(|(rect, hit)| (*hit == Hit::Hy(hydra::HyHit::Actions)).then_some(rect.y)).unwrap();
+        assert!(actions_y > 35, "Actions stays at the bottom of the sidebar");
+        assert!(!o.lines().last().unwrap_or_default().contains("keys"), "no full-width status footer");
     }
 
     #[test]
@@ -1873,9 +1910,9 @@ mod hydra_tests {
         let (planner, builder, reviewer) = (at("planner"), at("builder"), at("reviewer"));
         assert_eq!([planner.0.as_str(), builder.0.as_str(), reviewer.0.as_str()], ["✎", "⚙", "⚖"], "an icon for each role");
         let working = app.theme.status(Status::Working);
-        assert_eq!([planner.1, builder.1, reviewer.1], [working; 3], "the icon wears the working colour");
+        assert_eq!([planner.1, builder.1, reviewer.1], [working; 3], "the role icons keep the working colour");
         assert_eq!([planner.2, builder.2, reviewer.2], [app.theme.text; 3], "the names are one neutral colour, not a colour per role");
-        assert_ne!(working, app.theme.working, "eased, so quieter than the raw orange");
+        assert_eq!(working, app.theme.working, "active helpers use the orange working color");
     }
 
     #[test]
@@ -1969,50 +2006,24 @@ mod hydra_tests {
 
 
     #[test]
-    fn a_newer_hydra_has_an_update_button_that_asks_first() {
+    fn an_update_appears_in_the_tab_bar_only_when_available() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        let o = draw(&mut app, 160, 45);
-        assert!(o.contains("actions") && !o.contains("actions ●"), "no dot without a newer version");
-        app.act(Action::Actions);
-        let o = draw(&mut app, 160, 45);
-        assert!(o.contains("Settings") && !o.contains("Settings ●"), "no Settings dot without a newer version");
-        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        let initial = draw(&mut app, 160, 45);
+        assert!(!initial.contains("Update") && initial.contains("actions"), "actions stay in the sidebar, no update when current");
+        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Hy(hydra::HyHit::Actions)));
         app.update_available = Some("9.9.9".into());
-        app.update_notes = vec!["Fixed: copying".into(), "New: an Update now button".into()];
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(o.contains("actions ●"), "a dot after actions, where the update is");
-        assert!(app.palette_commands().contains(&Action::Update), "and it's in the palette");
-        app.act(Action::Actions);
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(o.contains("Settings ●"), "the Actions menu points to Settings for the update");
-        let index = hydra::action_items().iter().position(|(_, action)| *action == Action::Settings).unwrap();
-        let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::ActionRow(index))).then_some((r.x + 1, r.y))).expect("Settings is clickable");
-        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
-        // Settings: the version, the new one, and the button.
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(o.contains(&format!("seshi {}", env!("CARGO_PKG_VERSION"))) && o.contains("9.9.9 is out") && o.contains("Update now"), "the button by the version");
-        // Clicking asks first: from this version to the new one, and what changed.
-        let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::Update)).then_some((r.x + 1, r.y))).expect("it can be clicked");
-        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(matches!(&app.mode, Mode::Confirm(c) if c.act == menu::Act::Update), "a dialog, not an update");
-        assert!(o.contains(&format!("{} → 9.9.9", env!("CARGO_PKG_VERSION"))), "current → new");
-        assert!(o.contains("What's new") && o.contains("• Fixed: copying") && o.contains("• New: an Update now button"), "the change log");
-        assert!(o.contains("Update now u") && o.contains("Cancel"), "and the choice");
-        // Not confirmed here: that would download a release over the test program.
+        app.update_notes = vec!["Fixed: copying".into(), "New: update button".into()];
+        let updated = draw(&mut app, 160, 45);
+        assert!(updated.contains("Update 9.9.9"), "the top row announces an available update");
+        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Hy(hydra::HyHit::Update)), "the update is clickable");
+        assert!(app.palette_commands().contains(&Action::Update), "and remains in the command palette");
+        let (x, y) = app.hits.iter().find_map(|(rect, hit)| (*hit == Hit::Hy(hydra::HyHit::Update)).then_some((rect.x, rect.y))).unwrap();
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x, row: y, modifiers: KeyModifiers::NONE });
+        let confirm = draw(&mut app, 160, 45);
+        assert!(matches!(&app.mode, Mode::Confirm(c) if c.act == menu::Act::Update));
+        assert!(confirm.contains("9.9.9") && confirm.contains("What's new") && confirm.contains("Update now") && confirm.contains("Cancel"));
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(app.mode == Mode::Normal && !app.updating, "Cancel leaves it be");
-        // A narrow window: the button still fits.
-        let (_, mut app) = super::design_tests::render_with(100, 30);
-        app.update_available = Some("10.12.10".into());
-        app.act(Action::Settings);
-        let o = draw(&mut app, 100, 30);
-        assert!(o.contains("Update now"), "the button fits a narrow window: {o}");
-        assert!(app.hits.iter().any(|(_, h)| *h == Hit::Hy(hydra::HyHit::Update)), "and can be clicked");
+        assert!(app.mode == Mode::Normal && !app.updating, "cancel does not install");
     }
 
     #[test]
@@ -2069,19 +2080,6 @@ mod hydra_tests {
         mouse(&mut app, MouseEventKind::Down(MouseButton::Left), at);
         mouse(&mut app, MouseEventKind::Up(MouseButton::Left), at);
         assert!(app.hy.saved.closed.iter().any(|k| k.starts_with("p:")), "a click folds");
-    }
-
-    #[test]
-    fn a_sleeping_agent_shows_three_zs() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        let agent = *app.snap.terms.iter().find(|(_, t)| t.agent.is_some()).unwrap().0;
-        app.snap.terms.get_mut(&agent).unwrap().asleep = true;
-        app.hy_fresh();
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        let row = o.lines().find(|l| l.contains("asleep")).expect("the sleeping agent's row");
-        assert!(row.contains("zzZ "), "three z's ahead of its name: {row}");
-        assert!(!o.contains('☾'), "the moon is gone");
     }
 
     #[test]
@@ -2316,37 +2314,19 @@ mod hydra_tests {
     }
 
     #[test]
-    fn the_highlight_on_a_sleeping_agent_shows_it_without_waking_it() {
+    fn legacy_sleep_state_has_no_special_sidebar_or_preview_ui() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        app.out = tx;
-        // codex (2) is asleep, with something on its last screen; you're on claude (1).
+        app.got_state = true;
         app.snap.terms.get_mut(&2).unwrap().asleep = true;
-        let mut screen = vt100::Parser::new(20, 80, 0);
-        screen.process(b"the last thing codex said before it slept\r\n");
-        app.parsers.insert(2, screen);
         app.hy.tabs.clear();
         app.hy_place(1, None);
-        let o = draw(&mut app, 160, 45);
-        assert!(!o.contains("the last thing codex said"), "not shown while you're elsewhere");
-        // The sidebar's highlight lands on it: its last screen, and how to wake it.
         app.hy_side_set(hydra::SideItem::Sess(2));
-        assert_eq!(hydra::peeked(&app, 1), Some(2));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("the last thing codex said before it slept"), "a look at it");
-        assert!(!o.contains("to wake it"), "legacy recovery has no wake-up overlay");
-        let woke = std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, crate::protocol::ClientMsg::Command(crate::protocol::Command::FocusPane { term: 2 }) | crate::protocol::ClientMsg::Input { term: 2, .. } | crate::protocol::ClientMsg::Command(crate::protocol::Command::ResizePane { term: 2, .. })));
-        assert!(!woke, "looking sends it nothing: it stays asleep");
-        assert!(!app.panes.iter().any(|(t, _)| *t == 2), "and its size is left alone");
-        // On an agent that's awake, the highlight changes nothing in the panes.
-        app.snap.terms.get_mut(&2).unwrap().asleep = false;
-        assert_eq!(hydra::peeked(&app, 1), None);
-        // Enter opens it, which is what wakes it.
-        app.snap.terms.get_mut(&2).unwrap().asleep = true;
-        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        let opened = std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, crate::protocol::ClientMsg::Command(crate::protocol::Command::FocusPane { term: 2 })));
-        assert!(opened, "Enter opens (and so wakes) it");
+        let legacy_ui = o.lines().find(|line| line.contains("asleep") || line.contains("zzZ") || line.contains("waking up"));
+        assert!(legacy_ui.is_none(), "legacy status UI is absent: {legacy_ui:?}");
+        assert!(!o.contains("the last thing codex said"), "sidebar selection doesn't replace the focused pane");
+        assert!(!app.panes.iter().any(|(term, _)| *term == 2), "legacy pane preview is removed");
     }
 
     #[test]
@@ -2696,7 +2676,8 @@ mod hydra_tests {
         show(&o);
         let a = o.lines().find(|l| l.contains("inbox ● 1")).unwrap();
         let b = o.lines().find(|l| l.contains("new shell here")).unwrap();
-        assert_eq!(a.find("inbox ● 1"), b.find("new shell here"), "labels line up");
+        let column = |line: &str, label: &str| line.find(label).map(|byte| line[..byte].chars().count());
+        assert_eq!(column(a, "inbox"), column(b, "new shell here"), "labels line up by terminal column");
     }
 
     #[test]
@@ -2818,15 +2799,13 @@ mod hydra_tests {
         app.hy.overlaps.insert(p.path.clone(), shared(60));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        let above_status: String = o.lines().take(44).collect::<Vec<_>>().join("\n");
-        assert!(!above_status.contains("shared files") && !above_status.contains("file0.ts"), "sidebar stays focused on sessions");
+        assert!(!o.contains("shared files") && !o.contains("file0.ts"), "sidebar stays focused on sessions");
         let lines = hydra::side_lines(&app, &app.hy_model(), &app.theme);
         assert!(lines.len() < 20, "the sidebar stays short: {} lines", lines.len());
         // A couple are still available through the Inbox.
         app.hy.overlaps.insert(p.path.clone(), shared(2));
         let o = draw(&mut app, 160, 45);
-        let above_status: String = o.lines().take(44).collect::<Vec<_>>().join("\n");
-        assert!(!above_status.contains("file0.ts") && !above_status.contains("file1.ts"));
+        assert!(!o.contains("file0.ts") && !o.contains("file1.ts"));
         // In the Inbox they come after what needs you and what finished, however many.
         app.hy.overlaps.insert(p.path.clone(), shared(60));
         let rows = hydra::goto_rows(&app.hy_model(), "", hydra::heads_up(&app).len());
@@ -2847,9 +2826,7 @@ mod hydra_tests {
         app.hy_fresh();
         let o = draw(&mut app, 160, 45);
         show(&o);
-        let above_status: String = o.lines().take(44).collect::<Vec<_>>().join("\n");
-        assert!(!above_status.contains("checkout.ts"), "worktree overlap labels stay out of the sidebar");
-        assert!(o.lines().nth(44).is_some_and(|l| l.contains("⇆ src/checkout.ts")), "the selected session's heads-up is in the status line");
+        assert!(!o.contains("checkout.ts"), "worktree overlap labels stay out of the sidebar");
         // In the Inbox: HEADS UP, with what you can do about it.
         app.act(Action::Jump);
         let o = draw(&mut app, 160, 45);
@@ -2927,17 +2904,16 @@ mod hydra_tests {
     }
 
     #[test]
-    fn the_status_line_fits_what_the_right_side_leaves() {
-        let (wide, mut app) = super::design_tests::render_with(160, 45);
-        let last = |text: &str| text.lines().last().unwrap_or_default().to_string();
-        let wide = last(&wide);
-        assert!(wide.contains("shop-api") && wide.contains("⎇ main") && wide.contains("j inbox") && wide.contains(", settings"), "{wide}");
-        assert!(!wide.contains("PANE") && !wide.contains("SIDEBAR"), "the zone badge is flat's: {wide}");
-        let narrow = last(&draw(&mut app, 100, 30));
-        assert!(narrow.contains("⎇ main") && !narrow.contains("shop-api") && !narrow.contains("inbox"), "below 140 columns the path goes and the right shrinks: {narrow}");
+    fn the_full_width_status_footer_is_removed_in_every_layout() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let cards = draw(&mut app, 160, 45);
+        assert!(!cards.lines().last().unwrap_or_default().contains("inbox"));
+        assert!(!cards.lines().last().unwrap_or_default().contains("settings"));
         app.cfg.ui.layout = "flat".into();
-        let flat = last(&draw(&mut app, 160, 45));
-        assert!(flat.contains("PANE") || flat.contains("SIDEBAR"), "flat names its zone: {flat}");
+        let flat = draw(&mut app, 160, 45);
+        assert!(!flat.lines().last().unwrap_or_default().contains("PANE"));
+        assert!(!flat.lines().last().unwrap_or_default().contains("settings"));
+        assert!(flat.contains("+ new") && flat.contains("actions"), "sidebar controls remain in the sidebar");
     }
 
     #[test]
