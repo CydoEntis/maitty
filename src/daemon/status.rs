@@ -42,6 +42,7 @@ static CHOICES: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| 
 /// Codex can keep working while an asynchronous question waits in its composer.
 static CODEX_QUEUED_QUESTION: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(crate::config::CODEX_QUEUED_QUESTION_PATTERN).unwrap());
 const CODEX_QUESTION_WHY: &str = "screen: Codex has an unanswered question";
+const SCREEN_IDLE_RECOVERY_WHY: &str = "screen: explicit idle prompt recovered a missed turn end";
 /// A "done" held while subagents run is let through once none has been heard from for this
 /// long (one died without saying so). Background agents can run, and wait on CI, for a while.
 /// After a queued follow-up goes in, the agent has this long to say it has started on it
@@ -560,6 +561,24 @@ impl Daemon {
                 changes.push((t.id, if working { Status::Working } else if Some(t.id) == focused { Status::Idle } else { Status::Done }, "screen: queued question answered".into()));
                 continue;
             }
+            // A missed lifecycle hook must not leave a completed turn or its children
+            // visibly working when the agent's own screen explicitly shows its idle prompt.
+            let has_active_children = !t.subagents.is_empty()
+                || t.subagent_activity.iter().any(|activity| activity.state.active());
+            if signal.status == Some(Status::Idle)
+                && signal.visible_idle
+                && (t.status == Status::Working || has_active_children)
+            {
+                let status = if t.status == Status::Working && Some(t.id) != focused {
+                    Status::Done
+                } else if t.status == Status::Working {
+                    Status::Idle
+                } else {
+                    t.status
+                };
+                changes.push((t.id, status, SCREEN_IDLE_RECOVERY_WHY.into()));
+                continue;
+            }
             // Any trusted adapter may report child agents without using lifecycle
             // hooks (Codex is discovered from its local session files). Keep the
             // parent visibly working while a recently observed child is active.
@@ -674,6 +693,26 @@ impl Daemon {
             if let Some(t) = self.terms.get_mut(&id) && before != Status::Blocked { t.screen_blocked_from = Some(before); }
         }
         for (id, s, why) in changes {
+            if why == SCREEN_IDLE_RECOVERY_WHY
+                && let Some(t) = self.terms.get_mut(&id)
+            {
+                t.subagents.clear();
+                t.subagent_seen = None;
+                t.done_held = None;
+                self.dirty = true;
+                let now = term::unix_now();
+                for activity in &mut t.subagent_activity {
+                    if activity.state.active() {
+                        activity.state = SubagentState::ConnectionLost;
+                        activity.updated_at = now;
+                        activity.latest_activity = Some(
+                            "Agent screen returned to its idle prompt before child completion was reported"
+                                .into(),
+                        );
+                        self.dirty = true;
+                    }
+                }
+            }
             if why == "subagents went quiet"
                 && let Some(t) = self.terms.get_mut(&id)
             {
