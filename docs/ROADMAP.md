@@ -11,7 +11,7 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The latest published release on `main` is v0.36.7. It routes scroll input to normal-screen agents when Seshi has no retained history. Leader + n opens a shell; sidebar x closes the selected session after confirmation. A local sound fix reserves tones for needs-you alerts and keeps completion notices quiet; its full verification gate passes, but it has not been released. `seshi doctor` now detects missing Codex subagent hooks and points to the per-machine setup command; this guard is local and not yet released.
+The latest published release on `main` is v0.36.7. It routes scroll input to normal-screen agents when Seshi has no retained history. Leader + n opens a shell; sidebar x closes the selected session after confirmation. The v0.36.8 candidate reserves sounds for needs-you alerts, keeps completion notices quiet, and has `seshi doctor` detect missing Codex subagent hooks with a per-machine setup command. The full verification gate passes; release publication is pending.
 
 Seshi is terminal-first; direct subagent messaging remains out of scope. The v0.36.5 release includes cross-agent idle-status recovery; v0.36.6 passed Windows, macOS and Linux installer checks.
 
