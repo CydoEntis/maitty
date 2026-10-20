@@ -552,6 +552,36 @@ pub fn worktree(branch: String, base: Option<String>, ws: Option<WsId>, cmd: Vec
     command(Command::NewWorktree { ws, branch, base, cmd: join_command(cmd), split: None, from: None })
 }
 
+fn codex_status_hooks_installed(text: &str) -> bool {
+    let Ok(config) = text.parse::<toml_edit::DocumentMut>() else {
+        return false;
+    };
+    ["SubagentStart", "SubagentStop"].into_iter().all(|event| {
+        config
+            .get("hooks")
+            .and_then(toml_edit::Item::as_table)
+            .and_then(|hooks| hooks.get(event))
+            .and_then(toml_edit::Item::as_array_of_tables)
+            .is_some_and(|entries| {
+                entries.iter().any(|entry| {
+                    entry
+                        .get("hooks")
+                        .and_then(toml_edit::Item::as_array_of_tables)
+                        .is_some_and(|handlers| {
+                            handlers.iter().any(|handler| {
+                                handler.get("type").and_then(toml_edit::Item::as_str)
+                                    == Some("command")
+                                    && handler
+                                        .get("command")
+                                        .and_then(toml_edit::Item::as_str)
+                                        .is_some_and(|command| command.ends_with(" hook codex"))
+                            })
+                        })
+                })
+            })
+    })
+}
+
 
 /// `seshi doctor`: each thing seshi relies on, ✓ or what to do about it.
 pub fn doctor() -> Result<()> {
@@ -623,6 +653,24 @@ pub fn doctor() -> Result<()> {
         }
     }
     line(Some(!found.is_empty()), "agents on PATH", if found.is_empty() { "none found (claude, codex, gemini, …)".into() } else { found.join(", ") });
+
+    // Codex child sessions are only attached to their parent pane after these machine-local hooks run.
+    if found.contains(&"codex") {
+        let path = codex_config();
+        match std::fs::read_to_string(&path) {
+            Ok(text) if codex_status_hooks_installed(&text) => {
+                line(Some(true), "codex subagent hooks", "installed".into());
+            }
+            Ok(text) if text.parse::<toml_edit::DocumentMut>().is_err() => {
+                line(Some(false), "codex subagent hooks", format!("{} is invalid TOML; repair it before `seshi integrate codex`", path.display()));
+            }
+            Ok(_) => line(Some(false), "codex subagent hooks", "missing: `seshi integrate codex` (restart Codex to load them)".into()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                line(Some(false), "codex subagent hooks", "missing: `seshi integrate codex` (restart Codex to load them)".into());
+            }
+            Err(error) => line(Some(false), "codex subagent hooks", format!("couldn't read {}: {error}", path.display())),
+        }
+    }
 
     // Claude: hooks and MCP
     if found.contains(&"claude") {
@@ -1536,6 +1584,30 @@ pub fn allow(dir: Option<std::path::PathBuf>) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn codex_status_setup_requires_both_subagent_lifecycle_hooks() {
+        let installed = r#"
+            [[hooks.SubagentStart]]
+            [[hooks.SubagentStart.hooks]]
+            type = "command"
+            command = '"/usr/local/bin/seshi" hook codex'
+            [[hooks.SubagentStop]]
+            [[hooks.SubagentStop.hooks]]
+            type = "command"
+            command = '"/usr/local/bin/seshi" hook codex'
+        "#;
+        let missing_stop = r#"
+            [[hooks.SubagentStart]]
+            [[hooks.SubagentStart.hooks]]
+            type = "command"
+            command = '"/usr/local/bin/seshi" hook codex'
+        "#;
+
+        assert!(super::codex_status_hooks_installed(installed));
+        assert!(!super::codex_status_hooks_installed(missing_stop));
+        assert!(!super::codex_status_hooks_installed("[hooks\n"));
+    }
+
     #[test]
     fn hydras_status_line_keeps_yours() {
         let kept = std::env::temp_dir().join(format!("seshi-statusline-{}.txt", std::process::id()));

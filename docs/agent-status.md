@@ -6,7 +6,10 @@ The same commands are available in **Actions → All commands**. Setup installs
 only Seshi's adapter; it preserves other extensions and refuses to overwrite a
 different file named `seshi.js`. It does not interrupt an agent or restart the daemon.
 
-Restart Codex and OpenCode after installation. In Pi, use `/reload` or restart it.
+Set up the integration on each machine where the agent runs; it lives in that
+machine's agent config, not Seshi's synced config. `seshi doctor` checks for
+Codex's subagent hooks when Codex is installed. Restart Codex and OpenCode after
+installation. In Pi, use `/reload` or restart it.
 The CLI equivalents, including removal, are:
 
 ```sh

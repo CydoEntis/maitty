@@ -87,7 +87,10 @@ it brings hydra's config, saved sessions and history over (hydra's own folders a
 were), and the next server start points your Claude hooks at seshi. Run `seshi integrate mcp` again
 if agents used hydra's MCP tools, then uninstall hydra when you're happy.
 
-Then run `seshi doctor` to check your setup. For the best look: a terminal with true colour and a
+Then run `seshi doctor` to check your setup. If Codex is on PATH, doctor checks its subagent
+hooks too. Run `seshi integrate codex` once on each machine using Codex, then restart Codex to
+load them; the hooks live in that machine's Codex config and are not shared by installing Seshi.
+For the best look: a terminal with true colour and a
 [Nerd Font](https://www.nerdfonts.com) (Windows Terminal, Ghostty, Alacritty, WezTerm, iTerm2).
 Optional: `git` (worktrees, changes), `gh` (opening a pull request from Changes).
 
