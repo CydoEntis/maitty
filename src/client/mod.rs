@@ -865,7 +865,10 @@ impl App {
     }
 
     fn any_working(&self) -> bool {
-        self.snap.terms.values().any(|t| t.status == Status::Working)
+        self.snap.terms.values().any(|t| {
+            t.status == Status::Working
+                || t.subagent_activity.iter().any(|activity| activity.state == crate::protocol::SubagentState::Working)
+        })
     }
 
     // ---- model helpers -------------------------------------------------------------

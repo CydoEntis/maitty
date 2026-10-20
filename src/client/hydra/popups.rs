@@ -4,7 +4,7 @@ use super::*;
 
 pub(in crate::client) fn draw_subagent_info(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, term: TermId, index: usize) {
     dim_all(f.buffer_mut(), area, t);
-    let rect = panel(app, f.buffer_mut(), area, 76, 17, "Agent activity", &[], t);
+    let rect = panel(app, f.buffer_mut(), area, 76, 17, "Subagent details", &[], t);
     let model = app.hy_model();
     let activity = model.iter().find_map(|project| project.sessions().find(|session| session.term == term).and_then(|session| session.subagent_activity.get(index))).cloned();
     let Some(activity) = activity else {
@@ -35,11 +35,10 @@ pub(in crate::client) fn draw_subagent_info(app: &mut App, f: &mut Frame, area: 
         Some(started) => duration_label(activity.updated_at.saturating_sub(started)),
         _ => "Not reported".into(),
     };
+    let (stage, _) = super::screen::subagent_stage(&activity.name, activity.task.as_deref(), app.cfg.ui.pill_caps);
     let rows = [
-        ("Identity", activity.id.as_str(), t.text),
-        ("Role / name", activity.name.as_str(), t.text),
-        ("Assigned task", activity.task.as_deref().unwrap_or("Not reported"), t.text),
-        ("Parent", activity.parent.as_deref().unwrap_or("Not reported"), t.text),
+        ("Stage", stage, t.text),
+        ("Task", activity.task.as_deref().unwrap_or("Not reported"), t.text),
         ("Model", activity.model.as_deref().unwrap_or("Not reported"), t.text),
         ("Reasoning effort", activity.effort.as_deref().unwrap_or("Not reported"), t.text),
         ("Status", state, state_color),

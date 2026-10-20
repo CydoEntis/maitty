@@ -435,10 +435,12 @@ impl App {
                 if let Some(tab) = self.hy.tabs.get_mut(nt.tab) {
                     tab.name = nt.name.trim().to_string();
                 }
+                self.last_click = None;
                 self.mode = Mode::Normal;
                 return;
             }
             KeyCode::Esc => {
+                self.last_click = None;
                 self.mode = Mode::Normal;
                 return;
             }

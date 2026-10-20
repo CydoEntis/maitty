@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-19 against `origin/dev` at v0.35.0.
+Last reconciled: 2026-10-20 against `origin/main` at v0.36.1.
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Seshi is a terminal multiplexer built for running many coding agents at once: see
@@ -11,9 +11,9 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The latest published release on `main` is v0.35.0. This worktree was fast-forwarded to the current `origin/dev` at the v0.35.0 baseline before local changes were reapplied. The local candidate includes the Flat layout and its interaction fixes, clearer sidebar and tab controls, update discovery in the tab bar, agent-owned subagent activity, session status corrections, removal of idle sleeping UI, and the matching docs. It is not shipped until the release gate passes and the release lands on `main`.
+The latest published release on `main` is v0.36.1. The current candidate preserves the terminal-first interface and adds a centered Settings modal, a consistent tab-rename dialog, and a live subagent list with inferred stage labels, details inspection, and a quieter working animation. Direct subagent messaging is out of scope. The candidate is not shipped until the dev and release PRs merge and the v0.36.2 release workflow succeeds.
 
-Current verification for this candidate: Windows `cargo build`, full tests (303 passed, four ignored), strict clippy, Linux x64 and macOS ARM checks pass. User-visible terminal inspection and hosted CI are still pending. Do not mark the candidate shipped until the dev and release PRs merge and the release workflow succeeds.
+The Windows build and full local suite pass (306 passed, four ignored), as do strict Clippy and both required cross-target checks. The rendered shortcut reference and Settings modal were inspected with `TestBackend`. GitHub currently has no `dev` branch after the v0.36.1 release PR; restore `dev` from the latest `main` before opening the feature PR.
 
 User-requested pane padding polish: preserve the pane insets while matching the
 card and padding to a terminal app's solid surface when at least three screen
