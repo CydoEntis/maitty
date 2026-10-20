@@ -585,6 +585,55 @@ fn a_finish_you_have_seen_is_not_announced_again() {
 }
 
 #[test]
+fn explicit_idle_screen_evidence_recovers_missed_turn_ends_across_agents() {
+    for (agent, title) in [
+        ("claude", "✳ project"),
+        ("codex", "project"),
+        ("amp", "seshi - amp - project"),
+        ("grok", "grok"),
+    ] {
+        let (mut d, _rx) = daemon();
+        let t = pane(&mut d);
+        {
+            let p = d.terms.get_mut(&t).unwrap();
+            p.agent = Some(agent.into());
+            p.hooked = true;
+            p.status = Status::Working;
+            p.subagents.push(("child-1".into(), "general-purpose".into()));
+            p.subagent_activity.push(SubagentActivity {
+                id: "child-1".into(),
+                name: "general-purpose".into(),
+                parent: None,
+                state: SubagentState::Working,
+                task: Some("old task".into()),
+                model: None,
+                effort: None,
+                started_at: None,
+                updated_at: 0,
+                latest_activity: None,
+                result: None,
+            });
+            p.parser.process(format!("\x1b]0;{title}\x07").as_bytes());
+        }
+
+        d.update_statuses();
+
+        assert_eq!(
+            d.terms[&t].status,
+            Status::Done,
+            "{agent}: explicit idle screen evidence ends a missed turn"
+        );
+        assert!(d.terms[&t].subagents.is_empty(), "{agent}: clear stale child runners");
+        assert_eq!(
+            d.terms[&t].subagent_activity[0].state,
+            SubagentState::ConnectionLost,
+            "{agent}: retain lifecycle history without showing the child as active"
+        );
+        close(&mut d, &[t]);
+    }
+}
+
+#[test]
 fn a_permission_ask_settled_without_you_stops_needing_you() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);

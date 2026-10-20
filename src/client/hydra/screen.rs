@@ -225,8 +225,16 @@ pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme
         out.push(Line::Note(format!("⏵ next: {next}{more}"), notes_c, s.term));
     }
     // Its subagents, each on a line, under a heading that folds them away.
-    if !s.subagents.is_empty() || !s.subagent_activity.is_empty() {
-        let has_record_for_live_name = |name: &str| s.subagent_activity.iter().any(|activity| activity.name.eq_ignore_ascii_case(name));
+    if !s.subagents.is_empty()
+        || s.subagent_activity
+            .iter()
+            .any(|activity| activity.state.active())
+    {
+        let has_record_for_live_name = |name: &str| {
+            s.subagent_activity.iter().any(|activity| {
+                activity.state.active() && activity.name.eq_ignore_ascii_case(name)
+            })
+        };
         let legacy: Vec<_> = s.subagents.iter().filter(|name| !has_record_for_live_name(name)).collect();
         let total = s.subagent_activity.iter().filter(|activity| activity.state.active()).count() + legacy.len();
         out.push(Line::Subs(s.term, total, !subs_closed));

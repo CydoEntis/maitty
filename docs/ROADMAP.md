@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-20 against `origin/main` at v0.36.3.
+Last reconciled: 2026-10-20 against `origin/main` at v0.36.4.
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Seshi is a terminal multiplexer built for running many coding agents at once: see
@@ -11,9 +11,9 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The latest published release on `main` is v0.36.3. The v0.36.4 candidate makes Flat layout's default terminal background match its theme surface while preserving explicit application colors, removing the dark rectangle inside the pane. It is not shipped until the verification gate passes and the change is merged to `dev` and `main`.
+The latest published release on `main` is v0.36.4. The Flat layout surface fix is shipped. The v0.36.5 candidate recovers missed turn-end events from explicit idle-screen evidence across supported agents and clears stale child rows as unconfirmed; silence alone does not prove completion. The shared status path passed the full local verification gate; publish only after promotion and release checks pass.
 
-Seshi is terminal-first; direct subagent messaging remains out of scope. The completed v0.36.3 release includes the compact subagent sidebar rows and passed the Windows, macOS and Linux installer checks. Verify the current Flat surface change with the full gate before marking it shipped.
+Seshi is terminal-first; direct subagent messaging remains out of scope. The v0.36.4 release includes the Flat layout surface fix and passed Windows, macOS and Linux installer checks.
 
 User-requested pane padding polish: preserve the pane insets while matching the
 card and padding to a terminal app's solid surface when at least three screen
