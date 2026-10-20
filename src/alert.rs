@@ -1,4 +1,4 @@
-//! Alerts: seshi's own two sounds, and a desktop notification for when no seshi window is
+//! Alerts: seshi's needs-you sound, and a desktop notification for when no seshi window is
 //! open to say it. Each system's own tools show and play them, so nothing extra is needed: a
 //! Windows toast through PowerShell, `osascript` on macOS, `notify-send` on Linux; sounds
 //! through PowerShell's media player, `afplay`, or `paplay` / `pw-play`.
@@ -21,8 +21,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    /// Its sound as notes (pitch in Hz, length in ms): two rising for "needs you", one
-    /// lower and longer for "finished", so you can tell which without looking.
+    /// Its sound as notes (pitch in Hz, length in ms): two rising for "needs you".
     fn notes(self) -> &'static [(f32, u32)] {
         match self {
             Kind::Needs => &[(659.25, 130), (987.77, 240)],
@@ -35,6 +34,14 @@ impl Kind {
         match self {
             Kind::Needs => "seshi-needs-you-1.wav",
             Kind::Done => "seshi-finished-1.wav",
+        }
+    }
+
+    /// The sound for a user-facing status change, if that change needs the user to act.
+    pub fn for_status(status: crate::protocol::Status) -> Option<Self> {
+        match status {
+            crate::protocol::Status::Blocked => Some(Self::Needs),
+            _ => None,
         }
     }
 }
@@ -263,6 +270,14 @@ $p.Open([Uri]$env:SESHI_SOUND); $p.Volume = 1; $p.Play(); Start-Sleep -Milliseco
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_needs_you_statuses_make_a_notification_sound() {
+        assert_eq!(Kind::for_status(crate::protocol::Status::Blocked), Some(Kind::Needs));
+        assert_eq!(Kind::for_status(crate::protocol::Status::Done), None);
+        assert_eq!(Kind::for_status(crate::protocol::Status::Working), None);
+        assert_eq!(Kind::for_status(crate::protocol::Status::Idle), None);
+    }
 
     #[test]
     fn an_agent_rings_once_for_the_same_news_and_a_crowd_rings_once() {

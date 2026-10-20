@@ -6,7 +6,10 @@ The same commands are available in **Actions → All commands**. Setup installs
 only Seshi's adapter; it preserves other extensions and refuses to overwrite a
 different file named `seshi.js`. It does not interrupt an agent or restart the daemon.
 
-Restart Codex and OpenCode after installation. In Pi, use `/reload` or restart it.
+Set up the integration on each machine where the agent runs; it lives in that
+machine's agent config, not Seshi's synced config. `seshi doctor` checks for
+Codex's subagent hooks when Codex is installed. Restart Codex and OpenCode after
+installation. In Pi, use `/reload` or restart it.
 The CLI equivalents, including removal, are:
 
 ```sh
@@ -94,9 +97,9 @@ not infer completion from silence alone. Hosts without an explicit idle screen
 signal rely on their lifecycle completion events.
 
 Questions ring even in the focused pane after remaining blocked for 300 ms;
-the red indicator appears immediately. Focused completion stays quiet; unseen
-completion waits one second. Both queued sounds recheck the exact current status
-and cancel when work resumes, the pane disappears or the attention state changes.
+the red indicator appears immediately. Completions are quiet and remain visible
+as status/notice changes. A queued needs-you sound rechecks the exact current
+status and cancels when work resumes, the pane disappears or attention changes.
 A new working turn clears the previous turn's notification deduplication.
 Seshi retains its four-second global sound spacing and two-minute same-news
 deduplication; its delivery settings and multiple-client acknowledgements differ

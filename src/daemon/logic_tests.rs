@@ -512,9 +512,6 @@ fn with_no_window_open_finished_waits_and_a_helper_stays_quiet() {
     d.set_status(helper, Status::Done, "test");
     assert!(d.terms[&helper].alert_due.is_none() && rang(&d, helper).is_none());
     // A stable question rings for helpers too.
-    for t in [commander, helper] {
-        d.terms.get_mut(&t).unwrap().alerted = None;
-    }
     d.set_status(helper, Status::Blocked, "test");
     assert!(rang(&d, helper).is_none());
     overdue(&mut d, helper);

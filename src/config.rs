@@ -316,7 +316,7 @@ impl Default for Snapshots {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Notify {
-    /// Play seshi's sound when an agent you're not looking at needs you or finishes.
+    /// Play seshi's sound when an agent needs you.
     pub sound: bool,
     /// Alerts on your phone through ntfy (the free ntfy app): your topic's name. Empty is off.
     /// On the public server the name is all that keeps them private, so make it hard to guess.

@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-20 against `origin/main` at v0.36.6.
+Last reconciled: 2026-10-20 against `origin/main` at v0.36.7.
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Seshi is a terminal multiplexer built for running many coding agents at once: see
@@ -11,7 +11,7 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The latest published release on `main` is v0.36.6. It keeps Caps Lock from changing shortcut meaning on Windows and terminals that report lock state. Leader + n opens a shell; sidebar x closes the selected session after confirmation. The v0.36.7 candidate routes scroll input to a normal-screen agent when Seshi has no retained history, including agents that do not capture mouse input. Regression tests and the full verification gate pass locally; live confirmation and release checks are pending.
+The latest published release on `main` is v0.36.7. It routes scroll input to normal-screen agents when Seshi has no retained history. Leader + n opens a shell; sidebar x closes the selected session after confirmation. A local sound fix reserves tones for needs-you alerts and keeps completion notices quiet; its full verification gate passes, but it has not been released. `seshi doctor` now detects missing Codex subagent hooks and points to the per-machine setup command; this guard is local and not yet released.
 
 Seshi is terminal-first; direct subagent messaging remains out of scope. The v0.36.5 release includes cross-agent idle-status recovery; v0.36.6 passed Windows, macOS and Linux installer checks.
 
@@ -37,8 +37,8 @@ scrolling in Pi's regular/fullscreen modes. Also scope Codex helpers to exact
 owning threads and retain a compact status/session rail when the sidebar hides.
 User-reported spurious sounds also add blocked-sound debounce and exact status
 checks in the client and headless daemon. Red status remains immediate.
-Spinner selection, exact Codex helper ownership, collapsed rail and sound-race
-correction: merged to `dev`, shipped in v0.31.0. Ordered build, full tests (307 passed,
+Spinner selection, exact Codex helper ownership, collapsed rail and false-blocker
+sound-race correction: merged to `dev`, shipped in v0.31.0. Ordered build, full tests (307 passed,
 four ignored), strict all-target clippy, Linux x64 and macOS ARM cross-checks
 passed; ten Node adapter tests passed. The transient/stale blocker regression
 failed before the fix. Client and headless daemon tests prove cancellation on
@@ -365,7 +365,7 @@ Everything below is shipped on `dev` unless marked.
 - Seshi Walnut (default), Seshi Night and Seshi Day themes; block SESHI wordmark on the splash — shipped by v0.30.1 — `src/theme.rs`, `src/client/hydra/splash.rs`
 
 **Extras**
-- One alert when an agent needs you or finishes: seshi's own two sounds and a note in the window; a desktop notification only with no window open; notification history — shipped — `src/alert.rs`
+- Alert when an agent needs you: Seshi's two rising notes and an in-app notice; a desktop notification only with no window open. Completions stay quiet — `src/alert.rs`
 - Click a notification to jump to its session — shipped — `src/reveal.rs`, `src/alert.rs` (#19)
 - Sidebar groups sessions by where they work now (repo, or folder outside git); no projects to open; splits stay with their session — shipped — `src/client/hydra/mod.rs`
 - Releases and installers (Windows, macOS, Linux; checksums), `seshi update` and a daily update check — shipped — `.github/workflows/release.yml`, `install.sh`, `install.ps1`, `src/update.rs`
