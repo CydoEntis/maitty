@@ -801,7 +801,8 @@ mod hydra_tests {
         parser.process(b"\x1b[48;2;8;9;10m\x1b[2J");
         app.parsers.insert(1, parser);
 
-        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(160, 45)).unwrap();
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(160, 45)).unwrap();
         terminal.draw(|frame| render::draw(&mut app, frame)).unwrap();
 
         let (_, inner) = app.panes[0];
@@ -809,6 +810,37 @@ mod hydra_tests {
         assert_eq!(buffer[(inner.x - 1, inner.y)].bg, surface, "the padding shares the terminal's solid surface");
         assert_eq!(buffer[(inner.x, inner.y)].bg, surface, "the terminal canvas keeps its background");
         assert_eq!(buffer[(inner.x + inner.width, inner.y)].bg, surface, "the opposite padding stays visible without a seam");
+        show(&draw(&mut app, 160, 45));
+    }
+
+    #[test]
+    fn flat_terminal_background_matches_its_theme_surface_and_keeps_ansi_colors() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.cfg.ui.layout = "flat".into();
+        let mut parser = vt100::Parser::new(20, 80, 0);
+        parser.process(b"\x1b[40mX\x1b[49mY");
+        app.parsers.insert(1, parser);
+
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(160, 45)).unwrap();
+        terminal.draw(|frame| render::draw(&mut app, frame)).unwrap();
+
+        let (_, inner) = app.panes[0];
+        let buffer = terminal.backend().buffer();
+        assert_eq!(
+            buffer[(inner.x, inner.y)].bg,
+            ratatui::style::Color::Indexed(0),
+            "explicit ANSI black remains the program's choice"
+        );
+        assert_eq!(
+            buffer[(inner.x + 1, inner.y)].bg,
+            app.theme.card,
+            "the default terminal ground matches the flat pane surface"
+        );
+        assert_eq!(
+            buffer[(inner.x + 2, inner.y)].bg,
+            app.theme.card,
+            "empty terminal cells keep the same surface"
+        );
         show(&draw(&mut app, 160, 45));
     }
 
