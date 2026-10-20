@@ -599,6 +599,34 @@ mod hydra_tests {
     }
 
     #[test]
+    fn inactive_subagents_leave_no_empty_live_heading() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let pane = app.snap.terms.get_mut(&1).unwrap();
+        pane.subagents.clear();
+        pane.subagent_activity = vec![SubagentActivity {
+            id: "child-finished".into(),
+            name: "Reviewer".into(),
+            parent: None,
+            state: SubagentState::ConnectionLost,
+            task: Some("review the old flow".into()),
+            model: None,
+            effort: None,
+            started_at: Some(100),
+            updated_at: 130,
+            latest_activity: Some("completion was not reported".into()),
+            result: None,
+        }];
+        app.hy_fresh();
+
+        let sidebar = draw(&mut app, 160, 45);
+
+        assert!(
+            !sidebar.contains("subagent") && !sidebar.contains("review the old flow"),
+            "inactive lifecycle history is not part of the live sidebar: {sidebar}"
+        );
+    }
+
+    #[test]
     fn active_subagent_shows_status_and_stage_without_lifecycle_labels() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let term = 1;

@@ -87,6 +87,11 @@ expanded question dialog both take priority over a working spinner.
 An advancing Codex footer starts automatic follow-up work after a completion;
 an unchanged old footer cannot reopen the finished turn. Recognized agent process
 exit releases hook authority, so an exited agent cannot leave a permanent spinner.
+An explicit idle prompt recognized by a bundled screen detector also reconciles a
+missed turn-end event for any supported agent, hooked or screen-detected. It clears
+active child rows as unconfirmed while retaining their lifecycle records; it does
+not infer completion from silence alone. Hosts without an explicit idle screen
+signal rely on their lifecycle completion events.
 
 Questions ring even in the focused pane after remaining blocked for 300 ms;
 the red indicator appears immediately. Focused completion stays quiet; unseen
