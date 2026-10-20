@@ -2702,16 +2702,14 @@ mod hydra_tests {
         // Finished and still finished when the wait is over: now it's said.
         attention(&mut app, 2, Status::Done);
         due(&mut app, 2);
-        assert!(app.notice.as_ref().is_some_and(|(m, ..)| m.ends_with("finished")) && app.alerted.contains_key(&2));
+        assert!(app.notice.as_ref().is_some_and(|(m, ..)| m.ends_with("finished")) && !app.alerted.contains_key(&2) && app.last_alert.is_none(), "completion stays visible without consuming a sound alert");
         // A stable question replaces the pending finish, without ringing twice.
         app.notice = None;
-        app.alerted.clear();
-        app.last_alert = None;
         attention(&mut app, 2, Status::Done);
         attention(&mut app, 2, Status::Blocked);
         assert!(app.notice.is_none());
         due(&mut app, 2);
-        assert!(app.notice.as_ref().is_some_and(|(m, ..)| m.ends_with("needs you")) && !app.settling.contains_key(&2));
+        assert!(app.notice.as_ref().is_some_and(|(m, ..)| m.ends_with("needs you")) && app.alerted.contains_key(&2) && !app.settling.contains_key(&2));
         // A session another agent started: its finish is that agent's news, not yours.
         app.notice = None;
         app.snap.terms.get_mut(&2).unwrap().started_by = Some(1);
