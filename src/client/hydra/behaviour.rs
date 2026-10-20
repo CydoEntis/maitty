@@ -603,6 +603,13 @@ impl App {
             // m: a follow-up to this row's agent; i: why it has its status.
             KeyCode::Char('m') if plain && self.hy.cursor.is_some() => self.act(Action::Message),
             KeyCode::Char('i') if plain && self.hy.cursor.is_some() => self.act(Action::Why),
+            KeyCode::Char('s') if plain && self.hy.cursor.is_some() => {
+                if let Some(term) = self.hy.cursor
+                    && self.hy_model().iter().any(|project| project.sessions().any(|session| session.term == term && !session.subagent_activity.is_empty()))
+                {
+                    self.mode = Mode::SubagentInfo { term, index: 0 };
+                }
+            }
             // What the foot teaches everywhere else: a is actions, here too.
             KeyCode::Char('a') if plain => self.act(Action::Actions),
             // A letter from the row's menu does that (x close, r rename, …).
@@ -1107,6 +1114,7 @@ impl App {
     pub(in crate::client) fn on_hy_hit(&mut self, h: HyHit, double: bool) {
         match h {
             HyHit::ToggleSubs(term) => self.toggle_subs(term),
+            HyHit::SubagentInfo(term, index) => self.mode = Mode::SubagentInfo { term, index },
             HyHit::ToggleAside(pi) => {
                 if let Some(p) = self.hy_model().get(pi) {
                     self.toggle_aside(p.key.clone());
@@ -1179,9 +1187,6 @@ impl App {
             HyHit::TabNew => self.act(Action::NewTab),
             HyHit::NewShell => self.act(Action::ShellHere),
             HyHit::Actions => self.act(Action::Actions),
-            HyHit::StatusSettings => self.act(Action::Settings),
-            HyHit::StatusInbox => self.act(Action::Jump),
-            HyHit::StatusKeys => self.act(Action::Help),
             HyHit::ActionRow(i) => self.actions_run(i),
             HyHit::PickRow(i) => {
                 if let Mode::Picker { query, commands, .. } = self.mode.clone() {
@@ -1367,6 +1372,20 @@ impl App {
                     self.scroll_to(term, (from_bottom * total / r.height.max(1) as usize).min(total));
                 }
             }
+        }
+    }
+
+    pub(in crate::client) fn on_subagent_info_key(&mut self, term: TermId, index: usize, key: &KeyEvent) {
+        let count = self.hy_model().iter().find_map(|project| project.sessions().find(|session| session.term == term).map(|session| session.subagent_activity.len()));
+        let Some(count) = count else {
+            self.mode = Mode::Normal;
+            return;
+        };
+        match key.code {
+            KeyCode::Up => self.mode = Mode::SubagentInfo { term, index: index.saturating_sub(1) },
+            KeyCode::Down => self.mode = Mode::SubagentInfo { term, index: (index + 1).min(count.saturating_sub(1)) },
+            KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => self.mode = Mode::Normal,
+            _ => {}
         }
     }
 

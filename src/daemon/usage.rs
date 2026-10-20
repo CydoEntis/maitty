@@ -90,7 +90,7 @@ impl Daemon {
             let mut facts = Vec::new();
             let mut limits = None;
             for (term, session) in &panes {
-                let mut pane = CodexPaneFacts { term: *term, session: session.clone(), usage: None, subagents: Vec::new() };
+                let mut pane = CodexPaneFacts { term: *term, session: session.clone(), usage: None, subagents: Vec::new(), subagent_activity: Vec::new() };
                 let owners = panes.iter().filter(|(_, id)| id == session).count();
                 if let Some(root) = codex_root(&sessions, pane.session.as_deref()).filter(|_| owners == 1) {
                     let tail = read_tail(&root.file, CODEX_TAIL);
@@ -98,6 +98,7 @@ impl Daemon {
                     pane.usage = u;
                     limits = limits.or(l);
                     pane.subagents = codex_helpers(root, &tail, &sessions);
+                    pane.subagent_activity = codex_activity(root, &sessions);
                 }
                 facts.push(pane);
             }
@@ -127,6 +128,17 @@ impl Daemon {
             } else if t.subagents != pane.subagents {
                 t.subagents = pane.subagents;
                 self.dirty = true;
+            }
+            for incoming in pane.subagent_activity {
+                if let Some(current) = t.subagent_activity.iter_mut().find(|a| a.id == incoming.id) {
+                    if incoming.updated_at > current.updated_at && *current != incoming {
+                        *current = incoming;
+                        self.dirty = true;
+                    }
+                } else {
+                    t.subagent_activity.push(incoming);
+                    self.dirty = true;
+                }
             }
             if t.subagents.is_empty() {
                 t.subagent_seen = None;
@@ -192,6 +204,7 @@ pub(crate) struct CodexPaneFacts {
     pub session: Option<String>,
     pub usage: Option<Usage>,
     pub subagents: Vec<(String, String)>,
+    pub subagent_activity: Vec<SubagentActivity>,
 }
 
 impl CodexPaneFacts {
@@ -228,6 +241,48 @@ pub(super) struct CodexSession {
 /// A subagent whose file hasn't been written to for this long has stopped without saying so.
 const CODEX_SUBAGENT_STALE: Duration = Duration::from_secs(20 * 60);
 
+fn codex_activity(root: &CodexSession, all: &[CodexSession]) -> Vec<SubagentActivity> {
+    let mut out = Vec::new();
+    let mut parents = vec![root.id.clone()];
+    while let Some(parent) = parents.pop() {
+        for session in all.iter().filter(|s| s.parent.as_deref() == Some(parent.as_str())) {
+            parents.push(session.id.clone());
+            let tail = read_tail(&session.file, CODEX_TAIL);
+            let event = codex_last_task_event(&tail);
+            let fresh = session.modified.elapsed().is_ok_and(|elapsed| elapsed < CODEX_SUBAGENT_STALE);
+            let state = match (event, fresh) {
+                (Some("task_complete"), _) => SubagentState::Completed,
+                (Some("turn_aborted"), _) => SubagentState::Cancelled,
+                (Some("task_started"), true) | (None, true) => SubagentState::Working,
+                _ => SubagentState::ConnectionLost,
+            };
+            let updated_at = session.modified.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+            let latest_activity = match event {
+                Some("task_started") => Some("Codex task_started event".into()),
+                Some("task_complete") => Some("Codex task_complete event".into()),
+                Some("turn_aborted") => Some("Codex turn_aborted event".into()),
+                Some(_) => None,
+                None if fresh => Some("Codex child session file is being updated".into()),
+                None => Some("Codex child session file stopped updating".into()),
+            };
+            out.push(SubagentActivity {
+                id: session.id.clone(),
+                name: session.name.clone(),
+                parent: session.parent.clone(),
+                state,
+                task: None,
+                model: None,
+                effort: None,
+                started_at: None,
+                updated_at,
+                latest_activity,
+                result: None,
+            });
+        }
+    }
+    out
+}
+
 /// What runs under a Codex session right now, as (id, name): its subagents (and theirs) whose
 /// task is still going, and `goal` while a goal is what started its current turn.
 pub(super) fn codex_helpers(root: &CodexSession, root_tail: &str, all: &[CodexSession]) -> Vec<(String, String)> {
@@ -251,13 +306,25 @@ pub(super) fn codex_helpers(root: &CodexSession, root_tail: &str, all: &[CodexSe
 
 /// Whether the last task in a session file's tail is still going (None: no task line there).
 pub(super) fn codex_running(tail: &str) -> Option<bool> {
-    tail.lines().rev().find_map(|l| {
-        if l.contains("\"type\":\"task_started\"") {
-            Some(true)
-        } else if l.contains("\"type\":\"task_complete\"") || l.contains("\"type\":\"turn_aborted\"") {
-            Some(false)
-        } else {
-            None
+    match codex_last_task_event(tail)? {
+        "task_started" => Some(true),
+        "task_complete" | "turn_aborted" => Some(false),
+        _ => None,
+    }
+}
+
+fn codex_last_task_event(tail: &str) -> Option<&'static str> {
+    tail.lines().rev().find_map(|line| {
+        let event = serde_json::from_str::<serde_json::Value>(line).ok().and_then(|value| {
+            value.get("payload").and_then(|payload| payload.get("type")).and_then(serde_json::Value::as_str)
+                .or_else(|| value.get("type").and_then(serde_json::Value::as_str))
+                .map(str::to_string)
+        })?;
+        match event.as_str() {
+            "task_started" => Some("task_started"),
+            "task_complete" => Some("task_complete"),
+            "turn_aborted" => Some("turn_aborted"),
+            _ => None,
         }
     })
 }
@@ -436,7 +503,7 @@ mod tests {
         assert_eq!(codex_root(&sessions, Some("newest")).unwrap().id, "newest");
         assert!(codex_root(&sessions, None).is_none());
         assert!(codex_root(&sessions, Some("unknown")).is_none());
-        let pane = CodexPaneFacts { term: 1, session: Some("older".into()), usage: None, subagents: Vec::new() };
+        let pane = CodexPaneFacts { term: 1, session: Some("older".into()), usage: None, subagents: Vec::new(), subagent_activity: Vec::new() };
         assert!(pane.belongs_to(Some("codex"), Some("older")));
         assert!(!pane.belongs_to(Some("codex"), Some("newest")));
         assert!(!pane.belongs_to(Some("pi"), Some("older")));
@@ -476,6 +543,13 @@ mod tests {
         let helpers = codex_helpers(&root, by_goal, &all);
         let names: Vec<&str> = helpers.iter().map(|(_, n)| n.as_str()).collect();
         assert_eq!(names, vec!["goal", "reconcile_audit", "nested_check"], "the goal, the running subagent and its own; not the finished one");
+        let activity = codex_activity(&root, &all);
+        assert_eq!(activity.len(), 3, "completed children remain available to inspect");
+        let completed = activity.iter().find(|child| child.id == "ccc").unwrap();
+        assert_eq!(completed.state, SubagentState::Completed);
+        assert_eq!(completed.parent.as_deref(), Some("aaa"));
+        assert_eq!(completed.task, None, "the runtime file did not report the assignment text");
+        assert_eq!(completed.model, None, "a parent model is never copied onto a child");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -115,6 +115,7 @@ impl Daemon {
             queue: term.queue.iter().cloned().collect(),
             account: term.account.clone(),
             aside: term.aside,
+            subagent_activity: term.subagent_activity.clone(),
         };
         let workspaces = self
             .workspaces
@@ -218,6 +219,15 @@ impl Daemon {
                                 t.label = pane.label.clone();
                                 t.queue = pane.queue.iter().cloned().collect();
                                 t.aside = pane.aside;
+                                let now = term::unix_now();
+                                t.subagent_activity = pane.subagent_activity.into_iter().map(|mut activity| {
+                                    if activity.state.active() {
+                                        activity.state = SubagentState::ConnectionLost;
+                                        activity.updated_at = now;
+                                        activity.latest_activity = Some("Seshi restarted while the child was active; completion unconfirmed".into());
+                                    }
+                                    activity
+                                }).collect();
                             }
                             map.insert(old, new);
                             ids.insert(old, new);

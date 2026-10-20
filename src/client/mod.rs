@@ -105,6 +105,8 @@ enum Mode {
     Compose(Box<hydra::Compose>),
     /// Why a session has its status (beside its row); `side`: back to the sidebar after.
     Why { term: TermId, side: bool },
+      /// Runtime-reported subagent activity, retained while its parent remains available.
+      SubagentInfo { term: TermId, index: usize },
     /// The leader's key map (or its second step), typed to search.
     KeyMap(Box<hydra::KeyMap>),
     Shortcuts { query: String, scroll: usize },

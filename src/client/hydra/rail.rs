@@ -93,9 +93,7 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: 
             .filter(|c| !c.is_whitespace())
             .take(2)
             .collect();
-        let icon = if s.asleep {
-            "z".into()
-        } else if s.is_agent {
+        let icon = if s.is_agent {
             glyph(app, s.status)
         } else {
             "›".into()

@@ -89,6 +89,9 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             let sel = *sel;
             super::hydra::draw_actions(app, f, area, &t, sel);
         }
+        Mode::SubagentInfo { term, index } => {
+            super::hydra::draw_subagent_info(app, f, area, &t, *term, *index);
+        }
         Mode::Confirm(c) => {
             let c = (**c).clone();
             super::menu::draw_confirm(app, f, area, &t, &c);
