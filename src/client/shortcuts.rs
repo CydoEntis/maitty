@@ -10,6 +10,8 @@ use ratatui::{
 
 const QUERY_MAX: usize = 100;
 const PAGE: usize = 10;
+const SHORTCUT_COLUMNS: usize = 3;
+const THREE_COLUMN_MIN_WIDTH: usize = 78;
 const CONTEXTS: &str = include_str!("../../docs/shortcuts.md");
 
 pub(super) fn append_query(query: &mut String, text: &str) {
@@ -107,6 +109,38 @@ fn key_parts(keys: &str) -> Vec<String> {
         .collect()
 }
 
+fn wrapped_keycaps(keys: &str, width: usize, theme: &Theme) -> Vec<Vec<super::design::Seg>> {
+    let style = Style::default().bg(theme.card);
+    let parts = key_parts(keys);
+    if parts.is_empty() {
+        return vec![vec![seg(keys, style.fg(theme.muted))]];
+    }
+
+    let mut lines = Vec::new();
+    let mut current = Vec::new();
+    let mut current_width = 0;
+    for part in parts {
+        let cap = super::design::keycap(theme, &part);
+        let cap_width = super::design::segs_width(&cap) as usize;
+        let separator_width = usize::from(!current.is_empty()) * 3;
+        if !current.is_empty() && current_width + separator_width + cap_width > width {
+            lines.push(current);
+            current = Vec::new();
+            current_width = 0;
+        }
+        if !current.is_empty() {
+            current.push(seg(" / ", style.fg(theme.muted)));
+            current_width += 3;
+        }
+        current.extend(cap);
+        current_width += cap_width;
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
 fn entry_lines(
     width: usize,
     keys: &str,
@@ -129,7 +163,7 @@ fn entry_lines(
     let key_width = super::design::segs_width(&key_runs) as usize + 2;
     let action_style = style.fg(theme.text);
     if key_width > 28 || key_width >= width.saturating_sub(8) {
-        let mut lines = vec![key_runs];
+        let mut lines = wrapped_keycaps(keys, width.saturating_sub(2).max(1), theme);
         lines.extend(
             super::views::wrap(action, width.saturating_sub(2).max(1))
                 .into_iter()
@@ -155,33 +189,73 @@ fn entry_lines(
     lines
 }
 
-fn lines(app: &App, query: &str, width: usize, theme: &Theme) -> Vec<Vec<super::design::Seg>> {
+fn sections(app: &App, query: &str) -> Vec<(String, Vec<(String, String)>)> {
     let matches = matching_entries(app, query);
-    let mut out = Vec::new();
-    let mut previous = String::new();
+    let mut out: Vec<(String, Vec<(String, String)>)> = Vec::new();
     for (scope, keys, action) in &matches {
-        if *scope != previous {
-            if !previous.is_empty() {
-                out.push(Vec::new());
-            }
-            out.push(vec![seg(
-                scope.to_uppercase(),
-                Style::default()
-                    .bg(theme.card)
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            )]);
-            previous = scope.clone();
+        if out.last().is_none_or(|(current, _)| current != scope) {
+            out.push((scope.clone(), Vec::new()));
         }
-        out.extend(entry_lines(width.saturating_sub(1), keys, action, theme));
-    }
-    if matches.is_empty() {
-        return vec![vec![seg(
-            "No shortcuts match. Ctrl+U clears the search.",
-            Style::default().bg(theme.card).fg(theme.muted),
-        )]];
+        if let Some((_, entries)) = out.last_mut() {
+            entries.push((keys.clone(), action.clone()));
+        }
     }
     out
+}
+
+fn section_lines(
+    title: &str,
+    entries: &[(String, String)],
+    width: usize,
+    theme: &Theme,
+) -> Vec<Vec<super::design::Seg>> {
+    let mut out = vec![vec![seg(
+        title.to_uppercase(),
+        Style::default()
+            .bg(theme.card)
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
+    )]];
+    for (keys, action) in entries {
+        out.extend(entry_lines(width.saturating_sub(1), keys, action, theme));
+    }
+    out.push(Vec::new());
+    out
+}
+
+fn single_column_lines(
+    sections: &[(String, Vec<(String, String)>)],
+    width: usize,
+    theme: &Theme,
+) -> Vec<Vec<super::design::Seg>> {
+    let mut out = Vec::new();
+    for (title, entries) in sections {
+        out.extend(section_lines(title, entries, width, theme));
+    }
+    if out.last().is_some_and(Vec::is_empty) {
+        out.pop();
+    }
+    out
+}
+
+fn three_column_lines(
+    sections: &[(String, Vec<(String, String)>)],
+    width: usize,
+    theme: &Theme,
+) -> Vec<Vec<Vec<super::design::Seg>>> {
+    let gutter = 3;
+    let column_width = width.saturating_sub(gutter * (SHORTCUT_COLUMNS - 1)) / SHORTCUT_COLUMNS;
+    let mut columns = vec![Vec::new(); SHORTCUT_COLUMNS];
+    for (title, entries) in sections {
+        let column = columns
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, lines)| lines.len())
+            .map(|(index, _)| index)
+            .unwrap_or(0);
+        columns[column].extend(section_lines(title, entries, column_width, theme));
+    }
+    columns
 }
 
 impl App {
@@ -266,24 +340,75 @@ pub(super) fn draw_shortcuts(
         width: r.width.saturating_sub(4),
         height: r.height.saturating_sub(7),
     };
-    let text = lines(app, query, body.width.max(1) as usize, theme);
-    let scroll = scroll.min(text.len().saturating_sub(body.height as usize));
+    let width = body.width.max(1) as usize;
+    let sections = sections(app, query);
+    let total_lines;
+    let scroll = if sections.is_empty() {
+        total_lines = 1;
+        put(
+            buf,
+            body.x,
+            body.y,
+            &[seg(
+                "No shortcuts match. Ctrl+U clears the search.",
+                style.fg(theme.muted),
+            )],
+            body.right(),
+        );
+        0
+    } else if width >= THREE_COLUMN_MIN_WIDTH {
+        let columns = three_column_lines(&sections, width, theme);
+        total_lines = columns.iter().map(Vec::len).max().unwrap_or(0);
+        let scroll = scroll.min(total_lines.saturating_sub(body.height as usize));
+        let gutter = 3;
+        let column_width = width.saturating_sub(gutter * (SHORTCUT_COLUMNS - 1)) / SHORTCUT_COLUMNS;
+        for (index, column) in columns.iter().enumerate() {
+            let column_scroll = scroll.min(column.len().saturating_sub(body.height as usize));
+            let x = body.x + (index * (column_width + gutter)) as u16;
+            for (row, line) in column
+                .iter()
+                .skip(column_scroll)
+                .take(body.height as usize)
+                .enumerate()
+            {
+                put(buf, x, body.y + row as u16, line, x + column_width as u16);
+            }
+            if index > 0 {
+                let divider_x = x.saturating_sub(2);
+                for y in body.y..body.bottom() {
+                    put(
+                        buf,
+                        divider_x,
+                        y,
+                        &[seg("│", Style::default().fg(theme.muted).bg(theme.card))],
+                        divider_x + 1,
+                    );
+                }
+            }
+        }
+        scroll
+    } else {
+        let text = single_column_lines(&sections, width, theme);
+        total_lines = text.len();
+        let scroll = scroll.min(text.len().saturating_sub(body.height as usize));
+        for (row, line) in text
+            .iter()
+            .skip(scroll)
+            .take(body.height as usize)
+            .enumerate()
+        {
+            put(buf, body.x, body.y + row as u16, line, body.right());
+        }
+        scroll
+    };
     if let Mode::Shortcuts { scroll: saved, .. } = &mut app.mode {
         *saved = scroll;
-    }
-    for (row, line) in text
-        .iter()
-        .skip(scroll)
-        .take(body.height as usize)
-        .enumerate()
-    {
-        put(buf, body.x, body.y + row as u16, line, body.right());
     }
     let count = format!(
         "{}–{} / {} lines · C- = Ctrl, M- = Alt",
         scroll + 1,
-        (scroll + body.height as usize).min(text.len()),
-        text.len()
+        (scroll + body.height as usize).min(total_lines),
+        total_lines
     );
     put(
         buf,
