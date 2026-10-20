@@ -32,7 +32,7 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
   the bottom of the sidebar lists common commands. `<leader> ?` lists every configured
   binding (including aliases), global shortcuts and controls inside each screen.
 - **Status at a glance.** Working (a quiet orange, its name shimmering), needs you (the theme's alert colour), done (green until
-  you look), idle. An alert or a sound tells you when one needs you or finishes out of view.
+  you look), idle. A sound tells you when one needs you; quiet completion notices keep you up to date.
   Click a sidebar status icon or pane status tag to see why, the evidence's age and any uncertainty.
 - **Subagents under their agent.** What an agent has running shows under its row
   (`↳ reconcile_audit`, repeats counted): Claude's from its hooks, Codex's from its session
@@ -87,7 +87,10 @@ it brings hydra's config, saved sessions and history over (hydra's own folders a
 were), and the next server start points your Claude hooks at seshi. Run `seshi integrate mcp` again
 if agents used hydra's MCP tools, then uninstall hydra when you're happy.
 
-Then run `seshi doctor` to check your setup. For the best look: a terminal with true colour and a
+Then run `seshi doctor` to check your setup. If Codex is on PATH, doctor checks its subagent
+hooks too. Run `seshi integrate codex` once on each machine using Codex, then restart Codex to
+load them; the hooks live in that machine's Codex config and are not shared by installing Seshi.
+For the best look: a terminal with true colour and a
 [Nerd Font](https://www.nerdfonts.com) (Windows Terminal, Ghostty, Alacritty, WezTerm, iTerm2).
 Optional: `git` (worktrees, changes), `gh` (opening a pull request from Changes).
 
@@ -209,13 +212,12 @@ Everything also works with the mouse. Hold Shift to select text with your termin
 
 ## Alerts
 
-Questions ring even in the focused pane; completion rings when you're away from it.
-Seshi uses two rising notes for needs you and one for finished, with an in-app note for
-other panes. Needs you is said at once. Finished waits one second and is only said if the agent is still finished then, so one
-that carries on by itself stays quiet; a session another agent started isn't said when it
-finishes at all, since that agent is the one waiting for it. With no seshi window
-open, the server plays the sound and shows a desktop notification instead. `[notify] sound =
-false` (Settings → Alert sounds) turns the sounds off; `seshi test-alert` plays them.
+Needs-you alerts ring even in the focused pane and use two rising notes. Completions stay
+quiet; other panes get an in-app completion notice. A needs-you alert is delayed briefly
+to ignore transient prompts and is cancelled if the agent resumes work. Sessions started
+by another agent do not alert when they finish. With no seshi window open, the server
+plays the needs-you sound and shows a desktop notification. `[notify] sound = false`
+(Settings → Alert sounds) turns the sound off; `seshi test-alert` plays both sample tones.
 
 **On your phone** (off until you set it up): install the free [ntfy](https://ntfy.sh) app (no
 account), subscribe to a topic name nobody would guess, and put it in Settings → Phone alerts

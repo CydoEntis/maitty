@@ -448,11 +448,14 @@ impl Daemon {
         }
     }
 
-    /// No window open: the server tells you itself (once for the same news), with seshi's
-    /// sound and a desktop notification.
+    /// No window open: the server shows a desktop notification; needs-you also gets a sound.
     fn alert(&mut self, term: TermId, status: Status) {
         let now = std::time::Instant::now();
-        let last_any = self.terms.values().filter_map(|t| t.alerted.map(|(_, at)| at)).max();
+        let last_any = self
+            .terms
+            .values()
+            .filter_map(|t| t.alerted.filter(|(status, _)| crate::alert::Kind::for_status(*status).is_some()).map(|(_, at)| at))
+            .max();
         if !self.has_viewer()
             && let Some(t) = self.terms.get_mut(&term)
             && crate::alert::should_alert(&status, t.alerted.as_ref().map(|(s, at)| (s, *at)), last_any, now)
@@ -462,8 +465,10 @@ impl Daemon {
             let place = t.place();
             let summary = t.summary.trim();
             let body = if summary.is_empty() { place } else { format!("{place} · {summary}") };
-            let (kind, what) = if status == Status::Blocked { (crate::alert::Kind::Needs, "needs you") } else { (crate::alert::Kind::Done, "finished") };
-            crate::alert::ring(&self.cfg.notify, kind);
+            let what = if status == Status::Blocked { "needs you" } else { "finished" };
+            if let Some(kind) = crate::alert::Kind::for_status(status) {
+                crate::alert::ring(&self.cfg.notify, kind);
+            }
             crate::alert::notify_soon(&format!("{agent} {what}"), &body, Some(crate::reveal::link(term)));
         }
     }
