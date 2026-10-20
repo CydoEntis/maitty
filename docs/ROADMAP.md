@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-20 against `origin/main` at v0.36.5.
+Last reconciled: 2026-10-20 against `origin/main` at v0.36.6.
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Seshi is a terminal multiplexer built for running many coding agents at once: see
@@ -11,9 +11,9 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The latest published release on `main` is v0.36.5. The v0.36.6 candidate keeps Caps Lock from changing shortcut meaning on Windows and terminals that report lock state. Leader + n opens a shell; sidebar x closes the selected session after confirmation. Release only after the full verification gate and promotion checks pass.
+The latest published release on `main` is v0.36.6. It keeps Caps Lock from changing shortcut meaning on Windows and terminals that report lock state. Leader + n opens a shell; sidebar x closes the selected session after confirmation. The v0.36.7 candidate routes scroll input to a normal-screen agent when Seshi has no retained history, including agents that do not capture mouse input. Regression tests and the full verification gate pass locally; live confirmation and release checks are pending.
 
-Seshi is terminal-first; direct subagent messaging remains out of scope. The v0.36.5 release includes cross-agent idle-status recovery and passed Windows, macOS and Linux installer checks.
+Seshi is terminal-first; direct subagent messaging remains out of scope. The v0.36.5 release includes cross-agent idle-status recovery; v0.36.6 passed Windows, macOS and Linux installer checks.
 
 User-requested pane padding polish: preserve the pane insets while matching the
 card and padding to a terminal app's solid surface when at least three screen

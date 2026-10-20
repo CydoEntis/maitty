@@ -1025,13 +1025,17 @@ impl App {
         let history = p.screen().scrollback();
         p.screen_mut().set_scrollback(at);
         let s = p.screen();
-        let mouse = match s.mouse_protocol_mode() {
-            vt100::MouseProtocolMode::None => "seshi",
-            _ => "the program",
+        let agent = self.snap.terms.get(&term).is_some_and(|t| t.agent.is_some());
+        let wheel = if s.alternate_screen()
+            || (history == 0 && (agent || s.mouse_protocol_mode() != vt100::MouseProtocolMode::None))
+        {
+            "the program"
+        } else {
+            "seshi"
         };
         let full = if s.alternate_screen() { "full-screen (it scrolls itself)" } else { "normal screen" };
         let raw = self.raw.get(&term).map(|r| r.len() / 1024).unwrap_or(0);
-        Some(format!("{full} · the wheel goes to {mouse} · {history} lines of history, {at} up · {raw} KB kept · {:?}", self.mode).chars().take(200).collect())
+        Some(format!("{full} · the wheel goes to {wheel} · {history} lines of history, {at} up · {raw} KB kept · {:?}", self.mode).chars().take(200).collect())
     }
 
     fn keep_raw(&mut self, term: TermId, data: &[u8], replace: bool) {
