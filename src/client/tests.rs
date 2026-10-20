@@ -927,6 +927,60 @@ mod hydra_tests {
     }
 
     #[test]
+    fn a_normal_screen_agent_without_scrollback_receives_mouse_wheel() {
+        use crossterm::event::{MouseEvent, MouseEventKind};
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        let mut p = vt100::Parser::new(40, 120, 1000);
+        p.process(b"\x1b[?1000h\x1b[?1006h");
+        app.parsers.insert(1, p);
+        draw(&mut app, 160, 45);
+        let (_, pane) = app.panes[0];
+
+        app.on_mouse(MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: pane.x + 5,
+            row: pane.y + 5,
+            modifiers: KeyModifiers::NONE,
+        });
+
+        assert!(matches!(rx.try_recv(), Ok(crate::protocol::ClientMsg::Input { term: 1, data }) if data == b"\x1b[<64;6;6M"));
+    }
+
+    #[test]
+    fn a_normal_screen_agent_pages_on_wheel_when_mouse_capture_is_off_and_history_is_empty() {
+        use crossterm::event::{MouseEvent, MouseEventKind};
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        app.parsers.insert(1, vt100::Parser::new(40, 120, 1000));
+        draw(&mut app, 160, 45);
+        let (_, pane) = app.panes[0];
+
+        app.on_mouse(MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: pane.x + 5,
+            row: pane.y + 5,
+            modifiers: KeyModifiers::NONE,
+        });
+
+        assert!(matches!(rx.try_recv(), Ok(crate::protocol::ClientMsg::Input { term: 1, data }) if data == b"\x1b[5~"));
+    }
+
+    #[test]
+    fn page_up_reaches_a_normal_screen_agent_when_history_is_empty() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        app.parsers.insert(1, vt100::Parser::new(40, 120, 1000));
+
+        app.on_key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE));
+
+        assert!(matches!(rx.try_recv(), Ok(crate::protocol::ClientMsg::Input { term: 1, data }) if data == b"\x1b[5~"));
+    }
+
+    #[test]
     fn behaves_like_a_terminal() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let mut p = vt100::Parser::new(40, 120, 1000);
@@ -1231,8 +1285,11 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         draw(&mut app, 160, 45);
         let (term, _) = app.pane_frames[0];
-        let p = app.new_parser(40, 100);
+        let mut p = app.new_parser(40, 100);
+        p.process(b"\x1b[?1000h\x1b[?1006h");
         app.parsers.insert(term, p);
+        let empty = app.pane_info(term).unwrap();
+        assert!(empty.contains("normal screen") && empty.contains("wheel goes to the program") && empty.contains("0 lines of history"), "{empty}");
         app.feed(term, &b"line\r\n".repeat(100));
         let info = app.pane_info(term).unwrap();
         assert!(info.contains("normal screen") && info.contains("the wheel goes to seshi") && info.contains("61 lines of history"), "{info}");

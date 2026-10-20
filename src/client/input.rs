@@ -362,6 +362,12 @@ impl App {
         if p.screen().alternate_screen() {
             return false;
         }
+        let agent = self.snap.terms.get(&term).is_some_and(|t| t.agent.is_some());
+        let has_history = self.history(term).1 > 0;
+        if agent && !has_history && matches!(k.code, KeyCode::PageUp | KeyCode::PageDown) {
+            return false;
+        }
+        let Some(p) = self.parsers.get(&term) else { return false };
         let s = p.screen();
         let at_prompt = s.mouse_protocol_mode() == vt100::MouseProtocolMode::None && (!s.application_cursor() || s.bracketed_paste());
         if k.modifiers.is_empty() && at_prompt && matches!(k.code, KeyCode::PageUp | KeyCode::PageDown) {
@@ -437,10 +443,11 @@ impl App {
             && let Some((term, inner)) = self.panes.iter().find(|(_, r)| r.contains(pos)).copied()
             && (self.hy.right_clicks.contains(&term)
                 || !matches!(m.kind, MouseEventKind::Down(MouseButton::Right) | MouseEventKind::Up(MouseButton::Right) | MouseEventKind::Drag(MouseButton::Right)))
-            // The wheel goes to full-screen programs, which scroll themselves; one printing
-            // into the normal screen (Claude Code) has its history here, so seshi scrolls it.
+            // Full-screen programs own their scrolling. On a normal screen, use Seshi history
+            // while it exists; pass the wheel to a mouse-aware program when that history is empty.
             && (!matches!(m.kind, MouseEventKind::ScrollUp | MouseEventKind::ScrollDown)
-                || self.parsers.get(&term).is_some_and(|p| p.screen().alternate_screen()))
+                || self.parsers.get(&term).is_some_and(|p| p.screen().alternate_screen())
+                || self.history(term).1 == 0)
             && let Some(bytes) = self.parsers.get(&term).and_then(|p| keys::mouse_bytes(p.screen(), &m, pos.x - inner.x, pos.y - inner.y))
         {
             if m.kind == MouseEventKind::Moved && self.hover != Some(pos) {
@@ -743,10 +750,10 @@ impl App {
                 };
                 let alt = self.parsers.get(&term).is_some_and(|p| p.screen().alternate_screen());
                 let agent = self.snap.terms.get(&term).is_some_and(|t| t.agent.is_some());
-                if alt && agent {
-                    // An agent's full-screen view that isn't taking the mouse (Claude Code's
-                    // after Ctrl+Z, or with mouse capture off): arrow keys would walk its
-                    // prompt history, so the wheel pages it (PgUp/PgDn), at most every 150 ms.
+                let no_history = self.history(term).1 == 0;
+                if (alt || no_history) && agent && !m.modifiers.contains(KeyModifiers::SHIFT) {
+                    // A full-screen view, or a normal-screen agent with no Seshi history:
+                    // arrow keys would walk its prompt history, so page it at most every 150 ms.
                     if self.wheel_page.is_none_or(|at| at.elapsed() >= Duration::from_millis(150)) {
                         self.wheel_page = Some(Instant::now());
                         let key: &[u8] = if up { b"\x1b[5~" } else { b"\x1b[6~" };
