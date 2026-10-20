@@ -1617,6 +1617,58 @@ mod hydra_tests {
     }
 
     #[test]
+    fn caps_lock_n_after_the_leader_starts_a_shell_not_history() {
+        use ratatui::crossterm::event::{KeyEventKind, KeyEventState};
+
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        let caps_state = if cfg!(windows) {
+            KeyEventState::NONE
+        } else {
+            KeyEventState::CAPS_LOCK
+        };
+        app.on_key(KeyEvent::new_with_kind_and_state(
+            KeyCode::Char('N'),
+            KeyModifiers::NONE,
+            KeyEventKind::Press,
+            caps_state,
+        ));
+
+        assert_eq!(app.mode, Mode::Normal, "Caps Lock must not open What happened");
+        assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|message| matches!(
+            message,
+            ClientMsg::Command(Command::NewWorkspace { .. })
+        )), "leader + Caps Lock + n opens a new shell");
+    }
+
+    #[test]
+    fn caps_lock_x_closes_the_sidebar_session_instead_of_typing() {
+        use ratatui::crossterm::event::{KeyEventKind, KeyEventState};
+
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        app.act(Action::BrowseTree);
+        let term = app.hy.cursor.expect("sidebar is on a session");
+        let caps_state = if cfg!(windows) {
+            KeyEventState::NONE
+        } else {
+            KeyEventState::CAPS_LOCK
+        };
+        app.on_key(KeyEvent::new_with_kind_and_state(
+            KeyCode::Char('X'),
+            KeyModifiers::NONE,
+            KeyEventKind::Press,
+            caps_state,
+        ));
+
+        assert!(
+            matches!(&app.mode, Mode::Confirm(confirm) if confirm.act == menu::Act::End(vec![term])),
+            "Caps Lock + x must ask to close the selected session"
+        );
+    }
+
+    #[test]
     fn settings_open_from_the_actions_menu_by_mouse_and_keyboard() {
         for by_mouse in [false, true] {
             let (_, mut app) = super::design_tests::render_with(100, 30);

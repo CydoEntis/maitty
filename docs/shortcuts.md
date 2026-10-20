@@ -5,6 +5,8 @@ The in-app reference lists every configured leader and global binding, including
 aliases and custom commands. Type to filter by key, action or screen name; arrows,
 page keys, Home/End and the mouse wheel scroll. Ctrl+U clears; Esc closes.
 `C-` means Ctrl, `M-` means Alt. The [README](../README.md#use) lists the defaults.
+On Windows, Caps Lock does not change shortcut meaning; hold Shift for uppercase
+bindings such as `N` (What happened).
 
 Mouse entry: **Actions** stays at the top right even with the sidebar hidden.
 It opens agent status setup, Settings and All commands.
