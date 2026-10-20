@@ -1,7 +1,7 @@
 //! Key specs ("ctrl+b", "alt+h", "%", "shift+tab"), bindable actions and the default keymap.
 
 use anyhow::{Result, anyhow, bail};
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventState, KeyModifiers};
 use std::fmt;
 use std::str::FromStr;
 
@@ -18,6 +18,14 @@ impl KeySpec {
         let mut mods = ev.modifiers & (KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT);
         let mut code = ev.code;
         if let KeyCode::Char(c) = code {
+            // Windows reports Caps Lock as an uppercase character without Shift; terminals
+            // with enhanced keyboard reporting provide the lock state explicitly.
+            if c.is_ascii_uppercase()
+                && !mods.contains(KeyModifiers::SHIFT)
+                && (cfg!(windows) || ev.state.contains(KeyEventState::CAPS_LOCK))
+            {
+                code = KeyCode::Char(c.to_ascii_lowercase());
+            }
             mods.remove(KeyModifiers::SHIFT);
             if mods.contains(KeyModifiers::CONTROL) && c.is_ascii_uppercase() {
                 code = KeyCode::Char(c.to_ascii_lowercase());
@@ -878,6 +886,18 @@ mod tests {
         assert_eq!(spec, KeySpec::from_event(&ev(KeyCode::Char('N'), KeyModifiers::SHIFT)));
         let spec: KeySpec = "N".parse().unwrap();
         assert_eq!(spec, KeySpec::from_event(&ev(KeyCode::Char('N'), KeyModifiers::SHIFT)));
+        let caps_lock_n = KeyEvent::new_with_kind_and_state(
+            KeyCode::Char('N'),
+            KeyModifiers::NONE,
+            KeyEventKind::Press,
+            KeyEventState::CAPS_LOCK,
+        );
+        assert_eq!(KeySpec::from_event(&caps_lock_n), "n".parse().unwrap());
+        #[cfg(windows)]
+        assert_eq!(
+            KeySpec::from_event(&ev(KeyCode::Char('N'), KeyModifiers::NONE)),
+            "n".parse().unwrap()
+        );
         let space: KeySpec = "ctrl+space".parse().unwrap();
         assert_eq!(space, KeySpec::from_event(&ev(KeyCode::Char(' '), KeyModifiers::CONTROL)));
         assert_eq!(space, KeySpec::from_event(&ev(KeyCode::Char('@'), KeyModifiers::CONTROL | KeyModifiers::SHIFT)));
