@@ -632,30 +632,32 @@ mod hydra_tests {
         let child_y = app.hits.iter().find_map(|(rect, hit)| {
             (*hit == Hit::Hy(hydra::HyHit::SubagentInfo(term, 0))).then_some(rect.y)
         }).expect("the working child row is rendered");
-        let spinner_frames = &app.cfg.ui.spinner;
-        let spinner_cell = (0..160).find_map(|x| {
-            spinner_frames.iter().any(|frame| frame == buffer[(x, child_y)].symbol())
-                .then_some((x, &buffer[(x, child_y)]))
-        }).expect("the child row uses an animated spinner frame");
-        assert_eq!(spinner_cell.1.fg, app.theme.muted, "the working child marker is neutral gray");
+        assert!((0..160).all(|x| !app.cfg.ui.spinner.iter().any(|frame| frame == buffer[(x, child_y)].symbol())), "working children have no animated spinner");
+        let role_icon = (0..159).find(|x| buffer[(*x, child_y)].symbol() == "⚙")
+            .expect("the working stage keeps its one-cell icon");
+        assert_eq!(buffer[(role_icon, child_y)].fg, app.theme.muted, "the working child icon is neutral gray");
         let working_label = (0..153).find(|x| {
             (0.."Working".len()).all(|offset| buffer[(x + offset as u16, child_y)].symbol() == &"Working"[offset..offset + 1])
         }).expect("the fallback stage label is visible");
         assert_eq!(buffer[(working_label, child_y)].fg, app.theme.muted, "the child label is visually secondary");
         assert!(!buffer[(working_label, child_y)].modifier.contains(ratatui::style::Modifier::BOLD), "the child label is not bold");
+        assert!(buffer[(working_label, child_y)].modifier.contains(ratatui::style::Modifier::DIM), "the child label is visually quieter than its parent");
+        assert!(working_label >= role_icon + 3, "leave a clear gap after the icon");
     }
 
     #[test]
-    fn a_working_subagent_keeps_the_spinner_animating_without_parent_work() {
+    fn a_working_subagent_does_not_animate_when_its_parent_is_idle() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
+        for term in app.snap.terms.values_mut() {
+            term.status = Status::None;
+        }
         let pane = app.snap.terms.get_mut(&1).unwrap();
-        pane.status = Status::None;
         pane.subagent_activity = vec![SubagentActivity {
             id: "child-live".into(), name: "worker".into(), parent: None,
             state: SubagentState::Working, task: None, model: None, effort: None,
             started_at: None, updated_at: 0, latest_activity: None, result: None,
         }];
-        assert!(app.any_working(), "reported child work advances its configured spinner even when the parent is idle");
+        assert!(!app.any_working(), "child rows have no spinner to animate when the parent is idle");
     }
 
 
@@ -2000,14 +2002,20 @@ mod hydra_tests {
             let row = |y| (0..160).map(|x| buf[(x, y)].symbol()).collect::<String>();
             let y = (0..45).find(|&y| row(y).contains(name)).unwrap_or_else(|| panic!("{name} helper row"));
             let x = row(y)[..row(y).find(name).unwrap()].chars().count() as u16;
-            (buf[(x - 2, y)].symbol().to_string(), buf[(x - 2, y)].fg, buf[(x, y)].fg, buf[(x - 4, y)].fg)
+            (buf[(x - 3, y)].symbol().to_string(), buf[(x - 3, y)].fg, buf[(x, y)].fg, buf[(x - 4, y)].fg)
         };
         let (planner, builder, reviewer) = (at("Planning"), at("Working"), at("Reviewing"));
         assert_eq!([planner.0.as_str(), builder.0.as_str(), reviewer.0.as_str()], ["\u{270e}", "\u{2699}", "\u{2696}"], "an icon for each pipeline stage");
         let neutral = app.theme.muted;
         assert_eq!([planner.1, builder.1, reviewer.1], [neutral; 3], "stage icons use the secondary neutral color");
         assert_eq!([planner.2, builder.2, reviewer.2], [neutral; 3], "stage labels use the secondary neutral color");
-        assert_eq!([planner.3, builder.3, reviewer.3], [neutral; 3], "active helpers use a neutral animated status marker");
+        assert_eq!([planner.3, builder.3, reviewer.3], [neutral; 3], "active helpers use a neutral connector");
+        for y in (0..45).filter(|&y| (0..160).map(|x| buf[(x, y)].symbol()).collect::<String>().contains("Working")) {
+            let row = (0..160).map(|x| buf[(x, y)].symbol()).collect::<String>();
+            let label = row[..row.find("Working").unwrap()].chars().count() as u16;
+            assert_eq!(buf[(label - 2, y)].symbol(), " ");
+            assert_eq!(buf[(label - 1, y)].symbol(), " ");
+        }
     }
 
     #[test]

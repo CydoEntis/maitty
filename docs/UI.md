@@ -179,9 +179,7 @@ total blocked count visible even when its rows are off-screen. Provide a mouse
 expand control and retain Actions. The rail is the collapsed state of the same
 layout, not another layout.
 
-Show active helper rows under their owning agent: an icon for what the helper is doing
-(`✎` planning, a book researching (Nerd Font `\u{f02d}`, else `▤`), `⚙` building, `⚖` reviewing, `●` otherwise) in the eased working
-orange, then its name in the plain text colour. Roles are told apart by icon, never by colour.
+Show active helper rows under their owning agent with a compact stage icon and a clear gap before the label. Keep helper rows dim and neutral gray, without a working spinner, so the parent session remains visually primary. Preserve distinct status colors for helpers that need attention, have completed, or failed. Roles are told apart by icon, never by color.
 
 ## Project-specific: frame presentation
 

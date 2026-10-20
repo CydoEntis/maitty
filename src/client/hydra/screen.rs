@@ -265,11 +265,6 @@ pub(super) fn subagent_stage(name: &str, task: Option<&str>, nerd: bool) -> (&'s
     }
 }
 
-fn working_frame(app: &App) -> String {
-    let frames = &app.cfg.ui.spinner;
-    frames.get(app.spinner_frame() as usize % frames.len().max(1)).cloned().unwrap_or_else(|| app.cfg.icons.working.clone())
-}
-
 /// This many of a session's native helper agents are named before they are counted.
 const SUBS_LISTED: usize = 8;
 
@@ -615,13 +610,12 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 if small {
                     continue;
                 }
-                let spinner = working_frame(app);
-                let base = Style::default().bg(pb);
+                let base = Style::default().bg(pb).fg(t.muted).add_modifier(Modifier::DIM);
                 let available = w.saturating_sub(11 + indent) as usize;
                 let label = truncate(name, available.saturating_sub(6));
-                let mut segs = vec![seg("  ↳ ", base.fg(t.muted)), seg(format!("{spinner} "), base.fg(t.muted))];
-                segs.push(seg(format!("{icon} "), base.fg(t.muted)));
-                segs.push(seg(label, base.fg(t.muted)));
+                let mut segs = vec![seg("  ↳ ", base)];
+                segs.push(seg(format!("{icon}  "), base));
+                segs.push(seg(label, base));
                 put(buf, x0 + 7 + indent, y, &segs, right);
                 hit(app, row, HyHit::Session(*term));
             }
@@ -636,7 +630,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     crate::protocol::SubagentState::Starting => t.accent,
                 };
                 let icon = match activity.state {
-                    crate::protocol::SubagentState::Working => working_frame(app),
+                    crate::protocol::SubagentState::Working => String::new(),
                     crate::protocol::SubagentState::WaitingForInput => "?".into(),
                     crate::protocol::SubagentState::AwaitingApproval => "!".into(),
                     crate::protocol::SubagentState::Completed => "✓".into(),
@@ -648,15 +642,18 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 let (stage, role_icon) = subagent_stage(&activity.name, activity.task.as_deref(), app.cfg.ui.pill_caps);
                 let detail = activity.task.as_deref().filter(|task| !task.trim().is_empty()).unwrap_or(stage);
                 let label = truncate(detail, w.saturating_sub(20 + indent) as usize);
-                let st = Style::default().bg(pb);
+                let st = Style::default().bg(pb).add_modifier(Modifier::DIM);
                 let mut icon_style = st.fg(state_color);
                 let mut label_style = st.fg(state_color);
                 if activity.state != crate::protocol::SubagentState::Working {
                     icon_style = icon_style.add_modifier(Modifier::BOLD);
                     label_style = label_style.add_modifier(Modifier::BOLD);
                 }
-                let mut segs = vec![seg("  ↳ ", st.fg(t.muted)), seg(format!("{icon} "), icon_style)];
-                segs.push(seg(format!("{role_icon} "), st.fg(t.muted)));
+                let mut segs = vec![seg("  ↳ ", st.fg(t.muted))];
+                if !icon.is_empty() {
+                    segs.push(seg(format!("{icon} "), icon_style));
+                }
+                segs.push(seg(format!("{role_icon}  "), st.fg(t.muted)));
                 segs.push(seg(label, label_style));
                 put(buf, x0 + 7 + indent, y, &segs, right);
                 hit(app, row, HyHit::SubagentInfo(*term, *index));
