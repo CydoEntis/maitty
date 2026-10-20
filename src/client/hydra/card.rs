@@ -58,7 +58,7 @@ pub(in crate::client) fn pane_bg(t: &Theme) -> Color {
 }
 
 pub(in crate::client) fn flat_pane_bg(t: &Theme) -> Color {
-    blend(t.bg, Color::Rgb(0, 0, 0), 0.4)
+    t.card
 }
 
 /// A state's colour on a card or tab: working reads as plain text, the rest as their state.
