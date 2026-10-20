@@ -216,7 +216,7 @@ mod hydra_tests {
             assert!(output.contains("All shortcuts") && output.contains("AFTER LEADER") && output.contains("Esc"));
             app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
             let output = draw(&mut app, w, h);
-            assert!(output.contains("Complete current directory"), "the end of the reference is reachable");
+            assert!(output.contains("Complete current"), "the end of the reference is reachable at {w} columns");
             app.on_key(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE));
             draw(&mut app, w, h);
             app.on_mouse(MouseEvent { kind: MouseEventKind::ScrollDown, column: w / 2, row: h / 2, modifiers: KeyModifiers::NONE });
@@ -252,6 +252,37 @@ mod hydra_tests {
             })
         });
         assert!(keycap, "the Inbox binding should be visually rendered on a raised keycap");
+    }
+
+    #[test]
+    fn all_keys_places_shortcut_sections_in_three_columns_on_wide_screens() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.open_shortcuts();
+        let mut terminal = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        terminal.draw(|frame| render::draw(&mut app, frame)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let output = (0..45)
+            .map(|y| {
+                (0..160)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        show(&output);
+        let heading_x = |heading: &str| {
+            (0..45).find_map(|y| {
+                let row = (0..160)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>();
+                row.find(heading)
+            })
+        };
+        let positions = ["START HERE", "AFTER LEADER", "WITHOUT LEADER"]
+            .map(|heading| heading_x(heading).expect("configured bindings are visible"));
+        assert_ne!(positions[0], positions[1], "sections should occupy separate columns");
+        assert_ne!(positions[1], positions[2], "sections should occupy separate columns");
+        assert_ne!(positions[0], positions[2], "sections should occupy separate columns");
     }
 
     #[test]

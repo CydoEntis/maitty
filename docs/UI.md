@@ -122,7 +122,7 @@ Show reported child agents under their parent, never as independent projects. Ma
 
 Keep update indicators until the installed program, window and daemon versions agree. Installing an update leaves current processes running; it does not interrupt sessions. Apply daemon changes after the user restarts when sessions are safe to stop.
 
-**All keys** (`<leader> ?`, Actions or palette) opens a searchable, scrollable reference. List every active configured leader/global binding separately, including aliases and custom commands. Show palette-only commands without inventing bindings. Keep the delayed leader overview compact. Contextual keys come from [shortcuts.md](shortcuts.md), embedded in the app so both stay identical. Render each binding as a keycap, separate from its action text; use clear section headings and wrap long actions without making them look like additional keys.
+**All keys** (`<leader> ?`, Actions or palette) opens a searchable, scrollable reference. List every active configured leader/global binding separately, including aliases and custom commands. Show palette-only commands without inventing bindings. Keep the delayed leader overview compact. Contextual keys come from [shortcuts.md](shortcuts.md), embedded in the app so both stay identical. Render each binding as a keycap, separate from its action text; use clear section headings and wrap long actions without making them look like additional keys. On wide screens, balance whole sections into three visibly separated columns; use one column when the reference would otherwise be cramped.
 
 ## Project-specific: pane focus
 
