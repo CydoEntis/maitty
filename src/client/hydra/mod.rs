@@ -1,7 +1,7 @@
 //! The Seshi layout, from the design handoff: projects (git repos) in the sidebar, each
 //! project's worktrees with the sessions running in them, and the focused session full size
 //! (optionally split with a second). Most tools are centred overlays over a dimmed
-//! screen: jump, new pane, talk and keys. Settings and review use a right-hand sheet
+//! screen: jump, new pane, talk and keys. Settings uses a centred modal; review uses a right-hand sheet
 //! beside the panes.
 //!
 //! The daemon only knows workspaces, tabs and terminals. Here every terminal is a session;
@@ -659,6 +659,7 @@ impl App {
                     subagents: t.subagents.clone(),
                     subagent_activity: t.subagent_activity.iter()
                         .filter(|activity| activity.parent.as_deref().is_none_or(|parent| Some(parent) == t.session.as_deref()))
+                        .filter(|activity| activity.state.active())
                         .cloned()
                         .collect(),
                     resume_at: t.resume_at,

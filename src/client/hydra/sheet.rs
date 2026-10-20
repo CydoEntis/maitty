@@ -8,7 +8,6 @@ use crate::client::overlap::Overlap;
 /// What the sheet shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::client) enum SheetKind {
-    Settings,
     Inbox,
     Changes,
     /// Both diffs of a heads-up's file.
@@ -23,9 +22,7 @@ pub(super) const WIDE_AT: u16 = 200;
 /// The sheet that's open, if any: the Inbox while you're in it (or writing a follow-up in
 /// one of its rows), else Changes.
 pub(in crate::client) fn open_sheet(app: &App) -> Option<SheetKind> {
-    if matches!(app.mode, Mode::HySettings(_)) {
-        Some(SheetKind::Settings)
-    } else if inbox_place(app).is_some() {
+    if inbox_place(app).is_some() {
         Some(SheetKind::Inbox)
     } else if matches!(app.view, Some(crate::client::View::Changes(_))) {
         Some(SheetKind::Changes)
@@ -65,7 +62,6 @@ pub(in crate::client) fn heads_up(app: &App) -> Vec<(PathBuf, Overlap)> {
 
 pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t: &Theme) {
     let (title, close) = match kind {
-        SheetKind::Settings => ("Settings", HyHit::Close),
         SheetKind::Inbox => ("Inbox", HyHit::Close),
         SheetKind::Changes | SheetKind::Both => ("Changes", HyHit::ViewClose),
     };
@@ -79,21 +75,7 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     let inside = card(app, buf, r, &c, t);
     // Clicks inside it stay in it.
     hit(app, inside, HyHit::Noop);
-    if kind == SheetKind::Settings && r.width < 44 {
-        put(buf, inside.x + 1, inside.y + 1, &[seg("Make the window wider", Style::default().fg(t.muted).bg(t.card))], inside.right());
-        return;
-    }
-    if kind == SheetKind::Settings && r.height < 18 {
-        put(buf, inside.x + 1, inside.y + 1, &[seg("Make the window taller", Style::default().fg(t.muted).bg(t.card))], inside.right());
-        return;
-    }
     match kind {
-        SheetKind::Settings => {
-            if let Mode::HySettings(v) = &app.mode {
-                let v = (**v).clone();
-                crate::client::hydra::draw_settings(app, buf, inside, t, &v);
-            }
-        }
         SheetKind::Inbox => draw_inbox(app, buf, inside, t),
         SheetKind::Changes => {
             let inner = Rect { x: inside.x + 1, width: inside.width.saturating_sub(2), ..inside };
@@ -107,6 +89,37 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
                 draw_both(buf, inside, t, v);
             }
         }
+    }
+}
+
+/// Settings is a modal so it does not take width away from the workspace.
+pub(in crate::client) fn draw_settings_modal(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
+    let Mode::HySettings(view) = &app.mode else { return };
+    let view = (**view).clone();
+    let max_width = area.width.saturating_sub(4).min(128);
+    let max_height = area.height.saturating_sub(2).min(48);
+    let r = Rect {
+        x: area.x + area.width.saturating_sub(max_width) / 2,
+        y: area.y + area.height.saturating_sub(max_height) / 2,
+        width: max_width,
+        height: max_height,
+    };
+    super::dim_all(buf, area, t);
+    hit(app, area, HyHit::Noop);
+    let mut c = Card::new(t, "Settings").lit(t.accent);
+    c.bg = t.card;
+    c.close = Some(HyHit::Close);
+    if Look::of(&app.cfg.ui).flat {
+        c.foot_r = vec![seg("Esc close", Style::default().fg(t.muted).bg(t.card))];
+    }
+    let inside = card(app, buf, r, &c, t);
+    hit(app, inside, HyHit::Noop);
+    if inside.width < 44 {
+        put(buf, inside.x + 2, inside.y + 2, &[seg("Make the window wider", Style::default().fg(t.muted).bg(t.card))], inside.right());
+    } else if inside.height < 18 {
+        put(buf, inside.x + 2, inside.y + 2, &[seg("Make the window taller", Style::default().fg(t.muted).bg(t.card))], inside.right());
+    } else {
+        crate::client::hydra::draw_settings(app, buf, inside, t, &view);
     }
 }
 
