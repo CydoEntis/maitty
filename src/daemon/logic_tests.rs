@@ -541,12 +541,23 @@ fn a_clean_up_only_takes_worktrees_nothing_runs_in() {
     let t = d.spawn(None, &busy, 80, 24).expect("a shell there");
     d.terms.get_mut(&t).unwrap().refresh_head();
     assert!(d.runs_in(&crate::gitfs::head(&busy).unwrap().top) && !d.runs_in(&crate::gitfs::head(&idle).unwrap().top));
+    d.terms.get_mut(&t).unwrap().head = None;
+    assert!(d.runs_in(&busy), "a restored pane protects its checkout before git detection completes");
     let (go, stay) = d.tidy_plan(vec![(idle.clone(), false), (busy.clone(), true), (repo.clone(), false), (root.join("nowhere"), false)]);
     assert_eq!(go.len(), 1, "only the idle one goes: {go:?}");
     assert!(same_path(&go[0].0, &idle) && !go[0].1);
     let why: Vec<(&str, &str)> = stay.iter().map(|(n, w)| (n.as_str(), w.as_str())).collect();
     assert_eq!(why, [("busy", "something is running in it"), ("repo", "it isn't a worktree"), ("nowhere", "it isn't a worktree")], "the main folder is never one");
-    close(&mut d, &[t]);
+    let sibling = d.spawn(None, &busy, 80, 24).expect("a second pane in the checkout");
+    d.terms.get_mut(&t).unwrap().refresh_head();
+    d.terms.get_mut(&sibling).unwrap().head = None;
+    d.made_worktrees.push(busy.clone());
+    let tops = d.worktrees_of(&[t]);
+    d.close_term(t);
+    d.cleanup_worktrees(EVERYONE, tops);
+    assert!(busy.is_dir(), "closing one pane must not delete a worktree while its sibling is still starting");
+    assert!(d.terms.contains_key(&sibling), "the sibling pane remains alive");
+    close(&mut d, &[sibling]);
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -889,9 +900,11 @@ fn restore_gives_panes_new_ids_and_keeps_their_layout() {
     let dir = std::env::temp_dir();
     let mut layout = Node::Leaf(70);
     layout.split(70, crate::layout::Dir::Right, 71);
+    layout.split(71, crate::layout::Dir::Down, 72);
     let mut panes = std::collections::BTreeMap::new();
     panes.insert(70, persist::SavedPane { cwd: Some(dir.clone()), name: "left one".into(), label: "Map Gen".into(), ..Default::default() });
     panes.insert(71, persist::SavedPane { cwd: Some(dir.clone()), model: "opus".into(), ..Default::default() });
+    panes.insert(72, persist::SavedPane { cwd: Some(dir.clone()), ..Default::default() });
     let saved = persist::Saved {
         workspaces: vec![persist::SavedWs {
             name: "api".into(),
@@ -909,10 +922,14 @@ fn restore_gives_panes_new_ids_and_keeps_their_layout() {
     assert_eq!(d.workspaces.len(), 1);
     let tab = &d.workspaces[0].tabs[0];
     let leaves = tab.layout.leaves();
-    assert_eq!(leaves.len(), 2, "both panes came back, side by side");
-    assert!(leaves.iter().all(|t| d.terms.contains_key(t) && *t != 70 && *t != 71), "with this run's ids");
-    let (left, right) = (leaves[0], leaves[1]);
+    assert_eq!(leaves.len(), 3, "all three panes came back");
+    assert!(leaves.iter().all(|t| d.terms.contains_key(t) && ![70, 71, 72].contains(t)), "with this run's ids");
+    let (left, right, below) = (leaves[0], leaves[1], leaves[2]);
     assert_eq!(tab.focus, right, "focus follows the pane it was on");
+    let rects = tab.layout.rects(ratatui::layout::Rect::new(0, 0, 120, 40));
+    let rect = |id| rects.iter().find(|(term, _)| *term == id).unwrap().1;
+    assert_eq!(rect(below).x, rect(right).x, "restoration retains the right-side column");
+    assert!(rect(below).y > rect(right).y, "restoration retains the down split");
     assert_eq!(d.terms[&left].first_prompt, "left one");
     assert_eq!(d.terms[&left].label, "Map Gen", "the name you gave it comes back");
     assert_eq!(d.saved().workspaces[0].tabs[0].panes[&left].label, "Map Gen", "and is saved again");

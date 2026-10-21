@@ -253,6 +253,28 @@ mod tests {
     }
 
     #[test]
+    fn split_directions_place_the_new_pane_below_or_beside_the_target() {
+        let area = Rect::new(0, 0, 100, 40);
+        let mut right = Node::Leaf(1);
+        assert!(right.split(1, Dir::Right, 2));
+        let right_rects = right.rects(area);
+        let rect = |rects: &[(TermId, Rect)], id| {
+            rects
+                .iter()
+                .find(|(term, _)| *term == id)
+                .map(|(_, rect)| *rect)
+        };
+        assert_eq!(rect(&right_rects, 1), Some(Rect::new(0, 0, 50, 40)));
+        assert_eq!(rect(&right_rects, 2), Some(Rect::new(50, 0, 50, 40)));
+
+        let mut down = Node::Leaf(1);
+        assert!(down.split(1, Dir::Down, 2));
+        let down_rects = down.rects(area);
+        assert_eq!(rect(&down_rects, 1), Some(Rect::new(0, 0, 100, 20)));
+        assert_eq!(rect(&down_rects, 2), Some(Rect::new(0, 20, 100, 20)));
+    }
+
+    #[test]
     fn neighbors() {
         let mut n = Node::Leaf(1);
         n.split(1, Dir::Right, 2);
