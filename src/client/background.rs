@@ -156,7 +156,7 @@ impl App {
         }
     }
 
-    /// Needs-you alerts ring even in the focused pane; completions stay quiet.
+    /// Needs-you alerts ring even in the focused pane; background completions use a soft note.
     /// With no window open the server shows a desktop notification instead.
     fn alert_now(&mut self, term: TermId, status: Status) {
         if !self.snap.terms.get(&term).is_some_and(|t| t.status == status) {
@@ -168,10 +168,15 @@ impl App {
         // The same news again soon, or another agent just rang: the note says it, quietly.
         let now = Instant::now();
         if let Some(kind) = crate::alert::Kind::for_status(status)
-            && crate::alert::should_alert(&status, self.alerted.get(&term).map(|(s, at)| (s, *at)), self.last_alert, now)
+            && crate::alert::should_alert(
+                &status,
+                self.alerted.get(&term).map(|(s, at)| (s, *at)),
+                self.last_alert.filter(|(previous, _)| *previous == kind).map(|(_, at)| at),
+                now,
+            )
         {
             self.alerted.insert(term, (status, now));
-            self.last_alert = Some(now);
+            self.last_alert = Some((kind, now));
             crate::alert::ring(&self.cfg.notify, kind);
         }
         if self.focused() == Some(term) {

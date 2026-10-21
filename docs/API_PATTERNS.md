@@ -190,5 +190,6 @@ Publish attention status immediately, but debounce its sound: blocked waits
 300 ms and done waits one second. Queue the expected status with its deadline
 in both client and daemon. Cancel on a different snapshot/status or pane removal;
 recheck the exact status before ringing. Transient auto-approved asks and stale
-attention messages must not ring while the agent is working. Helper completion
-stays quiet; helper questions may ring after the same blocked delay.
+attention messages must not ring while the agent is working. Background top-level
+completion uses the soft completion sound; helper completion stays quiet. Helper
+questions may ring after the same blocked delay.

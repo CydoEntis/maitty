@@ -190,8 +190,6 @@ pub(in crate::client) enum Line {
     Subs(TermId, usize, bool),
     /// Nothing running in a folder project.
     Empty(usize),
-    /// A project's settled group: how many sessions are set aside, and whether it's unfolded.
-    Aside(usize, usize, bool),
     Gap,
 }
 
@@ -335,8 +333,7 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
         // Just the sessions: the ones that need you first, the rest where they were (the repo
         // folder's before the worktrees' when equal).
         let every: Rows = (0..p.wts.len()).flat_map(|wi| (0..p.wts[wi].sessions.len()).map(move |si| (wi, si))).collect();
-        // The ones set aside (settled, snoozed) go under one line at the foot of the project.
-        let (aside, mut rows): (Rows, Rows) = every.into_iter().partition(|&(wi, si)| p.wts[wi].sessions[si].aside.is_some());
+        let mut rows = every;
         // Your order (dragged) otherwise.
         let order = &app.hy.saved.session_order;
         let at = |t: TermId| order.iter().position(|x| *x == t).unwrap_or(usize::MAX);
@@ -372,33 +369,12 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
             let s = &p.wts[wi].sessions[si];
             session_lines(s, app.hy.subs_closed.contains(&s.term), t, &mut out);
         }
-        if !any && aside.is_empty() {
+        if !any {
             out.push(Line::Empty(pi));
-        }
-        if !aside.is_empty() {
-            let open = app.hy.aside_open.contains(&p.key);
-            out.push(Line::Aside(pi, aside.len(), open));
-            for (wi, si) in aside.into_iter().filter(|_| open) {
-                out.push(Line::Sess(pi, wi, si, 1));
-                let s = &p.wts[wi].sessions[si];
-                if let Some(until) = s.aside.filter(|u| *u > 0) {
-                    out.push(Line::Note(format!("snoozed · back in {}", until_note(until)), t.muted, s.term));
-                }
-            }
         }
         out.push(Line::Gap);
     }
     out
-}
-
-/// How long until `at` (unix seconds): "40m", "3h", "2d".
-fn until_note(at: u64) -> String {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    match at.saturating_sub(now) {
-        s @ 0..=3599 => format!("{}m", s.div_ceil(60)),
-        s @ 3600..=86_399 => format!("{}h", s.div_ceil(3600)),
-        s => format!("{}d", s.div_ceil(86_400)),
-    }
 }
 
 /// The session a sidebar line stands for, if any.
@@ -719,16 +695,6 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 let label = format!("{} {n} subagent{}", if *open { "▾" } else { "▸" }, if *n == 1 { "" } else { "s" });
                 put(buf, x0 + 7 + indent, y, &[seg(label, st)], right);
                 hit(app, row, HyHit::ToggleSubs(*term));
-            }
-            // The settled group: one quiet line that unfolds.
-            Line::Aside(pi, n, open) => {
-                let bg = if hovered(app, row) { t.hov } else { pb };
-                if bg != pb {
-                    row_pill(look, buf, row.x, y, row.width, bg, pb);
-                }
-                let st = Style::default().bg(bg).fg(t.muted);
-                put(buf, x0 + 5, y, &[seg(if *open { "▾ " } else { "▸ " }, st), seg(format!("settled · {n}"), st.add_modifier(Modifier::ITALIC))], right);
-                hit(app, row, HyHit::ToggleAside(*pi));
             }
             // A quiet heading: "AGENTS 2 ────".
             Line::Section(kind, n) => {

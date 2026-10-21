@@ -20,6 +20,13 @@ Provider reload and live reporting still need confirmation in sessions on the
 machines where those providers run. Pi full-screen scroll behavior remains an
 open live-validation item below.
 
+User-reported sidebar hiding was removed: idle and completed sessions remain
+visible, with no snooze or automatic settling. Background top-level completions
+now use the soft alert sound; the focused session and helper completions stay
+quiet. Starting an agent in a git project defaults to a new worktree, and a
+stale explicit worktree choice now asks the user to choose again rather than
+silently starting in the main checkout.
+
 Seshi is terminal-first; direct subagent messaging remains out of scope. The v0.36.5 release includes cross-agent idle-status recovery; v0.36.6 passed Windows, macOS and Linux installer checks.
 
 User-requested pane padding polish: preserve the pane insets while matching the
@@ -268,9 +275,7 @@ anything starts in it (0.25.1).
 Shipped by v0.26.0: queued follow-ups (the queue, back from the 2026-10-09 cut; sent
 when the turn ends, never into a question), named accounts (an agent entry with its own `env`),
 snapshots before each turn (checkpoints, back from the same cut; a restore keeps what's there
-first), and auto-settle and snooze (decided 2026-10-12: a session idle for `settle_after`, or
-whose branch's work is merged, folds into a collapsed `settled` line at the foot of its
-project; snooze sends one there until a time you pick; one that needs you always comes back).
+first), and automatic session hiding and snooze. Sessions now remain visible until explicitly closed.
 
 The real-day-use check and the known squash-merge detection gap remain visible in
 [Later](#later); neither is on the current work path.

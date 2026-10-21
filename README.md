@@ -32,7 +32,7 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
   the bottom of the sidebar lists common commands. `<leader> ?` lists every configured
   binding (including aliases), global shortcuts and controls inside each screen.
 - **Status at a glance.** Working (a quiet orange, its name shimmering), needs you (the theme's alert colour), done (green until
-  you look), idle. A sound tells you when one needs you; quiet completion notices keep you up to date.
+  you look), idle. A rising sound marks a question; a soft note marks a background completion.
   Click a sidebar status icon or pane status tag to see why, the evidence's age and any uncertainty.
 - **Subagents under their agent.** What an agent has running shows under its row
   (`↳ reconcile_audit`, repeats counted): Claude's from its hooks, Codex's from its session
@@ -231,12 +231,12 @@ Everything also works with the mouse. Hold Shift to select text with your termin
 
 ## Alerts
 
-Needs-you alerts ring even in the focused pane and use two rising notes. Completions stay
-quiet; other panes get an in-app completion notice. A needs-you alert is delayed briefly
+Needs-you alerts ring even in the focused pane and use two rising notes. A background
+session's completion uses one soft note; the session you're viewing stays quiet. Other panes get an in-app completion notice. A needs-you alert is delayed briefly
 to ignore transient prompts and is cancelled if the agent resumes work. Sessions started
 by another agent do not alert when they finish. With no seshi window open, the server
 plays the needs-you sound and shows a desktop notification. `[notify] sound = false`
-(Settings → Alert sounds) turns the sound off; `seshi test-alert` plays both sample tones.
+(Settings → Alert sounds) turns sounds off; `seshi test-alert` plays both sample tones.
 
 **On your phone** (off until you set it up): install the free [ntfy](https://ntfy.sh) app (no
 account), subscribe to a topic name nobody would guess, and put it in Settings → Phone alerts
@@ -257,18 +257,9 @@ Seshi no longer stops idle agents automatically; they keep running until you clo
 their own agent process exits. Sessions saved while sleeping by an older version recover when you open them. Seshi does not
 show a separate sleep screen or wake animation.
 
-## Settled and snoozed
+## Session visibility
 
-An agent that has sat finished or idle for `settle_after` (default `"3d"`; `"never"` turns it
-off), or whose branch's commits have all landed somewhere else with nothing uncommitted, folds
-into a **settled** line at the foot of its project. Click the line (or **Show settled** in the
-project's menu) to unfold it. A settled session comes back by itself when it works again,
-needs you, or you open it.
-
-**Snooze…** in an agent's menu sets it aside yourself: for an hour, four hours, a day, or
-until it has something for you. A snoozed agent comes back when the time is up, and at once
-if it needs you: one that's waiting on you is never out of sight. (A branch merged by squash
-leaves no trace git can see, so that one settles on the idle timer.)
+Sessions stay visible in the sidebar until you close them. Idle, completed, and merged-worktree sessions are never hidden automatically.
 
 ## Follow-ups and snapshots
 

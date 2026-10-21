@@ -837,7 +837,10 @@ impl App {
             }
             n @ 3.. => match p.wts.iter().filter(|w| !w.main).nth(n as usize - 3) {
                 Some(w) => self.hy_new_session(w.path.clone(), cmd, np.beside),
-                None => self.hy_new_session(main, cmd, np.beside),
+                None => {
+                    self.mode = Mode::HyPane(np.clone());
+                    self.notify("that worktree is no longer available; choose where to start again".into(), true);
+                }
             },
             _ => self.hy_new_session(main, cmd, np.beside),
         }
@@ -1115,11 +1118,6 @@ impl App {
         match h {
             HyHit::ToggleSubs(term) => self.toggle_subs(term),
             HyHit::SubagentInfo(term, index) => self.mode = Mode::SubagentInfo { term, index },
-            HyHit::ToggleAside(pi) => {
-                if let Some(p) = self.hy_model().get(pi) {
-                    self.toggle_aside(p.key.clone());
-                }
-            }
             HyHit::ToggleProj(i) => {
                 if let Some(key) = self.hy.proj_keys.get(i).cloned() {
                     self.hy_fold(&key, None);

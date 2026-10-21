@@ -25,9 +25,6 @@ pub struct Config {
     pub recipes: Vec<Recipe>,
     /// Saved launches: an agent, a model and a prompt, e.g. "commit and push" (Ctrl+Space .).
     pub presets: Vec<Preset>,
-    /// Fold an agent into its project's settled group once it has sat finished or idle this
-    /// long ("12h", "3d", "never"), or once its branch's work is merged.
-    pub settle_after: String,
     /// Editor for "open in editor" (Files, Changes). Empty: $VISUAL, $EDITOR, then `code`.
     /// Terminal editors (nvim, vim, hx, nano, micro, …) open inside seshi beside the agent.
     pub editor: String,
@@ -443,7 +440,6 @@ impl Default for Config {
         Config {
             prefix: "ctrl+space".into(),
             editor: String::new(),
-            settle_after: "3d".into(),
             teach_agents: true,
             mcp: Mcp::default(),
             recipes: Vec::new(),
@@ -851,27 +847,6 @@ fn copy_renamed(from: &Path, to: &Path, old: &str) {
 }
 
 impl Config {
-    /// `settle_after` in seconds; `None` is never.
-    pub fn settle_secs(&self) -> Option<u64> {
-        span_secs(&self.settle_after)
-    }
-}
-
-/// "90s", "15m" (or a bare "15"), "4h", "3d" in seconds; anything else ("never") is `None`.
-fn span_secs(span: &str) -> Option<u64> {
-    let s = span.trim().to_lowercase();
-    let (num, unit) = s.split_at(s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len()));
-    let n: u64 = num.parse().ok().filter(|n| *n > 0)?;
-    Some(match unit.trim() {
-        "s" => n,
-        "" | "m" | "min" => n * 60,
-        "h" => n * 3600,
-        "d" => n * 86_400,
-        _ => return None,
-    })
-}
-
-impl Config {
     /// Load the config file; a missing file is the defaults, a broken one is an error.
     pub fn load() -> Result<Config> {
         let path = config_path();
@@ -1259,9 +1234,9 @@ shell = \"pwsh\"
     }
 
     #[test]
-    fn old_sleep_after_setting_is_ignored() {
-        let c: Config = toml::from_str("sleep_after = '15m'").expect("older config remains readable");
-        assert_eq!(c.settle_after, "3d");
+    fn removed_visibility_settings_are_ignored() {
+        let c: Config = toml::from_str("sleep_after = '15m'\nsettle_after = '3d'").expect("older config remains readable");
+        assert_eq!(c.prefix, Config::default().prefix);
     }
 
     #[test]
