@@ -21,6 +21,11 @@ reload and live reporting still need confirmation in sessions on the machines
 where those providers run. Pi full-screen scroll behavior remains an open
 live-validation item below.
 
+The v0.36.10 release candidate clarifies compact subagent rows: show provider-
+reported tasks first, then current tool activity or role labels when available;
+keep helpers visible in narrow sidebars and visually secondary. The local
+verification gate and Windows, Ubuntu, and macOS PR checks passed.
+
 Seshi is terminal-first; direct subagent messaging remains out of scope. The v0.36.5 release includes cross-agent idle-status recovery; v0.36.6 passed Windows, macOS and Linux installer checks.
 
 User-requested pane padding polish: preserve the pane insets while matching the
