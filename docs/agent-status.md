@@ -131,20 +131,23 @@ working/needs-you/done status, but Seshi cannot list hidden helpers unless the
 agent exposes their lifecycle.
 
 Lifecycle reports are retained as child activity records after completion and
-restored with the saved pane (wire protocol v41). The sidebar separates Active,
-Finished and Unconfirmed children; click a row to inspect it, or focus the parent
-in the sidebar and press `s`, then use Up/Down to browse. The inspector shows the
-reported identity, task, parent, model, effort, state, start/elapsed time and
-latest activity. Missing metadata says **Not reported**. A parent ending or a
-child going quiet without an end event is shown as unconfirmed, never completed.
+restored with the saved pane (wire protocol v41). The sidebar lists active
+children only and removes completed, failed, cancelled or unconfirmed children
+from the live view. Click an active row to inspect it, or focus the parent in the
+sidebar and press `s`, then use Up/Down to browse retained lifecycle records.
+The inspector shows the reported identity, task, parent, model, effort, state,
+start/elapsed time and latest activity. Missing metadata says **Not reported**.
+A parent ending or a child going quiet without an end event is shown as
+unconfirmed, never completed.
 
 Codex rollout files currently report child identity, parent thread and lifecycle
 events, but not the assigned prompt, child model/effort or result. Native hook
 payloads may report task/model/effort fields; Seshi uses them only when supplied.
-The sidebar shows a task name only when the host reports one; otherwise it uses
-an inferred stage from available role/activity evidence. The inspector marks
-missing metadata **Not reported**. It does not expose hidden reasoning or claim
-transcript access that a runtime does not provide.
+The sidebar shows the reported task when available. Otherwise it shows a
+reported current tool action when available, then a recognizable role stage, a
+meaningful reported role name, or `Working` when the runtime provides no useful
+label. The inspector marks missing metadata **Not reported**. It does not expose
+hidden reasoning or claim transcript access that a runtime does not provide.
 
 Installing a new executable does not replace an already-running window or
 daemon. **Settings → General** shows installed/window/daemon versions and a
