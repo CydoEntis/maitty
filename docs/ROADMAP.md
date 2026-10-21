@@ -18,7 +18,9 @@ sidebars and visually secondary. Five platform archives and checksums are
 published. Release installer verification is still queued in GitHub Actions.
 Provider reload and live reporting still need confirmation in sessions on the
 machines where those providers run. Pi full-screen scroll behavior remains an
-open live-validation item below.
+open live-validation item below. The v0.36.11 release candidate removes
+automatic session hiding, adds background completion sounds and fails closed
+when an explicitly selected worktree is no longer available.
 
 User-reported sidebar hiding was removed: idle and completed sessions remain
 visible, with no snooze or automatic settling. Background top-level completions
