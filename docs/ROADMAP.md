@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-21 against `origin/main` at v0.36.10.
+Last reconciled: 2026-10-21 against `origin/main` at v0.36.11.
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Seshi is a terminal multiplexer built for running many coding agents at once: see
@@ -11,16 +11,16 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The latest published release on `main` is v0.36.10. It clarifies compact
+The latest published release on `main` is v0.36.11. It clarifies compact
 subagent rows by showing provider-reported tasks first, then current tool
 activity or role labels when available; helpers remain visible in narrow
-sidebars and visually secondary. Five platform archives and checksums are
-published. Release installer verification is still queued in GitHub Actions.
-Provider reload and live reporting still need confirmation in sessions on the
-machines where those providers run. Pi full-screen scroll behavior remains an
-open live-validation item below. The v0.36.11 release candidate removes
-automatic session hiding, adds background completion sounds and fails closed
-when an explicitly selected worktree is no longer available.
+sidebars and visually secondary. It also keeps idle and completed sessions
+visible, adds a soft sound for background completion, and prevents a stale
+worktree choice from silently starting an agent in the main checkout. Five
+platform archives and checksums are published, and installer checks passed on
+Windows, macOS and Linux. Provider reload and live reporting still need
+confirmation in sessions on the machines where those providers run. Pi
+full-screen scroll behavior remains an open live-validation item below.
 
 User-reported sidebar hiding was removed: idle and completed sessions remain
 visible, with no snooze or automatic settling. Background top-level completions
