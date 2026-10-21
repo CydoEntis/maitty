@@ -550,7 +550,7 @@ mod hydra_tests {
         assert!(text.contains("● claude") && text.contains(" 3m") && !text.contains("main · 3m"), "state, then the name; age on the right (the agent too when the name isn't it), no branch");
         assert!(text.contains("Run npm test -- checkout?"), "the question under the agent");
         assert!(text.contains("Researching"), "the explorer is shown by its stage");
-        assert!(text.contains("\u{25be} 4 subagents") && text.contains("Planning") && text.contains("Working") && text.contains("Reviewing"), "live helpers have stage names instead of provider role labels: {text}");
+        assert!(text.contains("\u{25be} 4 subagents") && text.contains("Planning") && text.contains("Building") && text.contains("Reviewing"), "live helpers use stage labels instead of provider role labels: {text}");
         assert!(text.contains("⣾ rate") && text.contains(" 2m"), "a worktree's session is named after it");
         assert!(!text.contains("Rate limit /login"), "under a session only its question, as in the redesign");
         assert!(text.contains("› shell") && !text.contains("shell 2"), "a shell in the project's folder is just 'shell', no age");
@@ -651,7 +651,7 @@ mod hydra_tests {
     }
 
     #[test]
-    fn active_subagent_shows_status_and_stage_without_lifecycle_labels() {
+    fn active_subagent_shows_its_task_as_quiet_secondary_text() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let term = 1;
         let pane = app.snap.terms.get_mut(&term).unwrap();
@@ -661,7 +661,7 @@ mod hydra_tests {
             name: "delegate".into(),
             parent: None,
             state: SubagentState::Working,
-            task: None,
+            task: Some("Inspect sidebar titles".into()),
             model: None,
             effort: None,
             started_at: None,
@@ -674,7 +674,7 @@ mod hydra_tests {
 
         let sidebar = draw(&mut app, 160, 45);
 
-        assert!(sidebar.contains("Working"), "unknown provider roles get a useful stage label: {sidebar}");
+        assert!(sidebar.contains("Inspect sidebar"), "the reported task is visible in the live list: {sidebar}");
         assert!(!sidebar.contains("general-purpose"), "provider-internal role names stay out of the sidebar: {sidebar}");
         assert!(!sidebar.contains("Active"), "the live list needs no redundant Active count: {sidebar}");
 
@@ -685,16 +685,16 @@ mod hydra_tests {
             (*hit == Hit::Hy(hydra::HyHit::SubagentInfo(term, 0))).then_some(rect.y)
         }).expect("the working child row is rendered");
         assert!((0..160).all(|x| !app.cfg.ui.spinner.iter().any(|frame| frame == buffer[(x, child_y)].symbol())), "working children have no animated spinner");
-        let role_icon = (0..159).find(|x| buffer[(*x, child_y)].symbol() == "⚙")
-            .expect("the working stage keeps its one-cell icon");
-        assert_eq!(buffer[(role_icon, child_y)].fg, app.theme.muted, "the working child icon is neutral gray");
-        let working_label = (0..153).find(|x| {
-            (0.."Working".len()).all(|offset| buffer[(x + offset as u16, child_y)].symbol() == &"Working"[offset..offset + 1])
-        }).expect("the fallback stage label is visible");
-        assert_eq!(buffer[(working_label, child_y)].fg, app.theme.muted, "the child label is visually secondary");
-        assert!(!buffer[(working_label, child_y)].modifier.contains(ratatui::style::Modifier::BOLD), "the child label is not bold");
-        assert!(buffer[(working_label, child_y)].modifier.contains(ratatui::style::Modifier::DIM), "the child label is visually quieter than its parent");
-        assert!(working_label >= role_icon + 3, "leave a clear gap after the icon");
+        let task_start = (0..129).find(|x| {
+            (0.."Inspect".len()).all(|offset| buffer[(x + offset as u16, child_y)].symbol() == &"Inspect"[offset..offset + 1])
+        }).expect("the reported task is rendered");
+        assert_eq!(buffer[(task_start, child_y)].fg, app.theme.muted, "the child task is neutral gray");
+        assert!(!buffer[(task_start, child_y)].modifier.contains(ratatui::style::Modifier::BOLD), "the child task is not bold");
+        assert!(buffer[(task_start, child_y)].modifier.contains(ratatui::style::Modifier::DIM), "the child task is visually quieter than its parent");
+        assert!((0..160).all(|x| buffer[(x, child_y)].symbol() != "⚙"), "the generic gear icon is removed");
+
+        let narrow_sidebar = draw(&mut app, 100, 30);
+        assert!(narrow_sidebar.contains("Inspect"), "helper tasks remain visible in a narrow sidebar: {narrow_sidebar}");
     }
 
     #[test]
@@ -1157,6 +1157,9 @@ mod hydra_tests {
     #[test]
     fn any_number_of_splits_and_tabs() {
         let (_, mut app) = super::design_tests::render_with(200, 50);
+        app.cfg.ui.layout = "cards".into();
+        app.cfg.ui.panes = "floating".into();
+        app.cfg.ui.gap = "2".into();
         let a = app.focused().unwrap();
         let others: Vec<TermId> = app.snap.terms.keys().copied().filter(|t| *t != a).collect();
         let (b, c) = (others[0], others[1]);
@@ -1177,6 +1180,9 @@ mod hydra_tests {
         let rect = |id| app.hy.leaf_rects.iter().find(|(term, _)| *term == id).unwrap().1;
         assert_eq!(rect(c).x, rect(b).x, "an explicit down split stays in the target pane's column");
         assert!(rect(c).y > rect(b).y, "an explicit down split appears below its target");
+        let card = |id| app.pane_frames.iter().find(|(term, _)| *term == id).unwrap().1;
+        assert_eq!(card(b).x - card(a).right(), 2, "the configured column gap separates cards");
+        assert_eq!(card(c).y - card(b).bottom(), 2, "the configured row gap separates cards");
         // Close one: two left, with a line between them you can drag.
         assert!(app.hy_unshow(c));
         assert_eq!(app.hy.tabs[0].layout.leaves().len(), 2);
@@ -2188,7 +2194,7 @@ mod hydra_tests {
     }
 
     #[test]
-    fn live_helpers_show_pipeline_stages_with_status_and_stage_icons() {
+    fn live_helpers_show_compact_pipeline_stages_without_stage_icons() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.hy_fresh();
         let mut terminal = Terminal::new(TestBackend::new(160, 45)).unwrap();
@@ -2198,20 +2204,15 @@ mod hydra_tests {
             let row = |y| (0..160).map(|x| buf[(x, y)].symbol()).collect::<String>();
             let y = (0..45).find(|&y| row(y).contains(name)).unwrap_or_else(|| panic!("{name} helper row"));
             let x = row(y)[..row(y).find(name).unwrap()].chars().count() as u16;
-            (buf[(x - 3, y)].symbol().to_string(), buf[(x - 3, y)].fg, buf[(x, y)].fg, buf[(x - 4, y)].fg)
+            (buf[(x - 2, y)].symbol().to_string(), buf[(x - 2, y)].fg, buf[(x, y)].fg, buf[(x - 1, y)].symbol().to_string())
         };
-        let (planner, builder, reviewer) = (at("Planning"), at("Working"), at("Reviewing"));
-        assert_eq!([planner.0.as_str(), builder.0.as_str(), reviewer.0.as_str()], ["\u{270e}", "\u{2699}", "\u{2696}"], "an icon for each pipeline stage");
+        let (planner, builder, reviewer) = (at("Planning"), at("Building"), at("Reviewing"));
+        assert_eq!([planner.0.as_str(), builder.0.as_str(), reviewer.0.as_str()], ["↳"; 3], "the hierarchy marker is the only icon");
         let neutral = app.theme.muted;
-        assert_eq!([planner.1, builder.1, reviewer.1], [neutral; 3], "stage icons use the secondary neutral color");
         assert_eq!([planner.2, builder.2, reviewer.2], [neutral; 3], "stage labels use the secondary neutral color");
-        assert_eq!([planner.3, builder.3, reviewer.3], [neutral; 3], "active helpers use a neutral connector");
-        for y in (0..45).filter(|&y| (0..160).map(|x| buf[(x, y)].symbol()).collect::<String>().contains("Working")) {
-            let row = (0..160).map(|x| buf[(x, y)].symbol()).collect::<String>();
-            let label = row[..row.find("Working").unwrap()].chars().count() as u16;
-            assert_eq!(buf[(label - 2, y)].symbol(), " ");
-            assert_eq!(buf[(label - 1, y)].symbol(), " ");
-        }
+        assert_eq!([planner.1, builder.1, reviewer.1], [neutral; 3], "active helpers use a neutral connector");
+        assert_eq!([planner.3.as_str(), builder.3.as_str(), reviewer.3.as_str()], [" "; 3], "leave one clear cell between the tree marker and label");
+        assert!((0..45).all(|y| (0..160).all(|x| buf[(x, y)].symbol() != "⚙")), "the generic gear is absent");
     }
 
     #[test]

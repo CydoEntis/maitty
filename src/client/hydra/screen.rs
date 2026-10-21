@@ -182,8 +182,8 @@ pub(in crate::client) enum Line {
     /// A dim line under an agent: what it's on, its question, a subagent. Shares the
     /// agent's highlight.
     Note(String, Color, TermId),
-    /// A live helper: an icon for what it is doing, then its name.
-    Subagent(String, &'static str, TermId),
+    /// A legacy live helper label.
+    Subagent(String, TermId),
     /// A runtime-reported child with a stable identity and retained lifecycle.
     SubagentRecord(Box<crate::protocol::SubagentActivity>, TermId, usize),
     /// The heading over a session's subagents: how many, and whether they're listed.
@@ -214,7 +214,7 @@ pub(in crate::client) fn load_note(cpu: f32, mem: u64) -> Option<(String, bool)>
     Some((format!("▲ {cpu:.0}% CPU · {gb:.1} GB"), cpu >= LOAD_HEAVY_CPU || mem >= LOAD_HEAVY_MEM))
 }
 
-pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme, nerd: bool, out: &mut Vec<Line>) {
+pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme, out: &mut Vec<Line>) {
     let notes_c = t.muted;
     if let Some(q) = &s.question {
         out.push(Line::Note(q.clone(), blend(t.blocked, t.sidebar_bg, 0.25), s.term));
@@ -247,8 +247,8 @@ pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme
             }
             for sub in &legacy {
                 if shown == SUBS_LISTED { break; }
-                let (stage, icon) = subagent_stage(sub, None, nerd);
-                out.push(Line::Subagent(stage.to_string(), icon, s.term));
+                let stage = subagent_stage(sub, None);
+                out.push(Line::Subagent(stage.to_string(), s.term));
                 shown += 1;
             }
             if total > shown {
@@ -258,19 +258,55 @@ pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme
     }
 }
 
-/// A compact pipeline stage inferred only from provider-reported role and task text.
-pub(super) fn subagent_stage(name: &str, task: Option<&str>, nerd: bool) -> (&'static str, &'static str) {
-    let text = format!("{name} {}", task.unwrap_or_default()).to_ascii_lowercase();
-    let has = |words: &[&str]| words.iter().any(|w| text.contains(w));
-    if has(&["review", "audit", "verif"]) {
-        ("Reviewing", "⚖")
-    } else if has(&["plan", "architect", "design"]) {
-        ("Planning", "✎")
-    } else if has(&["research", "explore", "search", "investigat"]) {
-        ("Researching", if nerd { "\u{f02d}" } else { "▤" })
+/// Infer a short stage only when the task or role provides recognizable evidence.
+pub(super) fn subagent_stage(name: &str, task: Option<&str>) -> &'static str {
+    let task = task.unwrap_or_default().to_ascii_lowercase();
+    let role: Vec<_> = name
+        .split(|ch: char| !ch.is_ascii_alphanumeric())
+        .filter(|part| !part.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect();
+    let has_role = |words: &[&str]| words.iter().any(|word| role.iter().any(|part| part == word));
+    if ["review", "audit", "verif"].iter().any(|word| task.contains(word)) || has_role(&["review", "reviewer", "audit", "auditor", "verify", "verifier"]) {
+        "Reviewing"
+    } else if ["plan", "architect", "design"].iter().any(|word| task.contains(word)) || has_role(&["plan", "planner", "architect", "design", "designer"]) {
+        "Planning"
+    } else if ["research", "explore", "search", "investigat"].iter().any(|word| task.contains(word)) || has_role(&["research", "researcher", "explore", "explorer", "search", "investigator"]) {
+        "Researching"
+    } else if ["build", "implement", "code"].iter().any(|word| task.contains(word)) || has_role(&["build", "builder", "implementer", "coder"]) {
+        "Building"
     } else {
-        ("Working", "⚙")
+        "Working"
     }
+}
+
+fn subagent_label(name: &str, task: Option<&str>, latest_activity: Option<&str>) -> String {
+    if let Some(task) = task.map(str::trim).filter(|task| !task.is_empty()) {
+        return task.to_owned();
+    }
+    if let Some(activity) = latest_activity.map(str::trim).filter(|activity| {
+        !activity.is_empty() && !activity.starts_with("Runtime reported")
+    }) {
+        if let Some(tool) = activity.strip_prefix("PreToolUse: ") {
+            return format!("Using {tool}");
+        }
+        if let Some(tool) = activity.strip_prefix("PostToolUse: ") {
+            return format!("Used {tool}");
+        }
+        if !activity.starts_with("SubagentStart") && !activity.starts_with("SubagentStop") {
+            return activity.to_owned();
+        }
+    }
+    let role = name.trim();
+    let generic = ["", "agent", "subagent", "worker", "delegate", "general-purpose", "general purpose", "default", "unknown"];
+    if !generic.iter().any(|name| role.eq_ignore_ascii_case(name)) {
+        let stage = subagent_stage(role, None);
+        if stage != "Working" {
+            return stage.to_owned();
+        }
+        return role.to_owned();
+    }
+    "Working".to_owned()
 }
 
 /// This many of a session's native helper agents are named before they are counted.
@@ -334,7 +370,7 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
             any = true;
             out.push(Line::Sess(pi, wi, si, depth));
             let s = &p.wts[wi].sessions[si];
-            session_lines(s, app.hy.subs_closed.contains(&s.term), t, app.cfg.ui.pill_caps, &mut out);
+            session_lines(s, app.hy.subs_closed.contains(&s.term), t, &mut out);
         }
         if !any && aside.is_empty() {
             out.push(Line::Empty(pi));
@@ -614,21 +650,16 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 put(buf, x0 + 7 + indent, y, &[seg(truncate(text, w.saturating_sub(11 + indent) as usize), Style::default().bg(pb).fg(*c).add_modifier(Modifier::ITALIC))], right);
                 hit(app, row, HyHit::Session(*term));
             }
-            Line::Subagent(name, icon, term) => {
-                if small {
-                    continue;
-                }
+            Line::Subagent(name, term) => {
                 let base = Style::default().bg(pb).fg(t.muted).add_modifier(Modifier::DIM);
-                let available = w.saturating_sub(11 + indent) as usize;
-                let label = truncate(name, available.saturating_sub(6));
+                let available = w.saturating_sub(14 + indent) as usize;
+                let label = truncate(name, available);
                 let mut segs = vec![seg("  ↳ ", base)];
-                segs.push(seg(format!("{icon}  "), base));
                 segs.push(seg(label, base));
                 put(buf, x0 + 7 + indent, y, &segs, right);
                 hit(app, row, HyHit::Session(*term));
             }
             Line::SubagentRecord(activity, term, index) => {
-                if small { continue; }
                 let state_color = match activity.state {
                     crate::protocol::SubagentState::Working => t.muted,
                     crate::protocol::SubagentState::WaitingForInput | crate::protocol::SubagentState::AwaitingApproval => t.blocked,
@@ -637,31 +668,27 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     crate::protocol::SubagentState::Cancelled => t.muted,
                     crate::protocol::SubagentState::Starting => t.accent,
                 };
-                let icon = match activity.state {
-                    crate::protocol::SubagentState::Working => String::new(),
-                    crate::protocol::SubagentState::WaitingForInput => "?".into(),
-                    crate::protocol::SubagentState::AwaitingApproval => "!".into(),
-                    crate::protocol::SubagentState::Completed => "✓".into(),
-                    crate::protocol::SubagentState::Failed => "×".into(),
-                    crate::protocol::SubagentState::Cancelled => "–".into(),
-                    crate::protocol::SubagentState::ConnectionLost => "?".into(),
-                    crate::protocol::SubagentState::Starting => "◷".into(),
+                let state_marker = match activity.state {
+                    crate::protocol::SubagentState::Working => None,
+                    crate::protocol::SubagentState::WaitingForInput => Some("?"),
+                    crate::protocol::SubagentState::AwaitingApproval => Some("!"),
+                    crate::protocol::SubagentState::Completed => Some("✓"),
+                    crate::protocol::SubagentState::Failed => Some("×"),
+                    crate::protocol::SubagentState::Cancelled => Some("–"),
+                    crate::protocol::SubagentState::ConnectionLost => Some("?"),
+                    crate::protocol::SubagentState::Starting => Some("◷"),
                 };
-                let (stage, role_icon) = subagent_stage(&activity.name, activity.task.as_deref(), app.cfg.ui.pill_caps);
-                let detail = activity.task.as_deref().filter(|task| !task.trim().is_empty()).unwrap_or(stage);
-                let label = truncate(detail, w.saturating_sub(20 + indent) as usize);
+                let detail = subagent_label(&activity.name, activity.task.as_deref(), activity.latest_activity.as_deref());
+                let label = truncate(&detail, w.saturating_sub(15 + indent) as usize);
                 let st = Style::default().bg(pb).add_modifier(Modifier::DIM);
-                let mut icon_style = st.fg(state_color);
                 let mut label_style = st.fg(state_color);
                 if activity.state != crate::protocol::SubagentState::Working {
-                    icon_style = icon_style.add_modifier(Modifier::BOLD);
                     label_style = label_style.add_modifier(Modifier::BOLD);
                 }
                 let mut segs = vec![seg("  ↳ ", st.fg(t.muted))];
-                if !icon.is_empty() {
-                    segs.push(seg(format!("{icon} "), icon_style));
+                if let Some(marker) = state_marker {
+                    segs.push(seg(format!("{marker} "), st.fg(state_color)));
                 }
-                segs.push(seg(format!("{role_icon}  "), st.fg(t.muted)));
                 segs.push(seg(label, label_style));
                 put(buf, x0 + 7 + indent, y, &segs, right);
                 hit(app, row, HyHit::SubagentInfo(*term, *index));
@@ -1211,15 +1238,19 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, panes: Rect
 
 
 #[cfg(test)]
-mod icon_tests {
-    use super::subagent_stage;
+mod subagent_tests {
+    use super::{subagent_label, subagent_stage};
 
     #[test]
-    fn a_helper_gets_the_icon_of_what_it_does() {
-        assert_eq!(subagent_stage("planner", None, false), ("Planning", "✎"));
-        assert_eq!(subagent_stage("general-purpose", Some("Review the test changes"), false), ("Reviewing", "⚖"));
-        assert_eq!(subagent_stage("general-purpose", Some("Implement the fix"), false), ("Working", "⚙"));
-        assert_eq!(subagent_stage("Explore", None, false), ("Researching", "▤"), "a book, in a single cell without a Nerd Font");
-        assert_eq!(subagent_stage("deep-research", None, true), ("Researching", "\u{f02d}"), "the Nerd Font book when it's there");
+    fn helpers_show_reported_tasks_and_use_roles_only_as_a_fallback() {
+        assert_eq!(subagent_stage("planner", None), "Planning");
+        assert_eq!(subagent_stage("general-purpose", Some("Review the test changes")), "Reviewing");
+        assert_eq!(subagent_stage("general-purpose", Some("Implement the fix")), "Building");
+        assert_eq!(subagent_stage("Explore", None), "Researching");
+        assert_eq!(subagent_label("general-purpose", Some(" Review the test changes "), None), "Review the test changes");
+        assert_eq!(subagent_label("general-purpose", None, Some("PreToolUse: Bash")), "Using Bash");
+        assert_eq!(subagent_label("planner", None, None), "Planning");
+        assert_eq!(subagent_label("Tools Redesign", None, None), "Tools Redesign");
+        assert_eq!(subagent_label("general-purpose", None, Some("Runtime reported child start")), "Working");
     }
 }
