@@ -169,15 +169,6 @@ impl Daemon {
                 });
                 return Ok(false);
             }
-            Command::SetAside { term, until } => {
-                let t = self.terms.get_mut(&term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
-                // One that's waiting on you is never put out of sight.
-                if until.is_some() && t.status == Status::Blocked {
-                    anyhow::bail!("it's waiting on you: answer it first");
-                }
-                t.aside = until;
-                self.dirty = true;
-            }
             Command::RenamePane { term, name } => {
                 if let Some(t) = self.terms.get_mut(&term) {
                     t.label = name.trim().chars().take(60).collect();
@@ -202,8 +193,6 @@ impl Daemon {
                 let (ws, tab) = self.locate(term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
                 if let Some(t) = self.terms.get_mut(&term) {
                     t.bell = false;
-                    // Opened: it's back among the rest.
-                    t.aside = None;
                 }
                 let w = self.ws_mut(ws)?;
                 w.active_tab = tab;

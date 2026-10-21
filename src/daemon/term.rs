@@ -168,11 +168,8 @@ pub struct Term {
     pub restore_unseen: bool,
     /// Typed while it was asleep: delivered once it's back up (or after a few seconds).
     pub pending_input: Option<(Vec<u8>, Instant)>,
-    /// Set aside (`Command::SetAside`): settled, or snoozed until then.
-    pub aside: Option<u64>,
     /// Its branch has had commits that were nowhere else: once they are somewhere else,
     /// its work is merged (a branch that never had any is merely new).
-    pub had_own_work: bool,
     /// The account it runs as, if its command says one (`seshi account <name> -- …`).
     pub account: Option<String>,
     /// Follow-ups to type into it when its turn is over, next first.
@@ -592,8 +589,6 @@ impl Term {
             token,
             restore_unseen: false,
             pending_input: None,
-            aside: None,
-            had_own_work: false,
             account: None,
             queue: Default::default(),
             queue_sent: None,

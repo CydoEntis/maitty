@@ -114,7 +114,6 @@ impl Daemon {
             started_by: term.started_by,
             queue: term.queue.iter().cloned().collect(),
             account: term.account.clone(),
-            aside: term.aside,
             subagent_activity: term.subagent_activity.clone(),
         };
         let workspaces = self
@@ -218,7 +217,6 @@ impl Daemon {
                                 t.model = pane.model.clone();
                                 t.label = pane.label.clone();
                                 t.queue = pane.queue.iter().cloned().collect();
-                                t.aside = pane.aside;
                                 let now = term::unix_now();
                                 t.subagent_activity = pane.subagent_activity.into_iter().map(|mut activity| {
                                     if activity.state.active() {
