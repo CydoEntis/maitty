@@ -77,9 +77,7 @@ mod design_tests {
         let cfg = Config::default();
         let mut app = App::new(cfg, tx, None, bg_tx);
         app.splash = false;
-        let mut layout = Node::Leaf(1);
-        layout.split(1, Dir::Right, 2);
-        layout.split(2, Dir::Down, 3);
+        let layout = Node::Leaf(1);
         // A project folder in this platform's own style (tests run on Windows and Linux).
         let base = std::path::Path::new(if cfg!(windows) { r"C:\code" } else { "/code" });
         let root_buf = base.join("shop-api");
@@ -90,7 +88,11 @@ mod design_tests {
             id: 10,
             name: "shop-api".into(),
             cwd: PathBuf::from(root),
-            tabs: vec![TabInfo { id: 11, name: String::new(), layout, focus: 1 }],
+            tabs: vec![
+                TabInfo { id: 11, name: String::new(), layout, focus: 1 },
+                TabInfo { id: 12, name: String::new(), layout: Node::Leaf(2), focus: 2 },
+                TabInfo { id: 13, name: String::new(), layout: Node::Leaf(3), focus: 3 },
+            ],
             active_tab: 11,
             git: Some(GitInfo {
                 repo: "shop-api".into(),
@@ -155,6 +157,28 @@ mod design_tests {
         (out, app)
     }
 
+    #[test]
+    fn sync_restores_nested_split_layout_from_daemon_snapshot() {
+        let (_, mut app) = render_with(160, 45);
+        let mut layout = Node::Leaf(1);
+        layout.split(1, Dir::Right, 2);
+        layout.split(2, Dir::Down, 3);
+        app.snap.workspaces[0].tabs = vec![TabInfo { id: 11, name: String::new(), layout, focus: 1 }];
+        app.hy.tabs.clear();
+        app.hy.last_focus = None;
+        app.hy_sync();
+        let tab = &app.hy.tabs[app.hy.tab];
+        assert_eq!(tab.layout.leaves(), vec![1, 2, 3], "the UI must retain all restored panes");
+        let rects = tab.layout.rects(ratatui::layout::Rect::new(0, 0, 120, 40));
+        let rect = |id| rects.iter().find(|(term, _)| *term == id).unwrap().1;
+        assert_eq!(rect(3).x, rect(2).x, "split-down stays in pane 2's column");
+        assert!(rect(3).y > rect(2).y, "split-down places pane 3 below pane 2");
+        let mut terminal = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        terminal.draw(|f| render::draw(&mut app, f)).unwrap();
+        let rendered = |id| app.hy.leaf_rects.iter().find(|(term, _)| *term == id).unwrap().1;
+        assert_eq!(rendered(3).x, rendered(2).x, "the screen renderer preserves the nested column");
+        assert!(rendered(3).y > rendered(2).y, "the screen renderer places the pane below its sibling");
+    }
 }
 
 mod hydra_tests {
@@ -1141,16 +1165,18 @@ mod hydra_tests {
         app.hy.pending_split = Some((a, Instant::now()));
         app.hy_place(b, Some(a));
         app.hy.pending_split = Some((b, Instant::now()));
+        app.hy.split_dir = Some(crate::layout::Dir::Down);
         app.hy_place(c, Some(b));
         assert_eq!(app.hy.tabs.len(), 1);
-        assert_eq!(app.hy.tabs[0].layout.leaves().len(), 3, "three side by side");
+        assert_eq!(app.hy.tabs[0].layout.leaves().len(), 3, "all three panes share the tab");
         // Focus stays on a (the snapshot's focus), so draw shows all three.
         app.hy.tabs[0].focus = a;
         let o = draw(&mut app, 200, 50);
         show(&o);
         assert_eq!(app.hy.leaf_rects.len(), 3);
-        let widths: Vec<u16> = app.hy.leaf_rects.iter().map(|(_, r)| r.width).collect();
-        assert!(widths.iter().max().unwrap() - widths.iter().min().unwrap() <= 2, "three tile evenly: {widths:?}");
+        let rect = |id| app.hy.leaf_rects.iter().find(|(term, _)| *term == id).unwrap().1;
+        assert_eq!(rect(c).x, rect(b).x, "an explicit down split stays in the target pane's column");
+        assert!(rect(c).y > rect(b).y, "an explicit down split appears below its target");
         // Close one: two left, with a line between them you can drag.
         assert!(app.hy_unshow(c));
         assert_eq!(app.hy.tabs[0].layout.leaves().len(), 2);
@@ -2093,11 +2119,12 @@ mod hydra_tests {
     /// claude (1) as a commander: codex (2) is its helper, 4 is codex's, 5 is 4's.
     fn fleet() -> App {
         let (_, mut app) = super::design_tests::render_with(160, 45);
+        let tab = app.snap.workspaces[0].tabs.iter_mut().find(|tab| tab.layout.contains(2)).unwrap();
         for (id, by) in [(4, 2), (5, 4)] {
             let mut t = app.snap.terms[&2].clone();
             t.id = id;
             app.snap.terms.insert(id, t);
-            app.snap.workspaces[0].tabs[0].layout.split(2, crate::layout::Dir::Down, id);
+            tab.layout.split(2, crate::layout::Dir::Down, id);
             app.snap.terms.get_mut(&id).unwrap().started_by = Some(by);
         }
         app.snap.terms.get_mut(&2).unwrap().started_by = Some(1);
