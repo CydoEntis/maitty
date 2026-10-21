@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-21 against `origin/main` at v0.36.9.
+Last reconciled: 2026-10-21 against `origin/main` at v0.36.10.
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Seshi is a terminal multiplexer built for running many coding agents at once: see
@@ -11,20 +11,14 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The latest published release on `main` is v0.36.9. It preserves nested pane
-layouts after reconnect, protects restored worktrees while panes initialize,
-extends `seshi doctor` to report native adapter configuration and fallback
-status for installed providers, makes helper task metadata limits explicit,
-and adds a five-minute start guide. Its Windows, Ubuntu, and macOS CI checks,
-five platform builds, and Windows/macOS/Ubuntu installer checks passed. Provider
-reload and live reporting still need confirmation in sessions on the machines
-where those providers run. Pi full-screen scroll behavior remains an open
-live-validation item below.
-
-The v0.36.10 release candidate clarifies compact subagent rows: show provider-
-reported tasks first, then current tool activity or role labels when available;
-keep helpers visible in narrow sidebars and visually secondary. The local
-verification gate and Windows, Ubuntu, and macOS PR checks passed.
+The latest published release on `main` is v0.36.10. It clarifies compact
+subagent rows by showing provider-reported tasks first, then current tool
+activity or role labels when available; helpers remain visible in narrow
+sidebars and visually secondary. Five platform archives and checksums are
+published. Release installer verification is still queued in GitHub Actions.
+Provider reload and live reporting still need confirmation in sessions on the
+machines where those providers run. Pi full-screen scroll behavior remains an
+open live-validation item below.
 
 Seshi is terminal-first; direct subagent messaging remains out of scope. The v0.36.5 release includes cross-agent idle-status recovery; v0.36.6 passed Windows, macOS and Linux installer checks.
 
