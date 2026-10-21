@@ -323,7 +323,7 @@ pub struct App {
     /// The last alert per agent (its status, when) and for any agent: the same news again
     /// soon doesn't ring twice.
     alerted: HashMap<TermId, (Status, Instant)>,
-    last_alert: Option<Instant>,
+    last_alert: Option<(crate::alert::Kind, Instant)>,
     /// Only ring if the pending status still matches the latest snapshot at its deadline.
     settling: HashMap<TermId, (Status, Instant)>,
     /// What's moving, and how far the sidebar and the sheet are in this frame (0 to 1).

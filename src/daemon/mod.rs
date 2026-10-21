@@ -42,8 +42,6 @@ const GIT_POLL_EVERY: Duration = Duration::from_secs(3);
 const SAVE_EVERY: Duration = Duration::from_secs(2);
 /// How often panes' new output is saved to disk (what's lost if the server is killed).
 const OUTPUT_SAVE_EVERY: Duration = Duration::from_secs(30);
-/// How often sessions are checked for settling into their project's folded group.
-const SETTLE_CHECK_EVERY: Duration = Duration::from_secs(30);
 /// A pane's CPU share is passed on when it has moved this many points.
 const CPU_STEP: f32 = 5.0;
 /// How long a pane started as an agent may take to show that agent's process.
@@ -103,8 +101,6 @@ pub enum Ev {
     WorktreeList { client: ClientId, result: Result<Vec<WorktreeEntry>, String> },
     /// A worktree hook ran: what to tell people.
     HookRan(String),
-    /// Where resting agents' worktrees stand (for settling the merged ones).
-    Stands(Vec<(TermId, crate::tidy::Standing)>),
     /// A spare worktree for prewarming: (repo, result).
     SpareMade(PathBuf, Result<(PathBuf, String), String>),
     /// A worktree made for an agent to move into: (client, pane, branch, result).
@@ -196,7 +192,6 @@ struct Daemon {
     adopt: Option<(PathBuf, TermId)>,
     /// The spare's folder, handed over: its on_create hook already ran.
     adopted: Option<PathBuf>,
-    last_settle_check: Instant,
     last_worktree_sweep: Instant,
     /// The last automatic workspace move, for undo.
     auto_undo: Option<AutoUndo>,
@@ -477,7 +472,6 @@ impl Daemon {
             spare_making: false,
             adopt: None,
             adopted: None,
-            last_settle_check: Instant::now(),
             last_worktree_sweep: crate::clock::ago(WORKTREE_SWEEP_EVERY - WORKTREE_SWEEP_FIRST),
             natural_exits: Vec::new(),
             auto_undo: None,
@@ -501,15 +495,10 @@ impl Daemon {
                     self.phone_alerts();
                     self.auto_continue();
                     self.poll_codex();
-                    if self.last_settle_check.elapsed() >= SETTLE_CHECK_EVERY {
-                        self.last_settle_check = Instant::now();
-                        self.settle_idle();
-                    }
                     self.poll_git();
                     if self.last_worktree_sweep.elapsed() >= WORKTREE_SWEEP_EVERY {
                         self.last_worktree_sweep = Instant::now();
                         self.sweep_worktrees();
-                        self.sweep_merged();
                     }
                     if self.last_save.elapsed() > SAVE_EVERY {
                         self.last_save = Instant::now();
@@ -886,7 +875,6 @@ impl Daemon {
                 self.dirty = true;
             }
             Ev::HookRan(msg) => self.broadcast(|_| true, ServerMsg::Notice(msg)),
-            Ev::Stands(stands) => self.settle_merged(stands),
             Ev::HookChecked { msg, verdict, chain } => self.apply_hook(msg, verdict, chain),
             Ev::SpareMade(repo, result) => {
                 self.spare_making = false;
@@ -1125,7 +1113,6 @@ impl Daemon {
                     subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
                     started_by: t.started_by,
                     queued: t.queue.iter().cloned().collect(),
-                    aside: t.aside,
                     subagent_activity: t.subagent_activity.clone(),
                     session: t.session.clone(),
                 })

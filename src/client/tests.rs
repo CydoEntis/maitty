@@ -57,7 +57,6 @@ mod design_tests {
             session: None,
             started_by: None,
             queued: Vec::new(),
-            aside: None,
             root: None,
             top: None,
             since: 0,
@@ -1203,6 +1202,16 @@ mod hydra_tests {
         show(&o);
         assert!(o.contains(" 1 ") && o.contains(" 2 "), "a tab bar");
         assert!(app.hits.iter().any(|(_, h)| *h == Hit::Hy(hydra::HyHit::TabNew)), "with a + for another tab");
+    }
+
+    #[test]
+    fn new_agent_defaults_to_its_own_worktree() {
+        let pane = hydra::NewPaneHy::new(0, false);
+        assert_eq!(pane.place_for("claude", true), 0, "agents default to a new worktree");
+        assert_eq!(pane.place_for("codex", true), 0, "the default applies across providers");
+        assert_eq!(pane.place_for("shell", true), 2, "plain shells stay in the project checkout");
+        assert_eq!(pane.place_for("claude", false), 2, "the opt-out setting is respected");
+        assert_eq!(pane.place_for("claude", true), 0, "starting a new chooser does not retain a prior location");
     }
 
     #[test]
@@ -2509,43 +2518,22 @@ mod hydra_tests {
     }
 
     #[test]
-    fn settled_sessions_fold_under_one_line() {
+    fn idle_and_completed_sessions_stay_visible_without_snooze_actions() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        app.out = tx;
-        let sent = |rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::protocol::ClientMsg>| std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
-        let rows = |app: &App| {
-            let model = app.hy_model();
-            hydra::side_lines(app, &model, &app.theme).iter().filter_map(|l| hydra::line_term(&model, l)).collect::<Vec<_>>()
-        };
-        let before = rows(&app);
-        assert!(before.contains(&2) && !draw(&mut app, 160, 45).contains("settled ·"), "nothing set aside, no group");
-        // An agent's menu snoozes it: a numbered list of how long.
-        let snooze = app.session_items(2).unwrap().1.into_iter().find(|(l, _)| l == "Snooze…").map(|(_, a)| a).expect("on an agent's row");
-        app.menu_do(snooze);
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(o.contains("1  for an hour") && o.contains("4  until it has something for me"));
-        app.on_key(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::NONE));
-        assert!(sent(&mut rx).iter().any(|m| matches!(m, crate::protocol::ClientMsg::Command(crate::protocol::Command::SetAside { term: 2, until: Some(0) }))));
-        // The server says it's aside: its row is gone, and one line stands for it.
-        let soon = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 2 * 3600;
-        app.snap.terms.get_mut(&2).unwrap().aside = Some(soon);
-        app.mode = Mode::Normal;
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(o.contains("▸ settled · 1") && !rows(&app).contains(&2), "folded away");
-        // Unfolded (a click on the line, or the project's menu): it's there, with when it's back.
-        let key = app.hy_model().iter().find(|p| p.sessions().any(|s| s.term == 2)).map(|p| p.key.clone()).unwrap();
-        app.menu_do(crate::client::menu::Act::ToggleAside(key));
-        let o = draw(&mut app, 160, 45);
-        show(&o);
-        assert!(o.contains("▾ settled · 1") && rows(&app).contains(&2) && o.contains("snoozed · back in 2h"));
-        // And its menu brings it back; one that's waiting on you is never offered a snooze.
-        let items = app.session_items(2).unwrap().1;
-        assert!(items.iter().any(|(l, a)| l == "Bring back" && *a == crate::client::menu::Act::Aside(2, None)) && !items.iter().any(|(l, _)| l == "Snooze…"));
-        app.snap.terms.get_mut(&3).unwrap().status = Status::Blocked;
-        assert!(!app.session_items(3).unwrap().1.iter().any(|(l, _)| l == "Snooze…"));
+        app.snap.terms.get_mut(&2).unwrap().status = Status::Idle;
+        app.snap.terms.get_mut(&3).unwrap().status = Status::Done;
+        let model = app.hy_model();
+        let rows = hydra::side_lines(&app, &model, &app.theme)
+            .iter()
+            .filter_map(|line| hydra::line_term(&model, line))
+            .collect::<Vec<_>>();
+        assert!(rows.contains(&2) && rows.contains(&3), "resting sessions remain in the sidebar");
+        let screen = draw(&mut app, 160, 45);
+        assert!(!screen.contains("settled ?") && !screen.contains("Snooze"));
+        for term in [2, 3] {
+            let items = app.session_items(term).unwrap().1;
+            assert!(!items.iter().any(|(label, _)| label.contains("Snooze") || label == "Bring back"));
+        }
     }
 
     #[test]
@@ -2730,7 +2718,7 @@ mod hydra_tests {
         // Finished and still finished when the wait is over: now it's said.
         attention(&mut app, 2, Status::Done);
         due(&mut app, 2);
-        assert!(app.notice.as_ref().is_some_and(|(m, ..)| m.ends_with("finished")) && !app.alerted.contains_key(&2) && app.last_alert.is_none(), "completion stays visible without consuming a sound alert");
+        assert!(app.notice.as_ref().is_some_and(|(m, ..)| m.ends_with("finished")) && app.alerted.contains_key(&2) && app.last_alert.is_some_and(|(kind, _)| kind == crate::alert::Kind::Done), "a background completion uses the soft sound");
         // A stable question replaces the pending finish, without ringing twice.
         app.notice = None;
         attention(&mut app, 2, Status::Done);
@@ -2785,7 +2773,7 @@ mod hydra_tests {
         app.settling.get_mut(&id).unwrap().1 = Instant::now() - Duration::from_millis(1);
         app.settle_alerts();
         assert!(app.alerted.contains_key(&id), "a focused blocking question still needs its request sound");
-        app.last_alert = Some(Instant::now() - Duration::from_secs(5));
+        app.last_alert = Some((crate::alert::Kind::Needs, Instant::now() - Duration::from_secs(5)));
         let mut next = app.snap.clone();
         next.terms.get_mut(&id).unwrap().status = Status::Working;
         app.on_server(ServerMsg::State(next));

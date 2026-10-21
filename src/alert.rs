@@ -41,6 +41,7 @@ impl Kind {
     pub fn for_status(status: crate::protocol::Status) -> Option<Self> {
         match status {
             crate::protocol::Status::Blocked => Some(Self::Needs),
+            crate::protocol::Status::Done => Some(Self::Done),
             _ => None,
         }
     }
@@ -272,9 +273,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_needs_you_statuses_make_a_notification_sound() {
+    fn attention_and_background_completion_have_distinct_sounds() {
         assert_eq!(Kind::for_status(crate::protocol::Status::Blocked), Some(Kind::Needs));
-        assert_eq!(Kind::for_status(crate::protocol::Status::Done), None);
+        assert_eq!(Kind::for_status(crate::protocol::Status::Done), Some(Kind::Done));
         assert_eq!(Kind::for_status(crate::protocol::Status::Working), None);
         assert_eq!(Kind::for_status(crate::protocol::Status::Idle), None);
     }
