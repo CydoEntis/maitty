@@ -1894,7 +1894,7 @@ dependencies = [
 
 [[package]]
 name = "seshi"
-version = "0.36.8"
+version = "0.36.9"
 dependencies = [
  "anyhow",
  "arboard",
