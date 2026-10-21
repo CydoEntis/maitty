@@ -647,7 +647,10 @@ pub fn doctor() -> Result<()> {
 
     // Agents
     let mut found = Vec::new();
-    for a in ["claude", "codex", "gemini", "opencode", "cursor-agent", "copilot", "amp", "qwen", "aider", "grok", "auggie", "kimi"] {
+    for a in [
+        "claude", "codex", "gemini", "opencode", "cursor-agent", "copilot", "amp", "qwen",
+        "aider", "grok", "auggie", "kimi", "pi", "omp", "kilo", "mastracode",
+    ] {
         if on_path(a).is_some() {
             found.push(a);
         }
@@ -669,6 +672,41 @@ pub fn doctor() -> Result<()> {
                 line(Some(false), "codex subagent hooks", "missing: `seshi integrate codex` (restart Codex to load them)".into());
             }
             Err(error) => line(Some(false), "codex subagent hooks", format!("couldn't read {}: {error}", path.display())),
+        }
+    }
+
+    // File presence means setup is installed, not that a running host has reloaded it.
+    // Until a native event arrives, the normal process and screen detectors remain active.
+    for agent in ["pi", "opencode", "omp", "kilo", "mastracode", "kimi"] {
+        if !found.contains(&agent) {
+            continue;
+        }
+        let path = match integrations::status_adapter_path(agent) {
+            Ok(path) => path,
+            Err(error) => {
+                line(
+                    None,
+                    &format!("{agent} status adapter"),
+                    format!("couldn't locate config: {error:#}"),
+                );
+                continue;
+            }
+        };
+        if integrations::status_adapter_installed(agent, &path) {
+            line(
+                None,
+                &format!("{agent} status adapter"),
+                format!(
+                    "configured at {}; restart/reload {agent} to load; native status is confirmed when its first event arrives",
+                    path.display()
+                ),
+            );
+        } else {
+            line(
+                None,
+                &format!("{agent} status adapter"),
+                format!("not installed; fallback detection remains active; run `seshi integrate {agent}`"),
+            );
         }
     }
 

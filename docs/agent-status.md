@@ -7,9 +7,12 @@ only Seshi's adapter; it preserves other extensions and refuses to overwrite a
 different file named `seshi.js`. It does not interrupt an agent or restart the daemon.
 
 Set up the integration on each machine where the agent runs; it lives in that
-machine's agent config, not Seshi's synced config. `seshi doctor` checks for
-Codex's subagent hooks when Codex is installed. Restart Codex and OpenCode after
-installation. In Pi, use `/reload` or restart it.
+machine's agent config, not Seshi's synced config. `seshi doctor` checks the
+machine-local adapters and says when an installed setup needs a provider reload.
+The check confirms configuration presence, not live reporting: native status is
+confirmed only after the running provider sends Seshi an event. Until then,
+process and screen detection remain the fallback. Restart Codex and OpenCode
+after installation. In Pi, use `/reload` or restart it.
 The CLI equivalents, including removal, are:
 
 ```sh
@@ -127,14 +130,6 @@ choice does not change the host integration. Other agents still get their own
 working/needs-you/done status, but Seshi cannot list hidden helpers unless the
 agent exposes their lifecycle.
 
-When a trusted integration reports active helpers, Seshi keeps the parent
-session working until they finish or go quiet. Codex helper liveness comes from
-its local session files; Claude, Qwen, Kimi and Mastracode report helper
-lifecycle events through their native hooks; OpenCode's selected-session bridge
-reports active child sessions. Provider/model choice does not change the host
-integration. Other agents still get their own working/needs-you/done status,
-but Seshi cannot list hidden helpers unless the agent exposes their lifecycle.
-
 Lifecycle reports are retained as child activity records after completion and
 restored with the saved pane (wire protocol v41). The sidebar separates Active,
 Finished and Unconfirmed children; click a row to inspect it, or focus the parent
@@ -146,8 +141,10 @@ child going quiet without an end event is shown as unconfirmed, never completed.
 Codex rollout files currently report child identity, parent thread and lifecycle
 events, but not the assigned prompt, child model/effort or result. Native hook
 payloads may report task/model/effort fields; Seshi uses them only when supplied.
-The inspector does not expose hidden reasoning or claim transcript access that a
-runtime does not provide.
+The sidebar shows a task name only when the host reports one; otherwise it uses
+an inferred stage from available role/activity evidence. The inspector marks
+missing metadata **Not reported**. It does not expose hidden reasoning or claim
+transcript access that a runtime does not provide.
 
 Installing a new executable does not replace an already-running window or
 daemon. **Settings → General** shows installed/window/daemon versions and a

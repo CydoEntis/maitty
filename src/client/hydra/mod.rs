@@ -190,28 +190,6 @@ pub(super) struct KeyMap {
     pub sel: usize,
 }
 
-/// Where each of three or more panes goes in `area`: rows of up to three, the same size.
-/// Panes side by side leave a 3-column gutter (a line in its middle), stacked ones a row.
-pub(super) fn arranged(leaves: &[TermId], area: Rect) -> Vec<(TermId, Rect)> {
-    let n = leaves.len();
-    let mut out = Vec::new();
-    let rows = if n <= 3 { 1 } else if n <= 6 { 2 } else { n.div_ceil(3) };
-    let per = n.div_ceil(rows).max(1);
-    let rh = (area.height + 1) / rows as u16;
-    for (ri, chunk) in leaves.chunks(per).enumerate() {
-        let y = area.y + ri as u16 * rh;
-        let h = if ri + 1 == rows { area.bottom() - y } else { rh - 1 };
-        let cols = chunk.len() as u16;
-        let cw = (area.width + 3) / cols;
-        for (ci, id) in chunk.iter().enumerate() {
-            let x = area.x + ci as u16 * cw;
-            let w = if ci as u16 + 1 == cols { area.right() - x } else { cw - 3 };
-            out.push((*id, Rect { x, y, width: w, height: h }));
-        }
-    }
-    out
-}
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum Drag {
     Side,
@@ -721,6 +699,27 @@ impl App {
     /// Keep the remembered bits in step with a new state: project order, the current
     /// project, the split pair, the branch lists.
     pub(super) fn hy_sync(&mut self) {
+        // The daemon owns pane topology and restores it across client restarts. Rebuild the
+        // visible tabs from that snapshot before handling focus changes, which otherwise
+        // turns the first focused restored pane into a one-leaf tab and strands its siblings.
+        if self.hy.last_focus.is_none() && !self.snap.workspaces.is_empty() {
+            let previous = self.hy.tabs.clone();
+            let restored: Vec<HyTab> = self.snap.workspaces.iter().flat_map(|workspace| &workspace.tabs).filter(|source| source.layout.leaves().len() > 1).map(|source| {
+                let leaves = source.layout.leaves();
+                let prior = previous.iter().find(|tab| tab.layout.leaves().iter().any(|id| leaves.contains(id)));
+                HyTab {
+                    layout: source.layout.clone(),
+                    focus: if source.layout.contains(source.focus) { source.focus } else { source.layout.first_leaf() },
+                    owner: prior.map_or_else(|| source.layout.first_leaf(), |tab| tab.owner),
+                    used: prior.map_or(0, |tab| tab.used),
+                    name: prior.map_or_else(|| source.name.clone(), |tab| if tab.name.is_empty() { source.name.clone() } else { tab.name.clone() }),
+                }
+            }).collect();
+            if !restored.is_empty() {
+                self.hy.tabs = restored;
+                self.hy.tab = self.hy.tabs.iter().position(|tab| tab.layout.contains(self.focused().unwrap_or(tab.focus))).unwrap_or(0);
+            }
+        }
         let focus = self.focused();
         let model = self.hy_model();
         let mut changed = false;
@@ -998,20 +997,3 @@ mod sheet;
 mod splash;
 mod tidy;
 pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, screen::*, splash::*, sheet::*, popover::*, heads::*, tidy::*};
-
-
-#[cfg(test)]
-mod arrange_tests {
-    use super::arranged;
-    use ratatui::layout::Rect;
-
-    #[test]
-    fn many_panes_tile_in_rows() {
-        let area = Rect { x: 0, y: 0, width: 200, height: 50 };
-        let r = arranged(&[1, 2, 3], area);
-        assert!(r.iter().all(|(_, x)| x.height == 50), "three fit in one row: {r:?}");
-        assert!(r[0].1.width.abs_diff(r[2].1.width) <= 3, "the same size: {r:?}");
-        let r = arranged(&[1, 2, 3, 4], area);
-        assert!(r[2].1.y > 0 && r[0].1.y == 0, "four take two rows: {r:?}");
-    }
-}

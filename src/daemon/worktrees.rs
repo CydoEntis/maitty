@@ -272,7 +272,14 @@ impl Daemon {
 
     /// Whether any session is in this checkout.
     pub(super) fn runs_in(&self, top: &std::path::Path) -> bool {
-        self.terms.values().any(|t| t.head.as_ref().is_some_and(|h| same_path(&h.top, top)))
+        let top = top.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+        self.terms.values().any(|t| {
+            t.head.as_ref().is_some_and(|h| same_path(&h.top, std::path::Path::new(&top)))
+                || {
+                    let cwd = t.cwd.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+                    cwd == top || cwd.starts_with(&format!("{top}\\"))
+                }
+        })
     }
 
     /// A clean-up's worktrees, sorted into the ones to remove (folder, even with uncommitted

@@ -36,7 +36,9 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
   Click a sidebar status icon or pane status tag to see why, the evidence's age and any uncertainty.
 - **Subagents under their agent.** What an agent has running shows under its row
   (`↳ reconcile_audit`, repeats counted): Claude's from its hooks, Codex's from its session
-  files (each subagent by its task's name, and `goal` while `/goal` is driving it). Helpers show an icon
+  files, and other helpers when their host exposes lifecycle events. Seshi shows the task name
+  only when the host reports one; otherwise the row uses an inferred stage and the details view
+  labels missing metadata as **Not reported**. Helpers show an icon
   for what they are doing (`✎` planning, a book researching, `⚙` building, `⚖` reviewing) in the
   working orange, not a colour per role.
 - **Limits.** An agent stopped by a limit is told "continue" once the limit resets (Settings →
@@ -87,14 +89,31 @@ it brings hydra's config, saved sessions and history over (hydra's own folders a
 were), and the next server start points your Claude hooks at seshi. Run `seshi integrate mcp` again
 if agents used hydra's MCP tools, then uninstall hydra when you're happy.
 
-Then run `seshi doctor` to check your setup. If Codex is on PATH, doctor checks its subagent
-hooks too. Run `seshi integrate codex` once on each machine using Codex, then restart Codex to
-load them; the hooks live in that machine's Codex config and are not shared by installing Seshi.
+Then run `seshi doctor` to check your setup. For installed providers with native status adapters
+(Claude, Codex, Pi, OpenCode, OMP, Kilo, Mastracode and Kimi), it checks the machine-local setup.
+For a missing adapter, it gives the
+matching `seshi integrate <agent>` command; configured adapters may need that agent restarted or
+reloaded. Doctor distinguishes installed configuration from live reporting: process and screen
+detection remain available as a fallback until Seshi receives a native event. Setup lives in each
+machine's agent config and is not shared by installing Seshi.
 For the best look: a terminal with true colour and a
 [Nerd Font](https://www.nerdfonts.com) (Windows Terminal, Ghostty, Alacritty, WezTerm, iTerm2).
 Optional: `git` (worktrees, changes), `gh` (opening a pull request from Changes).
 
 From source (any platform with Rust): `cargo install --git https://github.com/CydoEntis/seshi`.
+
+## Start in five minutes
+
+1. Install Seshi, then open a terminal in the repository you want to work on and run `seshi`.
+2. Choose **+ new**, enter an agent command such as `claude` or `codex`, and start the session.
+   In a Git checkout, new Claude and Codex tasks use a separate worktree by default; resumes stay
+   in their existing checkout.
+3. Read the sidebar state: orange means working, the alert colour means the agent needs you,
+   green means its turn finished, and gray means idle. Select a row to return to that session.
+4. Press **Ctrl+Space**, release it, then **?** to find shortcuts. Press **Ctrl+Space**, then
+   **q** to detach; the daemon keeps sessions running, and `seshi` reopens them.
+5. If status seems wrong, run `seshi doctor` and follow the provider-specific setup or reload
+   guidance it prints.
 
 ## Use
 

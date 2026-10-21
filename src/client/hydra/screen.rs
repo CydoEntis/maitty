@@ -794,15 +794,6 @@ pub(in crate::client) fn draw_main(app: &mut App, f: &mut Frame, area: Rect, mod
         return;
     };
     let leaves = layout.leaves();
-    // Two: where you drag the gap (below). More: tiled.
-    if leaves.len() >= 3 {
-        let rects = arranged(&leaves, area);
-        app.hy.leaf_rects = rects.clone();
-        for (id, r) in rects {
-            draw_session(app, f, inset(r), id, id == focus, model, t);
-        }
-        return;
-    }
     // A pane that has just opened grows out of its edge (the split's share eases to where it
     // goes); one too thin to draw yet is only space.
     let mut layout = layout;

@@ -381,9 +381,106 @@ pub(crate) fn install_status(agent: &str) -> Result<PathBuf> {
     }
 }
 
+/// The primary file whose Seshi-owned contents enable each native adapter.
+/// Existence alone is not reported as live: the provider must reload it and
+/// send an event before the running session can confirm native status.
+pub(crate) fn status_adapter_path(agent: &str) -> Result<PathBuf> {
+    let home = directories::BaseDirs::new()
+        .context("locate agent configuration")?
+        .home_dir()
+        .to_path_buf();
+    let path = match agent {
+        "pi" => std::env::var_os("PI_CODING_AGENT_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join(".pi/agent"))
+            .join("extensions/seshi.js"),
+        "omp" => {
+            let dir = std::env::var_os("PI_CODING_AGENT_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| {
+                    home.join(std::env::var_os("PI_CONFIG_DIR").unwrap_or_else(|| ".omp".into()))
+                        .join("agent")
+                });
+            dir.join("extensions/seshi.js")
+        }
+        "kilo" => std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join(".config"))
+            .join("kilo/plugin/seshi.js"),
+        "mastracode" => home.join(".mastracode/hooks.json"),
+        "kimi" => std::env::var_os("KIMI_CODE_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join(".kimi-code"))
+            .join("config.toml"),
+        "opencode" => std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join(".config"))
+            .join("opencode/plugins/seshi.js"),
+        _ => bail!("unsupported status adapter: {agent}"),
+    };
+    Ok(path)
+}
+
+pub(crate) fn status_adapter_installed(agent: &str, path: &std::path::Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    match agent {
+        "pi" | "omp" | "kilo" | "opencode" => text.starts_with(OWNED_HEADER),
+        "mastracode" => serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|root| root.get("hooks").cloned())
+            .and_then(|hooks| hooks.as_object().cloned())
+            .is_some_and(|hooks| {
+                hooks.values().any(|entries| {
+                    entries.as_array().is_some_and(|entries| {
+                        entries.iter().any(|entry| {
+                            entry.get("_seshi").and_then(serde_json::Value::as_bool) == Some(true)
+                        })
+                    })
+                })
+            }),
+        "kimi" => toml::from_str::<toml::Value>(&text)
+            .ok()
+            .and_then(|root| root.get("hooks").cloned())
+            .and_then(|hooks| hooks.as_array().cloned())
+            .is_some_and(|hooks| {
+                hooks.iter().any(|hook| {
+                    hook.get("_seshi").and_then(toml::Value::as_bool) == Some(true)
+                })
+            }),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_adapter_diagnostics_only_recognize_seshi_owned_installations() {
+        let dir = std::env::temp_dir().join(format!(
+            "seshi-doctor-adapters-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let plugin = dir.join("seshi.js");
+        std::fs::write(&plugin, "// Written by `seshi integrate pi`\n").unwrap();
+        assert!(status_adapter_installed("pi", &plugin));
+        std::fs::write(&plugin, "// a different extension\n").unwrap();
+        assert!(!status_adapter_installed("pi", &plugin));
+
+        let mastra = dir.join("hooks.json");
+        std::fs::write(&mastra, r#"{"hooks":{"Stop":[{"_seshi":true}]}}"#).unwrap();
+        assert!(status_adapter_installed("mastracode", &mastra));
+        std::fs::write(&mastra, r#"{"hooks":{"Stop":[{"command":"mine"}]}}"#).unwrap();
+        assert!(!status_adapter_installed("mastracode", &mastra));
+
+        let kimi = dir.join("config.toml");
+        std::fs::write(&kimi, "[[hooks]]\n_seshi = true\n").unwrap();
+        assert!(status_adapter_installed("kimi", &kimi));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn opencode_setup_preserves_jsonc_and_migration_then_removes_only_our_entries() {
