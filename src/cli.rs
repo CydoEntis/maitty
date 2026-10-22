@@ -552,11 +552,11 @@ pub fn worktree(branch: String, base: Option<String>, ws: Option<WsId>, cmd: Vec
     command(Command::NewWorktree { ws, branch, base, cmd: join_command(cmd), split: None, from: None })
 }
 
-fn codex_status_hooks_installed(text: &str) -> bool {
+fn codex_status_hooks_installed(text: &str, windows: bool) -> bool {
     let Ok(config) = text.parse::<toml_edit::DocumentMut>() else {
         return false;
     };
-    ["SubagentStart", "SubagentStop"].into_iter().all(|event| {
+    [("SessionStart", true), ("SubagentStart", false), ("SubagentStop", false)].into_iter().all(|(event, same_status)| {
         config
             .get("hooks")
             .and_then(toml_edit::Item::as_table)
@@ -569,12 +569,27 @@ fn codex_status_hooks_installed(text: &str) -> bool {
                         .and_then(toml_edit::Item::as_array_of_tables)
                         .is_some_and(|handlers| {
                             handlers.iter().any(|handler| {
-                                handler.get("type").and_then(toml_edit::Item::as_str)
-                                    == Some("command")
-                                    && handler
-                                        .get("command")
-                                        .and_then(toml_edit::Item::as_str)
-                                        .is_some_and(|command| command.ends_with(" hook codex"))
+                                if handler.get("type").and_then(toml_edit::Item::as_str) != Some("command") {
+                                    return false;
+                                }
+                                let command_ok = handler
+                                    .get("command")
+                                    .and_then(toml_edit::Item::as_str)
+                                    .is_some_and(|command| {
+                                        if same_status {
+                                            command.ends_with(" hook codex --status same")
+                                        } else {
+                                            command.ends_with(" hook codex")
+                                        }
+                                    });
+                                let windows_ok = !windows || handler
+                                    .get("commandWindows")
+                                    .and_then(toml_edit::Item::as_str)
+                                    .is_some_and(|command| {
+                                        command.starts_with("& ")
+                                            && if same_status { command.ends_with(" hook codex --status same") } else { command.ends_with(" hook codex") }
+                                    });
+                                command_ok && windows_ok
                             })
                         })
                 })
@@ -661,7 +676,7 @@ pub fn doctor() -> Result<()> {
     if found.contains(&"codex") {
         let path = codex_config();
         match std::fs::read_to_string(&path) {
-            Ok(text) if codex_status_hooks_installed(&text) => {
+            Ok(text) if codex_status_hooks_installed(&text, cfg!(windows)) => {
                 line(Some(true), "codex subagent hooks", "installed".into());
             }
             Ok(text) if text.parse::<toml_edit::DocumentMut>().is_err() => {
@@ -1623,8 +1638,12 @@ pub fn allow(dir: Option<std::path::PathBuf>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn codex_status_setup_requires_both_subagent_lifecycle_hooks() {
-        let installed = r#"
+    fn codex_status_setup_requires_root_thread_and_subagent_hooks_for_each_platform() {
+        let linux = r#"
+            [[hooks.SessionStart]]
+            [[hooks.SessionStart.hooks]]
+            type = "command"
+            command = '"/usr/local/bin/seshi" hook codex --status same'
             [[hooks.SubagentStart]]
             [[hooks.SubagentStart.hooks]]
             type = "command"
@@ -1634,16 +1653,39 @@ mod tests {
             type = "command"
             command = '"/usr/local/bin/seshi" hook codex'
         "#;
+        let windows = r#"
+            [[hooks.SessionStart]]
+            [[hooks.SessionStart.hooks]]
+            type = "command"
+            command = '"/usr/local/bin/seshi" hook codex --status same'
+            commandWindows = '& "C:\\\\seshi.exe" hook codex --status same'
+            [[hooks.SubagentStart]]
+            [[hooks.SubagentStart.hooks]]
+            type = "command"
+            command = '"/usr/local/bin/seshi" hook codex'
+            commandWindows = '& "C:\\\\seshi.exe" hook codex'
+            [[hooks.SubagentStop]]
+            [[hooks.SubagentStop.hooks]]
+            type = "command"
+            command = '"/usr/local/bin/seshi" hook codex'
+            commandWindows = '& "C:\\\\seshi.exe" hook codex'
+        "#;
         let missing_stop = r#"
+            [[hooks.SessionStart]]
+            [[hooks.SessionStart.hooks]]
+            type = "command"
+            command = '"/usr/local/bin/seshi" hook codex --status same'
             [[hooks.SubagentStart]]
             [[hooks.SubagentStart.hooks]]
             type = "command"
             command = '"/usr/local/bin/seshi" hook codex'
         "#;
 
-        assert!(super::codex_status_hooks_installed(installed));
-        assert!(!super::codex_status_hooks_installed(missing_stop));
-        assert!(!super::codex_status_hooks_installed("[hooks\n"));
+        assert!(super::codex_status_hooks_installed(linux, false));
+        assert!(!super::codex_status_hooks_installed(linux, true));
+        assert!(super::codex_status_hooks_installed(windows, true));
+        assert!(!super::codex_status_hooks_installed(missing_stop, false));
+        assert!(!super::codex_status_hooks_installed("[hooks\n", false));
     }
 
     #[test]
@@ -1781,6 +1823,18 @@ mod tests {
     }
 
     #[test]
+    fn codex_session_start_records_thread_without_changing_agent_status() {
+        use crate::protocol::HookStatus as H;
+        let payload = json!({"hook_event_name":"SessionStart","session_id":"root-thread","cwd":"/project"});
+        let origin = super::HookOrigin { term: 4, agent: "codex".into(), pid: 12, token: "pane-token".into() };
+        let ClientMsg::Hook { session, cwd, status, event, .. } = super::hook_message(origin, &payload, H::Same) else { panic!("expected hook") };
+        assert_eq!(session.as_deref(), Some("root-thread"));
+        assert_eq!(cwd.as_deref(), Some(std::path::Path::new("/project")));
+        assert_eq!(status, H::Same, "capturing the root thread must not mark a running Codex turn idle");
+        assert_eq!(event, "SessionStart");
+    }
+
+    #[test]
     fn pi_native_events_map_to_status_with_evidence_and_no_conversation_payload() {
         use crate::protocol::HookStatus as H;
         for (event, expected) in [("pi.session_start", H::Idle), ("pi.agent_start", H::Working), ("pi.ui_prompt_start", H::Blocked), ("pi.ui_prompt_end", H::Working), ("pi.agent_settled", H::Done), ("pi.session_shutdown", H::Gone)] {
@@ -1880,6 +1934,7 @@ mod tests {
     }
 
     use super::*;
+
 
     #[test]
     fn claude_hook_mapping() {
