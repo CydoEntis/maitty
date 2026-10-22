@@ -1495,3 +1495,91 @@ fn codex_expanded_question_overrides_working_until_dismissed() {
     close(&mut d, &[id]);
     assert_eq!(observed, [Status::Blocked, Status::Working, Status::Blocked, Status::Working]);
 }
+
+fn failed_check(output: &str) -> check::CheckRecord {
+    let info = CheckInfo {
+        command: "npm test".into(),
+        state: CheckState::Failed,
+        exit_code: Some(1),
+        first_failing_line: "FAIL footer.test.ts".into(),
+        ..Default::default()
+    };
+    check::CheckRecord::new(info, output)
+}
+
+#[test]
+fn the_snapshot_carries_a_check_summary_and_a_query_returns_its_output() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let (tx, mut out) = mpsc::channel(16);
+    d.handle(Ev::Connected(7, tx, false));
+    d.message(7, ClientMsg::Query(Query::CheckOutput { term: t }));
+    assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(_))), "no check, no output");
+    d.terms.get_mut(&t).unwrap().check = Some(failed_check("ok a\nFAIL footer.test.ts\n"));
+    let info = d.snapshot().terms[&t].check.clone().expect("the summary is in the snapshot");
+    assert_eq!((info.state, info.first_failing_line.as_str()), (CheckState::Failed, "FAIL footer.test.ts"));
+    d.message(7, ClientMsg::Query(Query::CheckOutput { term: t }));
+    assert!(matches!(out.try_recv(), Ok(ServerMsg::Reply(Reply::Text(text))) if text == "ok a\nFAIL footer.test.ts\n"));
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_pane_may_not_read_another_panes_check_output_without_the_read_grant() {
+    let (mut d, _rx) = daemon();
+    let (a, b) = (pane(&mut d), pane(&mut d));
+    d.terms.get_mut(&b).unwrap().check = Some(failed_check("secret-ish output"));
+    let (tx, mut out) = mpsc::channel(16);
+    d.handle(Ev::Connected(7, tx, false));
+    let token = d.terms[&a].token.clone();
+    d.handle(Ev::From(7, a, token));
+    d.terms.get_mut(&a).unwrap().grants = Some(Vec::new());
+    d.message(7, ClientMsg::Query(Query::CheckOutput { term: b }));
+    assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(_))), "read is a grant");
+    close(&mut d, &[a, b]);
+}
+
+#[test]
+fn check_results_survive_a_restart_with_their_output() {
+    let (mut d, _rx) = daemon();
+    let dir = std::env::temp_dir();
+    let old: TermId = 9_201;
+    let overridden = CheckInfo { state: CheckState::Overridden, overridden_at: Some(5), override_reason: "flaky".into(), ..failed_check("").info };
+    persist::save_check_outputs(
+        &[(old, persist::CheckSlot::Latest, "latest tail".into()), (old, persist::CheckSlot::Overridden, "overridden tail".into())],
+        &[old],
+    )
+    .unwrap();
+    let pane = persist::SavedPane {
+        cwd: Some(dir.clone()),
+        check: Some(failed_check("").info),
+        check_overridden: Some(overridden.clone()),
+        ..Default::default()
+    };
+    let tab = persist::SavedTab { name: String::new(), layout: Node::Leaf(old), focus: old, panes: [(old, pane)].into() };
+    let ws = persist::SavedWs { name: String::new(), cwd: dir, worktree: false, color: None, group: None, tabs: vec![tab], active_tab: 0 };
+    d.restore(persist::Saved { workspaces: vec![ws], active: 0, made_worktrees: Vec::new() });
+    let t = d.workspaces[0].tabs[0].focus;
+    let restored = &d.terms[&t];
+    assert_eq!(restored.check.as_ref().map(|c| c.output.as_str()), Some("latest tail"));
+    assert_eq!(restored.check_overridden.as_ref().map(|c| (&c.info, c.output.as_str())), Some((&overridden, "overridden tail")));
+    let saved = d.saved();
+    let again = &saved.workspaces[0].tabs[0].panes[&t];
+    assert_eq!((again.check.as_ref().map(|c| c.state), again.check_overridden.as_ref()), (Some(CheckState::Failed), Some(&overridden)));
+    let mut written = d.take_dirty_check_outputs();
+    written.sort_by_key(|(_, slot, _)| *slot as u8);
+    let expected = [(t, persist::CheckSlot::Latest, "latest tail".to_string()), (t, persist::CheckSlot::Overridden, "overridden tail".to_string())];
+    assert_eq!(written, expected, "its output is written again under the new id");
+    assert!(d.take_dirty_check_outputs().is_empty(), "and only once");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_check_that_was_running_when_the_server_stopped_reads_as_not_run() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let running = CheckInfo { state: CheckState::Checking, ..Default::default() };
+    let saved = persist::SavedPane { check: Some(running), ..Default::default() };
+    d.terms.get_mut(&t).unwrap().restore_checks(9_202, &saved);
+    assert_eq!(d.terms[&t].check.as_ref().map(|c| c.info.state), Some(CheckState::CouldNotRun));
+    close(&mut d, &[t]);
+}

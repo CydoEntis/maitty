@@ -123,7 +123,15 @@ the pane's process tree or `SESHI_PANE_TOKEN`.
 
 Saved role profiles and sequenced planner/worker/reviewer workflows are not part
 of Seshi's interface. Sessions, ordinary agent launches, fleet helpers, and
-MCP session controls remain supported. The wire protocol is version 41.
+MCP session controls remain supported. The wire protocol is version 43.
+
+A pane's check result travels as a `CheckInfo` summary on `TermInfo.check` (command, state,
+exit code, start, duration, the turn-end it followed, the first failing line, whether a re-run
+is queued, and the override time and reason). The output tail is never in the snapshot:
+`Query::CheckOutput { term }` returns it as `Reply::Text`, under the read grant. Each result's
+tail is capped at `CHECK_OUTPUT_MAX_BYTES` (1 MiB), cut on a character boundary. The latest
+result and the overridden one are saved in `SavedPane` (`check`, `check_overridden`, both
+optional); their tails are saved beside the pane's output files.
 
 Subagent lifecycle is carried as structured `SubagentActivity` records in each
 pane snapshot and persisted with its saved pane. Hook reports use the owning

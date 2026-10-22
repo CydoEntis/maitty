@@ -4,6 +4,7 @@
 //! scanner, background git work and client connections talk to it through a single
 //! channel, so there is no locking around the model.
 
+mod check;
 mod git;
 mod persist;
 mod scan;
@@ -1040,6 +1041,13 @@ impl Daemon {
                         Some(t) => ServerMsg::Reply(Reply::Text(t.parser.screen().contents())),
                         None => ServerMsg::Error(format!("no pane {term}")),
                     },
+                    Query::CheckOutput { term } if self.may(client, Grant::Read, Some(term)).is_err() => {
+                        ServerMsg::Error(format!("{:#}", self.may(client, Grant::Read, Some(term)).unwrap_err()))
+                    }
+                    Query::CheckOutput { term } => match self.terms.get(&term).and_then(|t| t.check.as_ref()) {
+                        Some(record) => ServerMsg::Reply(Reply::Text(record.output.clone())),
+                        None => ServerMsg::Error(format!("no check output for pane {term}")),
+                    },
                     Query::Worktrees { ws } => {
                         let Some(dir) = self.workspaces.iter().find(|w| w.id == ws).map(|w| w.cwd.clone()) else {
                             self.send(client, ServerMsg::Error(format!("no workspace {ws}")));
@@ -1110,6 +1118,7 @@ impl Daemon {
                     win32_input: t.win32_input,
                     usage: t.usage.clone(),
                     resume_at: t.resume_at,
+                    check: t.check.as_ref().map(|c| c.info.clone()),
                     subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
                     started_by: t.started_by,
                     queued: t.queue.iter().cloned().collect(),

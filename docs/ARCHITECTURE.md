@@ -72,6 +72,7 @@ src/
     status.rs    hook reports (checked on their own thread) and screen detection
     worktrees.rs making and trusting worktrees, spares, hooks, cleanup
     restore.rs   saving sessions and recovering agents left asleep by older versions
+    check.rs     a pane's check result: state from an exit code, capped output tail
     term.rs      one pane: PTY, input thread, vt100 emulator
     scan.rs, git.rs, persist.rs
   client/        the UI

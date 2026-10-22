@@ -90,6 +90,9 @@ Tests never touch the user's real config (`SESHI_CONFIG` or in-memory configs).
 - Status detection (`daemon/scan.rs`, hook handling): every agent's
   working / needs-you / done transitions.
 - Protocol: round-trip of every message through msgpack.
+- Checks: exit code, timeout and spawn failure map to one `CheckState` (table test in
+  `daemon/check.rs`); the output cap cuts on a character boundary; a saved pane without the
+  check fields still loads.
 - Key handling: every default binding resolves to an action, and new keys don't
   collide.
 - Every popup: a render test that it opens, fits at 100×30, and closes on Esc.

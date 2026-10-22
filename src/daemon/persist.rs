@@ -2,7 +2,8 @@
 //! the machine) restarts. Written atomically, a few seconds after the model settles.
 
 use crate::layout::Node;
-use crate::protocol::{SubagentActivity, TermId};
+use super::check;
+use crate::protocol::{CheckInfo, SubagentActivity, TermId};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -72,6 +73,12 @@ pub struct SavedPane {
     /// Child activity records survive daemon restarts and completed turns.
     #[serde(default)]
     pub subagent_activity: Vec<SubagentActivity>,
+    /// The latest check result; its output tail is kept beside the pane's output files.
+    #[serde(default)]
+    pub check: Option<CheckInfo>,
+    /// The failed result the user overrode, kept so the override stays visible.
+    #[serde(default)]
+    pub check_overridden: Option<CheckInfo>,
 }
 
 pub fn path() -> PathBuf {
@@ -110,6 +117,7 @@ pub fn forget() {
     }
     let _ = std::fs::remove_file(path());
     let _ = std::fs::remove_dir_all(output_dir());
+    let _ = std::fs::remove_dir_all(check_output_dir());
 }
 
 /// Where each pane's recent output is kept, so its history is still there after the server
@@ -124,6 +132,67 @@ pub fn output_dir() -> PathBuf {
 
 fn output_file(term: TermId) -> PathBuf {
     output_dir().join(format!("{term}.bin"))
+}
+
+/// Which of a pane's two kept check results an output tail belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckSlot {
+    Latest,
+    Overridden,
+}
+
+impl CheckSlot {
+    fn file_suffix(self) -> &'static str {
+        match self {
+            CheckSlot::Latest => "latest",
+            CheckSlot::Overridden => "overridden",
+        }
+    }
+}
+
+/// Where check output tails are kept: apart from `output_dir`, whose cleanup treats every
+/// file in it as a pane's output.
+pub fn check_output_dir() -> PathBuf {
+    if cfg!(test) {
+        return std::env::temp_dir().join(format!("seshi-test-check-output-{}", std::process::id()));
+    }
+    let label = std::env::var("SESHI_SOCKET").unwrap_or_else(|_| "default".into());
+    crate::config::data_dir().join(format!("check-output-{label}"))
+}
+
+fn check_output_file(term: TermId, slot: CheckSlot) -> PathBuf {
+    check_output_dir().join(format!("{term}-{}.txt", slot.file_suffix()))
+}
+
+/// Keep each check output tail, and drop the files of panes not in `live`. One file failing
+/// doesn't stop the rest; the first error is returned after all were tried.
+pub fn save_check_outputs(outputs: &[(TermId, CheckSlot, String)], live: &[TermId]) -> Result<()> {
+    let dir = check_output_dir();
+    std::fs::create_dir_all(&dir)?;
+    let mut first_err: Option<anyhow::Error> = None;
+    for (term, slot, text) in outputs {
+        let path = check_output_file(*term, *slot);
+        let tmp = path.with_extension("tmp");
+        if let Err(e) = std::fs::write(&tmp, text).and_then(|()| std::fs::rename(&tmp, &path)) {
+            first_err.get_or_insert(e.into());
+        }
+    }
+    for e in std::fs::read_dir(&dir)?.flatten() {
+        let name = e.file_name();
+        let id = name.to_str().and_then(|n| n.split('-').next()).and_then(|n| n.parse::<TermId>().ok());
+        if id.is_none_or(|id| !live.contains(&id)) {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+    first_err.map_or(Ok(()), Err)
+}
+
+/// A pane's kept check output, taken (its file goes: the pane it's restored into saves its own).
+pub fn take_check_output(term: TermId, slot: CheckSlot) -> Option<String> {
+    let path = check_output_file(term, slot);
+    let bytes = std::fs::read(&path).ok()?;
+    let _ = std::fs::remove_file(&path);
+    Some(check::cap_output(&String::from_utf8_lossy(&bytes)))
 }
 
 /// Which save last wrote each pane, so a slow background save can't put older output over a
@@ -198,7 +267,7 @@ pub fn take_output(term: TermId) -> Option<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use super::Saved;
+    use super::*;
 
     #[test]
     fn a_slow_older_save_cannot_overwrite_a_newer_one() {
@@ -208,6 +277,32 @@ mod tests {
         super::save_outputs(new, &[(term, b"newer".to_vec())], &[term]).unwrap();
         super::save_outputs(old, &[(term, b"older".to_vec())], &[term]).unwrap();
         assert_eq!(super::take_output(term).as_deref(), Some(b"newer".as_slice()));
+    }
+
+    #[test]
+    fn check_results_round_trip_and_older_panes_load_without_them() {
+        let info = CheckInfo { command: "npm test".into(), state: crate::protocol::CheckState::Failed, exit_code: Some(1), ..Default::default() };
+        let pane = SavedPane { check: Some(info.clone()), check_overridden: Some(info.clone()), ..Default::default() };
+        let back: SavedPane = serde_json::from_str(&serde_json::to_string(&pane).unwrap()).unwrap();
+        assert_eq!((back.check, back.check_overridden), (Some(info.clone()), Some(info)));
+        let old: SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":null,"session":null}"#).expect("a pane saved before checks");
+        assert_eq!((old.check, old.check_overridden), (None, None));
+    }
+
+    #[test]
+    fn check_output_is_kept_per_slot_taken_once_and_dropped_with_its_pane() {
+        let (kept, gone): (crate::protocol::TermId, crate::protocol::TermId) = (9_101, 9_102);
+        let outputs = [
+            (kept, CheckSlot::Latest, "FAIL a\n".to_string()),
+            (kept, CheckSlot::Overridden, "FAIL b\n".to_string()),
+            (gone, CheckSlot::Latest, "FAIL c\n".to_string()),
+        ];
+        save_check_outputs(&outputs, &[kept, gone]).unwrap();
+        save_check_outputs(&[], &[kept]).unwrap();
+        assert_eq!(take_check_output(gone, CheckSlot::Latest), None, "a closed pane's tail goes");
+        assert_eq!(take_check_output(kept, CheckSlot::Overridden).as_deref(), Some("FAIL b\n"));
+        assert_eq!(take_check_output(kept, CheckSlot::Latest).as_deref(), Some("FAIL a\n"));
+        assert_eq!(take_check_output(kept, CheckSlot::Latest), None, "taken once");
     }
 
     #[test]

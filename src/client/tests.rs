@@ -66,6 +66,7 @@ mod design_tests {
             popup: false,
             usage: Default::default(),
             resume_at: None,
+            check: None,
         }
     }
 

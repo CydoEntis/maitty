@@ -86,12 +86,18 @@ impl Daemon {
                 (t.id, t.kept_output())
             })
             .collect();
-        if outputs.is_empty() && !all {
+        let check_outputs = self.take_dirty_check_outputs();
+        if outputs.is_empty() && check_outputs.is_empty() && !all {
             return;
         }
         let save = move || {
             if let Err(e) = persist::save_outputs(ticket, &outputs, &live) {
                 tracing::warn!("saving panes' output: {e:#}");
+            }
+            if !check_outputs.is_empty()
+                && let Err(e) = persist::save_check_outputs(&check_outputs, &live)
+            {
+                tracing::warn!("saving checks' output: {e:#}");
             }
         };
         if all {
@@ -99,6 +105,17 @@ impl Daemon {
         } else {
             tokio::task::spawn_blocking(save);
         }
+    }
+
+    /// The check output tails that changed since they were last written, marked as written.
+    pub(super) fn take_dirty_check_outputs(&mut self) -> Vec<(TermId, persist::CheckSlot, String)> {
+        let mut out = Vec::new();
+        for t in self.terms.values_mut().filter(|t| t.check_dirty) {
+            t.check_dirty = false;
+            let slots = [(persist::CheckSlot::Latest, &t.check), (persist::CheckSlot::Overridden, &t.check_overridden)];
+            out.extend(slots.into_iter().filter_map(|(slot, r)| r.as_ref().map(|r| (t.id, slot, r.output.clone()))));
+        }
+        out
     }
 
     pub(super) fn saved(&self) -> persist::Saved {
@@ -115,6 +132,8 @@ impl Daemon {
             queue: term.queue.iter().cloned().collect(),
             account: term.account.clone(),
             subagent_activity: term.subagent_activity.clone(),
+            check: term.check.as_ref().map(|c| c.info.clone()),
+            check_overridden: term.check_overridden.as_ref().map(|c| c.info.clone()),
         };
         let workspaces = self
             .workspaces
@@ -217,6 +236,7 @@ impl Daemon {
                                 t.model = pane.model.clone();
                                 t.label = pane.label.clone();
                                 t.queue = pane.queue.iter().cloned().collect();
+                                t.restore_checks(old, &pane);
                                 let now = term::unix_now();
                                 t.subagent_activity = pane.subagent_activity.into_iter().map(|mut activity| {
                                     if activity.state.active() {

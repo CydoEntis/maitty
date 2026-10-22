@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Bump whenever a message shape changes; client and daemon refuse to talk across versions.
-pub const PROTOCOL_VERSION: u32 = 42;
+pub const PROTOCOL_VERSION: u32 = 43;
 
 pub type TermId = u32;
 pub type WsId = u32;
@@ -178,6 +178,8 @@ pub enum Query {
     Read { term: TermId },
     /// Every worktree of the repository a workspace is in.
     Worktrees { ws: WsId },
+    /// The tail of a pane's last check output; the snapshot carries only a summary.
+    CheckOutput { term: TermId },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -494,6 +496,42 @@ pub struct TermInfo {
     /// It hit a plan limit; seshi says "continue" at this time (unix seconds).
     #[serde(default)]
     pub resume_at: Option<u64>,
+    /// The latest check Seshi ran after its turn ended, if any. The output stays on the daemon.
+    #[serde(default)]
+    pub check: Option<CheckInfo>,
+}
+
+/// Where a check stands. `CouldNotRun` is not a failure: the work was never checked.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CheckState {
+    Checking,
+    Passed,
+    Failed,
+    /// A failed result the user chose to accept; `CheckInfo` still says what failed.
+    Overridden,
+    #[default]
+    CouldNotRun,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CheckInfo {
+    pub command: String,
+    pub state: CheckState,
+    /// Absent while checking, or when the command never started or timed out.
+    pub exit_code: Option<i32>,
+    /// When it started (unix seconds).
+    pub started_at: u64,
+    pub duration_ms: u64,
+    /// When the agent turn that triggered it ended (unix seconds).
+    pub after_turn_ended_at: u64,
+    /// The first output line that looks like a failure; empty when there is none.
+    pub first_failing_line: String,
+    /// Another turn ended while it ran, so it runs again when this one settles.
+    pub rerun_queued: bool,
+    /// When the user overrode a failure (unix seconds); only set on `Overridden`.
+    pub overridden_at: Option<u64>,
+    pub override_reason: String,
 }
 
 impl TermInfo {
@@ -592,6 +630,7 @@ mod tests {
             ClientMsg::Query(Query::List),
             ClientMsg::Query(Query::Read { term: 3 }),
             ClientMsg::Query(Query::Worktrees { ws: 1 }),
+            ClientMsg::Query(Query::CheckOutput { term: 3 }),
             ClientMsg::Command(Command::NewWorkspace { cwd: Some(PathBuf::from("/code")), name: None, cmd: Some("claude".into()) }),
             ClientMsg::Command(Command::Split { term: 3, dir: crate::layout::Dir::Down, cmd: None, cwd: None }),
             ClientMsg::Command(Command::ClosePane { term: 3 }),
@@ -628,5 +667,37 @@ mod tests {
         for m in &servers {
             round_trips(m);
         }
+    }
+
+    #[test]
+    fn a_pane_without_a_check_decodes_and_one_with_a_check_round_trips() {
+        let mut term: TermInfo = serde_json::from_value(serde_json::json!({
+            "id": 3, "cols": 80, "rows": 24, "title": "", "process": "", "agent": null,
+            "status": "Done", "cwd": "/code", "summary": "", "name": "", "model": "", "said": "",
+            "branch": null, "linked": false, "subagents": [], "root": null, "top": null,
+            "since": 0, "asleep": false, "win32_input": false,
+        }))
+        .expect("a pane from a peer that knows no checks");
+        assert_eq!(term.check, None);
+        term.check = Some(CheckInfo {
+            command: "npm test".into(),
+            state: CheckState::Overridden,
+            exit_code: Some(1),
+            started_at: 100,
+            duration_ms: 14_200,
+            after_turn_ended_at: 90,
+            first_failing_line: "FAIL footer.test.ts".into(),
+            rerun_queued: true,
+            overridden_at: Some(130),
+            override_reason: "flaky".into(),
+        });
+        round_trips(&ServerMsg::State(Snapshot { terms: [(3, term)].into(), ..Default::default() }));
+    }
+
+    #[test]
+    fn a_check_from_an_older_peer_fills_in_what_it_lacks() {
+        let bytes = rmp_serde::to_vec_named(&BTreeMap::from([("command", "npm test")])).unwrap();
+        let info: CheckInfo = decode(&bytes).expect("only the command");
+        assert_eq!((info.command.as_str(), info.exit_code, info.rerun_queued), ("npm test", None, false));
     }
 }

@@ -182,6 +182,11 @@ pub struct Term {
     pub usage: crate::protocol::Usage,
     /// Stopped by a plan limit: "continue" goes at this time (unix seconds).
     pub resume_at: Option<u64>,
+    /// The latest check result, and the failed one the user overrode.
+    pub check: Option<super::check::CheckRecord>,
+    pub check_overridden: Option<super::check::CheckRecord>,
+    /// A check result changed since its output was last written to disk.
+    pub check_dirty: bool,
     /// When seshi last said "continue" to it.
     pub continued: Option<Instant>,
     /// A worktree this agent moves into when its turn ends.
@@ -595,6 +600,9 @@ impl Term {
             transcript: None,
             usage: Default::default(),
             resume_at: None,
+            check: None,
+            check_overridden: None,
+            check_dirty: false,
             continued: None,
             pending_move: None,
             spare: false,
