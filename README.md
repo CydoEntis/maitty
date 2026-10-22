@@ -554,8 +554,13 @@ seshi ls --json
 seshi split -- claude
 seshi send -p 3 "run the tests"
 seshi read 3
+seshi handoff 3 --to codex
 seshi integrate mcp
 ```
+
+`seshi handoff` starts another agent beside pane 3, in the same checkout, with a short
+text brief (task, branch, changed files, recent output); it does not carry the first
+agent's conversation or memory.
 
 For more detail, see [status setup](docs/agent-status.md),
 [screen-specific controls](docs/shortcuts.md),

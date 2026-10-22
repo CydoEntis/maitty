@@ -1,7 +1,8 @@
 //! `seshi handoff`: the text brief a new agent starts with when another agent's work moves
 //! to it. Text only: the new agent gets no conversation, memory or tool results.
 
-use crate::protocol::TermId;
+use crate::config::Config;
+use crate::protocol::{TermId, TermInfo};
 use std::path::{Path, PathBuf};
 
 /// Screen lines carried over, from the bottom.
@@ -94,6 +95,20 @@ fn cut(s: &str, max: usize) -> String {
     let mut out: String = s.chars().take(max - 1).collect();
     out.push('…');
     out
+}
+
+/// Whether `pane` can be handed to `to`: it exists, runs an agent, and `to` is an agent
+/// seshi can start. Gives the old agent's name.
+pub fn check(cfg: &Config, pane: TermId, term: Option<&TermInfo>, to: &str) -> Result<String, String> {
+    let term = term.ok_or_else(|| format!("no pane {pane}"))?;
+    let agent = term.agent.clone().ok_or_else(|| format!("pane {pane} has no agent to hand off"))?;
+    cfg.agent_command(Some(to), "")?;
+    Ok(agent)
+}
+
+/// The pane in `now` that wasn't in `had`.
+pub fn new_pane(had: &[TermId], now: impl IntoIterator<Item = TermId>) -> Option<TermId> {
+    now.into_iter().find(|id| !had.contains(id))
 }
 
 /// What the checkout changed: uncommitted paths, plus, off the main branch, the files
@@ -239,5 +254,34 @@ mod tests {
         assert_eq!(changed_files(&wt, Some(&repo)).unwrap(), ["committed.rs", "edited.rs"]);
         assert!(changed_files(&repo, Some(&repo)).unwrap().is_empty(), "the main checkout: only what isn't committed");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn pane(agent: Option<&str>) -> TermInfo {
+        let mut t: TermInfo = serde_json::from_value(serde_json::json!({
+            "id": 3, "cols": 80, "rows": 24, "title": "", "process": "node", "agent": null,
+            "status": "Done", "cwd": "/work/app", "summary": "", "name": "", "model": "", "said": "",
+            "branch": null, "linked": false, "subagents": [], "root": null, "top": null,
+            "since": 0, "asleep": false, "win32_input": false,
+        }))
+        .unwrap();
+        t.agent = agent.map(String::from);
+        t
+    }
+
+    #[test]
+    fn a_handoff_needs_a_pane_with_an_agent_and_a_known_agent_to_go_to() {
+        let cfg = Config::default();
+        assert_eq!(check(&cfg, 3, Some(&pane(Some("claude"))), "codex"), Ok("claude".into()));
+        assert_eq!(check(&cfg, 9, None, "codex"), Err("no pane 9".into()));
+        assert_eq!(check(&cfg, 3, Some(&pane(None)), "codex"), Err("pane 3 has no agent to hand off".into()));
+        let err = check(&cfg, 3, Some(&pane(Some("claude"))), "rm -rf;x").unwrap_err();
+        assert!(err.starts_with("unknown agent \"rm -rf;x\"; use one of:"), "{err}");
+    }
+
+    #[test]
+    fn the_new_pane_is_the_one_that_was_not_there() {
+        assert_eq!(new_pane(&[1, 3], [1, 3, 7]), Some(7));
+        assert_eq!(new_pane(&[1, 3], [1, 3]), None);
+        assert_eq!(new_pane(&[1, 3], [3]), None, "a pane closing is not a new one");
     }
 }
