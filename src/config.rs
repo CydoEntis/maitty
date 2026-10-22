@@ -61,6 +61,8 @@ pub struct Config {
     pub agents_replace_defaults: bool,
     /// Commands Seshi runs when an agent's turn ends in the named project (`[[check]]`).
     pub check: Vec<CheckDef>,
+    /// Jobs a commander gives its helpers, each with a model per agent family (`[team]`).
+    pub team: Team,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -230,6 +232,109 @@ pub fn validate_checks(checks: &[CheckDef]) -> Result<()> {
             !checks[..i].iter().any(|o| same_path(&o.project, &c.project)),
             "[[check]] #{n}: {} already has a check; a project has one",
             c.project.display()
+        );
+    }
+    Ok(())
+}
+
+/// The agent family a team's jobs run on.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Family {
+    #[default]
+    Claude,
+    Codex,
+}
+
+impl Family {
+    pub const ALL: [Family; 2] = [Family::Claude, Family::Codex];
+
+    /// The agent's name in `[[quick.agents]]`, and the family's spelling in the config.
+    pub fn agent(self) -> &'static str {
+        match self {
+            Family::Claude => "claude",
+            Family::Codex => "codex",
+        }
+    }
+}
+
+/// A commander's team: jobs with a model per family, the active family, and per-project overrides.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Team {
+    pub family: Family,
+    pub jobs: Vec<TeamJob>,
+    pub projects: Vec<TeamProject>,
+}
+
+/// One job, such as "builder". Model names go to the agent unchanged; empty is its default.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct TeamJob {
+    pub name: String,
+    pub claude: String,
+    pub codex: String,
+}
+
+impl TeamJob {
+    pub fn model(&self, family: Family) -> &str {
+        match family {
+            Family::Claude => &self.claude,
+            Family::Codex => &self.codex,
+        }
+    }
+}
+
+/// The family one project uses instead of the team's.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct TeamProject {
+    /// The repository's main checkout.
+    pub project: PathBuf,
+    pub family: Family,
+}
+
+/// Refuse a team a commander could not use, so the mistake shows when the config loads.
+pub fn validate_team(team: &Team) -> Result<()> {
+    for (i, job) in team.jobs.iter().enumerate() {
+        validate_job(job, i + 1)?;
+        anyhow::ensure!(
+            !team.jobs[..i].iter().any(|o| o.name.eq_ignore_ascii_case(&job.name)),
+            "[[team.jobs]] `{}` is named twice; job names differ in more than case",
+            job.name
+        );
+    }
+    for (i, p) in team.projects.iter().enumerate() {
+        let n = i + 1;
+        anyhow::ensure!(!p.project.as_os_str().is_empty(), "[[team.projects]] #{n} needs a `project`");
+        anyhow::ensure!(
+            !p.project.to_string_lossy().starts_with('~'),
+            "[[team.projects]] #{n}: `project` {} starts with `~`, which is not expanded; give the full path",
+            p.project.display()
+        );
+        anyhow::ensure!(
+            !team.projects[..i].iter().any(|o| same_path(&o.project, &p.project)),
+            "[[team.projects]] #{n}: {} already has a family; a project has one",
+            p.project.display()
+        );
+    }
+    Ok(())
+}
+
+fn validate_job(job: &TeamJob, n: usize) -> Result<()> {
+    anyhow::ensure!(!job.name.is_empty(), "[[team.jobs]] #{n} needs a `name`");
+    anyhow::ensure!(
+        job.name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+        "[[team.jobs]] `{}`: a name uses letters, digits, `-` and `_` only",
+        job.name
+    );
+    for family in Family::ALL {
+        let model = job.model(family);
+        anyhow::ensure!(
+            !model.contains(char::is_whitespace),
+            "[[team.jobs]] `{}`: the {} model `{model}` has a space in it",
+            job.name,
+            family.agent()
         );
     }
     Ok(())
@@ -523,6 +628,7 @@ impl Default for Config {
             agents: Vec::new(),
             agents_replace_defaults: false,
             check: Vec::new(),
+            team: Team::default(),
         }
     }
 }
@@ -932,6 +1038,7 @@ impl Config {
         }
         validate_spinner(&cfg.ui.spinner)?;
         validate_checks(&cfg.check)?;
+        validate_team(&cfg.team)?;
         Ok(cfg)
     }
 
@@ -1199,6 +1306,61 @@ mod tests {
         }
     }
 
+    const TEAM: &str = "[team]\nfamily = \"claude\"\n\n[[team.jobs]]\nname = \"planner\"\nclaude = \"opus\"\ncodex = \"gpt-6.1-sol\"\n\n[[team.projects]]\nproject = \"/home/me/code/app\"\nfamily = \"codex\"\n";
+
+    #[test]
+    fn a_team_table_reads_its_family_jobs_and_project_overrides() {
+        use super::{Family, Team, TeamJob, TeamProject};
+        let c: super::Config = toml::from_str(TEAM).unwrap();
+        super::validate_team(&c.team).unwrap();
+        let want = Team {
+            family: Family::Claude,
+            jobs: vec![TeamJob { name: "planner".into(), claude: "opus".into(), codex: "gpt-6.1-sol".into() }],
+            projects: vec![TeamProject { project: "/home/me/code/app".into(), family: Family::Codex }],
+        };
+        assert_eq!(c.team, want);
+        let c: super::Config = toml::from_str("[team]\nfamily = \"codex\"\n[[team.jobs]]\nname = \"x\"\n").unwrap();
+        assert_eq!((c.team.family, c.team.jobs[0].claude.as_str()), (Family::Codex, ""), "a model may be left empty");
+    }
+
+    #[test]
+    fn an_unknown_family_fails_to_parse_naming_the_key() {
+        let err = toml::from_str::<super::Config>("[team]\nfamily = \"gemini\"\n").expect_err("only claude or codex").to_string();
+        assert!(err.contains("family") && err.contains("gemini"), "{err}");
+    }
+
+    #[test]
+    fn a_team_a_commander_could_not_use_fails_the_config_at_load() {
+        let check = |toml: &str| -> Result<(), String> {
+            let c: super::Config = toml::from_str(toml).map_err(|e| e.to_string())?;
+            super::validate_team(&c.team).map_err(|e| e.to_string())
+        };
+        let job = |name: &str| format!("[[team.jobs]]\nname = '{name}'\nclaude = 'opus'\n");
+        let proj = |p: &str| format!("[[team.projects]]\nproject = '{p}'\nfamily = 'codex'\n");
+        assert!(check(&format!("{}{}{}", job("plan-1_a"), job("build"), proj("/a"))).is_ok());
+        for (bad, why) in [
+            (job(""), "#1 needs a `name`"),
+            (job("plan ner"), "`plan ner`"),
+            (job("plan.ner"), "`plan.ner`"),
+            (format!("{}{}", job("Builder"), job("builder")), "`builder` is named twice"),
+            ("[[team.jobs]]\nname = 'build'\ncodex = 'gpt 6'\n".to_string(), "`build`: the codex model `gpt 6`"),
+            ("[[team.jobs]]\nname = 'build'\nclaude = \"opus\\t\"\n".to_string(), "`build`: the claude model"),
+            ("[[team.projects]]\nfamily = 'codex'\n".to_string(), "#1 needs a `project`"),
+            (proj("~/code/app"), "~/code/app starts with `~`"),
+            (format!("{}{}", proj("C:\\work\\App"), proj("c:/work/app/")), "already has a family"),
+        ] {
+            let err = check(&bad).expect_err(&bad);
+            assert!(err.contains(why), "{bad:?} -> {err}");
+        }
+    }
+
+    #[test]
+    fn the_example_config_documents_the_team_keys() {
+        for key in ["[team]", "family", "[[team.jobs]]", "[[team.projects]]"] {
+            assert!(super::EXAMPLE.lines().any(|l| l.starts_with("# ") && l.contains(key)), "{key}");
+        }
+    }
+
     #[test]
     fn an_agent_entry_with_an_env_is_an_account() {
         let toml = "[[quick.agents]]\nname = \"claude\"\ncommand = \"claude {prompt}\"\n\n[[quick.agents]]\nname = \"claude work\"\ncommand = \"claude {prompt}\"\nenv = { CLAUDE_CONFIG_DIR = \"~/.claude-work\" }\n";
@@ -1231,6 +1393,7 @@ mod tests {
         let old = "[[profiles]]\nname='planner'\nagent='codex'\nmodel='gpt-5'\n\n[[workflows]]\nname='feature'\nplanner='planner'\nworker='worker'\nreviewer='reviewer'\n";
         let cfg: super::Config = toml::from_str(old).expect("legacy user settings remain readable");
         assert_eq!(cfg.theme, super::Config::default().theme);
+        assert_eq!(cfg.team, super::Team::default(), "no [team] table is an empty team");
         assert!(old.contains("[[profiles]]") && old.contains("[[workflows]]"), "loading does not edit the user's config text");
     }
 
