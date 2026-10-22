@@ -5483,21 +5483,24 @@ mod check_wiring_tests {
                 let o = draw(&mut app, w, h);
                 let text = words(&o);
                 for want in [
-                    "Override a failed check",
+                    "OVERRIDE A FAILED CHECK",
                     "will read done (overridden)",
-                    "npm test failed (exit 1",
+                    "npm test failed",
+                    "(exit 1 at",
                     "This hides a failure. It stays visible:",
                     "⊘ on the row, in the Inbox history and in the evidence",
                     "for this result only",
                     "Reason (optional)",
-                    "Override Enter",
+                    "why is this OK?",
+                    "Override O",
                     "Cancel Esc",
                 ] {
                     assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
                 }
                 assert!(fits(&o, w, h), "{at}: fits");
                 typed(&mut app, "ok");
-                assert!(words(&draw(&mut app, w, h)).contains("ok█"), "{at}: the reason shows as it is typed");
+                let o = draw(&mut app, w, h);
+                assert!(words(&o).contains("ok") && !words(&o).contains("why is this OK?"), "{at}: the reason shows as it is typed");
                 press(&mut app, KeyCode::Esc);
                 assert!(commands(&mut rx).is_empty(), "{at}: Esc sends nothing");
             }
