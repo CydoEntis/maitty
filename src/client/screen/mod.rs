@@ -965,6 +965,8 @@ pub(super) enum ScreenHit {
     GoPick(usize),
     HistRow(usize),
     BranchChoice(usize),
+    /// A button of the repo-command approval.
+    Approve(check_approve::ApproveHit),
 }
 
 pub(super) fn hit(app: &mut App, r: Rect, h: ScreenHit) {
@@ -1001,6 +1003,7 @@ mod behaviour;
 mod card;
 mod check;
 mod check_actions;
+mod check_approve;
 mod check_inbox;
 pub(in crate::client) mod check_settings;
 mod check_sheet;
@@ -1016,4 +1019,4 @@ mod sheet;
 mod inbox;
 mod splash;
 mod tidy;
-pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, side::*, splash::*, sheet::*, popover::*, heads::*, tidy::*, check_sheet::*, check_actions::*};
+pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, side::*, splash::*, sheet::*, popover::*, heads::*, tidy::*, check_sheet::*, check_actions::*, check_approve::*};

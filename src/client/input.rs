@@ -77,6 +77,8 @@ impl App {
                     screen::append_reason(reason, &s);
                 }
             }
+            // A pasted "2" must not count as a choice: the approval takes no paste.
+            Mode::Approve(_) => {}
             Mode::Themes { query, sel, saving: false } => {
                 themes::append_query(query, s.lines().next().unwrap_or(""));
                 *sel = 0;
@@ -188,6 +190,7 @@ impl App {
             Mode::Why { term, side } => self.on_why_key(term, side, &k),
             Mode::SubagentInfo { term, index } => self.on_subagent_info_key(term, index, &k),
             Mode::Confirm(c) if matches!(c.act, crate::client::menu::Act::OverrideCheck(..)) => self.on_override_key(*c, &k),
+            Mode::Approve(a) => self.on_approve_key(*a, &k),
             Mode::Confirm(c) => match k.code {
                 KeyCode::Enter | KeyCode::Char('y') => {
                     self.mode = Mode::Normal;

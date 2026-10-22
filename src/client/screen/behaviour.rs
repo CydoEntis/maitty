@@ -544,6 +544,11 @@ impl App {
             return;
         }
         let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        if k.code == KeyCode::Enter && proj.is_none() && let Some(c) = self.screen.cursor && self.approval_waits(c) {
+            self.screen_side_leave();
+            self.open_approval(c);
+            return;
+        }
         match spec.code {
             KeyCode::Tab | KeyCode::BackTab if crate::client::screen::Look::of(&self.cfg.ui).flat => self.screen_side_leave(),
             KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => self.screen_side_move(-1),
@@ -959,6 +964,7 @@ impl App {
                     self.cmd(Command::MarkSeen { term });
                 }
             }
+            KeyCode::Enter if let Some(t) = sel_row.as_ref().and_then(GoRow::term) && self.approval_waits(t) => return self.open_approval(t),
             KeyCode::Enter => {
                 self.mode = Mode::Normal;
                 match sel_row.as_ref() {
@@ -1182,6 +1188,7 @@ impl App {
                 self.mode = Mode::Normal;
                 self.confirm_done(None);
             }
+            ScreenHit::Approve(h) => self.on_approve_hit(h),
             ScreenHit::TabPick(i) => {
                 if let Some(tab) = self.screen.tabs.get(i) {
                     let to = tab.focus;
