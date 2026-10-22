@@ -215,7 +215,7 @@ The row menu of a session with a check adds Check output (any result), Re-run ch
 
 ## Project-specific: why popover
 
-The evidence popover (`i`, or a click on a status) explains a session's status from its hook, screen and process reports. For a session with a check it follows v7 (`drawWhy`): the title ` WHY · <session> reads <word> ` (the session's word: `failed`, `done · stale`, `not checked`, …), then one line each with its local clock time: `agent's turn ended · it said "<said>"`, `Seshi ran <command> in its worktree`, and what came of it in the state's colour, bold: `✕ exit 1 after 14.2s` for a pass or failure, the row's words for the rest (`⊘ failed, overridden: test`, `◷ stale pass: test · 3 files changed`, `? not checked: never for this repo`, `● approve check: npm test`). A line whose time is unknown leaves the time blank. Its hints list only the keys that act, in v7's style: `⏎ evidence` always, `r re-run` once there is a result, `O override` for a failed one, `Esc close`. A key the popover does not show closes it and is not passed to the pane. A session without a check keeps the source rows. The frame and placement are the v7 frame's.
+The evidence popover (`i`, or a click on a status) explains a session's status from its hook, screen and process reports. For a session with a check, it shows a timeline instead: when the agent's turn ended and what it said, when Seshi ran the command, and the result with exit code and duration, each with its age (`2m ago`). Its keycap hints list only the keys that apply, and each one acts: `⏎` evidence and `r` re-run once there is a result, `O` override for a failed one, `Esc` close. A key the popover does not show closes it and is not passed to the pane. A session without a check keeps the source rows.
 
 ## Project-specific: check modals and settings
 
@@ -225,20 +225,40 @@ Settings > Check sets the check for the project of the workspace you are in: Com
 
 ## Project-specific: Inbox check groups
 
-The Inbox (`j`) lists, in this order: NEEDS YOU, FAILED CHECKS, COULD NOT RUN, JUST FINISHED,
-then HEADS UP, each heading with its count. A question is never below a check.
+The Inbox (`j`) follows v7 (`inboxItems`, `drawInbox`). Its title is `INBOX <n>`, n counting
+everything not just finished. It lists, in this order: NEEDS YOU, FAILED CHECKS, COULD NOT RUN,
+FINISHED, then HEADS UP, each a chip head on its colour (`blocked`, `err`, `violet()`, `done`)
+with its count. A question is never below a check.
 
-- A group with no rows is not drawn, so a project with no check shows the Inbox it always had.
-- A Done session is finished (`check::finished`) only when it has no check or its check passed
-  or was overridden. It is not finished while checking, failed or could not run, so it is not
-  under JUST FINISHED. The home screen counts finished by the same rule. A session whose agent
-  is working or asking is not listed for its old result (see `check::shown`).
+- A group with no rows is not drawn; with nothing at all it says "Nothing is waiting on you.".
+  A project with no check has the groups it always had, FINISHED renamed from JUST FINISHED.
+- NEEDS YOU holds questions, then repo check commands waiting for approval
+  (`approve check command: npm test`).
+- A Done session is finished (`check::finished`) when it has no check, or its check passed, was
+  overridden, passed on older code (stale) or you chose never to run it. It is not finished while
+  checking, failed, could not run or waiting for approval. The home screen counts finished by the
+  same rule. A session whose agent is working or asking is not listed for its old result (see
+  `check::shown`).
 - A failed check stays listed until a later run replaces it, even after you have looked at the
   session. A could-not-run check is listed only until you look (`Del` marks it seen).
-- A row is the result glyph (the sidebar's), name, `agent · folder` and a relative age; line 2 is
-  the sidebar's result words; a failed row adds the first failing output line in `muted`.
-  Enter focuses the session, as on every other row. The selected failed row grows a line of buttons: Output `o`, Re-run `r`, Override… `O` (a confirm, as in the sheet). While a failed row is selected, those three letters act instead of starting a search.
-- Existing theme slots only. Code lives in `client/screen/check_inbox.rs`.
+- An item is the session glyph (`glyphs::Kind`), name (`strong` bold), ` · <folder>` and an age;
+  at +2 the question or the result (`failed: test · exit 1 · 14:22`, `test could not run: pnpm
+  not found`, `passed: test · 14.2s`, `failed, overridden: test`, `stale pass: test · 3 files
+  changed since`, `not checked: never for this repo`, `finished · not seen`); a failure adds its
+  first failing output line. Several checkpoints read as one word first, then
+  `build ✓ · test ✕`, or the glyph strip when that doesn't fit.
+- The selected item is tinted across the sheet with `▎` (`err` for a failure, else `accent`); a
+  failure keeps its red `▎` unselected. It grows its buttons, each a click of its key: question
+  `Reply m` `Open o`; approval `Read the command ⏎`; failed `Output ⏎` `Re-run r` `Override… O`;
+  could not run `Output ⏎` `Settings ,`; stale `Re-run r` `Output ⏎`. Enter runs the first
+  button (Read the command opens the evidence until the approval modal takes it); an item with
+  no buttons opens its session. `o` opens the session of any item; `r`, `O`, `u`, `,` act on an
+  item's check where they apply and are typed otherwise. 1–9 answer a question; d, M, x and m
+  act on a finished item; d, m and k on a heads-up; Delete marks seen.
+- Typing finds any session; the `› query` row shows only once you type. The last row is
+  `↑↓ select   ⏎ open   r re-run   O override   Esc close`.
+- Existing theme slots only. Code lives in `client/screen/inbox.rs` (groups, drawing) and
+  `client/screen/check_inbox.rs` (what each item says and its buttons).
 
 ## Project-specific: v7 frame
 

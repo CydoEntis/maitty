@@ -3,7 +3,7 @@
 //! column. One at a time; Esc closes it. Its last row is a pill of key hints.
 
 use super::*;
-use super::inbox::{draw_inbox, inbox_place};
+use super::inbox::{draw_inbox, inbox_count, inbox_place};
 use crate::client::overlap::Overlap;
 
 /// What the sheet shows.
@@ -71,7 +71,7 @@ const TITLE_CHROME: u16 = 24;
 
 pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t: &Theme) {
     let (title, sub, close) = match kind {
-        SheetKind::Inbox => ("Inbox", String::new(), ScreenHit::Close),
+        SheetKind::Inbox => ("INBOX", inbox_count(app).to_string(), ScreenHit::Close),
         SheetKind::Changes | SheetKind::Both => ("Changes", String::new(), ScreenHit::ViewClose),
         SheetKind::Check => ("CHECK", check_title(app), ScreenHit::ViewClose),
     };
@@ -79,10 +79,10 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     // Cut here, so a long name still shows its start rather than being left out.
     let sub = truncate(&sub, r.width.saturating_sub(TITLE_CHROME) as usize);
     c.sub = &sub;
-    // Changes and the evidence sheet sit on the desk's ground, like the panes.
-    c.bg = if matches!(kind, SheetKind::Changes | SheetKind::Check) { t.bg } else { t.card };
-    // The evidence sheet says Esc in its own hints.
-    if Look::of(&app.cfg.ui).flat && kind != SheetKind::Check {
+    // The read-while-working sheets and Changes sit on the desk's ground, like the panes.
+    c.bg = if kind == SheetKind::Both { t.card } else { t.bg };
+    // The Inbox and the evidence sheet say Esc in their own hints.
+    if Look::of(&app.cfg.ui).flat && matches!(kind, SheetKind::Changes | SheetKind::Both) {
         c.foot_r = vec![seg("Esc close", Style::default().fg(t.muted).bg(t.card))];
     }
     c.close = Some(close);
@@ -90,7 +90,7 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     // Clicks inside it stay in it.
     hit(app, inside, ScreenHit::Noop);
     match kind {
-        SheetKind::Inbox => draw_inbox(app, buf, inside, t),
+        SheetKind::Inbox => draw_inbox(app, buf, inside, c.bg, t),
         SheetKind::Changes => {
             let inner = Rect { x: inside.x + 1, width: inside.width.saturating_sub(2), ..inside };
             if let Some(crate::client::View::Changes(v)) = app.view.take() {

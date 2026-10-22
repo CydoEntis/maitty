@@ -72,31 +72,6 @@ pub fn between(checkouts: &[(String, PathBuf)]) -> Vec<Overlap> {
         .collect()
 }
 
-/// "+42 −7 · 3 files": what a checkout changed since it left `base` (committed or not); the
-/// main checkout (`base` None) what isn't committed yet.
-pub fn change_size(dir: &Path, base: Option<&str>) -> String {
-    let since = match base {
-        Some(b) => match crate::proc::git(dir, &["merge-base", "HEAD", b]) {
-            Ok(mb) => mb.trim().to_string(),
-            Err(_) => return String::new(),
-        },
-        None => "HEAD".to_string(),
-    };
-    let stat = crate::proc::git(dir, &["diff", "--shortstat", since.as_str()]).unwrap_or_default();
-    let new = crate::proc::git(dir, &["ls-files", "--others", "--exclude-standard"]).map(|o| o.lines().filter(|l| !l.trim().is_empty()).count()).unwrap_or(0);
-    say_size(&stat, new)
-}
-
-/// git's `--shortstat` line (and how many new files it doesn't count) as "+42 −7 · 3 files".
-pub fn say_size(shortstat: &str, new_files: usize) -> String {
-    let num = |word: &str| shortstat.split(',').find(|p| p.contains(word)).and_then(|p| p.split_whitespace().next()?.parse::<usize>().ok()).unwrap_or(0);
-    let files = num("file") + new_files;
-    if files == 0 {
-        return "no changes".into();
-    }
-    format!("+{} −{} · {files} file{}", num("insertion"), num("deletion"), if files == 1 { "" } else { "s" })
-}
-
 /// "orders and rate-limit both changed checkout.ts" (and how many more files).
 pub fn say(overlaps: &[Overlap]) -> Option<String> {
     let first = overlaps.first()?;
@@ -125,13 +100,6 @@ mod tests {
         assert_eq!(say(&[o("src/checkout.ts", &["orders", "rate-limit"])]).as_deref(), Some("orders and rate-limit both changed checkout.ts"));
         assert_eq!(say(&[o("x.rs", &["a", "b", "c"]), o("y.rs", &["a", "b"])]).as_deref(), Some("3 checkouts changed x.rs (and 1 more file)"));
         assert_eq!(say(&[]), None, "nothing shared: nothing to say");
-    }
-
-    #[test]
-    fn a_change_size_reads_like_the_design() {
-        assert_eq!(say_size(" 3 files changed, 42 insertions(+), 7 deletions(-)", 0), "+42 −7 · 3 files");
-        assert_eq!(say_size(" 1 file changed, 2 insertions(+)", 1), "+2 −0 · 2 files", "new files count too");
-        assert_eq!(say_size("", 0), "no changes");
     }
 
     /// A repo on `main` with one commit (checkout.ts, shared.ts), and a way to run git in it.

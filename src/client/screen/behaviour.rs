@@ -870,6 +870,8 @@ impl App {
             i
         };
         let sel_row = rows.get(land(sel, true)).cloned();
+        let sel_item = sel_row.as_ref().filter(|r| !matches!(r, GoRow::Sess(..))).and_then(GoRow::term);
+        let sel_check = sel_item.and_then(|t| find(&model, t)).and_then(|(.., s)| super::check::shown(s).cloned());
         // A merge or throw-away asked in a finished row: Enter does it, Esc doesn't, the rest wait.
         if let Some((term, merge, false)) = self.screen.inbox_confirm {
             match k.code {
@@ -945,11 +947,23 @@ impl App {
                 }
                 return;
             }
-            // A failed check: its output, run it again, or accept it (asked first).
-            KeyCode::Char(c @ ('o' | 'r' | 'O')) if query.is_empty() && matches!(sel_row, Some(GoRow::Failed(_))) => {
-                let Some(GoRow::Failed(term)) = sel_row else { return };
+            // Any item: its session.
+            KeyCode::Char('o') if query.is_empty() && sel_item.is_some() => {
+                self.mode = Mode::Normal;
+                if let Some(term) = sel_item {
+                    self.screen_focus(term);
+                }
+                return;
+            }
+            // An item's check: run it again, accept a failure (asked first), take that back, or
+            // its settings. Where it doesn't act, the key is typed.
+            KeyCode::Char(c @ ('r' | 'O' | 'u' | ',')) if query.is_empty() && sel_check.as_ref().is_some_and(|i| super::check_inbox::check_key_acts(c, i)) => {
+                let Some(term) = sel_item else { return };
+                if c == ',' {
+                    return self.open_check_settings(term);
+                }
                 self.do_check_key(term, c);
-                if c == 'r' {
+                if c != 'O' {
                     self.mode = Mode::GoTo { query, sel };
                 }
                 return;
@@ -959,14 +973,21 @@ impl App {
                     self.cmd(Command::MarkSeen { term });
                 }
             }
+            // The item's first button.
             KeyCode::Enter => {
-                self.mode = Mode::Normal;
-                match sel_row.as_ref() {
-                    Some(GoRow::Ask(t) | GoRow::Done(t) | GoRow::Failed(t) | GoRow::NotRun(t)) => self.screen_focus(*t),
-                    Some(GoRow::Head(_) | GoRow::Heads(_)) => {}
-                    Some(GoRow::Sess(_, t)) => self.screen_focus(*t),
-                    // A project: its most urgent session, or a shell there.
-                    None => {}
+                let stale = sel_check.as_ref().is_some_and(|i| i.state == crate::protocol::CheckState::Stale);
+                match sel_row {
+                    Some(GoRow::Ask(t)) if query.is_empty() => return self.start_compose(t, false, Some((query, sel))),
+                    Some(GoRow::Approve(t) | GoRow::Failed(t) | GoRow::NotRun(t)) => self.open_check_sheet(t),
+                    Some(GoRow::Done(t)) if stale && query.is_empty() => {
+                        self.do_check_key(t, 'r');
+                        self.mode = Mode::GoTo { query, sel };
+                    }
+                    Some(GoRow::Ask(t) | GoRow::Done(t) | GoRow::Sess(_, t)) => {
+                        self.mode = Mode::Normal;
+                        self.screen_focus(t);
+                    }
+                    Some(GoRow::Head(_) | GoRow::Heads(_)) | None => self.mode = Mode::Normal,
                 }
                 return;
             }
@@ -1236,12 +1257,15 @@ impl App {
                     self.finder_enter(fd);
                 }
             }
-            ScreenHit::InboxAnswer(term, key) => {
-                let name = self.session_name(term);
-                self.inbox_answer(term, key, &name);
-            }
-            ScreenHit::InboxCheck(term, key) => {
-                self.do_check_key(term, key);
+            ScreenHit::InboxKey(key) => {
+                if let Mode::GoTo { query, sel } = self.mode.clone() {
+                    let code = match key {
+                        '\n' => KeyCode::Enter,
+                        '\x1b' => KeyCode::Esc,
+                        c => KeyCode::Char(c),
+                    };
+                    self.on_goto_key(query, sel, &KeyEvent::new(code, KeyModifiers::NONE));
+                }
             }
             ScreenHit::NpTask => {
                 if let Mode::ScreenPane(np) = &mut self.mode {

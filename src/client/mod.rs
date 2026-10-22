@@ -163,8 +163,6 @@ pub(super) enum Bg {
     Tidy(PathBuf, Vec<screen::TidyRow>),
     /// Each checkout's diff of a heads-up's file: (repo, [(checkout, diff)]).
     BothDiff(PathBuf, Vec<(String, String)>),
-    /// What a checkout changed: (its folder, the status time it's for, "+42 −7 · 3 files").
-    ChangeSize(PathBuf, u64, String),
     /// Files more than one checkout of a repo changed (by the repo's folder).
     Overlaps(PathBuf, Vec<overlap::Overlap>),
     /// Pulled a shared setup from another machine.

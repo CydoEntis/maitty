@@ -81,14 +81,16 @@ or another program follow that program's own help.
 
 | Keys | Action |
 | --- | --- |
-| Type, Backspace | Filter by project or session |
+| Type, Backspace | Filter by project or session (the search row shows once you type) |
 | Up, Down, PgUp, PgDn | Choose a row |
-| Enter | Open the selected session (also a failed or could-not-run check) |
+| Enter | The selected item's first button: Reply (a question), Read the command (a check waiting for approval), Output (a failed or could-not-run check), Re-run (a stale pass); an item with no buttons opens its session, as does a search result |
+| o | Open the selected item's session; empty search |
 | 1–9 | Answer selected agent question when search is empty |
 | m | Follow-up to selected asking/finished agent when search is empty |
 | d, M, x | Finished worktree: diff, ask to merge, ask to discard; empty search |
 | d, m, k | Shared-file warning: diff, message its agent, dismiss; empty search |
-| o, r, O | Failed check: its output, run it again, override it (asks first); empty search |
+| r, O, u, , | The selected item's check: run it again, override it (asks first), undo an override, its settings; only where they apply, else typed; empty search |
+| Click a button | The key it shows |
 | Delete | Mark selected finished session, or unrun check, seen |
 | Enter, Esc in confirmation | Confirm action, or cancel |
 | Esc | Close Inbox |

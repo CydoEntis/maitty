@@ -793,10 +793,9 @@ mod screen_tests {
         app.act(Action::Jump);
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("▁ Inbox") && o.contains("NEEDS YOU 1 ─") && o.contains("JUST FINISHED 1 ─") && !o.contains("EVERYTHING"), "the Inbox sheet: what needs you, what finished");
-        assert!(o.contains("Run npm test -- checkout?") && o.contains("Yes 1") && o.contains("Always 2") && o.contains("No 3"), "the question and its answers");
-        assert!(o.contains("“All 14 tests pass now.”"), "what the finished one said, quoted");
-        assert!(o.contains(" move") && o.contains(" closes"), "the sheet's status bar");
+        assert!(o.contains("INBOX") && o.contains("NEEDS YOU  1") && o.contains("FINISHED  1") && !o.contains("EVERYTHING"), "the Inbox sheet: what needs you, what finished");
+        assert!(o.contains("Run npm test -- checkout?") && o.contains("Reply m") && o.contains("Open o"), "the question and what to do about it");
+        assert!(o.contains("↑↓ select") && o.contains("Esc close"), "the sheet's keys");
         // It's docked beside the panes, not over them: the session's card is still there.
         assert!(o.contains("▁ claude"), "the panes reflow beside it");
         // 2 answers the selected question without going there.
@@ -808,7 +807,7 @@ mod screen_tests {
             app.on_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE));
         }
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("FOUND 1") && !o.contains("NEEDS YOU"), "searching: just what matches");
+        assert!(o.contains("FOUND  1") && !o.contains("NEEDS YOU"), "searching: just what matches");
         // j closes it again, and opens it afresh.
         app.act(Action::Jump);
         assert!(app.mode == Mode::Normal, "j closes the Inbox");
@@ -3011,14 +3010,14 @@ mod screen_tests {
         app.act(Action::Jump);
         let o = draw(&mut app, 160, 45);
         show(&o);
-        // claude needs you in the fixture: the Inbox, and a search for any session.
-        assert!(o.contains("▁ Inbox") && o.contains("type to find any session"));
+        // claude needs you in the fixture: the Inbox; the search shows once you type.
+        assert!(o.contains("INBOX") && !o.contains("type to find any session"));
         for c in "rate".chars() {
             app.on_key(key(KeyCode::Char(c)));
         }
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("FOUND 1 ─") && o.contains("rate  codex · shop-api"), "typing finds what matches");
+        assert!(o.contains("FOUND  1") && o.contains("› rate█") && o.contains("rate · codex · shop-api"), "typing finds what matches");
         let Mode::GoTo { query, sel } = app.mode.clone() else { panic!("still open") };
         let rows = screen::goto_rows(&app.screen_model(), &query, 0);
         assert!(matches!(rows[sel], screen::GoRow::Sess(..)), "it lands on the matching session");
@@ -3101,7 +3100,7 @@ mod screen_tests {
         app.act(Action::Jump);
         let o = draw(&mut app, 100, 30);
         show(&o);
-        assert!(o.contains("▁ Inbox") && !o.contains("▁ claude"), "narrow: the sheet covers the pane column");
+        assert!(o.contains("INBOX") && !o.contains("▁ claude"), "narrow: the sheet covers the pane column");
         app.mode = Mode::Normal;
         // Changes of a real repo.
         let repo = std::env::temp_dir().join(format!("seshi-sheet-{}", std::process::id()));
@@ -3151,7 +3150,7 @@ mod screen_tests {
         key(&mut app, KeyCode::Char('m'), KeyModifiers::NONE);
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(matches!(&app.mode, Mode::Compose(c) if c.inbox.is_some()) && o.contains("▁ Inbox") && o.contains("Next prompt for claude"), "the box in the Inbox row");
+        assert!(matches!(&app.mode, Mode::Compose(c) if c.inbox.is_some()) && o.contains("INBOX") && o.contains("Next prompt for claude"), "the box in the Inbox row");
         key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
         assert!(matches!(app.mode, Mode::GoTo { .. }), "Esc: back in the Inbox");
     }
@@ -3177,8 +3176,8 @@ mod screen_tests {
         // In the Inbox they come after what needs you and what finished, however many.
         app.screen.overlaps.insert(p.path.clone(), shared(60));
         let rows = screen::goto_rows(&app.screen_model(), "", screen::heads_up(&app).len());
-        let at = |want: &str| rows.iter().position(|r| matches!(r, screen::GoRow::Head(h) if *h == want)).unwrap_or_else(|| panic!("{want} is a section"));
-        assert!(at("NEEDS YOU") < at("JUST FINISHED") && at("JUST FINISHED") < at("HEADS UP"));
+        let heads: Vec<&str> = rows.iter().filter_map(|r| if let screen::GoRow::Head(h) = r { Some(*h) } else { None }).collect();
+        assert!(heads.first() == Some(&"NEEDS YOU") && heads.last() == Some(&"HEADS UP"), "{heads:?}");
     }
 
     #[test]
@@ -3227,7 +3226,7 @@ mod screen_tests {
         app.mode = Mode::GoTo { query: String::new(), sel: done };
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains(" merge") && o.contains("throw away"), "what you can do with what it finished");
+        assert!(o.contains("FINISHED  1") && o.contains("finished · not seen"), "what it finished");
         key(&mut app, 'M');
         let o = draw(&mut app, 160, 45);
         show(&o);
@@ -4656,7 +4655,7 @@ mod check_inbox_tests {
     const QUESTION: &str = "Run npm test -- checkout?";
     const FAILED: &str = "FAILED CHECKS";
     const NOT_RUN: &str = "COULD NOT RUN";
-    const FINISHED: &str = "JUST FINISHED";
+    const FINISHED: &str = "FINISHED";
 
     type Extra = (&'static str, Status, Option<CheckInfo>);
 
@@ -4737,7 +4736,7 @@ mod check_inbox_tests {
     }
 
     #[test]
-    fn groups_come_in_order_and_a_failed_check_leaves_just_finished() {
+    fn groups_come_in_order_and_a_failed_check_is_never_finished() {
         let extra: [Extra; 7] = [
             ("f-done", Status::Done, failed()),
             ("n-done", Status::Done, not_run()),
@@ -4806,7 +4805,7 @@ mod check_inbox_tests {
         let extra: [Extra; 2] = [("busy", Status::Working, failed()), ("asks", Status::Blocked, failed())];
         let app = scene(160, 45, LAYOUTS[0], &extra);
         let rows = rows(&app);
-        assert_eq!(heads(&rows), ["NEEDS YOU", FINISHED], "the old result is about an older turn");
+        assert_eq!(heads(&rows), ["NEEDS YOU"], "the old result is about an older turn, and an empty group is left out");
         assert!(rows.contains(&screen::GoRow::Ask(21)) && !rows.iter().any(|r| matches!(r, screen::GoRow::Failed(_))));
     }
 
@@ -4817,22 +4816,15 @@ mod check_inbox_tests {
             for (w, h) in SIZES {
                 let at_ = label(layout, w, h);
                 let mut app = scene(w, h, layout, &none);
-                assert_eq!(heads(&rows(&app)), ["NEEDS YOU", FINISHED], "{at_}");
-                let sidebar = app.screen.side_rect.right();
-                let baseline = inbox(&mut app, w, h);
-                let text = baseline.join("\n");
+                let base = rows(&app);
+                assert_eq!(heads(&base), ["NEEDS YOU", FINISHED], "{at_}");
+                let text = inbox(&mut app, w, h).join("\n");
                 assert!(!text.contains(FAILED) && !text.contains(NOT_RUN) && !text.contains(COMMAND), "{at_}: no check text\n{text}");
-                // A result that counts as finished leaves the sheet as it was.
-                // Keycap padding varies with the glyph mode, so compare the words, not the spacing.
-                let sheet = |app: &mut App| {
-                    app.act(Action::Jump);
-                    let buf = buffer(app, w, h);
-                    lines(&buf, sidebar).iter().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).collect::<Vec<_>>()
-                };
-                let base = sheet(&mut scene(w, h, layout, &none));
+                assert!(text.contains("✓ plain") && text.contains("finished · not seen"), "{at_}: the finished row\n{text}");
+                // A result that counts as finished keeps the rows where they were.
                 for state in [CheckState::Passed, CheckState::Overridden] {
-                    let mut app = scene(w, h, layout, &[("plain", Status::Done, Some(info(state, Some(0))))]);
-                    assert_eq!(sheet(&mut app), base, "{at_} {state:?}: the sheet is unchanged");
+                    let app = scene(w, h, layout, &[("plain", Status::Done, Some(info(state, Some(0))))]);
+                    assert_eq!(rows(&app), base, "{at_} {state:?}: the same rows in the same groups");
                 }
             }
         }
@@ -4860,14 +4852,14 @@ mod check_inbox_tests {
                 let frame = inbox(&mut app, w, h);
                 let text = frame.join("\n");
                 assert!(frame.iter().all(|l| l.chars().count() <= w as usize) && frame.len() <= h as usize, "{at_}: fits");
-                let (ask, fail) = (at(&frame, "NEEDS YOU"), at(&frame, "FAILED CHECKS 1"));
+                let (ask, fail) = (at(&frame, "NEEDS YOU"), at(&frame, "FAILED CHECKS  1"));
                 assert!(ask.is_some() && fail.is_some() && ask < fail, "{at_}: needs you, then failed checks\n{text}");
                 let row = at(&frame, "✕ fix-footer").unwrap_or_else(|| panic!("{at_}: the failed row\n{text}"));
                 assert!(frame[row].contains("shop-api") && frame[row].contains("2m"), "{at_}: folder and age on line 1: {:?}", frame[row]);
                 assert!(frame[row + 1].contains("failed: just ci · exit 1"), "{at_}: the result on line 2: {:?}", frame[row + 1]);
                 assert!(frame[row + 2].contains(FAILING_LINE), "{at_}: the first failing line on line 3: {:?}", frame[row + 2]);
                 if h >= 45 {
-                    for want in ["COULD NOT RUN 1", "? add-pay", "just ci could not run", "JUST FINISHED 1", "✓ docs"] {
+                    for want in ["COULD NOT RUN  1", "? add-pay", "just ci could not run", "FINISHED  1", "✓ docs"] {
                         assert!(text.contains(want), "{at_}: missing {want:?}\n{text}");
                     }
                     assert!(at(&frame, "COULD NOT RUN").unwrap() > fail.unwrap() && at(&frame, FINISHED).unwrap() > at(&frame, "COULD NOT RUN").unwrap(), "{at_}: group order");
@@ -4883,7 +4875,7 @@ mod check_inbox_tests {
             let mut app = scene(100, 30, layout, &extra);
             let frame = inbox(&mut app, 100, 30);
             let row = at(&frame, "? add-pay").unwrap_or_else(|| panic!("{}: the row\n{}", label(layout, 100, 30), frame.join("\n")));
-            assert!(frame[row + 1].contains("just ci could not run · not found"), "{:?}", frame[row + 1]);
+            assert!(frame[row + 1].contains("just ci could not run: just not found"), "{:?}", frame[row + 1]);
             assert!(!frame.join("\n").contains(FAILED), "unchecked work is not a failed check");
         }
     }
@@ -4914,24 +4906,24 @@ mod check_inbox_tests {
             app.act(Action::Jump);
             app.mode = Mode::GoTo { query: String::new(), sel: last };
             let buf = buffer(&mut app, 80, 24);
-            let frame = lines(&buf, 0);
+            let frame = lines(&buf, app.screen.side_rect.right());
             let row = at(&frame, "✕ f6").unwrap_or_else(|| panic!("{}: the last failure\n{}", label(layout, 80, 24), frame.join("\n")));
-            assert!(frame[row + 1].contains("failed: just ci") && frame[row + 2].contains(FAILING_LINE), "{}: whole, not cut", label(layout, 80, 24));
+            assert!(frame[row + 1].contains("failed: just ci") && frame[row + 2].contains(FAILING_LINE), "{}: whole, not cut\n{}", label(layout, 80, 24), frame.join("\n"));
         }
     }
 
     #[test]
-    fn empty_groups_stay_out_and_the_other_notes_still_work() {
+    fn empty_groups_stay_out_and_typing_still_finds_a_failure() {
         for layout in LAYOUTS {
             let at_ = label(layout, 100, 30);
             // Only a failure: nothing waits, nothing else finished.
             let mut app = scene(100, 30, layout, &[("fix-footer", Status::Done, failed())]);
             app.snap.terms.get_mut(&1).unwrap().status = Status::Idle;
             let text = inbox(&mut app, 100, 30).join("\n");
-            for want in ["Nothing is waiting on you.", "FAILED CHECKS 1", "JUST FINISHED 0", "Nothing finished since you last looked."] {
-                assert!(text.contains(want), "{at_}: missing {want:?}\n{text}");
+            assert!(text.contains("FAILED CHECKS  1"), "{at_}: the failure's group\n{text}");
+            for absent in ["NEEDS YOU", NOT_RUN, FINISHED] {
+                assert!(!text.contains(absent), "{at_}: no group without rows: {absent}\n{text}");
             }
-            assert!(!text.contains(NOT_RUN), "{at_}: no group without rows");
             // A failure reached by typing is still found as a session.
             let rows = screen::goto_rows(&app.screen_model(), "fix-footer", 0);
             assert!(matches!(rows.as_slice(), [screen::GoRow::Head("FOUND"), screen::GoRow::Sess(_, 20)]), "{at_}: {rows:?}");
@@ -4939,19 +4931,25 @@ mod check_inbox_tests {
     }
 
     #[test]
-    fn enter_on_a_check_row_focuses_its_session() {
+    fn enter_on_a_check_row_opens_its_output_and_o_its_session() {
         for layout in LAYOUTS {
             for (term, state) in [(20, failed()), (20, not_run())] {
-                let mut app = scene(100, 30, layout, &[("fix-footer", Status::Done, state)]);
-                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-                app.out = tx;
-                let sel = rows(&app).iter().position(|r| matches!(r, screen::GoRow::Failed(_) | screen::GoRow::NotRun(_))).unwrap();
-                app.act(Action::Jump);
-                app.mode = Mode::GoTo { query: String::new(), sel };
-                app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-                assert!(app.mode == Mode::Normal, "{}: the Inbox closes", label(layout, 100, 30));
-                let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
-                assert!(sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: t }) if *t == term)), "{sent:?}");
+                for (key, output) in [(KeyCode::Enter, true), (KeyCode::Char('o'), false)] {
+                    let mut app = scene(100, 30, layout, &[("fix-footer", Status::Done, state.clone())]);
+                    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+                    app.out = tx;
+                    let sel = rows(&app).iter().position(|r| matches!(r, screen::GoRow::Failed(_) | screen::GoRow::NotRun(_))).unwrap();
+                    app.act(Action::Jump);
+                    app.mode = Mode::GoTo { query: String::new(), sel };
+                    app.on_key(KeyEvent::new(key, KeyModifiers::NONE));
+                    assert!(app.mode == Mode::Normal, "{}: the Inbox closes", label(layout, 100, 30));
+                    let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+                    if output {
+                        assert!(matches!(&app.view, Some(View::Check(v)) if v.term == term), "{key:?}: the output");
+                    } else {
+                        assert!(sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: t }) if *t == term)), "{key:?}: {sent:?}");
+                    }
+                }
             }
         }
     }
@@ -5720,12 +5718,10 @@ mod check_wiring_tests {
                 let at = format!("{name} {w}x{h}");
                 let (mut app, _rx) = rig(w, h, layout, Some(info(CheckState::Failed)), Status::Done);
                 app.act(Action::Jump);
-                let before = words(&draw(&mut app, w, h));
-                assert!(!before.contains("Re-run r"), "{at}: no buttons while the question is selected");
                 goto_failed(&mut app);
                 let o = draw(&mut app, w, h);
                 let text = words(&o);
-                for want in ["Output o", "Re-run r", "Override… O"] {
+                for want in ["Output ⏎", "Re-run r", "Override… O"] {
                     assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
                 }
                 assert!(fits(&o, w, h), "{at}: fits");
@@ -5741,29 +5737,32 @@ mod check_wiring_tests {
         assert_eq!(rerun_of(&commands(&mut rx)), 1, "r");
         assert!(matches!(app.mode, Mode::GoTo { .. }), "the Inbox stays open");
         draw(&mut app, 100, 30);
-        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::InboxCheck(TERM, 'r')));
+        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::InboxKey('r')));
         assert_eq!(rerun_of(&commands(&mut rx)), 1, "the Re-run button");
         press(&mut app, KeyCode::Char('O'));
         assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), "O");
         press(&mut app, KeyCode::Esc);
         goto_failed(&mut app);
-        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::InboxCheck(TERM, 'O')));
+        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::InboxKey('O')));
         assert!(matches!(app.mode, Mode::Confirm(_)), "the Override… button");
         press(&mut app, KeyCode::Esc);
         goto_failed(&mut app);
-        press(&mut app, KeyCode::Char('o'));
-        assert!(matches!(&app.view, Some(View::Check(v)) if v.term == TERM) && app.mode == Mode::Normal, "o opens the output");
+        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::InboxKey('\n')));
+        assert!(matches!(&app.view, Some(View::Check(v)) if v.term == TERM) && app.mode == Mode::Normal, "the Output button");
+        app.view = None;
         goto_failed(&mut app);
-        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::InboxCheck(TERM, 'o')));
-        assert!(matches!(app.view, Some(View::Check(_))), "the Output button");
+        press(&mut app, KeyCode::Char('o'));
+        assert!(app.view.is_none() && app.mode == Mode::Normal, "o opens the session");
+        assert!(commands(&mut rx).iter().any(|c| matches!(c, Command::FocusPane { term } if *term == TERM)), "o focuses it");
     }
 
     #[test]
-    fn enter_in_the_inbox_still_focuses_the_session_and_typing_a_search_still_searches() {
+    fn enter_in_the_inbox_opens_a_failure_s_output_and_typing_a_search_still_searches() {
         let (mut app, mut rx) = done(CheckState::Failed);
         goto_failed(&mut app);
         press(&mut app, KeyCode::Enter);
-        assert!(app.mode == Mode::Normal && app.view.is_none());
+        assert!(app.mode == Mode::Normal && matches!(&app.view, Some(View::Check(v)) if v.term == TERM), "Enter is the first button: Output");
+        app.view = None;
         assert!(commands(&mut rx).iter().all(|c| !matches!(c, Command::RerunCheck { .. })));
         app.act(Action::Jump);
         assert!(matches!(app.mode, Mode::GoTo { .. }), "{:?}", app.mode);

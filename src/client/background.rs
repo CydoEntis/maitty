@@ -409,9 +409,6 @@ impl App {
                     v.parts = Some(parts);
                 }
             }
-            (Bg::ChangeSize(dir, since, size), _) => {
-                self.screen.change_sizes.insert(dir, (since, size));
-            }
             (Bg::Overlaps(repo, found), _) => {
                 // Say each overlap once, when it first shows up.
                 let seen = self.screen.overlaps.get(&repo).cloned().unwrap_or_default();

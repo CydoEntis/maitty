@@ -24,10 +24,11 @@ pub(super) fn shown(s: &Session) -> Option<&CheckInfo> {
     crate::protocol::reported_check(s.status, s.check.as_ref())
 }
 
-/// A turn that ended and whose work is not known to be bad: no check, or one that passed or
-/// was overridden. A running, failed or could-not-run check keeps it from counting as finished.
+/// A turn that ended and whose work is not known to be bad: no check, or one that passed, was
+/// overridden, passed on older code, or that you chose never to run. A running, failed,
+/// could-not-run or waiting check keeps it from counting as finished.
 pub(super) fn finished(s: &Session) -> bool {
-    s.status == Status::Done && shown(s).is_none_or(|info| matches!(info.state, CheckState::Passed | CheckState::Overridden))
+    s.status == Status::Done && shown(s).is_none_or(|info| matches!(info.state, CheckState::Passed | CheckState::Overridden | CheckState::Stale | CheckState::Never))
 }
 
 /// The mark that stands for a failed check, in the same set as the sidebar's glyphs.
@@ -119,26 +120,6 @@ fn compose(app: &App, info: &CheckInfo, cmd: &str) -> String {
         CheckState::Stale => format!("stale pass: {cmd}"),
         CheckState::Never => "not checked: never for this repo".into(),
     }
-}
-
-/// A button for a check action at (`x`, `y`) if it fits before `max`: its rect, with the
-/// override label in the failure colour. The caller records what a click does.
-pub(super) fn action_pill(app: &App, buf: &mut Buffer, x: u16, y: u16, max: u16, (label, key): (&str, char), t: &Theme) -> Option<Rect> {
-    let look = Look::of(&app.cfg.ui);
-    let key_s = key.to_string();
-    let w = segs_width(&button_pill(look, t, label, &key_s, false, false, t.card));
-    let r = Rect { x, y, width: w, height: 1 };
-    if x + w > max {
-        return None;
-    }
-    let mut segs = button_pill(look, t, label, &key_s, false, hovered(app, r), t.card);
-    if key == 'O'
-        && let Some(s) = segs.iter_mut().find(|(text, _)| text.starts_with(label))
-    {
-        s.1 = s.1.fg(t.err);
-    }
-    put(buf, x, y, &segs, max);
-    Some(r)
 }
 
 /// The red bar a failed row keeps at its left edge, selected or not.
