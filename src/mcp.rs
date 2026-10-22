@@ -285,24 +285,8 @@ impl Server {
 
     fn start(&self, args: &Value) -> Result<String, String> {
         let prompt = args.get("prompt").and_then(Value::as_str).filter(|p| !p.trim().is_empty()).ok_or("give the task")?;
-        let agent = args
-            .get("agent")
-            .and_then(Value::as_str)
-            .map(String::from)
-            .or_else(|| self.cfg.quick.agents.first().map(|a| a.name.clone()))
-            .unwrap_or_else(|| "claude".into());
-        let q = self.cfg.quote_for_shell(prompt);
-        let cmd = match self.cfg.quick.agents.iter().find(|a| a.name == agent) {
-            Some(a) => self.cfg.as_account(&a.name, &a.command.replace("{prompt}", &q)),
-            // Only agents seshi knows, by plain name: anything else would run as a command.
-            None if known_agent(&self.cfg, &agent) => format!("{agent} {q}"),
-            None => {
-                let mut names: Vec<String> = self.cfg.quick.agents.iter().map(|a| a.name.clone()).collect();
-                names.extend(self.cfg.agent_defs().into_iter().map(|d| d.name));
-                names.dedup();
-                return Err(format!("unknown agent \"{agent}\"; use one of: {}", names.join(", ")));
-            }
-        };
+        let agent = args.get("agent").and_then(Value::as_str).map(String::from).unwrap_or_else(|| self.cfg.default_agent());
+        let cmd = self.cfg.agent_command(Some(&agent), prompt)?;
         let before = self.snapshot()?;
         let had: Vec<TermId> = before.terms.keys().copied().collect();
         let focus = before.active().and_then(|w| w.tab()).map(|t| t.focus);
@@ -380,13 +364,6 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
-/// A built-in or configured agent kind, named plainly (letters, digits, - _ .).
-fn known_agent(cfg: &crate::config::Config, name: &str) -> bool {
-    !name.is_empty()
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
-        && cfg.agent_defs().iter().any(|d| d.name == name)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -417,14 +394,5 @@ mod tests {
         assert_eq!(row_of(&t, None)["status"], "done");
         t.status = Status::Working;
         assert!(row_of(&t, None).get("check").is_none(), "an older turn's result is not reported");
-    }
-
-    #[test]
-    fn only_known_agents_start() {
-        let cfg = crate::config::Config::default();
-        assert!(known_agent(&cfg, "claude") && known_agent(&cfg, "codex"));
-        assert!(!known_agent(&cfg, "curl x|sh;"), "a command isn't an agent");
-        assert!(!known_agent(&cfg, "not-an-agent"));
-        assert!(!known_agent(&cfg, ""));
     }
 }
