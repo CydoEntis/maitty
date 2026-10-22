@@ -125,9 +125,10 @@ pub(in crate::client) fn draw_compose_pop(app: &mut App, buf: &mut Buffer, scree
     let info = app.snap.terms.get(&c.term).cloned();
     let name = info.as_ref().map(|i| i.display_name()).unwrap_or_default();
     let title = format!("message {name}");
+    let agent = info.as_ref().and_then(|i| i.agent.as_deref()).map(|a| format!("· {a}")).unwrap_or_default();
     let mut card_ = Card::new(t, &title).lit(t.accent);
     card_.bg = t.card;
-    card_.sub = info.as_ref().and_then(|i| i.agent.as_deref()).unwrap_or("");
+    card_.sub = &agent;
     card(app, buf, r, &card_, t);
     hit(app, r, ScreenHit::Noop);
     let model = app.screen_model();

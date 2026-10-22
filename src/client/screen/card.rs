@@ -170,7 +170,8 @@ pub(in crate::client) fn button_pill(look: Look, t: &Theme, label: &str, key: &s
 /// What a card shows in and around its border.
 pub(in crate::client) struct Card<'a> {
     pub title: &'a str,
-    /// After the title in its chip.
+    /// After the title in its chip, a space on, carrying its own separator: `INBOX 2`,
+    /// `CHECK · fix-footer › test`.
     pub sub: &'a str,
     /// Drawn as they are in place of the title chip (a pane's tab chips).
     pub chips: Vec<Seg>,
@@ -220,7 +221,7 @@ fn title_chip(c: &Card, t: &Theme, room: u16) -> Vec<Seg> {
     }
     let (bg, fg) = if c.bold { (c.border, if c.border == t.accent { t.acc_ink } else { t.ink_on(c.border) }) } else { (t.btn, c.title_fg) };
     let st = Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD);
-    let sub = if c.sub.is_empty() { String::new() } else { format!(" · {}", c.sub) };
+    let sub = if c.sub.is_empty() { String::new() } else { format!(" {}", c.sub) };
     let fits = |s: &str| s.width() as u16 + 2 <= room;
     let (title, sub) = if fits(&format!("{}{sub}", c.title)) { (c.title.to_string(), sub) } else { (truncate(c.title, room.saturating_sub(2) as usize), String::new()) };
     let mut out = vec![seg(format!(" {title}"), st)];
