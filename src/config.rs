@@ -99,9 +99,14 @@ pub struct Ui {
     pub background: String,
     /// Panes as cards with gaps between them ("floating"), or packed edge to edge ("tiled").
     pub panes: String,
-    /// Card edges: "flush" (lines on the card's edge, its colour right up to them) or "rounded"
-    /// (a centred line with rounded corners, a thin strip of desk inside it).
+    /// Card edges: "square" (lines on the card's edge, its colour right up to them) or "rounded"
+    /// (a centred line with rounded corners, a thin strip of desk inside it). "flush", the old
+    /// name for square, reads as square.
+    #[serde(deserialize_with = "corners_named")]
     pub corners: String,
+    /// Which glyph set marks sessions and checks: "auto" (ASCII when the blocked, done and idle
+    /// icons are all ASCII, else Unicode), "unicode", "ascii" or "nerd".
+    pub glyphs: String,
     /// Space between floating cards: "0", "1" or "2" rows stacked (and columns side by side).
     pub gap: String,
     /// How far unfocused panes fade toward their background: "off", "subtle", "30%", "60%" ("40%" from older configs counts as 30%).
@@ -180,6 +185,13 @@ impl Default for Mcp {
     }
 }
 
+const CORNERS_SQUARE: &str = "square";
+
+fn corners_named<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let name = String::deserialize(d)?;
+    Ok(if name == "flush" { CORNERS_SQUARE.into() } else { name })
+}
+
 /// How long a check may run unless its `[[check]]` says otherwise.
 pub const CHECK_TIMEOUT_S_DEFAULT: u64 = 600;
 
@@ -189,6 +201,9 @@ pub const CHECK_TIMEOUT_S_DEFAULT: u64 = 600;
 pub struct CheckDef {
     /// The repository's main checkout; sessions in any of its worktrees use this check.
     pub project: PathBuf,
+    /// The checkpoint's name, unique in its project; unset, the command's last word.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     /// Run through the user's shell.
     pub command: String,
     /// Seconds before the run is stopped and reads as not run.
@@ -196,6 +211,11 @@ pub struct CheckDef {
 }
 
 impl CheckDef {
+    /// What the checkpoint is called: its `name`, else the command's last word (`npm test`: `test`).
+    pub fn name(&self) -> &str {
+        self.name.as_deref().unwrap_or_else(|| self.command.split_whitespace().last().unwrap_or_default())
+    }
+
     pub fn timeout(&self) -> std::time::Duration {
         std::time::Duration::from_secs(self.timeout_s)
     }
@@ -203,7 +223,7 @@ impl CheckDef {
 
 impl Default for CheckDef {
     fn default() -> Self {
-        Self { project: PathBuf::new(), command: String::new(), timeout_s: CHECK_TIMEOUT_S_DEFAULT }
+        Self { project: PathBuf::new(), name: None, command: String::new(), timeout_s: CHECK_TIMEOUT_S_DEFAULT }
     }
 }
 
@@ -213,26 +233,79 @@ pub fn same_path(a: &Path, b: &Path) -> bool {
     n(a) == n(b)
 }
 
-/// Refuse a `[[check]]` that could never run, or two for one project, so a typo shows when the
-/// config loads and not as a check that silently never happens.
+/// Refuse a `[[check]]` that could never run, or two of one name in a project, so a typo shows
+/// when the config loads and not as a check that silently never happens.
 pub fn validate_checks(checks: &[CheckDef]) -> Result<()> {
     for (i, c) in checks.iter().enumerate() {
         let n = i + 1;
         anyhow::ensure!(!c.project.as_os_str().is_empty(), "[[check]] #{n} needs a `project`");
-        anyhow::ensure!(!c.command.trim().is_empty(), "[[check]] #{n} ({}) needs a `command`", c.project.display());
-        anyhow::ensure!(c.timeout_s > 0, "[[check]] #{n} ({}) needs a `timeout_s` above 0", c.project.display());
+        validate_check(n, c, &c.project.display().to_string())?;
         anyhow::ensure!(
             !c.project.to_string_lossy().starts_with('~'),
             "[[check]] #{n}: `project` {} starts with `~`, which is not expanded; give the full path",
             c.project.display()
         );
         anyhow::ensure!(
-            !checks[..i].iter().any(|o| same_path(&o.project, &c.project)),
-            "[[check]] #{n}: {} already has a check; a project has one",
-            c.project.display()
+            !checks[..i].iter().any(|o| same_path(&o.project, &c.project) && o.name().eq_ignore_ascii_case(c.name())),
+            "[[check]] #{n}: {} already has a check named `{}`; give each a different `name`",
+            c.project.display(),
+            c.name()
         );
     }
     Ok(())
+}
+
+/// The rules a check meets wherever it is named: in config or in a repo's file (`place`).
+fn validate_check(n: usize, c: &CheckDef, place: &str) -> Result<()> {
+    anyhow::ensure!(!c.command.trim().is_empty(), "[[check]] #{n} ({place}) needs a `command`");
+    anyhow::ensure!(c.timeout_s > 0, "[[check]] #{n} ({place}) needs a `timeout_s` above 0");
+    anyhow::ensure!(c.name.as_deref().is_none_or(|s| !s.trim().is_empty()), "[[check]] #{n} ({place}) has an empty `name`");
+    Ok(())
+}
+
+/// The file a repository names its own checks in, relative to its root.
+#[cfg_attr(not(test), expect(dead_code, reason = "read once repo-supplied checks run"))]
+pub const REPO_CHECKS_FILE: &str = ".seshi/checks.toml";
+
+/// The checks in a repository's `.seshi/checks.toml`, refused as a whole when any is unusable,
+/// two share a name, or the file has a key Seshi doesn't know. Their `project` is left empty.
+#[cfg_attr(not(test), expect(dead_code, reason = "read once repo-supplied checks run"))]
+pub fn parse_repo_checks(text: &str) -> Result<Vec<CheckDef>> {
+    /// `.seshi/checks.toml`: checks a repository ships. No `project`: it is the repo.
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct RepoChecks {
+        #[serde(default)]
+        check: Vec<RepoCheck>,
+    }
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct RepoCheck {
+        name: Option<String>,
+        #[serde(default)]
+        command: String,
+        #[serde(default = "timeout_default")]
+        timeout_s: u64,
+    }
+    fn timeout_default() -> u64 {
+        CHECK_TIMEOUT_S_DEFAULT
+    }
+    let file: RepoChecks = toml::from_str(text).with_context(|| format!("reading {REPO_CHECKS_FILE}"))?;
+    let checks: Vec<CheckDef> = file
+        .check
+        .into_iter()
+        .map(|c| CheckDef { project: PathBuf::new(), name: c.name, command: c.command, timeout_s: c.timeout_s })
+        .collect();
+    for (i, c) in checks.iter().enumerate() {
+        let n = i + 1;
+        validate_check(n, c, REPO_CHECKS_FILE)?;
+        anyhow::ensure!(
+            !checks[..i].iter().any(|o| o.name().eq_ignore_ascii_case(c.name())),
+            "[[check]] #{n} ({REPO_CHECKS_FILE}): another check is named `{}`; give each a different `name`",
+            c.name()
+        );
+    }
+    Ok(checks)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -548,7 +621,8 @@ impl Default for Ui {
             layout: "cards".into(),
             background: "terminal".into(),
             panes: "floating".into(),
-            corners: "flush".into(),
+            corners: CORNERS_SQUARE.into(),
+            glyphs: "auto".into(),
             gap: "1".into(),
             dim: "30%".into(),
             focus_border: "accent".into(),
@@ -1165,7 +1239,8 @@ mod tests {
             ("[[check]]\nproject = \"/a\"\ncommand = \"  \"\n", "command"),
             ("[[check]]\nproject = \"/a\"\n", "command"),
             ("[[check]]\nproject = \"/a\"\ncommand = \"t\"\ntimeout_s = 0\n", "timeout_s"),
-            ("[[check]]\nproject = \"/a\"\ncommand = \"t\"\n[[check]]\nproject = \"/a\"\ncommand = \"u\"\n", "already has a check"),
+            ("[[check]]\nproject = \"/a\"\ncommand = \"t\"\n[[check]]\nproject = \"/a\"\ncommand = \"t\"\n", "already has a check"),
+            ("[[check]]\nproject = \"/a\"\ncommand = \"t\"\nname = \" \"\n", "empty `name`"),
             ("[[check]]\nproject = \"/a\"\ncommand = \"t\"\ntimeout_s = -5\n", "timeout_s"),
         ] {
             let err = check(bad).expect_err(bad);
@@ -1176,13 +1251,71 @@ mod tests {
     #[test]
     fn two_checks_for_one_project_are_found_however_the_path_is_spelled() {
         let check = |a: &str, b: &str| {
-            let c: super::Config = toml::from_str(&format!("[[check]]\nproject = '{a}'\ncommand = \"t\"\n[[check]]\nproject = '{b}'\ncommand = \"u\"\n")).unwrap();
+            let c: super::Config = toml::from_str(&format!("[[check]]\nproject = '{a}'\ncommand = \"t\"\n[[check]]\nproject = '{b}'\ncommand = \"t\"\n")).unwrap();
             super::validate_checks(&c.check)
         };
         let err = check("/a", "/a/").expect_err("a trailing slash is the same project").to_string();
         assert!(err.contains("already has a check"), "{err}");
         assert!(check("C:\\work\\App", "c:/work/app/").is_err(), "separators and case do not make a project");
         assert!(check("/a", "/b").is_ok());
+    }
+
+    #[test]
+    fn a_project_may_have_several_checks_with_different_names() {
+        let c: super::Config = toml::from_str(
+            "[[check]]\nproject = \"/a\"\ncommand = \"cargo build\"\n[[check]]\nproject = \"/a\"\ncommand = \"cargo test\"\n[[check]]\nproject = \"/a\"\nname = \"lint\"\ncommand = \"cargo clippy\"\n",
+        )
+        .unwrap();
+        super::validate_checks(&c.check).unwrap();
+        assert_eq!(c.check.iter().map(super::CheckDef::name).collect::<Vec<_>>(), ["build", "test", "lint"]);
+        let twice: super::Config = toml::from_str("[[check]]\nproject = \"/a\"\ncommand = \"npm test\"\n[[check]]\nproject = \"/a\"\nname = \"TEST\"\ncommand = \"cargo test\"\n").unwrap();
+        let err = super::validate_checks(&twice.check).expect_err("a name is one checkpoint, whatever its case").to_string();
+        assert!(err.contains("already has a check named"), "{err}");
+    }
+
+    #[test]
+    fn a_checkpoint_is_named_by_its_command_s_last_word_unless_named() {
+        let def = |name: Option<&str>, command: &str| super::CheckDef { name: name.map(String::from), command: command.into(), ..Default::default() };
+        assert_eq!(def(None, "npm test").name(), "test");
+        assert_eq!(def(None, "cargo clippy").name(), "clippy");
+        assert_eq!(def(None, "  make  ").name(), "make");
+        assert_eq!(def(Some("unit"), "npm test").name(), "unit");
+        assert_eq!(def(None, "").name(), "");
+    }
+
+    #[test]
+    fn a_repo_s_checks_file_parses_with_defaults() {
+        let got = super::parse_repo_checks("[[check]]\ncommand = \"npm run build\"\n\n[[check]]\nname = \"unit\"\ncommand = \"npm test\"\ntimeout_s = 90\n").unwrap();
+        let got: Vec<_> = got.iter().map(|c| (c.name(), c.command.as_str(), c.timeout_s, c.project.as_os_str().is_empty())).collect();
+        assert_eq!(got, [("build", "npm run build", super::CHECK_TIMEOUT_S_DEFAULT, true), ("unit", "npm test", 90, true)]);
+        assert!(super::parse_repo_checks("").unwrap().is_empty(), "an empty file names no check");
+    }
+
+    #[test]
+    fn a_repo_s_checks_file_with_anything_wrong_is_refused_whole() {
+        for (bad, why) in [
+            ("[[check]]\ncommand = \" \"\n", "command"),
+            ("[[check]]\nname = \"x\"\n", "command"),
+            ("[[check]]\ncommand = \"t\"\ntimeout_s = 0\n", "timeout_s"),
+            ("[[check]]\ncommand = \"npm test\"\n[[check]]\nname = \"Test\"\ncommand = \"cargo test\"\n", "another check is named"),
+            ("[[check]]\ncommand = \"t\"\nproject = \"/elsewhere\"\n", "project"),
+            ("[[check]]\ncommand = \"t\"\nenv = \"X=1\"\n", "env"),
+            ("shell = \"bash\"\n", "shell"),
+        ] {
+            let err = format!("{:#}", super::parse_repo_checks(bad).expect_err(bad));
+            assert!(err.contains(why), "{bad:?} -> {err}");
+        }
+        assert!(super::REPO_CHECKS_FILE.starts_with(".seshi/"), "the file lives in the repo's .seshi folder");
+    }
+
+    #[test]
+    fn glyphs_default_to_auto_and_corners_to_square_with_flush_read_as_square() {
+        let ui = super::Config::default().ui;
+        assert_eq!((ui.glyphs.as_str(), ui.corners.as_str()), ("auto", "square"));
+        for (written, read) in [("flush", "square"), ("square", "square"), ("rounded", "rounded")] {
+            let c: super::Config = toml::from_str(&format!("[ui]\ncorners = \"{written}\"\nglyphs = \"nerd\"\n")).unwrap();
+            assert_eq!((c.ui.corners.as_str(), c.ui.glyphs.as_str()), (read, "nerd"), "{written}");
+        }
     }
 
     #[test]

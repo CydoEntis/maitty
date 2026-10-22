@@ -390,6 +390,7 @@ impl Daemon {
         let Some(t) = self.terms.get_mut(&term) else { return };
         let dir = t.head.as_ref().map_or_else(|| t.cwd.clone(), |h| h.top.clone());
         let info = CheckInfo {
+            name: def.name().to_string(),
             command: def.command.clone(),
             state: CheckState::Checking,
             started_at: term::unix_now(),

@@ -40,6 +40,8 @@ sidebar = true              # <leader> b
 sidebar_position = "left"   # left | right
 layout = "cards"            # cards | flat
 panes = "floating"          # floating | tiled; applies to Cards layout
+corners = "square"          # square | rounded card edges ("flush" reads as square)
+glyphs = "auto"             # auto | unicode | ascii | nerd: session and check marks (auto: ascii when [icons] are)
 which_key = false         # a keys popup if you pause after the leader (? always shows them)
 which_key_delay_ms = 350
 mouse = true
@@ -146,11 +148,14 @@ A = "new-worktree:claude"   # worktree picker; whatever you open or create start
 
 # Checks: when an agent's turn ends in a project listed here, Seshi runs `command` through
 # your shell in that session's worktree and records the result (it never reads a command
-# from the repo itself). `project` is the repo's main checkout; a project has one check.
+# from the repo itself). `project` is the repo's main checkout. A project may list several
+# checks (checkpoints), each with its own `name` (default: the command's last word, so
+# "npm test" is `test`); two in one project may not share a name.
 # `timeout_s` (default 600) stops a run that hangs, and its whole process tree with it.
 # The command does not get the pane's SESHI_PANE_TOKEN, and its output stays on the daemon.
 # [[check]]
 # project = "/home/me/code/app"
+# name = "test"
 # command = "npm test"
 # timeout_s = 600
 # Settings > Check edits this table for the project you are in and keeps your comments.

@@ -1601,7 +1601,7 @@ const LONG_CHECK_S: u64 = 600;
 /// An agent session in the temp folder (not a repo, so the folder is its project), whose
 /// project has a check running `command`.
 fn checked_agent(d: &mut Daemon, command: &str, timeout_s: u64) -> TermId {
-    d.cfg.check = vec![crate::config::CheckDef { project: std::env::temp_dir(), command: command.into(), timeout_s }];
+    d.cfg.check = vec![crate::config::CheckDef { project: std::env::temp_dir(), name: None, command: command.into(), timeout_s }];
     let t = pane(d);
     let p = d.terms.get_mut(&t).unwrap();
     (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Working);

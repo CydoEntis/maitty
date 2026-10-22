@@ -1918,7 +1918,7 @@ mod screen_tests {
         assert_ne!(fg_at(focus), fg_at(other), "the unfocused pane's text is faded");
         // Tiled: no margin, cards edge to edge; square corners when asked.
         app.cfg.ui.panes = "tiled".into();
-        app.cfg.ui.corners = "flush".into();
+        app.cfg.ui.corners = "square".into();
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.lines().next().unwrap().starts_with(" ▁"), "tiled starts at the very corner, flush: {}", o.lines().next().unwrap());
@@ -5010,7 +5010,7 @@ mod check_settings_tests {
     }
 
     fn with_check(app: &mut App, command: &str, timeout_s: u64) {
-        app.cfg.check = vec![CheckDef { project: project(), command: command.into(), timeout_s }];
+        app.cfg.check = vec![CheckDef { project: project(), name: None, command: command.into(), timeout_s }];
     }
 
     fn result(state: CheckState, exit_code: Option<i32>) -> CheckInfo {
@@ -5136,7 +5136,7 @@ mod check_settings_tests {
         let (out, cfg) = edited(before, set("npm test", 600));
         assert!(out.contains("# my notes") && out.contains("# my ui notes"), "{out}");
         assert!(out.contains("[[check]]"), "{out}");
-        assert_eq!(cfg.check, vec![CheckDef { project: project(), command: "npm test".into(), timeout_s: 600 }]);
+        assert_eq!(cfg.check, vec![CheckDef { project: project(), name: None, command: "npm test".into(), timeout_s: 600 }]);
 
         let with_note = format!("{out}\n# why this one\n[[check]]\nproject = \"/code/lib\"\ncommand = \"cargo test\"\n");
         let (out, cfg) = edited(&with_note, set("pnpm test", 900));
@@ -5190,7 +5190,7 @@ mod check_settings_tests {
         let (mut app, mut rx) = app_with_channel();
         open_check_page(&mut app, 0);
         let mut cfg = app.cfg.clone();
-        cfg.check = vec![CheckDef { project: project(), command: "npm test".into(), timeout_s: 600 }];
+        cfg.check = vec![CheckDef { project: project(), name: None, command: "npm test".into(), timeout_s: 600 }];
         app.check_saved(Ok(cfg), Some("npm test".into()));
         assert_eq!(app.cfg.check.len(), 1);
         let mut sent = Vec::new();
@@ -5780,7 +5780,7 @@ mod check_wiring_tests {
 
     fn with_command(app: &mut App) {
         let project = PathBuf::from(if cfg!(windows) { r"C:\code\shop-api" } else { "/code/shop-api" });
-        app.cfg.check = vec![crate::config::CheckDef { project, command: COMMAND.into(), timeout_s: 600 }];
+        app.cfg.check = vec![crate::config::CheckDef { project, name: None, command: COMMAND.into(), timeout_s: 600 }];
     }
 
     #[test]

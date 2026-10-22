@@ -689,7 +689,7 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
         SRow::Check(_) => "CHECK",
         SRow::Setting(s) => match s.path {
             "theme" => "THEME",
-            "ui.spinner" => "STATUS INDICATORS",
+            "ui.spinner" | "ui.glyphs" => "STATUS INDICATORS",
             "prefix" | "ui.mouse" | "ui.which_key" | "ui.alt_arrows" => "INPUT",
             "ui.layout" | "ui.background" | "ui.sidebar_position" | "ui.splash" | "ui.motion" => "LAYOUT",
             "ui.update_check" => "UPDATES",
