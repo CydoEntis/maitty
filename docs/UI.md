@@ -184,7 +184,7 @@ working glyph; blocked/done/idle status colors and icons keep their meaning.
 
 ## Project-specific: sidebar check result
 
-A session with a check result (`TermInfo.check`) swaps its status glyph for the
+A session with a check result (`TermInfo::check()`, the headline checkpoint) swaps its status glyph for the
 check's and adds one line under the row. A session with no result, or one whose
 agent is working or asking, draws exactly as without checks.
 
@@ -200,12 +200,14 @@ agent is working or asking, draws exactly as without checks.
   and needs-you (`●`, the question) differ in glyph, word and colour.
 - A failed row keeps a red `▎` edge bar on both lines even when not selected.
   Could not run has no bar.
-- ASCII glyphs are used when the `blocked`, `done` and `idle` icons are all ASCII.
+- Glyphs come from the set `[ui] glyphs` picks (`client/screen/glyphs.rs`: unicode, ascii,
+  nerd); `auto` uses ASCII when the `blocked`, `done` and `idle` icons are all ASCII.
 - The line is dropped below `NARROW` columns, before the glyph; the folder name is
   never touched. A long command is shortened first so the result still reads.
 - The collapsed rail shows the same glyph. The ring turns with the motion setting;
   the working spinner choice is unchanged.
-- Colours are existing theme slots only; there is no check role. Code lives in
+- Colours are existing theme slots only; there is no check role. `Theme::violet()` (the
+  theme's first project colour, made readable) and `sky()` are derived, not roles. Code lives in
   `client/screen/check.rs`; the evidence sheet is `client/screen/check_sheet.rs`.
 
 ## Project-specific: Inbox check groups

@@ -1,6 +1,7 @@
 //! A session's check result on its sidebar row: the glyph that stands for it, its colour,
 //! and the line of words under the row. Shape and word carry the meaning; colour backs them.
 use super::*;
+use super::glyphs::{self, Glyphs};
 use crate::protocol::{CheckInfo, CheckState};
 
 /// The ring steps once per this many spinner frames.
@@ -12,24 +13,9 @@ const MIN_COMMAND_COLS: usize = 2;
 const SECS_PER_MIN: u64 = 60;
 const EDGE_BAR: &str = "▎";
 
-struct Marks {
-    ring: [&'static str; 4],
-    passed: &'static str,
-    failed: &'static str,
-    overridden: &'static str,
-    unknown: &'static str,
-    stale: &'static str,
-    needs: &'static str,
-    pending: &'static str,
-}
-
-const UNICODE: Marks = Marks { ring: ["◜", "◝", "◞", "◟"], passed: "✓", failed: "✕", overridden: "⊘", unknown: "?", stale: "◷", needs: "●", pending: "…" };
-const ASCII: Marks = Marks { ring: ["-", "\\", "|", "/"], passed: "+", failed: "x", overridden: "/", unknown: "?", stale: "~", needs: "!", pending: "." };
-
-/// Plain icons (ASCII status icons in config) get ASCII check glyphs too.
-fn marks(app: &App) -> &'static Marks {
-    let i = &app.cfg.icons;
-    if [&i.blocked, &i.done, &i.idle].iter().all(|icon| icon.is_ascii()) { &ASCII } else { &UNICODE }
+/// The set `[ui] glyphs` picks; plain ASCII icons get ASCII marks unless it says otherwise.
+fn marks(app: &App) -> &'static Glyphs {
+    glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons)
 }
 
 /// The result to show for a session. While the agent works or asks, the last result is
@@ -67,13 +53,13 @@ pub(super) fn glyph(app: &App, info: &CheckInfo) -> &'static str {
     let m = marks(app);
     match info.state {
         CheckState::Checking => m.ring[if app.motion_on() { ring_step(app.spinner_frame(), m.ring.len()) } else { 0 }],
-        CheckState::Passed => m.passed,
+        CheckState::Passed => m.done,
         CheckState::Failed => m.failed,
-        CheckState::Overridden => m.overridden,
-        CheckState::CouldNotRun | CheckState::Never => m.unknown,
+        CheckState::Overridden => m.over,
+        CheckState::CouldNotRun | CheckState::Never => m.couldnt,
         CheckState::Stale => m.stale,
         CheckState::NeedsApproval => m.needs,
-        CheckState::Pending => m.pending,
+        CheckState::Pending => m.pend,
     }
 }
 
@@ -121,7 +107,7 @@ fn compose(app: &App, info: &CheckInfo, cmd: &str) -> String {
     let m = marks(app);
     match info.state {
         CheckState::Checking => format!("checking {cmd} · {}", age(info.started_at)),
-        CheckState::Passed => format!("{cmd} {} · {} · {} ago", m.passed, duration(info.duration_ms), age(info.started_at + info.duration_ms / 1000)),
+        CheckState::Passed => format!("{cmd} {} · {} · {} ago", m.done, duration(info.duration_ms), age(info.started_at + info.duration_ms / 1000)),
         CheckState::Failed => match info.exit_code {
             Some(code) => format!("failed: {cmd} · exit {code}"),
             None => format!("failed: {cmd}"),

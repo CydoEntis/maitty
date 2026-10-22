@@ -64,7 +64,7 @@ src/
   keys.rs        actions, default bindings, key parsing
   layout.rs      split trees and neighbour finding
   theme.rs       built-in themes and contrast audit
-  clock.rs       time helpers
+  clock.rs       time helpers, local clock times
   proc.rs        running other programs: no console window, output or error as text,
                  git, shell command lines
   daemon/        the server
@@ -87,7 +87,7 @@ src/
     screen/      the layout: mod.rs (state, model, click targets), draw.rs (grid, sidebar
                  card, tab row, pane cards), card.rs (cards, pills, fading; the Look from
                  settings), leader.rs (key map, actions list, new tab), popups.rs,
-                 dialogs.rs, splash.rs, popover.rs (follow-up and why, beside a row), heads.rs (same-file heads-ups,
+                 dialogs.rs, glyphs.rs (session and check marks), splash.rs, popover.rs (follow-up and why, beside a row), heads.rs (same-file heads-ups,
                  both diffs), sheet.rs (the card docked right of the panes:
                  Inbox, Changes), behaviour.rs (its keys and clicks)
     render.rs, design.rs  drawing entry point and shared helpers

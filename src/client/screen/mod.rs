@@ -992,6 +992,7 @@ mod check_inbox;
 pub(in crate::client) mod check_settings;
 mod check_sheet;
 mod dialogs;
+pub(in crate::client) mod glyphs;
 mod leader;
 mod popups;
 mod heads;

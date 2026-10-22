@@ -919,6 +919,14 @@ impl Theme {
         self.ws.map(|w| w[1]).unwrap_or(Color::Rgb(0x5a, 0xa9, 0xff))
     }
 
+    /// A check that could not run, or that you chose never to run: not a failure, so not red.
+    /// The theme's violet, moved toward its strongest text where it wouldn't read on the
+    /// ground, a card or the selected row (some themes' violet is a dim terminal blue).
+    pub fn violet(&self) -> Color {
+        let base = self.ws.map(|w| w[0]).unwrap_or(Color::Rgb(0xb5, 0x8c, 0xff));
+        readable_on(base, self.strong, &[self.bg, self.card, self.sel_bg()], LIT_READS)
+    }
+
     pub fn status(&self, s: crate::protocol::Status) -> Color {
         use crate::protocol::Status::*;
         match s {
@@ -1010,6 +1018,9 @@ mod audit {
                 ("done on the lit row", t.on_lit(t.done), t.hov, 3.0),
                 ("working on the lit row", t.on_lit(t.working), t.hov, 3.0),
                 ("err on card", t.err, t.card, 3.0),
+                ("violet on bg", t.violet(), t.bg, 3.0),
+                ("violet on card", t.violet(), t.card, 3.0),
+                ("violet on the selected row", t.violet(), t.sel_bg(), 3.0),
                 ("ink on the red Close button", t.ink_on(t.danger_fill()), t.danger_fill(), 4.5),
             ];
             for (what, fg, bg, min) in checks {
