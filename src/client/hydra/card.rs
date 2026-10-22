@@ -241,10 +241,6 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
                 cell.set_symbol("▎").set_style(Style::default().fg(edge).bg(c.bg));
             }
         }
-        if !c.title.is_empty() && r.width > 4 {
-            let title = truncate(c.title, r.width.saturating_sub(6) as usize);
-            put(buf, r.x + 3, r.y, &[seg(title, Style::default().fg(c.title_fg).add_modifier(Modifier::BOLD).bg(c.bg))], r.right().saturating_sub(3));
-        }
         let mut right = Vec::new();
         if let Some(st) = c.state {
             right.push(seg(format!("{} {}", glyph(app, st), state_label(st)), Style::default().fg(state_color(t, st)).add_modifier(Modifier::BOLD).bg(c.bg)));

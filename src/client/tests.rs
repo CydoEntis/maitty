@@ -4253,6 +4253,30 @@ mod check_sheet_tests {
     }
 
     #[test]
+    fn a_long_command_truncates_the_sheet_title_once_in_every_layout_at_every_size() {
+        let command = "echo start; then echo ok; echo more output here; and keep going until the line is far wider than the sheet";
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let at = format!("{name} {w}x{h}");
+                let mut info = check(CheckState::Failed, Some(1));
+                info.command = command.into();
+                let mut app = open(w, h, layout, info, Some(SHORT_OUTPUT));
+                let o = draw(&mut app, w, h);
+                let g = hydra::grid(&app, Rect::new(0, 0, w, h));
+                let header = o
+                    .lines()
+                    .map(|l| l.chars().skip(g.sheet.x as usize).take(g.sheet.width as usize).collect::<String>())
+                    .find(|l| l.contains("Check ·"))
+                    .unwrap_or_else(|| panic!("{at}: no title row in\n{o}"));
+                let (head, tail) = header.split_once('…').unwrap_or_else(|| panic!("{at}: the title is cut, so it ends in …: {header:?}"));
+                assert!(head.contains("› echo start; then"), "{at}: the command's start follows the session: {header:?}");
+                assert!(!tail.contains('…'), "{at}: one ellipsis: {header:?}");
+                assert!(tail.trim_matches(|c: char| c == ' ' || "─╮▁▔".contains(c)).trim() == "✕", "{at}: only the close follows the ellipsis, got {tail:?} in {header:?}");
+            }
+        }
+    }
+
+    #[test]
     fn the_sheet_keeps_the_sidebars_foot_and_waits_for_output_it_has_not_got() {
         let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), None);
         let o = draw(&mut app, 160, 45);
