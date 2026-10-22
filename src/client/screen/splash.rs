@@ -34,6 +34,8 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     fill(buf, area, t.bg);
     let all: Vec<&Session> = model.iter().flat_map(|p| p.sessions()).collect();
     let n = |st: Status| all.iter().filter(|s| s.status == st).count();
+    let finished = all.iter().filter(|s| s.status == Status::Done && !check::holds_done(s)).count();
+    let check_failed = all.iter().filter(|s| check::shown(s).is_some_and(check::failed)).count();
     let mut y = area.y + area.height.saturating_sub(18) / 2;
     let center = |w: u16| area.x + area.width.saturating_sub(w) / 2;
     // SESHI, sunset into the sea: the accent shading to sea glass from left to right.
@@ -60,14 +62,24 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     y += 6;
     put(buf, center(TAG.width() as u16), y, &[seg(TAG, Style::default().fg(t.muted).bg(t.bg).add_modifier(Modifier::ITALIC))], area.right());
     y += 2;
-    let away = vec![
-        seg("while you were away   ", Style::default().fg(t.muted)),
+    let mut counts = vec![
         seg(format!("{} {} need you", app.cfg.icons.blocked, n(Status::Blocked)), Style::default().fg(t.blocked).add_modifier(Modifier::BOLD)),
         seg("   ", Style::default()),
         seg(format!("{} {} still working", glyph(app, Status::Working), n(Status::Working)), Style::default().fg(t.text)),
         seg("   ", Style::default()),
-        seg(format!("{} {} finished", app.cfg.icons.done, n(Status::Done)), Style::default().fg(t.done)),
+        seg(format!("{} {finished} finished", app.cfg.icons.done), Style::default().fg(t.done)),
     ];
+    if check_failed > 0 {
+        let noun = if check_failed == 1 { "check" } else { "checks" };
+        counts.push(seg("   ", Style::default()));
+        counts.push(seg(format!("{} {check_failed} {noun} failed", check::failed_mark(app)), Style::default().fg(t.err).add_modifier(Modifier::BOLD)));
+    }
+    let mut away = vec![seg("while you were away   ", Style::default().fg(t.muted))];
+    away.extend(counts.iter().cloned());
+    // The lead-in gives way before a count is cut off.
+    if segs_width(&away) > area.width {
+        away = counts;
+    }
     // Nothing running, nothing to report: no line of zeros.
     if !app.snap.terms.is_empty() {
         put(buf, center(segs_width(&away)), y, &away, area.right());

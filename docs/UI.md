@@ -219,6 +219,14 @@ then HEADS UP, each heading with its count. A question is never below a check.
   Enter focuses the session, as on every other row. The selected failed row grows a line of buttons: Output `o`, Re-run `r`, Override… `O` (a confirm, as in the sheet). While a failed row is selected, those three letters act instead of starting a search.
 - Existing theme slots only. Code lives in `client/screen/check_inbox.rs`.
 
+## Project-specific: home screen check counters
+
+The home screen's "while you were away" line counts a session as finished only when it is
+`Done` and its check is not checking or failed (`check::holds_done`, which uses `check::shown`).
+A `✕ N check failed` (`N checks failed`) count follows, in `err`, only when N is above zero.
+When the line does not fit the width, the lead-in "while you were away" is dropped so no count
+is cut. A project with no check draws the line it always did. Code lives in `client/screen/splash.rs`.
+
 ## Project-specific: collapsed sidebar
 
 Hiding the full sidebar leaves a seven-column rail on the configured side.

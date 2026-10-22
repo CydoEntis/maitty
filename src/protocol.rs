@@ -522,6 +522,19 @@ pub enum CheckState {
     CouldNotRun,
 }
 
+impl CheckState {
+    /// The name scripts read in `seshi ls --json`.
+    pub fn label(self) -> &'static str {
+        match self {
+            CheckState::Checking => "checking",
+            CheckState::Passed => "passed",
+            CheckState::Failed => "failed",
+            CheckState::Overridden => "overridden",
+            CheckState::CouldNotRun => "could_not_run",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CheckInfo {
@@ -544,6 +557,12 @@ pub struct CheckInfo {
 }
 
 impl TermInfo {
+    /// The check to report beside the status. While the agent works or asks, the last result is
+    /// about an older turn, so none is reported.
+    pub fn reported_check(&self) -> Option<&CheckInfo> {
+        self.check.as_ref().filter(|_| !matches!(self.status, Status::Working | Status::Blocked))
+    }
+
     /// What to call this pane: the agent's name, else the folder a shell is sitting in, else
     /// the running program's title or name (`vim`, `lazygit`, `node`).
     pub fn display_name(&self) -> String {

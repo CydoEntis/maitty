@@ -6,7 +6,9 @@ coordinating. The helpers do the work.
 
 Use seshi's tools if you have them (`seshi_list`, `seshi_start`, `seshi_send`,
 `seshi_wait`, `seshi_read`). If you don't, the same things are shell commands,
-shown below. Session numbers come from `seshi ls` or `seshi_list`.
+shown below. Session numbers come from `seshi ls` or `seshi_list`. A helper can read
+`done` and still carry a failed check (`claude: done · check failed (exit 1)`); that is not
+finished work.
 
 ## Split the goal
 

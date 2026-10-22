@@ -222,3 +222,13 @@ to stderr and exits 4 (2 is timed out, 3 needs you). A check that could not run 
 notice and then the normal finished alert. Queued follow-ups still send when the turn
 ends, and `helpers_at_once` still counts only working sessions. A session with no check
 alerts and waits exactly as before.
+
+`seshi ls`, `seshi ls --json` and MCP `seshi_list` report a check next to the status, never in
+place of it: `status` keeps its value (`done`) and `TermInfo::reported_check` decides whether a
+result is shown (not while the agent is working or asking, as in the sidebar). `cli::check_note`
+is the one wording for both text surfaces: `check failed (exit 1)`, `checking`, `check passed`,
+`check could not run`, `check overridden`. `ls` prints it in the agent tag
+(`[claude: done · check failed (exit 1)]`); `seshi_list` adds it as a `check` string. `ls --json`
+adds a `check` object (`state` as `checking`, `passed`, `failed`, `overridden` or
+`could_not_run`; `command`; `exit_code`; `duration_ms`; `first_failing_line`; `rerun_queued`;
+`overridden_at`). A pane with no check has no `check` key and its output is unchanged.

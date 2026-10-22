@@ -35,6 +35,16 @@ pub(super) fn shown(s: &Session) -> Option<&CheckInfo> {
     s.check.as_ref().filter(|_| !matches!(s.status, Status::Working | Status::Blocked))
 }
 
+/// The check says the work is not known to be good, so the session is not "finished" yet.
+pub(super) fn holds_done(s: &Session) -> bool {
+    shown(s).is_some_and(|info| failed(info) || info.state == CheckState::Checking)
+}
+
+/// The mark that stands for a failed check, in the same set as the sidebar's glyphs.
+pub(super) fn failed_mark(app: &App) -> &'static str {
+    marks(app).failed
+}
+
 pub(super) fn failed(info: &CheckInfo) -> bool {
     info.state == CheckState::Failed
 }

@@ -3746,6 +3746,63 @@ mod check_row_tests {
         format!("{}/{} {w}x{h}", layout.0, layout.1)
     }
 
+    /// The home screen's counters line.
+    fn away_line(buf: &Buffer) -> String {
+        let rows = (0..buf.area.height).map(|y| (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect::<String>());
+        rows.map(|r| r.trim().to_string()).find(|r| r.contains("need you") && r.contains("still working")).expect("the counters line")
+    }
+
+    fn splash_line(w: u16, h: u16, layout: (&str, &str), extra: &[(&str, Status, Option<CheckInfo>)]) -> String {
+        let mut app = scene(w, h, layout, extra);
+        app.splash = true;
+        let buf = render(&mut app, w, h);
+        show(&buf, &format!("splash {}", label(layout, w, h)));
+        away_line(&buf)
+    }
+
+    #[test]
+    fn the_home_counters_do_not_call_a_checking_or_failed_session_finished() {
+        let extra = [
+            ("t-failed", Status::Done, Some(info(CheckState::Failed, Some(1)))),
+            ("t-running", Status::Done, Some(info(CheckState::Checking, None))),
+            ("t-passed", Status::Done, Some(info(CheckState::Passed, Some(0)))),
+            ("t-plain", Status::Done, None),
+        ];
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let line = splash_line(w, h, layout, &extra);
+                let at = format!("{}: {line}", label(layout, w, h));
+                assert!(line.contains("2 finished"), "only the passed and the unchecked finished: {at}");
+                assert!(line.contains("1 check failed"), "{at}");
+                assert!(line.contains("1 need you") && line.contains("1 still working"), "{at}");
+                assert!(unicode_width::UnicodeWidthStr::width(line.as_str()) <= w as usize, "{at}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_failed_check_count_shows_only_above_zero_and_counts_each() {
+        for layout in LAYOUTS {
+            let at = label(layout, 80, 24);
+            let ok = [("t-passed", Status::Done, Some(info(CheckState::Passed, Some(0)))), ("t-late", Status::Done, Some(info(CheckState::Overridden, Some(1))))];
+            let line = splash_line(80, 24, layout, &ok);
+            assert!(!line.contains("check") && line.contains("2 finished"), "{at}: {line}");
+            let two = [("t-a", Status::Done, Some(info(CheckState::Failed, Some(1)))), ("t-b", Status::Done, Some(info(CheckState::Failed, Some(2))))];
+            let line = splash_line(80, 24, layout, &two);
+            assert!(line.contains("2 checks failed") && line.contains("0 finished"), "{at}: {line}");
+        }
+    }
+
+    #[test]
+    fn a_project_with_no_check_keeps_its_home_counters_as_they_were() {
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let line = splash_line(w, h, layout, &[("t-plain", Status::Done, None)]);
+                assert_eq!(line, "while you were away   ● 1 need you   ⣾ 1 still working   ● 1 finished", "{}", label(layout, w, h));
+            }
+        }
+    }
+
     #[test]
     fn each_state_shows_its_glyph_and_words_in_every_layout_and_size() {
         for layout in LAYOUTS {
