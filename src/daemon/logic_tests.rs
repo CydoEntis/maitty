@@ -1664,6 +1664,24 @@ fn a_failing_check_records_its_exit_code_and_output() {
 }
 
 #[test]
+fn a_failed_check_names_its_first_failing_line_and_a_rerun_clears_it() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "echo running; echo FAIL tests/foo: boom; exit 1", LONG_CHECK_S);
+    end_turn(&mut d, t);
+    assert!(check_of(&d, t).first_failing_line.is_empty(), "nothing while it runs");
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    assert_eq!(check_of(&d, t).first_failing_line, "FAIL tests/foo: boom");
+    let seen = d.snapshot().terms[&t].check.clone().expect("the summary is in the snapshot");
+    assert_eq!(seen.first_failing_line, "FAIL tests/foo: boom");
+    d.terms.get_mut(&t).unwrap().status = Status::Idle;
+    d.rerun_check(t).expect("a failed check can be run again");
+    assert!(check_of(&d, t).first_failing_line.is_empty(), "a re-run starts clean");
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn a_check_that_outruns_its_timeout_reads_as_not_run() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();

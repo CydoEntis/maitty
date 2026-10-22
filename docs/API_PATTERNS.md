@@ -126,7 +126,7 @@ of Seshi's interface. Sessions, ordinary agent launches, fleet helpers, and
 MCP session controls remain supported. The wire protocol is version 43.
 
 A pane's check result travels as a `CheckInfo` summary on `TermInfo.check` (command, state,
-exit code, start, duration, the turn-end it followed, the first failing line, whether a re-run
+exit code, start, duration, the turn-end it followed, the first failing line (set by the server when it fails: the first failure-looking line of the output, else its last line, cut to `FIRST_FAILING_LINE_MAX_CHARS`; empty otherwise), whether a re-run
 is queued, and the override time and reason). The output tail is never in the snapshot:
 `Query::CheckOutput { term }` returns it as `Reply::Text`, under the read grant. Each result's
 tail is capped at `CHECK_OUTPUT_MAX_BYTES` (1 MiB), cut on a character boundary. The latest

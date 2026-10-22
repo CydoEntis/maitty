@@ -5,6 +5,7 @@
 use super::persist::{self, CheckSlot, SavedPane};
 use super::term::{self, Term};
 use super::{Daemon, Ev};
+use crate::output_line::{classify, clean, LineKind};
 use crate::protocol::{CheckInfo, CheckState, ServerMsg, Status, TermId};
 use std::path::Path;
 use std::process::{Child, Stdio};
@@ -61,6 +62,18 @@ pub fn cap_output(text: &str) -> String {
     let Some(excess) = text.len().checked_sub(CHECK_OUTPUT_MAX_BYTES) else { return text.to_string() };
     let start = (excess..=text.len()).find(|&i| text.is_char_boundary(i)).unwrap_or(text.len());
     text[start..].to_string()
+}
+
+/// The longest first failing line kept: the Inbox row shows it on one line, and a minified
+/// bundle's single line must not bloat every snapshot.
+pub const FIRST_FAILING_LINE_MAX_CHARS: usize = 200;
+
+/// The line that sums a failed run up: the first that reads as a failure, else the last
+/// that printed anything. Safe to draw and cut short.
+pub fn first_failing_line(output: &str) -> String {
+    let lines: Vec<String> = output.lines().map(|l| clean(l).trim().to_string()).filter(|l| !l.is_empty()).collect();
+    let picked = lines.iter().find(|l| classify(l) == LineKind::Failure).or(lines.last());
+    picked.map_or_else(String::new, |l| l.chars().take(FIRST_FAILING_LINE_MAX_CHARS).collect())
 }
 
 /// One check result: the summary clients see, and its output tail.
@@ -405,6 +418,7 @@ impl Daemon {
         };
         info.duration_ms = u64::try_from(run.duration.as_millis()).unwrap_or(u64::MAX);
         record.output = cap_output(&run.output);
+        info.first_failing_line = if info.state == CheckState::Failed { first_failing_line(&record.output) } else { String::new() };
         t.check_dirty = true;
         self.dirty = true;
         self.check_settled(term);
@@ -510,6 +524,26 @@ mod tests {
         let fail = run("echo out; echo err 1>&2; exit 3", LONG);
         assert_eq!(fail.outcome, CheckOutcome::Exited(3));
         assert!(fail.output.contains("out") && fail.output.contains("err"), "both streams: {:?}", fail.output);
+    }
+
+    #[test]
+    fn the_first_failing_line_is_the_first_failure_else_the_last_line_printed() {
+        let long = "x".repeat(FIRST_FAILING_LINE_MAX_CHARS + 50);
+        let cut_multibyte = "é".repeat(FIRST_FAILING_LINE_MAX_CHARS + 1);
+        let cases: [(&str, &str, String); 9] = [
+            ("a marker mid-output", "ok a\nFAIL tests/foo: boom\nFAIL tests/bar\n", "FAIL tests/foo: boom".into()),
+            ("an error word anywhere in the line", "running\nthread panicked at src/x.rs\n", "thread panicked at src/x.rs".into()),
+            ("no marker takes the last line", "one\ntwo\n\n  \n", "two".into()),
+            ("nothing printed", "", String::new()),
+            ("only blank lines", "\n  \n\t\n", String::new()),
+            ("trimmed", "   FAIL padded   \n", "FAIL padded".into()),
+            ("ansi and control codes removed", "\u{1b}[31mFAIL \u{1b}[1mred\u{1b}[0m\u{7}\n", "FAIL red".into()),
+            ("a long line is cut to the maximum", &format!("FAIL {long}"), format!("FAIL {long}").chars().take(FIRST_FAILING_LINE_MAX_CHARS).collect()),
+            ("a multibyte line is cut on a character", &format!("FAIL {cut_multibyte}"), format!("FAIL {cut_multibyte}").chars().take(FIRST_FAILING_LINE_MAX_CHARS).collect()),
+        ];
+        for (what, output, want) in cases {
+            assert_eq!(first_failing_line(output), want, "{what}");
+        }
     }
 
     #[test]

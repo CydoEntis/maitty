@@ -4,6 +4,7 @@
 use super::check;
 use super::*;
 use crate::client::{Btn, View};
+use crate::output_line::{classify, clean, LineKind};
 use crate::protocol::{CheckState, ClientMsg, Query};
 
 /// Label column of the Command / Folder / Ran / Seen by rows.
@@ -226,44 +227,11 @@ fn banner(info: &CheckInfo, width: usize, t: &Theme) -> Vec<Vec<Seg>> {
 
 /// A line of output in the colour of what it says.
 fn line_color(line: &str, t: &Theme) -> Color {
-    let l = line.trim_start();
-    let lower = l.to_lowercase();
-    if l.starts_with(['✓', '✔']) || l.starts_with("ok ") || l.starts_with("PASS") {
-        t.done
-    } else if l.starts_with(['✗', '✕', '✘']) || l.starts_with("FAIL") || ["error", "failed", "panicked"].iter().any(|w| lower.contains(w)) {
-        t.err
-    } else {
-        t.text
+    match classify(line) {
+        LineKind::Pass => t.done,
+        LineKind::Failure => t.err,
+        LineKind::Plain => t.text,
     }
-}
-
-/// One line as text safe to draw: what a command printed is not trusted to move the cursor
-/// or restyle the screen. Colour codes go, tabs become spaces, a carriage return keeps
-/// what was written last.
-fn clean(line: &str) -> String {
-    let line = line.rsplit('\r').next().unwrap_or_default();
-    let mut out = String::with_capacity(line.len());
-    let mut chars = line.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '\u{1b}' => {
-                if chars.next_if_eq(&'[').is_some() {
-                    while chars.next_if(|c| !('@'..='~').contains(c)).is_some() {}
-                    chars.next();
-                } else if chars.next_if_eq(&']').is_some() {
-                    // A title or link: up to the bell, or the ESC that ends it.
-                    while chars.next_if(|c| !matches!(c, '\u{7}' | '\u{1b}')).is_some() {}
-                    if chars.next() == Some('\u{1b}') {
-                        chars.next();
-                    }
-                }
-            }
-            '\t' => out.push_str("    "),
-            c if c.is_control() => {}
-            c => out.push(c),
-        }
-    }
-    out
 }
 
 /// "Command  npm test": a label, then its lines of value. Returns the rows taken.

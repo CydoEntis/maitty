@@ -5,6 +5,8 @@
 //! channel, so there is no locking around the model.
 
 mod check;
+#[cfg(test)]
+pub use check::first_failing_line;
 mod git;
 mod persist;
 mod scan;

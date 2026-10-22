@@ -4644,6 +4644,18 @@ mod check_inbox_tests {
     }
 
     #[test]
+    fn a_failed_row_shows_the_line_the_daemon_picked_from_real_output() {
+        let line = crate::daemon::first_failing_line("running\nFAIL tests/foo: boom\n");
+        let result = CheckInfo { first_failing_line: line.clone(), ..info(CheckState::Failed, Some(1)) };
+        let (w, h) = SIZES[1];
+        let mut app = scene(w, h, LAYOUTS[0], &[("fix-footer", Status::Done, Some(result))]);
+        let frame = inbox(&mut app, w, h);
+        let row = at(&frame, "✕ fix-footer").expect("the failed row");
+        assert_eq!(line, "FAIL tests/foo: boom");
+        assert!(frame[row + 2].contains(&line), "the failing line under the result: {:?}", frame[row + 2]);
+    }
+
+    #[test]
     fn every_layout_and_size_shows_the_groups_the_rows_and_the_failing_line() {
         let extra: [Extra; 3] = [("fix-footer", Status::Done, failed()), ("add-pay", Status::Done, not_run()), ("docs", Status::Done, Some(info(CheckState::Passed, Some(0))))];
         for layout in LAYOUTS {
