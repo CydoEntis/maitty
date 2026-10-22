@@ -1,0 +1,438 @@
+===== 12 Override? | 160x45
+
+ fix-footer will read done (overridden) though test failed
+ (exit 1 at 14:22).
+
+ This hides a failure. It stays visible:
+   ⊘ on the row, in the Inbox history and in the evidence
+   for this result only; the next run replaces it
+
+ Reason (optional)
+  flaky legal test, tracked in #212
+
+
+  Override O   Cancel Esc
+===== 12 Override? | 100x30
+
+ fix-footer will read done (overridden) though test failed
+ (exit 1 at 14:22).
+
+ This hides a failure. It stays visible:
+   ⊘ on the row, in the Inbox history and in the evidence
+   for this result only; the next run replaces it
+
+ Reason (optional)
+  flaky legal test, tracked in #212
+
+
+  Override O   Cancel Esc
+===== 12 Override? | 80x24
+
+ fix-footer will read done (overridden) though test failed
+ (exit 1 at 14:22).
+
+ This hides a failure. It stays visible:
+   ⊘ on the row, in the Inbox history and in the evidence
+   for this result only; the next run replaces it
+
+ Reason (optional)
+  flaky legal test, tracked in #212
+
+
+  Override O   Cancel Esc
+===== 14 Settings · empty | 160x45
+
+  CHECK
+
+ No check set. Seshi can run one command itself when an agent's
+ turn ends; the session isn't done until it passes. Agents keep working.
+
+ Command    e.g. npm test
+
+ Projects without a check look exactly as they do today.
+
+
+
+
+
+
+
+
+  Save Ctrl+S   Cancel Esc
+===== 14 Settings · empty | 100x30
+
+  CHECK
+
+ No check set. Seshi can run one command itself when an agent's
+ turn ends; the session isn't done until it passes. Agents keep working.
+
+ Command    e.g. npm test
+
+ Projects without a check look exactly as they do today.
+
+
+
+
+
+
+
+
+  Save Ctrl+S   Cancel Esc
+===== 14 Settings · empty | 80x24
+
+  CHECK
+
+ No check set. Seshi can run one command itself when an agent's
+ turn ends; the session isn't done until it passes. Agents keep working.
+
+ Command    e.g. npm test
+
+ Projects without a check look exactly as they do today.
+
+
+
+
+
+
+
+
+  Save Ctrl+S   Cancel Esc
+===== 15 Settings · set | 160x45
+
+  CHECK
+
+ Command    npm test
+
+ Runs      after each turn ends · in the session's worktree
+ Timeout   10 min  ‹ ›
+ Status    ✓ passed on fix-footer 14:22 · 14.2s
+ Source    you, in settings · no approval needed
+
+ CHECKPOINTS  1 of 1 · room for more kinds later
+
+
+
+
+
+
+  Save Ctrl+S   Run now r   Remove Del   Cancel Esc
+===== 15 Settings · set | 100x30
+
+  CHECK
+
+ Command    npm test
+
+ Runs      after each turn ends · in the session's worktree
+ Timeout   10 min  ‹ ›
+ Status    ✓ passed on fix-footer 14:22 · 14.2s
+ Source    you, in settings · no approval needed
+
+ CHECKPOINTS  1 of 1 · room for more kinds later
+
+
+
+
+
+
+  Save Ctrl+S   Run now r   Remove Del   Cancel Esc
+===== 15 Settings · set | 80x24
+
+  CHECK
+
+ Command    npm test
+
+ Runs      after each turn ends · in the session's worktree
+ Timeout   10 min  ‹ ›
+ Status    ✓ passed on fix-footer 14:22 · 14.2s
+ Source    you, in settings · no approval needed
+
+ CHECKPOINTS  1 of 1 · room for more kinds later
+
+
+
+
+
+
+  Save Ctrl+S   Run now r   Remove Del   Cancel Esc
+===== 16 Settings · never run | 160x45
+
+  CHECK
+
+ Command    npm test
+
+ Runs      after each turn ends · in the session's worktree
+ Timeout   10 min  ‹ ›
+ Status    … never run · runs after the next turn ends
+ Source    you, in settings · no approval needed
+
+ CHECKPOINTS  1 of 1 · room for more kinds later
+
+
+
+
+
+
+  Save Ctrl+S   Run now r   Remove Del   Cancel Esc
+===== 16 Settings · never run | 100x30
+
+  CHECK
+
+ Command    npm test
+
+ Runs      after each turn ends · in the session's worktree
+ Timeout   10 min  ‹ ›
+ Status    … never run · runs after the next turn ends
+ Source    you, in settings · no approval needed
+
+ CHECKPOINTS  1 of 1 · room for more kinds later
+
+
+
+
+
+
+  Save Ctrl+S   Run now r   Remove Del   Cancel Esc
+===== 16 Settings · never run | 80x24
+
+  CHECK
+
+ Command    npm test
+
+ Runs      after each turn ends · in the session's worktree
+ Timeout   10 min  ‹ ›
+ Status    … never run · runs after the next turn ends
+ Source    you, in settings · no approval needed
+
+ CHECKPOINTS  1 of 1 · room for more kinds later
+
+
+
+
+
+
+  Save Ctrl+S   Run now r   Remove Del   Cancel Esc
+===== 17 Settings · command missing | 160x45
+
+  CHECK
+
+ Command    pnpm test
+
+ Runs      after each turn ends · in the session's worktree
+ Timeout   10 min  ‹ ›
+ Status    ? could not run on fix-footer 14:22 · pnpm: not found (exit 127)
+           Not on the worktree's PATH. Install it or change the command.
+ Source    you, in settings · no approval needed
+
+ CHECKPOINTS  1 of 1 · room for more kinds later
+
+
+
+
+
+  Save Ctrl+S   Run now r   Remove Del   Cancel Esc
+===== 17 Settings · command missing | 100x30
+
+  CHECK
+
+ Command    pnpm test
+
+ Runs      after each turn ends · in the session's worktree
+ Timeout   10 min  ‹ ›
+ Status    ? could not run on fix-footer 14:22 · pnpm: not found (exit 127)
+           Not on the worktree's PATH. Install it or change the command.
+ Source    you, in settings · no approval needed
+
+ CHECKPOINTS  1 of 1 · room for more kinds later
+
+
+
+
+
+  Save Ctrl+S   Run now r   Remove Del   Cancel Esc
+===== 17 Settings · command missing | 80x24
+
+  CHECK
+
+ Command    pnpm test
+
+ Runs      after each turn ends · in the session's worktree
+ Timeout   10 min  ‹ ›
+ Status    ? could not run on fix-footer 14:22 · pnpm: not found (exit 127)
+           Not on the worktree's PATH. Install it or change the command.
+ Source    you, in settings · no approval needed
+
+ CHECKPOINTS  1 of 1 · room for more kinds later
+
+
+
+
+
+  Save Ctrl+S   Run now r   Remove Del   Cancel Esc
+===== A2 Approve · read first | 160x45
+
+ affiliate-site ships its own check. It has never run here.
+
+  $ npm test
+
+ Runs in  ~\dev\affiliate-site-worktrees\fix-footer
+ From     .seshi/checks.toml · added in a1b2c3d, 3 days ago
+ When     after every agent turn, with your permissions
+
+ Read it. It can do anything you can in that folder.
+ Enter and y do nothing here. Choose with 1, 2 or 3.
+
+
+
+
+
+
+  Run once 1   Always for this repo 2   Never for this repo 3   Not now Esc
+===== A2 Approve · read first | 100x30
+
+ affiliate-site ships its own check. It has never run here.
+
+  $ npm test
+
+ Runs in  ~\dev\affiliate-site-worktrees\fix-footer
+ From     .seshi/checks.toml · added in a1b2c3d, 3 days ago
+ When     after every agent turn, with your permissions
+
+ Read it. It can do anything you can in that folder.
+ Enter and y do nothing here. Choose with 1, 2 or 3.
+
+
+
+
+
+
+  Run once 1   Always for this repo 2   Never for this repo 3   Not now Esc
+===== A2 Approve · read first | 80x24
+
+ affiliate-site ships its own check. It has never run here.
+
+  $ npm test
+ Runs in  ~\dev\affiliate-site-worktrees\fix-footer
+ From     .seshi/checks.toml · added in a1b2c3d, 3 days ago
+ When     after every agent turn, with your permissions
+
+ Read it. It can do anything you can in that folder.
+ Enter and y do nothing here. Choose with 1, 2 or 3.
+
+
+
+
+
+
+  Run once 1   Always 2   Never 3   Not now Esc
+===== A3 Approve · confirm always | 160x45
+
+ affiliate-site ships its own check. It has never run here.
+
+  $ npm test
+
+ Runs in  ~\dev\affiliate-site-worktrees\fix-footer
+ From     .seshi/checks.toml · added in a1b2c3d, 3 days ago
+ When     after every agent turn, with your permissions
+
+ Read it. It can do anything you can in that folder.
+ Enter and y do nothing here. Choose with 1, 2 or 3.
+  Press 2 again to always run this exact command for affiliate-site.
+
+
+
+
+
+  Run once 1   Always for this repo 2 again   Never for this repo 3   Not now Esc
+===== A3 Approve · confirm always | 100x30
+
+ affiliate-site ships its own check. It has never run here.
+
+  $ npm test
+
+ Runs in  ~\dev\affiliate-site-worktrees\fix-footer
+ From     .seshi/checks.toml · added in a1b2c3d, 3 days ago
+ When     after every agent turn, with your permissions
+
+ Read it. It can do anything you can in that folder.
+ Enter and y do nothing here. Choose with 1, 2 or 3.
+  Press 2 again to always run this exact command for affiliate-site.
+
+
+
+
+
+  Run once 1   Always for this repo 2 again   Never for this repo 3   Not now Esc
+===== A3 Approve · confirm always | 80x24
+
+ affiliate-site ships its own check. It has never run here.
+
+  $ npm test
+ Runs in  ~\dev\affiliate-site-worktrees\fix-footer
+ From     .seshi/checks.toml · added in a1b2c3d, 3 days ago
+ When     after every agent turn, with your permissions
+
+ Read it. It can do anything you can in that folder.
+ Enter and y do nothing here. Choose with 1, 2 or 3.
+  Press 2 again to always run this exact command for affiliate-site.
+
+
+
+
+
+  Run once 1   Always 2 again   Never 3   Not now Esc
+===== A4 Approve · command changed | 160x45
+
+ The command changed since you said always:
+
+  - npm test
+  + npm test && node scripts/seed.js
+
+ Runs in  ~\dev\affiliate-site-worktrees\fix-footer
+ From     .seshi/checks.toml · changed in 9f3c2a1, 2h ago
+ When     after every agent turn, with your permissions
+
+ Read it. It can do anything you can in that folder.
+ Enter and y do nothing here. Choose with 1, 2 or 3.
+
+
+
+
+
+  Run once 1   Always for this repo 2   Never for this repo 3   Not now Esc
+===== A4 Approve · command changed | 100x30
+
+ The command changed since you said always:
+
+  - npm test
+  + npm test && node scripts/seed.js
+
+ Runs in  ~\dev\affiliate-site-worktrees\fix-footer
+ From     .seshi/checks.toml · changed in 9f3c2a1, 2h ago
+ When     after every agent turn, with your permissions
+
+ Read it. It can do anything you can in that folder.
+ Enter and y do nothing here. Choose with 1, 2 or 3.
+
+
+
+
+
+  Run once 1   Always for this repo 2   Never for this repo 3   Not now Esc
+===== A4 Approve · command changed | 80x24
+
+ The command changed since you said always:
+
+  - npm test
+  + npm test && node scripts/seed.js
+ Runs in  ~\dev\affiliate-site-worktrees\fix-footer
+ From     .seshi/checks.toml · changed in 9f3c2a1, 2h ago
+ When     after every agent turn, with your permissions
+
+ Read it. It can do anything you can in that folder.
+ Enter and y do nothing here. Choose with 1, 2 or 3.
+
+
+
+
+
+  Run once 1   Always 2   Never 3   Not now Esc

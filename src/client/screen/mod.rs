@@ -1009,6 +1009,8 @@ mod check;
 mod check_actions;
 mod check_approve;
 mod check_inbox;
+#[cfg(test)]
+mod check_modals_tests;
 pub(in crate::client) mod check_settings;
 mod check_sheet;
 mod dialogs;
