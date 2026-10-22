@@ -140,9 +140,13 @@ Only the area with the keyboard is lit: the focused pane's whole border (Cards),
   accent title row and `Esc close`, `│` sides and a `─` bottom in `line`, and a
   hard shadow a cell right and down; the screen behind is dimmed. Small
   explanations (why, a row's menu) are `popover_at()`s: a raised title row, no
-  border, the same shadow, beside the sidebar (`popover_rect()`). Settings is a centred modal that preserves the
-  workspace layout and keeps its General, Sessions, Appearance, Agents and Keys
-  sections, update controls, and keyboard and mouse editing available.
+  border, the same shadow, beside the sidebar (`popover_rect()`). Settings is a
+  centred modal that preserves the workspace layout and keeps its General,
+  Sessions, Appearance, Agents and Keys sections, update controls, and keyboard
+  and mouse editing available.
+- The pointer's tint is one pass after drawing (`render.rs`): the topmost
+  clickable region under it is tinted once, `mix(bg, text, 0.10)`. Widgets do
+  not tint themselves on hover.
 - Selection is a neutral tint (`sel_on` of the surface it sits on) with a lime `▎` bar;
   never the accent colour as a row fill.
 - Every popup row is clickable and keyboard-reachable; every key is shown as a

@@ -493,9 +493,8 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         for (i, o) in opts.iter().enumerate().take(4) {
             let key = char::from_digit(i as u32 + 1, 10).unwrap_or('1').to_string();
             let label = if keys_only { String::new() } else { o.clone() };
-            let w = segs_width(&button_pill(look, t, &label, &key, i == 0, false, t.card2));
-            let br = Rect { x, y: ay, width: w, height: 1 };
-            let segs = button_pill(look, t, &label, &key, i == 0, hovered(app, br), t.card2);
+            let segs = button_pill(look, t, &label, &key, i == 0, false, t.card2);
+            let br = Rect { x, y: ay, width: segs_width(&segs), height: 1 };
             x = put(f.buffer_mut(), x, ay, &segs, rx) + 1;
             app.hits.push((br, Hit::Button(crate::client::Btn::Answer(term, key.chars().next().unwrap_or('1')))));
         }

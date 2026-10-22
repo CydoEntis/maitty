@@ -2,7 +2,7 @@
 //! worktree. Short, hoverable, and every item does something.
 
 use super::design::{BtnKind, button, put, seg, segs_width};
-use super::screen::{ScreenHit, find, hit, hovered};
+use super::screen::{ScreenHit, find, hit};
 use super::render::truncate;
 use super::{App, Mode};
 use crate::protocol::{Command, TermId};
@@ -662,7 +662,7 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
             yy += 1;
         }
         let row = Rect { x: r.x + 1, y: yy, width: w - 2, height: 1 };
-        let on = i == m.sel || hovered(app, row);
+        let on = i == m.sel;
         let bg = if on { t.hov } else { bgm };
         if on {
             super::screen::row_pill(look, f.buffer_mut(), row.x, yy, row.width, bg, bgm);

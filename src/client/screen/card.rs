@@ -155,8 +155,10 @@ pub(in crate::client) fn keycap_pill(look: Look, t: &Theme, key: &str, on: bool,
 }
 
 /// A button as a pill: the primary one in the accent, the others raised with their key lit.
-pub(in crate::client) fn button_pill(look: Look, t: &Theme, label: &str, key: &str, primary: bool, hovered: bool, outer: Color) -> Vec<Seg> {
-    let (bg, fg, kf) = if primary { (t.accent, t.acc_ink, t.acc_ink) } else { (if hovered { t.hov } else { t.btn }, t.strong, t.accent) };
+/// The pointer's tint is laid over every clickable region after drawing (`render`).
+// shortcut: `_hovered` stays until the packages drawing buttons in parallel stop passing it.
+pub(in crate::client) fn button_pill(look: Look, t: &Theme, label: &str, key: &str, primary: bool, _hovered: bool, outer: Color) -> Vec<Seg> {
+    let (bg, fg, kf) = if primary { (t.accent, t.acc_ink, t.acc_ink) } else { (t.btn, t.strong, t.accent) };
     let b = Style::default().add_modifier(Modifier::BOLD);
     let mut segs = vec![seg(format!("{label} "), b.fg(fg))];
     if !key.is_empty() {

@@ -293,19 +293,18 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     app.screen.proj_keys = model.iter().map(|p| p.key.clone()).collect();
 
     // Hover and keyboard browsing must never erase the session that's actually open.
-    let hover_bg = if look.flat { t.hov } else { t.hover_bg() };
     let on = app.motion_on();
     let mut gliding: Option<(u16, Rect)> = None;
-    let shade = |app: &App, term: TermId, row: Rect, glide: bool| -> Option<Color> {
+    let shade = |app: &App, term: TermId, glide: bool| -> Option<Color> {
         if !look.flat {
             // One selected row: the one under the cursor while the sidebar has the keys, else
             // the open one.
             let picked = if focused_side { app.screen.cursor == Some(term) } else { Some(term) == focus };
-            return if picked { Some(t.sel_bg()) } else { hovered(app, row).then_some(hover_bg) };
+            return picked.then(|| t.sel_bg());
         }
         if Some(term) == focus { Some(t.hov) }
         else if focused_side && app.screen.cursor == Some(term) && !glide { Some(if look.flat { t.hov } else { t.card2 }) }
-        else { hovered(app, row).then_some(hover_bg) }
+        else { None }
     };
     // The lines under a session (what it asks, its subagents) step in as far as it does.
     let mut indents: Vec<u16> = Vec::with_capacity(lines.len());
@@ -327,7 +326,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 let open = !app.screen.saved.closed.contains(&format!("p:{}", p.key));
                 let on = focused_side && app.screen.cursor_proj.as_ref() == Some(&p.key);
                 let hov = hovered(app, row) || on;
-                let bg = if on { if look.flat { t.card2 } else { t.sel_bg() } } else if hov { hover_bg } else { pb };
+                let bg = if on { if look.flat { t.card2 } else { t.sel_bg() } } else { pb };
                 if bg != pb {
                     row_pill(look, buf, row.x, y, row.width, bg, pb);
                 }
@@ -371,9 +370,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     gliding = Some((gy, row));
                 }
                 let chk = check::shown(s);
-                // Its result line under it is one row with it: one tint, one hover.
-                let span = Rect { height: if matches!(lines.get(i + 1), Some(Line::Check(_))) { 2 } else { 1 }, ..row };
-                let lit = shade(app, s.term, span, glide.is_some());
+                let lit = shade(app, s.term, glide.is_some());
                 let bg = lit.unwrap_or(pb);
                 if lit.is_some() {
                     if look.flat {
@@ -476,7 +473,9 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 put(buf, x0 + 5 + indent, y, &[seg(gl, gs)], name_x);
                 put(buf, name_x, y, &left, end.saturating_sub(tw + 1));
                 put(buf, end.saturating_sub(tw), y, &tail, end);
-                hit(app, row, ScreenHit::Session(s.term));
+                // Its result line under it is one row with it: one hover, one click.
+                let span = Rect { height: if matches!(lines.get(i + 1), Some(Line::Check(_))) { 2 } else { 1 }, ..row };
+                hit(app, span, ScreenHit::Session(s.term));
                 hit(app, Rect { x: x0 + 5 + indent, y, width: 2, height: 1 }, ScreenHit::Why(s.term));
                 if menu {
                     row_menu_button(app, buf, Rect { x: right.saturating_sub(1), y, width: 1, height: 1 }, bg, t, ScreenHit::RowMenuSess(s.term));
@@ -485,7 +484,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
             Line::Check(term) => {
                 let Some((_, _, s)) = find(model, *term) else { continue };
                 let Some(info) = check::shown(s) else { continue };
-                let lit = shade(app, *term, Rect { y: y.saturating_sub(1), height: 2, ..row }, false);
+                let lit = shade(app, *term, false);
                 let bg = lit.unwrap_or(pb);
                 if lit.is_some() {
                     if look.flat {
@@ -500,7 +499,6 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 if check::failed(info) {
                     check::edge(buf, x0 + 1, y, bg, t);
                 }
-                hit(app, row, ScreenHit::Session(*term));
             }
             Line::Note(text, c, term) => {
                 if small {
@@ -554,11 +552,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
             }
             // Nothing running: one click starts a shell there.
             Line::Empty(pi) => {
-                let bg = if hovered(app, row) { t.hov } else { pb };
-                if bg != pb {
-                    row_pill(look, buf, row.x, y, row.width, bg, pb);
-                }
-                let st = Style::default().bg(bg);
+                let st = Style::default().bg(pb);
                 let nk = k(app, &Action::ShellHere);
                 put(
                     buf,

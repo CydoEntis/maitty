@@ -50,8 +50,38 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     }
     super::screen::draw(app, f, area, &t);
     draw_overlays(app, f, area, &t);
+    tint_hovered(app, f.buffer_mut(), &t);
     if terminal_bg {
         use_terminal_background(f.buffer_mut(), t.bg);
+    }
+}
+
+/// How far the pointer's tint takes a clickable region's ground toward the text.
+const HOVER_TINT: f32 = 0.10;
+
+/// Regions that take a click but are not a control to tint: a pane's terminal, the ground
+/// inside or around an overlay, the sidebar's or settings' body, and the edges you drag
+/// (they light their own line).
+fn tints(h: &super::Hit) -> bool {
+    use super::screen::ScreenHit as S;
+    !matches!(h, super::Hit::Pane(_) | super::Hit::Screen(S::Noop | S::SideFocus | S::SettingsBody | S::Divider(_) | S::SideEdge | S::ScrollBar(_)))
+}
+
+/// Tint the topmost clickable region under the pointer, the one a click there would hit, once:
+/// every row, chip, button and ✕ shows it the same way, so no widget tints itself.
+fn tint_hovered(app: &App, buf: &mut Buffer, t: &crate::theme::Theme) {
+    let Some(at) = app.hover else { return };
+    let Some((r, h)) = app.hits.iter().rev().find(|(r, _)| r.contains(at)) else { return };
+    if !tints(h) || *r == buf.area {
+        return;
+    }
+    let r = r.intersection(buf.area);
+    for y in r.top()..r.bottom() {
+        for x in r.left()..r.right() {
+            let cell = &mut buf[(x, y)];
+            let ground = if cell.bg == Color::Reset { t.bg } else { cell.bg };
+            cell.bg = crate::theme::mix(ground, t.text, HOVER_TINT);
+        }
     }
 }
 

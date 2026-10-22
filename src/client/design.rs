@@ -124,15 +124,16 @@ pub(super) enum BtnKind {
     Ghost,
 }
 
-/// The design's button: " Label " + "key " on a filled ground. Hovered buttons use `hov`.
-pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind, hovered: bool) -> Vec<Seg> {
+/// The design's button: " Label " + "key " on a filled ground. The pointer's tint is laid
+/// over every clickable region after drawing (`render`).
+// shortcut: `_hovered` stays until the packages drawing buttons in parallel stop passing it.
+pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind, _hovered: bool) -> Vec<Seg> {
     let (bg, fg, kfg) = match kind {
         BtnKind::Primary => (t.accent, t.acc_ink, t.acc_ink),
         BtnKind::Danger => (t.danger_fill(), t.ink_on(t.danger_fill()), t.ink_on(t.danger_fill())),
         BtnKind::Normal => (t.btn, t.strong, t.accent),
         BtnKind::Ghost => (t.sidebar_bg, t.text, t.accent),
     };
-    let bg = if hovered && matches!(kind, BtnKind::Normal | BtnKind::Ghost) { t.hov } else { bg };
     let bold = if kind == BtnKind::Ghost { Modifier::empty() } else { Modifier::BOLD };
     // A pill: the same width as " Label key " was.
     let (l, r) = super::screen::ends(bg);
@@ -237,13 +238,12 @@ fn action_row(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, buttons: &[(&
         let text = format!(" {label} ");
         let w = (cap.width() + text.width()) as u16;
         let br = Rect { x, y, width: w.min(r.right().saturating_sub(x)), height: 1 };
-        let hov = app.hover.is_some_and(|p| br.contains(p));
         let cap_st = if *kind == BtnKind::Primary {
             Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD)
         } else {
             Style::default().bg(t.btn).fg(t.accent).add_modifier(Modifier::BOLD)
         };
-        let text_st = Style::default().bg(if hov { t.hov } else { t.card2 }).fg(t.strong);
+        let text_st = Style::default().bg(t.card2).fg(t.strong);
         let mut segs = super::screen::chip(key, cap_st);
         segs.push(seg(text, text_st));
         x = put(buf, x, y, &segs, r.right()) + 2;
@@ -471,9 +471,8 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
         let y = body.y + 1 + (k as u16);
         let sel = *i == v.sel;
         let rr = Rect { x: body.x + 1, y, width: fw - 1, height: 1 };
-        let hovered = app.hover.is_some_and(|p| rr.contains(p));
-        let bg = if sel { t.sel_on(t.bg) } else if hovered { t.hover_on(t.bg) } else { t.bg };
-        if sel || hovered {
+        let bg = if sel { t.sel_on(t.bg) } else { t.bg };
+        if sel {
             fill(buf, rr, bg);
         }
         if sel {

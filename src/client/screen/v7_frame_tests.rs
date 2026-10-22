@@ -1,7 +1,7 @@
 //! The v7 frame set beside the handoff's reference frames (`docs/design/v7/render-frames.mjs`):
-//! the grid, the pane's title strip and right-hand mark, corners, where a sheet goes, and the
-//! modal and popover frames. Sidebar rows, sheet and modal contents and the pane's own
-//! terminal text belong to other screens and are left out.
+//! the grid, the pane's title strip and right-hand mark, corners, where a sheet goes, the
+//! modal and popover frames, and the pointer's tint. Sidebar rows, sheet and modal contents
+//! and the pane's own terminal text belong to other screens and are left out.
 use super::*;
 use crate::client::v7_fixture::{self, LAYOUTS, Layout, SIZES, Stage};
 use crate::layout::Node;
@@ -185,6 +185,58 @@ fn a_popover_sits_beside_the_sidebar_with_a_raised_title_and_a_shadow() {
             assert!((r.y + 1..r.bottom()).all(|y| buf[(r.x, y)].bg == t.card && buf[(r.x, y)].symbol() == " "), "no border: {at}");
             let shadow = buf[(r.right(), r.y + 1)].bg;
             assert!((r.y + 1..=r.bottom()).all(|y| buf[(r.right(), y)].bg == shadow) && (r.x + 1..=r.right()).all(|x| buf[(x, r.bottom())].bg == shadow), "{at}");
+        }
+    }
+}
+
+/// Which hit a case points at.
+type Pick = fn(&super::super::Hit) -> bool;
+
+/// The region a click at the first point of `what` hits, and the frame with the pointer there
+/// against the frame without it.
+fn hovered_over(app: &mut App, layout: Layout, what: impl Fn(&super::super::Hit) -> bool) -> (Rect, Buffer, Buffer) {
+    let plain = buffer(app, layout, 160, 45);
+    let r = app.hits.iter().rev().find(|(_, h)| what(h)).map(|(r, _)| *r).expect("drawn");
+    app.hover = Some(Position::new(r.x + r.width / 2, r.y));
+    let lit = buffer(app, layout, 160, 45);
+    (r, plain, lit)
+}
+
+#[test]
+fn the_pointer_tints_exactly_the_region_under_it_once() {
+    use super::super::Hit;
+    let cases: [(&str, Pick); 4] = [
+        ("a tab chip", |h| matches!(h, Hit::Screen(ScreenHit::TabPick(_)))),
+        ("a pane's ✕", |h| matches!(h, Hit::Screen(ScreenHit::CloseSplit(_)))),
+        ("a sidebar row", |h| matches!(h, Hit::Screen(ScreenHit::Session(3)))),
+        ("a modal button", |h| matches!(h, Hit::Screen(ScreenHit::ConfirmYes))),
+    ];
+    for layout in LAYOUTS {
+        for (what, is) in cases {
+            let mut app = world(Stage::None);
+            if what == "a modal button" {
+                app.mode = Mode::Confirm(Box::new(super::super::menu::Confirm {
+                    title: "Restart daemon".into(),
+                    sub: String::new(),
+                    what: "5 sessions stop and resume".into(),
+                    detail: String::new(),
+                    note: String::new(),
+                    list: Vec::new(),
+                    yes: "Restart".into(),
+                    key: '\n',
+                    danger: false,
+                    act: super::super::menu::Act::RestartDaemon,
+                }));
+            }
+            let t = app.theme.clone();
+            let (r, plain, lit) = hovered_over(&mut app, layout, is);
+            for y in 0..45 {
+                for x in 0..160 {
+                    let (before, after) = (plain[(x, y)].bg, lit[(x, y)].bg);
+                    let want = if r.contains(Position::new(x, y)) { crate::theme::mix(if before == Color::Reset { t.bg } else { before }, t.text, 0.10) } else { before };
+                    assert_eq!(after, want, "{what}, {layout:?}, cell {x},{y} (region {r:?})");
+                }
+            }
         }
     }
 }

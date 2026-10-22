@@ -376,7 +376,9 @@ mod screen_tests {
             app.on_mouse(MouseEvent { kind: MouseEventKind::Moved, column, row, modifiers: KeyModifiers::NONE });
             terminal.draw(|f| render::draw(&mut app, f)).unwrap();
             assert_eq!(app.focused(), Some(1), "hover never changes the active pane");
-            assert_eq!(terminal.backend().buffer()[(x + 8, active_y)].bg, active_bg);
+            if row != active_y {
+                assert_eq!(terminal.backend().buffer()[(x + 8, active_y)].bg, active_bg, "pointing elsewhere leaves the open row as it is");
+            }
             assert_eq!(terminal.backend().buffer()[(x + 1, active_y)].symbol(), "▎");
         }
         app.on_mouse(MouseEvent { kind: MouseEventKind::Moved, column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
