@@ -79,8 +79,10 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     let inside = card(app, buf, r, &c, t);
     // Clicks inside it stay in it.
     hit(app, inside, ScreenHit::Noop);
+    // The Inbox and the evidence sheet keep the Cards box in Flat too: only the frame changes.
+    let body = if Look::of(&app.cfg.ui).flat { Rect { width: inside.width.saturating_sub(1), height: inside.height.saturating_sub(1), ..inside } } else { inside };
     match kind {
-        SheetKind::Inbox => draw_inbox(app, buf, inside, c.bg, t),
+        SheetKind::Inbox => draw_inbox(app, buf, body, c.bg, t),
         SheetKind::Changes => {
             let inner = Rect { x: inside.x + 1, width: inside.width.saturating_sub(2), ..inside };
             if let Some(crate::client::View::Changes(v)) = app.view.take() {
@@ -95,7 +97,7 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
         }
         SheetKind::Check => {
             if let Some(crate::client::View::Check(mut v)) = app.view.take() {
-                draw_check(app, buf, inside, c.bg, t, &mut v);
+                draw_check(app, buf, body, c.bg, t, &mut v);
                 app.view = Some(crate::client::View::Check(v));
             }
         }
