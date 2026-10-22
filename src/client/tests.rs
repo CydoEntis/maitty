@@ -4043,7 +4043,8 @@ mod check_why_tests {
             assert!(!line.contains(&"x".repeat(200)), "{name}: the long quote is cut");
             assert!(line.contains("x…"), "{name}: the cut ends in an ellipsis: {line:?}");
             let hints = o.lines().find(|l| l.contains("Esc")).unwrap_or_else(|| panic!("{name}: Esc hint clipped in\n{o}"));
-            assert!(hints.contains("Esc close"), "{name}: {hints:?}");
+            let words = hints.split_whitespace().collect::<Vec<_>>().join(" ");
+            assert!(words.contains("Esc close"), "{name}: the Esc hint is cut: {hints:?}");
         }
     }
 
