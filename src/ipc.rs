@@ -169,7 +169,7 @@ pub async fn proxy() -> Result<()> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let mut stream = connect().await;
     if stream.is_err() {
-        spawn_daemon()?;
+        spawn_daemon(None)?;
         for _ in 0..60 {
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             stream = connect().await;
@@ -296,6 +296,16 @@ fn ssh_failure() -> String {
 
 /// Connect, starting the daemon in the background if none is running.
 pub async fn open_or_spawn(attach: bool) -> Result<(Reader, Writer)> {
+    open_or_spawn_with(attach, None).await
+}
+
+/// Reconnect after replacing the executable, spawning the newly installed image if needed.
+pub async fn open_or_spawn_installed(attach: bool) -> Result<(Reader, Writer)> {
+    let exe = crate::update::installed_executable()?;
+    open_or_spawn_with(attach, Some(exe)).await
+}
+
+async fn open_or_spawn_with(attach: bool, exe: Option<std::path::PathBuf>) -> Result<(Reader, Writer)> {
     // Over ssh the far side starts its own server.
     if remote().is_some() {
         return open(attach).await;
@@ -303,7 +313,7 @@ pub async fn open_or_spawn(attach: bool) -> Result<(Reader, Writer)> {
     if let Ok(c) = open(attach).await {
         return Ok(c);
     }
-    spawn_daemon()?;
+    spawn_daemon(exe.as_deref())?;
     let mut last = None;
     for _ in 0..60 {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -315,9 +325,9 @@ pub async fn open_or_spawn(attach: bool) -> Result<(Reader, Writer)> {
     Err(last.unwrap_or_else(|| anyhow::anyhow!("daemon did not start")))
 }
 
-fn spawn_daemon() -> Result<()> {
-    let exe = std::env::current_exe()?;
-    let mut cmd = std::process::Command::new(exe);
+fn spawn_daemon(exe: Option<&std::path::Path>) -> Result<()> {
+    let current = std::env::current_exe()?;
+    let mut cmd = std::process::Command::new(exe.unwrap_or(&current));
     cmd.arg("daemon")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
