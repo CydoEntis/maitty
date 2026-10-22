@@ -104,7 +104,7 @@ config (`[icons]`), with Nerd Font glyphs where present.
 
 <!-- local: user requested sidebar-bottom controls, tab-row update discovery and no global footer. -->
 
-Seshi has one terminal interface: a sidebar of projects and sessions, with tabs and split panes in the remaining area. Settings > Appearance > Layout selects Cards or Flat; both use the same sessions, tabs, splits and sheets. Cards is the default. Flat uses square, full-bleed zones and Tab / Shift+Tab to move focus between the sidebar and panes; Esc returns focus to the sidebar. There is no application-wide footer bar. The tab row aligns with the sidebar. Keep **+ new** and **Actions** at the bottom of the sidebar in both layouts. The tab row shows **Update** only when a newer release is available.
+Seshi has one terminal interface: a sidebar of projects and sessions, with tabs and split panes in the remaining area. Settings > Appearance > Layout selects Cards or Flat; both use the same sessions, tabs, splits and sheets. Cards is the default. Flat uses square, full-bleed zones and Tab / Shift+Tab to move focus between the sidebar and panes; Esc returns focus to the sidebar. There is no application-wide footer bar and no separate tab row: the tabs are chips in the top-left pane's title (see *v7 frame*). Keep **+ new** and **Actions** at the bottom of the sidebar in both layouts. The top right of row 0 shows **Update** only when a newer release is available.
 
 The leader is `Ctrl+Space` by default. Inbox (`j`) uses the right-hand sheet. Settings (`,`) opens as a centred modal over the workspace so the pane layout does not change. The command palette (`Space`), shortcuts (`?`), files, branches and new agents use popups. The minimum supported size is about 80 by 24; popups clamp to the screen. Mouse users can reach every visible control; support click, right-click menus, drag dividers, scrolling and Ctrl+click paths. Prefer Seshi's retained history when it has lines; when an agent has no retained history, pass wheel and Page Up/Down input to the agent so its own transcript can scroll.
 
@@ -112,7 +112,7 @@ The high-fidelity flat-layout reference and its interaction spec are preserved i
 
 The sidebar's **+ new** uses the same shell action as leader + `n`, including its configured key hint. **Actions** is in the sidebar footer and opens status setup, Settings and All commands. Every palette row is clickable and wheel-scrollable. Include configured commands and retain existing confirmations.
 
-When an update is available, show **Update <version>** in the tab row and open the existing confirmation flow when clicked. Do not show the control when Seshi is current. Keep status icons and pane status tags clickable to open the evidence explanation. Terminal bells do not add sidebar indicators or history entries.
+When an update is available, show **Update <version>** at the top right of row 0 and open the existing confirmation flow when clicked. Do not show the control when Seshi is current. Keep status icons and pane status tags clickable to open the evidence explanation. Terminal bells do not add sidebar indicators or history entries.
 
 Mark one selected sidebar row independently from hover: the keyboard selection stays selected when the mouse moves; hover is a separate, quieter tint. The open session keeps a dim selection bar while another row is under the keyboard. Preserve agent status icons and colors in each state.
 
@@ -130,7 +130,7 @@ A new `seshi` that finds an older or newer server it cannot talk to (`ipc::Other
 
 ## Project-specific: pane focus
 
-Only the area with the keyboard is lit: the focused pane border (Cards), focus bar (Flat), or open sheet. Unfocused panes fade by the Dim setting (30% by default; "40%" in an older config counts as 30%). Do not reserve a full-width bottom row for global hints; session paths and branch details remain in the pane chrome.
+Only the area with the keyboard is lit: the focused pane's whole border (Cards), its title chip and left `│` rule (Flat), or the open sheet. Unfocused panes fade by the Dim setting (30% by default; "40%" in an older config counts as 30%). Do not reserve a full-width bottom row for global hints. The pane has no status line: its branch is in the sidebar's folder header.
 
 ## Project-specific: UI conventions
 
@@ -235,7 +235,13 @@ then HEADS UP, each heading with its count. A question is never below a check.
 
 ## Project-specific: v7 frame
 
-The v7 layout and checkpoints follow [`docs/design/v7/`](design/v7/README.md) (`checks7.js` is the spec).
+The v7 layout and checkpoints follow [`docs/design/v7/`](design/v7/README.md) (`checks7.js` is the spec). The frame is [ADR 0013](adr/0013-v7-frame.md); `client/screen/v7_frame_tests.rs` holds it to the reference frames.
+
+- **Grid** (`draw.rs` `grid`): no outer margin. The sidebar is 40 columns from 200, 34 from 140, else 26 (a width you dragged wins), the full height. Floating leaves `ui.gap` between cards, tiled none (borders side by side, never merged), Flat starts the panes on the sidebar's last column.
+- **Cards** (`card.rs` `card`): `┌┐└┘` or `╭╮╰╯` (`ui.corners`), `line`, the focused card's whole border in the accent. The title chip sits on the top border two in; the right-hand segments end a padding space before the corner. **Flat**: no box; row 0 is a header strip of `card`, the chip one in, the right-hand segments a column from the edge; a zone not at the screen's edge starts with a `│` rule.
+- **Pane title** (`draw.rs` `draw_session`): the top-left pane of the tab carries the session's tabs (a number chip and a name chip each, the current one in the accent; those that don't fit drop from the right); other panes show their session's name. On the right, the session's mark (glyph and word; it opens why) and a ✕ that closes the pane. The leader pill (armed) or **Update** sits at the top right of row 0, a column in.
+- **Sheet** (`sheet.rs` `split_for_sheet`): 72 columns docked right from 140 columns, the layout's gap from the panes; below 140 it takes the pane column and Esc brings the panes back.
+- **Toast**: bottom right on the second row from the bottom, ending three columns from the edge, raised (`btn`) in `strong` with its mark in its colour.
 
 ## Project-specific: home screen check counters
 

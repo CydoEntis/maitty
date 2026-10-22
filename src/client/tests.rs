@@ -344,7 +344,7 @@ mod screen_tests {
                 }
                 assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 }))));
                 // More sessions than fit: the blocked total remains visible off screen.
-                for id in 4..40 { let mut t = app.snap.terms[&2].clone(); t.id = id; app.snap.terms.insert(id, t);
+                for id in 4..60 { let mut t = app.snap.terms[&2].clone(); t.id = id; app.snap.terms.insert(id, t);
                     app.snap.workspaces[0].tabs.push(TabInfo { id: 100 + id, name: String::new(), layout: crate::layout::Node::Leaf(id), focus: id });
                 }
                 app.screen.side_scroll = 30; app.screen.follow = false;
@@ -593,13 +593,12 @@ mod screen_tests {
         show(&text);
         let lines: Vec<&str> = text.lines().collect();
         assert!(!text.contains(">_ seshi"), "no logo");
-        // The floating grid: a row of margin, the sidebar card the full height a column in, the
-        // tab pills on its top row, the cards directly under them.
-        assert!(lines[0].trim().is_empty(), "a row of margin on top");
-        assert!(lines[1].starts_with("  ▁▁"), "the sidebar card, a column in: {}", lines[1]);
-        assert!(text.contains("Fix flaky checkout test") && text.contains("claude") && text.contains("needs you"), "the active pane keeps its session title and state");
+        // The v7 grid: no margin, the sidebar card the full height from the corner, the pane
+        // card beside it from row 0 with the tabs in its title.
+        assert!(lines[0].starts_with("┌─"), "the sidebar card from the very corner: {}", lines[0]);
+        assert!(lines[0].contains("● needs you") && text.contains("claude"), "the active pane keeps its session and state: {}", lines[0]);
         assert!(text.contains("+ new") && text.contains("actions"), "New and Actions stay in the sidebar foot");
-        assert!(lines[1].contains(" 1 ") && !lines[1].contains("claude") && lines[1].contains(" + ") && !lines[1].contains('▯'), "an unnamed tab is its number; +; no layout switch: {}", lines[1]);
+        assert!(lines[0].contains("─ 1  ") && !lines[0].contains(" + ") && !lines[0].contains('▯'), "the tab's number and name in the pane's title; no + chip, no layout switch: {}", lines[0]);
         // Projects and their sessions, nothing in between.
         assert!(text.contains("▾ shop-api") && text.contains("● 1"), "a project: its fold arrow and name, what needs you on the right");
         assert!(!text.contains("AGENTS") && !text.contains("TERMINALS") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "no heading per kind of session");
@@ -793,12 +792,12 @@ mod screen_tests {
         app.act(Action::Jump);
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("▁ Inbox") && o.contains("NEEDS YOU 1 ─") && o.contains("JUST FINISHED 1 ─") && !o.contains("EVERYTHING"), "the Inbox sheet: what needs you, what finished");
+        assert!(o.contains("─ Inbox ") && o.contains("NEEDS YOU 1 ─") && o.contains("JUST FINISHED 1 ─") && !o.contains("EVERYTHING"), "the Inbox sheet: what needs you, what finished");
         assert!(o.contains("Run npm test -- checkout?") && o.contains("Yes 1") && o.contains("Always 2") && o.contains("No 3"), "the question and its answers");
         assert!(o.contains("“All 14 tests pass now.”"), "what the finished one said, quoted");
         assert!(o.contains(" move") && o.contains(" closes"), "the sheet's status bar");
         // It's docked beside the panes, not over them: the session's card is still there.
-        assert!(o.contains("▁ claude"), "the panes reflow beside it");
+        assert!(o.contains("─ 1  claude "), "the panes reflow beside it");
         // 2 answers the selected question without going there.
         app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::GoTo { .. }), "still in the Inbox");
@@ -1184,7 +1183,7 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("shop-api") && !o.contains("opus 4.5"), "the repo in the card's title; the model is the agent's own to show");
-        assert!(o.contains("Fix the login flow"), "its name stays");
+        assert!(!o.lines().next().unwrap_or_default().contains("Fix the login flow"), "the pane's title carries its tabs, not what the agent is on (v7)");
         assert!(!o.contains("› now add a test for it"), "one line under a row, no more");
     }
 
@@ -1261,7 +1260,7 @@ mod screen_tests {
         let o = draw(&mut app, 200, 50);
         show(&o);
         assert!(o.contains(" 1 ") && o.contains(" 2 "), "a tab bar");
-        assert!(app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::TabNew)), "with a + for another tab");
+        assert_eq!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_)))).count(), 2, "both tabs in the top-left pane's title");
     }
 
     #[test]
@@ -1300,7 +1299,7 @@ mod screen_tests {
         app.screen.tabs.clear();
         app.screen_place(1, None);
         draw(&mut app, 160, 45);
-        assert!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_)))).count() == 1 && app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::TabNew)), "the tab row, with +, even with one tab");
+        assert_eq!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_)))).count(), 1, "the tab in the pane's title, even with one tab");
         // Ctrl+Space t in claude's session: a shell where you are, straight away, as a tab of
         // claude's (no card to fill in first).
         let key = |app: &mut App, c: KeyCode| app.on_key(KeyEvent::new(c, KeyModifiers::NONE));
@@ -1669,9 +1668,9 @@ mod screen_tests {
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
-        let y = (0..45).find(|&y| (0..160).any(|x| buf[(x, y)].symbol() == "✕")).unwrap();
-        let x = (0..160).rev().find(|&x| buf[(x, y)].symbol() == "✕").unwrap();
-        assert_eq!(buf[(x + 2, y)].fg, app.theme.sky(), "the focused border turns sky");
+        assert_eq!((buf[(159, 0)].symbol(), buf[(159, 0)].fg), ("┐", app.theme.sky()), "the focused border turns sky");
+        let pill: String = (147..159).map(|x| buf[(x, 0)].symbol().to_string()).collect();
+        assert_eq!((pill.as_str(), buf[(148, 0)].bg), (" Ctrl+Space ", app.theme.sky()), "the leader pill at the top right, a column in");
         // The delayed overview groups common commands; ? opens the full reference instead.
         app.open_keymap(None);
         assert!(matches!(app.mode, Mode::KeyMap(_)));
@@ -1712,7 +1711,7 @@ mod screen_tests {
         assert!(matches!(app.mode, Mode::Actions { sel: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("▁ Actions") && o.contains("New shell here") && o.contains("Inbox ● 1") && !o.contains("Open project") && o.contains("+ key, anywhere"));
+        assert!(o.contains("─ Actions ") && o.contains("New shell here") && o.contains("Inbox ● 1") && !o.contains("Open project") && o.contains("+ key, anywhere"));
         // Its key runs it: b hides the sidebar.
         assert!(app.sidebar);
         app.on_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE));
@@ -1921,7 +1920,7 @@ mod screen_tests {
         app.cfg.ui.corners = "square".into();
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.lines().next().unwrap().starts_with(" ▁"), "tiled starts at the very corner, flush: {}", o.lines().next().unwrap());
+        assert!(o.lines().next().unwrap().starts_with("┌─"), "tiled starts at the very corner, square: {}", o.lines().next().unwrap());
         assert!(!o.contains('╭'), "no rounded corners");
     }
 
@@ -1931,7 +1930,7 @@ mod screen_tests {
         show(&o);
         let lines: Vec<&str> = o.lines().collect();
         // A 26-column sidebar card, no right-hand meta or question lines.
-        assert!(lines[1].starts_with("  ▁") && lines[1].trim().chars().filter(|c| *c == '▁').count() == 24, "a slim sidebar: {}", lines[1]);
+        assert!(lines[0].starts_with('┌') && lines[0].chars().nth(25) == Some('┐'), "a slim sidebar: {}", lines[0]);
         let side: String = lines.iter().map(|l| l.chars().take(30).collect::<String>() + "\n").collect();
         assert!(!side.contains("main · 3m") && !side.contains("Run npm test"), "no meta or questions in the slim sidebar: {side}");
         assert!(o.contains("+ new") && o.contains("actions"), "both controls fit at the sidebar foot");
@@ -1944,7 +1943,8 @@ mod screen_tests {
         app.cfg.ui.layout = "flat".into();
         let main = draw(&mut app, 160, 45);
         show(&main);
-        assert!(main.lines().next().unwrap().starts_with("▎"), "flat has no outside margin and keeps a zone bar");
+        let top = main.lines().next().unwrap();
+        assert!(top.starts_with(' ') && top.chars().nth(33) == Some('│'), "flat has no outside margin, and one rule parts the sidebar from the panes: {top}");
         assert!(main.contains("claude") && main.contains("shell"), "the existing sessions remain visible");
         assert!(main.contains("+ new") && main.contains("actions"), "the sidebar keeps its two mouse-accessible controls");
         assert!(!main.lines().last().unwrap_or_default().contains("PANE"), "the full-width footer is gone");
@@ -1961,7 +1961,7 @@ mod screen_tests {
 
         app.act(Action::Settings);
         let settings = draw(&mut app, 160, 45);
-        assert!(settings.contains("Settings") && settings.contains("Esc close"), "the Settings modal has its square status row");
+        assert!(settings.contains(" Settings ") && settings.contains("✕"), "the Settings modal, its title chip and a ✕");
         assert!(app.hits.iter().any(|(rect, hit)| rect.y > 0 && *hit == Hit::Screen(screen::ScreenHit::Close)), "the flat modal close control is mouse reachable");
     }
 
@@ -2105,8 +2105,8 @@ mod screen_tests {
             app.on_mouse(MouseEvent { kind, column: x, row: y, modifiers: KeyModifiers::NONE });
             draw(app, 160, 45);
         };
-        // The current tab carries a ✕.
-        assert!(app.hits.iter().any(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabClose(_)))), "a ✕ on the current tab");
+        // The pane carries a ✕.
+        assert!(app.hits.iter().any(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::CloseSplit(_)))), "a ✕ on the pane");
         // Double-click: rename it in its pill.
         let first = app.session_tabs()[0];
         let at = pill(&app, first);
@@ -2595,8 +2595,8 @@ mod screen_tests {
         show(&o);
         let lines: Vec<&str> = o.lines().collect();
         let at = lines.iter().position(|l| l.contains("✓ Copied")).expect("a toast");
-        assert!(at < lines.len() - 2, "over the panes, above the bottom bar");
-        assert!(!lines.last().unwrap().contains("Copied"), "not in the bottom bar");
+        assert_eq!(at, lines.len() - 2, "at the bottom right, a row above the last");
+        assert!(lines[at].trim_end().strip_suffix('│').is_some_and(|l| l.trim_end_matches(|c: char| c == ' ' || ('\u{e000}'..='\u{f8ff}').contains(&c)).ends_with("Copied")), "at the right edge (a pill end may follow): {}", lines[at]);
     }
 
     #[test]
@@ -2972,9 +2972,9 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_toast_wears_the_colour_of_its_news() {
+    fn a_toast_s_mark_wears_the_colour_of_its_news() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        // The fill and ink under the first letter of `word`, and the mark in front of it.
+        // The fill and ink under the first letter of `word`, and the mark in front of it with its colour.
         let toast = |app: &mut App, word: &str| {
             app.screen_fresh();
             let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
@@ -2985,23 +2985,20 @@ mod screen_tests {
                 .flat_map(|y| (0..160u16).map(move |x| (x, y)))
                 .find(|&(x, y)| buf[(x, y)].symbol() == first && (0..word.chars().count() as u16).all(|i| Some(buf[(x + i, y)].symbol()) == word.chars().nth(i as usize).map(|c| c.to_string()).as_deref()))
                 .unwrap_or_else(|| panic!("{word} is on screen"));
-            (buf[(x, y)].bg, buf[(x, y)].fg, buf[(x - 2, y)].symbol().to_string())
+            (buf[(x, y)].bg, buf[(x, y)].fg, buf[(x - 2, y)].symbol().to_string(), buf[(x - 2, y)].fg)
         };
         let t = app.theme.clone();
         app.notify("Copied".into(), false);
-        assert_eq!(toast(&mut app, "Copied"), (t.accent, t.ink_on(t.accent), "✓".to_string()), "a plain note: the accent");
+        assert_eq!(toast(&mut app, "Copied"), (t.btn, t.strong, "✓".to_string(), t.accent), "a plain note: the accent");
         app.notify("Couldn't save".into(), true);
-        assert_eq!(toast(&mut app, "Couldn't"), (t.err, t.ink_on(t.err), "✕".to_string()), "an error");
+        assert_eq!(toast(&mut app, "Couldn't"), (t.btn, t.strong, "✕".to_string(), t.err), "an error");
         // claude (1) is on a prompt; codex (2) isn't.
         app.notify("pane-one needs you".into(), false);
         app.notice_term = Some(1);
-        assert_eq!(toast(&mut app, "pane-one"), (t.blocked, t.ink_on(t.blocked), "●".to_string()), "needs you: its state's colour");
+        assert_eq!(toast(&mut app, "pane-one"), (t.btn, t.strong, "●".to_string(), t.blocked), "needs you: its state's colour");
         app.notify("pane-two finished".into(), false);
         app.notice_term = Some(2);
-        assert_eq!(toast(&mut app, "pane-two"), (t.done, t.ink_on(t.done), "✓".to_string()), "finished");
-        for fill in [t.accent, t.err, t.blocked, t.done] {
-            assert!(fill != t.card2 && fill != t.card, "never the card's own grey");
-        }
+        assert_eq!(toast(&mut app, "pane-two"), (t.btn, t.strong, "✓".to_string(), t.done), "finished");
     }
 
     #[test]
@@ -3012,7 +3009,7 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         // claude needs you in the fixture: the Inbox, and a search for any session.
-        assert!(o.contains("▁ Inbox") && o.contains("type to find any session"));
+        assert!(o.contains("─ Inbox ") && o.contains("type to find any session"));
         for c in "rate".chars() {
             app.on_key(key(KeyCode::Char(c)));
         }
@@ -3101,7 +3098,7 @@ mod screen_tests {
         app.act(Action::Jump);
         let o = draw(&mut app, 100, 30);
         show(&o);
-        assert!(o.contains("▁ Inbox") && !o.contains("▁ claude"), "narrow: the sheet covers the pane column");
+        assert!(o.contains("─ Inbox ") && !o.contains("─ 1  claude "), "narrow: the sheet covers the pane column");
         app.mode = Mode::Normal;
         // Changes of a real repo.
         let repo = std::env::temp_dir().join(format!("seshi-sheet-{}", std::process::id()));
@@ -3111,7 +3108,7 @@ mod screen_tests {
         app.open_changes(repo.clone());
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("▁ Changes") && o.contains("▁ claude"), "Changes docks beside the panes");
+        assert!(o.contains("─ Changes ") && o.contains("─ 1  claude "), "Changes docks beside the panes");
         let _ = std::fs::remove_dir_all(&repo);
     }
 
@@ -3151,7 +3148,7 @@ mod screen_tests {
         key(&mut app, KeyCode::Char('m'), KeyModifiers::NONE);
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(matches!(&app.mode, Mode::Compose(c) if c.inbox.is_some()) && o.contains("▁ Inbox") && o.contains("Next prompt for claude"), "the box in the Inbox row");
+        assert!(matches!(&app.mode, Mode::Compose(c) if c.inbox.is_some()) && o.contains("─ Inbox ") && o.contains("Next prompt for claude"), "the box in the Inbox row");
         key(&mut app, KeyCode::Esc, KeyModifiers::NONE);
         assert!(matches!(app.mode, Mode::GoTo { .. }), "Esc: back in the Inbox");
     }
@@ -3208,7 +3205,7 @@ mod screen_tests {
         key(&mut app, 'd');
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(matches!(app.view, Some(View::Both(_))) && o.contains("▁ Changes") && o.contains("reading both diffs"), "both diffs, docked");
+        assert!(matches!(app.view, Some(View::Both(_))) && o.contains("─ Changes ") && o.contains("reading both diffs"), "both diffs, docked");
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert!(app.view.is_none());
         // k: dismissed (and the tag goes with it).
@@ -3245,7 +3242,7 @@ mod screen_tests {
         let col = Rect { x: 40, y: 4, width: 118, height: 40 };
         for step in 0..=20 {
             let frac = step as f32 / 20.0;
-            let (sheet, panes) = screen::split_for_sheet(160, col, 2, frac);
+            let (sheet, panes) = screen::split_for_sheet(160, col, screen::Look::of(&app.cfg.ui), frac);
             assert!(panes.width + sheet.width <= col.width, "they share the column at {frac}");
             let mut buf = ratatui::buffer::Buffer::empty(Rect::new(0, 0, 160, 45));
             if sheet.width >= screen::SHEET_DRAWN_FROM {
@@ -3327,7 +3324,7 @@ mod screen_tests {
             let (_, pane) = app.pane_frames[0];
             let accent = app.theme.accent;
             // The pane card's left edge and any sheet edge to its right.
-            let pane_lit = (pane.y + 1..pane.bottom() - 1).any(|y| buf[(pane.x, y)].fg == accent);
+            let pane_lit = (pane.y + 1..pane.bottom() - 1).any(|y| buf[(pane.x, y)].fg == accent && buf[(pane.x, y)].symbol() == "│");
             let sheet_lit = (0..45u16).any(|y| (pane.right()..160u16).any(|x| buf[(x, y)].fg == accent && matches!(buf[(x, y)].symbol(), "▕" | "▏" | "│")));
             (pane_lit, sheet_lit)
         };
@@ -3337,18 +3334,18 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_card_is_filled_up_to_its_line() {
+    fn a_card_is_square_or_rounded_on_one_ground() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
-        // Flush edges: the sidebar card's left edge is a line on the cell's inner side, on the
-        // desk's ground; the card's colour starts in the very next cell (no strip, no spill).
+        // Square corners (the default): a line round the card on the desk's ground, the
+        // card's inside on the same ground.
         let side = app.screen.side_rect;
         let y = side.y + side.height / 2;
-        assert_eq!(buf[(side.x, y)].symbol(), "▕", "the line hugs the card");
+        assert_eq!(buf[(side.x, y)].symbol(), "│", "the card's line");
         assert_eq!(buf[(side.x, y)].bg, buf[(side.x + 1, y)].bg, "one ground: the line, not a second grey, marks the card");
-        assert_eq!(buf[(side.x, side.y)].symbol(), " ", "the corner is where the two lines meet");
+        assert_eq!(buf[(side.x, side.y)].symbol(), "┌", "a square corner");
         // Rounded keeps the centred line.
         app.cfg.ui.corners = "rounded".into();
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
@@ -3466,8 +3463,8 @@ mod screen_tests {
             let buf = term.backend().buffer().clone();
             let y = (0..30).find(|&y| (0..120).any(|x| buf[(x, y)].symbol() == "✕")).unwrap();
             let x = (0..120).rev().find(|&x| buf[(x, y)].symbol() == "✕").unwrap();
-            let side = (1..29).filter(|&y| buf[(1u16, y)].fg == app.theme.accent).count();
-            (buf[(x + 2, y)].fg, side)
+            let side = (1..29).filter(|&y| buf[(0u16, y)].fg == app.theme.accent).count();
+            (buf[(x + 3, y)].fg, side)
         };
         let (pane, side) = borders(&mut app);
         assert_eq!(pane, app.theme.accent, "the focused pane's border is the accent");
@@ -3488,7 +3485,7 @@ mod screen_tests {
             app.on_key(lead);
             assert!(matches!(app.mode, Mode::Prefix { .. }), "leader waits");
             let o = draw(&mut app, 160, 45);
-            assert!(o.contains("⌨ CTRL+SPACE"), "the leader pill at the end of the tab row");
+            assert!(o.lines().next().unwrap_or_default().trim_end().ends_with(" Ctrl+Space ┐"), "the leader pill at the top right: {o}");
             app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
             assert!(!matches!(app.mode, Mode::Normal | Mode::Prefix { .. }), "leader + {c} opens {what}: {:?}", std::mem::discriminant(&app.mode));
         }
@@ -3536,7 +3533,7 @@ mod screen_tests {
             app.act(a);
             let o = draw(&mut app, 120, 34);
             show(&o);
-            assert!(o.contains("▁ ") && o.contains(" ✕ ▁"), "{title}: a seshi card (title in its border, ✕ to close)");
+            assert!(o.contains(&format!("─ {title}")) && o.contains(" ✕  ┐"), "{title}: a seshi card (title chip on its border, ✕ to close)");
         }
     }
 
@@ -4233,9 +4230,7 @@ mod check_sheet_tests {
 
     const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
     const TERM: TermId = 1;
-    /// The sheet's widths: beside the panes, and from 200 columns.
     const SHEET_W: u16 = 72;
-    const SHEET_W_WIDE: u16 = 96;
     const SHORT_OUTPUT: &str = "✓ renders the footer\n✓ links resolve\n✗ keeps the sticky footer\nError: expected 3 got 2\n";
 
     fn now() -> u64 {
@@ -4392,7 +4387,7 @@ mod check_sheet_tests {
                 let (head, tail) = header.split_once('…').unwrap_or_else(|| panic!("{at}: the title is cut, so it ends in …: {header:?}"));
                 assert!(head.contains("› echo start; then"), "{at}: the command's start follows the session: {header:?}");
                 assert!(!tail.contains('…'), "{at}: one ellipsis: {header:?}");
-                assert!(tail.trim_matches(|c: char| c == ' ' || "─╮▁▔".contains(c)).trim() == "✕", "{at}: only the close follows the ellipsis, got {tail:?} in {header:?}");
+                assert!(tail.trim_matches(|c: char| c == ' ' || "─╮┐".contains(c)).trim() == "✕", "{at}: only the close follows the ellipsis, got {tail:?} in {header:?}");
             }
         }
     }
@@ -4496,7 +4491,7 @@ mod check_sheet_tests {
     }
 
     #[test]
-    fn the_sheet_takes_the_pane_column_below_140_columns_and_is_wider_from_200() {
+    fn the_sheet_takes_the_pane_column_below_140_columns_and_is_72_wide_beside() {
         for (name, layout) in layouts() {
             let sheet = |w: u16, h: u16| {
                 let mut app = open(w, h, layout, check(CheckState::Failed, Some(1)), Some(SHORT_OUTPUT));
@@ -4507,7 +4502,7 @@ mod check_sheet_tests {
             let (narrow, left) = sheet(100, 30);
             assert!(narrow > 0 && left == 0, "{name}: at 100 columns the sheet is the pane column");
             assert_eq!(sheet(160, 45).0, SHEET_W, "{name}");
-            assert_eq!(sheet(200, 50).0, SHEET_W_WIDE, "{name}");
+            assert_eq!(sheet(200, 50).0, SHEET_W, "{name}");
             let mut app = open(100, 30, layout, check(CheckState::Failed, Some(1)), Some(SHORT_OUTPUT));
             draw(&mut app, 100, 30);
             press(&mut app, KeyCode::Esc);

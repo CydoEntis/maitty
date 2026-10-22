@@ -904,9 +904,6 @@ pub(super) enum ScreenHit {
     ConfirmYes,
     ConfirmNo,
     TabPick(usize),
-    /// The ✕ on the current tab's pill.
-    TabClose(usize),
-    TabNew,
     /// Outside an overlay: closes it.
     Close,
     /// Inside an overlay's panel: nothing.
@@ -1016,4 +1013,6 @@ mod sheet;
 mod inbox;
 mod splash;
 mod tidy;
+#[cfg(test)]
+mod v7_frame_tests;
 pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, side::*, splash::*, sheet::*, popover::*, heads::*, tidy::*, check_sheet::*, check_actions::*};

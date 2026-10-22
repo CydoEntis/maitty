@@ -45,7 +45,7 @@ pub(super) fn settled(info: &CheckInfo) -> bool {
 }
 
 /// Which ring glyph a spinner frame shows. Apart from the clock so a test can step it.
-fn ring_step(frame: u64, len: usize) -> usize {
+pub(super) fn ring_step(frame: u64, len: usize) -> usize {
     (frame / RING_TICKS % len as u64) as usize
 }
 

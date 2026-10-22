@@ -17,10 +17,8 @@ pub(in crate::client) enum SheetKind {
     Check,
 }
 
-/// Its width beside the panes, and from `WIDE_AT` columns on.
+/// Its width beside the panes.
 pub(super) const SHEET_W: u16 = 72;
-pub(super) const SHEET_W_WIDE: u16 = 96;
-pub(super) const WIDE_AT: u16 = 200;
 
 /// The sheet that's open, if any: the Inbox while you're in it (or writing a follow-up in
 /// one of its rows), else Changes.
@@ -38,20 +36,16 @@ pub(in crate::client) fn open_sheet(app: &App) -> Option<SheetKind> {
     }
 }
 
-/// Where the sheet goes in the right-hand column `col` (pane rows only), and what's left for
-/// the panes, with `frac` of its width in (it slides in). A whole screen narrower than
-/// `NARROW` gives it the column.
-pub(in crate::client) fn split_for_sheet(screen_w: u16, col: Rect, gap: u16, frac: f32) -> (Rect, Rect) {
-    let full = if screen_w < NARROW || col.width <= SHEET_W + gap + 20 {
-        col.width
-    } else if screen_w >= WIDE_AT {
-        SHEET_W_WIDE.min(col.width)
-    } else {
-        SHEET_W.min(col.width)
-    };
+/// Where the sheet goes in the pane column `col`, and what's left for the panes, with `frac`
+/// of its width in (it slides in). It docks right, `SHEET_W` wide, the layout's gap from the
+/// panes (Flat: the panes run under its `│` rule, as beside the sidebar); a screen narrower
+/// than `NARROW` gives it the whole column.
+pub(in crate::client) fn split_for_sheet(screen_w: u16, col: Rect, look: Look, frac: f32) -> (Rect, Rect) {
+    let full = if screen_w < NARROW || col.width <= SHEET_W + look.gap + 20 { col.width } else { SHEET_W };
     let w = (full as f32 * frac.clamp(0.0, 1.0)).round() as u16;
     let sheet = Rect { x: col.right() - w, width: w, ..col };
-    (sheet, Rect { width: col.width.saturating_sub(w + gap), ..col })
+    let beside = if w == 0 || w >= col.width { w } else if look.flat { w - 1 } else { w + look.gap };
+    (sheet, Rect { width: col.width.saturating_sub(beside), ..col })
 }
 
 /// The same-file overlaps the Inbox lists, in a stable order: (repo, overlap).
@@ -74,9 +68,6 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     let mut c = Card::new(t, &title).lit(t.accent);
     // Changes paints the desk's ground (its diff colours are tuned for it).
     c.bg = if kind == SheetKind::Changes { t.bg } else { t.card };
-    if Look::of(&app.cfg.ui).flat {
-        c.foot_r = vec![seg("Esc close", Style::default().fg(t.muted).bg(t.card))];
-    }
     c.close = Some(close);
     let inside = card(app, buf, r, &c, t);
     // Clicks inside it stay in it.
@@ -121,9 +112,6 @@ pub(in crate::client) fn draw_settings_modal(app: &mut App, buf: &mut Buffer, ar
     let mut c = Card::new(t, "Settings").lit(t.accent);
     c.bg = t.card;
     c.close = Some(ScreenHit::Close);
-    if Look::of(&app.cfg.ui).flat {
-        c.foot_r = vec![seg("Esc close", Style::default().fg(t.muted).bg(t.card))];
-    }
     let inside = card(app, buf, r, &c, t);
     hit(app, inside, ScreenHit::Noop);
     if inside.width < 44 {

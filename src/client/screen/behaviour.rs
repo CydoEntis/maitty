@@ -1193,10 +1193,8 @@ impl App {
                     }
                 }
             }
-            ScreenHit::TabClose(i) => self.close_tab(i),
             ScreenHit::SideFocus => self.act(Action::BrowseTree),
             ScreenHit::ExpandSidebar => self.act(Action::ToggleSidebar),
-            ScreenHit::TabNew => self.act(Action::NewTab),
             ScreenHit::NewShell => self.act(Action::ShellHere),
             ScreenHit::Actions => self.act(Action::Actions),
             ScreenHit::ActionRow(i) => self.actions_run(i),

@@ -36,3 +36,4 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0010](0010-optional-desktop-client.md) | Offer an optional desktop client over the shared session engine | Superseded by 0011 |
 | [0011](0011-keep-seshi-terminal-first.md) | Keep Seshi terminal-first | Accepted |
 | [0012](0012-flat-rendering-style.md) | Add a flat rendering style | Accepted |
+| [0013](0013-v7-frame.md) | Draw the v7 frame: tabs in the pane title, no margin | Proposed |
