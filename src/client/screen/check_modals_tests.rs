@@ -17,7 +17,9 @@ const HOUR: u64 = 3600;
 fn reference(preset: &str, w: u16, h: u16) -> Vec<String> {
     let head = format!("===== {preset} | {w}x{h}");
     let at = FRAMES.find(&head).unwrap_or_else(|| panic!("no reference for {head}"));
-    let body = &FRAMES[at + head.len() + 1..];
+    let body = &FRAMES[at..];
+    // Past the heading's line end, LF or CRLF as the checkout made it.
+    let body = &body[body.find('\n').map_or(body.len(), |i| i + 1)..];
     let end = body.find("=====").unwrap_or(body.len());
     body[..end].lines().map(|l| l.replace('\\', std::path::MAIN_SEPARATOR_STR)).collect()
 }
