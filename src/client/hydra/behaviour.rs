@@ -585,6 +585,10 @@ impl App {
             }
             KeyCode::Enter => match (&proj, self.hy.cursor) {
                 (Some(key), _) => self.hy_fold(key, None),
+                (None, Some(c)) if self.check_wants_a_look(c) => {
+                    self.hy_side_leave();
+                    self.open_check_sheet(c);
+                }
                 (None, c) => {
                     if let Some(c) = c {
                         self.hy_focus(c);

@@ -151,7 +151,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
                 app.view = Some(crate::client::View::Files(v));
             }
             // In the sheet (above).
-            v @ (crate::client::View::Changes(_) | crate::client::View::Both(_)) => app.view = Some(v),
+            v @ (crate::client::View::Changes(_) | crate::client::View::Both(_) | crate::client::View::Check(_)) => app.view = Some(v),
         }
     }
     g.panes

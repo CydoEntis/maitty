@@ -4100,3 +4100,386 @@ mod check_why_tests {
         }
     }
 }
+
+mod check_sheet_tests {
+    use super::*;
+    use crate::protocol::{CheckInfo, CheckState, Query, Reply};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
+    use ratatui::style::Color;
+
+    const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
+    const TERM: TermId = 1;
+    /// The sheet's widths: beside the panes, and from 200 columns.
+    const SHEET_W: u16 = 72;
+    const SHEET_W_WIDE: u16 = 96;
+    const SHORT_OUTPUT: &str = "✓ renders the footer\n✓ links resolve\n✗ keeps the sticky footer\nError: expected 3 got 2\n";
+
+    fn now() -> u64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+    }
+
+    fn check(state: CheckState, exit_code: Option<i32>) -> CheckInfo {
+        CheckInfo {
+            command: "npm test".into(),
+            state,
+            exit_code,
+            started_at: now() - 600,
+            duration_ms: 14_200,
+            after_turn_ended_at: now() - 620,
+            first_failing_line: "Error: expected 3 got 2".into(),
+            ..Default::default()
+        }
+    }
+
+    type Layout = fn(&mut App);
+
+    fn layouts() -> [(&'static str, Layout); 3] {
+        [
+            ("cards floating", |a| a.cfg.ui.panes = "floating".into()),
+            ("cards tiled", |a| a.cfg.ui.panes = "tiled".into()),
+            ("flat", |a| a.cfg.ui.layout = "flat".into()),
+        ]
+    }
+
+    /// Session 1 finished, with `check`; its sheet open and its output arrived.
+    fn open(w: u16, h: u16, layout: Layout, info: CheckInfo, output: Option<&str>) -> App {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        layout(&mut app);
+        let term = app.snap.terms.get_mut(&TERM).unwrap();
+        (term.status, term.said, term.check) = (Status::Done, "tests pass".into(), Some(info));
+        app.hy_sync();
+        app.open_check_sheet(TERM);
+        if let Some(text) = output {
+            app.on_server(ServerMsg::Reply(Reply::Text(text.into())));
+        }
+        app
+    }
+
+    fn render(app: &mut App, w: u16, h: u16) -> Buffer {
+        app.hy_fresh();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        term.backend().buffer().clone()
+    }
+
+    fn frame(buf: &Buffer) -> String {
+        let a = buf.area;
+        let text: String = (0..a.height).map(|y| (0..a.width).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>().trim_end().to_string() + "\n").collect();
+        // Keycap edges are private-use glyphs a reader doesn't see.
+        text.replace(|c| ('\u{e000}'..='\u{f8ff}').contains(&c), "")
+    }
+
+    fn draw(app: &mut App, w: u16, h: u16) -> String {
+        let o = frame(&render(app, w, h));
+        if std::env::var("SESHI_SHOW").is_ok() {
+            println!("{o}");
+        }
+        o
+    }
+
+    /// Flat pads keycaps with spaces where cards use edge glyphs.
+    fn words(o: &str) -> String {
+        o.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    /// Only the sheet's columns, read top to bottom, so a line it wrapped reads whole and the
+    /// sidebar beside it does not interleave.
+    fn sheet_words(app: &mut App, w: u16, h: u16) -> String {
+        let o = draw(app, w, h);
+        let g = hydra::grid(app, Rect::new(0, 0, w, h));
+        let cols: String = o.lines().map(|l| l.chars().skip(g.sheet.x as usize).take(g.sheet.width as usize).collect::<String>() + "\n").collect();
+        words(&cols.replace(['▕', '▏', '▁', '▔', '│', '┃', '▎'], " "))
+    }
+
+    fn fg_at(buf: &Buffer, needle: &str) -> Color {
+        let a = buf.area;
+        for y in 0..a.height {
+            let row: Vec<String> = (0..a.width).map(|x| buf[(x, y)].symbol().to_string()).collect();
+            let line = row.concat();
+            if let Some(at) = line.find(needle) {
+                return buf[(line[..at].chars().count() as u16, y)].fg;
+            }
+        }
+        panic!("no {needle:?} on screen in\n{}", frame(buf));
+    }
+
+    fn press(app: &mut App, code: KeyCode) {
+        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    fn sent(rx: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Vec<ClientMsg> {
+        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    }
+
+    fn long_output(n: usize) -> String {
+        (1..=n).map(|i| format!("line {i}\n")).collect()
+    }
+
+    #[test]
+    fn a_failed_result_shows_its_chip_rows_and_numbered_output_in_every_layout_at_every_size() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let at = format!("{name} {w}x{h}");
+                let mut app = open(w, h, layout, check(CheckState::Failed, Some(1)), Some(SHORT_OUTPUT));
+                let buf = render(&mut app, w, h);
+                let o = draw(&mut app, w, h);
+                let text = sheet_words(&mut app, w, h);
+                for want in [
+                    "Check ·",
+                    "✕ failed",
+                    "exit 1",
+                    "Command npm test",
+                    "Folder",
+                    "Ran 10m ago · took 14.2s · after the turn ended 10m ago",
+                    "Seen by Seshi ran this itself. The agent said \"tests pass\".",
+                    "OUTPUT all 4 lines",
+                    "1 ✓ renders the footer",
+                    "4 Error: expected 3 got 2",
+                    "Re-run r",
+                    "Override… O",
+                ] {
+                    assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
+                }
+                assert!(o.lines().count() <= h as usize && o.lines().all(|l| l.chars().count() <= w as usize), "{at}: fits the screen");
+                assert_eq!(fg_at(&buf, "✓ renders the footer"), app.theme.done, "{at}: passing lines are done-green");
+                assert_eq!(fg_at(&buf, "Error: expected 3 got 2"), app.theme.err, "{at}: error lines are err");
+                assert_eq!(fg_at(&buf, "✗ keeps the sticky footer"), app.theme.err, "{at}: ✗ lines are err");
+                assert_eq!(fg_at(&buf, "links resolve"), app.theme.done, "{at}: the whole line");
+            }
+        }
+    }
+
+    #[test]
+    fn the_sheet_keeps_the_sidebars_foot_and_waits_for_output_it_has_not_got() {
+        let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), None);
+        let o = draw(&mut app, 160, 45);
+        assert!(o.contains("+ new") && o.contains("actions"), "the foot stays");
+        assert!(o.contains("reading the output"), "no output yet:\n{o}");
+    }
+
+    #[test]
+    fn long_output_shows_the_tail_that_fits_and_f_opens_all_of_it() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let at = format!("{name} {w}x{h}");
+                let mut app = open(w, h, layout, check(CheckState::Failed, Some(1)), Some(&long_output(200)));
+                let o = draw(&mut app, w, h);
+                let text = sheet_words(&mut app, w, h);
+                assert!(text.contains("of 200 lines") && text.contains("last ") && text.contains("f full output"), "{at}: the tail header in\n{o}");
+                assert!(text.contains("200 line 200"), "{at}: the end is shown, numbered");
+                assert!(!text.contains(" 1 line 1 "), "{at}: the start is not");
+                assert!(text.contains('▲'), "{at}: more above");
+                press(&mut app, KeyCode::Char('f'));
+                let full = draw(&mut app, w, h);
+                assert!(words(&full).contains("1 line 1 "), "{at}: f shows from the top:\n{full}");
+                assert!(!words(&full).contains("200 line 200"), "{at}: and scrolls");
+                press(&mut app, KeyCode::PageDown);
+                press(&mut app, KeyCode::Down);
+                let moved = draw(&mut app, w, h);
+                assert!(!words(&moved).contains(" 1 line 1 "), "{at}: ↓ and PageDown scroll");
+                press(&mut app, KeyCode::Up);
+                press(&mut app, KeyCode::PageUp);
+                assert!(sheet_words(&mut app, w, h).contains("1 line 1 "), "{at}: ↑ and PageUp come back");
+                for _ in 0..40 {
+                    press(&mut app, KeyCode::PageDown);
+                }
+                assert!(sheet_words(&mut app, w, h).contains("200 line 200"), "{at}: scrolling stops at the end");
+                press(&mut app, KeyCode::Char('f'));
+                assert!(sheet_words(&mut app, w, h).contains("last "), "{at}: f again is the tail");
+            }
+        }
+    }
+
+    #[test]
+    fn an_arrow_on_the_tail_scrolls_from_where_the_tail_starts() {
+        let mut app = open(100, 30, |_| {}, check(CheckState::Failed, Some(1)), Some(&long_output(200)));
+        draw(&mut app, 100, 30);
+        press(&mut app, KeyCode::Up);
+        let o = sheet_words(&mut app, 100, 30);
+        assert!(o.contains("200 line 200") || o.contains("199 line 199"), "one line up from the tail still shows nearly the end: {o}");
+        assert!(!o.contains(" 1 line 1 "));
+    }
+
+    #[test]
+    fn empty_output_says_so_and_what_passed_it() {
+        for (name, layout) in layouts() {
+            let mut app = open(100, 30, layout, check(CheckState::Passed, Some(0)), Some(""));
+            let text = sheet_words(&mut app, 100, 30);
+            assert!(text.contains("✓ passed") && text.contains("exit 0"), "{name}");
+            assert!(text.contains("(the command printed nothing)") && text.contains("exit 0 is what passed it."), "{name}: {text}");
+            assert!(!text.contains("Override") && !text.contains("lines"), "{name}: a pass has nothing to override");
+            let mut failed = open(100, 30, layout, check(CheckState::Failed, Some(2)), Some("\n"));
+            let text = sheet_words(&mut failed, 100, 30);
+            assert!(text.contains("(the command printed nothing)") && !text.contains("what passed it"), "{name}");
+        }
+    }
+
+    #[test]
+    fn an_override_shows_its_banner_with_the_failing_output_still_below() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let mut info = check(CheckState::Overridden, Some(1));
+                info.overridden_at = Some(now() - 120);
+                info.override_reason = "flaky on CI".into();
+                let mut app = open(w, h, layout, info, Some(SHORT_OUTPUT));
+                let text = sheet_words(&mut app, w, h);
+                for want in ["⊘ overridden", "⊘ Overridden by you 2m ago", "flaky on CI", "u undo", "next run replaces this", "Error: expected 3 got 2", "exit 1"] {
+                    assert!(text.contains(want), "{name} {w}x{h}: missing {want:?} in {text}");
+                }
+                assert!(!text.contains("Override… O"), "{name} {w}x{h}: it is not overridden twice");
+            }
+        }
+    }
+
+    #[test]
+    fn could_not_run_says_it_is_not_a_test_failure() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let mut info = check(CheckState::CouldNotRun, Some(127));
+                info.command = "pnpm test".into();
+                let mut app = open(w, h, layout, info, Some("sh: pnpm: not found\n"));
+                let text = sheet_words(&mut app, w, h);
+                for want in ["? could not run", "exit 127", "Not a test failure. The work hasn't been checked.", "install pnpm, then r", "sh: pnpm: not found"] {
+                    assert!(text.contains(want), "{name} {w}x{h}: missing {want:?} in {text}");
+                }
+                assert!(!text.contains("✕ failed") && !text.contains("Override… O"), "{name} {w}x{h}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_sheet_takes_the_pane_column_below_140_columns_and_is_wider_from_200() {
+        for (name, layout) in layouts() {
+            let sheet = |w: u16, h: u16| {
+                let mut app = open(w, h, layout, check(CheckState::Failed, Some(1)), Some(SHORT_OUTPUT));
+                draw(&mut app, w, h);
+                let g = hydra::grid(&app, Rect::new(0, 0, w, h));
+                (g.sheet.width, g.panes.width)
+            };
+            let (narrow, left) = sheet(100, 30);
+            assert!(narrow > 0 && left == 0, "{name}: at 100 columns the sheet is the pane column");
+            assert_eq!(sheet(160, 45).0, SHEET_W, "{name}");
+            assert_eq!(sheet(200, 50).0, SHEET_W_WIDE, "{name}");
+            let mut app = open(100, 30, layout, check(CheckState::Failed, Some(1)), Some(SHORT_OUTPUT));
+            draw(&mut app, 100, 30);
+            press(&mut app, KeyCode::Esc);
+            assert!(app.view.is_none(), "{name}: Esc returns");
+            let g = hydra::grid(&app, Rect::new(0, 0, 100, 30));
+            assert!(g.sheet.width == 0 && g.panes.width > 0, "{name}: the panes are back");
+        }
+    }
+
+    #[test]
+    fn only_esc_f_and_scrolling_act_in_the_sheet_for_now() {
+        let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), Some(&long_output(100)));
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        draw(&mut app, 160, 45);
+        for c in ['r', 'O', 'u', 'o', 'i'] {
+            press(&mut app, KeyCode::Char(c));
+            assert!(matches!(app.view, Some(View::Check(_))), "{c} leaves the sheet as it is");
+        }
+        assert!(sent(&mut rx).is_empty(), "and sends nothing");
+        press(&mut app, KeyCode::Esc);
+        assert!(app.view.is_none());
+    }
+
+    #[test]
+    fn every_button_and_the_close_are_clickable() {
+        let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), Some(&long_output(100)));
+        draw(&mut app, 160, 45);
+        let has = |app: &App, h: Hit| app.hits.iter().any(|(_, x)| *x == h);
+        for key in ['r', 'O', 'f'] {
+            assert!(has(&app, Hit::Button(Btn::ViewKey(key))), "{key} is a button");
+        }
+        assert!(has(&app, Hit::Hy(hydra::HyHit::ViewClose)), "the ✕");
+        app.on_button(Hit::Button(Btn::ViewKey('f')), false);
+        assert!(sheet_words(&mut app, 160, 45).contains("1 line 1 "), "clicking full output opens it");
+        app.on_hy_hit(hydra::HyHit::ViewClose, false);
+        assert!(app.view.is_none());
+    }
+
+    #[test]
+    fn the_buttons_follow_the_result() {
+        let buttons = |state, code| {
+            let mut app = open(160, 45, |_| {}, check(state, code), Some(SHORT_OUTPUT));
+            draw(&mut app, 160, 45);
+            [('r', Btn::ViewKey('r')), ('O', Btn::ViewKey('O')), ('u', Btn::ViewKey('u'))].map(|(_, b)| app.hits.iter().any(|(_, x)| *x == Hit::Button(b)))
+        };
+        assert_eq!(buttons(CheckState::Failed, Some(1)), [true, true, false]);
+        assert_eq!(buttons(CheckState::Overridden, Some(1)), [true, false, true]);
+        assert_eq!(buttons(CheckState::CouldNotRun, Some(127)), [true, false, false]);
+        assert_eq!(buttons(CheckState::Passed, Some(0)), [true, false, false]);
+    }
+
+    #[test]
+    fn opening_asks_the_daemon_for_the_output_and_a_new_run_asks_again() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        let term = app.snap.terms.get_mut(&TERM).unwrap();
+        (term.status, term.check) = (Status::Done, Some(check(CheckState::Failed, Some(1))));
+        app.open_check_sheet(TERM);
+        let asks = |rx: &mut mpsc::UnboundedReceiver<ClientMsg>| sent(rx).into_iter().filter(|m| matches!(m, ClientMsg::Query(Query::CheckOutput { term: TERM }))).count();
+        assert_eq!(asks(&mut rx), 1, "one query on open");
+        app.on_server(ServerMsg::Reply(Reply::Text("first run\n".into())));
+        assert!(matches!(&app.view, Some(View::Check(v)) if v.output.as_deref() == Some("first run\n")));
+        let mut next = app.snap.clone();
+        let again = next.terms.get_mut(&TERM).unwrap().check.as_mut().unwrap();
+        (again.started_at, again.exit_code) = (now(), Some(2));
+        app.on_server(ServerMsg::State(next.clone()));
+        assert!(matches!(&app.view, Some(View::Check(v)) if v.output.is_none()), "the old output is about an older run");
+        assert_eq!(asks(&mut rx), 1, "so it asks again");
+        app.on_server(ServerMsg::State(next));
+        assert_eq!(asks(&mut rx), 0, "an unchanged snapshot asks nothing");
+    }
+
+    #[test]
+    fn the_sheet_closes_when_its_check_goes_away() {
+        let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), Some(SHORT_OUTPUT));
+        let mut next = app.snap.clone();
+        next.terms.get_mut(&TERM).unwrap().check = None;
+        app.on_server(ServerMsg::State(next));
+        assert!(app.view.is_none());
+    }
+
+    fn enter_on_row(state: Option<CheckState>, status: Status) -> App {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let term = app.snap.terms.get_mut(&TERM).unwrap();
+        (term.status, term.check) = (status, state.map(|s| check(s, Some(1))));
+        app.hy_sync();
+        draw(&mut app, 160, 45);
+        app.mode = Mode::Side;
+        app.hy.cursor = Some(TERM);
+        app.hy.cursor_proj = None;
+        press(&mut app, KeyCode::Enter);
+        app
+    }
+
+    #[test]
+    fn enter_opens_the_sheet_only_for_a_result_that_needs_a_look() {
+        for state in [CheckState::Failed, CheckState::CouldNotRun, CheckState::Overridden] {
+            let app = enter_on_row(Some(state), Status::Done);
+            assert!(matches!(&app.view, Some(View::Check(v)) if v.term == TERM), "{state:?} opens the sheet");
+        }
+        for state in [None, Some(CheckState::Passed), Some(CheckState::Checking)] {
+            let app = enter_on_row(state, Status::Done);
+            assert!(app.view.is_none(), "{state:?} focuses the session as today");
+        }
+        let working = enter_on_row(Some(CheckState::Failed), Status::Working);
+        assert!(working.view.is_none(), "an old result under a working agent is not shown, so not opened");
+    }
+
+    #[test]
+    fn what_a_command_printed_cannot_restyle_or_move_the_screen() {
+        let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), Some("\x1b[31mred\x1b[0m text\x1b]0;title\x07\nprogress 10%\rprogress 100%\n\x1b[2J\x07bell\tTab\n"));
+        let buf = render(&mut app, 160, 45);
+        let o = frame(&buf);
+        assert!(!o.contains('\u{1b}') && !o.contains('\u{7}') && !o.contains('\r'), "no control character reaches the screen");
+        let text = sheet_words(&mut app, 160, 45);
+        assert!(text.contains("1 red text 2") && text.contains("2 progress 100%") && text.contains("3 bell Tab"), "{text}");
+        assert!(!text.contains("title") && !text.contains("10%") && !text.contains("[31m") && !text.contains("[2J"), "{text}");
+    }
+}

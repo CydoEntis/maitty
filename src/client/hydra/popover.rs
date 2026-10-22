@@ -27,7 +27,7 @@ const WHY_H: u16 = 12;
 const TIME_COL: usize = 9;
 
 /// Word-wrapped to `width`, keeping blank lines.
-fn wrap(text: &str, width: usize) -> Vec<String> {
+pub(super) fn wrap(text: &str, width: usize) -> Vec<String> {
     let width = width.max(1);
     let mut out = Vec::new();
     for para in text.split('\n') {

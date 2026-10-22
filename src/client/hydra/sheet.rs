@@ -12,6 +12,8 @@ pub(in crate::client) enum SheetKind {
     Changes,
     /// Both diffs of a heads-up's file.
     Both,
+    /// A check's output and where it came from.
+    Check,
 }
 
 /// Its width beside the panes, and from `WIDE_AT` columns on.
@@ -28,6 +30,8 @@ pub(in crate::client) fn open_sheet(app: &App) -> Option<SheetKind> {
         Some(SheetKind::Changes)
     } else if matches!(app.view, Some(crate::client::View::Both(_))) {
         Some(SheetKind::Both)
+    } else if matches!(app.view, Some(crate::client::View::Check(_))) {
+        Some(SheetKind::Check)
     } else {
         None
     }
@@ -62,10 +66,11 @@ pub(in crate::client) fn heads_up(app: &App) -> Vec<(PathBuf, Overlap)> {
 
 pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t: &Theme) {
     let (title, close) = match kind {
-        SheetKind::Inbox => ("Inbox", HyHit::Close),
-        SheetKind::Changes | SheetKind::Both => ("Changes", HyHit::ViewClose),
+        SheetKind::Inbox => ("Inbox".to_string(), HyHit::Close),
+        SheetKind::Changes | SheetKind::Both => ("Changes".to_string(), HyHit::ViewClose),
+        SheetKind::Check => (check_title(app), HyHit::ViewClose),
     };
-    let mut c = Card::new(t, title).lit(t.accent);
+    let mut c = Card::new(t, &title).lit(t.accent);
     // Changes paints the desk's ground (its diff colours are tuned for it).
     c.bg = if kind == SheetKind::Changes { t.bg } else { t.card };
     if Look::of(&app.cfg.ui).flat {
@@ -87,6 +92,12 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
         SheetKind::Both => {
             if let Some(crate::client::View::Both(v)) = &app.view {
                 draw_both(buf, inside, t, v);
+            }
+        }
+        SheetKind::Check => {
+            if let Some(crate::client::View::Check(mut v)) = app.view.take() {
+                draw_check(app, buf, inside, t, &mut v);
+                app.view = Some(crate::client::View::Check(v));
             }
         }
     }

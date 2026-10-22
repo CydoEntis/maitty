@@ -116,6 +116,8 @@ When an update is available, show **Update <version>** in the tab row and open t
 
 The evidence popover (`i`, or a click on a status) explains a session's status from its hook, screen and process reports. For a session with a check, it shows a timeline instead: when the agent's turn ended and what it said, when Seshi ran the command, and the result with exit code and duration, each with its age (`2m ago`). Its keycap hints list only the keys that apply: `⏎` evidence and `r` re-run once there is a result, `O` override for a failed one, `Esc` close. A session without a check keeps the source rows.
 
+The check evidence sheet (Enter on a sidebar row whose check failed, could not run or was overridden; every other row still focuses its session) docks right like the Inbox and takes the pane column below `NARROW`. It shows the result chip with its exit code, a banner for an override (when, the reason, `u undo`) or a command that could not run ("Not a test failure. The work hasn't been checked."), the Command / Folder / Ran / Seen by rows with relative ages, and the output on a darker block with line numbers (`✓` lines in `done`, error lines in `err`). Output longer than the block shows the tail that fits ("last N of M lines"); `f` or the arrows open all of it and scroll. Empty output reads "(the command printed nothing)", with "exit 0 is what passed it." for a pass. Re-run, Override… and Undo override are drawn and clickable; their keys (`r`, `O`, `u`) are not wired yet. Output comes from `Query::CheckOutput` and is fetched again when a new run replaces the result. Command output is not trusted: colour codes and control characters are stripped before drawing.
+
 Mark one selected sidebar row independently from hover: the keyboard selection stays selected when the mouse moves; hover is a separate, quieter tint. The open session keeps a dim selection bar while another row is under the keyboard. Preserve agent status icons and colors in each state.
 
 Settings opens on General and reports installed, window and daemon versions separately, with a labeled remote daemon and restart-pending notice when they differ. General groups controls under INPUT, LAYOUT, SHELL and UPDATES. Show the update action only when an update is available; keep release notes and confirmation in the existing flow.
@@ -194,7 +196,7 @@ agent is working or asking, draws exactly as without checks.
 - The collapsed rail shows the same glyph. The ring turns with the motion setting;
   the working spinner choice is unchanged.
 - Colours are existing theme slots only; there is no check role. Code lives in
-  `client/hydra/check.rs`.
+  `client/hydra/check.rs`; the evidence sheet is `client/hydra/check_sheet.rs`.
 
 ## Project-specific: collapsed sidebar
 

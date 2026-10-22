@@ -49,7 +49,7 @@ or another program follow that program's own help.
 | --- | --- |
 | Up / k, Down / j, Home, End | Browse rows, first row, last row; active session stays selected |
 | Right, Left | Expand project or enter session; fold project or go to session's project |
-| Enter | Toggle project or open selected session; opening a sleeping session wakes it |
+| Enter | Toggle project or open selected session; opening a sleeping session wakes it. On a session whose check failed, could not run or was overridden, open its evidence sheet instead |
 | Space | Open New for the selected project |
 | m, i, s, a | Follow-up to selected agent, status evidence, inspect its subagent activity, Actions |
 | Up, Down in the activity inspector | Inspect the previous or next child record |
@@ -147,6 +147,14 @@ or another program follow that program's own help.
 | Up, Down, PgUp, PgDn in shared-file diffs | Scroll both checkout diffs together |
 | m, M, k in shared-file diffs | Message first agent, message second agent, dismiss warning |
 | Esc | Close Changes or shared-file diffs |
+
+## Check evidence sheet
+
+| Keys | Action |
+| --- | --- |
+| Up, Down, PgUp, PgDn | Scroll the output; the first press leaves the tail that fits |
+| f | Show all the output, or return to the tail |
+| Esc | Close the sheet |
 
 ## Branches and worktree cleanup
 

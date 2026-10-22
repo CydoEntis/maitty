@@ -150,7 +150,9 @@ impl App {
         }
         match self.mode.clone() {
             Mode::Normal => {
-                if hydra::Look::of(&self.cfg.ui).flat && matches!(k.code, KeyCode::Tab | KeyCode::BackTab | KeyCode::Esc) {
+                // Esc belongs to the evidence sheet while it is open: it closes it.
+                let closes_sheet = k.code == KeyCode::Esc && matches!(self.view, Some(View::Check(_)));
+                if hydra::Look::of(&self.cfg.ui).flat && matches!(k.code, KeyCode::Tab | KeyCode::BackTab | KeyCode::Esc) && !closes_sheet {
                     self.mode = Mode::Side;
                     self.hy.cursor = self.focused();
                     self.hy.cursor_proj = None;
@@ -951,7 +953,7 @@ impl App {
                             self.on_view_key(&KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
                         }
                     }
-                    Some(View::Both(_)) | None => {}
+                    Some(View::Both(_) | View::Check(_)) | None => {}
                 },
             },
             _ => return false,

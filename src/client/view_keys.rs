@@ -22,6 +22,11 @@ impl App {
                     self.view = Some(View::Both(v));
                 }
             }
+            View::Check(mut v) => {
+                if self.on_check_key(&mut v, k) {
+                    self.view = Some(View::Check(v));
+                }
+            }
         }
     }
 

@@ -66,7 +66,7 @@ pub(super) fn color(t: &Theme, info: &CheckInfo) -> Color {
     }
 }
 
-fn duration(ms: u64) -> String {
+pub(super) fn duration(ms: u64) -> String {
     let secs = ms / 1000;
     if secs < SECS_PER_MIN { format!("{:.1}s", ms as f64 / 1000.0) } else { format!("{}m {}s", secs / SECS_PER_MIN, secs % SECS_PER_MIN) }
 }

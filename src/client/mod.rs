@@ -125,6 +125,8 @@ pub(super) enum View {
     Files(Box<views::FilesTree>),
     /// Both diffs of a file two checkouts changed (in the sheet).
     Both(Box<hydra::BothView>),
+    /// A check's evidence (in the sheet).
+    Check(Box<hydra::CheckView>),
 }
 
 /// Clickable chips and buttons.
