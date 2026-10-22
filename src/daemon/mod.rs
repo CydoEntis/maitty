@@ -4,9 +4,13 @@
 //! scanner, background git work and client connections talk to it through a single
 //! channel, so there is no locking around the model.
 
+#[cfg_attr(not(test), expect(dead_code, reason = "the repo-approval work wires approvals in"))]
+mod approvals;
 mod check;
 #[cfg(test)]
 pub use check::first_failing_line;
+#[expect(dead_code, reason = "the checkpoint runs resolve through it; the gates come with repo checks")]
+mod check_source;
 mod git;
 mod persist;
 mod scan;

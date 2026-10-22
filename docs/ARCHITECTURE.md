@@ -74,6 +74,8 @@ src/
     worktrees.rs making and trusting worktrees, spares, hooks, cleanup
     restore.rs   saving sessions and recovering agents left asleep by older versions
     check.rs     a pane's check result, and the runner: the project's check command run in the session's worktree when a turn ends
+    check_source.rs which checks a project has, where each comes from, whether it may run
+    approvals.rs your Always / Never for repo-supplied check commands, kept in Seshi's data folder
     term.rs      one pane: PTY, input thread, vt100 emulator
     scan.rs, git.rs, persist.rs
   client/        the UI
