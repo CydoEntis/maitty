@@ -3791,6 +3791,19 @@ mod check_row_tests {
     }
 
     #[test]
+    fn the_home_counters_count_an_approval_as_needs_you_and_stale_or_never_as_finished() {
+        let extra = [
+            ("t-approve", Status::Done, Some(info(CheckState::NeedsApproval, None))),
+            ("t-stale", Status::Done, Some(info(CheckState::Stale, Some(0)))),
+            ("t-never", Status::Done, Some(info(CheckState::Never, None))),
+        ];
+        for layout in LAYOUTS {
+            let line = splash_line(160, 45, layout, &extra);
+            assert!(line.contains("2 need you") && line.contains("2 finished") && !line.contains("check"), "{}: {line}", label(layout, 160, 45));
+        }
+    }
+
+    #[test]
     fn the_lead_in_gives_way_to_a_failed_check_count_when_the_line_is_too_wide() {
         let failed = [("t-failed", Status::Done, Some(info(CheckState::Failed, Some(1))))];
         for layout in LAYOUTS {

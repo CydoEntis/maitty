@@ -495,6 +495,11 @@ fn draw_head(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme
     }
 }
 
+/// A terminal with nothing to report is marked by its prompt arrow, not an idle state.
+pub(super) fn plain_shell(s: &Session) -> bool {
+    !s.is_agent && !s.asleep && s.status == Status::None && check::shown(s).is_none()
+}
+
 /// A session's first line: its mark, its name and how long ago its state began.
 #[allow(clippy::too_many_arguments)]
 fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, cols: Cols, y: u16, indent: u16, rl: RowLook, t: &Theme, ages: bool) {
@@ -503,8 +508,7 @@ fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, cols: Cols, y: u16
     let state = check::kind(s);
     let failed = state == State::Failed;
     let st = Style::default().bg(rl.bg);
-    let shell = !s.is_agent && !s.asleep && s.status == Status::None && check::shown(s).is_none();
-    let (g, gc) = if shell { ("›", t.muted) } else { (mark.glyph, rl.paint(t, mark.color)) };
+    let (g, gc) = if plain_shell(s) { ("›", t.muted) } else { (mark.glyph, rl.paint(t, mark.color)) };
     let mut gs = st.fg(gc);
     if matches!(state, State::Failed | State::Needs | State::Approve) {
         gs = gs.add_modifier(Modifier::BOLD);
