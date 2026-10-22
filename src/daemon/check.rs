@@ -621,6 +621,7 @@ mod tests {
         assert!(!alive(), "the child {pid} outlived the check");
     }
 
+    #[cfg(target_os = "linux")]
     const KILLED_DAEMON_ENV: &str = "SESHI_TEST_CHECK_AS_DAEMON";
 
     /// Run as the stand-in daemon for `a_check_dies_with_the_daemon_that_started_it`: start a
