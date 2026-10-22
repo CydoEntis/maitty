@@ -379,7 +379,7 @@ mod screen_tests {
             if row != active_y {
                 assert_eq!(terminal.backend().buffer()[(x + 8, active_y)].bg, active_bg, "pointing elsewhere leaves the open row as it is");
             }
-            assert_eq!(terminal.backend().buffer()[(x + 1, active_y)].symbol(), "▎");
+            assert_eq!(terminal.backend().buffer()[(x + 2, active_y)].symbol(), "▎");
         }
         app.on_mouse(MouseEvent { kind: MouseEventKind::Moved, column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
@@ -387,9 +387,9 @@ mod screen_tests {
         app.screen_side_set(screen::SideItem::Sess(2));
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = terminal.backend().buffer();
-        assert_eq!(buf[(x + 1, active_y)].symbol(), "▎", "the open row keeps a bar");
-        assert_eq!(buf[(x + 1, hover_y)].symbol(), "▎", "and so does the one under the keyboard");
-        assert_eq!((buf[(x + 1, hover_y)].fg, buf[(x + 1, active_y)].fg), (app.theme.accent, app.theme.muted), "lime for the cursor, dim for the open one");
+        assert_eq!(buf[(x + 2, active_y)].symbol(), "▎", "the open row keeps a bar");
+        assert_eq!(buf[(x + 2, hover_y)].symbol(), "▎", "and so does the one under the keyboard");
+        assert_eq!((buf[(x + 2, hover_y)].fg, buf[(x + 2, active_y)].fg), (app.theme.accent, app.theme.muted), "lime for the cursor, dim for the open one");
         app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
         app.on_mouse(MouseEvent { kind: MouseEventKind::Up(MouseButton::Left), column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
         assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 }))));
@@ -397,11 +397,11 @@ mod screen_tests {
         app.screen_sync();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         assert_eq!(app.focused(), Some(2));
-        assert_eq!(terminal.backend().buffer()[(x + 1, hover_y)].symbol(), "▎");
+        assert_eq!(terminal.backend().buffer()[(x + 2, hover_y)].symbol(), "▎");
         app.snap.terms.get_mut(&2).unwrap().asleep = true;
         app.screen_fresh();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
-        assert_eq!(terminal.backend().buffer()[(x + 1, hover_y)].symbol(), "▎", "sleep glyphs leave the selection bar visible");
+        assert_eq!(terminal.backend().buffer()[(x + 2, hover_y)].symbol(), "▎", "sleep glyphs leave the selection bar visible");
     }
 
     #[test]
@@ -602,7 +602,7 @@ mod screen_tests {
         assert!(text.contains("+ new") && text.contains("actions"), "New and Actions stay in the sidebar foot");
         assert!(lines[0].contains("─ 1  ") && !lines[0].contains(" + ") && !lines[0].contains('▯'), "the tab's number and name in the pane's title; no + chip, no layout switch: {}", lines[0]);
         // Projects and their sessions, nothing in between.
-        assert!(text.contains("▾ shop-api") && text.contains("● 1"), "a project: its fold arrow and name, what needs you on the right");
+        assert!(text.contains("▾ shop-api") && text.contains("SESSIONS") && text.contains("●1"), "a project: its fold arrow and name; what needs you in the sidebar's title");
         assert!(!text.contains("AGENTS") && !text.contains("TERMINALS") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "no heading per kind of session");
         assert!(!text.contains("main folder"), "no 'main folder' wording");
         assert!(!text.contains("+ open a project"), "opening a project is in the header now");
@@ -872,7 +872,7 @@ mod screen_tests {
         // The sidebar: sessions right under their project, worktree sessions tagged.
         let o = draw(&mut app, 160, 45);
         assert!(!o.contains("WORKTREES") && !o.contains("BRANCHES"), "no folder headings");
-        assert!(o.contains("rate") && o.contains(" · 2m"), "a worktree session is named after it, with its agent and age");
+        assert!(o.contains("rate") && o.contains(" 2m") && o.contains("codex · working"), "a worktree session is named after it, with its age and what its agent is doing");
 
         // Resizing the sidebar, within its limits.
         let before = app.screen.side_rect.width;
@@ -1928,13 +1928,14 @@ mod screen_tests {
 
     #[test]
     fn a_small_window_tightens() {
-        let (o, _) = super::design_tests::render_with(100, 30);
+        let (o, app) = super::design_tests::render_with(100, 30);
         show(&o);
         let lines: Vec<&str> = o.lines().collect();
         // A 26-column sidebar card, no right-hand meta or question lines.
         assert!(lines[0].starts_with('┌') && lines[0].chars().nth(25) == Some('┐'), "a slim sidebar: {}", lines[0]);
         let side: String = lines.iter().map(|l| l.chars().take(30).collect::<String>() + "\n").collect();
-        assert!(!side.contains("main · 3m") && !side.contains("Run npm test"), "no meta or questions in the slim sidebar: {side}");
+        assert!(!side.contains("codex · working"), "no second line for a row that only works: {side}");
+        assert!(side.contains("asks: Run npm"), "a question keeps its line: {side}");
         assert!(o.contains("+ new") && o.contains("actions"), "both controls fit at the sidebar foot");
         assert!(!o.contains("? keys") && !o.contains("inbox"), "there is no full-width status footer");
     }
@@ -2496,13 +2497,13 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_tight_row_shows_its_tool_as_an_icon() {
+    fn a_long_name_gives_way_to_its_age() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.snap.terms.get_mut(&2).unwrap().label = "Rate limiter rework".into();
+        app.snap.terms.get_mut(&2).unwrap().label = "Rate limiter rework for login and signup".into();
         app.screen_fresh();
         let o = draw(&mut app, 140, 30);
         show(&o);
-        assert!(o.contains("◆ ") && !o.contains("codex ·"), "codex's row keeps its icon when it's tight");
+        assert!(o.lines().any(|l| l.contains("Rate limiter") && l.contains("…") && l.contains(" 2m")), "the name is cut, the age stays: {o}");
     }
 
     #[test]
@@ -2695,8 +2696,9 @@ mod screen_tests {
         app.screen_side_set(screen::SideItem::Sess(2));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        let legacy_ui = o.lines().find(|line| line.contains("asleep") || line.contains("zzZ") || line.contains("waking up"));
+        let legacy_ui = o.lines().find(|line| line.contains("waking up"));
         assert!(legacy_ui.is_none(), "legacy status UI is absent: {legacy_ui:?}");
+        assert!(o.contains("asleep zzZ"), "the v7 row says it is asleep in words");
         assert!(!o.contains("the last thing codex said"), "sidebar selection doesn't replace the focused pane");
         assert!(!app.panes.iter().any(|(term, _)| *term == 2), "legacy pane preview is removed");
     }
@@ -2743,7 +2745,7 @@ mod screen_tests {
     #[test]
     fn the_selected_row_still_says_its_state_in_every_theme() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        // The colour of a row's name in the sidebar (its first letter).
+        // The colour of a row's mark in the sidebar, left of its name.
         let name_fg = |app: &mut App, name: &str| {
             app.screen_fresh();
             let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
@@ -2754,7 +2756,7 @@ mod screen_tests {
                 .flat_map(|y| (0..30u16).map(move |x| (x, y)))
                 .find(|&(x, y)| letters.iter().enumerate().all(|(i, l)| buf[(x + i as u16, y)].symbol() == l))
                 .unwrap_or_else(|| panic!("{name} is in the sidebar"));
-            (buf[(x, y)].fg, buf[(x, y)].bg)
+            (buf[(x - 2, y)].fg, buf[(x - 2, y)].bg)
         };
         for theme in crate::theme::BUILTIN.iter().filter(|n| **n != "mono") {
             app.cfg.theme = theme.to_string();
@@ -2769,14 +2771,14 @@ mod screen_tests {
                 assert_eq!(fg, want, "{theme}: {status:?} keeps its colour on the lit row");
                 assert!(crate::theme::contrast(fg, bg) >= 3.0, "{theme}: and reads there");
             }
-            // Working is neutral: never the amber of needs-you or the green of done.
+            // Working is the accent, as everywhere.
             app.snap.terms.get_mut(&1).unwrap().status = Status::Working;
             let (fg, bg) = name_fg(&mut app, "claude");
-            assert!(fg != t.blocked && fg != t.done, "{theme}: working isn't a state colour on the lit row");
+            assert_eq!(fg, t.on_lit(t.accent), "{theme}: working is the accent on the lit row");
             assert!(crate::theme::contrast(fg, bg) >= 3.0, "{theme}: and reads there");
-            // No state to show: bright, as before.
+            // No state to show: a quiet mark.
             app.snap.terms.get_mut(&1).unwrap().status = Status::Idle;
-            assert_eq!(name_fg(&mut app, "claude").0, t.strong, "{theme}: idle is plain bright text");
+            assert_eq!(name_fg(&mut app, "claude").0, t.on_lit(t.muted), "{theme}: idle is a quiet mark");
         }
     }
 
@@ -3358,26 +3360,26 @@ mod screen_tests {
     }
 
     #[test]
-    fn agent_names_wear_their_state() {
+    fn agent_marks_wear_their_state() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // Nothing lit by the keyboard, and the window on neither of them.
         app.screen.cursor = None;
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
-        // The first letter of a sidebar row's name (the sidebar only, not the card titles).
+        // The mark left of a sidebar row's name (the sidebar only, not the card titles).
         let side = app.screen.side_rect.right();
-        let name_at = |name: &str| {
+        let mark_at = |name: &str| {
             (0..45u16).find_map(|y| {
                 let row: String = (0..side).map(|x| buf[(x, y)].symbol().to_string()).collect();
                 let col = row.find(&format!(" {name} "))?;
-                Some(buf[(row[..col + 1].chars().count() as u16, y)].fg)
+                Some(buf[(row[..col].chars().count() as u16 - 1, y)].fg)
             })
         };
         let t = &app.theme;
-        assert_eq!(name_at("claude"), Some(t.blocked), "needs you: its colour");
-        let codex = name_at("rate-limit").or_else(|| name_at("rate")).expect("the working codex in the sidebar (named for its worktree)");
-        assert!(codex != t.blocked && codex != t.done, "working is neutral, never amber or green: {codex:?}");
+        assert_eq!(mark_at("claude"), Some(t.blocked), "needs you: its colour");
+        let codex = mark_at("rate-limit").or_else(|| mark_at("rate")).expect("the working codex in the sidebar (named for its worktree)");
+        assert!(codex != t.blocked && codex != t.done, "working is neither amber nor green: {codex:?}");
     }
 
     #[test]
@@ -3447,11 +3449,9 @@ mod screen_tests {
         let buf = term.backend().buffer().clone();
         let row = |y: u16| (0..40u16).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>();
         let y = (0..30).find(|&y| row(y).contains("rate")).expect("codex's row");
-        assert!(row(y).contains('●') && !row(y).contains('♪'), "the done dot, not the bell: {:?}", row(y));
-        let dot = (0..40u16).find(|&x| buf[(x, y)].symbol() == "●").unwrap();
-        assert_eq!(buf[(dot, y)].fg, app.theme.done, "a green dot");
-        let name = (0..40u16).find(|&x| buf[(x, y)].symbol() == "r").unwrap();
-        assert_eq!(buf[(name, y)].fg, app.theme.done, "and green text");
+        assert!(row(y).contains('✓') && !row(y).contains('♪'), "the done mark, not the bell: {:?}", row(y));
+        let dot = (0..40u16).find(|&x| buf[(x, y)].symbol() == "✓").unwrap();
+        assert_eq!(buf[(dot, y)].fg, app.theme.done, "a green mark");
     }
 
     #[test]
@@ -3672,12 +3672,17 @@ mod check_row_tests {
         words: &'static str,
     }
 
-    const CASES: [Case; 5] = [
-        Case { state: CheckState::Checking, exit: None, glyph: "◜", plain: "-", words: "checking" },
-        Case { state: CheckState::Passed, exit: Some(0), glyph: "✓", plain: "+", words: "✓ · 14.2s" },
-        Case { state: CheckState::Failed, exit: Some(1), glyph: "✕", plain: "x", words: "· exit 1" },
-        Case { state: CheckState::Overridden, exit: Some(1), glyph: "⊘", plain: "/", words: "✕ overridden by you" },
-        Case { state: CheckState::CouldNotRun, exit: Some(127), glyph: "?", plain: "?", words: "could not run" },
+    /// Each v7 state's glyph (Unicode, ASCII) and the start of its line, short enough for the
+    /// 80-column sidebar.
+    const CASES: [Case; 8] = [
+        Case { state: CheckState::Checking, exit: None, glyph: "◜", plain: "-", words: "checking ci" },
+        Case { state: CheckState::Passed, exit: Some(0), glyph: "✓", plain: "+", words: "passed: ci · 14.2s" },
+        Case { state: CheckState::Failed, exit: Some(1), glyph: "✕", plain: "x", words: "failed: ci · exit 1" },
+        Case { state: CheckState::Overridden, exit: Some(1), glyph: "⊘", plain: "/", words: "failed, overridden" },
+        Case { state: CheckState::CouldNotRun, exit: Some(127), glyph: "?", plain: "?", words: "ci could not run" },
+        Case { state: CheckState::Stale, exit: Some(0), glyph: "◷", plain: "~", words: "stale pass: ci" },
+        Case { state: CheckState::Never, exit: None, glyph: "?", plain: "?", words: "not checked: never" },
+        Case { state: CheckState::NeedsApproval, exit: None, glyph: "●", plain: "!", words: "approve check: just" },
     ];
 
     fn now() -> u64 {
@@ -3685,7 +3690,7 @@ mod check_row_tests {
     }
 
     fn info(state: CheckState, exit: Option<i32>) -> CheckInfo {
-        CheckInfo { command: COMMAND.into(), state, exit_code: exit, started_at: now() - 180, duration_ms: 14_200, ..Default::default() }
+        CheckInfo { name: "ci".into(), command: COMMAND.into(), state, exit_code: exit, started_at: now() - 180, duration_ms: 14_200, ..Default::default() }
     }
 
     /// The shop-api scene plus one finished agent per entry of `extra`, each with its check.
@@ -3741,6 +3746,11 @@ mod check_row_tests {
         (r.x..r.right()).map(|x| &buf[(x, y)]).find(|c| c.symbol() == symbol).unwrap_or_else(|| panic!("no {symbol} on row {y}"))
     }
 
+    /// The column a row's edge bar is drawn in: the handoff's X.
+    fn bar_column(app: &App) -> u16 {
+        app.screen.side_rect.x + if app.cfg.ui.layout == "flat" { 1 } else { 2 }
+    }
+
     fn label(layout: (&str, &str), w: u16, h: u16) -> String {
         format!("{}/{} {w}x{h}", layout.0, layout.1)
     }
@@ -3776,6 +3786,19 @@ mod check_row_tests {
                 assert!(line.contains("1 need you") && line.contains("1 still working"), "{at}");
                 assert!(unicode_width::UnicodeWidthStr::width(line.as_str()) <= w as usize, "{at}");
             }
+        }
+    }
+
+    #[test]
+    fn the_home_counters_count_an_approval_as_needs_you_and_stale_or_never_as_finished() {
+        let extra = [
+            ("t-approve", Status::Done, Some(info(CheckState::NeedsApproval, None))),
+            ("t-stale", Status::Done, Some(info(CheckState::Stale, Some(0)))),
+            ("t-never", Status::Done, Some(info(CheckState::Never, None))),
+        ];
+        for layout in LAYOUTS {
+            let line = splash_line(160, 45, layout, &extra);
+            assert!(line.contains("2 need you") && line.contains("2 finished") && !line.contains("check"), "{}: {line}", label(layout, 160, 45));
         }
     }
 
@@ -3827,12 +3850,8 @@ mod check_row_tests {
                     let y = row_of(&buf, &app, NAME);
                     let at = label(layout, w, h);
                     assert!(side_text(&buf, &app, y).contains(c.glyph), "{at} {:?}: glyph {} on {:?}", c.state, c.glyph, side_text(&buf, &app, y));
-                    if w >= screen::NARROW {
-                        assert!(side_text(&buf, &app, y + 1).contains(c.words), "{at} {:?}: {:?} under the row, got {:?}", c.state, c.words, side_text(&buf, &app, y + 1));
-                    } else {
-                        let all: String = (0..h).map(|y| side_text(&buf, &app, y)).collect();
-                        assert!(!all.contains(COMMAND), "{at} {:?}: the narrow sidebar drops the sub-line", c.state);
-                    }
+                    let words = if w < 100 { &c.words[..c.words.len().min(16)] } else { c.words };
+                    assert!(side_text(&buf, &app, y + 1).contains(words), "{at} {:?}: {words:?} under the row at every width, got {:?}", c.state, side_text(&buf, &app, y + 1));
                 }
             }
         }
@@ -3850,8 +3869,9 @@ mod check_row_tests {
                     CheckState::Checking => t.sky(),
                     CheckState::Passed => t.done,
                     CheckState::Failed => t.err,
-                    CheckState::Overridden => t.text,
-                    CheckState::CouldNotRun => t.muted,
+                    CheckState::Overridden | CheckState::Stale => t.text,
+                    CheckState::CouldNotRun | CheckState::Never => t.violet(),
+                    CheckState::NeedsApproval => t.blocked,
                     other => unreachable!("not among the cases: {other:?}"),
                 };
                 let y = row_of(&buf, &app, NAME);
@@ -3860,8 +3880,8 @@ mod check_row_tests {
                 if c.state == CheckState::Failed {
                     assert!(cell.modifier.contains(Modifier::BOLD), "failed is bold");
                 }
-                if c.state == CheckState::Overridden {
-                    assert_ne!(cell.fg, t.done, "an override is never green");
+                if matches!(c.state, CheckState::Overridden | CheckState::Stale) {
+                    assert_ne!(cell.fg, t.done, "an override or a stale pass is never green");
                 }
             }
         }
@@ -3875,7 +3895,7 @@ mod check_row_tests {
                 let mut app = one(w, h, layout, c);
                 let buf = render(&mut app, w, h);
                 let y = row_of(&buf, &app, NAME);
-                let bar_x = app.screen.side_rect.x + 1;
+                let bar_x = bar_column(&app);
                 for line in [y, y + 1] {
                     let cell = &buf[(bar_x, line)];
                     let red = cell.symbol() == EDGE_BAR && cell.fg == app.theme.err;
@@ -3913,10 +3933,9 @@ mod check_row_tests {
                 let at = label(layout, w, h);
                 let (far_y, bare_y) = (row_of(&buf, &app, "t-far"), row_of(&buf, &app, "t-bare"));
                 assert!(side_text(&buf, &app, far_y).contains('✕'), "{at}: glyph on its own row");
-                let wide = w >= screen::NARROW;
-                assert_eq!(side_text(&buf, &app, far_y + 1).contains("failed:"), wide, "{at}: sub-line directly under it, wide only");
-                let bar_x = app.screen.side_rect.x + 1;
-                for line in if wide { vec![far_y, far_y + 1] } else { vec![far_y] } {
+                assert!(side_text(&buf, &app, far_y + 1).contains("failed:"), "{at}: its line directly under it");
+                let bar_x = bar_column(&app);
+                for line in [far_y, far_y + 1] {
                     assert_eq!(buf[(bar_x, line)].symbol(), EDGE_BAR, "{at}: edge bar on line {line}");
                 }
                 let all: String = (bare_y..bare_y + 2).map(|y| side_text(&buf, &app, y)).collect();
@@ -3967,26 +3986,31 @@ mod check_row_tests {
                 show(&plain, &format!("no check {}", label(layout, w, h)));
                 let all: String = (0..h).map(|y| side_text(&plain, &none, y)).collect();
                 assert!(!all.contains(COMMAND) && !all.contains('⊘') && !all.contains('✕'), "{}", label(layout, w, h));
-                // A result about a turn that is no longer the last one is not drawn.
+                // A result about a turn that is no longer the last one is not drawn on its row.
                 for status in [Status::Working, Status::Blocked] {
                     let failed = Some(info(CheckState::Failed, Some(1)));
                     let mut app = scene(w, h, layout, &[(NAME, status, failed)]);
                     let mut bare = scene(w, h, layout, &[(NAME, status, None)]);
-                    assert_eq!(render(&mut app, w, h), render(&mut bare, w, h), "{} {status:?}", label(layout, w, h));
+                    let rows = |app: &App, buf: &Buffer| {
+                        let y = row_of(buf, app, NAME);
+                        (y..y + 2).map(|y| side_text(buf, app, y)).collect::<Vec<_>>()
+                    };
+                    let (with, without) = (render(&mut app, w, h), render(&mut bare, w, h));
+                    assert_eq!(rows(&app, &with), rows(&bare, &without), "{} {status:?}", label(layout, w, h));
                 }
             }
         }
     }
 
     #[test]
-    fn a_narrow_sidebar_drops_the_words_before_the_glyph_and_keeps_the_folder_name() {
+    fn a_narrow_sidebar_keeps_the_check_line_and_the_folder_name() {
         let (w, h) = (80, 24);
         for layout in LAYOUTS {
             let mut app = one(w, h, layout, &CASES[2]);
             let buf = render(&mut app, w, h);
             let y = row_of(&buf, &app, NAME);
             assert!(side_text(&buf, &app, y).contains('✕'), "the glyph stays");
-            assert!(!side_text(&buf, &app, y + 1).contains("failed"), "the sub-line goes");
+            assert!(side_text(&buf, &app, y + 1).contains("failed: ci"), "and so does the result's line");
             assert!(side_text(&buf, &app, row_of(&buf, &app, "shop-api")).contains("shop-api"), "{}: folder name whole", label(layout, w, h));
         }
     }
@@ -4003,7 +4027,7 @@ mod check_row_tests {
     }
 
     #[test]
-    fn a_narrow_check_adds_no_row() {
+    fn a_narrow_check_adds_only_its_result_line() {
         const AFTER: &str = "after-agent";
         for layout in LAYOUTS {
             for (w, h) in [(80, 24), (100, 30)] {
@@ -4013,8 +4037,8 @@ mod check_row_tests {
                     let buf = render(&mut app, w, h);
                     (row_of(&buf, &app, AFTER), app.screen.row_y.len())
                 };
-                let with = rows(Some(info(CheckState::Failed, Some(1))));
-                assert_eq!(with, rows(None), "{at}: a checked session takes the same rows as an unchecked one");
+                let (with, without) = (rows(Some(info(CheckState::Failed, Some(1)))), rows(None));
+                assert_eq!(with, (without.0 + 1, without.1), "{at}: below 140 columns an unchecked row is one line, a checked one two");
             }
         }
     }
@@ -4042,14 +4066,19 @@ mod check_row_tests {
     }
 
     #[test]
-    fn a_long_command_gives_way_so_the_exit_code_still_reads() {
+    fn a_result_names_its_checkpoint_and_an_approval_its_command() {
         let (w, h) = (160, 45);
         let mut long = info(CheckState::Failed, Some(1));
         long.command = "npm run test:unit -- --coverage".into();
-        let mut app = scene(w, h, ("cards", "floating"), &[(NAME, Status::Done, Some(long))]);
+        let mut app = scene(w, h, ("cards", "floating"), &[(NAME, Status::Done, Some(long.clone()))]);
         let buf = render(&mut app, w, h);
         let sub = side_text(&buf, &app, row_of(&buf, &app, NAME) + 1);
-        assert!(sub.contains("failed: ") && sub.contains("exit 1") && sub.contains('…'), "{sub:?}");
+        assert!(sub.contains("failed: ci · exit 1") && !sub.contains("npm"), "{sub:?}");
+        let approve = CheckInfo { state: CheckState::NeedsApproval, exit_code: None, ..long };
+        let mut app = scene(w, h, ("cards", "floating"), &[(NAME, Status::Done, Some(approve))]);
+        let buf = render(&mut app, w, h);
+        let sub = side_text(&buf, &app, row_of(&buf, &app, NAME) + 1);
+        assert!(sub.contains("approve check: npm run test") && !sub.contains("coverage"), "the command, cut at the edge: {sub:?}");
     }
 }
 
@@ -4311,16 +4340,16 @@ mod check_sheet_tests {
         words(&cols.replace(['▕', '▏', '▁', '▔', '│', '┃', '▎'], " "))
     }
 
+    /// The colour of `needle` in the sheet: its right-most place on screen, since the sidebar
+    /// can show a failing line too.
     fn fg_at(buf: &Buffer, needle: &str) -> Color {
         let a = buf.area;
-        for y in 0..a.height {
-            let row: Vec<String> = (0..a.width).map(|x| buf[(x, y)].symbol().to_string()).collect();
-            let line = row.concat();
-            if let Some(at) = line.find(needle) {
-                return buf[(line[..at].chars().count() as u16, y)].fg;
-            }
-        }
-        panic!("no {needle:?} on screen in\n{}", frame(buf));
+        let found = (0..a.height).filter_map(|y| {
+            let line: String = (0..a.width).map(|x| buf[(x, y)].symbol().to_string()).collect();
+            line.rfind(needle).map(|at| (line[..at].chars().count() as u16, y))
+        });
+        let (x, y) = found.max_by_key(|(x, _)| *x).unwrap_or_else(|| panic!("no {needle:?} on screen in\n{}", frame(buf)));
+        buf[(x, y)].fg
     }
 
     fn press(app: &mut App, code: KeyCode) {
@@ -5096,7 +5125,9 @@ mod check_settings_tests {
                 (normal, draw(&mut app, 100, 30))
             };
             let (plain, with) = (frames(false), frames(true));
-            assert_eq!(plain.0, with.0, "{name}: the sidebar ignores a project's check");
+            // The folder's meta names its checkpoint; nothing else changes.
+            let rest = |s: &str| s.lines().filter(|l| !l.contains("▾ shop-api")).collect::<Vec<_>>().join("\n");
+            assert_eq!(rest(&plain.0), rest(&with.0), "{name}: the sidebar ignores a project's check but in its folder's meta");
             // Flat draws keycaps with or without edge glyphs depending on what other tests set, so
             // compare the page's words and not its padding.
             let squash = |s: &str| s.split_whitespace().collect::<String>();
@@ -5377,14 +5408,72 @@ mod check_wiring_tests {
         let offered = |state: Option<CheckState>| {
             let (app, _) = rig(100, 30, |_| {}, state.map(info), Status::Done);
             let l = labels(&app);
-            ["Check output", "Re-run check", "Override check…"].map(|want| l.iter().any(|x| x == want))
+            ["Check output", "Re-run check", "Override check…", "Undo override"].map(|want| l.iter().any(|x| x == want))
         };
-        assert_eq!(offered(None), [false, false, false], "no check, no items");
-        assert_eq!(offered(Some(CheckState::Checking)), [true, false, false], "running: its output, not a second run");
-        assert_eq!(offered(Some(CheckState::Passed)), [true, true, false]);
-        assert_eq!(offered(Some(CheckState::CouldNotRun)), [true, true, false]);
-        assert_eq!(offered(Some(CheckState::Overridden)), [true, true, false], "an override is not overridden twice");
-        assert_eq!(offered(Some(CheckState::Failed)), [true, true, true]);
+        assert_eq!(offered(None), [false, false, false, false], "no check, no items");
+        assert_eq!(offered(Some(CheckState::Checking)), [true, false, false, false], "running: its output, not a second run");
+        assert_eq!(offered(Some(CheckState::Passed)), [true, true, false, false]);
+        assert_eq!(offered(Some(CheckState::CouldNotRun)), [true, true, false, false]);
+        assert_eq!(offered(Some(CheckState::Overridden)), [true, true, false, true], "an override is not overridden twice, but can be taken back");
+        assert_eq!(offered(Some(CheckState::Failed)), [true, true, true, false]);
+    }
+
+    #[test]
+    fn a_checks_menu_items_keep_their_row_keys_and_rename_moves_over() {
+        let keyed = |state: Option<CheckState>| {
+            let (app, _) = rig(100, 30, |_| {}, state.map(info), Status::Done);
+            let items = app.session_items(TERM).unwrap().1;
+            items.iter().map(|(l, _)| l.clone()).zip(menu_keys(&items)).collect::<Vec<_>>()
+        };
+        let key = |keys: &[(String, Option<char>)], label: &str| keys.iter().find(|(l, _)| l == label).and_then(|(_, k)| *k);
+        assert_eq!(key(&keyed(None), "Rename"), Some('r'), "no check: Rename keeps r");
+        let failed = keyed(Some(CheckState::Failed));
+        assert_eq!(["Check output", "Re-run check", "Override check…"].map(|l| key(&failed, l)), [Some('o'), Some('r'), Some('O')]);
+        assert_eq!(key(&failed, "Rename"), Some('e'), "Rename takes its next free letter");
+        assert_eq!(key(&keyed(Some(CheckState::Overridden)), "Undo override"), Some('u'));
+        let running = keyed(Some(CheckState::Checking));
+        assert!(running.iter().all(|(l, k)| l.starts_with("Check") || !matches!(k, Some('r' | 'o' | 'u'))), "reserved even while it runs: {running:?}");
+    }
+
+    /// `state`'s session under the sidebar's keyboard cursor.
+    fn on_its_row(state: CheckState) -> (App, Rx) {
+        let (mut app, rx) = done(state);
+        app.mode = Mode::Side;
+        app.screen.cursor = Some(TERM);
+        (app, rx)
+    }
+
+    #[test]
+    fn the_sidebar_keys_act_on_the_rows_check_and_say_why_when_they_cant() {
+        let (mut app, mut rx) = on_its_row(CheckState::Failed);
+        press(&mut app, KeyCode::Char('r'));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1, "r re-runs a settled check");
+        let (mut app, _) = on_its_row(CheckState::Failed);
+        app.on_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), "O asks to override: {:?}", app.mode);
+        let (mut app, mut rx) = on_its_row(CheckState::Overridden);
+        press(&mut app, KeyCode::Char('u'));
+        assert!(commands(&mut rx).iter().any(|c| matches!(c, Command::UndoOverride { term: TERM, .. })), "u takes the override back");
+        let (mut app, mut rx) = on_its_row(CheckState::Failed);
+        press(&mut app, KeyCode::Char('u'));
+        assert!(sent(&mut rx).iter().all(|m| !matches!(m, ClientMsg::Input { .. })) && toast(&app).0.contains("no override"), "a key that doesn't apply says so and types nothing");
+        for state in [CheckState::Failed, CheckState::CouldNotRun, CheckState::Overridden, CheckState::Stale, CheckState::Never] {
+            let (mut app, _) = on_its_row(state);
+            press(&mut app, KeyCode::Enter);
+            assert!(matches!(&app.view, Some(View::Check(v)) if v.term == TERM), "{state:?}: Enter opens its evidence");
+        }
+        let (mut app, _) = on_its_row(CheckState::Passed);
+        press(&mut app, KeyCode::Enter);
+        assert!(app.view.is_none(), "a pass is not worth a look: Enter goes to the session");
+    }
+
+    #[test]
+    fn the_menu_tells_override_from_output_by_case() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        app.menu_for_session(TERM, (20, 10));
+        app.on_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), "O overrides: {:?}", app.mode);
+        assert!(commands(&mut rx).is_empty());
     }
 
     #[test]
@@ -5629,7 +5718,7 @@ mod check_wiring_tests {
         app.open_check_sheet(TERM);
         press(&mut app, KeyCode::Esc);
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("checking npm test") && ['◜', '◝', '◞', '◟'].iter().any(|g| o.contains(*g)), "the ring and its words:\n{o}");
+        assert!(o.contains("checking test ·") && ['◜', '◝', '◞', '◟'].iter().any(|g| o.contains(*g)), "the ring and its checkpoint's name:\n{o}");
         app.open_check_sheet(TERM);
         press(&mut app, KeyCode::Char('r'));
         assert!(commands(&mut rx).is_empty(), "the sheet offers no r while it runs");

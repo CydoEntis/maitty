@@ -33,7 +33,8 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     let buf = f.buffer_mut();
     fill(buf, area, t.bg);
     let all: Vec<&Session> = model.iter().flat_map(|p| p.sessions()).collect();
-    let n = |st: Status| all.iter().filter(|s| s.status == st).count();
+    let working = all.iter().filter(|s| s.status == Status::Working).count();
+    let needs = all.iter().filter(|s| check::needs_you(s)).count();
     let finished = all.iter().filter(|s| check::finished(s)).count();
     let check_failed = all.iter().filter(|s| check::shown(s).is_some_and(check::failed)).count();
     let mut y = area.y + area.height.saturating_sub(18) / 2;
@@ -63,9 +64,9 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     put(buf, center(TAG.width() as u16), y, &[seg(TAG, Style::default().fg(t.muted).bg(t.bg).add_modifier(Modifier::ITALIC))], area.right());
     y += 2;
     let mut counts = vec![
-        seg(format!("{} {} need you", app.cfg.icons.blocked, n(Status::Blocked)), Style::default().fg(t.blocked).add_modifier(Modifier::BOLD)),
+        seg(format!("{} {needs} need you", app.cfg.icons.blocked), Style::default().fg(t.blocked).add_modifier(Modifier::BOLD)),
         seg("   ", Style::default()),
-        seg(format!("{} {} still working", glyph(app, Status::Working), n(Status::Working)), Style::default().fg(t.text)),
+        seg(format!("{} {working} still working", glyph(app, Status::Working)), Style::default().fg(t.text)),
         seg("   ", Style::default()),
         seg(format!("{} {finished} finished", app.cfg.icons.done), Style::default().fg(t.done)),
     ];

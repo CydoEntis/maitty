@@ -59,6 +59,8 @@ pub enum Act {
     RerunCheck(TermId),
     /// Accept a failed check; the string is the reason typed in the confirm, possibly empty.
     OverrideCheck(TermId, String),
+    /// Take an override back: the check reads as failed again.
+    UndoOverride(TermId),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -308,9 +310,10 @@ impl App {
                     self.menu_act(a);
                 }
             }
-            // An item's key picks it.
-            KeyCode::Char(c) if menu_keys(&m.items).contains(&Some(c.to_ascii_lowercase())) => {
-                let i = menu_keys(&m.items).iter().position(|k| *k == Some(c.to_ascii_lowercase())).unwrap_or(0);
+            // An item's key picks it: as typed (O is not o), else whatever the case.
+            KeyCode::Char(c) if menu_keys(&m.items).iter().any(|k| *k == Some(c) || *k == Some(c.to_ascii_lowercase())) => {
+                let keys = menu_keys(&m.items);
+                let i = keys.iter().position(|k| *k == Some(c)).or_else(|| keys.iter().position(|k| *k == Some(c.to_ascii_lowercase()))).unwrap_or(0);
                 self.mode = Mode::Normal;
                 if let Some((_, a)) = m.items.get(i).cloned() {
                     self.menu_act(a);
@@ -583,6 +586,7 @@ impl App {
             Act::CheckOutput(t) => self.open_check_sheet(t),
             Act::RerunCheck(t) => self.rerun_check(t),
             Act::OverrideCheck(t, reason) => self.override_check(t, reason),
+            Act::UndoOverride(t) => self.undo_override(t),
         }
     }
 }
@@ -612,8 +616,20 @@ fn git_init(dir: &std::path::Path) -> Result<(), String> {
     run(&["commit", "-q", "-m", "Initial commit"]).map_err(|e| format!("the first commit failed ({e}); is git set up with your name and email?"))
 }
 
+/// A check's actions keep the keys they have on the row, in the evidence sheet and the Inbox.
+fn check_key(a: &Act) -> Option<char> {
+    match a {
+        Act::CheckOutput(_) => Some('o'),
+        Act::RerunCheck(_) => Some('r'),
+        Act::OverrideCheck(..) => Some('O'),
+        Act::UndoOverride(_) => Some('u'),
+        _ => None,
+    }
+}
+
 /// A key for each item: the first letter of its label not taken yet (j and k move).
-/// Numbered lists (presets) use their numbers.
+/// Numbered lists (presets) use their numbers. On a session with a check, its keys are
+/// reserved whichever of its actions apply, so the other items' letters never move.
 pub(super) fn menu_keys(items: &[(String, Act)]) -> Vec<Option<char>> {
     // Taken already where a row's letters work (the sidebar): moving, actions, follow-up, why.
     let mut used: Vec<char> = vec!['j', 'k', 'a', 'm', 'i'];
@@ -622,11 +638,17 @@ pub(super) fn menu_keys(items: &[(String, Act)]) -> Vec<Option<char>> {
     if items.iter().any(|(_, a)| closes(a)) {
         used.push('x');
     }
+    if items.iter().any(|(_, a)| check_key(a).is_some()) {
+        used.extend(['r', 'o', 'u']);
+    }
     items
         .iter()
         .map(|(l, a)| {
             if closes(a) {
                 return Some('x');
+            }
+            if let Some(key) = check_key(a) {
+                return Some(key);
             }
             if l.chars().next().is_some_and(|c| c.is_ascii_digit()) {
                 return None;

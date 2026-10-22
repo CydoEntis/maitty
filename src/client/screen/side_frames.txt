@@ -1,0 +1,1709 @@
+# The sidebar's inner rows in the v7 reference frames (docs/design/v7/render-frames.mjs), cut
+# to columns X-1..RX+1 of a card (X..RX in Flat) and its rows inside the border, as the v7
+# fixture draws them. "+++++" is the title's counts, right-aligned on the top row; "-----"
+# is the foot row; the rows between the last listed one and the foot are blank.
+# The handoff's sample data is swapped for the fixture's:
+# - the working spinner cell is "◌" (any glyph) and add-payments started 0s ago, not "now";
+# - quick-fox is unseen, so it reads "finished · not seen" at 140 columns and up;
+# - line 3 is the fixture's first failing line, and only on a failed row (checks7.js sets it
+#   on every stage, which the brief does not);
+# - C1 names the fixture's checkpoints, build and test, not commits/test/approval/review.
+===== None | floating | 160x45 | unicode
++++++ ●1
+
+  ▾ affiliate-site       ⎇ main
+ ▎ ✓ fix-footer              2m
+ ▎   finished · not seen
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== None | floating | 100x30 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ✓ fix-footer      2m
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== None | floating | 80x24 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ✓ fix-footer
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== None | tiled | 160x45 | unicode
++++++ ●1
+
+  ▾ affiliate-site       ⎇ main
+ ▎ ✓ fix-footer              2m
+ ▎   finished · not seen
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== None | tiled | 100x30 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ✓ fix-footer      2m
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== None | tiled | 80x24 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ✓ fix-footer
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== None | flat | 160x45 | unicode
++++++ ●1
+
+ ▾ affiliate-site         ⎇ main
+▎ ✓ fix-footer                2m
+▎   finished · not seen
+  ◌ add-payments              0s
+    claude · working
+
+ ▾ pixls                  no git
+  ● warm-finch                3m
+    asks: use pnpm or npm?
+
+ ▾ seshi                   ⎇ dev
+  ✓ quick-fox                 9h
+    finished · not seen
+  z old-moth                  2d
+    asleep zzZ
+-----  + new                 a actions
+===== None | flat | 100x30 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ main
+▎ ✓ fix-footer        2m
+  ◌ add-payments      0s
+
+ ▾ pixls          no git
+  ● warm-finch        3m
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox         9h
+  z old-moth          2d
+-----  + new         a actions
+===== None | flat | 80x24 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ main
+▎ ✓ fix-footer
+  ◌ add-payments
+
+ ▾ pixls          no git
+  ● warm-finch
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox
+  z old-moth
+-----  + new         a actions
+===== None | flat | 80x24 | ascii
++++++ !1
+
+ v affiliate-site git: …
+| + fix-footer
+  ◌ add-payments
+
+ v pixls          no git
+  ! warm-finch
+    asks: use pnpm or np
+
+ v seshi        git: dev
+  + quick-fox
+  z old-moth
+-----  + new         a actions
+===== Checking | floating | 160x45 | unicode
++++++ ●1
+
+  ▾ affiliate-site ⎇ main · ch…
+ ▎ ◜ fix-footer              2m
+ ▎   checking test · 6s
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Checking | floating | 100x30 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ◜ fix-footer      2m
+ ▎   checking test · 6s
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Checking | floating | 80x24 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ◜ fix-footer
+ ▎   checking test · 6s
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Checking | tiled | 160x45 | unicode
++++++ ●1
+
+  ▾ affiliate-site ⎇ main · ch…
+ ▎ ◜ fix-footer              2m
+ ▎   checking test · 6s
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Checking | tiled | 100x30 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ◜ fix-footer      2m
+ ▎   checking test · 6s
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Checking | tiled | 80x24 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ◜ fix-footer
+ ▎   checking test · 6s
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Checking | flat | 160x45 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ main · chec…
+▎ ◜ fix-footer                2m
+▎   checking test · 6s
+  ◌ add-payments              0s
+    claude · working
+
+ ▾ pixls                  no git
+  ● warm-finch                3m
+    asks: use pnpm or npm?
+
+ ▾ seshi                   ⎇ dev
+  ✓ quick-fox                 9h
+    finished · not seen
+  z old-moth                  2d
+    asleep zzZ
+-----  + new                 a actions
+===== Checking | flat | 100x30 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ mai…
+▎ ◜ fix-footer        2m
+▎   checking test · 6s
+  ◌ add-payments      0s
+
+ ▾ pixls          no git
+  ● warm-finch        3m
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox         9h
+  z old-moth          2d
+-----  + new         a actions
+===== Checking | flat | 80x24 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ mai…
+▎ ◜ fix-footer
+▎   checking test · 6s
+  ◌ add-payments
+
+ ▾ pixls          no git
+  ● warm-finch
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox
+  z old-moth
+-----  + new         a actions
+===== Checking | flat | 80x24 | ascii
++++++ !1
+
+ v affiliate-site git: …
+| - fix-footer
+|   checking test · 6s
+  ◌ add-payments
+
+ v pixls          no git
+  ! warm-finch
+    asks: use pnpm or np
+
+ v seshi        git: dev
+  + quick-fox
+  z old-moth
+-----  + new         a actions
+===== Passed | floating | 160x45 | unicode
++++++ ●1
+
+  ▾ affiliate-site ⎇ main · ch…
+ ▎ ✓ fix-footer              2m
+ ▎   passed: test · 14.2s · 14:2
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Passed | floating | 100x30 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ✓ fix-footer      2m
+ ▎   passed: test · 14.2
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Passed | floating | 80x24 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ✓ fix-footer
+ ▎   passed: test · 14.2
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Passed | tiled | 160x45 | unicode
++++++ ●1
+
+  ▾ affiliate-site ⎇ main · ch…
+ ▎ ✓ fix-footer              2m
+ ▎   passed: test · 14.2s · 14:2
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Passed | tiled | 100x30 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ✓ fix-footer      2m
+ ▎   passed: test · 14.2
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Passed | tiled | 80x24 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ✓ fix-footer
+ ▎   passed: test · 14.2
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Passed | flat | 160x45 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ main · chec…
+▎ ✓ fix-footer                2m
+▎   passed: test · 14.2s · 14:22
+  ◌ add-payments              0s
+    claude · working
+
+ ▾ pixls                  no git
+  ● warm-finch                3m
+    asks: use pnpm or npm?
+
+ ▾ seshi                   ⎇ dev
+  ✓ quick-fox                 9h
+    finished · not seen
+  z old-moth                  2d
+    asleep zzZ
+-----  + new                 a actions
+===== Passed | flat | 100x30 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ mai…
+▎ ✓ fix-footer        2m
+▎   passed: test · 14.2s
+  ◌ add-payments      0s
+
+ ▾ pixls          no git
+  ● warm-finch        3m
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox         9h
+  z old-moth          2d
+-----  + new         a actions
+===== Passed | flat | 80x24 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ mai…
+▎ ✓ fix-footer
+▎   passed: test · 14.2s
+  ◌ add-payments
+
+ ▾ pixls          no git
+  ● warm-finch
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox
+  z old-moth
+-----  + new         a actions
+===== Passed | flat | 80x24 | ascii
++++++ !1
+
+ v affiliate-site git: …
+| + fix-footer
+|   passed: test · 14.2s
+  ◌ add-payments
+
+ v pixls          no git
+  ! warm-finch
+    asks: use pnpm or np
+
+ v seshi        git: dev
+  + quick-fox
+  z old-moth
+-----  + new         a actions
+===== Failed | floating | 160x45 | unicode
++++++ ●1 ✕1
+
+  ▾ affiliate-site ⎇ main · ch…
+ ▎ ✕ fix-footer              2m
+ ▎   failed: test · exit 1
+ ▎   ✗ src/pages/legal.test.tsx
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Failed | floating | 100x30 | unicode
++++++ ●1 ✕1
+
+  ▾ affiliate-site
+ ▎ ✕ fix-footer      2m
+ ▎   failed: test · exit
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Failed | floating | 80x24 | unicode
++++++ ●1 ✕1
+
+  ▾ affiliate-site
+ ▎ ✕ fix-footer
+ ▎   failed: test · exit
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Failed | tiled | 160x45 | unicode
++++++ ●1 ✕1
+
+  ▾ affiliate-site ⎇ main · ch…
+ ▎ ✕ fix-footer              2m
+ ▎   failed: test · exit 1
+ ▎   ✗ src/pages/legal.test.tsx
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Failed | tiled | 100x30 | unicode
++++++ ●1 ✕1
+
+  ▾ affiliate-site
+ ▎ ✕ fix-footer      2m
+ ▎   failed: test · exit
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Failed | tiled | 80x24 | unicode
++++++ ●1 ✕1
+
+  ▾ affiliate-site
+ ▎ ✕ fix-footer
+ ▎   failed: test · exit
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Failed | flat | 160x45 | unicode
++++++ ●1 ✕1
+
+ ▾ affiliate-site ⎇ main · chec…
+▎ ✕ fix-footer                2m
+▎   failed: test · exit 1
+▎   ✗ src/pages/legal.test.tsx >
+  ◌ add-payments              0s
+    claude · working
+
+ ▾ pixls                  no git
+  ● warm-finch                3m
+    asks: use pnpm or npm?
+
+ ▾ seshi                   ⎇ dev
+  ✓ quick-fox                 9h
+    finished · not seen
+  z old-moth                  2d
+    asleep zzZ
+-----  + new                 a actions
+===== Failed | flat | 100x30 | unicode
++++++ ●1 ✕1
+
+ ▾ affiliate-site ⎇ mai…
+▎ ✕ fix-footer        2m
+▎   failed: test · exit
+  ◌ add-payments      0s
+
+ ▾ pixls          no git
+  ● warm-finch        3m
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox         9h
+  z old-moth          2d
+-----  + new         a actions
+===== Failed | flat | 80x24 | unicode
++++++ ●1 ✕1
+
+ ▾ affiliate-site ⎇ mai…
+▎ ✕ fix-footer
+▎   failed: test · exit
+  ◌ add-payments
+
+ ▾ pixls          no git
+  ● warm-finch
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox
+  z old-moth
+-----  + new         a actions
+===== Failed | flat | 80x24 | ascii
++++++ !1 x1
+
+ v affiliate-site git: …
+| x fix-footer
+|   failed: test · exit
+  ◌ add-payments
+
+ v pixls          no git
+  ! warm-finch
+    asks: use pnpm or np
+
+ v seshi        git: dev
+  + quick-fox
+  z old-moth
+-----  + new         a actions
+===== Over | floating | 160x45 | unicode
++++++ ●1
+
+  ▾ affiliate-site ⎇ main · ch…
+ ▎ ⊘ fix-footer              2m
+ ▎   failed, overridden: test
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Over | floating | 100x30 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ⊘ fix-footer      2m
+ ▎   failed, overridden:
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Over | floating | 80x24 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ⊘ fix-footer
+ ▎   failed, overridden:
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Over | tiled | 160x45 | unicode
++++++ ●1
+
+  ▾ affiliate-site ⎇ main · ch…
+ ▎ ⊘ fix-footer              2m
+ ▎   failed, overridden: test
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Over | tiled | 100x30 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ⊘ fix-footer      2m
+ ▎   failed, overridden:
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Over | tiled | 80x24 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ⊘ fix-footer
+ ▎   failed, overridden:
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Over | flat | 160x45 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ main · chec…
+▎ ⊘ fix-footer                2m
+▎   failed, overridden: test
+  ◌ add-payments              0s
+    claude · working
+
+ ▾ pixls                  no git
+  ● warm-finch                3m
+    asks: use pnpm or npm?
+
+ ▾ seshi                   ⎇ dev
+  ✓ quick-fox                 9h
+    finished · not seen
+  z old-moth                  2d
+    asleep zzZ
+-----  + new                 a actions
+===== Over | flat | 100x30 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ mai…
+▎ ⊘ fix-footer        2m
+▎   failed, overridden:
+  ◌ add-payments      0s
+
+ ▾ pixls          no git
+  ● warm-finch        3m
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox         9h
+  z old-moth          2d
+-----  + new         a actions
+===== Over | flat | 80x24 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ mai…
+▎ ⊘ fix-footer
+▎   failed, overridden:
+  ◌ add-payments
+
+ ▾ pixls          no git
+  ● warm-finch
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox
+  z old-moth
+-----  + new         a actions
+===== Over | flat | 80x24 | ascii
++++++ !1
+
+ v affiliate-site git: …
+| / fix-footer
+|   failed, overridden:
+  ◌ add-payments
+
+ v pixls          no git
+  ! warm-finch
+    asks: use pnpm or np
+
+ v seshi        git: dev
+  + quick-fox
+  z old-moth
+-----  + new         a actions
+===== Couldnt | floating | 160x45 | unicode
++++++ ●1
+
+  ▾ affiliate-site ⎇ main · ch…
+ ▎ ? fix-footer              2m
+ ▎   test could not run · not fo
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Couldnt | floating | 100x30 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ? fix-footer      2m
+ ▎   test could not run
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Couldnt | floating | 80x24 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ? fix-footer
+ ▎   test could not run
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Couldnt | tiled | 160x45 | unicode
++++++ ●1
+
+  ▾ affiliate-site ⎇ main · ch…
+ ▎ ? fix-footer              2m
+ ▎   test could not run · not fo
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Couldnt | tiled | 100x30 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ? fix-footer      2m
+ ▎   test could not run
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Couldnt | tiled | 80x24 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ? fix-footer
+ ▎   test could not run
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Couldnt | flat | 160x45 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ main · chec…
+▎ ? fix-footer                2m
+▎   test could not run · not fou
+  ◌ add-payments              0s
+    claude · working
+
+ ▾ pixls                  no git
+  ● warm-finch                3m
+    asks: use pnpm or npm?
+
+ ▾ seshi                   ⎇ dev
+  ✓ quick-fox                 9h
+    finished · not seen
+  z old-moth                  2d
+    asleep zzZ
+-----  + new                 a actions
+===== Couldnt | flat | 100x30 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ mai…
+▎ ? fix-footer        2m
+▎   test could not run ·
+  ◌ add-payments      0s
+
+ ▾ pixls          no git
+  ● warm-finch        3m
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox         9h
+  z old-moth          2d
+-----  + new         a actions
+===== Couldnt | flat | 80x24 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ mai…
+▎ ? fix-footer
+▎   test could not run ·
+  ◌ add-payments
+
+ ▾ pixls          no git
+  ● warm-finch
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox
+  z old-moth
+-----  + new         a actions
+===== Couldnt | flat | 80x24 | ascii
++++++ !1
+
+ v affiliate-site git: …
+| ? fix-footer
+|   test could not run ·
+  ◌ add-payments
+
+ v pixls          no git
+  ! warm-finch
+    asks: use pnpm or np
+
+ v seshi        git: dev
+  + quick-fox
+  z old-moth
+-----  + new         a actions
+===== Approve | floating | 160x45 | unicode
++++++ ●2
+
+  ▾ affiliate-site ⎇ main · ch…
+ ▎ ● fix-footer              2m
+ ▎   approve check: npm test
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Approve | floating | 100x30 | unicode
++++++ ●2
+
+  ▾ affiliate-site
+ ▎ ● fix-footer      2m
+ ▎   approve check: npm
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Approve | floating | 80x24 | unicode
++++++ ●2
+
+  ▾ affiliate-site
+ ▎ ● fix-footer
+ ▎   approve check: npm
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Approve | tiled | 160x45 | unicode
++++++ ●2
+
+  ▾ affiliate-site ⎇ main · ch…
+ ▎ ● fix-footer              2m
+ ▎   approve check: npm test
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Approve | tiled | 100x30 | unicode
++++++ ●2
+
+  ▾ affiliate-site
+ ▎ ● fix-footer      2m
+ ▎   approve check: npm
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Approve | tiled | 80x24 | unicode
++++++ ●2
+
+  ▾ affiliate-site
+ ▎ ● fix-footer
+ ▎   approve check: npm
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Approve | flat | 160x45 | unicode
++++++ ●2
+
+ ▾ affiliate-site ⎇ main · chec…
+▎ ● fix-footer                2m
+▎   approve check: npm test
+  ◌ add-payments              0s
+    claude · working
+
+ ▾ pixls                  no git
+  ● warm-finch                3m
+    asks: use pnpm or npm?
+
+ ▾ seshi                   ⎇ dev
+  ✓ quick-fox                 9h
+    finished · not seen
+  z old-moth                  2d
+    asleep zzZ
+-----  + new                 a actions
+===== Approve | flat | 100x30 | unicode
++++++ ●2
+
+ ▾ affiliate-site ⎇ mai…
+▎ ● fix-footer        2m
+▎   approve check: npm t
+  ◌ add-payments      0s
+
+ ▾ pixls          no git
+  ● warm-finch        3m
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox         9h
+  z old-moth          2d
+-----  + new         a actions
+===== Approve | flat | 80x24 | unicode
++++++ ●2
+
+ ▾ affiliate-site ⎇ mai…
+▎ ● fix-footer
+▎   approve check: npm t
+  ◌ add-payments
+
+ ▾ pixls          no git
+  ● warm-finch
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox
+  z old-moth
+-----  + new         a actions
+===== Approve | flat | 80x24 | ascii
++++++ !2
+
+ v affiliate-site git: …
+| ! fix-footer
+|   approve check: npm t
+  ◌ add-payments
+
+ v pixls          no git
+  ! warm-finch
+    asks: use pnpm or np
+
+ v seshi        git: dev
+  + quick-fox
+  z old-moth
+-----  + new         a actions
+===== Never | floating | 160x45 | unicode
++++++ ●1
+
+  ▾ affiliate-site ⎇ main · ch…
+ ▎ ? fix-footer              2m
+ ▎   not checked: never for this
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Never | floating | 100x30 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ? fix-footer      2m
+ ▎   not checked: never
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Never | floating | 80x24 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ? fix-footer
+ ▎   not checked: never
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Never | tiled | 160x45 | unicode
++++++ ●1
+
+  ▾ affiliate-site ⎇ main · ch…
+ ▎ ? fix-footer              2m
+ ▎   not checked: never for this
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Never | tiled | 100x30 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ? fix-footer      2m
+ ▎   not checked: never
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Never | tiled | 80x24 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ? fix-footer
+ ▎   not checked: never
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Never | flat | 160x45 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ main · chec…
+▎ ? fix-footer                2m
+▎   not checked: never for this
+  ◌ add-payments              0s
+    claude · working
+
+ ▾ pixls                  no git
+  ● warm-finch                3m
+    asks: use pnpm or npm?
+
+ ▾ seshi                   ⎇ dev
+  ✓ quick-fox                 9h
+    finished · not seen
+  z old-moth                  2d
+    asleep zzZ
+-----  + new                 a actions
+===== Never | flat | 100x30 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ mai…
+▎ ? fix-footer        2m
+▎   not checked: never f
+  ◌ add-payments      0s
+
+ ▾ pixls          no git
+  ● warm-finch        3m
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox         9h
+  z old-moth          2d
+-----  + new         a actions
+===== Never | flat | 80x24 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ mai…
+▎ ? fix-footer
+▎   not checked: never f
+  ◌ add-payments
+
+ ▾ pixls          no git
+  ● warm-finch
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox
+  z old-moth
+-----  + new         a actions
+===== Never | flat | 80x24 | ascii
++++++ !1
+
+ v affiliate-site git: …
+| ? fix-footer
+|   not checked: never f
+  ◌ add-payments
+
+ v pixls          no git
+  ! warm-finch
+    asks: use pnpm or np
+
+ v seshi        git: dev
+  + quick-fox
+  z old-moth
+-----  + new         a actions
+===== Stale | floating | 160x45 | unicode
++++++ ●1
+
+  ▾ affiliate-site ⎇ main · ch…
+ ▎ ◷ fix-footer              2m
+ ▎   stale pass: test · 3 files
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Stale | floating | 100x30 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ◷ fix-footer      2m
+ ▎   stale pass: test ·
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Stale | floating | 80x24 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ◷ fix-footer
+ ▎   stale pass: test ·
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Stale | tiled | 160x45 | unicode
++++++ ●1
+
+  ▾ affiliate-site ⎇ main · ch…
+ ▎ ◷ fix-footer              2m
+ ▎   stale pass: test · 3 files
+   ◌ add-payments            0s
+     claude · working
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Stale | tiled | 100x30 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ◷ fix-footer      2m
+ ▎   stale pass: test ·
+   ◌ add-payments    0s
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Stale | tiled | 80x24 | unicode
++++++ ●1
+
+  ▾ affiliate-site
+ ▎ ◷ fix-footer
+ ▎   stale pass: test ·
+   ◌ add-payments
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Stale | flat | 160x45 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ main · chec…
+▎ ◷ fix-footer                2m
+▎   stale pass: test · 3 files c
+  ◌ add-payments              0s
+    claude · working
+
+ ▾ pixls                  no git
+  ● warm-finch                3m
+    asks: use pnpm or npm?
+
+ ▾ seshi                   ⎇ dev
+  ✓ quick-fox                 9h
+    finished · not seen
+  z old-moth                  2d
+    asleep zzZ
+-----  + new                 a actions
+===== Stale | flat | 100x30 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ mai…
+▎ ◷ fix-footer        2m
+▎   stale pass: test · 3
+  ◌ add-payments      0s
+
+ ▾ pixls          no git
+  ● warm-finch        3m
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox         9h
+  z old-moth          2d
+-----  + new         a actions
+===== Stale | flat | 80x24 | unicode
++++++ ●1
+
+ ▾ affiliate-site ⎇ mai…
+▎ ◷ fix-footer
+▎   stale pass: test · 3
+  ◌ add-payments
+
+ ▾ pixls          no git
+  ● warm-finch
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox
+  z old-moth
+-----  + new         a actions
+===== Stale | flat | 80x24 | ascii
++++++ !1
+
+ v affiliate-site git: …
+| ~ fix-footer
+|   stale pass: test · 3
+  ◌ add-payments
+
+ v pixls          no git
+  ! warm-finch
+    asks: use pnpm or np
+
+ v seshi        git: dev
+  + quick-fox
+  z old-moth
+-----  + new         a actions
+===== Multi | floating | 160x45 | unicode
++++++ ●2 ✕1
+
+  ▾ affiliate-site ⎇ main · 2 …
+ ▎ ✕ fix-footer              2m
+ ▎   failed: test ✓✕
+ ▎   build ✓ · test ✕
+   ● add-payments           40s
+     needs you: test ✓●
+     build ✓ · test ●
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Multi | floating | 100x30 | unicode
++++++ ●2 ✕1
+
+  ▾ affiliate-site
+ ▎ ✕ fix-footer      2m
+ ▎   failed: test ✓✕
+   ● add-payments   40s
+     needs you: test ✓●
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Multi | floating | 80x24 | unicode
++++++ ●2 ✕1
+
+  ▾ affiliate-site
+ ▎ ✕ fix-footer
+ ▎   failed: test ✓✕
+   ● add-payments
+     needs you: test ✓●
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Multi | tiled | 160x45 | unicode
++++++ ●2 ✕1
+
+  ▾ affiliate-site ⎇ main · 2 …
+ ▎ ✕ fix-footer              2m
+ ▎   failed: test ✓✕
+ ▎   build ✓ · test ✕
+   ● add-payments           40s
+     needs you: test ✓●
+     build ✓ · test ●
+
+  ▾ pixls                no git
+   ● warm-finch              3m
+     asks: use pnpm or npm?
+
+  ▾ seshi                 ⎇ dev
+   ✓ quick-fox               9h
+     finished · not seen
+   z old-moth                2d
+     asleep zzZ
+-----   + new               a actions
+===== Multi | tiled | 100x30 | unicode
++++++ ●2 ✕1
+
+  ▾ affiliate-site
+ ▎ ✕ fix-footer      2m
+ ▎   failed: test ✓✕
+   ● add-payments   40s
+     needs you: test ✓●
+
+  ▾ pixls        no git
+   ● warm-finch      3m
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox       9h
+   z old-moth        2d
+-----   + new       a actions
+===== Multi | tiled | 80x24 | unicode
++++++ ●2 ✕1
+
+  ▾ affiliate-site
+ ▎ ✕ fix-footer
+ ▎   failed: test ✓✕
+   ● add-payments
+     needs you: test ✓●
+
+  ▾ pixls        no git
+   ● warm-finch
+     asks: use pnpm or n
+
+  ▾ seshi         ⎇ dev
+   ✓ quick-fox
+   z old-moth
+-----   + new       a actions
+===== Multi | flat | 160x45 | unicode
++++++ ●2 ✕1
+
+ ▾ affiliate-site ⎇ main · 2 ch…
+▎ ✕ fix-footer                2m
+▎   failed: test ✓✕
+▎   build ✓ · test ✕
+  ● add-payments             40s
+    needs you: test ✓●
+    build ✓ · test ●
+
+ ▾ pixls                  no git
+  ● warm-finch                3m
+    asks: use pnpm or npm?
+
+ ▾ seshi                   ⎇ dev
+  ✓ quick-fox                 9h
+    finished · not seen
+  z old-moth                  2d
+    asleep zzZ
+-----  + new                 a actions
+===== Multi | flat | 100x30 | unicode
++++++ ●2 ✕1
+
+ ▾ affiliate-site ⎇ mai…
+▎ ✕ fix-footer        2m
+▎   failed: test ✓✕
+  ● add-payments     40s
+    needs you: test ✓●
+
+ ▾ pixls          no git
+  ● warm-finch        3m
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox         9h
+  z old-moth          2d
+-----  + new         a actions
+===== Multi | flat | 80x24 | unicode
++++++ ●2 ✕1
+
+ ▾ affiliate-site ⎇ mai…
+▎ ✕ fix-footer
+▎   failed: test ✓✕
+  ● add-payments
+    needs you: test ✓●
+
+ ▾ pixls          no git
+  ● warm-finch
+    asks: use pnpm or np
+
+ ▾ seshi           ⎇ dev
+  ✓ quick-fox
+  z old-moth
+-----  + new         a actions
+===== Multi | flat | 80x24 | ascii
++++++ !2 x1
+
+ v affiliate-site git: …
+| x fix-footer
+|   failed: test +x
+  ! add-payments
+    needs you: test +!
+
+ v pixls          no git
+  ! warm-finch
+    asks: use pnpm or np
+
+ v seshi        git: dev
+  + quick-fox
+  z old-moth
+-----  + new         a actions

@@ -79,7 +79,7 @@ impl CheckView {
 
 /// The states that ask to be looked at: Enter on their row opens the sheet.
 fn needs_a_look(info: &CheckInfo) -> bool {
-    matches!(info.state, CheckState::Failed | CheckState::CouldNotRun | CheckState::Overridden)
+    matches!(info.state, CheckState::Failed | CheckState::CouldNotRun | CheckState::Overridden | CheckState::Stale | CheckState::Never)
 }
 
 impl App {
