@@ -49,7 +49,8 @@ controls, mouse access and keyboard navigation. Implemented and verified on
 `dev`, shipped in v0.31.0. The rendered UI and mouse category navigation
 were checked at 80×24, 100×30 and 160×45. The ordered gate passed: build, 308 tests (four
 ignored), strict clippy, Linux x64 check and macOS ARM check. This adds no wire
-shape, dependency, migration or permission change.
+shape, dependency, migration or permission change. Reverted in v0.36.2 (`5c3313d`):
+Settings is a centred modal again, as `docs/UI.md` says.
 
 User-requested working-spinner selection and Pi/DeepSeek scrolling correction:
 add an Appearance picker with animated presets, Static and validated custom
@@ -201,7 +202,7 @@ ignored; lint, both cross-checks and dependency audit passed). Live mouse clicks
 opened a plain shell and Settings from Actions.
 
 Active phase: **15 — checks Seshi runs itself** (chosen 2026-10-22)
-Next: file small tickets for the verify slice. Phase 13 (`seshi handoff`) is queued after it.
+Next: #94, then #95 and the UI tickets that depend only on it. Phase 13 (`seshi handoff`) is queued after the phase.
 
 Current user-requested work: expand the built-in themes to cover the 25 requested
 families and add a searchable preview browser in Appearance. Acceptance: all
@@ -335,7 +336,21 @@ Shipped since v0.35.0. The gate passed on `main` at `865998b`.
 
 ### 15 — Checks Seshi runs itself · active, chosen 2026-10-22
 
-Chosen by the user 2026-10-22 (verify slice only). No tickets, no branch yet. Today an agent saying "done" turns its session
+Chosen by the user 2026-10-22 (verify slice only). [Intent](features/checkpoints/intent.md).
+Tickets, in order (each carries its own tests and docs):
+
+1. #94 protocol: check state and result on a session
+2. #95 daemon: run the project's check after a turn ends (after #94)
+3. #96 daemon: hold finished alerts and waiters until the check settles (after #95)
+4. #97 daemon: re-run and override a check (after #95)
+5. #98 UI: the check result on the sidebar row (after #94)
+6. #99 UI: why popover shows the check timeline (after #94)
+7. #100 UI: evidence sheet (after #94)
+8. #101 UI: failed and could-not-run checks in the Inbox (after #94)
+9. #102 UI: settings, check command and timeout (after #94)
+10. #103 UI: re-run and override from the menu, sheet and Inbox (after #97, #100, #101, #102)
+
+Later, not ticketed: stale detection; a command supplied by the repo with its approval. Today an agent saying "done" turns its session
 done even when the project's checks fail. This phase makes "done" mean something Seshi observed.
 
 - **Scope of the first slice (verify only):** a project may name one check command. When a
@@ -355,8 +370,16 @@ done even when the project's checks fail. This phase makes "done" mean something
 - **Open decisions (ask before building):** where the command is configured (user config or the
   repo); the timeout; whether a re-run happens on every turn end or only when the files changed;
   what the Inbox says for a check that cannot run.
-- **Design:** [design brief v6](design-brief-v6.md), for the designer to work alongside. The first
-  slice needs only a status glyph, one line of text and the Inbox row.
+- **Design:** [design brief v6](design-brief-v6.md) and its handoff [`design/v6/`](design/v6/)
+  (`seshi-checks/checks.js` is the spec; drawn in the Flat style only). Checkpoints must work in
+  all three layouts (Cards floating, Cards tiled, Flat) at 80×24, 100×30 and 160×45. Flat is built
+  first; floating and tiled follow the designer's versions. Decisions taken from the handoff:
+  10-minute timeout, run after every turn end, a separate Inbox group for checks that could not
+  run, a re-run requested while the agent is working waits for the turn to end, override covers
+  one result only. Reuse the existing theme colours (no new theme roles), keep the sidebar's
+  `+ new` / `actions` foot and the Appearance spinner choice, and add re-run and override as
+  row-menu items. A command supplied by the repo (`.seshi/checks.toml`) and stale detection are
+  separate later tickets.
 - Acceptance: tickets, tests, docs and a passing verification gate before it is marked shipped,
   plus a live check where a failing check keeps a session from reading done.
 
@@ -468,7 +491,7 @@ Docs: `AGENTS.md`, `docs/` (architecture, standards, testing, security, UI, API 
 Design references: [design brief](design-brief.md), [design brief v3](design-brief-v3.md),
 [design brief v4](design-brief-v4.md) and its handoff [`design/v4/`](design/v4/),
 [design brief v5](design-brief-v5.md) (the lead and personas; narrowed by [v6](design-brief-v6.md)),
-the v5 cleanup handoff [`design/v5/`](design/v5/), the Flat handoff [`design/flat/`](design/flat/)
+the v5 cleanup handoff [`design/v5/`](design/v5/), the checkpoints handoff [`design/v6/`](design/v6/), the Flat handoff [`design/flat/`](design/flat/)
 and the wake-up transition handoff [`design/wake/`](design/wake/).
 Glossary: none yet.
 Feature docs: `docs/features/`. Each live intent is linked from In scope or a phase.
