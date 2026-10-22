@@ -39,6 +39,11 @@ pub(super) fn failed(info: &CheckInfo) -> bool {
     info.state == CheckState::Failed
 }
 
+/// A result that has come in, so it can be run again.
+pub(super) fn settled(info: &CheckInfo) -> bool {
+    info.state != CheckState::Checking
+}
+
 /// Which ring glyph a spinner frame shows. Apart from the clock so a test can step it.
 fn ring_step(frame: u64, len: usize) -> usize {
     (frame / RING_TICKS % len as u64) as usize
@@ -106,6 +111,26 @@ fn compose(app: &App, info: &CheckInfo, cmd: &str) -> String {
         CheckState::Overridden => format!("{cmd} {} overridden by you", m.failed),
         CheckState::CouldNotRun => format!("{cmd} could not run{}", why_not_run(info.exit_code)),
     }
+}
+
+/// A button for a check action at (`x`, `y`) if it fits before `max`: its rect, with the
+/// override label in the failure colour. The caller records what a click does.
+pub(super) fn action_pill(app: &App, buf: &mut Buffer, x: u16, y: u16, max: u16, (label, key): (&str, char), t: &Theme) -> Option<Rect> {
+    let look = Look::of(&app.cfg.ui);
+    let key_s = key.to_string();
+    let w = segs_width(&button_pill(look, t, label, &key_s, false, false, t.card));
+    let r = Rect { x, y, width: w, height: 1 };
+    if x + w > max {
+        return None;
+    }
+    let mut segs = button_pill(look, t, label, &key_s, false, hovered(app, r), t.card);
+    if key == 'O'
+        && let Some(s) = segs.iter_mut().find(|(text, _)| text.starts_with(label))
+    {
+        s.1 = s.1.fg(t.err);
+    }
+    put(buf, x, y, &segs, max);
+    Some(r)
 }
 
 /// The red bar a failed row keeps at its left edge, selected or not.

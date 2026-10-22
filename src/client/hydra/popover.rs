@@ -374,8 +374,24 @@ impl App {
     }
 
     /// `i` again or Esc closes it; any other key closes it and does its own thing.
-    pub(in crate::client) fn on_why_key(&mut self, side: bool, k: &KeyEvent) {
+    pub(in crate::client) fn on_why_key(&mut self, term: TermId, side: bool, k: &KeyEvent) {
         self.mode = if side { Mode::Side } else { Mode::Normal };
+        // A check's timeline shows the keys that act; the ones it doesn't show are not passed on
+        // to the pane behind it.
+        if let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check.clone()) {
+            let key = match k.code {
+                KeyCode::Enter => Some(('o', check::settled(&info))),
+                KeyCode::Char('r') => Some(('r', check::settled(&info))),
+                KeyCode::Char('O') => Some(('O', check::failed(&info))),
+                _ => None,
+            };
+            if let Some((key, shown)) = key {
+                if shown {
+                    self.do_check_key(term, key);
+                }
+                return;
+            }
+        }
         if !matches!(k.code, KeyCode::Esc | KeyCode::Char('i')) {
             self.on_key(*k);
         }

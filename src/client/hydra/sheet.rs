@@ -169,7 +169,7 @@ fn inbox_place(app: &App) -> Option<(String, usize)> {
 }
 
 /// How many rows a row of the Inbox takes; the one with a follow-up open grows by its box.
-fn row_height(row: &GoRow, compose: Option<&Compose>, box_rows: u16, asking: Option<TermId>) -> u16 {
+fn row_height(row: &GoRow, compose: Option<&Compose>, box_rows: u16, asking: Option<TermId>, lit: bool) -> u16 {
     let writing = |term: &TermId| compose.is_some_and(|c| c.term == *term);
     match row {
         // A merge or throw-away being asked: its buttons go under the question.
@@ -179,7 +179,7 @@ fn row_height(row: &GoRow, compose: Option<&Compose>, box_rows: u16, asking: Opt
         GoRow::Ask(_) => 4,
         GoRow::Heads(_) => 4,
         GoRow::Done(_) => 4,
-        GoRow::Failed(_) => check_inbox::FAILED_ROWS,
+        GoRow::Failed(_) => check_inbox::FAILED_ROWS + u16::from(lit),
         GoRow::NotRun(_) => check_inbox::NOT_RUN_ROWS,
 
         _ => 1,
@@ -218,9 +218,9 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
     let avail = bottom.saturating_sub(y);
     let box_rows = compose.as_ref().map(|c| compose_rows(c, w.saturating_sub(1), INBOX_ROWS)).unwrap_or(0);
     let asking = app.hy.inbox_confirm.filter(|(.., busy)| !busy).map(|(t, ..)| t);
-    let height = |r: &GoRow| row_height(r, compose.as_ref(), box_rows, asking);
+    let height = |r: &GoRow, lit: bool| row_height(r, compose.as_ref(), box_rows, asking, lit);
     let mut start = 0;
-    while start < sel && rows[start..=sel.min(rows.len().saturating_sub(1))].iter().map(height).sum::<u16>() > avail {
+    while start < sel && rows[start..=sel.min(rows.len().saturating_sub(1))].iter().enumerate().map(|(k, r)| height(r, start + k == sel)).sum::<u16>() > avail {
         start += 1;
     }
     let empty_note = |buf: &mut Buffer, y: u16, text: &str, tick: bool| {
@@ -232,7 +232,7 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
         put(buf, x, y, &segs, x + w);
     };
     for (i, row) in rows.iter().enumerate().skip(start) {
-        let hgt = height(row);
+        let hgt = height(row, i == sel);
         if y + hgt > bottom + 1 {
             break;
         }
@@ -376,7 +376,7 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
             }
             GoRow::Failed(term) | GoRow::NotRun(term) => {
                 let Some((p, _, s)) = find(&model, *term) else { continue };
-                check_inbox::draw(app, buf, (x, y, w), bg, (p, s), t);
+                check_inbox::draw(app, buf, (x, y, w), bg, (p, s), i == sel, t);
             }
             GoRow::Sess(pi, term) => {
                 let Some((_, _, s)) = find(&model, *term) else { continue };
@@ -390,7 +390,9 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
             }
         }
         if row.pickable() {
-            hit(app, Rect { x: x - 1, y, width: w + 2, height: hgt.saturating_sub(1).max(1) }, HyHit::GoPick(i));
+            // A lit failed row keeps its button line out of the row's own click.
+            let pick_h = hgt.saturating_sub(if i == sel && matches!(row, GoRow::Failed(_)) { 2 } else { 1 });
+            hit(app, Rect { x: x - 1, y, width: w + 2, height: pick_h.max(1) }, HyHit::GoPick(i));
         }
         y += hgt;
     }

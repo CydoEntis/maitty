@@ -133,7 +133,9 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         let r = Rect { x: whole.x + (whole.width - w) / 2, y: whole.y + (whole.height - h) / 2, width: w, height: h };
         draw_session(app, f, r, term, true, &model, t);
     }
-    draw_toast(app, f.buffer_mut(), g.panes, t);
+    // A sheet that takes the pane column would hide the toast, so it shows over the sheet.
+    let toast_at = if g.panes.width < TOAST_ROOM && g.sheet.width >= SHEET_DRAWN_FROM { g.sheet } else { g.panes };
+    draw_toast(app, f.buffer_mut(), toast_at, t);
     // Files open over everything in one tool-window size; Esc closes. (Changes is a sheet.)
     if let Some(view) = app.view.take_if(|v| matches!(v, crate::client::View::Files(_))) {
         let buf = f.buffer_mut();
@@ -1167,6 +1169,9 @@ pub(in crate::client) fn toast_hold(err: bool, about: bool) -> std::time::Durati
         2500
     })
 }
+
+/// Panes narrower than this leave no room for a toast.
+const TOAST_ROOM: u16 = 40;
 
 /// How far a toast's hint ("click to open") sinks into its fill: readable, second to the news.
 const TOAST_HINT_FADE: f32 = 0.3;

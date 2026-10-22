@@ -399,7 +399,8 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     let top = r.y + 6 + lines_used;
     // Appearance keeps room at the foot for its preview.
     let preview = cat == Cat::Appearance && r.height >= 30 && r.width >= 46;
-    let h = r.height.saturating_sub(if preview { 19 } else { 14 }) as usize;
+    // The compact Check page spends no blank lines, so it has room for one row more.
+    let h = r.height.saturating_sub(if preview { 19 } else if compact { 13 } else { 14 }) as usize;
     let at = lines.iter().position(|l| matches!(l, L::Row(i) if *i == v.sel)).unwrap_or(0);
     let start = (at + 2).saturating_sub(h);
     for (k, line) in lines.iter().enumerate().skip(start).take(h) {
@@ -502,7 +503,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     let mut keys = hints(t, &[("↑↓", "move"), ("←→", "change"), ("Tab", "section")]);
     if cat == Cat::Check {
         // The Check page's own keys, when they fit beside the file link.
-        let more = hints(t, &[("↑↓", "move"), ("Enter", "edit"), ("Del", "remove"), ("←→", "change"), ("Tab", "section")]);
+        let more = hints(t, &[("↑↓", "move"), ("Enter", "edit"), ("r", "run now"), ("Del", "remove"), ("←→", "change"), ("Tab", "section")]);
         if segs_width(&more) + fw + 8 <= r.width {
             keys = more;
         }

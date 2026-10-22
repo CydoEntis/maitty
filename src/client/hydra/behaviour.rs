@@ -945,6 +945,15 @@ impl App {
                 }
                 return;
             }
+            // A failed check: its output, run it again, or accept it (asked first).
+            KeyCode::Char(c @ ('o' | 'r' | 'O')) if query.is_empty() && matches!(sel_row, Some(GoRow::Failed(_))) => {
+                let Some(GoRow::Failed(term)) = sel_row else { return };
+                self.do_check_key(term, c);
+                if c == 'r' {
+                    self.mode = Mode::GoTo { query, sel };
+                }
+                return;
+            }
             KeyCode::Delete if matches!(sel_row, Some(GoRow::Done(_) | GoRow::NotRun(_))) => {
                 if let Some(GoRow::Done(term) | GoRow::NotRun(term)) = sel_row {
                     self.cmd(Command::MarkSeen { term });
@@ -1229,6 +1238,9 @@ impl App {
             HyHit::InboxAnswer(term, key) => {
                 let name = self.session_name(term);
                 self.inbox_answer(term, key, &name);
+            }
+            HyHit::InboxCheck(term, key) => {
+                self.do_check_key(term, key);
             }
             HyHit::NpTask => {
                 if let Mode::HyPane(np) = &mut self.mode {

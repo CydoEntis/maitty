@@ -28,10 +28,11 @@ pub(in crate::client) enum CheckField {
     Runs,
     Status,
     Project,
+    RunNow,
 }
 
 impl CheckField {
-    pub const ALL: [CheckField; 5] = [CheckField::Command, CheckField::Timeout, CheckField::Runs, CheckField::Status, CheckField::Project];
+    pub const ALL: [CheckField; 6] = [CheckField::Command, CheckField::Timeout, CheckField::Runs, CheckField::Status, CheckField::Project, CheckField::RunNow];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -40,6 +41,7 @@ impl CheckField {
             CheckField::Runs => "Runs",
             CheckField::Status => "Status",
             CheckField::Project => "Project",
+            CheckField::RunNow => "Run now",
         }
     }
 }
@@ -134,14 +136,27 @@ fn entry<'a>(app: &'a App, project: &Path) -> Option<&'a CheckDef> {
     app.cfg.check.iter().find(|c| same_path(&c.project, project))
 }
 
+fn in_project(t: &TermInfo, project: &Path) -> bool {
+    same_path(t.root.as_deref().unwrap_or(&t.cwd), project)
+}
+
 /// The most recently started result among the project's sessions, with the session's name.
 fn latest<'a>(app: &'a App, project: &Path) -> Option<(&'a CheckInfo, String)> {
-    app.snap
-        .terms
-        .values()
-        .filter(|t| same_path(t.root.as_deref().unwrap_or(&t.cwd), project))
-        .filter_map(|t| t.check.as_ref().map(|c| (c, t.display_name())))
-        .max_by_key(|(c, _)| c.started_at)
+    latest_term(app, project).and_then(|t| t.check.as_ref().map(|c| (c, t.display_name())))
+}
+
+fn latest_term<'a>(app: &'a App, project: &Path) -> Option<&'a TermInfo> {
+    app.snap.terms.values().filter(|t| in_project(t, project)).filter(|t| t.check.is_some()).max_by_key(|t| t.check.as_ref().map_or(0, |c| c.started_at))
+}
+
+/// The session "Run now" runs the check in: the one with the latest result, else the focused
+/// agent of the project, else its first agent.
+fn run_target(app: &App, project: &Path) -> Option<TermId> {
+    let agent = |t: &&TermInfo| t.agent.is_some() && in_project(t, project);
+    latest_term(app, project)
+        .map(|t| t.id)
+        .or_else(|| app.focused().and_then(|f| app.snap.terms.get(&f)).filter(agent).map(|t| t.id))
+        .or_else(|| app.snap.terms.values().filter(agent).map(|t| t.id).min())
 }
 
 fn project_name(app: &App, project: &Path) -> String {
@@ -175,6 +190,7 @@ pub(in crate::client) fn help(app: &App, field: CheckField) -> String {
         CheckField::Runs => "In the folder of the session whose turn ended, so a worktree is checked as it is.".into(),
         CheckField::Status => "The latest run among this project's sessions. A failed one keeps the session from reading done.".into(),
         CheckField::Project => "The repository's main checkout. Its worktrees share this one check.".into(),
+        CheckField::RunNow => "Runs the check now in the session above. If its agent is working it waits for the turn to end.".into(),
     }
 }
 
@@ -197,6 +213,11 @@ pub(in crate::client) fn control(app: &App, t: &Theme, field: CheckField, v: &Se
             Some(p) => vec![seg(truncate(&format!("{} · {}", project_name(app, p), tilde(p)), room), muted)],
             None => vec![seg(truncate("none open", room), muted)],
         },
+        CheckField::RunNow => {
+            let look = Look::of(&app.cfg.ui);
+            let bg = if selected { t.sel_on(t.card) } else { t.card };
+            button_pill(look, t, "Run now", "r", false, false, bg)
+        }
     }
 }
 
@@ -236,6 +257,7 @@ impl App {
             },
             (CheckField::Timeout, KeyCode::Left | KeyCode::Char('h')) => self.step_check_timeout(-1),
             (CheckField::Timeout, KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter | KeyCode::Char(' ')) => self.step_check_timeout(1),
+            (CheckField::RunNow, KeyCode::Enter | KeyCode::Char(' ')) | (_, KeyCode::Char('r')) => self.run_check_now(),
             (_, KeyCode::Delete) => self.remove_check(),
             _ => return false,
         }
@@ -266,6 +288,22 @@ impl App {
         if timeout_s != def.timeout_s {
             let edit = CheckEdit::Set { project, command: def.command.clone(), timeout_s };
             self.save_check(edit, None);
+        }
+    }
+
+    /// Settings' Run now: the project's check, in the session that last ran it.
+    fn run_check_now(&mut self) {
+        let Some(project) = project_of(self) else {
+            self.notify("open a session in a project to run its check".into(), true);
+            return;
+        };
+        if entry(self, &project).is_none() {
+            self.notify("set a command first; there is nothing to run".into(), false);
+            return;
+        }
+        match run_target(self, &project) {
+            Some(term) => self.rerun_check(term),
+            None => self.notify("no agent has run in this project yet: the check runs when its turn ends".into(), false),
         }
     }
 

@@ -880,6 +880,8 @@ pub(super) enum HyHit {
     Session(TermId),
     /// An answer chip in the Inbox: send this key to that agent.
     InboxAnswer(TermId, char),
+    /// A button on a failed check's Inbox row: the key it stands for.
+    InboxCheck(TermId, char),
     CloseSplit(TermId),
     Divider(usize),
     /// The ⋯ on a hovered sidebar row: its menu.
@@ -984,6 +986,7 @@ mod rail;
 mod behaviour;
 mod card;
 mod check;
+mod check_actions;
 mod check_inbox;
 pub(in crate::client) mod check_settings;
 mod check_sheet;
@@ -996,4 +999,4 @@ mod screen;
 mod sheet;
 mod splash;
 mod tidy;
-pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, screen::*, splash::*, sheet::*, popover::*, heads::*, tidy::*, check_sheet::*};
+pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, screen::*, splash::*, sheet::*, popover::*, heads::*, tidy::*, check_sheet::*, check_actions::*};

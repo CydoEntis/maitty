@@ -52,6 +52,11 @@ pub enum Act {
     /// Install the newest seshi without interrupting the running sessions.
     Update,
     InstallStatus(String),
+    /// Open a session's check output in the evidence sheet.
+    CheckOutput(TermId),
+    RerunCheck(TermId),
+    /// Accept a failed check; the string is the reason typed in the confirm, possibly empty.
+    OverrideCheck(TermId, String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -81,6 +86,9 @@ const CONFIRM_LIST_MAX: usize = 8;
 /// A modal like everything else: what it's about, a line of explanation, the action
 /// (red when it destroys something) and Cancel.
 pub(super) fn draw_confirm(app: &mut App, f: &mut ratatui::Frame, area: ratatui::layout::Rect, t: &crate::theme::Theme, c: &Confirm) {
+    if matches!(c.act, Act::OverrideCheck(..)) {
+        return super::hydra::draw_override(app, f, area, t, c);
+    }
     use super::design::{put, seg};
     use super::hydra::{HyHit, dim_all, hit, hovered, panel};
     use ratatui::layout::Rect;
@@ -203,6 +211,9 @@ impl App {
         }
         if !s.queued.is_empty() {
             items.push((format!("Drop queued follow-ups ({})", s.queued.len()), Act::ClearQueue(term)));
+        }
+        if let Some(check) = info.and_then(|t| t.check.as_ref()) {
+            items.extend(super::hydra::check_menu_items(term, check));
         }
         items.push(("Close".to_string(), Act::End(vec![term])));
         // Titled by what it is (an agent, or the program's name), never its window title.
@@ -402,6 +413,10 @@ impl App {
                 danger: false,
                 act: a.clone(),
             }),
+            Act::OverrideCheck(t, _) => match self.override_confirm(*t) {
+                Some(c) => Some(c),
+                None => return,
+            },
             Act::CloseProject(pi) => model.get(*pi).map(|p| {
                 let n = p.sessions().count();
                 Confirm {
@@ -428,7 +443,7 @@ impl App {
                 let from_side = self.mode == Mode::Side || self.hy.cursor.is_some() || self.hy.cursor_proj.is_some();
                 self.hy.side_return = match &c.act {
                     _ if !from_side => None,
-                    Act::Commander(t) | Act::Restore(_, _, _, t) => Some(super::hydra::SideItem::Sess(*t)),
+                    Act::Commander(t) | Act::Restore(_, _, _, t) | Act::OverrideCheck(t, _) => Some(super::hydra::SideItem::Sess(*t)),
                     _ => self.side_after_close(),
                 };
                 self.mode = Mode::Confirm(Box::new(c));
@@ -562,6 +577,9 @@ impl App {
                 }
             }
             Act::Changes(p) => self.open_changes(p),
+            Act::CheckOutput(t) => self.open_check_sheet(t),
+            Act::RerunCheck(t) => self.rerun_check(t),
+            Act::OverrideCheck(t, reason) => self.override_check(t, reason),
         }
     }
 }

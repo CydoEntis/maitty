@@ -119,11 +119,13 @@ impl App {
         }
     }
 
-    /// Keys in the sheet; returns false when it closes. Re-run, override and undo are
-    /// drawn but not wired yet.
+    /// Keys in the sheet; returns false when it closes.
     pub(in crate::client) fn on_check_key(&mut self, v: &mut CheckView, k: &KeyEvent) -> bool {
         match k.code {
             KeyCode::Esc => return false,
+            KeyCode::Char(c @ ('r' | 'O' | 'u')) => {
+                self.do_check_key(v.term, c);
+            }
             KeyCode::Char('f') => v.toggle_full(),
             KeyCode::Up => v.scroll_by(true, 1),
             KeyCode::Down => v.scroll_by(false, 1),
@@ -274,27 +276,13 @@ fn info_row(buf: &mut Buffer, x: u16, y: u16, w: u16, label: &str, value: Vec<Ve
     value.len().max(1) as u16
 }
 
-fn button(app: &mut App, buf: &mut Buffer, x: u16, y: u16, max: u16, (label, key): (&str, char), t: &Theme) -> u16 {
-    let look = Look::of(&app.cfg.ui);
-    let key_s = key.to_string();
-    let w = segs_width(&button_pill(look, t, label, &key_s, false, false, t.card));
-    let r = Rect { x, y, width: w, height: 1 };
-    let mut segs = button_pill(look, t, label, &key_s, false, hovered(app, r), t.card);
-    if key == 'O'
-        && let Some(s) = segs.iter_mut().find(|(text, _)| text.starts_with(label))
-    {
-        s.1 = s.1.fg(t.err);
-    }
-    if x + w > max {
-        return x;
-    }
-    put(buf, x, y, &segs, max);
-    app.hits.push((r, crate::client::Hit::Button(Btn::ViewKey(key))));
-    x + w + 1
+fn button(app: &mut App, buf: &mut Buffer, x: u16, y: u16, max: u16, action: (&str, char), t: &Theme) -> u16 {
+    let Some(r) = check::action_pill(app, buf, x, y, max, action, t) else { return x };
+    app.hits.push((r, crate::client::Hit::Button(Btn::ViewKey(action.1))));
+    r.right() + 1
 }
 
-/// Buttons for what could be done with this result. They are drawn and clickable; the keys
-/// they stand for are wired with the actions.
+/// Buttons for what could be done with this result; each stands for the key on it.
 fn buttons(app: &mut App, buf: &mut Buffer, x: u16, y: u16, max: u16, info: &CheckInfo, t: &Theme) {
     let mut at = x;
     if info.state != CheckState::Checking {
@@ -403,7 +391,9 @@ pub(in crate::client) fn draw_check(app: &mut App, buf: &mut Buffer, inside: Rec
     let mut y = inside.y + 1;
     let chip = format!(" {} {} ", check::glyph(app, &info), state_word(&info));
     let end = put(buf, x, y, &[seg(chip, Style::default().bg(check::color(t, &info)).fg(t.acc_ink).add_modifier(Modifier::BOLD))], x + w);
-    put(buf, end + 2, y, &[seg(exit_words(&info), c.fg(t.strong))], x + w);
+    let queued = if info.rerun_queued { Some("re-run queued") } else { None };
+    let beside: Vec<String> = [Some(exit_words(&info)).filter(|e| !e.is_empty()), queued.map(String::from)].into_iter().flatten().collect();
+    put(buf, end + 2, y, &[seg(beside.join(" · "), c.fg(t.strong))], x + w);
     y += 1 + space(true);
     for row in &banner {
         put(buf, x, y, row, x + w);
@@ -428,6 +418,15 @@ pub(in crate::client) fn draw_check(app: &mut App, buf: &mut Buffer, inside: Rec
         output_block(buf, block, v, &info, t);
     }
     let mut keys = vec![("Esc", "back")];
+    if check::settled(&info) {
+        keys.push(("r", "re-run"));
+    }
+    if check::failed(&info) {
+        keys.push(("O", "override"));
+    }
+    if info.state == CheckState::Overridden {
+        keys.push(("u", "undo"));
+    }
     if v.scrollable() {
         keys.extend([("f", if v.full { "tail" } else { "full output" }), ("↑↓", "scroll")]);
     }

@@ -4373,12 +4373,12 @@ mod check_sheet_tests {
     }
 
     #[test]
-    fn only_esc_f_and_scrolling_act_in_the_sheet_for_now() {
+    fn a_key_the_sheet_does_not_offer_leaves_it_as_it_is() {
         let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), Some(&long_output(100)));
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
         draw(&mut app, 160, 45);
-        for c in ['r', 'O', 'u', 'o', 'i'] {
+        for c in ['u', 'o', 'i'] {
             press(&mut app, KeyCode::Char(c));
             assert!(matches!(app.view, Some(View::Check(_))), "{c} leaves the sheet as it is");
         }
@@ -5039,5 +5039,612 @@ mod check_settings_tests {
         assert!(matches!(&app.mode, Mode::HySettings(v) if v.editing.is_none()));
         let (msg, _, _) = app.notice.clone().expect("a toast");
         assert!(msg.contains("project"), "{msg}");
+    }
+}
+
+mod check_wiring_tests {
+    use super::*;
+    use crate::client::menu::{Act, menu_keys};
+    use crate::protocol::{CheckInfo, CheckState, ClientMsg, Command, ServerMsg};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
+    const TERM: TermId = 1;
+    const COMMAND: &str = "npm test";
+    /// Keys a sidebar row already uses; a menu item must not take one (x is Close's).
+    const TAKEN: [char; 5] = ['j', 'k', 'a', 'm', 'i'];
+    const ALL_STATES: [CheckState; 5] = [CheckState::Checking, CheckState::Passed, CheckState::Failed, CheckState::Overridden, CheckState::CouldNotRun];
+    type Rx = mpsc::UnboundedReceiver<ClientMsg>;
+    type Layout = fn(&mut App);
+
+    fn layouts() -> [(&'static str, Layout); 3] {
+        [
+            ("cards floating", |a| a.cfg.ui.panes = "floating".into()),
+            ("cards tiled", |a| a.cfg.ui.panes = "tiled".into()),
+            ("flat", |a| a.cfg.ui.layout = "flat".into()),
+        ]
+    }
+
+    fn now() -> u64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+    }
+
+    fn info(state: CheckState) -> CheckInfo {
+        let exit_code = match state {
+            CheckState::Checking => None,
+            CheckState::Passed => Some(0),
+            CheckState::CouldNotRun => Some(127),
+            CheckState::Failed | CheckState::Overridden => Some(1),
+        };
+        let overridden = state == CheckState::Overridden;
+        CheckInfo {
+            command: COMMAND.into(),
+            state,
+            exit_code,
+            started_at: now() - 180,
+            duration_ms: 14_200,
+            after_turn_ended_at: now() - 200,
+            first_failing_line: "Error: expected 3 got 2".into(),
+            overridden_at: overridden.then(|| now() - 30),
+            ..Default::default()
+        }
+    }
+
+    /// The shop-api scene with session 1 finished (or as `status`) and carrying `check`.
+    fn rig(w: u16, h: u16, layout: Layout, check: Option<CheckInfo>, status: Status) -> (App, Rx) {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        layout(&mut app);
+        let (tx, rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        let t = app.snap.terms.get_mut(&TERM).unwrap();
+        (t.status, t.said, t.check) = (status, "tests pass".into(), check);
+        app.hy_sync();
+        (app, rx)
+    }
+
+    fn done(state: CheckState) -> (App, Rx) {
+        rig(100, 30, |_| {}, Some(info(state)), Status::Done)
+    }
+
+    fn sent(rx: &mut Rx) -> Vec<ClientMsg> {
+        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    }
+
+    fn commands(rx: &mut Rx) -> Vec<Command> {
+        sent(rx).into_iter().filter_map(|m| if let ClientMsg::Command(c) = m { Some(c) } else { None }).collect()
+    }
+
+    fn draw(app: &mut App, w: u16, h: u16) -> String {
+        app.hy_fresh();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let frame: String = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>().trim_end().to_string() + "\n").collect();
+        let frame = frame.replace(|c| ('\u{e000}'..='\u{f8ff}').contains(&c), "");
+        if std::env::var("SESHI_SHOW").is_ok() {
+            println!("--- {w}x{h} {}/{}\n{frame}", app.cfg.ui.layout, app.cfg.ui.panes);
+        }
+        frame
+    }
+
+    fn words(o: &str) -> String {
+        o.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    fn fits(o: &str, w: u16, h: u16) -> bool {
+        o.lines().count() <= h as usize && o.lines().all(|l| l.chars().count() <= w as usize)
+    }
+
+    fn press(app: &mut App, code: KeyCode) {
+        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    fn typed(app: &mut App, text: &str) {
+        for c in text.chars() {
+            press(app, KeyCode::Char(c));
+        }
+    }
+
+    /// Click the topmost control whose hit is `want`, drawing first so it exists.
+    fn click(app: &mut App, w: u16, h: u16, want: Hit) {
+        draw(app, w, h);
+        let (r, _) = app.hits.iter().rev().find(|(_, hit)| *hit == want).unwrap_or_else(|| panic!("no control for {want:?}"));
+        let (column, row) = (r.x, r.y);
+        for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+            app.on_mouse(MouseEvent { kind, column, row, modifiers: KeyModifiers::NONE });
+        }
+    }
+
+    fn viewkey(c: char) -> Hit {
+        Hit::Button(Btn::ViewKey(c))
+    }
+
+    fn toast(app: &App) -> (String, bool) {
+        let (msg, _, error) = app.notice.clone().expect("a toast");
+        (msg, error)
+    }
+
+    fn rerun_of(cmds: &[Command]) -> usize {
+        cmds.iter().filter(|c| matches!(c, Command::RerunCheck { term: TERM })).count()
+    }
+
+    fn overrides(cmds: &[Command]) -> Vec<String> {
+        cmds.iter().filter_map(|c| if let Command::OverrideCheck { term: TERM, reason } = c { Some(reason.clone()) } else { None }).collect()
+    }
+
+    fn labels(app: &App) -> Vec<String> {
+        app.session_items(TERM).unwrap().1.into_iter().map(|(l, _)| l).collect()
+    }
+
+    // ---- the row menu ------------------------------------------------------------------
+
+    #[test]
+    fn the_row_menu_offers_a_check_item_only_where_it_applies() {
+        let offered = |state: Option<CheckState>| {
+            let (app, _) = rig(100, 30, |_| {}, state.map(info), Status::Done);
+            let l = labels(&app);
+            ["Check output", "Re-run check", "Override check…"].map(|want| l.iter().any(|x| x == want))
+        };
+        assert_eq!(offered(None), [false, false, false], "no check, no items");
+        assert_eq!(offered(Some(CheckState::Checking)), [true, false, false], "running: its output, not a second run");
+        assert_eq!(offered(Some(CheckState::Passed)), [true, true, false]);
+        assert_eq!(offered(Some(CheckState::CouldNotRun)), [true, true, false]);
+        assert_eq!(offered(Some(CheckState::Overridden)), [true, true, false], "an override is not overridden twice");
+        assert_eq!(offered(Some(CheckState::Failed)), [true, true, true]);
+    }
+
+    #[test]
+    fn the_check_items_never_take_a_letter_the_row_already_uses() {
+        for state in ALL_STATES {
+            for status in [Status::Done, Status::Working, Status::Idle] {
+                let (app, _) = rig(100, 30, |_| {}, Some(info(state)), status);
+                let items = app.session_items(TERM).unwrap().1;
+                let keys = menu_keys(&items);
+                let mut seen = Vec::new();
+                for ((label, act), key) in items.iter().zip(&keys) {
+                    let key = key.unwrap_or_else(|| panic!("{state:?}: {label} has a key"));
+                    if matches!(act, Act::End(_)) {
+                        assert_eq!(key, 'x');
+                    } else {
+                        assert!(!TAKEN.contains(&key) && key != 'x', "{state:?} {status:?}: {label} took {key}");
+                    }
+                    assert!(!seen.contains(&key), "{state:?} {status:?}: {label} repeats {key}");
+                    seen.push(key);
+                }
+            }
+        }
+    }
+
+    fn pick(app: &mut App, label: &str) {
+        app.menu_for_session(TERM, (20, 10));
+        let (items, keys) = match &app.mode {
+            Mode::HyMenu(m) => (m.items.clone(), menu_keys(&m.items)),
+            other => panic!("no menu: {other:?}"),
+        };
+        let i = items.iter().position(|(l, _)| l == label).unwrap_or_else(|| panic!("no {label} in {items:?}"));
+        press(app, KeyCode::Char(keys[i].unwrap()));
+    }
+
+    #[test]
+    fn the_menus_rerun_item_asks_the_daemon_and_says_so() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        pick(&mut app, "Re-run check");
+        assert_eq!(rerun_of(&commands(&mut rx)), 1);
+        let (msg, error) = toast(&app);
+        assert!(msg.contains("re-running") && msg.contains(COMMAND) && !error, "{msg}");
+        assert_eq!(app.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn the_menus_output_item_opens_the_evidence_sheet() {
+        for state in ALL_STATES {
+            let (mut app, mut rx) = done(state);
+            pick(&mut app, "Check output");
+            assert!(matches!(&app.view, Some(View::Check(v)) if v.term == TERM), "{state:?}");
+            assert!(sent(&mut rx).iter().any(|m| matches!(m, ClientMsg::Query(crate::protocol::Query::CheckOutput { term: TERM }))), "{state:?}: the output is asked for");
+        }
+    }
+
+    #[test]
+    fn the_menus_override_item_asks_first_and_sends_the_reason_on_yes() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        pick(&mut app, "Override check…");
+        assert!(matches!(&app.mode, Mode::Confirm(c) if c.danger && matches!(c.act, Act::OverrideCheck(TERM, _))), "{:?}", app.mode);
+        assert!(commands(&mut rx).is_empty(), "nothing is sent until it is confirmed");
+        typed(&mut app, "flaky on CI");
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(overrides(&commands(&mut rx)), ["flaky on CI"]);
+    }
+
+    #[test]
+    fn a_result_that_is_no_longer_failed_is_not_overridden_from_a_stale_menu() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        app.menu_for_session(TERM, (20, 10));
+        app.snap.terms.get_mut(&TERM).unwrap().check = Some(info(CheckState::Passed));
+        app.hy_sync();
+        app.menu_act(Act::OverrideCheck(TERM, String::new()));
+        assert!(commands(&mut rx).is_empty() && !matches!(app.mode, Mode::Confirm(_)), "{:?}", app.mode);
+        assert!(toast(&app).0.contains("failed"), "it says why");
+    }
+
+    // ---- the override confirm ----------------------------------------------------------
+
+    fn ask_override(app: &mut App) {
+        press(app, KeyCode::Char('O'));
+    }
+
+    #[test]
+    fn the_override_confirm_says_what_it_hides_and_what_stays_visible_in_every_layout() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let at = format!("{name} {w}x{h}");
+                let (mut app, mut rx) = rig(w, h, layout, Some(info(CheckState::Failed)), Status::Done);
+                app.open_check_sheet(TERM);
+                ask_override(&mut app);
+                let o = draw(&mut app, w, h);
+                let text = words(&o);
+                for want in [
+                    "Override a failed check",
+                    "will read done (overridden)",
+                    "npm test failed (exit 1",
+                    "This hides a failure. It stays visible:",
+                    "⊘ on the row, in the Inbox history and in the evidence",
+                    "for this result only",
+                    "Reason (optional)",
+                    "Override Enter",
+                    "Cancel Esc",
+                ] {
+                    assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
+                }
+                assert!(fits(&o, w, h), "{at}: fits");
+                typed(&mut app, "ok");
+                assert!(words(&draw(&mut app, w, h)).contains("ok█"), "{at}: the reason shows as it is typed");
+                press(&mut app, KeyCode::Esc);
+                assert!(commands(&mut rx).is_empty(), "{at}: Esc sends nothing");
+            }
+        }
+    }
+
+    #[test]
+    fn the_reason_is_optional_editable_and_bounded() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        app.open_check_sheet(TERM);
+        ask_override(&mut app);
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(overrides(&commands(&mut rx)), [""], "an empty reason is fine");
+        app.open_check_sheet(TERM);
+        ask_override(&mut app);
+        typed(&mut app, "abc");
+        press(&mut app, KeyCode::Backspace);
+        app.on_paste("\u{e9}d\nsecond line".into());
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(overrides(&commands(&mut rx)), ["ab\u{e9}d"], "backspace edits, a paste takes its first line");
+        app.open_check_sheet(TERM);
+        ask_override(&mut app);
+        typed(&mut app, &"x".repeat(400));
+        press(&mut app, KeyCode::Enter);
+        let reason = overrides(&commands(&mut rx)).remove(0);
+        assert_eq!(reason.chars().count(), crate::protocol::OVERRIDE_REASON_MAX_CHARS, "the daemon would refuse a longer one");
+    }
+
+    #[test]
+    fn the_override_button_is_clickable_and_so_is_cancel() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        app.open_check_sheet(TERM);
+        ask_override(&mut app);
+        click(&mut app, 100, 30, Hit::Hy(hydra::HyHit::ConfirmNo));
+        assert_eq!((app.mode.clone(), commands(&mut rx).len()), (Mode::Normal, 0), "Cancel");
+        assert!(matches!(app.view, Some(View::Check(_))), "the sheet is still open behind it");
+        ask_override(&mut app);
+        typed(&mut app, "by mouse");
+        click(&mut app, 100, 30, Hit::Hy(hydra::HyHit::ConfirmYes));
+        assert_eq!(overrides(&commands(&mut rx)), ["by mouse"]);
+        assert!(toast(&app).0.contains("overridden"));
+    }
+
+    // ---- the evidence sheet ------------------------------------------------------------
+
+    #[test]
+    fn the_sheets_keys_do_what_their_buttons_say_and_only_where_they_apply() {
+        // (state, r re-runs, O asks, u undoes)
+        let table = [
+            (CheckState::Failed, true, true, false),
+            (CheckState::Passed, true, false, false),
+            (CheckState::CouldNotRun, true, false, false),
+            (CheckState::Overridden, true, false, true),
+            (CheckState::Checking, false, false, false),
+        ];
+        for (state, rerun, over, undo) in table {
+            let (mut app, mut rx) = done(state);
+            app.open_check_sheet(TERM);
+            sent(&mut rx);
+            press(&mut app, KeyCode::Char('r'));
+            let cmds = commands(&mut rx);
+            assert_eq!(rerun_of(&cmds) == 1, rerun, "{state:?}: r");
+            press(&mut app, KeyCode::Char('O'));
+            assert_eq!(matches!(app.mode, Mode::Confirm(_)), over, "{state:?}: O");
+            app.mode = Mode::Normal;
+            press(&mut app, KeyCode::Char('u'));
+            assert_eq!(commands(&mut rx).iter().filter(|c| matches!(c, Command::UndoOverride { term: TERM })).count() == 1, undo, "{state:?}: u");
+            assert!(matches!(app.view, Some(View::Check(_))), "{state:?}: the sheet stays open");
+        }
+    }
+
+    #[test]
+    fn the_sheets_buttons_click_through_to_the_same_actions() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        app.open_check_sheet(TERM);
+        click(&mut app, 100, 30, viewkey('r'));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1, "Re-run");
+        click(&mut app, 100, 30, viewkey('O'));
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), "Override…");
+        app.mode = Mode::Normal;
+        let (mut app, mut rx) = done(CheckState::Overridden);
+        app.open_check_sheet(TERM);
+        click(&mut app, 100, 30, viewkey('u'));
+        assert!(commands(&mut rx).iter().any(|c| matches!(c, Command::UndoOverride { term: TERM })), "Undo override");
+        assert!(toast(&app).0.contains("failed again"));
+    }
+
+    #[test]
+    fn the_sheets_key_hints_list_exactly_the_keys_that_act() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                for state in ALL_STATES {
+                    let at = format!("{name} {w}x{h} {state:?}");
+                    let (mut app, _rx) = rig(w, h, layout, Some(info(state)), Status::Done);
+                    app.open_check_sheet(TERM);
+                    let o = draw(&mut app, w, h);
+                    let last = o.lines().rfind(|l| words(l).contains("Esc back")).unwrap_or_else(|| panic!("{at}: a hint row in\n{o}"));
+                    let hint = words(last);
+                    assert_eq!(hint.contains("r re-run"), state != CheckState::Checking, "{at}: {hint}");
+                    assert_eq!(hint.contains("O override"), state == CheckState::Failed, "{at}: {hint}");
+                    assert_eq!(hint.contains("u undo"), state == CheckState::Overridden, "{at}: {hint}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_queued_re_run_says_queued_in_the_toast_and_the_sheet_and_is_not_sent_twice() {
+        let (mut app, mut rx) = rig(100, 30, |_| {}, Some(info(CheckState::Failed)), Status::Working);
+        app.open_check_sheet(TERM);
+        press(&mut app, KeyCode::Char('r'));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1);
+        assert!(toast(&app).0.contains("queued"), "{}", toast(&app).0);
+        app.snap.terms.get_mut(&TERM).unwrap().check.as_mut().unwrap().rerun_queued = true;
+        app.hy_sync();
+        assert!(words(&draw(&mut app, 100, 30)).contains("re-run queued"), "the sheet says it too");
+        press(&mut app, KeyCode::Char('r'));
+        assert_eq!(rerun_of(&commands(&mut rx)), 0, "already queued: nothing more is sent");
+        assert!(toast(&app).0.contains("queued"));
+    }
+
+    #[test]
+    fn a_re_run_toasts_then_the_row_shows_the_checking_ring() {
+        let (mut app, mut rx) = rig(160, 45, |_| {}, Some(info(CheckState::Failed)), Status::Done);
+        app.open_check_sheet(TERM);
+        press(&mut app, KeyCode::Char('r'));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1);
+        assert!(words(&draw(&mut app, 160, 45)).contains("re-running npm test"), "the toast shows");
+        let mut running = info(CheckState::Checking);
+        running.exit_code = None;
+        app.snap.terms.get_mut(&TERM).unwrap().check = Some(running);
+        app.hy_sync();
+        app.open_check_sheet(TERM);
+        press(&mut app, KeyCode::Esc);
+        let o = draw(&mut app, 160, 45);
+        assert!(o.contains("checking npm test") && ['◜', '◝', '◞', '◟'].iter().any(|g| o.contains(*g)), "the ring and its words:\n{o}");
+        app.open_check_sheet(TERM);
+        press(&mut app, KeyCode::Char('r'));
+        assert!(commands(&mut rx).is_empty(), "the sheet offers no r while it runs");
+        with_command(&mut app);
+        check_page(&mut app, 0);
+        press(&mut app, KeyCode::Char('r'));
+        assert!(commands(&mut rx).is_empty() && toast(&app).0.contains("already running"), "Run now does not start it twice");
+    }
+
+    #[test]
+    fn an_error_from_the_daemon_reaches_the_user_as_a_toast() {
+        let (mut app, _rx) = done(CheckState::Failed);
+        app.on_server(ServerMsg::Error("only a failed check can be overridden".into()));
+        assert_eq!(toast(&app), ("only a failed check can be overridden".to_string(), true));
+    }
+
+    // ---- the why popover ---------------------------------------------------------------
+
+    #[test]
+    fn every_key_the_why_popover_shows_acts_and_the_others_do_not_reach_the_pane() {
+        for (name, layout) in layouts() {
+            for state in ALL_STATES {
+                let at = format!("{name} {state:?}");
+                let shown = |app: &mut App| words(&draw(app, 100, 30));
+                let open = || {
+                    let (mut app, rx) = rig(100, 30, layout, Some(info(state)), Status::Done);
+                    app.mode = Mode::Why { term: TERM, side: false };
+                    (app, rx)
+                };
+                let (mut app, _) = open();
+                let text = shown(&mut app);
+                let evidence = text.contains("⏎ evidence");
+                assert_eq!((evidence, text.contains("r re-run"), text.contains("O override")), (state != CheckState::Checking, state != CheckState::Checking, state == CheckState::Failed), "{at}: {text}");
+
+                let (mut app, mut rx) = open();
+                press(&mut app, KeyCode::Enter);
+                assert_eq!(matches!(app.view, Some(View::Check(_))), evidence, "{at}: Enter");
+                let (mut app, mut rx2) = open();
+                press(&mut app, KeyCode::Char('r'));
+                let (cmds, other) = (commands(&mut rx2), sent(&mut rx2));
+                assert_eq!(rerun_of(&cmds) == 1, evidence, "{at}: r");
+                assert!(!other.iter().any(|m| matches!(m, ClientMsg::Input { .. })), "{at}: r never types into the pane");
+                let (mut app, mut rx3) = open();
+                press(&mut app, KeyCode::Char('O'));
+                assert_eq!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), state == CheckState::Failed, "{at}: O");
+                assert!(!sent(&mut rx3).iter().any(|m| matches!(m, ClientMsg::Input { .. })), "{at}: O never types into the pane");
+                sent(&mut rx);
+            }
+        }
+    }
+
+    // ---- the Inbox ---------------------------------------------------------------------
+
+    fn goto_failed(app: &mut App) {
+        if !matches!(app.mode, Mode::GoTo { .. }) {
+            app.act(Action::Jump);
+        }
+        for _ in 0..8 {
+            let Mode::GoTo { sel, .. } = &app.mode else { panic!("no inbox: {:?}", app.mode) };
+            let rows = hydra::goto_rows(&app.hy_model(), "", 0);
+            if matches!(rows.get(*sel), Some(hydra::GoRow::Failed(TERM))) {
+                return;
+            }
+            press(app, KeyCode::Down);
+        }
+        panic!("the failed row never got the selection");
+    }
+
+    #[test]
+    fn a_selected_failed_inbox_row_shows_the_design_buttons_in_every_layout_at_every_size() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let at = format!("{name} {w}x{h}");
+                let (mut app, _rx) = rig(w, h, layout, Some(info(CheckState::Failed)), Status::Done);
+                app.act(Action::Jump);
+                let before = words(&draw(&mut app, w, h));
+                assert!(!before.contains("Re-run r"), "{at}: no buttons while the question is selected");
+                goto_failed(&mut app);
+                let o = draw(&mut app, w, h);
+                let text = words(&o);
+                for want in ["Output o", "Re-run r", "Override… O"] {
+                    assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
+                }
+                assert!(fits(&o, w, h), "{at}: fits");
+            }
+        }
+    }
+
+    #[test]
+    fn the_inbox_buttons_and_their_keys_act() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        goto_failed(&mut app);
+        press(&mut app, KeyCode::Char('r'));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1, "r");
+        assert!(matches!(app.mode, Mode::GoTo { .. }), "the Inbox stays open");
+        draw(&mut app, 100, 30);
+        click(&mut app, 100, 30, Hit::Hy(hydra::HyHit::InboxCheck(TERM, 'r')));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1, "the Re-run button");
+        press(&mut app, KeyCode::Char('O'));
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), "O");
+        press(&mut app, KeyCode::Esc);
+        goto_failed(&mut app);
+        click(&mut app, 100, 30, Hit::Hy(hydra::HyHit::InboxCheck(TERM, 'O')));
+        assert!(matches!(app.mode, Mode::Confirm(_)), "the Override… button");
+        press(&mut app, KeyCode::Esc);
+        goto_failed(&mut app);
+        press(&mut app, KeyCode::Char('o'));
+        assert!(matches!(&app.view, Some(View::Check(v)) if v.term == TERM) && app.mode == Mode::Normal, "o opens the output");
+        goto_failed(&mut app);
+        click(&mut app, 100, 30, Hit::Hy(hydra::HyHit::InboxCheck(TERM, 'o')));
+        assert!(matches!(app.view, Some(View::Check(_))), "the Output button");
+    }
+
+    #[test]
+    fn enter_in_the_inbox_still_focuses_the_session_and_typing_a_search_still_searches() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        goto_failed(&mut app);
+        press(&mut app, KeyCode::Enter);
+        assert!(app.mode == Mode::Normal && app.view.is_none());
+        assert!(commands(&mut rx).iter().all(|c| !matches!(c, Command::RerunCheck { .. })));
+        app.act(Action::Jump);
+        assert!(matches!(app.mode, Mode::GoTo { .. }), "{:?}", app.mode);
+        typed(&mut app, "sh");
+        assert!(matches!(&app.mode, Mode::GoTo { query, .. } if query == "sh"), "other letters still search");
+        assert_eq!(rerun_of(&commands(&mut rx)), 0);
+        typed(&mut app, "r");
+        assert!(matches!(&app.mode, Mode::GoTo { query, .. } if query == "shr"), "and once a search has begun, r is part of it");
+    }
+
+    #[test]
+    fn a_failed_row_that_is_not_selected_and_other_rows_have_no_check_buttons() {
+        let (mut app, _rx) = done(CheckState::Passed);
+        app.act(Action::Jump);
+        let text = words(&draw(&mut app, 100, 30));
+        assert!(!text.contains("Re-run r") && !text.contains("Override…"), "{text}");
+    }
+
+    // ---- Settings > Check --------------------------------------------------------------
+
+    fn check_page(app: &mut App, sel: usize) {
+        let cat = modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Check).unwrap();
+        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat, sel, editing: None, capturing: false, scroll: 0 }));
+    }
+
+    fn with_command(app: &mut App) {
+        let project = PathBuf::from(if cfg!(windows) { r"C:\code\shop-api" } else { "/code/shop-api" });
+        app.cfg.check = vec![crate::config::CheckDef { project, command: COMMAND.into(), timeout_s: 600 }];
+    }
+
+    #[test]
+    fn the_check_page_has_a_run_now_button_in_every_layout_at_every_size() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let at = format!("{name} {w}x{h}");
+                let (mut app, _rx) = rig(w, h, layout, Some(info(CheckState::Passed)), Status::Done);
+                with_command(&mut app);
+                check_page(&mut app, 0);
+                let o = draw(&mut app, w, h);
+                assert!(words(&o).contains("Run now r"), "{at}: the button in\n{o}");
+                assert!(fits(&o, w, h), "{at}: fits");
+            }
+        }
+    }
+
+    #[test]
+    fn run_now_re_runs_the_latest_session_by_key_row_and_click() {
+        let run_row = crate::client::hydra::check_settings::CheckField::ALL.iter().position(|f| f.label() == "Run now").expect("a Run now row");
+        let (mut app, mut rx) = done(CheckState::Passed);
+        with_command(&mut app);
+        check_page(&mut app, 0);
+        press(&mut app, KeyCode::Char('r'));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1, "r from any row of the page");
+        check_page(&mut app, run_row);
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(rerun_of(&commands(&mut rx)), 1, "Enter on its row");
+        click(&mut app, 100, 30, Hit::Hy(hydra::HyHit::SetVal(run_row, usize::MAX)));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1, "a click on the button");
+        assert!(matches!(app.mode, Mode::HySettings(_)), "Settings stays open");
+    }
+
+    #[test]
+    fn run_now_with_no_check_set_sends_nothing_and_says_why() {
+        let (mut app, mut rx) = done(CheckState::Passed);
+        check_page(&mut app, 0);
+        press(&mut app, KeyCode::Char('r'));
+        assert!(commands(&mut rx).is_empty());
+        let (msg, _) = toast(&app);
+        assert!(msg.contains("command"), "{msg}");
+    }
+
+    #[test]
+    fn run_now_while_the_agent_works_queues_and_says_so() {
+        let (mut app, mut rx) = rig(100, 30, |_| {}, Some(info(CheckState::Failed)), Status::Working);
+        with_command(&mut app);
+        check_page(&mut app, 0);
+        press(&mut app, KeyCode::Char('r'));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1);
+        assert!(toast(&app).0.contains("queued"));
+    }
+
+    #[test]
+    fn typing_r_in_the_command_field_still_types_an_r() {
+        let (mut app, mut rx) = done(CheckState::Passed);
+        with_command(&mut app);
+        check_page(&mut app, 0);
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('r'));
+        assert!(matches!(&app.mode, Mode::HySettings(v) if v.editing.as_deref() == Some("npm testr")));
+        assert!(commands(&mut rx).is_empty());
     }
 }

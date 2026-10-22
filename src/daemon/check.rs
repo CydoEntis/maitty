@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 pub const CHECK_OUTPUT_MAX_BYTES: usize = 1024 * 1024;
 
 /// The longest reason an override may give; it is shown beside the result, not an essay.
-pub const OVERRIDE_REASON_MAX_CHARS: usize = 280;
+pub use crate::protocol::OVERRIDE_REASON_MAX_CHARS;
 
 /// What the desktop alert says when a check fails.
 const CHECK_FAILED_WHAT: &str = "check failed";

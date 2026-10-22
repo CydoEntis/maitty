@@ -36,8 +36,9 @@ fn settled_at(info: &CheckInfo, s: &Session) -> u64 {
 
 /// One row at (`x`, `y`) across `w` columns: glyph, name, folder and age; the result under
 /// it; for a failure its first failing line. `head_bg` is the selection's tint.
-pub(super) fn draw(app: &App, buf: &mut Buffer, (x, y, w): (u16, u16, u16), head_bg: Color, (proj, s): (&Proj, &Session), t: &Theme) {
-    let Some(info) = &s.check else { return };
+pub(super) fn draw(app: &mut App, buf: &mut Buffer, (x, y, w): (u16, u16, u16), head_bg: Color, (proj, s): (&Proj, &Session), lit: bool, t: &Theme) {
+    let Some(info) = s.check.clone() else { return };
+    let info = &info;
     let head = Style::default().bg(head_bg);
     let card = Style::default().bg(t.card);
     let age = seg(super::age(settled_at(info, s)), head.fg(t.muted));
@@ -54,4 +55,16 @@ pub(super) fn draw(app: &App, buf: &mut Buffer, (x, y, w): (u16, u16, u16), head
     if check::failed(info) && !info.first_failing_line.is_empty() {
         put(buf, x + 3, y + 2, &[seg(truncate(&info.first_failing_line, room), card.fg(t.muted))], x + w);
     }
+    if lit && check::failed(info) {
+        let term = s.term;
+        let mut at = x + 3;
+        for action in ACTIONS {
+            let Some(r) = check::action_pill(app, buf, at, y + 3, x + w, action, t) else { break };
+            hit(app, r, HyHit::InboxCheck(term, action.1));
+            at = r.right() + 1;
+        }
+    }
 }
+
+/// The buttons of a selected failed row: label and the key it stands for.
+const ACTIONS: [(&str, char); 3] = [("Output", 'o'), ("Re-run", 'r'), ("Override…", 'O')];

@@ -54,7 +54,7 @@ or another program follow that program's own help.
 | m, i, s, a | Follow-up to selected agent, status evidence, inspect its subagent activity, Actions |
 | Up, Down in the activity inspector | Inspect the previous or next child record |
 | Delete | Ask to close the selected session or project |
-| Menu letters | Use the letters shown in the selected row's right-click menu; r renames, x closes |
+| Menu letters | Use the letters shown in the selected row's right-click menu; r renames, x closes. A session with a check also lists Check output, Re-run check and (when it failed) Override check… |
 | Esc | Return keyboard focus to the active pane |
 
 ## Command palette and text prompts
@@ -88,6 +88,7 @@ or another program follow that program's own help.
 | m | Follow-up to selected asking/finished agent when search is empty |
 | d, M, x | Finished worktree: diff, ask to merge, ask to discard; empty search |
 | d, m, k | Shared-file warning: diff, message its agent, dismiss; empty search |
+| o, r, O | Failed check: its output, run it again, override it (asks first); empty search |
 | Delete | Mark selected finished session, or unrun check, seen |
 | Enter, Esc in confirmation | Confirm action, or cancel |
 | Esc | Close Inbox |
@@ -101,6 +102,7 @@ or another program follow that program's own help.
 | Shift+Enter, Alt+Enter | Insert a newline |
 | Ctrl+U, Esc | Clear message, or cancel |
 | i, Esc in evidence | Close status explanation; other keys close it and perform their normal action |
+| Enter, r, O in a check's evidence | Open its output sheet, run it again, override it (asks first); only the keys the popover shows act |
 
 ## Files tree and preview
 
@@ -154,7 +156,11 @@ or another program follow that program's own help.
 | --- | --- |
 | Up, Down, PgUp, PgDn | Scroll the output; the first press leaves the tail that fits |
 | f | Show all the output, or return to the tail |
+| r | Run the check again (queued while the agent is working) |
+| O | Override a failed check: opens a confirm with an optional reason |
+| u | Undo an override: the check reads as failed again |
 | Esc | Close the sheet |
+| Type, Backspace, Ctrl+U, Enter, Esc in the override confirm | Write the reason, delete, clear it, override, cancel |
 
 ## Branches and worktree cleanup
 
@@ -175,6 +181,7 @@ or another program follow that program's own help.
 | Tab, Shift+Tab, Up / k, Down / j | Change settings category; choose row |
 | Left / h, Right / l, Enter, Space | Change value; Enter edits text or captures binding; theme opens browser |
 | o | Open configuration file outside Seshi |
+| r on the Check page | Run the project's check now (the Run now row also takes Enter or a click) |
 | Enter, Esc when editing | Save field / cancel; when capturing press the new key or Esc |
 | Type, Backspace, Ctrl+U in themes | Filter themes, clear filter |
 | Up, Down, PgUp, PgDn, Home, End in themes | Preview themes |

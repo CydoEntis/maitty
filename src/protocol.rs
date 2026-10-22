@@ -507,6 +507,9 @@ pub struct TermInfo {
     pub check: Option<CheckInfo>,
 }
 
+/// The longest reason an override may carry, in characters.
+pub const OVERRIDE_REASON_MAX_CHARS: usize = 280;
+
 /// Where a check stands. `CouldNotRun` is not a failure: the work was never checked.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CheckState {
