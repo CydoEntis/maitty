@@ -347,7 +347,16 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     if mismatch || !known {
         say(buf, format!("{host}: {daemon}"), c.fg(t.muted));
     }
-    if app.restart_pending() {
+    if app.daemon_restartable() {
+        let lead = "Restart pending — ";
+        say(buf, lead.into(), c.fg(t.accent).add_modifier(Modifier::BOLD));
+        let (x, y) = (r.x + 4 + lead.width() as u16, vy + lines_used);
+        let ar = Rect { x, y, width: "Restart now R".width() as u16 + 4, height: 1 };
+        let btn = button_pill(look, t, "Restart now", "R", true, hovered(app, ar), t.card);
+        let end = put(buf, x, y, &btn, r.right() - 3);
+        hit(app, Rect { x, y, width: end.saturating_sub(x).max(1), height: 1 }, ScreenHit::Restart);
+        put(buf, end, y, &[seg("  or when all sessions close", dot)], r.right() - 3);
+    } else if app.restart_pending() {
         let note = if crate::ipc::remote().is_some() {
             "Remote daemon differs — update it on its host after its sessions are closed."
         } else {

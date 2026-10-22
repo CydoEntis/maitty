@@ -1173,9 +1173,12 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
 
 /// A note (copied, saved, couldn't …) as a small pop-up just above the bottom bar, centred
 /// over the panes; it goes after a few seconds (errors stay a little longer).
-/// How long a toast stays: an error longer, one about a session (a click goes there) longest.
-pub(in crate::client) fn toast_hold(err: bool, about: bool) -> std::time::Duration {
-    std::time::Duration::from_millis(if err {
+/// How long a toast stays: an error longer, one about a session (a click goes there) longer
+/// still, one with a button longest.
+pub(in crate::client) fn toast_hold(err: bool, about: bool, action: bool) -> std::time::Duration {
+    std::time::Duration::from_millis(if action {
+        12000
+    } else if err {
         4500
     } else if about {
         6000
@@ -1195,7 +1198,8 @@ const TOAST_FLASH_BRIGHT: f32 = 0.55;
 pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, panes: Rect, t: &Theme) {
     let Some((msg, at, err)) = app.notice.clone() else { return };
     let about = app.notice_term.filter(|t| app.snap.terms.contains_key(t));
-    let hold = toast_hold(err, about.is_some());
+    let restart = app.toast_restart();
+    let hold = toast_hold(err, about.is_some(), restart);
     let shown = at.elapsed();
     if shown > hold {
         return;
@@ -1206,6 +1210,11 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, panes: Rect
     let left = hold.saturating_sub(shown);
     let fade = if on && left < crate::client::motion::TOAST_FADE { 1.0 - left.as_secs_f32() / crate::client::motion::TOAST_FADE.as_secs_f32() } else { 0.0 };
     let hint = if about.is_some() { "   click to open" } else { "" };
+    // The update's own sentence is long; with the button the toast keeps to the news.
+    let msg = match (restart, &app.installed_version) {
+        (true, Some(Ok(v))) => format!("seshi {v} installed"),
+        _ => msg,
+    };
     let text = truncate(&msg, (panes.width.saturating_sub(16) as usize).saturating_sub(hint.width()));
     // Filled with the colour of what it says, so it's seen from the corner of your eye: an
     // agent that needs you or finished wears its state, an error the error colour, a plain
@@ -1223,9 +1232,16 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, panes: Rect
     let bold = Style::default().fg(ink).add_modifier(Modifier::BOLD);
     // A pill inside the top right of the panes, a row below the card's border: away from
     // where you type (an agent's prompt is at the bottom).
+    let look = Look::of(&app.cfg.ui);
+    let mut body = vec![seg("  ", Style::default()), seg(mark, bold), seg(text, bold), seg(hint, Style::default().fg(blend(ink, fill, TOAST_HINT_FADE)))];
+    if restart {
+        body.push(seg("  ", Style::default()));
+        body.extend(button_pill(look, t, "Restart now", "", false, false, fill));
+    }
+    body.push(seg("  ", Style::default()));
     let segs = pill(
-        Look::of(&app.cfg.ui),
-        vec![seg("  ", Style::default()), seg(mark, bold), seg(text, bold), seg(hint, Style::default().fg(blend(ink, fill, TOAST_HINT_FADE))), seg("  ", Style::default())],
+        look,
+        body,
         blend(fill, t.strong, flash * TOAST_FLASH_BRIGHT),
         pane_bg(t),
     );
@@ -1254,6 +1270,8 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, panes: Rect
     put(buf, r.x, r.y, &segs, panes.right());
     if let Some(term) = about {
         hit(app, r, ScreenHit::Session(term));
+    } else if restart {
+        hit(app, r, ScreenHit::Restart);
     }
 }
 

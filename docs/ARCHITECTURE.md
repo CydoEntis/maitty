@@ -242,6 +242,10 @@ spinner settings fields.
 and embeds `docs/shortcuts.md` for contextual controls. The compact leader
 overview remains in `client/screen/leader.rs`; `Action::Help` opens the full reference.
 
+`client/restart_prompt.rs` is the one screen outside the app loop: before a window opens, it
+offers to replace a running server of another version (`main.rs` calls it; the restart itself is
+`cli::kill_server`, which reaches servers of any version).
+
 `detection/` evaluates the pinned 22 Herdr screen manifests in
 `vendor/herdr-detection/` using agent-owned screen regions, OSC fields, priorities
 and nested gates. It performs no I/O. `daemon/status.rs` arbitrates that evidence

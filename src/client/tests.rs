@@ -5844,3 +5844,210 @@ mod check_wiring_tests {
         assert!(commands(&mut rx).is_empty());
     }
 }
+
+mod restart_tests {
+    use super::*;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
+    /// (ui.layout, ui.panes): Cards floating, Cards tiled, Flat.
+    const LAYOUTS: [(&str, &str); 3] = [("cards", "floating"), ("cards", "tiled"), ("flat", "tiled")];
+    const OLD_DAEMON: &str = "0.36.11";
+    const INSTALLED: &str = "9.9.9";
+
+    /// The shop-api scene (3 sessions, 1 working) whose daemon is older than the installed seshi.
+    fn scene(w: u16, h: u16, layout: (&str, &str)) -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        (app.cfg.ui.layout, app.cfg.ui.panes) = (layout.0.into(), layout.1.into());
+        let (tx, rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.got_state = true;
+        app.installed_version = Some(Ok(INSTALLED.into()));
+        app.snap.daemon_version = OLD_DAEMON.into();
+        (app, rx)
+    }
+
+    fn draw(app: &mut App, w: u16, h: u16) -> String {
+        app.screen_fresh();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let out: String = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>().trim_end().to_string() + "\n").collect();
+        if std::env::var("SESHI_SHOW").is_ok() {
+            println!("{out}");
+        }
+        out
+    }
+
+    fn restart_hit(app: &App) -> Option<ratatui::layout::Rect> {
+        app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::Restart)).then_some(*r))
+    }
+
+    fn click(app: &mut App, r: ratatui::layout::Rect) {
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: r.x + r.width / 2, row: r.y, modifiers: KeyModifiers::NONE });
+    }
+
+    fn key(app: &mut App, code: KeyCode) {
+        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    fn sent(rx: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Vec<ClientMsg> {
+        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    }
+
+    fn is_restart(act: &menu::Act) -> bool {
+        *act == menu::Act::RestartDaemon
+    }
+
+    #[test]
+    fn settings_offers_restart_now_in_every_layout_and_size() {
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let (mut app, mut rx) = scene(w, h, layout);
+                app.act(Action::Settings);
+                let out = draw(&mut app, w, h);
+                assert!(out.contains("Restart now"), "{layout:?} {w}x{h}\n{out}");
+                let r = restart_hit(&app).unwrap_or_else(|| panic!("{layout:?} {w}x{h}: the button is clickable"));
+                assert!(r.right() <= w && r.bottom() <= h, "{layout:?} {w}x{h}: the button fits {r:?}");
+                click(&mut app, r);
+                assert!(matches!(&app.mode, Mode::Confirm(c) if is_restart(&c.act)), "{layout:?} {w}x{h}");
+                assert!(sent(&mut rx).is_empty(), "choosing it only asks");
+            }
+        }
+    }
+
+    #[test]
+    fn settings_has_no_restart_button_when_the_daemon_is_current() {
+        let (mut app, _rx) = scene(100, 30, LAYOUTS[0]);
+        app.snap.daemon_version = INSTALLED.into();
+        app.act(Action::Settings);
+        let out = draw(&mut app, 100, 30);
+        assert!(!out.contains("Restart now") && restart_hit(&app).is_none());
+        app.snap.daemon_version = OLD_DAEMON.into();
+        app.daemon_restart_requested = true;
+        let out = draw(&mut app, 100, 30);
+        assert!(!out.contains("Restart now"), "not while a restart is already under way");
+    }
+
+    #[test]
+    fn the_update_toast_offers_restart_now_in_every_layout_and_size() {
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let (mut app, _rx) = scene(w, h, layout);
+                app.update_installed(INSTALLED.into());
+                let out = draw(&mut app, w, h);
+                assert!(out.contains("Restart now"), "{layout:?} {w}x{h}\n{out}");
+                let r = restart_hit(&app).unwrap_or_else(|| panic!("{layout:?} {w}x{h}: the toast button is clickable"));
+                click(&mut app, r);
+                assert!(matches!(&app.mode, Mode::Confirm(c) if is_restart(&c.act)), "{layout:?} {w}x{h}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_later_toast_does_not_keep_the_restart_button() {
+        let (mut app, _rx) = scene(160, 45, LAYOUTS[0]);
+        app.update_installed(INSTALLED.into());
+        app.notify("Copied".into(), false);
+        let out = draw(&mut app, 160, 45);
+        assert!(out.contains("Copied") && !out.contains("Restart now") && restart_hit(&app).is_none());
+    }
+
+    #[test]
+    fn the_confirm_says_how_many_sessions_stop_and_how_many_are_working() {
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let (mut app, _rx) = scene(w, h, layout);
+                app.ask_restart();
+                assert!(matches!(&app.mode, Mode::Confirm(c) if is_restart(&c.act)), "{layout:?} {w}x{h}");
+                let out = draw(&mut app, w, h);
+                for want in ["3 sessions stop and resume, 1 is working", "Restart", "Cancel"] {
+                    assert!(out.contains(want), "{layout:?} {w}x{h} lacks {want:?}\n{out}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_confirm_words_one_idle_session_in_the_singular() {
+        let (mut app, _rx) = scene(100, 30, LAYOUTS[0]);
+        app.snap.terms.retain(|id, _| *id == 3);
+        app.ask_restart();
+        assert!(matches!(&app.mode, Mode::Confirm(c) if c.what == "1 session stops and resumes"), "{:?}", app.mode);
+    }
+
+    #[test]
+    fn cancel_changes_nothing() {
+        let (mut app, mut rx) = scene(100, 30, LAYOUTS[0]);
+        app.ask_restart();
+        key(&mut app, KeyCode::Esc);
+        assert_eq!(app.mode, Mode::Normal);
+        assert!(sent(&mut rx).is_empty() && !app.daemon_restart_requested && !app.daemon_restart_reconnect);
+        app.ask_restart();
+        draw(&mut app, 100, 30);
+        let cancel = app.hits.iter().rev().filter(|(_, h)| *h == Hit::Screen(screen::ScreenHit::ConfirmNo)).map(|(r, _)| *r).min_by_key(|r| r.width).unwrap();
+        click(&mut app, cancel);
+        assert_eq!(app.mode, Mode::Normal);
+        assert!(sent(&mut rx).is_empty() && !app.daemon_restart_requested);
+    }
+
+    #[test]
+    fn restarting_stops_the_daemon_and_the_window_reconnects_to_the_new_one() {
+        let (mut app, mut rx) = scene(100, 30, LAYOUTS[0]);
+        app.ask_restart();
+        key(&mut app, KeyCode::Enter);
+        assert!(matches!(sent(&mut rx).as_slice(), [ClientMsg::Command(Command::KillServer { forget: false })]));
+        assert!(app.daemon_restart_requested);
+
+        app.on_server(ServerMsg::Bye);
+        assert!(app.quit.is_none() && app.daemon_restart_reconnect, "the window stays open for the reconnect");
+
+        let mut snapshot = app.snap.clone();
+        snapshot.daemon_version = INSTALLED.into();
+        app.on_server(ServerMsg::State(snapshot));
+        assert!(!app.daemon_restart_requested && !app.daemon_restart_reconnect);
+        assert_eq!(app.snap.terms.len(), 3, "the restored sessions are back");
+        assert!(!app.daemon_restartable(), "the daemon now matches the install");
+        assert!(app.notice.as_ref().is_some_and(|(text, ..)| text.contains("daemon restarted with the update")));
+    }
+
+    #[test]
+    fn with_no_sessions_open_it_restarts_without_asking() {
+        let (mut app, mut rx) = scene(100, 30, LAYOUTS[0]);
+        app.snap.terms.clear();
+        app.ask_restart();
+        assert_eq!(app.mode, Mode::Normal);
+        assert!(matches!(sent(&mut rx).as_slice(), [ClientMsg::Command(Command::KillServer { forget: false })]));
+        assert!(app.daemon_restart_requested);
+    }
+
+    #[test]
+    fn nothing_restarts_when_the_daemon_is_not_older() {
+        let (mut app, mut rx) = scene(100, 30, LAYOUTS[0]);
+        app.snap.daemon_version = INSTALLED.into();
+        app.ask_restart();
+        assert_eq!(app.mode, Mode::Normal);
+        assert!(sent(&mut rx).is_empty() && !app.daemon_restart_requested);
+    }
+
+    #[test]
+    fn capital_r_in_settings_asks_to_restart() {
+        let (mut app, _rx) = scene(100, 30, LAYOUTS[0]);
+        app.act(Action::Settings);
+        key(&mut app, KeyCode::Char('R'));
+        assert!(matches!(&app.mode, Mode::Confirm(c) if is_restart(&c.act)));
+        let (mut app, _rx) = scene(100, 30, LAYOUTS[0]);
+        app.snap.daemon_version = INSTALLED.into();
+        app.act(Action::Settings);
+        key(&mut app, KeyCode::Char('R'));
+        assert!(matches!(app.mode, Mode::ScreenSettings(_)), "nothing to restart: Settings stays");
+    }
+
+    #[test]
+    fn the_settings_button_shows_its_key() {
+        let (mut app, _rx) = scene(100, 30, LAYOUTS[0]);
+        app.act(Action::Settings);
+        assert!(draw(&mut app, 100, 30).contains("Restart now R"));
+    }
+}

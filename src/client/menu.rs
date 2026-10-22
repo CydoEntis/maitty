@@ -51,6 +51,8 @@ pub enum Act {
     Tidy(Vec<(PathBuf, bool)>),
     /// Install the newest seshi without interrupting the running sessions.
     Update,
+    /// Stop the daemon so the window reconnects to the installed version.
+    RestartDaemon,
     InstallStatus(String),
     /// Open a session's check output in the evidence sheet.
     CheckOutput(TermId),
@@ -468,6 +470,7 @@ impl App {
                 self.cmd(Command::NewWorkspace { cwd: Some(cwd), name: None, cmd: None });
             }
             Act::Update => self.start_update(),
+            Act::RestartDaemon => self.restart_daemon_now(),
             Act::InstallStatus(agent) => {
                 self.notify(format!("setting up {agent} status…"), false);
                 self.spawn_bg(move || {

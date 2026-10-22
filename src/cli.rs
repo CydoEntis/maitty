@@ -515,7 +515,7 @@ pub fn kill_server(forget: bool) -> Result<()> {
     }
     match command(Command::KillServer { forget }) {
         // Another version can't be asked to stop: stop its process instead.
-        Err(e) if e.chain().any(|c| c.is::<ipc::OtherVersion>()) => {
+        Err(e) if ipc::other_version(&e).is_some() => {
             let pid = stop_server_process()?;
             if forget {
                 crate::daemon::forget_session();

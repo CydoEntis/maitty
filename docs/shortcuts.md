@@ -181,6 +181,7 @@ or another program follow that program's own help.
 | Tab, Shift+Tab, Up / k, Down / j | Change settings category; choose row |
 | Left / h, Right / l, Enter, Space | Change value; Enter edits text or captures binding; theme opens browser |
 | o | Open configuration file outside Seshi |
+| R | Restart the daemon after an update (when the Restart now button shows) |
 | r on the Check page | Run the project's check now (the Run now row also takes Enter or a click) |
 | Enter, Esc when editing | Save field / cancel; when capturing press the new key or Esc |
 | Type, Backspace, Ctrl+U in themes | Filter themes, clear filter |

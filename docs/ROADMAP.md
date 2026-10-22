@@ -11,7 +11,10 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The latest published release on `main` is v0.37.0 (2026-10-22): checks that Seshi
+The latest published release on `main` is v0.37.1 (2026-10-22): a restart button for
+the daemon after an update, and a prompt instead of an error when a new `seshi` meets an
+older daemon ([Phase 16](#16--restart-the-daemon-from-the-update-flow--complete-2026-10-22)).
+v0.37.0 brought checks that Seshi
 runs itself ([Phase 15](#15--checks-seshi-runs-itself--active-chosen-2026-10-22)), with
 the sidebar grouping by folder and tool icons. It moves the wire protocol to 43, so
 restart the daemon after installing it, and update remote daemons too. Five platform
@@ -406,6 +409,22 @@ exercised Windows only through tests). On Linux a check's grandchild process can
   separate later tickets.
 - Acceptance: tickets, tests, docs and a passing verification gate before it is marked shipped,
   plus a live check where a failing check keeps a session from reading done.
+
+### 16 — Restart the daemon from the update flow · complete 2026-10-22
+
+Found while shipping v0.37.0: the protocol moved from 42 to 43 and the only way forward was
+`seshi kill-server`. Ticket #110. After an update that leaves the daemon older, Settings and the update
+toast show **Restart now** (capital `R` in Settings), which confirms how many sessions stop and how
+many are working; with none open it restarts at once. A new `seshi` that finds an older daemon it
+cannot talk to shows a full-screen prompt (**Restart and open** / **Quit**) on a real terminal, and
+keeps the old error and exit code everywhere else; a remote daemon is never restarted by it. No
+protocol change. Live-checked against the published v0.36.13 daemon on an isolated socket: the prompt
+(100×30 and 80×24, by key and by mouse), Quit leaving the old daemon and its session alone, Restart
+and open bringing the new daemon up with the session back, and no prompt without a terminal.
+Not verified live: **Restart now** against a real older daemon of the same protocol (tests use a
+faked snapshot), and Windows beyond CI. Known gaps: the prompt shows protocol numbers, not release
+numbers (an older daemon reports only its protocol); it installs no panic hook to switch mouse
+capture back off; the offer-then-restart glue in `open_client` has no test of its own.
 
 ## In scope
 

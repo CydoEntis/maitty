@@ -360,7 +360,23 @@ fn main() {
     }
 }
 
-/// Protocol mismatches leave the daemon running until the user can restart it safely.
+/// A server of another version keeps running until it can be replaced safely, so the
+/// mismatch is the person's call: on a terminal they get a prompt to restart it.
 fn open_client(open: Option<std::path::PathBuf>) -> anyhow::Result<()> {
-    client::run(client::Options { open })
+    use std::io::IsTerminal;
+    let err = match client::run(client::Options { open: open.clone() }) {
+        Err(e) => e,
+        done => return done,
+    };
+    let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    let Some(daemon) = client::restart_prompt::wanted(&err, terminal, ipc::remote().is_some()) else {
+        return Err(err);
+    };
+    match client::restart_prompt::offer(daemon)? {
+        client::restart_prompt::Choice::Quit => Err(err),
+        client::restart_prompt::Choice::Restart => {
+            cli::kill_server(false)?;
+            client::run(client::Options { open })
+        }
+    }
 }
