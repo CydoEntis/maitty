@@ -86,18 +86,13 @@ impl Daemon {
                 (t.id, t.kept_output())
             })
             .collect();
-        let check_outputs = self.take_dirty_check_outputs();
-        if outputs.is_empty() && check_outputs.is_empty() && !all {
+        self.save_check_tails(ticket, live.clone(), all);
+        if outputs.is_empty() && !all {
             return;
         }
         let save = move || {
             if let Err(e) = persist::save_outputs(ticket, &outputs, &live) {
                 tracing::warn!("saving panes' output: {e:#}");
-            }
-            if !check_outputs.is_empty()
-                && let Err(e) = persist::save_check_outputs(&check_outputs, &live)
-            {
-                tracing::warn!("saving checks' output: {e:#}");
             }
         };
         if all {
@@ -105,6 +100,29 @@ impl Daemon {
         } else {
             tokio::task::spawn_blocking(save);
         }
+    }
+
+    /// Save the check output tails that changed, off the loop (`all`: now, and drop the tails
+    /// of panes not in `live` even if none changed). Tails that could not be written are
+    /// marked due again, so a failed write loses nothing.
+    pub(super) fn save_check_tails(&mut self, ticket: u64, live: Vec<TermId>, all: bool) {
+        let tails = self.take_dirty_check_outputs();
+        if tails.is_empty() && !all {
+            return;
+        }
+        let dir = self.check_dir.clone();
+        if all {
+            let unsaved = persist::save_check_outputs(&dir, ticket, &tails, &live);
+            self.check_outputs_unsaved(&unsaved);
+            return;
+        }
+        let tx = self.tx.clone();
+        tokio::task::spawn_blocking(move || {
+            let unsaved = persist::save_check_outputs(&dir, ticket, &tails, &live);
+            if !unsaved.is_empty() {
+                let _ = tx.blocking_send(Ev::CheckOutputsUnsaved(unsaved));
+            }
+        });
     }
 
     /// The check output tails that changed since they were last written, marked as written.
@@ -203,6 +221,7 @@ impl Daemon {
 
     pub(super) fn restore(&mut self, mut saved: persist::Saved) {
         self.made_worktrees = std::mem::take(&mut saved.made_worktrees);
+        let check_dir = self.check_dir.clone();
         let mut restored = 0;
         // Every pane's new id by its saved one, and who started it by the saved id: panes come
         // back in any order, so the links are made once all of them are up.
@@ -236,7 +255,7 @@ impl Daemon {
                                 t.model = pane.model.clone();
                                 t.label = pane.label.clone();
                                 t.queue = pane.queue.iter().cloned().collect();
-                                t.restore_checks(old, &pane);
+                                t.restore_checks(&check_dir, old, &pane);
                                 let now = term::unix_now();
                                 t.subagent_activity = pane.subagent_activity.into_iter().map(|mut activity| {
                                     if activity.state.active() {

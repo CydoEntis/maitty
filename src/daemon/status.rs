@@ -42,6 +42,9 @@ static CHOICES: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| 
 /// Codex can keep working while an asynchronous question waits in its composer.
 static CODEX_QUEUED_QUESTION: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(crate::config::CODEX_QUEUED_QUESTION_PATTERN).unwrap());
 const CODEX_QUESTION_WHY: &str = "screen: Codex has an unanswered question";
+/// Why a turn that ended without a turn-end report is read as cancelled; nothing was finished,
+/// so nothing is checked.
+const CANCELLED_WHY: &str = "progress bar gone, no turn end: cancelled";
 const SCREEN_IDLE_RECOVERY_WHY: &str = "screen: explicit idle prompt recovered a missed turn end";
 /// A "done" held while subagents run is let through once none has been heard from for this
 /// long (one died without saying so). Background agents can run, and wait on CI, for a while.
@@ -305,6 +308,11 @@ impl Daemon {
             t.progress_off = None;
         }
         self.set_status(term, new, &format!("hook: {}", if event.is_empty() { "status report" } else { event }));
+        // A turn-end report can arrive when the screen never showed the turn working, so the
+        // status did not change. Claude's repeated idle ping is not a turn end.
+        if status == HookStatus::Done && !event.starts_with("Notification:") {
+            self.turn_ended(term);
+        }
         self.dirty = true;
     }
 
@@ -343,8 +351,12 @@ impl Daemon {
         t.status = new;
         t.status_since = term::unix_now();
         self.dirty = true;
+        let turn_over = turn.is_some() && matches!(new, Status::Done | Status::Idle) && why != CANCELLED_WHY;
         if let Some((agent, place, secs)) = turn {
             self.note_turn(agent, place, secs);
+        }
+        if turn_over {
+            self.turn_ended(term);
         }
         if let Some((agent, dir)) = before_turn {
             self.snapshot_before_turn(agent, dir);
@@ -584,7 +596,7 @@ impl Daemon {
                 // A progress bar that is off while helpers run is the agent waiting on them.
                 let helpers_running = !t.subagents.is_empty() && t.subagent_seen.is_some_and(|s| s.elapsed() <= SUBAGENTS_QUIET_AT_MOST);
                 if t.status == Status::Working && t.done_held.is_none() && !helpers_running && t.progress_off.is_some_and(|p| p.elapsed() > CANCELLED_AFTER) {
-                    changes.push((t.id, Status::Idle, "progress bar gone, no turn end: cancelled".to_string()));
+                    changes.push((t.id, Status::Idle, CANCELLED_WHY.to_string()));
                 }
                 // Agents whose hooks only say a turn ended (Codex's notify): the start of the
                 // next turn shows on screen only.

@@ -7,7 +7,7 @@ use crate::protocol::{CheckInfo, SubagentActivity, TermId};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Saved {
@@ -135,7 +135,7 @@ fn output_file(term: TermId) -> PathBuf {
 }
 
 /// Which of a pane's two kept check results an output tail belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CheckSlot {
     Latest,
     Overridden,
@@ -160,38 +160,71 @@ pub fn check_output_dir() -> PathBuf {
     crate::config::data_dir().join(format!("check-output-{label}"))
 }
 
-fn check_output_file(term: TermId, slot: CheckSlot) -> PathBuf {
-    check_output_dir().join(format!("{term}-{}.txt", slot.file_suffix()))
+fn check_output_file(dir: &Path, term: TermId, slot: CheckSlot) -> PathBuf {
+    dir.join(format!("{term}-{}.txt", slot.file_suffix()))
 }
 
-/// Keep each check output tail, and drop the files of panes not in `live`. One file failing
-/// doesn't stop the rest; the first error is returned after all were tried.
-pub fn save_check_outputs(outputs: &[(TermId, CheckSlot, String)], live: &[TermId]) -> Result<()> {
-    let dir = check_output_dir();
-    std::fs::create_dir_all(&dir)?;
-    let mut first_err: Option<anyhow::Error> = None;
+/// What a folder of check tails has had written to it, so a slow background save can't put
+/// an older tail over a newer one (as `Written` does for panes' output).
+#[derive(Default)]
+struct CheckWritten {
+    tails: std::collections::HashMap<(TermId, CheckSlot), u64>,
+    cleaned: u64,
+}
+
+static CHECK_WRITTEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, CheckWritten>>> = std::sync::Mutex::new(None);
+
+/// Keep each check output tail in `dir`, and drop the files of panes not in `live`. Saves
+/// run one at a time; a tail already written by a newer `ticket` (from `save_ticket`) is left
+/// alone. One file failing doesn't stop the rest. Returns the panes whose tail was not
+/// written, so the caller can try again.
+pub fn save_check_outputs(dir: &Path, ticket: u64, outputs: &[(TermId, CheckSlot, String)], live: &[TermId]) -> Vec<TermId> {
+    let mut guard = CHECK_WRITTEN.lock().unwrap_or_else(|e| e.into_inner());
+    let written = guard.get_or_insert_with(Default::default).entry(dir.to_path_buf()).or_default();
+    let mut failed: Vec<TermId> = Vec::new();
+    if !outputs.is_empty()
+        && let Err(e) = std::fs::create_dir_all(dir)
+    {
+        tracing::warn!("saving checks' output: {e}");
+        return outputs.iter().map(|(term, ..)| *term).collect();
+    }
     for (term, slot, text) in outputs {
-        let path = check_output_file(*term, *slot);
+        if written.tails.get(&(*term, *slot)).is_some_and(|&t| t > ticket) {
+            continue;
+        }
+        let path = check_output_file(dir, *term, *slot);
         let tmp = path.with_extension("tmp");
-        if let Err(e) = std::fs::write(&tmp, text).and_then(|()| std::fs::rename(&tmp, &path)) {
-            first_err.get_or_insert(e.into());
+        match std::fs::write(&tmp, text).and_then(|()| std::fs::rename(&tmp, &path)) {
+            Ok(()) => {
+                written.tails.insert((*term, *slot), ticket);
+            }
+            Err(e) => {
+                tracing::warn!("saving checks' output: {e}");
+                failed.push(*term);
+            }
         }
     }
-    for e in std::fs::read_dir(&dir)?.flatten() {
-        let name = e.file_name();
-        let id = name.to_str().and_then(|n| n.split('-').next()).and_then(|n| n.parse::<TermId>().ok());
-        if id.is_none_or(|id| !live.contains(&id)) {
-            let _ = std::fs::remove_file(e.path());
+    if ticket > written.cleaned {
+        written.cleaned = ticket;
+        written.tails.retain(|(id, _), _| live.contains(id));
+        // A folder that was never made has nothing to prune.
+        for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let name = e.file_name();
+            let id = name.to_str().and_then(|n| n.split('-').next()).and_then(|n| n.parse::<TermId>().ok());
+            if id.is_none_or(|id| !live.contains(&id)) {
+                let _ = std::fs::remove_file(e.path());
+            }
         }
     }
-    first_err.map_or(Ok(()), Err)
+    failed.sort_unstable();
+    failed.dedup();
+    failed
 }
 
-/// A pane's kept check output, taken (its file goes: the pane it's restored into saves its own).
-pub fn take_check_output(term: TermId, slot: CheckSlot) -> Option<String> {
-    let path = check_output_file(term, slot);
-    let bytes = std::fs::read(&path).ok()?;
-    let _ = std::fs::remove_file(&path);
+/// A pane's kept check output. Left in place: the pane it is restored into writes its own
+/// under its new id, and the next save drops this one, so a crash in between loses nothing.
+pub fn read_check_output(dir: &Path, term: TermId, slot: CheckSlot) -> Option<String> {
+    let bytes = std::fs::read(check_output_file(dir, term, slot)).ok()?;
     Some(check::cap_output(&String::from_utf8_lossy(&bytes)))
 }
 
@@ -265,6 +298,31 @@ pub fn take_output(term: TermId) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
+/// A folder of its own for one test, removed when the test ends however it ends.
+#[cfg(test)]
+pub(super) struct ScratchDir(PathBuf);
+
+#[cfg(test)]
+impl ScratchDir {
+    pub(super) fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+#[cfg(test)]
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[cfg(test)]
+pub(super) fn scratch_dir() -> ScratchDir {
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    ScratchDir(std::env::temp_dir().join(format!("seshi-test-scratch-{}-{n}", std::process::id())))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,19 +348,50 @@ mod tests {
     }
 
     #[test]
-    fn check_output_is_kept_per_slot_taken_once_and_dropped_with_its_pane() {
-        let (kept, gone): (crate::protocol::TermId, crate::protocol::TermId) = (9_101, 9_102);
+    fn check_output_is_kept_per_slot_read_back_and_dropped_with_its_pane() {
+        let dir = scratch_dir();
+        let (kept, gone): (crate::protocol::TermId, crate::protocol::TermId) = (7, 8);
         let outputs = [
             (kept, CheckSlot::Latest, "FAIL a\n".to_string()),
             (kept, CheckSlot::Overridden, "FAIL b\n".to_string()),
             (gone, CheckSlot::Latest, "FAIL c\n".to_string()),
         ];
-        save_check_outputs(&outputs, &[kept, gone]).unwrap();
-        save_check_outputs(&[], &[kept]).unwrap();
-        assert_eq!(take_check_output(gone, CheckSlot::Latest), None, "a closed pane's tail goes");
-        assert_eq!(take_check_output(kept, CheckSlot::Overridden).as_deref(), Some("FAIL b\n"));
-        assert_eq!(take_check_output(kept, CheckSlot::Latest).as_deref(), Some("FAIL a\n"));
-        assert_eq!(take_check_output(kept, CheckSlot::Latest), None, "taken once");
+        assert!(save_check_outputs(dir.path(), save_ticket(), &outputs, &[kept, gone]).is_empty());
+        assert!(save_check_outputs(dir.path(), save_ticket(), &[], &[kept]).is_empty());
+        assert_eq!(read_check_output(dir.path(), gone, CheckSlot::Latest), None, "a closed pane's tail goes");
+        assert_eq!(read_check_output(dir.path(), kept, CheckSlot::Overridden).as_deref(), Some("FAIL b\n"));
+        assert_eq!(read_check_output(dir.path(), kept, CheckSlot::Latest).as_deref(), Some("FAIL a\n"));
+        assert_eq!(read_check_output(dir.path(), kept, CheckSlot::Latest).as_deref(), Some("FAIL a\n"), "reading leaves it for the next restart");
+    }
+
+    #[test]
+    fn a_slow_older_check_save_cannot_overwrite_a_newer_tail() {
+        let dir = scratch_dir();
+        let term: crate::protocol::TermId = 3;
+        let (old, new) = (save_ticket(), save_ticket());
+        assert!(save_check_outputs(dir.path(), new, &[(term, CheckSlot::Latest, "newer".into())], &[term]).is_empty());
+        assert!(save_check_outputs(dir.path(), old, &[(term, CheckSlot::Latest, "older".into())], &[term]).is_empty());
+        assert_eq!(read_check_output(dir.path(), term, CheckSlot::Latest).as_deref(), Some("newer"));
+    }
+
+    #[test]
+    fn a_tail_that_cannot_be_written_is_reported_so_it_can_be_tried_again() {
+        let dir = scratch_dir();
+        std::fs::create_dir_all(dir.path()).unwrap();
+        let blocker = dir.path().join("not-a-folder");
+        std::fs::write(&blocker, "x").unwrap();
+        let failed = save_check_outputs(&blocker, save_ticket(), &[(4, CheckSlot::Latest, "t".into()), (5, CheckSlot::Overridden, "u".into())], &[4, 5]);
+        assert_eq!(failed, [4, 5]);
+    }
+
+    #[test]
+    fn two_folders_do_not_share_what_was_written() {
+        let (a, b) = (scratch_dir(), scratch_dir());
+        let term: crate::protocol::TermId = 6;
+        let (old, new) = (save_ticket(), save_ticket());
+        assert!(save_check_outputs(a.path(), new, &[(term, CheckSlot::Latest, "a".into())], &[term]).is_empty());
+        assert!(save_check_outputs(b.path(), old, &[(term, CheckSlot::Latest, "b".into())], &[term]).is_empty());
+        assert_eq!(read_check_output(b.path(), term, CheckSlot::Latest).as_deref(), Some("b"));
     }
 
     #[test]

@@ -93,6 +93,8 @@ Tests never touch the user's real config (`SESHI_CONFIG` or in-memory configs).
 - Checks: exit code, timeout and spawn failure map to one `CheckState` (table test in
   `daemon/check.rs`); the output cap cuts on a character boundary; a saved pane without the
   check fields still loads.
+  The runner (`run_check`) is tested with real shells: pass, fail, timeout (and no child left
+  running), missing command, a scrubbed environment; the daemon hook-in in `daemon/logic_tests.rs`.
 - Key handling: every default binding resolves to an action, and new keys don't
   collide.
 - Every popup: a render test that it opens, fits at 100×30, and closes on Esc.

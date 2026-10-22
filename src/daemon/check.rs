@@ -1,21 +1,37 @@
 //! A pane's check result as the daemon holds and saves it: the summary every client sees,
-//! and the output tail only `Query::CheckOutput` returns.
+//! and the output tail only `Query::CheckOutput` returns. Also what produces one: the
+//! project's check command, run in the session's worktree when an agent's turn ends.
 
 use super::persist::{self, CheckSlot, SavedPane};
-use super::term::Term;
+use super::term::{self, Term};
+use super::{Daemon, Ev};
 use crate::protocol::{CheckInfo, CheckState, TermId};
+use std::path::Path;
+use std::process::{Child, Stdio};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 /// The most output kept per result. A check's tail is what explains a failure; the rest
 /// would only grow the saved files.
 pub const CHECK_OUTPUT_MAX_BYTES: usize = 1024 * 1024;
 
-/// The shell's exit code for a command it could not find.
-#[allow(dead_code)]
+/// The shell's exit code for a command it could not find (cmd.exe's is 9009). PowerShell
+/// reports a missing command as 1, which cannot be told from a failing one.
 const EXIT_COMMAND_NOT_FOUND: i32 = 127;
+const EXIT_COMMAND_NOT_FOUND_CMD: i32 = 9009;
+
+/// How often a running check is looked at for its end or its deadline.
+const CHECK_POLL: Duration = Duration::from_millis(25);
+/// Once the shell has exited, how long to wait for its output to finish arriving. A
+/// background process that kept the pipes open must not hold the result back.
+const OUTPUT_DRAIN_GRACE: Duration = Duration::from_secs(2);
+/// Bytes read from a pipe at a time.
+const READ_CHUNK_BYTES: usize = 8 * 1024;
+/// Variables the check's process must not see: the pane's secret lets whoever holds it
+/// report that pane's status.
+const SCRUBBED_ENV: &[&str] = &["SESHI_PANE_TOKEN"];
 
 /// How a check's process ended, before it is read as a result.
-// Nothing produces an outcome until the runner lands.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CheckOutcome {
     Exited(i32),
@@ -25,11 +41,10 @@ pub enum CheckOutcome {
 
 /// A command that never ran, or never finished, says nothing about the work, so it is not
 /// a failure.
-#[allow(dead_code)]
 pub fn state_for(outcome: CheckOutcome) -> CheckState {
     match outcome {
         CheckOutcome::Exited(0) => CheckState::Passed,
-        CheckOutcome::Exited(EXIT_COMMAND_NOT_FOUND) => CheckState::CouldNotRun,
+        CheckOutcome::Exited(EXIT_COMMAND_NOT_FOUND | EXIT_COMMAND_NOT_FOUND_CMD) => CheckState::CouldNotRun,
         CheckOutcome::Exited(_) => CheckState::Failed,
         CheckOutcome::TimedOut | CheckOutcome::SpawnFailed => CheckState::CouldNotRun,
     }
@@ -55,16 +70,241 @@ impl CheckRecord {
     }
 }
 
+/// What a run left behind.
+#[derive(Debug)]
+pub struct CheckRun {
+    pub outcome: CheckOutcome,
+    /// The tail of what the command printed (both streams), capped.
+    pub output: String,
+    pub duration: Duration,
+}
+
+/// Run `line` through `shell` in `dir` until it ends or `timeout` passes, and stop its whole
+/// process tree if it does not. Its output is returned and never logged.
+pub fn run_check(shell: &[String], dir: &Path, line: &str, timeout: Duration) -> CheckRun {
+    run_scrubbed(shell, dir, line, timeout, SCRUBBED_ENV)
+}
+
+fn run_scrubbed(shell: &[String], dir: &Path, line: &str, timeout: Duration, scrub: &[&str]) -> CheckRun {
+    let started = Instant::now();
+    let done = |outcome, output: &str| CheckRun { outcome, output: cap_output(output), duration: started.elapsed() };
+    let mut child = match check_command(shell, dir, line, scrub).spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            tracing::warn!("couldn't start the check: {e}");
+            return done(CheckOutcome::SpawnFailed, "");
+        }
+    };
+    let tree = Tree::of(&child);
+    let output = Output::default();
+    let readers = [child.stdout.take().map(|r| output.fill_from(r)), child.stderr.take().map(|r| output.fill_from(r))];
+    let outcome = wait_for(&mut child, &tree, timeout, started);
+    let grace_ends = Instant::now() + OUTPUT_DRAIN_GRACE;
+    for reader in readers.into_iter().flatten() {
+        while !reader.is_finished() && Instant::now() < grace_ends {
+            std::thread::sleep(CHECK_POLL);
+        }
+    }
+    done(outcome, &output.text())
+}
+
+fn check_command(shell: &[String], dir: &Path, line: &str, scrub: &[&str]) -> std::process::Command {
+    let mut c = crate::proc::shell(shell, line, false);
+    c.current_dir(dir).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    for var in scrub {
+        c.env_remove(var);
+    }
+    crate::proc::quiet(&mut c);
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut c, 0);
+    c
+}
+
+fn wait_for(child: &mut Child, tree: &Tree, timeout: Duration, started: Instant) -> CheckOutcome {
+    loop {
+        match child.try_wait() {
+            // A process a signal ended has no code; it did not pass.
+            Ok(Some(status)) => return CheckOutcome::Exited(status.code().unwrap_or(-1)),
+            Ok(None) if started.elapsed() >= timeout => {
+                tree.kill();
+                let _ = child.kill();
+                let _ = child.wait();
+                return CheckOutcome::TimedOut;
+            }
+            Ok(None) => std::thread::sleep(CHECK_POLL),
+            Err(e) => {
+                tracing::warn!("couldn't wait for the check: {e}");
+                tree.kill();
+                let _ = child.kill();
+                let _ = child.wait();
+                return CheckOutcome::SpawnFailed;
+            }
+        }
+    }
+}
+
+/// What both of a check's streams printed, kept to its last `CHECK_OUTPUT_MAX_BYTES * 2`
+/// so a chatty command cannot fill memory.
+#[derive(Clone, Default)]
+struct Output(Arc<Mutex<Vec<u8>>>);
+
+impl Output {
+    fn fill_from<R: std::io::Read + Send + 'static>(&self, mut pipe: R) -> std::thread::JoinHandle<()> {
+        let sink = self.0.clone();
+        std::thread::spawn(move || {
+            let mut chunk = [0u8; READ_CHUNK_BYTES];
+            while let Ok(n) = pipe.read(&mut chunk) {
+                if n == 0 {
+                    break;
+                }
+                let mut kept = sink.lock().unwrap_or_else(|e| e.into_inner());
+                kept.extend_from_slice(&chunk[..n]);
+                if let Some(excess) = kept.len().checked_sub(CHECK_OUTPUT_MAX_BYTES * 2) {
+                    kept.drain(..excess + CHECK_OUTPUT_MAX_BYTES);
+                }
+            }
+        })
+    }
+
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock().unwrap_or_else(|e| e.into_inner())).into_owned()
+    }
+}
+
+/// Everything a check started, so a timeout can stop all of it and not only the shell. On
+/// unix that is the process group the check leads; on Windows, a job object.
+struct Tree {
+    #[cfg(unix)]
+    group: libc::pid_t,
+    #[cfg(windows)]
+    job: windows_sys::Win32::Foundation::HANDLE,
+}
+
+#[cfg(unix)]
+impl Tree {
+    fn of(child: &Child) -> Self {
+        // `process_group(0)` made the child its own group leader, so its pid is the group.
+        Self { group: child.id() as libc::pid_t }
+    }
+
+    fn kill(&self) {
+        // SAFETY: signals a process group this check created; the child is not yet reaped, so
+        // the number cannot belong to anything else.
+        unsafe { libc::kill(-self.group, libc::SIGKILL) };
+    }
+}
+
+#[cfg(windows)]
+impl Tree {
+    fn of(child: &Child) -> Self {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JobObjectExtendedLimitInformation, SetInformationJobObject,
+        };
+        // SAFETY: plain Win32 calls on a job this function creates and a handle `child` owns.
+        // A process that already left (or an error) leaves a job nothing is in; killing it is a no-op.
+        unsafe {
+            let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+            if job.is_null() {
+                return Self { job };
+            }
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                &info as *const _ as *const core::ffi::c_void,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            );
+            AssignProcessToJobObject(job, child.as_raw_handle());
+            Self { job }
+        }
+    }
+
+    fn kill(&self) {
+        use windows_sys::Win32::System::JobObjects::TerminateJobObject;
+        if !self.job.is_null() {
+            // SAFETY: `job` is the handle `of` created and `drop` has not closed yet.
+            unsafe { TerminateJobObject(self.job, 1) };
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for Tree {
+    fn drop(&mut self) {
+        if !self.job.is_null() {
+            // SAFETY: closes the handle `of` created, once. Closing the job also ends anything left in it.
+            unsafe { windows_sys::Win32::Foundation::CloseHandle(self.job) };
+        }
+    }
+}
+
+impl Daemon {
+    /// An agent's turn ended: run the project's check in its worktree, off the loop. Nothing
+    /// happens for a shell, for a project with no check, or while a check is already running
+    /// (the new turn's code is checked by the next turn end).
+    pub(super) fn turn_ended(&mut self, term: TermId) {
+        let Some(t) = self.terms.get(&term) else { return };
+        let running = t.check.as_ref().is_some_and(|c| c.info.state == CheckState::Checking);
+        if t.agent.is_none() || t.spare || running {
+            return;
+        }
+        let project = t.head.as_ref().map_or(&t.cwd, |h| &h.main_root);
+        let Some(def) = self.cfg.check.iter().find(|c| super::same_path(&c.project, project)).cloned() else { return };
+        let dir = t.head.as_ref().map_or_else(|| t.cwd.clone(), |h| h.top.clone());
+        let now = term::unix_now();
+        let info = CheckInfo { command: def.command.clone(), state: CheckState::Checking, started_at: now, after_turn_ended_at: now, ..Default::default() };
+        if let Some(t) = self.terms.get_mut(&term) {
+            t.check = Some(CheckRecord::new(info, ""));
+            t.check_dirty = true;
+        }
+        self.dirty = true;
+        let (shell, tx, timeout) = (self.cfg.shell_command(), self.tx.clone(), def.timeout());
+        tokio::task::spawn_blocking(move || {
+            let run = run_check(&shell, &dir, &def.command, timeout);
+            let _ = tx.blocking_send(Ev::CheckRan { term, run });
+        });
+    }
+
+    /// A check ended: record how, unless the pane went away or was given a different result
+    /// meanwhile.
+    pub(super) fn check_ran(&mut self, term: TermId, run: CheckRun) {
+        let Some(t) = self.terms.get_mut(&term) else { return };
+        let Some(record) = t.check.as_mut().filter(|c| c.info.state == CheckState::Checking) else { return };
+        let info = &mut record.info;
+        info.state = state_for(run.outcome);
+        info.exit_code = match run.outcome {
+            CheckOutcome::Exited(code) => Some(code),
+            CheckOutcome::TimedOut | CheckOutcome::SpawnFailed => None,
+        };
+        info.duration_ms = u64::try_from(run.duration.as_millis()).unwrap_or(u64::MAX);
+        record.output = cap_output(&run.output);
+        t.check_dirty = true;
+        self.dirty = true;
+    }
+
+    /// Output tails that could not be written are written again at the next save.
+    pub(super) fn check_outputs_unsaved(&mut self, terms: &[TermId]) {
+        for id in terms {
+            if let Some(t) = self.terms.get_mut(id) {
+                t.check_dirty = true;
+            }
+        }
+    }
+}
+
 impl Term {
-    /// Take back the check results a pane had before the server restarted. A check that was
+    /// Take back the check results a pane had before the server restarted, tails read from `dir`. A check that was
     /// running died with the server, so it reads as not run rather than checking forever.
-    pub fn restore_checks(&mut self, old: TermId, saved: &SavedPane) {
+    pub fn restore_checks(&mut self, dir: &Path, old: TermId, saved: &SavedPane) {
         let record = |info: &Option<CheckInfo>, slot| {
             let mut info = info.clone()?;
             if info.state == CheckState::Checking {
                 info.state = CheckState::CouldNotRun;
             }
-            Some(CheckRecord::new(info, &persist::take_check_output(old, slot).unwrap_or_default()))
+            Some(CheckRecord::new(info, &persist::read_check_output(dir, old, slot).unwrap_or_default()))
         };
         self.check = record(&saved.check, CheckSlot::Latest);
         self.check_overridden = record(&saved.check_overridden, CheckSlot::Overridden);
@@ -91,6 +331,124 @@ mod tests {
         for (outcome, state) in table {
             assert_eq!(state_for(outcome), state, "{outcome:?}");
         }
+    }
+
+    /// A shell whose syntax the tests know: `sh` where there is one, else the user's default.
+    fn test_shell() -> Vec<String> {
+        if cfg!(unix) { vec!["sh".into()] } else { crate::config::Config::default().shell_command() }
+    }
+
+    fn run(line: &str, timeout: Duration) -> CheckRun {
+        run_check(&test_shell(), &std::env::temp_dir(), line, timeout)
+    }
+
+    const LONG: Duration = Duration::from_secs(60);
+
+    #[test]
+    fn a_command_that_exits_reads_by_its_code_and_keeps_what_it_printed() {
+        let pass = run("echo all good; exit 0", LONG);
+        assert_eq!((pass.outcome, pass.output.trim()), (CheckOutcome::Exited(0), "all good"));
+        let fail = run("echo out; echo err 1>&2; exit 3", LONG);
+        assert_eq!(fail.outcome, CheckOutcome::Exited(3));
+        assert!(fail.output.contains("out") && fail.output.contains("err"), "both streams: {:?}", fail.output);
+    }
+
+    #[test]
+    fn a_shell_that_cannot_start_reads_as_not_run() {
+        let run = run_check(&["/no/such/shell-for-seshi".into()], &std::env::temp_dir(), "exit 0", LONG);
+        assert_eq!(run.outcome, CheckOutcome::SpawnFailed);
+        assert_eq!(state_for(run.outcome), CheckState::CouldNotRun);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_missing_command_reads_as_not_run_not_failed() {
+        let run = run("seshi-no-such-command-xyz", LONG);
+        assert_eq!(run.outcome, CheckOutcome::Exited(EXIT_COMMAND_NOT_FOUND));
+        assert_eq!(state_for(run.outcome), CheckState::CouldNotRun);
+    }
+
+    #[test]
+    fn a_command_over_its_time_is_stopped_and_reads_as_timed_out() {
+        let slow = if cfg!(windows) { "Start-Sleep 60" } else { "sleep 60" };
+        let started = Instant::now();
+        let run = run(slow, Duration::from_millis(200));
+        assert_eq!(run.outcome, CheckOutcome::TimedOut);
+        assert!(started.elapsed() < Duration::from_secs(30), "it did not wait out the command");
+    }
+
+    /// Whether process `pid` is still running (a zombie is not).
+    #[cfg(unix)]
+    fn alive(pid: &str) -> bool {
+        let out = std::process::Command::new("ps").args(["-o", "stat=", "-p", pid]).output().expect("ps");
+        let stat = String::from_utf8_lossy(&out.stdout);
+        !stat.trim().is_empty() && !stat.trim().starts_with('Z')
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_timed_out_check_leaves_no_child_running() {
+        let dir = persist::scratch_dir();
+        std::fs::create_dir_all(dir.path()).unwrap();
+        let pidfile = dir.path().join("grandchild.pid");
+        // The shell starts a child of its own and waits on it: killing only the shell would
+        // leave `sleep` behind.
+        let line = format!("sleep 60 & echo $! > '{}'; wait", pidfile.display());
+        let run = run_check(&test_shell(), dir.path(), &line, Duration::from_millis(500));
+        assert_eq!(run.outcome, CheckOutcome::TimedOut);
+        let pid = std::fs::read_to_string(&pidfile).expect("the shell started its child").trim().to_string();
+        let gone_by = Instant::now() + Duration::from_secs(10);
+        while alive(&pid) && Instant::now() < gone_by {
+            std::thread::sleep(CHECK_POLL);
+        }
+        assert!(!alive(&pid), "the child {pid} outlived the check");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_timed_out_check_leaves_no_child_running() {
+        let dir = persist::scratch_dir();
+        std::fs::create_dir_all(dir.path()).unwrap();
+        let pidfile = dir.path().join("grandchild.pid");
+        let line = format!(
+            "$p = Start-Process -PassThru -WindowStyle Hidden powershell -ArgumentList '-NoProfile','-Command','Start-Sleep 60'; $p.Id | Set-Content '{}'; Start-Sleep 60",
+            pidfile.display()
+        );
+        let run = run_check(&crate::config::Config::default().shell_command(), dir.path(), &line, Duration::from_secs(5));
+        assert_eq!(run.outcome, CheckOutcome::TimedOut);
+        let pid = std::fs::read_to_string(&pidfile).expect("the shell started its child").trim().to_string();
+        let gone_by = Instant::now() + Duration::from_secs(10);
+        let alive = || std::process::Command::new("tasklist").args(["/FI", &format!("PID eq {pid}"), "/NH"]).output().is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains(&pid));
+        while alive() && Instant::now() < gone_by {
+            std::thread::sleep(CHECK_POLL);
+        }
+        assert!(!alive(), "the child {pid} outlived the check");
+    }
+
+    #[test]
+    fn the_check_does_not_inherit_the_panes_token_but_keeps_the_rest_of_the_environment() {
+        assert!(SCRUBBED_ENV.contains(&"SESHI_PANE_TOKEN"), "the secret is scrubbed");
+        // Names nothing else reads, so setting them cannot disturb a test running beside this one.
+        let (secret, plain) = ("SESHI_TEST_CHECK_SECRET", "SESHI_TEST_CHECK_PLAIN");
+        // SAFETY: only this test touches these two names.
+        unsafe {
+            std::env::set_var(secret, "hunter2");
+            std::env::set_var(plain, "visible");
+        }
+        let print = if cfg!(windows) { "Get-ChildItem Env: | ForEach-Object { \"$($_.Name)=$($_.Value)\" }" } else { "env" };
+        let run = run_scrubbed(&test_shell(), &std::env::temp_dir(), print, LONG, &[secret]);
+        assert_eq!(run.outcome, CheckOutcome::Exited(0));
+        assert!(run.output.contains("SESHI_TEST_CHECK_PLAIN=visible"), "the rest passes through");
+        assert!(!run.output.contains(secret) && !run.output.contains("hunter2"), "the scrubbed name is gone: {}", run.output);
+    }
+
+    #[test]
+    fn a_chatty_command_keeps_only_the_tail_of_its_output() {
+        let line = if cfg!(windows) { "1..200000 | ForEach-Object { 'line ' + $_ }" } else { "seq 1 200000 | sed 's/^/line /'" };
+        let run = run(line, LONG);
+        assert_eq!(run.outcome, CheckOutcome::Exited(0));
+        assert!(run.output.len() <= CHECK_OUTPUT_MAX_BYTES, "capped: {}", run.output.len());
+        assert!(run.output.trim_end().ends_with("line 200000"), "the end is what is kept");
     }
 
     #[test]

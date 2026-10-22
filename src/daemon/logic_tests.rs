@@ -5,7 +5,10 @@ use std::time::Duration;
 
 fn daemon() -> (Daemon, mpsc::Receiver<Ev>) {
     let (tx, rx) = mpsc::channel(4096);
-    (Daemon::new(Config::default(), tx), rx)
+    let mut d = Daemon::new(Config::default(), tx);
+    // Its own folder (made only if something is written to it), so tests never share check tails.
+    d.check_dir = persist::scratch_dir().path().to_path_buf();
+    (d, rx)
 }
 
 fn pane(d: &mut Daemon) -> TermId {
@@ -1542,13 +1545,17 @@ fn a_pane_may_not_read_another_panes_check_output_without_the_read_grant() {
 fn check_results_survive_a_restart_with_their_output() {
     let (mut d, _rx) = daemon();
     let dir = std::env::temp_dir();
+    let tails = persist::scratch_dir();
+    d.check_dir = tails.path().to_path_buf();
     let old: TermId = 9_201;
     let overridden = CheckInfo { state: CheckState::Overridden, overridden_at: Some(5), override_reason: "flaky".into(), ..failed_check("").info };
-    persist::save_check_outputs(
+    let unsaved = persist::save_check_outputs(
+        tails.path(),
+        persist::save_ticket(),
         &[(old, persist::CheckSlot::Latest, "latest tail".into()), (old, persist::CheckSlot::Overridden, "overridden tail".into())],
         &[old],
-    )
-    .unwrap();
+    );
+    assert!(unsaved.is_empty());
     let pane = persist::SavedPane {
         cwd: Some(dir.clone()),
         check: Some(failed_check("").info),
@@ -1579,7 +1586,269 @@ fn a_check_that_was_running_when_the_server_stopped_reads_as_not_run() {
     let t = pane(&mut d);
     let running = CheckInfo { state: CheckState::Checking, ..Default::default() };
     let saved = persist::SavedPane { check: Some(running), ..Default::default() };
-    d.terms.get_mut(&t).unwrap().restore_checks(9_202, &saved);
+    d.terms.get_mut(&t).unwrap().restore_checks(&d.check_dir.clone(), 9_202, &saved);
     assert_eq!(d.terms[&t].check.as_ref().map(|c| c.info.state), Some(CheckState::CouldNotRun));
+    close(&mut d, &[t]);
+}
+
+fn runtime() -> tokio::runtime::Runtime {
+    tokio::runtime::Runtime::new().expect("a runtime for the blocking tasks")
+}
+
+const LONG_CHECK_S: u64 = 600;
+
+/// An agent session in the temp folder (not a repo, so the folder is its project), whose
+/// project has a check running `command`.
+fn checked_agent(d: &mut Daemon, command: &str, timeout_s: u64) -> TermId {
+    d.cfg.check = vec![crate::config::CheckDef { project: std::env::temp_dir(), command: command.into(), timeout_s }];
+    let t = pane(d);
+    let p = d.terms.get_mut(&t).unwrap();
+    (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Working);
+    t
+}
+
+fn end_turn(d: &mut Daemon, t: TermId) {
+    d.hook(t, "claude".into(), HookStatus::Done, "Stop");
+}
+
+/// Apply the next finished check, as the daemon loop would. False if none came in time.
+fn finish_check(d: &mut Daemon, rx: &mut mpsc::Receiver<Ev>, wait: Duration) -> bool {
+    let until = Instant::now() + wait;
+    while Instant::now() < until {
+        match rx.try_recv() {
+            Ok(ev @ Ev::CheckRan { .. }) => {
+                d.handle(ev);
+                return true;
+            }
+            Ok(_) => {}
+            Err(_) => std::thread::sleep(Duration::from_millis(10)),
+        }
+    }
+    false
+}
+
+fn check_of(d: &Daemon, t: TermId) -> CheckInfo {
+    d.terms[&t].check.as_ref().expect("a check").info.clone()
+}
+
+const SLOW_CHECK_WAIT: Duration = Duration::from_secs(30);
+
+#[test]
+fn a_turn_end_runs_the_projects_check_and_a_pass_is_recorded() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "echo suite ok; exit 0", LONG_CHECK_S);
+    end_turn(&mut d, t);
+    let running = check_of(&d, t);
+    assert_eq!((running.state, running.command.as_str()), (CheckState::Checking, "echo suite ok; exit 0"));
+    assert!(d.snapshot().terms[&t].check.is_some(), "clients see it checking");
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    let done = check_of(&d, t);
+    assert_eq!((done.state, done.exit_code), (CheckState::Passed, Some(0)));
+    assert_eq!(d.terms[&t].check.as_ref().unwrap().output.trim(), "suite ok");
+    assert!(d.terms[&t].check_dirty, "its tail is due to be saved");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_failing_check_records_its_exit_code_and_output() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "echo 1 test failed; exit 3", LONG_CHECK_S);
+    end_turn(&mut d, t);
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    let info = check_of(&d, t);
+    assert_eq!((info.state, info.exit_code), (CheckState::Failed, Some(3)));
+    assert_eq!(d.terms[&t].check.as_ref().unwrap().output.trim(), "1 test failed");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_check_that_outruns_its_timeout_reads_as_not_run() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let slow = if cfg!(windows) { "Start-Sleep 60" } else { "sleep 60" };
+    let t = checked_agent(&mut d, slow, 1);
+    end_turn(&mut d, t);
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    let info = check_of(&d, t);
+    assert_eq!((info.state, info.exit_code), (CheckState::CouldNotRun, None));
+    close(&mut d, &[t]);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_check_whose_command_is_not_found_reads_as_not_run() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "seshi-no-such-command-xyz", LONG_CHECK_S);
+    end_turn(&mut d, t);
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    assert_eq!(check_of(&d, t).state, CheckState::CouldNotRun);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_shell_that_cannot_start_leaves_the_check_not_run() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
+    d.cfg.shell = Some("/no/such/shell-for-seshi".into());
+    end_turn(&mut d, t);
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    assert_eq!(check_of(&d, t).state, CheckState::CouldNotRun, "never stuck checking");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn the_screen_ending_a_turn_runs_the_check_too_but_a_cancelled_turn_does_not() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
+    d.set_status(t, Status::Idle, "progress bar gone, no turn end: cancelled");
+    assert!(d.terms[&t].check.is_none(), "an interrupted turn finished nothing");
+    d.set_status(t, Status::Working, "test");
+    d.set_status(t, Status::Done, "screen: went quiet after working");
+    assert_eq!(check_of(&d, t).state, CheckState::Checking);
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    assert_eq!(check_of(&d, t).state, CheckState::Passed);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn sessions_without_a_check_a_shell_or_a_finished_turn_behave_as_before() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    // A project with no check.
+    let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
+    d.cfg.check[0].project = std::env::temp_dir().join("some-other-project");
+    end_turn(&mut d, t);
+    assert!(d.terms[&t].check.is_none(), "no check in this project");
+    assert_eq!(d.terms[&t].status, Status::Done, "and done as ever");
+    // A shell pane in a project with a check.
+    d.cfg.check[0].project = std::env::temp_dir();
+    let shell = pane(&mut d);
+    d.terms.get_mut(&shell).unwrap().status = Status::Working;
+    d.set_status(shell, Status::Done, "test");
+    assert!(d.terms[&shell].check.is_none(), "a shell is not an agent");
+    // A turn that has not ended: working, asking, or held for its helpers.
+    let busy = pane(&mut d);
+    (d.terms.get_mut(&busy).unwrap().agent, d.terms.get_mut(&busy).unwrap().hooked) = (Some("claude".into()), true);
+    d.hook(busy, "claude".into(), HookStatus::Working, "UserPromptSubmit");
+    d.hook(busy, "claude".into(), HookStatus::Blocked, "PreToolUse");
+    d.terms.get_mut(&busy).unwrap().subagents.push(("sub".into(), "explore".into()));
+    d.hook(busy, "claude".into(), HookStatus::Done, "Stop");
+    assert!(d.terms[&busy].check.is_none(), "a turn waiting on its helpers has not ended");
+    d.hook(busy, "claude".into(), HookStatus::Done, "Notification:idle_prompt");
+    assert!(d.terms[&busy].check.is_none(), "a repeated idle ping is not a turn end");
+    close(&mut d, &[t, shell, busy]);
+}
+
+#[test]
+fn a_turn_ending_while_its_check_runs_does_not_start_a_second_run() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
+    end_turn(&mut d, t);
+    let first = check_of(&d, t);
+    d.hook(t, "claude".into(), HookStatus::Working, "UserPromptSubmit");
+    end_turn(&mut d, t);
+    assert_eq!(check_of(&d, t), first, "the running check is left as it was");
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    assert!(!finish_check(&mut d, &mut rx, Duration::from_millis(500)), "only one run was started");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn the_next_turn_end_checks_again() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "exit 1", LONG_CHECK_S);
+    end_turn(&mut d, t);
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    assert_eq!(check_of(&d, t).state, CheckState::Failed);
+    d.hook(t, "claude".into(), HookStatus::Working, "UserPromptSubmit");
+    end_turn(&mut d, t);
+    assert_eq!(check_of(&d, t).state, CheckState::Checking);
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_result_for_a_pane_that_closed_is_dropped() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
+    end_turn(&mut d, t);
+    close(&mut d, &[t]);
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT), "the result still arrives and is ignored");
+    assert!(!d.terms.contains_key(&t));
+}
+
+#[test]
+fn the_tail_of_a_closed_pane_goes_on_a_full_save_even_when_no_tail_changed() {
+    let (mut d, _rx) = daemon();
+    let tails = persist::scratch_dir();
+    d.check_dir = tails.path().to_path_buf();
+    let (open, closed): (TermId, TermId) = (pane(&mut d), 7_001);
+    let unsaved = persist::save_check_outputs(
+        tails.path(),
+        persist::save_ticket(),
+        &[(open, persist::CheckSlot::Latest, "kept".into()), (closed, persist::CheckSlot::Latest, "gone".into())],
+        &[open, closed],
+    );
+    assert!(unsaved.is_empty());
+    d.save_check_tails(persist::save_ticket(), vec![open], true);
+    assert_eq!(persist::read_check_output(tails.path(), closed, persist::CheckSlot::Latest), None, "pruned at shutdown");
+    assert_eq!(persist::read_check_output(tails.path(), open, persist::CheckSlot::Latest).as_deref(), Some("kept"));
+    close(&mut d, &[open]);
+}
+
+#[test]
+fn a_tail_that_failed_to_write_is_written_again_at_the_next_save() {
+    let (mut d, _rx) = daemon();
+    let tails = persist::scratch_dir();
+    let blocked = tails.path().to_path_buf();
+    std::fs::create_dir_all(&blocked).unwrap();
+    // A file where the folder should be: every write fails.
+    d.check_dir = blocked.join("tails");
+    std::fs::write(&d.check_dir, "in the way").unwrap();
+    let t = pane(&mut d);
+    d.terms.get_mut(&t).unwrap().check = Some(failed_check("FAIL footer\n"));
+    d.terms.get_mut(&t).unwrap().check_dirty = true;
+    d.save_check_tails(persist::save_ticket(), vec![t], true);
+    assert!(d.terms[&t].check_dirty, "still due: the write did not happen");
+    std::fs::remove_file(&d.check_dir).unwrap();
+    d.save_check_tails(persist::save_ticket(), vec![t], true);
+    assert!(!d.terms[&t].check_dirty);
+    assert_eq!(persist::read_check_output(&d.check_dir, t, persist::CheckSlot::Latest).as_deref(), Some("FAIL footer\n"));
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_background_save_that_fails_marks_its_tails_due_again() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.terms.get_mut(&t).unwrap().check = Some(failed_check("x"));
+    assert!(d.take_dirty_check_outputs().is_empty(), "nothing due");
+    d.terms.get_mut(&t).unwrap().check_dirty = true;
+    assert_eq!(d.take_dirty_check_outputs().len(), 1);
+    d.handle(Ev::CheckOutputsUnsaved(vec![t, 9_999]));
+    assert_eq!(d.take_dirty_check_outputs().len(), 1, "due again; a pane that is gone is skipped");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_restored_tail_stays_on_disk_until_the_new_one_is_saved() {
+    let (mut d, _rx) = daemon();
+    let tails = persist::scratch_dir();
+    d.check_dir = tails.path().to_path_buf();
+    let old: TermId = 9_301;
+    assert!(persist::save_check_outputs(tails.path(), persist::save_ticket(), &[(old, persist::CheckSlot::Latest, "tail".into())], &[old]).is_empty());
+    let t = pane(&mut d);
+    let saved = persist::SavedPane { check: Some(failed_check("").info), ..Default::default() };
+    let dir = d.check_dir.clone();
+    d.terms.get_mut(&t).unwrap().restore_checks(&dir, old, &saved);
+    assert_eq!(persist::read_check_output(tails.path(), old, persist::CheckSlot::Latest).as_deref(), Some("tail"), "a crash now loses nothing");
     close(&mut d, &[t]);
 }

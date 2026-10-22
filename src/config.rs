@@ -59,6 +59,8 @@ pub struct Config {
     pub agents: Vec<AgentDef>,
     /// Drop the built-in agent list and use only `agents`.
     pub agents_replace_defaults: bool,
+    /// Commands Seshi runs when an agent's turn ends in the named project (`[[check]]`).
+    pub check: Vec<CheckDef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,6 +178,50 @@ impl Default for Mcp {
             helpers_at_once: 4,
         }
     }
+}
+
+/// How long a check may run unless its `[[check]]` says otherwise.
+pub const CHECK_TIMEOUT_S_DEFAULT: u64 = 600;
+
+/// The command Seshi runs in a session's worktree when an agent's turn ends in `project`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct CheckDef {
+    /// The repository's main checkout; sessions in any of its worktrees use this check.
+    pub project: PathBuf,
+    /// Run through the user's shell.
+    pub command: String,
+    /// Seconds before the run is stopped and reads as not run.
+    pub timeout_s: u64,
+}
+
+impl CheckDef {
+    pub fn timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.timeout_s)
+    }
+}
+
+impl Default for CheckDef {
+    fn default() -> Self {
+        Self { project: PathBuf::new(), command: String::new(), timeout_s: CHECK_TIMEOUT_S_DEFAULT }
+    }
+}
+
+/// Refuse a `[[check]]` that could never run, or two for one project, so a typo shows when the
+/// config loads and not as a check that silently never happens.
+pub fn validate_checks(checks: &[CheckDef]) -> Result<()> {
+    for (i, c) in checks.iter().enumerate() {
+        let n = i + 1;
+        anyhow::ensure!(!c.project.as_os_str().is_empty(), "[[check]] #{n} needs a `project`");
+        anyhow::ensure!(!c.command.trim().is_empty(), "[[check]] #{n} ({}) needs a `command`", c.project.display());
+        anyhow::ensure!(c.timeout_s > 0, "[[check]] #{n} ({}) needs a `timeout_s` above 0", c.project.display());
+        anyhow::ensure!(
+            !checks[..i].iter().any(|o| o.project == c.project),
+            "[[check]] #{n}: {} already has a check; a project has one",
+            c.project.display()
+        );
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -465,6 +511,7 @@ impl Default for Config {
             snapshots: Snapshots::default(),
             agents: Vec::new(),
             agents_replace_defaults: false,
+            check: Vec::new(),
         }
     }
 }
@@ -873,6 +920,7 @@ impl Config {
             cfg.icons.shell = Icons::default().shell;
         }
         validate_spinner(&cfg.ui.spinner)?;
+        validate_checks(&cfg.check)?;
         Ok(cfg)
     }
 
@@ -1084,6 +1132,43 @@ fn which(exe: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_check_table_reads_and_its_timeout_defaults() {
+        let c: super::Config = toml::from_str("[[check]]\nproject = \"/work/app\"\ncommand = \"npm test\"\n\n[[check]]\nproject = \"/work/lib\"\ncommand = \"cargo test\"\ntimeout_s = 90\n").unwrap();
+        super::validate_checks(&c.check).unwrap();
+        let got: Vec<_> = c.check.iter().map(|c| (c.project.to_str().unwrap(), c.command.as_str(), c.timeout_s)).collect();
+        assert_eq!(got, [("/work/app", "npm test", super::CHECK_TIMEOUT_S_DEFAULT), ("/work/lib", "cargo test", 90)]);
+        assert_eq!(super::CHECK_TIMEOUT_S_DEFAULT, 600);
+        assert!(super::Config::default().check.is_empty(), "no check unless the user names one");
+    }
+
+    #[test]
+    fn a_check_that_could_never_run_fails_the_config_at_load() {
+        let check = |toml: &str| -> Result<(), String> {
+            let c: super::Config = toml::from_str(toml).map_err(|e| e.to_string())?;
+            super::validate_checks(&c.check).map_err(|e| e.to_string())
+        };
+        assert!(check("[[check]]\nproject = \"/a\"\ncommand = \"t\"\n").is_ok());
+        for (bad, why) in [
+            ("[[check]]\ncommand = \"t\"\n", "project"),
+            ("[[check]]\nproject = \"/a\"\ncommand = \"  \"\n", "command"),
+            ("[[check]]\nproject = \"/a\"\n", "command"),
+            ("[[check]]\nproject = \"/a\"\ncommand = \"t\"\ntimeout_s = 0\n", "timeout_s"),
+            ("[[check]]\nproject = \"/a\"\ncommand = \"t\"\n[[check]]\nproject = \"/a\"\ncommand = \"u\"\n", "already has a check"),
+            ("[[check]]\nproject = \"/a\"\ncommand = \"t\"\ntimeout_s = -5\n", "timeout_s"),
+        ] {
+            let err = check(bad).expect_err(bad);
+            assert!(err.contains(why), "{bad:?} -> {err}");
+        }
+    }
+
+    #[test]
+    fn the_example_config_documents_the_check_keys() {
+        for key in ["[[check]]", "project", "command", "timeout_s"] {
+            assert!(super::EXAMPLE.lines().any(|l| l.starts_with("# ") && l.contains(key)), "{key}");
+        }
+    }
+
     #[test]
     fn an_agent_entry_with_an_env_is_an_account() {
         let toml = "[[quick.agents]]\nname = \"claude\"\ncommand = \"claude {prompt}\"\n\n[[quick.agents]]\nname = \"claude work\"\ncommand = \"claude {prompt}\"\nenv = { CLAUDE_CONFIG_DIR = \"~/.claude-work\" }\n";

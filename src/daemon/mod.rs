@@ -108,6 +108,10 @@ pub enum Ev {
     MoveReady { client: ClientId, term: TermId, branch: String, result: Result<(PathBuf, String), String> },
     /// A status report, its sender checked (see `HookJob`).
     HookChecked { msg: ClientMsg, verdict: Option<bool>, chain: Vec<u32> },
+    /// A pane's check ended (see `Daemon::turn_ended`).
+    CheckRan { term: TermId, run: check::CheckRun },
+    /// Check output tails a background save could not write.
+    CheckOutputsUnsaved(Vec<TermId>),
 }
 
 /// How to put back what an automatic workspace changed.
@@ -170,6 +174,8 @@ struct Daemon {
     last_save: Instant,
     last_output_save: Instant,
     last_saved: String,
+    /// Where check output tails are kept.
+    check_dir: PathBuf,
     /// Worktrees seshi created; closing the last thing in one removes it.
     made_worktrees: Vec<PathBuf>,
     /// Plan limits by agent, as last reported.
@@ -461,6 +467,7 @@ impl Daemon {
             last_save: Instant::now(),
             last_output_save: Instant::now(),
             last_saved: String::new(),
+            check_dir: persist::check_output_dir(),
             made_worktrees: Vec::new(),
             limits: BTreeMap::new(),
             spent: Vec::new(),
@@ -877,6 +884,8 @@ impl Daemon {
             }
             Ev::HookRan(msg) => self.broadcast(|_| true, ServerMsg::Notice(msg)),
             Ev::HookChecked { msg, verdict, chain } => self.apply_hook(msg, verdict, chain),
+            Ev::CheckRan { term, run } => self.check_ran(term, run),
+            Ev::CheckOutputsUnsaved(terms) => self.check_outputs_unsaved(&terms),
             Ev::SpareMade(repo, result) => {
                 self.spare_making = false;
                 match result {
