@@ -537,11 +537,19 @@ impl Daemon {
         self.dirty = true;
     }
 
-    /// The checks you configured for the pane's project, in order.
+    /// The checks a run starts by showing, in order: yours for the pane's project; without
+    /// any, when its worktree has a repo checks file, the checkpoints it showed last (or one
+    /// standing for the file). Resolving off the loop settles what the file really names.
     fn check_defs(&self, term: TermId) -> Vec<crate::config::CheckDef> {
         let Some(t) = self.terms.get(&term) else { return Vec::new() };
-        let project = t.head.as_ref().map_or(&t.cwd, |h| &h.main_root);
-        self.cfg.check.iter().filter(|c| super::same_path(&c.project, project)).cloned().collect()
+        let (project, dir) = t.head.as_ref().map_or((&t.cwd, &t.cwd), |h| (&h.main_root, &h.top));
+        let yours: Vec<_> = self.cfg.check.iter().filter(|c| super::same_path(&c.project, project)).cloned().collect();
+        if !yours.is_empty() || !dir.join(crate::config::REPO_CHECKS_FILE).is_file() {
+            return yours;
+        }
+        let def = |name: &str, command: &str| crate::config::CheckDef { project: project.clone(), name: Some(name.into()), command: command.into(), ..Default::default() };
+        let shown: Vec<_> = t.checks.points.iter().map(|p| def(&p.latest.info.name, &p.latest.info.command)).collect();
+        if shown.is_empty() { vec![def(crate::config::REPO_CHECKS_FILE, "")] } else { shown }
     }
 
     /// Start a run of checkpoint `only` (or all of them), replacing their results. They read
@@ -558,6 +566,8 @@ impl Daemon {
             }
             return;
         }
+        let approvals = self.approvals_for_run(term);
+        let Some(t) = self.terms.get_mut(&term) else { return };
         let (dir, project) = match &t.head {
             Some(h) => (h.top.clone(), h.main_root.clone()),
             None => (t.cwd.clone(), t.cwd.clone()),
@@ -592,10 +602,6 @@ impl Daemon {
         }
         self.mark_check_changed(term);
         tokio::task::spawn_blocking(move || {
-            let approvals = super::approvals::Approvals::load(&super::approvals::path()).unwrap_or_else(|e| {
-                tracing::warn!("reading check approvals: {e:#}");
-                super::approvals::Approvals::default()
-            });
             let resolved: Vec<_> = resolver(&user, &project, &dir, &approvals).into_iter().filter(|r| only.as_deref().is_none_or(|n| r.def.name() == n)).collect();
             let tree = super::check_stale::fingerprint(&dir);
             let to_run: Vec<_> = resolved.iter().filter(|r| r.gate == Gate::Run).map(|r| r.def.clone()).collect();
@@ -721,6 +727,11 @@ impl Checkpoint {
                 CheckState::NeedsApproval
             }
             Gate::Never => CheckState::Never,
+            Gate::CouldNotRun { why } => {
+                self.latest.output = cap_output(why);
+                info.line_count = why.lines().count() as u64;
+                CheckState::CouldNotRun
+            }
         };
         if r.gate != Gate::Run {
             info.started_at = 0;

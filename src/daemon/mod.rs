@@ -4,7 +4,6 @@
 //! scanner, background git work and client connections talk to it through a single
 //! channel, so there is no locking around the model.
 
-#[cfg_attr(not(test), expect(dead_code, reason = "the repo-approval work wires approvals in"))]
 mod approvals;
 mod check;
 #[cfg(test)]
@@ -184,6 +183,10 @@ struct Daemon {
     check_dir: PathBuf,
     /// Which checkpoints a project has and whether each may run (tests put in their own).
     resolver: check_source::Resolver,
+    /// What you decided about repos' check commands, read once at start: a hand edit of the
+    /// file counts only after a restart.
+    approvals: approvals::Approvals,
+    approvals_file: PathBuf,
     /// Worktrees seshi created; closing the last thing in one removes it.
     made_worktrees: Vec<PathBuf>,
     /// Plan limits by agent, as last reported.
@@ -258,6 +261,10 @@ pub fn run() -> Result<()> {
             tracing::warn!("config: {e}");
         }
         let mut d = Daemon::new(cfg, tx);
+        match approvals::Approvals::load(&d.approvals_file) {
+            Ok(a) => d.approvals = a,
+            Err(e) => tracing::warn!("check approvals: {e:#}; every repo check asks again"),
+        }
         if d.cfg.restore.enabled
             && let Some(saved) = persist::load()
         {
@@ -491,6 +498,8 @@ impl Daemon {
             last_saved: String::new(),
             check_dir: persist::check_output_dir(),
             resolver: check_source::resolve,
+            approvals: approvals::Approvals::default(),
+            approvals_file: approvals::path(),
             made_worktrees: Vec::new(),
             limits: BTreeMap::new(),
             spent: Vec::new(),

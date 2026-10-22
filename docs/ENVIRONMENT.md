@@ -64,6 +64,12 @@ Settings live in `config.toml` (`%APPDATA%\seshi\` on Windows,
 `~/.config/seshi/` elsewhere), with `config.local.toml` beside it for
 machine-only values. `config.example.toml` documents every key.
 
+Your Always / Never answers to a repo's `.seshi/checks.toml` commands live in
+`check-approvals.json` in Seshi's data folder (`%LOCALAPPDATA%\seshi\data\` on
+Windows, `~/.local/share/seshi/` on Linux, `~/Library/Application Support/seshi/`
+on macOS), never in the repo and never synced. The daemon reads it once when it
+starts; Settings › Check forgets an answer.
+
 `ui.spinner` is an array of up to 64 single-column frame strings; an empty array
 uses `icons.working` without animation. Settings → Appearance → Working spinner
 offers presets and a custom editor. Preserve explicit custom frames on reload.

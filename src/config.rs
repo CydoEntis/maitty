@@ -264,12 +264,10 @@ fn validate_check(n: usize, c: &CheckDef, place: &str) -> Result<()> {
 }
 
 /// The file a repository names its own checks in, relative to its root.
-#[cfg_attr(not(test), expect(dead_code, reason = "read once repo-supplied checks run"))]
 pub const REPO_CHECKS_FILE: &str = ".seshi/checks.toml";
 
 /// The checks in a repository's `.seshi/checks.toml`, refused as a whole when any is unusable,
 /// two share a name, or the file has a key Seshi doesn't know. Their `project` is left empty.
-#[cfg_attr(not(test), expect(dead_code, reason = "read once repo-supplied checks run"))]
 pub fn parse_repo_checks(text: &str) -> Result<Vec<CheckDef>> {
     /// `.seshi/checks.toml`: checks a repository ships. No `project`: it is the repo.
     #[derive(Deserialize)]

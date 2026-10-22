@@ -2078,21 +2078,22 @@ fn a_pane_may_not_override_its_own_check() {
 
 #[test]
 fn only_you_answer_a_repo_check_approval() {
-    let (mut d, _rx) = daemon();
-    let a = pane(&mut d);
+    let (mut d, _rx, _file) = approving_daemon();
+    let a = waiting_for_approval(&mut d, "npm test");
+    d.approvals.decide(&std::env::temp_dir(), "build", "make", approvals::Decision::Never, 1);
+    let kept = d.approvals.clone();
     let (tx, mut out) = mpsc::channel(16);
     d.handle(Ev::Connected(7, tx, false));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
     d.terms.get_mut(&a).unwrap().grants = Some(["read", "write", "start", "respond", "admin"].map(String::from).into());
-    let approve = Command::ApproveCheck { term: a, name: "test".into(), choice: crate::protocol::ApprovalChoice::Always };
-    let forget = Command::ForgetCheckApproval { project: std::env::temp_dir(), name: "test".into() };
-    for cmd in [approve, forget] {
+    let forget = Command::ForgetCheckApproval { project: std::env::temp_dir(), name: "build".into() };
+    for cmd in [ApprovalChoice::Once, ApprovalChoice::Always, ApprovalChoice::Never].map(|choice| Command::ApproveCheck { term: a, name: "test".into(), choice }).into_iter().chain([forget]) {
         d.message(7, ClientMsg::Command(cmd.clone()));
         assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(e)) if e.contains("yours")), "{cmd:?}: a pane may not, whatever its grants");
-        let err = d.command(0, cmd.clone()).expect_err("not built yet");
-        assert_eq!(err.to_string(), "not built yet", "{cmd:?}");
     }
+    assert_eq!(d.approvals.clone().for_run(a), kept.clone().for_run(a), "nothing granted, kept or forgotten");
+    assert_eq!(check_of(&d, a).state, CheckState::NeedsApproval, "and nothing ran");
     close(&mut d, &[a]);
 }
 
@@ -2556,5 +2557,122 @@ fn outside_git_a_pass_never_goes_stale() {
     std::fs::write(dir.path().join("x.txt"), "x").unwrap();
     assert!(d.stale_probes().is_empty(), "no tree was recorded");
     assert_eq!(point(&d, t, "build").state, CheckState::Passed);
+    close(&mut d, &[t]);
+}
+
+/// A daemon whose approvals are kept in a scratch file (held by the returned guard), never
+/// in your own data folder.
+fn approving_daemon() -> (Daemon, mpsc::Receiver<Ev>, persist::ScratchDir) {
+    let (mut d, rx) = daemon();
+    let dir = persist::scratch_dir();
+    d.approvals_file = dir.path().join("check-approvals.json");
+    (d, rx, dir)
+}
+
+/// An agent in the temp folder (its project) whose repo checkpoint `test` waits for you to
+/// approve `command`.
+fn waiting_for_approval(d: &mut Daemon, command: &str) -> TermId {
+    let t = pane(d);
+    let p = d.terms.get_mut(&t).unwrap();
+    (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Done);
+    let source = CheckSource::Repo { file: ".seshi/checks.toml".into(), commit: None, committed_at: None, uncommitted: true };
+    let info = CheckInfo { name: "test".into(), command: command.into(), state: CheckState::NeedsApproval, source, ..Default::default() };
+    p.checks.points = vec![check::CheckRecord::new(info, "").into()];
+    t
+}
+
+/// Wait for the off-loop save to leave `file` holding what the daemon decided.
+fn saved_approvals(d: &Daemon, file: &std::path::Path) -> approvals::Approvals {
+    let until = Instant::now() + Duration::from_secs(10);
+    loop {
+        let on_disk = approvals::Approvals::load(file).unwrap_or_default();
+        if on_disk.decisions == d.approvals.decisions || Instant::now() > until {
+            return on_disk;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn only_a_checkpoint_waiting_for_approval_can_be_approved() {
+    let (mut d, _rx, _file) = approving_daemon();
+    let t = waiting_for_approval(&mut d, "npm test");
+    let approve = |name: &str| Command::ApproveCheck { term: t, name: name.into(), choice: ApprovalChoice::Always };
+    let err = d.command(0, approve("build")).expect_err("no such checkpoint waits");
+    assert!(err.to_string().contains("isn't waiting"), "{err}");
+    d.terms.get_mut(&t).unwrap().checks.points[0].latest.info.state = CheckState::Failed;
+    assert!(d.command(0, approve("test")).is_err(), "a failed run is not a question");
+    assert!(d.approvals.decisions.is_empty(), "nothing kept");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn always_and_never_are_kept_by_the_exact_command_in_seshi_s_data_folder() {
+    let rt = runtime();
+    let _in_rt = rt.enter();
+    for (choice, decision) in [(ApprovalChoice::Always, approvals::Decision::Always), (ApprovalChoice::Never, approvals::Decision::Never)] {
+        let (mut d, _rx, scratch) = approving_daemon();
+        let t = waiting_for_approval(&mut d, "npm test");
+        // The re-run that follows is the checkpoint runner's; only the decision is asserted here.
+        let _ = d.command(0, Command::ApproveCheck { term: t, name: "TEST".into(), choice });
+        let kept = d.approvals.find(&std::env::temp_dir(), "test").cloned().expect("a decision");
+        assert_eq!((kept.name.as_str(), kept.command.as_str(), kept.decision), ("test", "npm test", decision));
+        assert_eq!(kept.command_sha256, approvals::command_hash("npm test"));
+        assert_eq!(saved_approvals(&d, &d.approvals_file.clone()).decisions, vec![kept], "saved off the loop");
+        assert!(d.approvals_file.starts_with(scratch.path()));
+        close(&mut d, &[t]);
+    }
+    let (d, _rx) = daemon();
+    assert_eq!(d.approvals_file, approvals::path(), "outside every repo: Seshi's own data folder");
+    assert!(d.approvals_file.starts_with(crate::config::data_dir()));
+}
+
+#[test]
+fn once_lets_the_next_run_of_that_pane_go_and_then_asks_again() {
+    let (mut d, _rx, _file) = approving_daemon();
+    let (t, other) = (waiting_for_approval(&mut d, "npm test"), waiting_for_approval(&mut d, "npm test"));
+    let _ = d.command(0, Command::ApproveCheck { term: t, name: "test".into(), choice: ApprovalChoice::Once });
+    assert!(d.approvals.decisions.is_empty(), "once is never remembered");
+    assert!(!d.approvals_for_run(other).granted_once("test", "npm test"), "another pane must ask for itself");
+    assert!(d.approvals_for_run(t).granted_once("test", "npm test"), "this pane's next run may go");
+    assert!(!d.approvals_for_run(t).granted_once("test", "npm test"), "and only that run");
+    close(&mut d, &[t, other]);
+}
+
+#[test]
+fn forgetting_a_decision_makes_the_next_run_ask_again() {
+    let rt = runtime();
+    let _in_rt = rt.enter();
+    let (mut d, _rx, _file) = approving_daemon();
+    let repo = std::env::temp_dir();
+    d.approvals.decide(&repo, "test", "npm test", approvals::Decision::Never, 1);
+    d.command(0, Command::ForgetCheckApproval { project: repo.clone(), name: "test".into() }).expect("yours to forget");
+    assert_eq!(d.approvals.lookup(&repo, "test", "npm test"), None);
+    assert!(saved_approvals(&d, &d.approvals_file.clone()).decisions.is_empty(), "and the file forgets it too");
+    let err = d.command(0, Command::ForgetCheckApproval { project: repo, name: "test".into() }).expect_err("nothing left");
+    assert!(err.to_string().contains("nothing is remembered"), "{err}");
+}
+
+#[test]
+fn a_repo_checkpoint_waits_at_the_turn_end_and_once_runs_it_one_time() {
+    let (rt, (mut d, mut rx, _file)) = (runtime(), approving_daemon());
+    let _in_rt = rt.enter();
+    let repo = temp_repo();
+    std::fs::create_dir_all(repo.path().join(".seshi")).unwrap();
+    std::fs::write(repo.path().join(crate::config::REPO_CHECKS_FILE), "[[check]]\nname = \"test\"\ncommand = \"echo tested\"\n").unwrap();
+    let t = agent_with_checkpoints(&mut d, repo.path(), &[]);
+    let mut seen = viewer(&mut d);
+    end_turn(&mut d, t);
+    assert!(d.terms[&t].check_running(), "the file is read off the loop; done waits for it");
+    finish_run(&mut d, &mut rx, t);
+    assert_eq!(states(&d, t), named_states(&[("test", CheckState::NeedsApproval)]));
+    assert!(announced(&heard(&mut seen), Status::Blocked));
+    d.command(0, Command::ApproveCheck { term: t, name: "test".into(), choice: ApprovalChoice::Once }).unwrap();
+    finish_run(&mut d, &mut rx, t);
+    assert_eq!(states(&d, t), named_states(&[("test", CheckState::Passed)]));
+    assert_eq!(d.check_output(t, Some("test")).map(str::trim), Some("tested"));
+    d.command(0, Command::RerunCheck { term: t, name: None }).unwrap();
+    finish_run(&mut d, &mut rx, t);
+    assert_eq!(states(&d, t), named_states(&[("test", CheckState::NeedsApproval)]), "once was one run");
     close(&mut d, &[t]);
 }

@@ -116,8 +116,8 @@ an SSH remote being someone else's machine; what agents work on leaking through 
 the topic name is the only secret on the public server).
 
 A project's check is a command the daemon runs as the user when an agent's turn ends. It
-comes only from the user's own `config.toml` (`[[check]]`), never from a file in the repo, so
-cloning a repo cannot make Seshi run anything. It runs through the user's shell in the
+comes from the user's own `config.toml` (`[[check]]`) or, for a project with none there, from
+the repo's `.seshi/checks.toml` under the approval rules below. It runs through the user's shell in the
 session's worktree with no stdin and without `SESHI_PANE_TOKEN`, so it cannot report status
 as the pane. On timeout its whole process tree is killed (process group on unix, job object
 on Windows). If the daemon dies, a check dies with it on Windows (the job closes) and on
@@ -135,6 +135,25 @@ a pass goes stale, the daemon writes a tree of the worktree (tracked and untrack
 `.gitignore` respected) when a run starts and again on the git poll, through a private
 index file in the git directory, as snapshots do. It never touches the user's index; the
 tree's blobs go into the repo's object store, where `git gc` drops them.
+
+A repo-supplied command never runs until you approve it, so cloning a repo, or an agent
+editing `.seshi/checks.toml`, cannot make Seshi run anything. The rules:
+
+- Your own `[[check]]` for a project wins whole; the repo's file is then not read.
+- Approval is per exact command: Always is kept with the command's sha256, and a changed
+  command asks again. Never holds whatever the command becomes. Once lets one run of that
+  pane's checkpoint go and is never saved.
+- Answers live in `check-approvals.json` in Seshi's data folder, outside every repo, written
+  atomically (synced, then renamed). The daemon reads the file once at start and goes by its
+  own copy, so writing the file changes nothing while it runs.
+- Only you approve: `ApproveCheck` and `ForgetCheckApproval` are refused from every pane
+  connection whatever its grants, and approve only a checkpoint waiting for approval with
+  the command it waits with. No key press approves on its own; the client sends the choice.
+- A file that cannot be read or parsed runs nothing and reads as could-not-run with the reason.
+
+Residual risk: a process running as the same OS user can edit `check-approvals.json`, which
+counts after the next daemon restart, and a process that hides its pane identity (no
+`SESHI_TERM_ID`) is treated as you, as for grants. Both need code already running as you.
 
 Overriding a failed check is a recorded, visible action: the time and the reason stay on the
 result and its `Overridden` state shows wherever the check does. It needs the write grant on
