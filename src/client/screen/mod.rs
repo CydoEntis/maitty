@@ -991,6 +991,7 @@ mod check_actions;
 mod check_inbox;
 pub(in crate::client) mod check_settings;
 mod check_sheet;
+pub(in crate::client) mod team_settings;
 mod dialogs;
 mod leader;
 mod popups;

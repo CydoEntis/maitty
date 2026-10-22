@@ -680,6 +680,8 @@ pub(super) enum SRow {
     Bind { label: &'static str, acts: Vec<crate::keys::Action> },
     /// A field of the current project's `[[check]]`, which no global setting path can address.
     Check(super::screen::check_settings::CheckField),
+    /// The project's family or a job of `[team]`, which are lists, not setting paths.
+    Team(super::screen::team_settings::TeamRow),
 }
 
 /// The small caps heading a settings row sits under.
@@ -687,7 +689,9 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
     match row {
         SRow::Bind { label, .. } => key_rows().into_iter().find(|(_, items)| items.iter().any(|(l, _)| l == label)).map(|(g, _)| g).unwrap_or("KEYS"),
         SRow::Check(_) => "CHECK",
+        SRow::Team(row) => super::screen::team_settings::group(*row),
         SRow::Setting(s) => match s.path {
+            "team.family" => super::screen::team_settings::FAMILY_GROUP,
             "theme" => "THEME",
             "ui.spinner" => "STATUS INDICATORS",
             "prefix" | "ui.mouse" | "ui.which_key" | "ui.alt_arrows" => "INPUT",
@@ -719,7 +723,7 @@ pub(super) fn theme_label(name: &str) -> String {
 }
 
 /// The rows of one settings page.
-pub(super) fn settings_rows(cat: super::modal::Cat) -> Vec<SRow> {
+pub(super) fn settings_rows(cat: super::modal::Cat, cfg: &crate::config::Config) -> Vec<SRow> {
     let mut rows: Vec<SRow> = super::modal::in_cat(cat)
         .into_iter()
         .map(SRow::Setting)
@@ -735,6 +739,9 @@ pub(super) fn settings_rows(cat: super::modal::Cat) -> Vec<SRow> {
     rows.sort_by_key(|r| order.iter().position(|g| *g == settings_group(r)).unwrap_or(99));
     if cat == super::modal::Cat::Check {
         rows.extend(super::screen::check_settings::CheckField::ALL.map(SRow::Check));
+    }
+    if cat == super::modal::Cat::Team {
+        rows.extend(super::screen::team_settings::rows(cfg).into_iter().map(SRow::Team));
     }
     if cat == super::modal::Cat::Keys {
         for (_, items) in key_rows() {
@@ -771,7 +778,7 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
                 keycaps(t, &keys, t.bg)
             }
         }
-        SRow::Check(_) => Vec::new(),
+        SRow::Check(_) | SRow::Team(_) => Vec::new(),
         SRow::Setting(s) => {
             if s.path == "theme" {
                 let name = if cfg.theme.is_empty() { crate::theme::DEFAULT } else { &cfg.theme };

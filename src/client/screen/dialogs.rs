@@ -234,6 +234,10 @@ pub(in crate::client) fn set_chip(app: &mut App, row: &SRow, vi: usize) {
     app.save_setting(s.path, v);
 }
 
+/// Widths the settings tab row needs: padded full names, then unpadded ones, then short names.
+const TABS_FULL_COLS: u16 = 86;
+const TABS_SHORT_BELOW_COLS: u16 = 66;
+
 pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, v: &SettingsView) {
     use crate::client::design::settings_group;
     use crate::client::modal::Cat;
@@ -241,18 +245,19 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     hit(app, r, ScreenHit::SettingsBody);
     let c = Style::default().bg(t.card);
     // Tabs: the current one a pill; General carries a dot when an update is ready.
-    let compact_tabs = r.width < 68;
+    let compact_tabs = r.width < TABS_FULL_COLS;
     let mut x = r.x + 3;
     for (i, cat) in Cat::ALL.iter().enumerate() {
         let on = i == v.cat;
         let dot = *cat == Cat::General && (app.update_available.is_some() || app.restart_pending());
-        let label = if r.width < 54 {
+        let label = if r.width < TABS_SHORT_BELOW_COLS {
             match cat {
                 Cat::General => "Gen",
                 Cat::Sessions => "Sess",
                 Cat::Appearance => "Look",
                 Cat::Agents => "Agent",
                 Cat::Check => "Check",
+                Cat::Team => "Team",
                 Cat::Keys => "Keys",
             }
         } else if compact_tabs && *cat == Cat::Appearance {
@@ -364,7 +369,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     }
     hline(buf, r.x + 3, r.y + 3, r.width.saturating_sub(6), t, t.card);
     let cat = Cat::ALL[v.cat.min(Cat::ALL.len() - 1)];
-    let rows = crate::client::design::settings_rows(cat);
+    let rows = crate::client::design::settings_rows(cat, &app.cfg);
     let lx = r.x + 6;
     let vx = r.x + if r.width >= 68 { 34 } else { (r.width * 54 / 100).max(19) };
     // What the selected row does (shown under it).
@@ -373,6 +378,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         Some(SRow::Bind { acts, .. }) if acts.len() > 1 => "Several keys; change them in the config file (o).".into(),
         Some(SRow::Bind { .. }) => "Enter, then press the new key.".into(),
         Some(SRow::Check(f)) => crate::client::screen::check_settings::help(app, *f),
+        Some(SRow::Team(row)) => team_settings::help(app, *row),
         None => String::new(),
     };
     // Lines: headings, rows with a blank between them, a wider gap between groups. The
@@ -381,9 +387,10 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         Head(&'static str),
         Row(usize),
         Blank,
+        Note(String),
     }
-    // The Check page has a handful of rows that must all fit a 24-row window.
-    let compact = cat == Cat::Check;
+    // The Check and Team pages have a handful of rows that must all fit a 24-row window.
+    let compact = matches!(cat, Cat::Check | Cat::Team);
     let mut lines: Vec<L> = Vec::new();
     let mut last = "";
     for (i, row) in rows.iter().enumerate() {
@@ -403,17 +410,25 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
             lines.push(L::Blank);
         }
     }
+    if cat == Cat::Team && app.cfg.team.jobs.is_empty() {
+        lines.extend([L::Blank, L::Head(team_settings::JOBS_GROUP)]);
+        lines.extend(wrap_two(team_settings::EMPTY, r.right().saturating_sub(lx + 3) as usize).into_iter().map(L::Note));
+    }
     let top = r.y + 6 + lines_used;
     // Appearance keeps room at the foot for its preview.
     let preview = cat == Cat::Appearance && r.height >= 30 && r.width >= 46;
     // The compact Check page spends no blank lines, so it has room for one row more.
-    let h = r.height.saturating_sub(if preview { 19 } else if compact { 13 } else { 14 }) as usize;
+    // Team's job list grows, so it uses every row down to the help's rule.
+    let h = r.height.saturating_sub(if preview { 19 } else if cat == Cat::Team { 11 + lines_used } else if compact { 13 } else { 14 }) as usize;
     let at = lines.iter().position(|l| matches!(l, L::Row(i) if *i == v.sel)).unwrap_or(0);
     let start = (at + 2).saturating_sub(h);
     for (k, line) in lines.iter().enumerate().skip(start).take(h) {
         let y = top + (k - start) as u16;
         match line {
             L::Blank => {}
+            L::Note(text) => {
+                put(buf, lx, y, &[seg(text.clone(), c.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right() - 3);
+            }
             L::Head(g) => {
                 // A dim caps heading and a rule out to the edge.
                 let end = put(buf, r.x + 4, y, &[seg(*g, c.fg(t.muted).add_modifier(Modifier::BOLD)), seg(" ", c)], r.right());
@@ -440,6 +455,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                     SRow::Setting(s) => s.label.to_string(),
                     SRow::Bind { label, .. } => label.to_string(),
                     SRow::Check(f) => f.label().to_string(),
+                    SRow::Team(row) => team_settings::label(&app.cfg, *row),
                 };
                 put(buf, lx, y, &[seg(truncate(&label, (vx - lx - 2) as usize), ls)], vx - 1);
                 if let Some((opts, cur)) = chips_for(app, row).filter(|_| !(sel && v.editing.is_some())) {
@@ -459,6 +475,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                 } else {
                     let shown = match row {
                         SRow::Check(f) => crate::client::screen::check_settings::control(app, t, *f, v, sel, r.right().saturating_sub(vx + 1) as usize),
+                        SRow::Team(row) => team_settings::control(app, t, *row, sel, r.right().saturating_sub(vx + 1) as usize),
                         _ => crate::client::design::control(app, t, row, v, sel),
                     };
                     let ctrl: Vec<Seg> = shown.into_iter().map(|(x, s)| (x, if s.bg.is_none() { s.bg(bg) } else { s })).collect();
@@ -500,8 +517,8 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     }
     // The selected row's help, always in the same place.
     hline(buf, r.x + 3, r.bottom() - 5, r.width.saturating_sub(6), t, t.card);
-    // Check help is longer than one line (it carries the empty-state copy), so it wraps onto two.
-    let help_lines = if cat == Cat::Check { wrap_two(&help, (r.width - 6) as usize) } else { vec![truncate(&help, (r.width - 6) as usize)] };
+    // Check and Team help is longer than one line, so it wraps onto two.
+    let help_lines = if compact { wrap_two(&help, (r.width - 6) as usize) } else { vec![truncate(&help, (r.width - 6) as usize)] };
     for (k, line) in help_lines.iter().enumerate().filter(|(_, l)| !l.is_empty()) {
         put(buf, r.x + 3, r.bottom() - 4 + k as u16, &[seg(line.clone(), c.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right() - 2);
     }

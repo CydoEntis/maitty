@@ -110,12 +110,12 @@ impl CheckEdit {
 
 const NOT_A_LIST: &str = "`check` in config.toml is not a list of [[check]] tables";
 
-fn is_for(table: &Table, project: &Path) -> bool {
+pub(super) fn is_for(table: &Table, project: &Path) -> bool {
     table.get("project").and_then(Item::as_str).is_some_and(|p| same_path(Path::new(p), project))
 }
 
 /// Replace a value but keep the comments next to it.
-fn set_keeping_decor(table: &mut Table, key: &str, mut value: toml_edit::Value) {
+pub(super) fn set_keeping_decor(table: &mut Table, key: &str, mut value: toml_edit::Value) {
     match table.get_mut(key).and_then(Item::as_value_mut) {
         Some(old) => {
             *value.decor_mut() = old.decor().clone();
@@ -128,7 +128,7 @@ fn set_keeping_decor(table: &mut Table, key: &str, mut value: toml_edit::Value) 
 }
 
 /// The project Settings edits: the repository of the workspace you are in.
-fn project_of(app: &App) -> Option<PathBuf> {
+pub(super) fn project_of(app: &App) -> Option<PathBuf> {
     app.active_ws().map(|w| w.git.as_ref().map_or_else(|| w.cwd.clone(), |g| g.root.clone()))
 }
 
