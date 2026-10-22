@@ -1,7 +1,7 @@
 //! Search and preview built-in palettes before saving a choice.
 
 use super::design::{fill, put, seg, theme_label};
-use super::hydra::{HyHit, hints, hit, list_row, query_list};
+use super::screen::{ScreenHit, hints, hit, list_row, query_list};
 use super::{App, Bg, KeyCode, KeyEvent, KeyModifiers, Mode, modal};
 use crate::theme::{BUILTIN, DEFAULT, Theme};
 use ratatui::Frame;
@@ -224,7 +224,7 @@ pub(super) fn draw_themes(
                 );
             }
         }
-        hit(app, row, HyHit::ThemePick(i));
+        hit(app, row, ScreenHit::ThemePick(i));
     }
     if names.is_empty() {
         put(
@@ -383,7 +383,7 @@ mod tests {
         assert!(
             app.hits
                 .iter()
-                .any(|(_, hit)| matches!(hit, super::super::Hit::Hy(HyHit::ThemePick(0))))
+                .any(|(_, hit)| matches!(hit, super::super::Hit::Screen(ScreenHit::ThemePick(0))))
         );
         assert!(
             buffer
@@ -395,7 +395,7 @@ mod tests {
         assert_eq!(app.cfg.theme, "dracula");
         assert_eq!(app.theme.bg, Theme::named("dracula").bg);
         assert!(
-            matches!(&app.mode, Mode::HySettings(view) if view.cat == 2 && matches!(super::super::design::settings_rows(modal::Cat::Appearance).get(view.sel), Some(super::super::design::SRow::Setting(s)) if s.path == "theme"))
+            matches!(&app.mode, Mode::ScreenSettings(view) if view.cat == 2 && matches!(super::super::design::settings_rows(modal::Cat::Appearance).get(view.sel), Some(super::super::design::SRow::Setting(s)) if s.path == "theme"))
         );
     }
 
@@ -446,7 +446,7 @@ mod tests {
             .iter()
             .position(|name| *name == "kanagawa-wave")
             .unwrap();
-        app.on_hy_hit(HyHit::ThemePick(selected), false);
+        app.on_hy_hit(ScreenHit::ThemePick(selected), false);
         assert!(matches!(app.mode, Mode::Themes { sel, saving: false, .. } if sel == selected));
         assert_eq!(app.cfg.theme, applied);
         let buffer = draw(&mut app, 100, 30);
@@ -465,8 +465,8 @@ mod tests {
             modifiers: KeyModifiers::NONE,
         });
         assert!(matches!(app.mode, Mode::Themes { sel, .. } if sel == selected + 1));
-        app.on_hy_hit(HyHit::Close, false);
-        assert!(matches!(app.mode, Mode::HySettings(_)));
+        app.on_hy_hit(ScreenHit::Close, false);
+        assert!(matches!(app.mode, Mode::ScreenSettings(_)));
         assert_eq!(app.cfg.theme, applied);
         assert_eq!(matching("frappe"), vec!["catppuccin-frappe"]);
         assert_eq!(matching("rosé dawn"), vec!["rose-pine-dawn"]);

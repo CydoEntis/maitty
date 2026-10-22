@@ -11,26 +11,26 @@ impl App {
 
     /// Where a session that just got the focus shows: beside the one it was opened from, in
     /// a new tab, in the tab that already shows it, or in place of the one you were on.
-    pub(in crate::client) fn hy_place(&mut self, f: TermId, prev: Option<TermId>) {
+    pub(in crate::client) fn screen_place(&mut self, f: TermId, prev: Option<TermId>) {
         use crate::layout::{Dir, Node};
-        let beside = match self.hy.pending_split {
+        let beside = match self.screen.pending_split {
             Some((p, _)) if p == f => None,
             Some((p, at)) => {
-                self.hy.pending_split = None;
+                self.screen.pending_split = None;
                 if prev == Some(p) && at.elapsed().as_secs() < 20 && self.snap.terms.contains_key(&p) {
                     Some(p)
                 } else {
-                    self.hy.split_dir = None;
+                    self.screen.split_dir = None;
                     None
                 }
             }
             None => {
-                self.hy.split_dir = None;
+                self.screen.split_dir = None;
                 None
             }
         };
-        let new_tab = self.hy.new_tab.take().filter(|(at, _)| at.elapsed().as_secs() < 60).map(|(_, owner)| owner);
-        let take_out = |tabs: &mut Vec<HyTab>, f: TermId| {
+        let new_tab = self.screen.new_tab.take().filter(|(at, _)| at.elapsed().as_secs() < 60).map(|(_, owner)| owner);
+        let take_out = |tabs: &mut Vec<ScreenTab>, f: TermId| {
             for tab in tabs.iter_mut() {
                 if tab.layout.contains(f)
                     && tab.layout.leaves().len() > 1
@@ -43,52 +43,52 @@ impl App {
             tabs.retain(|t| !(t.layout == Node::Leaf(f)));
         };
         if let Some(owner) = new_tab.filter(|o| *o != f) {
-            take_out(&mut self.hy.tabs, f);
-            self.hy.tabs.push(HyTab { layout: Node::Leaf(f), focus: f, owner, used: 0, name: String::new() });
-            self.hy.tab = self.hy.tabs.len() - 1;
+            take_out(&mut self.screen.tabs, f);
+            self.screen.tabs.push(ScreenTab { layout: Node::Leaf(f), focus: f, owner, used: 0, name: String::new() });
+            self.screen.tab = self.screen.tabs.len() - 1;
             return;
         }
         if let Some(p) = beside {
-            take_out(&mut self.hy.tabs, f);
-            let i = match self.hy.tabs.iter().position(|t| t.layout.contains(p)) {
+            take_out(&mut self.screen.tabs, f);
+            let i = match self.screen.tabs.iter().position(|t| t.layout.contains(p)) {
                 Some(i) => i,
                 None => {
-                    self.hy.tabs.push(HyTab { layout: Node::Leaf(p), focus: p, owner: p, used: 0, name: String::new() });
-                    self.hy.tabs.len() - 1
+                    self.screen.tabs.push(ScreenTab { layout: Node::Leaf(p), focus: p, owner: p, used: 0, name: String::new() });
+                    self.screen.tabs.len() - 1
                 }
             };
             // Beside a wide one, under a tall one.
-            let wide = self.hy.leaf_rects.iter().find(|(id, _)| *id == p).is_none_or(|(_, r)| r.width >= r.height * 3);
-            let dir = self.hy.split_dir.take().unwrap_or(if wide { Dir::Right } else { Dir::Down });
-            let tab = &mut self.hy.tabs[i];
+            let wide = self.screen.leaf_rects.iter().find(|(id, _)| *id == p).is_none_or(|(_, r)| r.width >= r.height * 3);
+            let dir = self.screen.split_dir.take().unwrap_or(if wide { Dir::Right } else { Dir::Down });
+            let tab = &mut self.screen.tabs[i];
             tab.layout.split(p, dir, f);
             tab.focus = f;
-            self.hy.tab = i;
+            self.screen.tab = i;
             return;
         }
         // A session with tabs: the one you were last on (unless you're already in one of them).
-        let here = self.hy.tabs.get(self.hy.tab).is_some_and(|t| t.owner == f && t.layout.contains(f));
-        if !here && let Some(i) = (0..self.hy.tabs.len()).filter(|i| self.hy.tabs[*i].owner == f).max_by_key(|i| self.hy.tabs[*i].used) {
-            self.hy.tab = i;
-            let to = self.hy.tabs[i].focus;
+        let here = self.screen.tabs.get(self.screen.tab).is_some_and(|t| t.owner == f && t.layout.contains(f));
+        if !here && let Some(i) = (0..self.screen.tabs.len()).filter(|i| self.screen.tabs[*i].owner == f).max_by_key(|i| self.screen.tabs[*i].used) {
+            self.screen.tab = i;
+            let to = self.screen.tabs[i].focus;
             if to != f {
                 self.cmd(Command::FocusPane { term: to });
             }
             return;
         }
-        if let Some(i) = self.hy.tabs.iter().position(|t| t.layout.contains(f)) {
-            self.hy.tab = i;
-            self.hy.tabs[i].focus = f;
+        if let Some(i) = self.screen.tabs.iter().position(|t| t.layout.contains(f)) {
+            self.screen.tab = i;
+            self.screen.tabs[i].focus = f;
             return;
         }
-        if self.hy.tabs.is_empty() {
-            self.hy.tabs.push(HyTab { layout: Node::Leaf(f), focus: f, owner: f, used: 0, name: String::new() });
-            self.hy.tab = 0;
+        if self.screen.tabs.is_empty() {
+            self.screen.tabs.push(ScreenTab { layout: Node::Leaf(f), focus: f, owner: f, used: 0, name: String::new() });
+            self.screen.tab = 0;
             return;
         }
         // The one you were on was closed: the rest of its split stays as it is, and the focus
         // goes to what's left there (not to whatever the server picked).
-        let tab = &mut self.hy.tabs[self.hy.tab];
+        let tab = &mut self.screen.tabs[self.screen.tab];
         if let Some(gone) = prev.filter(|o| tab.layout.contains(*o) && !self.snap.terms.contains_key(o))
             && tab.layout.leaves().len() > 1
             && let Some(rest) = tab.layout.clone().remove(gone)
@@ -102,39 +102,39 @@ impl App {
         // Not shown anywhere: it shows on its own, full size. A view that's one session's only
         // tab with nothing beside it is reused (this one first); a split or another session's
         // tabs stay as they are (pick its row to get them back).
-        let lone = |tabs: &[HyTab], i: usize| tabs[i].layout.leaves().len() == 1 && tabs.iter().filter(|u| u.owner == tabs[i].owner).count() == 1;
-        let fresh = HyTab { layout: Node::Leaf(f), focus: f, owner: f, used: 0, name: String::new() };
-        let reuse = if lone(&self.hy.tabs, self.hy.tab) { Some(self.hy.tab) } else { (0..self.hy.tabs.len()).find(|i| lone(&self.hy.tabs, *i)) };
+        let lone = |tabs: &[ScreenTab], i: usize| tabs[i].layout.leaves().len() == 1 && tabs.iter().filter(|u| u.owner == tabs[i].owner).count() == 1;
+        let fresh = ScreenTab { layout: Node::Leaf(f), focus: f, owner: f, used: 0, name: String::new() };
+        let reuse = if lone(&self.screen.tabs, self.screen.tab) { Some(self.screen.tab) } else { (0..self.screen.tabs.len()).find(|i| lone(&self.screen.tabs, *i)) };
         match reuse {
             Some(i) => {
-                self.hy.tabs[i] = fresh;
-                self.hy.tab = i;
+                self.screen.tabs[i] = fresh;
+                self.screen.tab = i;
             }
             None => {
-                self.hy.tabs.push(fresh);
-                self.hy.tab = self.hy.tabs.len() - 1;
+                self.screen.tabs.push(fresh);
+                self.screen.tab = self.screen.tabs.len() - 1;
             }
         }
     }
 
     /// The tabs of the session you're on, in order.
     pub(in crate::client) fn session_tabs(&self) -> Vec<usize> {
-        let Some(owner) = self.hy.tabs.get(self.hy.tab).map(|t| t.owner) else { return Vec::new() };
-        (0..self.hy.tabs.len()).filter(|i| self.hy.tabs[*i].owner == owner).collect()
+        let Some(owner) = self.screen.tabs.get(self.screen.tab).map(|t| t.owner) else { return Vec::new() };
+        (0..self.screen.tabs.len()).filter(|i| self.screen.tabs[*i].owner == owner).collect()
     }
 
     /// Close a session's tab and what's in it (one of several: its last tab is the session,
     /// closed from the sidebar). With an agent in it, a second click within a few seconds.
     pub(in crate::client) fn close_tab(&mut self, i: usize) {
-        let Some(tab) = self.hy.tabs.get(i) else { return };
-        if self.hy.tabs.iter().filter(|t| t.owner == tab.owner).count() < 2 {
+        let Some(tab) = self.screen.tabs.get(i) else { return };
+        if self.screen.tabs.iter().filter(|t| t.owner == tab.owner).count() < 2 {
             return;
         }
         let leaves = tab.layout.leaves();
         let agents: Vec<String> = leaves.iter().filter_map(|id| self.snap.terms.get(id)).filter_map(|t| t.agent.clone()).collect();
-        let armed = self.hy.close_armed.take().is_some_and(|(at, when)| at == i && when.elapsed().as_secs() < 4);
+        let armed = self.screen.close_armed.take().is_some_and(|(at, when)| at == i && when.elapsed().as_secs() < 4);
         if !agents.is_empty() && !armed {
-            self.hy.close_armed = Some((i, Instant::now()));
+            self.screen.close_armed = Some((i, Instant::now()));
             self.notify(format!("{} is running in this tab: close it again to stop it", agents.join(", ")), false);
             return;
         }
@@ -146,15 +146,15 @@ impl App {
     /// Move tab `from` to where tab `to` is (both of the same session); returns where it is
     /// now. The tab you're on stays the one you're on.
     pub(in crate::client) fn move_tab(&mut self, from: usize, to: usize) -> usize {
-        let n = self.hy.tabs.len();
-        if from >= n || to >= n || from == to || self.hy.tabs[from].owner != self.hy.tabs[to].owner {
+        let n = self.screen.tabs.len();
+        if from >= n || to >= n || from == to || self.screen.tabs[from].owner != self.screen.tabs[to].owner {
             return from;
         }
-        let current = self.hy.tab;
-        let tab = self.hy.tabs.remove(from);
-        self.hy.tabs.insert(to, tab);
+        let current = self.screen.tab;
+        let tab = self.screen.tabs.remove(from);
+        self.screen.tabs.insert(to, tab);
         // Every index between the two shifted by one; the one you're on follows its tab.
-        self.hy.tab = if current == from {
+        self.screen.tab = if current == from {
             to
         } else if from < to && current > from && current <= to {
             current - 1
@@ -163,14 +163,14 @@ impl App {
         } else {
             current
         };
-        self.hy.close_armed = None;
+        self.screen.close_armed = None;
         to
     }
 
     /// Stop showing `t` beside the others (it keeps running). False when it's on its own.
-    pub(in crate::client) fn hy_unshow(&mut self, t: TermId) -> bool {
-        let Some(i) = self.hy.tabs.iter().position(|tab| tab.layout.contains(t)) else { return false };
-        let tab = &mut self.hy.tabs[i];
+    pub(in crate::client) fn screen_unshow(&mut self, t: TermId) -> bool {
+        let Some(i) = self.screen.tabs.iter().position(|tab| tab.layout.contains(t)) else { return false };
+        let tab = &mut self.screen.tabs[i];
         if tab.layout.leaves().len() < 2 {
             return false;
         }
@@ -187,26 +187,26 @@ impl App {
 
 
     /// Show a session: it becomes the focused one.
-    pub(in crate::client) fn hy_focus(&mut self, term: TermId) {
-        self.hy.cursor = None;
+    pub(in crate::client) fn screen_focus(&mut self, term: TermId) {
+        self.screen.cursor = None;
         self.mode = Mode::Normal;
         self.cmd(Command::FocusPane { term });
     }
 
     /// Start a session in `cwd` running `cmd` (None: a shell), beside the focused one or
     /// on its own.
-    pub(in crate::client) fn hy_new_session(&mut self, cwd: PathBuf, cmd: Option<String>, beside: bool) {
+    pub(in crate::client) fn screen_new_session(&mut self, cwd: PathBuf, cmd: Option<String>, beside: bool) {
         if beside && let Some(f) = self.focused() {
-            self.hy.pending_split = Some((f, Instant::now()));
+            self.screen.pending_split = Some((f, Instant::now()));
         }
-        self.hy.cursor = None;
+        self.screen.cursor = None;
         self.mode = Mode::Normal;
         self.cmd(Command::NewWorkspace { cwd: Some(cwd), name: None, cmd });
     }
 
     /// A new worktree of a project running `cmd`: on `branch` if given (an existing one),
     /// else on a new branch with a generated name.
-    pub(in crate::client) fn hy_new_worktree(&mut self, proj: &Proj, cmd: Option<String>, beside: bool, branch: Option<String>) {
+    pub(in crate::client) fn screen_new_worktree(&mut self, proj: &Proj, cmd: Option<String>, beside: bool, branch: Option<String>) {
         let taken: HashSet<String> = proj.wts.iter().flat_map(|w| [w.name.clone(), w.branch.clone()]).chain(proj.branches.iter().cloned()).collect();
         let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as usize).unwrap_or(0);
         let branch = branch.unwrap_or_else(|| {
@@ -220,7 +220,7 @@ impl App {
             return;
         };
         if beside && let Some(f) = self.focused() {
-            self.hy.pending_split = Some((f, Instant::now()));
+            self.screen.pending_split = Some((f, Instant::now()));
         }
         self.mode = Mode::Normal;
         self.notify(format!("new worktree {branch} in {}", proj.name), false);
@@ -228,41 +228,41 @@ impl App {
     }
 
     /// A new worktree running `cmd` (on `branch` if given), full screen.
-    pub(in crate::client) fn hy_start_worktree(&mut self, proj: &Proj, cmd: Option<String>, branch: Option<String>) {
-        self.hy_new_worktree(proj, cmd, false, branch);
+    pub(in crate::client) fn screen_start_worktree(&mut self, proj: &Proj, cmd: Option<String>, branch: Option<String>) {
+        self.screen_new_worktree(proj, cmd, false, branch);
     }
 
     /// Open a folder as a project: switch to it, or start a session there if nothing runs.
-    pub(in crate::client) fn hy_open_project(&mut self, path: PathBuf) {
+    pub(in crate::client) fn screen_open_project(&mut self, path: PathBuf) {
         self.mode = Mode::Normal;
         self.splash = false;
         let root = crate::gitfs::head(&path).map(|h| h.main_root).unwrap_or_else(|| path.clone());
         let key = path_key(&root);
-        let model = self.hy_model();
+        let model = self.screen_model();
         let existing = model.iter().find(|p| p.key == key);
         let found = existing.and_then(|p| p.sessions().min_by_key(|s| (rank(s.status), s.term)).map(|s| (p.name.clone(), s.term)));
         let is_new = existing.is_none();
-        self.hy.proj = Some(key.clone());
+        self.screen.proj = Some(key.clone());
         match found {
             Some((name, term)) => {
-                self.hy_focus(term);
+                self.screen_focus(term);
                 self.notify(format!("Switched to {name}"), false);
             }
             None => {
                 if is_new {
-                    self.hy.fresh.insert(key);
+                    self.screen.fresh.insert(key);
                 }
-                self.hy_new_session(root.clone(), None, false);
+                self.screen_new_session(root.clone(), None, false);
                 self.notify(format!("Opened {} with a shell; + New starts an agent", folder_name(&root)), false);
             }
         }
     }
 
-    pub(in crate::client) fn hy_open_finder(&mut self) {
-        let model = self.hy_model();
+    pub(in crate::client) fn screen_open_finder(&mut self) {
+        let model = self.screen_model();
         let start = model
             .iter()
-            .find(|p| self.hy.proj.as_deref() == Some(p.key.as_str()))
+            .find(|p| self.screen.proj.as_deref() == Some(p.key.as_str()))
             .and_then(|p| p.path.parent().map(Path::to_path_buf))
             .or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf()))
             .unwrap_or_default();
@@ -270,35 +270,35 @@ impl App {
     }
 
     /// The + New chooser, for the current project (or the sidebar cursor's).
-    pub(in crate::client) fn hy_open_new_pane(&mut self, beside: bool) {
-        let model = self.hy_model();
-        let key = self.hy.cursor.and_then(|c| model.iter().find(|p| p.sessions().any(|s| s.term == c)).map(|p| p.key.clone())).or(self.hy.proj.clone());
+    pub(in crate::client) fn screen_open_new_pane(&mut self, beside: bool) {
+        let model = self.screen_model();
+        let key = self.screen.cursor.and_then(|c| model.iter().find(|p| p.sessions().any(|s| s.term == c)).map(|p| p.key.clone())).or(self.screen.proj.clone());
         let p = model.iter().position(|p| Some(&p.key) == key.as_ref()).unwrap_or(0);
-        self.hy_new(p, beside);
+        self.screen_new(p, beside);
     }
 
     /// Start a fleet: the + New chooser asking for a goal, for the agent that will command it.
-    pub(in crate::client) fn hy_start_fleet(&mut self) {
-        self.hy_open_new_pane(false);
-        if let Mode::HyPane(np) = &mut self.mode {
+    pub(in crate::client) fn screen_start_fleet(&mut self) {
+        self.screen_open_new_pane(false);
+        if let Mode::ScreenPane(np) = &mut self.mode {
             // The draft is a task for one agent, not a fleet's goal.
             np.task.clear();
             np.fleet = true;
         }
     }
 
-    pub(in crate::client) fn hy_settings(&mut self) {
+    pub(in crate::client) fn screen_settings(&mut self) {
         self.refresh_installed_version();
-        self.mode = Mode::HySettings(Box::new(SView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        self.mode = Mode::ScreenSettings(Box::new(SView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
     }
 
     /// Move the sidebar cursor; bare keys then work on the sidebar until Esc or Enter.
-    pub(in crate::client) fn hy_side_move(&mut self, d: i8) {
-        let items = self.hy.side_items.clone();
+    pub(in crate::client) fn screen_side_move(&mut self, d: i8) {
+        let items = self.screen.side_items.clone();
         if items.is_empty() {
             return;
         }
-        let cur = match (&self.hy.cursor_proj, self.hy.cursor.or(self.focused())) {
+        let cur = match (&self.screen.cursor_proj, self.screen.cursor.or(self.focused())) {
             (Some(k), _) => items.iter().position(|i| *i == SideItem::Proj(k.clone())),
             (None, Some(t)) => items.iter().position(|i| *i == SideItem::Sess(t)),
             _ => None,
@@ -309,14 +309,14 @@ impl App {
             (Some(i), d) if d < 0 => i.saturating_sub(1),
             (Some(i), _) => (i + 1).min(items.len() - 1),
         };
-        self.hy_side_set(items[next].clone());
+        self.screen_side_set(items[next].clone());
     }
 
     /// The sidebar row to land on after the cursor's row goes: the next one, else the one
     /// before.
     pub(in crate::client) fn side_after_close(&self) -> Option<SideItem> {
-        let items = &self.hy.side_items;
-        let cur = match (&self.hy.cursor_proj, self.hy.cursor) {
+        let items = &self.screen.side_items;
+        let cur = match (&self.screen.cursor_proj, self.screen.cursor) {
             (Some(k), _) => items.iter().position(|i| *i == SideItem::Proj(k.clone())),
             (None, Some(t)) => items.iter().position(|i| *i == SideItem::Sess(t)),
             _ => None,
@@ -327,32 +327,32 @@ impl App {
     /// A confirm answered (`act` when yes): do it, and go back to the sidebar if it was
     /// asked from there.
     pub(in crate::client) fn confirm_done(&mut self, act: Option<crate::client::menu::Act>) {
-        let back = self.hy.side_return.take();
+        let back = self.screen.side_return.take();
         let yes = act.is_some();
         if let Some(a) = act {
             self.menu_do(a);
         }
         if let Some(item) = back {
             if yes {
-                self.hy_side_set(item);
+                self.screen_side_set(item);
             } else {
-                self.hy_side_move(0);
+                self.screen_side_move(0);
             }
         }
     }
 
     /// Put the sidebar cursor on a row (and the keys in the sidebar).
-    pub(in crate::client) fn hy_side_set(&mut self, item: SideItem) {
-        self.hy.follow = true;
+    pub(in crate::client) fn screen_side_set(&mut self, item: SideItem) {
+        self.screen.follow = true;
         self.mode = Mode::Side;
         match item {
             SideItem::Proj(k) => {
-                self.hy.cursor_proj = Some(k);
-                self.hy.cursor = None;
+                self.screen.cursor_proj = Some(k);
+                self.screen.cursor = None;
             }
             SideItem::Sess(t) => {
-                self.hy.cursor_proj = None;
-                self.hy.cursor = Some(t);
+                self.screen.cursor_proj = None;
+                self.screen.cursor = Some(t);
                 // Resting on a finished agent counts as seeing it.
                 if self.snap.terms.get(&t).is_some_and(|i| i.status == Status::Done) {
                     self.cmd(Command::MarkSeen { term: t });
@@ -361,51 +361,51 @@ impl App {
         }
     }
 
-    pub(in crate::client) fn hy_side_leave(&mut self) {
-        self.hy.cursor = None;
-        self.hy.cursor_proj = None;
+    pub(in crate::client) fn screen_side_leave(&mut self) {
+        self.screen.cursor = None;
+        self.screen.cursor_proj = None;
         self.mode = Mode::Normal;
     }
 
     /// Fold or unfold a project (true: open it).
-    pub(in crate::client) fn hy_fold(&mut self, key: &str, open: Option<bool>) {
+    pub(in crate::client) fn screen_fold(&mut self, key: &str, open: Option<bool>) {
         let k = format!("p:{key}");
-        let is_open = !self.hy.saved.closed.contains(&k);
+        let is_open = !self.screen.saved.closed.contains(&k);
         let want = open.unwrap_or(!is_open);
         if want != is_open {
             if want {
-                self.hy.saved.closed.retain(|c| *c != k);
+                self.screen.saved.closed.retain(|c| *c != k);
             } else {
-                self.hy.saved.closed.push(k);
+                self.screen.saved.closed.push(k);
             }
-            self.hy.save();
+            self.screen.save();
         }
     }
 
     /// Actions that work differently in this layout. Returns true if handled.
-    pub(in crate::client) fn hy_act(&mut self, a: &Action) -> bool {
+    pub(in crate::client) fn screen_act(&mut self, a: &Action) -> bool {
         let focused = self.focused();
         match a {
-            Action::Settings => self.hy_settings(),
-            Action::NewPane => self.hy_open_new_pane(false),
-            Action::StartFleet => self.hy_start_fleet(),
+            Action::Settings => self.screen_settings(),
+            Action::NewPane => self.screen_open_new_pane(false),
+            Action::StartFleet => self.screen_start_fleet(),
             // A plain shell in the project's own folder (the repo itself, not a worktree).
             Action::ShellHere => {
                 let dir = self
-                    .hy
+                    .screen
                     .cursor
                     .or(self.focused())
                     .and_then(|t| self.snap.terms.get(&t))
                     .map(|t| t.root.clone().unwrap_or_else(|| t.cwd.clone()))
-                    .or_else(|| self.hy_model().iter().find(|p| Some(&p.key) == self.hy.proj.as_ref()).map(|p| p.path.clone()))
+                    .or_else(|| self.screen_model().iter().find(|p| Some(&p.key) == self.screen.proj.as_ref()).map(|p| p.path.clone()))
                     .unwrap_or_else(|| self.here_dir());
-                self.hy.cursor = None;
-                self.hy_new_session(dir, None, false);
+                self.screen.cursor = None;
+                self.screen_new_session(dir, None, false);
             }
             // One place: what needs you on top, and type to go anywhere.
             Action::Message | Action::Why => {
-                let side = self.mode == Mode::Side || self.hy.cursor.is_some();
-                match self.hy.cursor.or(self.focused()) {
+                let side = self.mode == Mode::Side || self.screen.cursor.is_some();
+                match self.screen.cursor.or(self.focused()) {
                     Some(term) if *a == Action::Message => self.start_compose(term, side, None),
                     Some(term) => self.mode = Mode::Why { term, side },
                     None => self.notify("no session to ask about".into(), true),
@@ -419,14 +419,14 @@ impl App {
                     self.jump_prompt(t, *a == Action::PrevPrompt);
                 }
             }
-            Action::Focus(d) => match focused.and_then(|f| crate::layout::neighbor(&self.hy.leaf_rects, f, *d)) {
+            Action::Focus(d) => match focused.and_then(|f| crate::layout::neighbor(&self.screen.leaf_rects, f, *d)) {
                 Some(to) => self.cmd(Command::FocusPane { term: to }),
                 // Past the left edge: the sidebar.
-                None if *d == crate::layout::Dir::Left && self.sidebar => self.hy_side_move(0),
+                None if *d == crate::layout::Dir::Left && self.sidebar => self.screen_side_move(0),
                 None => {}
             },
             Action::FocusNext | Action::FocusPrev => {
-                let shown: Vec<TermId> = self.hy.leaf_rects.iter().map(|(id, _)| *id).collect();
+                let shown: Vec<TermId> = self.screen.leaf_rects.iter().map(|(id, _)| *id).collect();
                 if let Some(f) = focused
                     && shown.len() > 1
                 {
@@ -447,39 +447,39 @@ impl App {
                 let seen = self.session_tabs();
                 let n = seen.len();
                 if n > 1 {
-                    let at = seen.iter().position(|i| *i == self.hy.tab);
+                    let at = seen.iter().position(|i| *i == self.screen.tab);
                     let next = match (at, *a == Action::NextTab) {
                         (Some(k), true) => seen[(k + 1) % n],
                         (Some(k), false) => seen[(k + n - 1) % n],
                         (None, _) => seen[0],
                     };
-                    self.hy.tab = next;
-                    let to = self.hy.tabs[next].focus;
+                    self.screen.tab = next;
+                    let to = self.screen.tabs[next].focus;
                     self.cmd(Command::FocusPane { term: to });
                 }
             }
             Action::SelectTab(n) => {
                 let seen = self.session_tabs();
                 if let Some(i) = n.checked_sub(1).and_then(|k| seen.get(k).copied())
-                    && let Some(tab) = self.hy.tabs.get(i)
+                    && let Some(tab) = self.screen.tabs.get(i)
                 {
                     let to = tab.focus;
-                    self.hy.tab = i;
+                    self.screen.tab = i;
                     self.cmd(Command::FocusPane { term: to });
                 }
             }
-            Action::CloseTab => self.close_tab(self.hy.tab),
+            Action::CloseTab => self.close_tab(self.screen.tab),
             Action::ToggleSidebar => {
                 self.sidebar = !self.sidebar;
-                self.hy.follow = true;
+                self.screen.follow = true;
             }
             Action::RenameWorkspace => {
-                if let Some(t) = self.hy.cursor.or(focused) {
+                if let Some(t) = self.screen.cursor.or(focused) {
                     self.menu_do(crate::client::menu::Act::RenamePane(t));
                 }
             }
             Action::SplitRight | Action::SplitDown | Action::SplitLeft | Action::SplitUp | Action::Spawn(..) => {
-                self.hy.split_dir = Some(match a {
+                self.screen.split_dir = Some(match a {
                     Action::SplitDown | Action::SplitUp => crate::layout::Dir::Down,
                     Action::Spawn(d, _) => *d,
                     _ => crate::layout::Dir::Right,
@@ -489,34 +489,34 @@ impl App {
                     Action::Spawn(_, c) => Some(c.clone()),
                     _ => None,
                 };
-                self.hy_new_session(cwd, cmd, true);
+                self.screen_new_session(cwd, cmd, true);
             }
-            Action::NewSession => self.hy_open_new_pane(true),
+            Action::NewSession => self.screen_open_new_pane(true),
             Action::CloseSplit => {
                 if let Some(f) = focused
-                    && !self.hy_unshow(f)
+                    && !self.screen_unshow(f)
                 {
                     self.notify("nothing split here".into(), false);
                 }
             }
-            Action::SideMove(d) => self.hy_side_move(*d),
+            Action::SideMove(d) => self.screen_side_move(*d),
             Action::Resize(d) => {
                 use crate::layout::Dir;
                 let grow = matches!(d, Dir::Right | Dir::Down);
-                let many = self.hy.tabs.get(self.hy.tab).is_some_and(|tab| tab.layout.leaves().len() > 1);
+                let many = self.screen.tabs.get(self.screen.tab).is_some_and(|tab| tab.layout.leaves().len() > 1);
                 if let (true, Some(f)) = (many, focused) {
-                    let tab = self.hy.tab;
-                    self.hy.tabs[tab].layout.resize(f, *d, 0.05);
+                    let tab = self.screen.tab;
+                    self.screen.tabs[tab].layout.resize(f, *d, 0.05);
                 } else {
-                    let w = self.hy.saved.side_w.unwrap_or(self.hy.side_rect.width.max(SIDE_MIN));
+                    let w = self.screen.saved.side_w.unwrap_or(self.screen.side_rect.width.max(SIDE_MIN));
                     let w = if grow { w + 2 } else { w.saturating_sub(2) };
-                    self.hy.saved.side_w = Some(w.clamp(SIDE_MIN, SIDE_MAX));
+                    self.screen.saved.side_w = Some(w.clamp(SIDE_MIN, SIDE_MAX));
                 }
-                self.hy.save();
+                self.screen.save();
             }
             Action::Files | Action::Changes => {
-                let dir = self.hy_target_dir();
-                self.hy.cursor = None;
+                let dir = self.screen_target_dir();
+                self.screen.cursor = None;
                 self.mode = Mode::Normal;
                 if *a == Action::Files {
                     self.open_files(dir);
@@ -524,7 +524,7 @@ impl App {
                     self.open_changes(dir);
                 }
             }
-            Action::BrowseTree => self.hy_side_move(0),
+            Action::BrowseTree => self.screen_side_move(0),
             _ => return false,
         }
         true
@@ -537,66 +537,66 @@ impl App {
     /// type goes to the pane you're on.
     pub(in crate::client) fn on_side_key(&mut self, k: &KeyEvent) {
         let spec = KeySpec::from_event(k);
-        let proj = self.hy.cursor_proj.clone();
-        let model = self.hy_model();
+        let proj = self.screen.cursor_proj.clone();
+        let model = self.screen_model();
         if spec == self.keymap.prefix {
             self.mode = Mode::Prefix { since: Instant::now() };
             return;
         }
         let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
         match spec.code {
-            KeyCode::Tab | KeyCode::BackTab if crate::client::hydra::Look::of(&self.cfg.ui).flat => self.hy_side_leave(),
-            KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => self.hy_side_move(-1),
-            KeyCode::Down | KeyCode::Char('j') if !k.modifiers.contains(KeyModifiers::CONTROL) => self.hy_side_move(1),
+            KeyCode::Tab | KeyCode::BackTab if crate::client::screen::Look::of(&self.cfg.ui).flat => self.screen_side_leave(),
+            KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => self.screen_side_move(-1),
+            KeyCode::Down | KeyCode::Char('j') if !k.modifiers.contains(KeyModifiers::CONTROL) => self.screen_side_move(1),
             KeyCode::Home => {
-                if let Some(first) = self.hy.side_items.first().cloned() {
-                    self.hy_side_set(first);
+                if let Some(first) = self.screen.side_items.first().cloned() {
+                    self.screen_side_set(first);
                 }
             }
             KeyCode::End => {
-                if let Some(last) = self.hy.side_items.last().cloned() {
-                    self.hy_side_set(last);
+                if let Some(last) = self.screen.side_items.last().cloned() {
+                    self.screen_side_set(last);
                 }
             }
             KeyCode::Right => match &proj {
-                Some(key) => self.hy_fold(key, Some(true)),
+                Some(key) => self.screen_fold(key, Some(true)),
                 None => {
                     // Into the pane.
-                    if let Some(c) = self.hy.cursor {
-                        self.hy_focus(c);
+                    if let Some(c) = self.screen.cursor {
+                        self.screen_focus(c);
                     }
-                    self.hy_side_leave();
+                    self.screen_side_leave();
                 }
             },
-            KeyCode::Left => match (&proj, self.hy.cursor) {
-                (Some(key), _) => self.hy_fold(key, Some(false)),
+            KeyCode::Left => match (&proj, self.screen.cursor) {
+                (Some(key), _) => self.screen_fold(key, Some(false)),
                 (None, Some(t)) => {
                     if let Some(p) = model.iter().find(|p| p.sessions().any(|s| s.term == t)) {
-                        self.hy_side_set(SideItem::Proj(p.key.clone()));
+                        self.screen_side_set(SideItem::Proj(p.key.clone()));
                     }
                 }
                 _ => {}
             },
             KeyCode::Char(' ') if plain => {
                 if let Some(pi) = proj.as_ref().and_then(|key| model.iter().position(|p| p.key == *key)) {
-                    self.hy_side_leave();
-                    self.hy_new(pi, false);
+                    self.screen_side_leave();
+                    self.screen_new(pi, false);
                 }
             }
-            KeyCode::Enter => match (&proj, self.hy.cursor) {
-                (Some(key), _) => self.hy_fold(key, None),
+            KeyCode::Enter => match (&proj, self.screen.cursor) {
+                (Some(key), _) => self.screen_fold(key, None),
                 (None, Some(c)) if self.check_wants_a_look(c) => {
-                    self.hy_side_leave();
+                    self.screen_side_leave();
                     self.open_check_sheet(c);
                 }
                 (None, c) => {
                     if let Some(c) = c {
-                        self.hy_focus(c);
+                        self.screen_focus(c);
                     }
-                    self.hy_side_leave();
+                    self.screen_side_leave();
                 }
             },
-            KeyCode::Esc => self.hy_side_leave(),
+            KeyCode::Esc => self.screen_side_leave(),
             _ if spec == self.keymap.prefix => self.mode = Mode::Prefix { since: Instant::now() },
             // Delete closes the row, like x.
             KeyCode::Delete => {
@@ -605,11 +605,11 @@ impl App {
                 }
             }
             // m: a follow-up to this row's agent; i: why it has its status.
-            KeyCode::Char('m') if plain && self.hy.cursor.is_some() => self.act(Action::Message),
-            KeyCode::Char('i') if plain && self.hy.cursor.is_some() => self.act(Action::Why),
-            KeyCode::Char('s') if plain && self.hy.cursor.is_some() => {
-                if let Some(term) = self.hy.cursor
-                    && self.hy_model().iter().any(|project| project.sessions().any(|session| session.term == term && !session.subagent_activity.is_empty()))
+            KeyCode::Char('m') if plain && self.screen.cursor.is_some() => self.act(Action::Message),
+            KeyCode::Char('i') if plain && self.screen.cursor.is_some() => self.act(Action::Why),
+            KeyCode::Char('s') if plain && self.screen.cursor.is_some() => {
+                if let Some(term) = self.screen.cursor
+                    && self.screen_model().iter().any(|project| project.sessions().any(|session| session.term == term && !session.subagent_activity.is_empty()))
                 {
                     self.mode = Mode::SubagentInfo { term, index: 0 };
                 }
@@ -627,7 +627,7 @@ impl App {
             }
             // Anything else is typing: leave the sidebar and hand the key over.
             _ => {
-                self.hy_side_leave();
+                self.screen_side_leave();
                 if let Some(term) = self.focused() {
                     let data = crate::keys::encode(k, self.parsers.get(&term).is_some_and(|p| p.screen().application_cursor()));
                     if !data.is_empty() {
@@ -640,7 +640,7 @@ impl App {
 
     /// Go to, opened on its first row you can pick (what needs you, when anything does).
     pub(in crate::client) fn open_goto(&mut self) {
-        let rows = goto_rows(&self.hy_model(), "", heads_up(self).len());
+        let rows = goto_rows(&self.screen_model(), "", heads_up(self).len());
         let sel = rows.iter().position(GoRow::pickable).unwrap_or(0);
         self.mode = Mode::GoTo { query: String::new(), sel };
     }
@@ -676,8 +676,8 @@ impl App {
     }
 
     /// The folder Files / Changes / PR act on: the sidebar cursor's, else the focused one's.
-    pub(in crate::client) fn hy_target_dir(&self) -> PathBuf {
-        self.hy
+    pub(in crate::client) fn screen_target_dir(&self) -> PathBuf {
+        self.screen
             .cursor
             .or(self.focused())
             .and_then(|t| self.snap.terms.get(&t))
@@ -706,7 +706,7 @@ impl App {
                     .map(|i| (ci, i))
             })
             .unwrap_or((0, 0));
-        self.mode = Mode::HySettings(Box::new(SView { cat, sel, editing: None, capturing: false, scroll: 0 }));
+        self.mode = Mode::ScreenSettings(Box::new(SView { cat, sel, editing: None, capturing: false, scroll: 0 }));
     }
 
     pub(in crate::client) fn finder_enter(&mut self, mut fd: Finder) {
@@ -720,7 +720,7 @@ impl App {
                     if self.finder_chose(&fd, p.clone()) {
                         return;
                     }
-                    self.hy_open_project(p);
+                    self.screen_open_project(p);
                 } else {
                     self.notify(format!("no folder {}", tilde(&p)), true);
                     self.mode = Mode::Finder(Box::new(fd));
@@ -728,7 +728,7 @@ impl App {
             }
             Some((n, p, repo)) if n == "." || repo => {
                 if !self.finder_chose(&fd, p.clone()) {
-                    self.hy_open_project(p);
+                    self.screen_open_project(p);
                 }
             }
             Some((_, p, _)) => {
@@ -778,10 +778,10 @@ impl App {
 
     /// Start what the chooser says: an agent gets its own worktree in a git project, a
     /// shell (or an agent outside git) runs in the project's folder.
-    pub(in crate::client) fn hy_pane_go(&mut self, np: &NewPaneHy) {
-        let model = self.hy_model();
+    pub(in crate::client) fn screen_pane_go(&mut self, np: &NewPaneHy) {
+        let model = self.screen_model();
         let Some(p) = model.get(np.p).cloned() else {
-            self.hy_open_finder();
+            self.screen_open_finder();
             return;
         };
         let agents = np_agents(self, np.p);
@@ -797,16 +797,16 @@ impl App {
                 None
             };
             if let Some(why) = missing {
-                self.mode = Mode::HyPane(np.clone());
+                self.mode = Mode::ScreenPane(np.clone());
                 self.notify(why.into(), true);
                 return;
             }
         }
         let task = if np.fleet { crate::brief::commander_prompt(&np.task) } else { np.task.clone() };
         let cmd = np_command(self, &agent, np.model, &task);
-        if !np.fleet && !self.hy.saved.draft.is_empty() {
-            self.hy.saved.draft.clear();
-            self.hy.save();
+        if !np.fleet && !self.screen.saved.draft.is_empty() {
+            self.screen.saved.draft.clear();
+            self.screen.save();
         }
         if let Some(recipe) = agent.strip_prefix("⚙ ") {
             self.mode = Mode::Normal;
@@ -814,10 +814,10 @@ impl App {
             return;
         }
         if !p.git {
-            return self.hy_new_session(main, cmd, np.beside);
+            return self.screen_new_session(main, cmd, np.beside);
         }
         match np.place_for(&agent, self.cfg.worktree.per_agent) {
-            0 => self.hy_new_worktree(&p, cmd, np.beside, None),
+            0 => self.screen_new_worktree(&p, cmd, np.beside, None),
             1 => {
                 // A new branch right in the repo folder (no worktree).
                 let taken: HashSet<String> = p.wts.iter().map(|w| w.branch.clone()).collect();
@@ -832,7 +832,7 @@ impl App {
                     crate::client::Bg::Then(Box::new(move |app: &mut App| match out {
                         Ok(o) if o.status.success() => {
                             app.notify(format!("{pname} is on a new branch, {name}"), false);
-                            app.hy_new_session(main, cmd, beside);
+                            app.screen_new_session(main, cmd, beside);
                         }
                         Ok(o) => app.notify(format!("couldn't make a branch: {}", String::from_utf8_lossy(&o.stderr).lines().next().unwrap_or("git failed")), true),
                         Err(e) => app.notify(format!("couldn't run git: {e}"), true),
@@ -840,18 +840,18 @@ impl App {
                 });
             }
             n @ 3.. => match p.wts.iter().filter(|w| !w.main).nth(n as usize - 3) {
-                Some(w) => self.hy_new_session(w.path.clone(), cmd, np.beside),
+                Some(w) => self.screen_new_session(w.path.clone(), cmd, np.beside),
                 None => {
-                    self.mode = Mode::HyPane(np.clone());
+                    self.mode = Mode::ScreenPane(np.clone());
                     self.notify("that worktree is no longer available; choose where to start again".into(), true);
                 }
             },
-            _ => self.hy_new_session(main, cmd, np.beside),
+            _ => self.screen_new_session(main, cmd, np.beside),
         }
     }
 
     pub(in crate::client) fn on_goto_key(&mut self, mut query: String, mut sel: usize, k: &KeyEvent) {
-        let model = self.hy_model();
+        let model = self.screen_model();
         let rows = goto_rows(&model, &query, heads_up(self).len());
         // Headings aren't rows you land on.
         let land = |sel: usize, down: bool| -> usize {
@@ -871,9 +871,9 @@ impl App {
         };
         let sel_row = rows.get(land(sel, true)).cloned();
         // A merge or throw-away asked in a finished row: Enter does it, Esc doesn't, the rest wait.
-        if let Some((term, merge, false)) = self.hy.inbox_confirm {
+        if let Some((term, merge, false)) = self.screen.inbox_confirm {
             match k.code {
-                KeyCode::Esc => self.hy.inbox_confirm = None,
+                KeyCode::Esc => self.screen.inbox_confirm = None,
                 KeyCode::Enter => {
                     if let Some((_, wt, _)) = find(&model, term) {
                         let dir = wt.path.clone();
@@ -884,7 +884,7 @@ impl App {
                         } else {
                             self.throw_away(&dir);
                         }
-                        self.hy.inbox_confirm = Some((term, merge, true));
+                        self.screen.inbox_confirm = Some((term, merge, true));
                     }
                 }
                 _ => {}
@@ -932,7 +932,7 @@ impl App {
                         self.open_changes(dir);
                         return;
                     }
-                    _ if !wt.main => self.hy.inbox_confirm = Some((term, c == 'M', false)),
+                    _ if !wt.main => self.screen.inbox_confirm = Some((term, c == 'M', false)),
                     _ => self.notify("the main folder isn't a worktree: open Changes (d) to commit".into(), false),
                 }
                 self.mode = Mode::GoTo { query, sel };
@@ -962,9 +962,9 @@ impl App {
             KeyCode::Enter => {
                 self.mode = Mode::Normal;
                 match sel_row.as_ref() {
-                    Some(GoRow::Ask(t) | GoRow::Done(t) | GoRow::Failed(t) | GoRow::NotRun(t)) => self.hy_focus(*t),
+                    Some(GoRow::Ask(t) | GoRow::Done(t) | GoRow::Failed(t) | GoRow::NotRun(t)) => self.screen_focus(*t),
                     Some(GoRow::Head(_) | GoRow::Heads(_)) => {}
-                    Some(GoRow::Sess(_, t)) => self.hy_focus(*t),
+                    Some(GoRow::Sess(_, t)) => self.screen_focus(*t),
                     // A project: its most urgent session, or a shell there.
                     None => {}
                 }
@@ -1003,7 +1003,7 @@ impl App {
                 match term.filter(|t| self.snap.terms.contains_key(t)) {
                     Some(t) => {
                         self.mode = Mode::Normal;
-                        self.hy_focus(t);
+                        self.screen_focus(t);
                     }
                     None => self.mode = Mode::History { sel },
                 }
@@ -1016,14 +1016,14 @@ impl App {
 
 
     /// + New for project `p`, with the task you didn't start last time.
-    pub(in crate::client) fn hy_new(&mut self, p: usize, beside: bool) {
+    pub(in crate::client) fn screen_new(&mut self, p: usize, beside: bool) {
         let mut np = NewPaneHy::new(p, beside);
-        np.task = self.hy.saved.draft.clone();
-        self.mode = Mode::HyPane(np);
+        np.task = self.screen.saved.draft.clone();
+        self.mode = Mode::ScreenPane(np);
     }
 
     pub(in crate::client) fn on_hy_pane_key(&mut self, mut np: NewPaneHy, k: &KeyEvent) {
-        let model = self.hy_model();
+        let model = self.screen_model();
         let nproj = model.len() + 1;
         let agents = np_agents(self, np.p);
         let nag = agents.len();
@@ -1048,16 +1048,16 @@ impl App {
         match k.code {
             KeyCode::Esc => {
                 // The task stays for next time (a fleet's goal isn't one).
-                if !np.fleet && self.hy.saved.draft != np.task {
-                    self.hy.saved.draft = np.task.clone();
-                    self.hy.save();
+                if !np.fleet && self.screen.saved.draft != np.task {
+                    self.screen.saved.draft = np.task.clone();
+                    self.screen.save();
                 }
                 self.mode = Mode::Normal;
                 return;
             }
             KeyCode::Enter => {
                 np.beside |= k.modifiers.contains(KeyModifiers::SHIFT);
-                return self.hy_pane_go(&np);
+                return self.screen_pane_go(&np);
             }
             KeyCode::Tab | KeyCode::Down => step(&mut np, 1),
             KeyCode::BackTab | KeyCode::Up => step(&mut np, NP_ROWS - 1),
@@ -1093,7 +1093,7 @@ impl App {
             },
             _ => {}
         }
-        self.mode = Mode::HyPane(np);
+        self.mode = Mode::ScreenPane(np);
     }
 
     /// Keys on the splash: move between its buttons, Enter picks one, or a button's own key.
@@ -1102,24 +1102,24 @@ impl App {
         let opts = splash_options(self);
         let n = opts.len().max(1);
         match k.code {
-            KeyCode::Up | KeyCode::Left | KeyCode::BackTab | KeyCode::Char('k') => self.hy.splash_sel = (self.hy.splash_sel + n - 1) % n,
-            KeyCode::Down | KeyCode::Right | KeyCode::Tab | KeyCode::Char('j') => self.hy.splash_sel = (self.hy.splash_sel + 1) % n,
+            KeyCode::Up | KeyCode::Left | KeyCode::BackTab | KeyCode::Char('k') => self.screen.splash_sel = (self.screen.splash_sel + n - 1) % n,
+            KeyCode::Down | KeyCode::Right | KeyCode::Tab | KeyCode::Char('j') => self.screen.splash_sel = (self.screen.splash_sel + 1) % n,
             KeyCode::Enter => {
-                if let Some((_, _, c)) = opts.get(self.hy.splash_sel.min(n - 1)) {
-                    self.hy_splash_action(*c);
+                if let Some((_, _, c)) = opts.get(self.screen.splash_sel.min(n - 1)) {
+                    self.screen_splash_action(*c);
                 }
             }
-            KeyCode::Char(c) if opts.iter().any(|(_, _, k)| *k == c) || c == '?' || c == ',' => self.hy_splash_action(c),
+            KeyCode::Char(c) if opts.iter().any(|(_, _, k)| *k == c) || c == '?' || c == ',' => self.screen_splash_action(c),
             _ => {}
         }
     }
 
-    pub(in crate::client) fn hy_splash_action(&mut self, c: char) {
+    pub(in crate::client) fn screen_splash_action(&mut self, c: char) {
         self.splash = false;
-        self.hy.splash_sel = 0;
+        self.screen.splash_sel = 0;
         match c {
             'n' => self.act(Action::ShellHere),
-            ',' => self.hy_settings(),
+            ',' => self.screen_settings(),
             '?' => self.open_keymap(None),
             // r: resume, just the app as you left it.
             _ => {}
@@ -1127,64 +1127,64 @@ impl App {
     }
 
     /// Clicks on this layout's chips, rows and buttons.
-    pub(in crate::client) fn on_hy_hit(&mut self, h: HyHit, double: bool) {
+    pub(in crate::client) fn on_hy_hit(&mut self, h: ScreenHit, double: bool) {
         match h {
-            HyHit::ToggleSubs(term) => self.toggle_subs(term),
-            HyHit::SubagentInfo(term, index) => self.mode = Mode::SubagentInfo { term, index },
-            HyHit::ToggleProj(i) => {
-                if let Some(key) = self.hy.proj_keys.get(i).cloned() {
-                    self.hy_fold(&key, None);
+            ScreenHit::ToggleSubs(term) => self.toggle_subs(term),
+            ScreenHit::SubagentInfo(term, index) => self.mode = Mode::SubagentInfo { term, index },
+            ScreenHit::ToggleProj(i) => {
+                if let Some(key) = self.screen.proj_keys.get(i).cloned() {
+                    self.screen_fold(&key, None);
                     // The keys follow you into the sidebar.
-                    self.hy_side_set(SideItem::Proj(key));
+                    self.screen_side_set(SideItem::Proj(key));
                 }
             }
             // Opens it, and the arrows keep walking the sidebar until you type or press Enter.
-            HyHit::Session(t) => {
-                self.hy_focus(t);
-                self.hy_side_set(SideItem::Sess(t));
+            ScreenHit::Session(t) => {
+                self.screen_focus(t);
+                self.screen_side_set(SideItem::Sess(t));
             }
-            HyHit::Update => self.act(Action::Update),
-            HyHit::CheckUpdate => self.act(Action::CheckUpdate),
-            HyHit::Why(term) => {
+            ScreenHit::Update => self.act(Action::Update),
+            ScreenHit::CheckUpdate => self.act(Action::CheckUpdate),
+            ScreenHit::Why(term) => {
                 self.mode = Mode::Why { term, side: matches!(self.mode, Mode::Side) };
             }
-            HyHit::TidyRow(i) => self.tidy_click(i),
-            HyHit::TidyGo => {
+            ScreenHit::TidyRow(i) => self.tidy_click(i),
+            ScreenHit::TidyGo => {
                 if let Mode::Tidy(v) = std::mem::replace(&mut self.mode, Mode::Normal) {
                     self.tidy_ask(*v);
                 }
             }
             // The sidebar's "new": a shell where you are.
             // The ✕ on a pane: close it (after asking).
-            HyHit::CloseSplit(t) => self.menu_act(crate::client::menu::Act::End(vec![t])),
-            HyHit::Divider(i) => self.hy.drag = Some(Drag::Divider(i)),
-            HyHit::ShellIn(pi) => {
-                if let Some(p) = self.hy_model().get(pi) {
+            ScreenHit::CloseSplit(t) => self.menu_act(crate::client::menu::Act::End(vec![t])),
+            ScreenHit::Divider(i) => self.screen.drag = Some(Drag::Divider(i)),
+            ScreenHit::ShellIn(pi) => {
+                if let Some(p) = self.screen_model().get(pi) {
                     let dir = p.wts.iter().find(|w| w.main).map(|w| w.path.clone()).unwrap_or_else(|| p.path.clone());
-                    self.hy_new_session(dir, None, false);
+                    self.screen_new_session(dir, None, false);
                 }
             }
-            HyHit::RowMenuSess(t) => {
+            ScreenHit::RowMenuSess(t) => {
                 let at = self.hover.map(|p| (p.x, p.y)).unwrap_or((0, 0));
                 self.menu_for_session(t, at);
             }
-            HyHit::RowMenuProj(i) => {
+            ScreenHit::RowMenuProj(i) => {
                 let at = self.hover.map(|p| (p.x, p.y)).unwrap_or((0, 0));
                 self.menu_for_project(i, at);
             }
-            HyHit::ConfirmYes => {
+            ScreenHit::ConfirmYes => {
                 if let Mode::Confirm(c) = std::mem::replace(&mut self.mode, Mode::Normal) {
                     self.confirm_done(Some(c.act));
                 }
             }
-            HyHit::ConfirmNo => {
+            ScreenHit::ConfirmNo => {
                 self.mode = Mode::Normal;
                 self.confirm_done(None);
             }
-            HyHit::TabPick(i) => {
-                if let Some(tab) = self.hy.tabs.get(i) {
+            ScreenHit::TabPick(i) => {
+                if let Some(tab) = self.screen.tabs.get(i) {
                     let to = tab.focus;
-                    self.hy.tab = i;
+                    self.screen.tab = i;
                     self.cmd(Command::FocusPane { term: to });
                     // Double-click: rename it in its pill.
                     if double {
@@ -1192,21 +1192,21 @@ impl App {
                     }
                 }
             }
-            HyHit::TabClose(i) => self.close_tab(i),
-            HyHit::SideFocus => self.act(Action::BrowseTree),
-            HyHit::ExpandSidebar => self.act(Action::ToggleSidebar),
-            HyHit::TabNew => self.act(Action::NewTab),
-            HyHit::NewShell => self.act(Action::ShellHere),
-            HyHit::Actions => self.act(Action::Actions),
-            HyHit::ActionRow(i) => self.actions_run(i),
-            HyHit::PickRow(i) => {
+            ScreenHit::TabClose(i) => self.close_tab(i),
+            ScreenHit::SideFocus => self.act(Action::BrowseTree),
+            ScreenHit::ExpandSidebar => self.act(Action::ToggleSidebar),
+            ScreenHit::TabNew => self.act(Action::NewTab),
+            ScreenHit::NewShell => self.act(Action::ShellHere),
+            ScreenHit::Actions => self.act(Action::Actions),
+            ScreenHit::ActionRow(i) => self.actions_run(i),
+            ScreenHit::PickRow(i) => {
                 if let Mode::Picker { query, commands, .. } = self.mode.clone() {
                     self.mode = Mode::Picker { query, sel: i, commands };
                     self.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
                 }
             }
-            HyHit::Leader => self.open_keymap(None),
-            HyHit::KeyRow(i) => {
+            ScreenHit::Leader => self.open_keymap(None),
+            ScreenHit::KeyRow(i) => {
                 if let Mode::KeyMap(km) = &self.mode {
                     let km = (**km).clone();
                     self.keymap_run(&km, i);
@@ -1215,7 +1215,7 @@ impl App {
                     self.keymap_run(&km, i);
                 }
             }
-            HyHit::Close => {
+            ScreenHit::Close => {
                 if matches!(self.mode, Mode::Spinners(_)) {
                     if let Mode::Spinners(view) = &self.mode && view.saving { return; }
                     self.back_to_setting("ui.spinner");
@@ -1225,47 +1225,47 @@ impl App {
                     self.mode = Mode::Normal;
                 }
             }
-            HyHit::ViewClose => self.view = None,
-            HyHit::Noop => {}
-            HyHit::SettingsBody => {}
-            HyHit::FinderPick(i) => {
+            ScreenHit::ViewClose => self.view = None,
+            ScreenHit::Noop => {}
+            ScreenHit::SettingsBody => {}
+            ScreenHit::FinderPick(i) => {
                 if let Mode::Finder(fd) = &self.mode {
                     let mut fd = (**fd).clone();
                     fd.sel = i;
                     self.finder_enter(fd);
                 }
             }
-            HyHit::InboxAnswer(term, key) => {
+            ScreenHit::InboxAnswer(term, key) => {
                 let name = self.session_name(term);
                 self.inbox_answer(term, key, &name);
             }
-            HyHit::InboxCheck(term, key) => {
+            ScreenHit::InboxCheck(term, key) => {
                 self.do_check_key(term, key);
             }
-            HyHit::NpTask => {
-                if let Mode::HyPane(np) = &mut self.mode {
+            ScreenHit::NpTask => {
+                if let Mode::ScreenPane(np) = &mut self.mode {
                     np.row = 0;
                 }
             }
-            HyHit::NpProj(i) | HyHit::NpRun(i) | HyHit::NpBeside(i) | HyHit::NpWhere(i) | HyHit::NpModel(i) => {
-                if let Mode::HyPane(np) = &mut self.mode {
+            ScreenHit::NpProj(i) | ScreenHit::NpRun(i) | ScreenHit::NpBeside(i) | ScreenHit::NpWhere(i) | ScreenHit::NpModel(i) => {
+                if let Mode::ScreenPane(np) = &mut self.mode {
                     match h {
-                        HyHit::NpWhere(_) => {
+                        ScreenHit::NpWhere(_) => {
                             np.place = Some(i as u8);
                             np.row = 4;
                         }
-                        HyHit::NpRun(_) => {
+                        ScreenHit::NpRun(_) => {
                             if np.a != i {
                                 np.model = 0;
                             }
                             np.a = i;
                             np.row = 1;
                         }
-                        HyHit::NpModel(_) => {
+                        ScreenHit::NpModel(_) => {
                             np.model = i;
                             np.row = 2;
                         }
-                        HyHit::NpProj(_) => {
+                        ScreenHit::NpProj(_) => {
                             np.p = i;
                             np.place = np.place.filter(|p| *p < 3);
                             np.a = 0;
@@ -1279,22 +1279,22 @@ impl App {
                     }
                 }
             }
-            HyHit::NpGo => {
-                if let Mode::HyPane(np) = &self.mode {
+            ScreenHit::NpGo => {
+                if let Mode::ScreenPane(np) = &self.mode {
                     let np = np.clone();
-                    self.hy_pane_go(&np);
+                    self.screen_pane_go(&np);
                 }
             }
-            HyHit::SetTab(i) => {
-                if let Mode::HySettings(v) = &mut self.mode {
+            ScreenHit::SetTab(i) => {
+                if let Mode::ScreenSettings(v) = &mut self.mode {
                     v.cat = i;
                     v.sel = 0;
                     v.editing = None;
                     v.capturing = false;
                 }
             }
-            HyHit::SpinnerPick(i) => self.spinner_pick(i),
-            HyHit::ThemePick(i) => {
+            ScreenHit::SpinnerPick(i) => self.spinner_pick(i),
+            ScreenHit::ThemePick(i) => {
                 if let Mode::Themes { query, sel, saving } = self.mode.clone() {
                     if saving { return; }
                     self.mode = Mode::Themes { query: query.clone(), sel: i, saving: false };
@@ -1303,26 +1303,26 @@ impl App {
                     }
                 }
             }
-            HyHit::SetRow(i) | HyHit::SetVal(i, _) => {
-                let Mode::HySettings(v) = &mut self.mode else { return };
+            ScreenHit::SetRow(i) | ScreenHit::SetVal(i, _) => {
+                let Mode::ScreenSettings(v) = &mut self.mode else { return };
                 let again = v.sel == i;
                 v.sel = i;
                 let cat = crate::client::modal::Cat::ALL[v.cat.min(5)];
                 let row = crate::client::design::settings_rows(cat).get(i).cloned();
                 let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
                 match (h, row) {
-                    (HyHit::SetVal(_, vi), Some(row @ SRow::Setting(_))) if vi != usize::MAX && chips_for(self, &row).is_some() => set_chip(self, &row, vi),
-                    (HyHit::SetVal(..), Some(_)) => self.hy_settings_key(&enter),
-                    (HyHit::SetRow(_), Some(_)) if again || double => self.hy_settings_key(&enter),
+                    (ScreenHit::SetVal(_, vi), Some(row @ SRow::Setting(_))) if vi != usize::MAX && chips_for(self, &row).is_some() => set_chip(self, &row, vi),
+                    (ScreenHit::SetVal(..), Some(_)) => self.screen_settings_key(&enter),
+                    (ScreenHit::SetRow(_), Some(_)) if again || double => self.screen_settings_key(&enter),
                     _ => {}
                 }
             }
-            HyHit::SplashKey(c) => {
+            ScreenHit::SplashKey(c) => {
                 self.splash = false;
-                self.hy_splash_action(c);
+                self.screen_splash_action(c);
             }
-            HyHit::MenuPick(i) => self.menu_pick(i),
-            HyHit::HistRow(i) => {
+            ScreenHit::MenuPick(i) => self.menu_pick(i),
+            ScreenHit::HistRow(i) => {
                 if let Mode::History { sel } = &mut self.mode {
                     let again = *sel == i;
                     *sel = i;
@@ -1331,7 +1331,7 @@ impl App {
                     }
                 }
             }
-            HyHit::GoPick(i) => {
+            ScreenHit::GoPick(i) => {
                 if let Mode::GoTo { query, sel } = &mut self.mode {
                     let again = *sel == i;
                     *sel = i;
@@ -1341,7 +1341,7 @@ impl App {
                     }
                 }
             }
-            HyHit::BranchRow(i) => {
+            ScreenHit::BranchRow(i) => {
                 if let Mode::Branch(v) = &mut self.mode {
                     let again = v.sel == i;
                     v.sel = i;
@@ -1351,13 +1351,13 @@ impl App {
                     }
                 }
             }
-            HyHit::BranchChoice(i) => {
+            ScreenHit::BranchChoice(i) => {
                 if let Mode::Branch(v) = &self.mode {
                     let v = (**v).clone();
                     self.branch_choose(v, i);
                 }
             }
-            HyHit::FindTab(i) => {
+            ScreenHit::FindTab(i) => {
                 if let Mode::Find(v) = &self.mode
                     && v.tab != i
                 {
@@ -1365,7 +1365,7 @@ impl App {
                     self.on_find_key(v, &KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
                 }
             }
-            HyHit::FindRow(i) => {
+            ScreenHit::FindRow(i) => {
                 if let Mode::Find(v) = &mut self.mode {
                     let again = v.sel == i;
                     v.sel = i;
@@ -1376,10 +1376,10 @@ impl App {
                     }
                 }
             }
-            HyHit::SideEdge => self.hy.drag = Some(Drag::Side),
-            HyHit::ScrollBar(term) => {
-                self.hy.drag = Some(Drag::Scroll(term));
-                if let (Some((t, r, total)), Some(pos)) = (self.hy.bar, self.hover)
+            ScreenHit::SideEdge => self.screen.drag = Some(Drag::Side),
+            ScreenHit::ScrollBar(term) => {
+                self.screen.drag = Some(Drag::Scroll(term));
+                if let (Some((t, r, total)), Some(pos)) = (self.screen.bar, self.hover)
                     && t == term
                 {
                     let from_bottom = r.bottom().saturating_sub(pos.y + 1) as usize;
@@ -1390,7 +1390,7 @@ impl App {
     }
 
     pub(in crate::client) fn on_subagent_info_key(&mut self, term: TermId, index: usize, key: &KeyEvent) {
-        let count = self.hy_model().iter().find_map(|project| project.sessions().find(|session| session.term == term).map(|session| session.subagent_activity.len()));
+        let count = self.screen_model().iter().find_map(|project| project.sessions().find(|session| session.term == term).map(|session| session.subagent_activity.len()));
         let Some(count) = count else {
             self.mode = Mode::Normal;
             return;
@@ -1404,14 +1404,14 @@ impl App {
     }
 
     /// A key for the settings sheet (shared with clicks).
-    pub(in crate::client) fn hy_settings_key(&mut self, k: &KeyEvent) {
-        let Mode::HySettings(v) = self.mode.clone() else { return };
+    pub(in crate::client) fn screen_settings_key(&mut self, k: &KeyEvent) {
+        let Mode::ScreenSettings(v) = self.mode.clone() else { return };
         let mut v = *v;
         let open = self.on_settings_view_key(&mut v, k);
         if !open {
             self.mode = Mode::Normal;
-        } else if matches!(self.mode, Mode::HySettings(_)) {
-            self.mode = Mode::HySettings(Box::new(v));
+        } else if matches!(self.mode, Mode::ScreenSettings(_)) {
+            self.mode = Mode::ScreenSettings(Box::new(v));
         }
     }
 }

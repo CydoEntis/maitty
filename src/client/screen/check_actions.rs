@@ -189,8 +189,8 @@ pub(in crate::client) fn draw_override(app: &mut App, f: &mut Frame, area: Rect,
     put(buf, yr.x, yr.y, &yes, r.right());
     let nr = Rect { x: yr.right() + 2, y, width: 12, height: 1 };
     put(buf, nr.x, nr.y, &button(t, "Cancel", "Esc", BtnKind::Normal, hovered(app, nr)), r.right());
-    hit(app, area, HyHit::ConfirmNo);
-    hit(app, r, HyHit::Noop);
-    hit(app, yr, HyHit::ConfirmYes);
-    hit(app, nr, HyHit::ConfirmNo);
+    hit(app, area, ScreenHit::ConfirmNo);
+    hit(app, r, ScreenHit::Noop);
+    hit(app, yr, ScreenHit::ConfirmYes);
+    hit(app, nr, ScreenHit::ConfirmNo);
 }

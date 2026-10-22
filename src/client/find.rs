@@ -2,7 +2,7 @@
 //! or open it in your editor at the line.
 
 use super::design::{fill, put, seg, tilde};
-use super::hydra::{HyHit, chip, dim_all, hints, hit, hovered, panel};
+use super::screen::{ScreenHit, chip, dim_all, hints, hit, hovered, panel};
 use super::render::truncate;
 use super::{App, Bg, Mode, files};
 use crate::protocol::ClientMsg;
@@ -140,7 +140,7 @@ impl App {
 
     /// The folder to search: the focused agent's worktree (or the cursor's), else here.
     fn find_dir(&self) -> PathBuf {
-        self.hy
+        self.screen
             .cursor
             .or(self.focused())
             .and_then(|t| self.snap.terms.get(&t))
@@ -229,7 +229,7 @@ impl App {
 pub(super) fn draw_find(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, v: &FindView) {
     let buf = f.buffer_mut();
     dim_all(buf, area, t);
-    let tr = super::hydra::tool_rect(area);
+    let tr = super::screen::tool_rect(area);
     let r = panel(app, buf, area, tr.width, tr.height, &format!("Find · {}", tilde(&v.dir)), &[], t);
     let c = Style::default().bg(t.card);
     // Tabs
@@ -246,12 +246,12 @@ pub(super) fn draw_find(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, v: 
             Style::default().bg(t.btn).fg(t.text)
         };
         put(buf, x, r.y + 2, &chip(label, st), r.right());
-        hit(app, tr, HyHit::FindTab(i as u8));
+        hit(app, tr, ScreenHit::FindTab(i as u8));
         x += tr.width + 2;
     }
     // Query
     let qrow = Rect { x: r.x + 1, y: r.y + 4, width: r.width - 2, height: 1 };
-    super::hydra::strip(buf, qrow, t.card2);
+    super::screen::strip(buf, qrow, t.card2);
     let s = Style::default().bg(t.card2);
     let ph = if v.tab == 0 { " type part of a file name" } else { " type text to search for (2+ characters)" };
     let mut q = vec![seg("› ", s.fg(t.accent).add_modifier(Modifier::BOLD)), seg(v.query.clone(), s.fg(t.strong)), seg("█", s.fg(t.accent))];
@@ -299,7 +299,7 @@ pub(super) fn draw_find(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, v: 
             }
         };
         put(buf, row.x + 2, y, &segs, row.right());
-        hit(app, row, HyHit::FindRow(i));
+        hit(app, row, ScreenHit::FindRow(i));
     }
     for xx in [list.right() + 1] {
         for yy in list.top()..list.bottom() {
@@ -335,8 +335,8 @@ mod tests {
         assert_eq!(h[0], GrepHit { path: "src/main.rs".into(), line: 12, text: "fn main() {".into() });
         assert_eq!(h[1].text, "Seshi: many heads");
         let mut v = FindView::new(PathBuf::from("."), 0);
-        v.files = Some(vec!["src/client/hydra.rs".into(), "src/main.rs".into(), "README.md".into()]);
-        v.query = "hyd".into();
-        assert_eq!(v.file_matches(), vec!["src/client/hydra.rs"]);
+        v.files = Some(vec!["src/client/screen.rs".into(), "src/main.rs".into(), "README.md".into()]);
+        v.query = "scree".into();
+        assert_eq!(v.file_matches(), vec!["src/client/screen.rs"]);
     }
 }

@@ -85,7 +85,7 @@ fn needs_a_look(info: &CheckInfo) -> bool {
 impl App {
     /// Whether Enter on `term`'s sidebar row shows its evidence rather than focusing it.
     pub(in crate::client) fn check_wants_a_look(&self, term: TermId) -> bool {
-        let model = self.hy_model();
+        let model = self.screen_model();
         find(&model, term).and_then(|(.., s)| check::shown(s)).is_some_and(needs_a_look)
     }
 
@@ -141,7 +141,7 @@ impl App {
 /// "Check · fix-footer › npm test".
 pub(in crate::client) fn check_title(app: &App) -> String {
     let Some(View::Check(v)) = &app.view else { return "Check".into() };
-    let model = app.hy_model();
+    let model = app.screen_model();
     let name = find(&model, v.term).map(|(.., s)| s.name.clone()).unwrap_or_default();
     let command = app.snap.terms.get(&v.term).and_then(|t| t.check.as_ref()).map(|c| c.command.clone()).unwrap_or_default();
     format!("Check · {name} › {command}")

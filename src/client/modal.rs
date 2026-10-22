@@ -278,7 +278,7 @@ mod tests {
         app.on_bg(bg_rx.blocking_recv().unwrap());
         assert_eq!(app.cfg.theme, "zenbones-light");
         assert_eq!(app.theme.bg, crate::theme::Theme::named("zenbones-light").bg);
-        assert!(matches!(app.mode, super::super::Mode::HySettings(_)));
+        assert!(matches!(app.mode, super::super::Mode::ScreenSettings(_)));
         let out = std::fs::read_to_string(&file).unwrap();
         assert!(out.contains("theme = \"zenbones-light\""));
         // A directory cannot be a config file: failed saves retain the browser and applied theme.

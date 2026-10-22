@@ -55,20 +55,20 @@ pub(in crate::client) fn split_for_sheet(screen_w: u16, col: Rect, gap: u16, fra
 
 /// The same-file overlaps the Inbox lists, in a stable order: (repo, overlap).
 pub(in crate::client) fn heads_up(app: &App) -> Vec<(PathBuf, Overlap)> {
-    let mut repos: Vec<&PathBuf> = app.hy.overlaps.keys().collect();
+    let mut repos: Vec<&PathBuf> = app.screen.overlaps.keys().collect();
     repos.sort();
     repos
         .into_iter()
-        .flat_map(|r| app.hy.overlaps[r].iter().map(move |o| (r.clone(), o.clone())))
-        .filter(|(r, o)| !app.hy.dismissed.contains(&(r.clone(), o.file.clone())))
+        .flat_map(|r| app.screen.overlaps[r].iter().map(move |o| (r.clone(), o.clone())))
+        .filter(|(r, o)| !app.screen.dismissed.contains(&(r.clone(), o.file.clone())))
         .collect()
 }
 
 pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t: &Theme) {
     let (title, close) = match kind {
-        SheetKind::Inbox => ("Inbox".to_string(), HyHit::Close),
-        SheetKind::Changes | SheetKind::Both => ("Changes".to_string(), HyHit::ViewClose),
-        SheetKind::Check => (check_title(app), HyHit::ViewClose),
+        SheetKind::Inbox => ("Inbox".to_string(), ScreenHit::Close),
+        SheetKind::Changes | SheetKind::Both => ("Changes".to_string(), ScreenHit::ViewClose),
+        SheetKind::Check => (check_title(app), ScreenHit::ViewClose),
     };
     let mut c = Card::new(t, &title).lit(t.accent);
     // Changes paints the desk's ground (its diff colours are tuned for it).
@@ -79,7 +79,7 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     c.close = Some(close);
     let inside = card(app, buf, r, &c, t);
     // Clicks inside it stay in it.
-    hit(app, inside, HyHit::Noop);
+    hit(app, inside, ScreenHit::Noop);
     match kind {
         SheetKind::Inbox => draw_inbox(app, buf, inside, t),
         SheetKind::Changes => {
@@ -105,7 +105,7 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
 
 /// Settings is a modal so it does not take width away from the workspace.
 pub(in crate::client) fn draw_settings_modal(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
-    let Mode::HySettings(view) = &app.mode else { return };
+    let Mode::ScreenSettings(view) = &app.mode else { return };
     let view = (**view).clone();
     let max_width = area.width.saturating_sub(4).min(128);
     let max_height = area.height.saturating_sub(2).min(48);
@@ -116,21 +116,21 @@ pub(in crate::client) fn draw_settings_modal(app: &mut App, buf: &mut Buffer, ar
         height: max_height,
     };
     super::dim_all(buf, area, t);
-    hit(app, area, HyHit::Noop);
+    hit(app, area, ScreenHit::Noop);
     let mut c = Card::new(t, "Settings").lit(t.accent);
     c.bg = t.card;
-    c.close = Some(HyHit::Close);
+    c.close = Some(ScreenHit::Close);
     if Look::of(&app.cfg.ui).flat {
         c.foot_r = vec![seg("Esc close", Style::default().fg(t.muted).bg(t.card))];
     }
     let inside = card(app, buf, r, &c, t);
-    hit(app, inside, HyHit::Noop);
+    hit(app, inside, ScreenHit::Noop);
     if inside.width < 44 {
         put(buf, inside.x + 2, inside.y + 2, &[seg("Make the window wider", Style::default().fg(t.muted).bg(t.card))], inside.right());
     } else if inside.height < 18 {
         put(buf, inside.x + 2, inside.y + 2, &[seg("Make the window taller", Style::default().fg(t.muted).bg(t.card))], inside.right());
     } else {
-        crate::client::hydra::draw_settings(app, buf, inside, t, &view);
+        crate::client::screen::draw_settings(app, buf, inside, t, &view);
     }
 }
 
@@ -194,7 +194,7 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
         Mode::Compose(c) => Some((**c).clone()),
         _ => None,
     };
-    let model = app.hy_model();
+    let model = app.screen_model();
     let motion = app.motion_on();
     let mut gliding: Option<(u16, Rect)> = None;
     let heads = heads_up(app);
@@ -217,7 +217,7 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
     // Scrolled so the selected row is whole on screen.
     let avail = bottom.saturating_sub(y);
     let box_rows = compose.as_ref().map(|c| compose_rows(c, w.saturating_sub(1), INBOX_ROWS)).unwrap_or(0);
-    let asking = app.hy.inbox_confirm.filter(|(.., busy)| !busy).map(|(t, ..)| t);
+    let asking = app.screen.inbox_confirm.filter(|(.., busy)| !busy).map(|(t, ..)| t);
     let height = |r: &GoRow, lit: bool| row_height(r, compose.as_ref(), box_rows, asking, lit);
     let mut start = 0;
     while start < sel && rows[start..=sel.min(rows.len().saturating_sub(1))].iter().enumerate().map(|(k, r)| height(r, start + k == sel)).sum::<u16>() > avail {
@@ -303,7 +303,7 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
                         break;
                     }
                     put(buf, ax, y + 2, &segs, x + w);
-                    hit(app, Rect { x: ax, y: y + 2, width: bw, height: 1 }, HyHit::InboxAnswer(*term, key));
+                    hit(app, Rect { x: ax, y: y + 2, width: bw, height: 1 }, ScreenHit::InboxAnswer(*term, key));
                     ax += bw + 1;
                 }
                 put(buf, ax + 1, y + 2, &cap_hints(t, t.card, &[("m", "follow-up")]), x + w);
@@ -327,10 +327,10 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
             GoRow::Done(term) => {
                 let Some((p, wt, s)) = find(&model, *term) else { continue };
                 // What it changed, worked out once per finish (off the UI thread).
-                let size = match app.hy.change_sizes.get(&wt.path) {
+                let size = match app.screen.change_sizes.get(&wt.path) {
                     Some((since, size)) if *since == s.since => size.clone(),
                     _ => {
-                        app.hy.change_sizes.insert(wt.path.clone(), (s.since, String::new()));
+                        app.screen.change_sizes.insert(wt.path.clone(), (s.since, String::new()));
                         let (dir, since, base) = (wt.path.clone(), s.since, (!wt.main).then(|| crate::gitfs::main_branch(&p.path)).flatten());
                         app.spawn_bg(move || crate::client::Bg::ChangeSize(dir.clone(), since, crate::client::overlap::change_size(&dir, base.as_deref())));
                         String::new()
@@ -352,7 +352,7 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
                     compose_box(app, buf, Rect { x: x + 1, y: y + 2, width: w.saturating_sub(1), height: 0 }, cm, INBOX_ROWS, t.card, t);
                 } else {
                     // Merge and throw-away are asked here, then run with a spinner.
-                    match app.hy.inbox_confirm.filter(|(ct, ..)| ct == term) {
+                    match app.screen.inbox_confirm.filter(|(ct, ..)| ct == term) {
                         Some((_, merge, true)) => {
                             let what = if merge { format!("Merging {} into main…", s.name) } else { "Removing the worktree…".to_string() };
                             let spin = app.cfg.ui.spinner.get(app.spinner_frame() as usize % app.cfg.ui.spinner.len().max(1)).cloned().unwrap_or_default();
@@ -392,7 +392,7 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
         if row.pickable() {
             // A lit failed row keeps its button line out of the row's own click.
             let pick_h = hgt.saturating_sub(if i == sel && matches!(row, GoRow::Failed(_)) { 2 } else { 1 });
-            hit(app, Rect { x: x - 1, y, width: w + 2, height: pick_h.max(1) }, HyHit::GoPick(i));
+            hit(app, Rect { x: x - 1, y, width: w + 2, height: pick_h.max(1) }, ScreenHit::GoPick(i));
         }
         y += hgt;
     }

@@ -2,7 +2,7 @@
 //! name, and say what happens to uncommitted changes.
 
 use super::design::{fill, put, seg, tilde};
-use super::hydra::{HyHit, dim_all, hints, hit, hovered, panel};
+use super::screen::{ScreenHit, dim_all, hints, hit, hovered, panel};
 use super::render::truncate;
 use super::{App, Bg, Mode, files};
 use crate::theme::Theme;
@@ -178,7 +178,7 @@ const CHOICES: [(&str, &str, Carry); 4] = [
 impl App {
     /// Ctrl+Space g: switch the branch of the checkout you're in.
     pub(super) fn open_branches(&mut self, dir: Option<PathBuf>) {
-        let term = self.hy.cursor.or(self.focused()).and_then(|t| self.snap.terms.get(&t));
+        let term = self.screen.cursor.or(self.focused()).and_then(|t| self.snap.terms.get(&t));
         let Some(dir) = dir.or_else(|| term.and_then(|t| t.top.clone())) else {
             self.notify("not in a git repo".into(), true);
             return;
@@ -312,7 +312,7 @@ pub(super) fn draw_branches(app: &mut App, f: &mut Frame, area: Rect, t: &Theme,
     match &v.step {
         Step::Pick => {
             let q = Rect { x: r.x + 1, y, width: r.width - 2, height: 1 };
-            super::hydra::strip(buf, q, t.card2);
+            super::screen::strip(buf, q, t.card2);
             let s = Style::default().bg(t.card2);
             let mut segs = vec![seg("› ", s.fg(t.accent).add_modifier(Modifier::BOLD)), seg(v.query.clone(), s.fg(t.strong)), seg("█", s.fg(t.accent))];
             if v.query.is_empty() {
@@ -353,7 +353,7 @@ pub(super) fn draw_branches(app: &mut App, f: &mut Frame, area: Rect, t: &Theme,
                 if let Row::Existing(b) = row {
                     put(buf, rr.right().saturating_sub(15), yy, &[seg(truncate(&b.when, 14), st.fg(t.muted))], rr.right());
                 }
-                hit(app, rr, HyHit::BranchRow(i));
+                hit(app, rr, ScreenHit::BranchRow(i));
             }
             put(buf, r.x + 3, r.bottom() - 2, &hints(t, &[("Enter", "switch"), ("↑↓", "choose"), ("Esc", "close")]), r.right() - 1);
         }
@@ -368,17 +368,17 @@ pub(super) fn draw_branches(app: &mut App, f: &mut Frame, area: Rect, t: &Theme,
                 fill(buf, rr, bg);
                 let st = Style::default().bg(bg);
                 let lc = if *carry == Carry::Discard { t.blocked } else { t.strong };
-                let mut row = super::hydra::chip(&(i + 1).to_string(), Style::default().bg(t.btn).fg(t.accent).add_modifier(Modifier::BOLD));
+                let mut row = super::screen::chip(&(i + 1).to_string(), Style::default().bg(t.btn).fg(t.accent).add_modifier(Modifier::BOLD));
                 row.extend([seg(format!("  {label}"), st.fg(lc).add_modifier(Modifier::BOLD)), seg(format!("  {what}"), st.fg(t.muted))]);
                 put(buf, rr.x + 2, yy, &row, rr.right());
-                hit(app, rr, HyHit::BranchChoice(i));
+                hit(app, rr, ScreenHit::BranchChoice(i));
             }
             put(buf, r.x + 3, r.bottom() - 2, &hints(t, &[("1-4", "choose"), ("Esc", "back")]), r.right() - 1);
         }
         Step::Message(m) => {
             put(buf, r.x + 3, y, &[seg("Commit message:", c.fg(t.text))], r.right() - 2);
             let q = Rect { x: r.x + 1, y: y + 2, width: r.width - 2, height: 1 };
-            super::hydra::strip(buf, q, t.card2);
+            super::screen::strip(buf, q, t.card2);
             let s = Style::default().bg(t.card2);
             put(buf, r.x + 3, y + 2, &[seg(m.clone(), s.fg(t.strong)), seg("█", s.fg(t.accent))], r.right() - 2);
             put(buf, r.x + 3, r.bottom() - 2, &hints(t, &[("Enter", "commit and switch"), ("Esc", "back")]), r.right() - 1);

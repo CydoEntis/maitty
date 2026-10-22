@@ -60,7 +60,7 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, (x, y, w): (u16, u16, u16), 
         let mut at = x + 3;
         for action in ACTIONS {
             let Some(r) = check::action_pill(app, buf, at, y + 3, x + w, action, t) else { break };
-            hit(app, r, HyHit::InboxCheck(term, action.1));
+            hit(app, r, ScreenHit::InboxCheck(term, action.1));
             at = r.right() + 1;
         }
     }

@@ -325,7 +325,7 @@ impl App {
         match result {
             Ok(cfg) => self.apply_config(cfg),
             Err(error) => {
-                if let (Mode::HySettings(v), Some(draft)) = (&mut self.mode, draft) {
+                if let (Mode::ScreenSettings(v), Some(draft)) = (&mut self.mode, draft) {
                     v.editing = Some(draft);
                 }
                 self.notify(format!("couldn't save the check: {error:#}"), true);

@@ -136,7 +136,7 @@ mod design_tests {
         app.snap.terms.insert(1, claude);
         app.snap.terms.insert(2, codex);
         app.snap.terms.insert(3, shell);
-        app.hy_sync();
+        app.screen_sync();
         let mut p = vt100::Parser::new(20, 80, 0);
         p.process(b"> fix the flaky checkout test\r\n\r\nRun npm test -- checkout?\r\n\x1b[1m\xe2\x9d\xaf 1. Yes\x1b[0m\r\n  2. Yes, and always allow\r\n  3. No");
         app.parsers.insert(1, p);
@@ -164,10 +164,10 @@ mod design_tests {
         layout.split(1, Dir::Right, 2);
         layout.split(2, Dir::Down, 3);
         app.snap.workspaces[0].tabs = vec![TabInfo { id: 11, name: String::new(), layout, focus: 1 }];
-        app.hy.tabs.clear();
-        app.hy.last_focus = None;
-        app.hy_sync();
-        let tab = &app.hy.tabs[app.hy.tab];
+        app.screen.tabs.clear();
+        app.screen.last_focus = None;
+        app.screen_sync();
+        let tab = &app.screen.tabs[app.screen.tab];
         assert_eq!(tab.layout.leaves(), vec![1, 2, 3], "the UI must retain all restored panes");
         let rects = tab.layout.rects(ratatui::layout::Rect::new(0, 0, 120, 40));
         let rect = |id| rects.iter().find(|(term, _)| *term == id).unwrap().1;
@@ -175,19 +175,19 @@ mod design_tests {
         assert!(rect(3).y > rect(2).y, "split-down places pane 3 below pane 2");
         let mut terminal = Terminal::new(TestBackend::new(160, 45)).unwrap();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
-        let rendered = |id| app.hy.leaf_rects.iter().find(|(term, _)| *term == id).unwrap().1;
+        let rendered = |id| app.screen.leaf_rects.iter().find(|(term, _)| *term == id).unwrap().1;
         assert_eq!(rendered(3).x, rendered(2).x, "the screen renderer preserves the nested column");
         assert!(rendered(3).y > rendered(2).y, "the screen renderer places the pane below its sibling");
     }
 }
 
-mod hydra_tests {
+mod screen_tests {
     use super::*;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
     fn draw(app: &mut App, w: u16, h: u16) -> String {
-        app.hy_fresh();
+        app.screen_fresh();
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| render::draw(app, f)).unwrap();
         let buf = term.backend().buffer().clone();
@@ -257,7 +257,7 @@ mod hydra_tests {
             assert_eq!(app.mode, Mode::Normal);
             assert!(rx.try_recv().is_err(), "help must not run or send any command");
             app.mode = Mode::Actions { sel: 0 };
-            app.actions_run(hydra::action_items().iter().position(|(_, a)| *a == Action::Help).unwrap());
+            app.actions_run(screen::action_items().iter().position(|(_, a)| *a == Action::Help).unwrap());
             assert!(matches!(app.mode, Mode::Shortcuts { .. }), "Actions → All keys reaches the full reference too");
         }
     }
@@ -317,18 +317,18 @@ mod hydra_tests {
                 app.cfg.ui.sidebar_position = position.into();
                 app.sidebar = false;
                 app.snap.terms.get_mut(&2).unwrap().label = "Review payments".into();
-                app.hy_fresh();
+                app.screen_fresh();
                 app.cfg.ui.motion = false;
-                app.hy_focus(1);
+                app.screen_focus(1);
                 app.mode = Mode::Normal;
                 let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
                 let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
                 terminal.draw(|f| render::draw(&mut app, f)).unwrap();
-                let rail = app.hy.side_rect;
+                let rail = app.screen.side_rect;
                 assert_eq!(rail.width, 7);
-                assert_eq!(app.hy.row_y.len(), 3);
-                let y = app.hy.row_y[&1];
-                let hover_y = app.hy.row_y[&2];
+                assert_eq!(app.screen.row_y.len(), 3);
+                let y = app.screen.row_y[&1];
+                let hover_y = app.screen.row_y[&2];
                 let active_bg = terminal.backend().buffer()[(rail.x + 3, y)].bg;
                 assert_eq!(terminal.backend().buffer()[(rail.x + 1, y)].fg, app.theme.blocked);
                 assert_eq!(terminal.backend().buffer()[(rail.x + 3, y)].fg, app.theme.blocked);
@@ -347,15 +347,15 @@ mod hydra_tests {
                 for id in 4..40 { let mut t = app.snap.terms[&2].clone(); t.id = id; app.snap.terms.insert(id, t);
                     app.snap.workspaces[0].tabs.push(TabInfo { id: 100 + id, name: String::new(), layout: crate::layout::Node::Leaf(id), focus: id });
                 }
-                app.hy.side_scroll = 30; app.hy.follow = false;
+                app.screen.side_scroll = 30; app.screen.follow = false;
                 let screen = draw(&mut app, w, h);
                 assert!(screen.contains("\u{25cf}1"));
-                assert!(!app.hy.row_y.contains_key(&1));
-                let (expand, _) = app.hits.iter().find(|(_, h)| *h == Hit::Hy(hydra::HyHit::ExpandSidebar)).unwrap();
+                assert!(!app.screen.row_y.contains_key(&1));
+                let (expand, _) = app.hits.iter().find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::ExpandSidebar)).unwrap();
                 app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: expand.x, row: expand.y, modifiers: KeyModifiers::NONE });
                 assert!(app.sidebar);
                 draw(&mut app, w, h);
-                assert!(app.hy.side_rect.width > rail.width);
+                assert!(app.screen.side_rect.width > rail.width);
             }
         }
     }
@@ -364,13 +364,13 @@ mod hydra_tests {
     fn active_sidebar_selection_survives_hover_and_keyboard_browsing() {
         let (_, mut app) = super::design_tests::render_with(120, 30);
         let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
-        app.hy_focus(1);
+        app.screen_focus(1);
         app.mode = Mode::Normal;
         let mut terminal = Terminal::new(TestBackend::new(120, 30)).unwrap();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
-        let x = app.hy.side_rect.x;
-        let active_y = app.hy.row_y[&1];
-        let hover_y = app.hy.row_y[&2];
+        let x = app.screen.side_rect.x;
+        let active_y = app.screen.row_y[&1];
+        let hover_y = app.screen.row_y[&2];
         let active_bg = terminal.backend().buffer()[(x + 8, active_y)].bg;
         for (column, row) in [(x + 10, hover_y), (x + 4, 3), (x + 4, 27), (80, 20)] {
             app.on_mouse(MouseEvent { kind: MouseEventKind::Moved, column, row, modifiers: KeyModifiers::NONE });
@@ -382,7 +382,7 @@ mod hydra_tests {
         app.on_mouse(MouseEvent { kind: MouseEventKind::Moved, column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         assert_ne!(terminal.backend().buffer()[(x + 8, hover_y)].bg, active_bg, "hover has its own quieter style");
-        app.hy_side_set(hydra::SideItem::Sess(2));
+        app.screen_side_set(screen::SideItem::Sess(2));
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = terminal.backend().buffer();
         assert_eq!(buf[(x + 1, active_y)].symbol(), "▎", "the open row keeps a bar");
@@ -392,12 +392,12 @@ mod hydra_tests {
         app.on_mouse(MouseEvent { kind: MouseEventKind::Up(MouseButton::Left), column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
         assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 }))));
         app.snap.workspaces[0].tabs[0].focus = 2;
-        app.hy_sync();
+        app.screen_sync();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         assert_eq!(app.focused(), Some(2));
         assert_eq!(terminal.backend().buffer()[(x + 1, hover_y)].symbol(), "▎");
         app.snap.terms.get_mut(&2).unwrap().asleep = true;
-        app.hy_fresh();
+        app.screen_fresh();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         assert_eq!(terminal.backend().buffer()[(x + 1, hover_y)].symbol(), "▎", "sleep glyphs leave the selection bar visible");
     }
@@ -503,7 +503,7 @@ mod hydra_tests {
         for pane_tag in [false, true] {
             app.mode = if pane_tag { Mode::Normal } else { Mode::Side };
             draw(&mut app, 120, 30);
-            let hits: Vec<_> = app.hits.iter().filter_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::Why(1))).then_some(*r)).collect();
+            let hits: Vec<_> = app.hits.iter().filter_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::Why(1))).then_some(*r)).collect();
             assert!(hits.len() >= 2, "the pane tag and sidebar status are clickable");
             let at = if pane_tag { hits[0] } else { *hits.last().unwrap() };
             app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.x, row: at.y, modifiers: KeyModifiers::NONE });
@@ -528,7 +528,7 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let base_ws = app.snap.workspaces[0].clone();
         let base_term = app.snap.terms[&2].clone();
-        app.snap.workspaces.clear(); app.snap.terms.clear(); app.parsers.clear(); app.hy.tabs.clear();
+        app.snap.workspaces.clear(); app.snap.terms.clear(); app.parsers.clear(); app.screen.tabs.clear();
         for id in 1..=PANES {
             let mut info = base_term.clone(); info.id = id; info.status = Status::Working;
             let mut ws = base_ws.clone(); ws.id = 100 + id; ws.tabs.truncate(1);
@@ -536,7 +536,7 @@ mod hydra_tests {
             app.snap.workspaces.push(ws); app.snap.terms.insert(id, info);
             app.parsers.insert(id, app.new_parser(30, 100));
         }
-        app.snap.active_ws = Some(101); app.hy_fresh(); app.hy_focus(1);
+        app.snap.active_ws = Some(101); app.screen_fresh(); app.screen_focus(1);
         let mut terminal = Terminal::new(TestBackend::new(160, 45)).unwrap();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap(); app.sync_sizes();
         let mut timings: [Vec<f64>; 4] = std::array::from_fn(|_| Vec::new());
@@ -556,7 +556,7 @@ mod hydra_tests {
             let wanted = (cycle / 3) as u32 % PANES + 1;
             match action {
                 0 => {
-                    app.hy_focus(wanted);
+                    app.screen_focus(wanted);
                     let mut acknowledged = app.snap.clone();
                     acknowledged.active_ws = Some(100 + wanted);
                     app.on_server(ServerMsg::State(acknowledged));
@@ -602,7 +602,7 @@ mod hydra_tests {
         assert!(lines[1].contains(" 1 ") && !lines[1].contains("claude") && lines[1].contains(" + ") && !lines[1].contains('▯'), "an unnamed tab is its number; +; no layout switch: {}", lines[1]);
         // Projects and their sessions, nothing in between.
         assert!(text.contains("▾ shop-api") && text.contains("● 1"), "a project: its fold arrow and name, what needs you on the right");
-        assert!(text.contains("AGENTS 2 ─") && text.contains("TERMINALS 1 ─") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "a heading per section");
+        assert!(!text.contains("AGENTS") && !text.contains("TERMINALS") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "no heading per kind of session");
         assert!(!text.contains("main folder"), "no 'main folder' wording");
         assert!(!text.contains("+ open a project"), "opening a project is in the header now");
         // Rows: state and name, branch · age on the right, its question underneath.
@@ -618,20 +618,20 @@ mod hydra_tests {
         // Overlays are centred over a dimmed screen.
         for (mode, needle) in [
             (Mode::GoTo { query: String::new(), sel: 1 }, "NEEDS YOU"),
-            (Mode::HyPane(hydra::NewPaneHy::new(0, false)), "claude gets its own new worktree in shop-api"),
-            (Mode::HyPane(hydra::NewPaneHy { place: Some(1), ..hydra::NewPaneHy::new(0, false) }), "Switches shop-api to a new branch"),
-            (Mode::KeyMap(Box::new(hydra::KeyMap { query: String::new(), searching: false, step: None, sel: 0 })), "inbox ● 1"),
+            (Mode::ScreenPane(screen::NewPaneHy::new(0, false)), "claude gets its own new worktree in shop-api"),
+            (Mode::ScreenPane(screen::NewPaneHy { place: Some(1), ..screen::NewPaneHy::new(0, false) }), "Switches shop-api to a new branch"),
+            (Mode::KeyMap(Box::new(screen::KeyMap { query: String::new(), searching: false, step: None, sel: 0 })), "inbox ● 1"),
         ] {
             app.mode = mode;
             let o = draw(&mut app, 160, 45);
             show(&o);
             assert!(o.contains(needle), "overlay shows {needle}");
         }
-        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 1, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 1, sel: 0, editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains(" General ") && o.contains(" Sessions ") && o.contains("Sort sidebar by attention") && o.contains(" on "));
-        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 2, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 2, sel: 0, editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("Card edges") && o.contains("PREVIEW") && o.contains("focused") && o.contains("dimmed"), "the pane settings, with a preview");
@@ -663,8 +663,8 @@ mod hydra_tests {
             model: Some("claude-opus".into()), effort: None, started_at: Some(100), updated_at: 130,
             latest_activity: Some("review returned".into()), result: Some("one blocking finding".into()),
         }];
-        app.hy_fresh();
-        app.hy_side_set(hydra::SideItem::Sess(term));
+        app.screen_fresh();
+        app.screen_side_set(screen::SideItem::Sess(term));
         app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::SubagentInfo { term: found, index: 0 } if found == term), "keyboard users can open live subagent details");
         app.mode = Mode::Normal;
@@ -672,7 +672,7 @@ mod hydra_tests {
         assert!(sidebar.contains("1 subagent") && sidebar.contains("review the bi"), "only the active child and its task are shown: {sidebar}");
         assert!(!sidebar.contains("review the old flow") && !sidebar.contains("Finished"), "completed child is removed from the live list: {sidebar}");
         let target = app.hits.iter().find_map(|(_, hit)| match hit {
-            Hit::Hy(hydra::HyHit::SubagentInfo(found, index)) if *found == term && *index == 0 => Some(hydra::HyHit::SubagentInfo(*found, *index)),
+            Hit::Screen(screen::ScreenHit::SubagentInfo(found, index)) if *found == term && *index == 0 => Some(screen::ScreenHit::SubagentInfo(*found, *index)),
             _ => None,
         }).expect("the active subagent row is a mouse target");
         app.on_hy_hit(target, false);
@@ -699,7 +699,7 @@ mod hydra_tests {
             latest_activity: Some("completion was not reported".into()),
             result: None,
         }];
-        app.hy_fresh();
+        app.screen_fresh();
 
         let sidebar = draw(&mut app, 160, 45);
 
@@ -728,8 +728,8 @@ mod hydra_tests {
             latest_activity: None,
             result: None,
         }];
-        app.hy_fresh();
-        app.hy_side_set(hydra::SideItem::Sess(term));
+        app.screen_fresh();
+        app.screen_side_set(screen::SideItem::Sess(term));
 
         let sidebar = draw(&mut app, 160, 45);
 
@@ -741,7 +741,7 @@ mod hydra_tests {
         terminal.draw(|frame| render::draw(&mut app, frame)).unwrap();
         let buffer = terminal.backend().buffer();
         let child_y = app.hits.iter().find_map(|(rect, hit)| {
-            (*hit == Hit::Hy(hydra::HyHit::SubagentInfo(term, 0))).then_some(rect.y)
+            (*hit == Hit::Screen(screen::ScreenHit::SubagentInfo(term, 0))).then_some(rect.y)
         }).expect("the working child row is rendered");
         assert!((0..160).all(|x| !app.cfg.ui.spinner.iter().any(|frame| frame == buffer[(x, child_y)].symbol())), "working children have no animated spinner");
         let task_start = (0..129).find(|x| {
@@ -789,7 +789,7 @@ mod hydra_tests {
         // claude (pane 1) asks a numbered question (on its screen in the fixture); codex finished.
         let t = app.snap.terms.get_mut(&2).unwrap();
         (t.status, t.said) = (Status::Done, "All 14 tests pass now.".into());
-        app.hy_fresh();
+        app.screen_fresh();
         app.act(Action::Jump);
         let o = draw(&mut app, 160, 45);
         show(&o);
@@ -840,7 +840,7 @@ mod hydra_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("Rename") && o.contains("Close"));
-        let Mode::HyMenu(m) = &app.mode else { panic!("a menu") };
+        let Mode::ScreenMenu(m) = &app.mode else { panic!("a menu") };
         let rename = m.items.iter().position(|(l, _)| l == "Rename").unwrap();
         app.menu_pick(rename);
         assert!(matches!(app.mode, Mode::Prompt { kind: PromptKind::RenamePane(1), .. }), "picking an item does it");
@@ -857,14 +857,14 @@ mod hydra_tests {
         for item in ["Rename pane", "Split right", "Split down", "Send right-clicks to pane", "Close pane"] {
             assert!(o.contains(item), "pane menu has {item}");
         }
-        let Mode::HyMenu(m) = &app.mode else { panic!("a menu") };
+        let Mode::ScreenMenu(m) = &app.mode else { panic!("a menu") };
         let close = m.items.iter().position(|(l, _)| l == "Close pane").unwrap();
         app.menu_pick(close);
         assert!(matches!(&app.mode, Mode::Confirm(c) if c.title == "Close pane"), "asks before closing");
         let o = draw(&mut app, 160, 45);
         show(&o);
         // Buttons are the same pills everywhere: each starts with a pill's end, not a flat block.
-        let cap = hydra::ends(app.theme.btn).0.0.to_string();
+        let cap = screen::ends(app.theme.btn).0.0.to_string();
         assert!(o.contains(&format!("{cap}Close Enter")) && o.contains(&format!("{cap}Cancel Esc")), "a red Close and a plain Cancel");
         app.on_key(key(KeyCode::Esc));
         assert!(matches!(app.mode, Mode::Normal), "Esc keeps it");
@@ -874,18 +874,18 @@ mod hydra_tests {
         assert!(o.contains("rate") && o.contains(" · 2m"), "a worktree session is named after it, with its agent and age");
 
         // Resizing the sidebar, within its limits.
-        let before = app.hy.side_rect.width;
+        let before = app.screen.side_rect.width;
         app.act(Action::Resize(crate::layout::Dir::Right));
         draw(&mut app, 160, 45);
-        assert!(app.hy.side_rect.width > before, "wider");
+        assert!(app.screen.side_rect.width > before, "wider");
         for _ in 0..40 {
             app.act(Action::Resize(crate::layout::Dir::Right));
         }
-        assert_eq!(app.hy.saved.side_w, Some(hydra::SIDE_MAX), "but not past the max");
+        assert_eq!(app.screen.saved.side_w, Some(screen::SIDE_MAX), "but not past the max");
         for _ in 0..40 {
             app.act(Action::Resize(crate::layout::Dir::Left));
         }
-        assert_eq!(app.hy.saved.side_w, Some(hydra::SIDE_MIN), "nor under the min");
+        assert_eq!(app.screen.saved.side_w, Some(screen::SIDE_MIN), "nor under the min");
     }
 
     #[test]
@@ -1136,11 +1136,11 @@ mod hydra_tests {
     fn task_box_starts_an_agent_on_a_task() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
-        let cmd = super::hydra::np_command(&app, "claude", 1, "fix the login bug").unwrap();
+        let cmd = super::screen::np_command(&app, "claude", 1, "fix the login bug").unwrap();
         assert!(cmd.starts_with("claude --model opus ") && cmd.contains("fix the login bug"), "{cmd}");
-        assert_eq!(super::hydra::np_command(&app, "claude", 0, "  ").as_deref(), Some("claude"));
-        assert_eq!(super::hydra::np_command(&app, "shell", 0, "x"), None);
-        app.hy_new(0, false);
+        assert_eq!(super::screen::np_command(&app, "claude", 0, "  ").as_deref(), Some("claude"));
+        assert_eq!(super::screen::np_command(&app, "shell", 0, "x"), None);
+        app.screen_new(0, false);
         for c in "add tests".chars() {
             app.on_key(key(KeyCode::Char(c)));
         }
@@ -1152,8 +1152,8 @@ mod hydra_tests {
         assert!(o.contains("TASK") && o.contains("add tests"), "the task row shows what you typed");
         assert!(o.contains("Runs: claude --model opus"), "and what will run");
         app.on_key(key(KeyCode::Esc));
-        app.hy_new(0, false);
-        assert!(matches!(&app.mode, Mode::HyPane(np) if np.task == "add tests"), "Esc keeps the task as a draft");
+        app.screen_new(0, false);
+        assert!(matches!(&app.mode, Mode::ScreenPane(np) if np.task == "add tests"), "Esc keeps the task as a draft");
     }
 
     #[test]
@@ -1180,7 +1180,7 @@ mod hydra_tests {
         t.summary = "now add a test for it".into();
         t.model = "opus 4.5".into();
         t.status = Status::Working;
-        app.hy_fresh();
+        app.screen_fresh();
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("shop-api") && !o.contains("opus 4.5"), "the repo in the card's title; the model is the agent's own to show");
@@ -1222,51 +1222,51 @@ mod hydra_tests {
         let a = app.focused().unwrap();
         let others: Vec<TermId> = app.snap.terms.keys().copied().filter(|t| *t != a).collect();
         let (b, c) = (others[0], others[1]);
-        app.hy.tabs.clear();
-        app.hy_place(a, None);
-        app.hy.pending_split = Some((a, Instant::now()));
-        app.hy_place(b, Some(a));
-        app.hy.pending_split = Some((b, Instant::now()));
-        app.hy.split_dir = Some(crate::layout::Dir::Down);
-        app.hy_place(c, Some(b));
-        assert_eq!(app.hy.tabs.len(), 1);
-        assert_eq!(app.hy.tabs[0].layout.leaves().len(), 3, "all three panes share the tab");
+        app.screen.tabs.clear();
+        app.screen_place(a, None);
+        app.screen.pending_split = Some((a, Instant::now()));
+        app.screen_place(b, Some(a));
+        app.screen.pending_split = Some((b, Instant::now()));
+        app.screen.split_dir = Some(crate::layout::Dir::Down);
+        app.screen_place(c, Some(b));
+        assert_eq!(app.screen.tabs.len(), 1);
+        assert_eq!(app.screen.tabs[0].layout.leaves().len(), 3, "all three panes share the tab");
         // Focus stays on a (the snapshot's focus), so draw shows all three.
-        app.hy.tabs[0].focus = a;
+        app.screen.tabs[0].focus = a;
         let o = draw(&mut app, 200, 50);
         show(&o);
-        assert_eq!(app.hy.leaf_rects.len(), 3);
-        let rect = |id| app.hy.leaf_rects.iter().find(|(term, _)| *term == id).unwrap().1;
+        assert_eq!(app.screen.leaf_rects.len(), 3);
+        let rect = |id| app.screen.leaf_rects.iter().find(|(term, _)| *term == id).unwrap().1;
         assert_eq!(rect(c).x, rect(b).x, "an explicit down split stays in the target pane's column");
         assert!(rect(c).y > rect(b).y, "an explicit down split appears below its target");
         let card = |id| app.pane_frames.iter().find(|(term, _)| *term == id).unwrap().1;
         assert_eq!(card(b).x - card(a).right(), 2, "the configured column gap separates cards");
         assert_eq!(card(c).y - card(b).bottom(), 2, "the configured row gap separates cards");
         // Close one: two left, with a line between them you can drag.
-        assert!(app.hy_unshow(c));
-        assert_eq!(app.hy.tabs[0].layout.leaves().len(), 2);
+        assert!(app.screen_unshow(c));
+        assert_eq!(app.screen.tabs[0].layout.leaves().len(), 2);
         draw(&mut app, 200, 50);
-        assert_eq!(app.hy.dividers.len(), 1, "a divider between the two");
-        let before = app.hy.leaf_rects[0].1.width;
-        let path = app.hy.dividers[0].2.clone();
-        app.hy.tabs[0].layout.set_ratio(&path, 0.3);
+        assert_eq!(app.screen.dividers.len(), 1, "a divider between the two");
+        let before = app.screen.leaf_rects[0].1.width;
+        let path = app.screen.dividers[0].2.clone();
+        app.screen.tabs[0].layout.set_ratio(&path, 0.3);
         draw(&mut app, 200, 50);
-        assert!(app.hy.leaf_rects[0].1.width < before, "dragging moves it");
+        assert!(app.screen.leaf_rects[0].1.width < before, "dragging moves it");
         // A new tab for c in this session; the bar shows both.
-        app.hy.new_tab = Some((Instant::now(), app.hy.tabs[0].owner));
-        app.hy_place(c, Some(a));
-        assert_eq!(app.hy.tabs.len(), 2);
-        assert_eq!(app.hy.tabs[1].owner, app.hy.tabs[0].owner, "a tab of the same session");
-        app.hy.tab = 0;
+        app.screen.new_tab = Some((Instant::now(), app.screen.tabs[0].owner));
+        app.screen_place(c, Some(a));
+        assert_eq!(app.screen.tabs.len(), 2);
+        assert_eq!(app.screen.tabs[1].owner, app.screen.tabs[0].owner, "a tab of the same session");
+        app.screen.tab = 0;
         let o = draw(&mut app, 200, 50);
         show(&o);
         assert!(o.contains(" 1 ") && o.contains(" 2 "), "a tab bar");
-        assert!(app.hits.iter().any(|(_, h)| *h == Hit::Hy(hydra::HyHit::TabNew)), "with a + for another tab");
+        assert!(app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::TabNew)), "with a + for another tab");
     }
 
     #[test]
     fn new_agent_defaults_to_its_own_worktree() {
-        let pane = hydra::NewPaneHy::new(0, false);
+        let pane = screen::NewPaneHy::new(0, false);
         assert_eq!(pane.place_for("claude", true), 0, "agents default to a new worktree");
         assert_eq!(pane.place_for("codex", true), 0, "the default applies across providers");
         assert_eq!(pane.place_for("shell", true), 2, "plain shells stay in the project checkout");
@@ -1277,17 +1277,17 @@ mod hydra_tests {
     #[test]
     fn split_intent_survives_the_focus_change_to_its_target_pane() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.hy.tabs.clear();
-        app.hy_place(1, None);
+        app.screen.tabs.clear();
+        app.screen_place(1, None);
 
         app.menu_do(menu::Act::Split(2, crate::layout::Dir::Down));
-        app.hy_place(2, Some(1));
-        assert!(app.hy.pending_split.is_some(), "focusing the pane chosen in the context menu must not consume the pending split");
+        app.screen_place(2, Some(1));
+        assert!(app.screen.pending_split.is_some(), "focusing the pane chosen in the context menu must not consume the pending split");
 
         app.snap.terms.insert(4, app.snap.terms[&3].clone());
         app.snap.terms.get_mut(&4).unwrap().id = 4;
-        app.hy_place(4, Some(2));
-        let layout = &app.hy.tabs[app.hy.tab].layout;
+        app.screen_place(4, Some(2));
+        let layout = &app.screen.tabs[app.screen.tab].layout;
         assert!(matches!(layout, crate::layout::Node::Split { horizontal: false, .. }), "Split down must remain vertical after the focus event");
         assert_eq!(layout.leaves(), vec![2, 4]);
     }
@@ -1296,24 +1296,26 @@ mod hydra_tests {
     fn a_session_has_tabs_of_its_own() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // claude (1), codex (2), and a shell (3).
-        let rows = |app: &App| app.hy_model().iter().flat_map(|p| p.sessions().map(|s| s.term).collect::<Vec<_>>()).collect::<Vec<_>>();
-        app.hy.tabs.clear();
-        app.hy_place(1, None);
+        let rows = |app: &App| app.screen_model().iter().flat_map(|p| p.sessions().map(|s| s.term).collect::<Vec<_>>()).collect::<Vec<_>>();
+        app.screen.tabs.clear();
+        app.screen_place(1, None);
         draw(&mut app, 160, 45);
-        assert!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Hy(hydra::HyHit::TabPick(_)))).count() == 1 && app.hits.iter().any(|(_, h)| *h == Hit::Hy(hydra::HyHit::TabNew)), "the tab row, with +, even with one tab");
+        assert!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_)))).count() == 1 && app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::TabNew)), "the tab row, with +, even with one tab");
         // Ctrl+Space t in claude's session: a shell where you are, straight away, as a tab of
         // claude's (no card to fill in first).
         let key = |app: &mut App, c: KeyCode| app.on_key(KeyEvent::new(c, KeyModifiers::NONE));
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
         app.act(Action::NewTab);
         assert_eq!(app.mode, Mode::Normal, "nothing to answer first");
-        assert!(matches!(app.hy.new_tab, Some((_, 1))), "the next session is a tab of claude's: {:?}", app.hy.new_tab);
-        app.hy_place(3, Some(1));
-        app.hy_fresh();
+        assert!(matches!(app.screen.new_tab, Some((_, 1))), "the next session is a tab of claude's: {:?}", app.screen.new_tab);
+        app.screen_place(3, Some(1));
+        app.screen_fresh();
         assert!(!rows(&app).contains(&3), "the shell is one of claude's tabs, not a row of its own: {:?}", rows(&app));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert_eq!(app.session_tabs().len(), 2);
-        assert!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Hy(hydra::HyHit::TabPick(_)))).count() == 2 && !o.contains("2 shell"), "claude's two tabs, unnamed ones shown by number");
+        assert!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_)))).count() == 2 && !o.contains("2 shell"), "claude's two tabs, unnamed ones shown by number");
         // Rename uses the same centered text editor as pane and project names.
         app.act(Action::RenameTab);
         for c in "tests".chars() {
@@ -1323,18 +1325,34 @@ mod hydra_tests {
         show(&o);
         assert!(o.contains("Rename tab") && o.contains("tests█"), "the dialog shows the draft: {o}");
         key(&mut app, KeyCode::Enter);
+        // The daemon owns the name: play its part by applying the command to the snapshot.
+        let (rws, rtab, rname) = std::iter::from_fn(|| rx.try_recv().ok())
+            .find_map(|m| match m {
+                crate::protocol::ClientMsg::Command(crate::protocol::Command::RenameTab { ws, tab, name }) => Some((ws, tab, name)),
+                _ => None,
+            })
+            .expect("the rename is sent to the daemon");
+        for t in app.snap.workspaces.iter_mut().filter(|w| w.id == rws).flat_map(|w| w.tabs.iter_mut()).filter(|t| t.id == rtab) {
+            t.name = rname.clone();
+        }
+        app.screen_sync();
         let o = draw(&mut app, 160, 45);
         assert!(o.contains(" tests ") && !o.contains("2 tests"), "renamed: the pill is its name");
+        // Views get rebuilt (another session reuses the slot, the client restarts): the name stays.
+        app.screen.tabs.iter_mut().for_each(|t| t.name.clear());
+        app.screen_sync();
+        let o = draw(&mut app, 160, 45);
+        assert!(o.contains(" tests "), "the name comes back from the daemon: {o}");
         // Another session: its own view, with its own rail.
-        app.hy_place(2, Some(3));
+        app.screen_place(2, Some(3));
         draw(&mut app, 160, 45);
         assert_eq!(app.session_tabs().len(), 1);
-        assert!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Hy(hydra::HyHit::TabPick(_)))).count() == 1, "codex has one tab");
+        assert!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_)))).count() == 1, "codex has one tab");
         // Back to claude: the tab you were last on there (the shell).
-        app.hy_place(1, Some(2));
-        assert_eq!(app.hy.tabs[app.hy.tab].focus, 3, "back on the shell tab");
+        app.screen_place(1, Some(2));
+        assert_eq!(app.screen.tabs[app.screen.tab].focus, 3, "back on the shell tab");
         // Closing claude's own tab while claude runs takes a second click.
-        let mine = app.hy.tabs.iter().position(|t| t.layout.contains(1)).unwrap();
+        let mine = app.screen.tabs.iter().position(|t| t.layout.contains(1)).unwrap();
         app.close_tab(mine);
         assert!(app.notice.as_ref().is_some_and(|(m, ..)| m.contains("close it again")), "{:?}", app.notice);
     }
@@ -1347,9 +1365,9 @@ mod hydra_tests {
         let at = (r.x + 10, r.y + 10);
         let mouse = |app: &mut App, kind: MouseEventKind| app.on_mouse(MouseEvent { kind, column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
         // A drag whose release never came is over once the mouse moves with no button held.
-        app.hy.drag = Some(hydra::Drag::Session(2, false));
+        app.screen.drag = Some(screen::Drag::Session(2, false));
         mouse(&mut app, MouseEventKind::Moved);
-        assert!(app.hy.drag.is_none(), "a stuck drag doesn't keep the mouse from the panes");
+        assert!(app.screen.drag.is_none(), "a stuck drag doesn't keep the mouse from the panes");
         // Claude Code's full-screen view, not taking the mouse: the wheel pages it.
         assert!(app.snap.terms[&term].agent.is_some());
         app.feed(term, b"\x1b[?1049h");
@@ -1407,12 +1425,12 @@ mod hydra_tests {
         let (term, _) = app.pane_frames[0];
         app.keep_raw(term, b"some output\r\n", true);
         // Mid-drag, a new width just resizes the screen; it re-wraps after.
-        app.hy.drag = Some(hydra::Drag::Side);
-        app.hy.saved.side_w = Some(50);
+        app.screen.drag = Some(screen::Drag::Side);
+        app.screen.saved.side_w = Some(50);
         draw(&mut app, 160, 45);
         app.sync_sizes();
         assert!(app.rewrap.contains(&term), "re-wrap waits for the drag to end");
-        app.hy.drag = None;
+        app.screen.drag = None;
         app.sync_sizes();
         assert!(!app.rewrap.contains(&term), "and happens once it has");
     }
@@ -1422,7 +1440,7 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let id = *app.snap.terms.iter().find(|(_, t)| t.agent.as_deref() == Some("codex")).unwrap().0;
         app.snap.terms.get_mut(&id).unwrap().label = "Doing something".into();
-        app.hy_fresh();
+        app.screen_fresh();
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("Doing something"), "the name is on the row itself");
@@ -1435,46 +1453,46 @@ mod hydra_tests {
         let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
         draw(&mut app, 160, 45);
         // Clicking a project puts the keys in the sidebar, on that project.
-        app.on_hy_hit(hydra::HyHit::ToggleProj(0), false);
-        app.on_hy_hit(hydra::HyHit::ToggleProj(0), false);
-        assert!(matches!(app.mode, Mode::Side) && app.hy.cursor_proj.is_some(), "on the project row");
+        app.on_hy_hit(screen::ScreenHit::ToggleProj(0), false);
+        app.on_hy_hit(screen::ScreenHit::ToggleProj(0), false);
+        assert!(matches!(app.mode, Mode::Side) && app.screen.cursor_proj.is_some(), "on the project row");
         draw(&mut app, 160, 45);
         // ← folds it, → opens it again.
         app.on_key(key(KeyCode::Left));
-        assert!(app.hy.saved.closed.iter().any(|k| k.starts_with("p:")), "folded");
+        assert!(app.screen.saved.closed.iter().any(|k| k.starts_with("p:")), "folded");
         app.on_key(key(KeyCode::Right));
-        assert!(!app.hy.saved.closed.iter().any(|k| k.starts_with("p:")), "open");
+        assert!(!app.screen.saved.closed.iter().any(|k| k.starts_with("p:")), "open");
         draw(&mut app, 160, 45);
         // ↓ onto its first session; ← back up to the project.
         app.on_key(key(KeyCode::Down));
-        let first = app.hy.cursor.expect("on a session");
+        let first = app.screen.cursor.expect("on a session");
         app.on_key(key(KeyCode::Left));
-        assert!(app.hy.cursor_proj.is_some() && app.hy.cursor.is_none(), "← goes to its project");
+        assert!(app.screen.cursor_proj.is_some() && app.screen.cursor.is_none(), "← goes to its project");
         app.on_key(key(KeyCode::Down));
-        assert_eq!(app.hy.cursor, Some(first));
+        assert_eq!(app.screen.cursor, Some(first));
         draw(&mut app, 160, 45);
         // A row's letter does what its menu says: x asks to close it.
         app.on_key(key(KeyCode::Char('x')));
         assert!(matches!(&app.mode, Mode::Confirm(c) if c.title == "Close pane"), "x closes (after asking)");
         app.on_key(key(KeyCode::Esc));
-        assert!(matches!(app.mode, Mode::Side) && app.hy.cursor == Some(first), "saying no goes back to the sidebar");
+        assert!(matches!(app.mode, Mode::Side) && app.screen.cursor == Some(first), "saying no goes back to the sidebar");
         let next = app.side_after_close();
         app.on_key(key(KeyCode::Char('x')));
         app.on_key(key(KeyCode::Enter));
         assert!(matches!(app.mode, Mode::Side), "after closing, the keys stay in the sidebar");
-        assert_eq!(next.map(|n| n != hydra::SideItem::Sess(first)), Some(true));
+        assert_eq!(next.map(|n| n != screen::SideItem::Sess(first)), Some(true));
         // The leader key's close, from the sidebar: the cursor's row, and the keys stay too.
-        let on = app.hy.cursor.or_else(|| app.hy.side_items.iter().find_map(|i| match i { hydra::SideItem::Sess(t) => Some(*t), _ => None })).unwrap();
-        app.hy_side_set(hydra::SideItem::Sess(on));
+        let on = app.screen.cursor.or_else(|| app.screen.side_items.iter().find_map(|i| match i { screen::SideItem::Sess(t) => Some(*t), _ => None })).unwrap();
+        app.screen_side_set(screen::SideItem::Sess(on));
         app.mode = Mode::Prefix { since: std::time::Instant::now() };
         app.act(Action::ClosePane);
         assert!(matches!(&app.mode, Mode::Confirm(c) if c.act == crate::client::menu::Act::End(vec![on])), "it asks about the row the cursor is on");
         app.on_key(key(KeyCode::Enter));
         assert!(matches!(app.mode, Mode::Side), "and afterwards you're still in the sidebar");
-        app.hy_side_set(hydra::SideItem::Sess(first));
+        app.screen_side_set(screen::SideItem::Sess(first));
         // Enter opens it and gives the keys back to the pane.
         app.on_key(key(KeyCode::Enter));
-        assert!(matches!(app.mode, Mode::Normal) && app.hy.cursor.is_none());
+        assert!(matches!(app.mode, Mode::Normal) && app.screen.cursor.is_none());
         // The leader in the sidebar is the leader, not "message this one".
         app.act(Action::BrowseTree);
         app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
@@ -1495,7 +1513,7 @@ mod hydra_tests {
         app.open_changes(dir.clone());
         let o = draw(&mut app, 160, 45);
         show(&o);
-        let cap = hydra::ends(app.theme.btn).0.0.to_string();
+        let cap = screen::ends(app.theme.btn).0.0.to_string();
         assert!(o.contains("isn't a git repository yet.") && o.contains(&format!("{cap}Make it a git repo g")) && o.contains(&format!("{cap}Cancel Esc")));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1537,12 +1555,12 @@ mod hydra_tests {
     }
 
     #[test]
-    fn a_program_hydra_doesnt_know_goes_by_its_name_and_can_be_taught() {
+    fn a_program_seshi_doesnt_know_goes_by_its_name_and_can_be_taught() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let t = app.snap.terms.get_mut(&3).unwrap();
         (t.process, t.title) = ("dst".into(), "✦ 🐋 deepseek harness".into());
-        app.hy_fresh();
-        let model = app.hy_model();
+        app.screen_fresh();
+        let model = app.screen_model();
         let row = model.iter().flat_map(|p| p.sessions().cloned().collect::<Vec<_>>()).find(|s| s.term == 3).unwrap();
         assert_eq!(row.name, "dst", "the row says what runs there, not 'shell'");
         let (title, items) = app.session_items(3).unwrap();
@@ -1676,7 +1694,7 @@ mod hydra_tests {
         key(&mut app, KeyCode::Char('w'));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(matches!(&app.mode, Mode::KeyMap(km) if km.step == Some(hydra::Step::Worktrees)), "w opens the worktrees step");
+        assert!(matches!(&app.mode, Mode::KeyMap(km) if km.step == Some(screen::Step::Worktrees)), "w opens the worktrees step");
         assert!(o.contains("WORKTREES IN SHOP-API") && o.contains("new worktree") && o.contains("merge into main") && o.contains("the path so far"));
         key(&mut app, KeyCode::Backspace);
         assert!(matches!(&app.mode, Mode::KeyMap(km) if km.step.is_none()), "back to the key map");
@@ -1689,7 +1707,7 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("actions"));
-        let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::Actions)).then_some((r.x, r.y))).expect("a actions is clickable");
+        let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::Actions)).then_some((r.x, r.y))).expect("a actions is clickable");
         app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
         assert!(matches!(app.mode, Mode::Actions { sel: 0 }));
         let o = draw(&mut app, 160, 45);
@@ -1708,37 +1726,37 @@ mod hydra_tests {
             app.sidebar = false;
             draw(&mut app, w, h);
             let click = |app: &mut App, hit| {
-                let (r, _) = app.hits.iter().rev().find(|(_, target)| *target == Hit::Hy(hit)).expect("visible mouse control");
+                let (r, _) = app.hits.iter().rev().find(|(_, target)| *target == Hit::Screen(hit)).expect("visible mouse control");
                 let (column, row) = (r.x, r.y);
                 app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column, row, modifiers: KeyModifiers::NONE });
             };
-            click(&mut app, hydra::HyHit::Actions);
+            click(&mut app, screen::ScreenHit::Actions);
             assert!(matches!(app.mode, Mode::Actions { .. }));
             let screen = draw(&mut app, w, h);
             show(&screen);
             assert!(screen.contains("Show sidebar"));
             for action in [Action::Palette, Action::AgentStatusSetup] {
-                let index = hydra::action_items().iter().position(|(_, a)| *a == action).expect("agent features and all commands are discoverable");
-                assert!(app.hits.iter().any(|(_, target)| *target == Hit::Hy(hydra::HyHit::ActionRow(index))));
+                let index = screen::action_items().iter().position(|(_, a)| *a == action).expect("agent features and all commands are discoverable");
+                assert!(app.hits.iter().any(|(_, target)| *target == Hit::Screen(screen::ScreenHit::ActionRow(index))));
             }
-            let index = hydra::action_items().iter().position(|(_, a)| *a == Action::Palette).unwrap();
-            click(&mut app, hydra::HyHit::ActionRow(index));
+            let index = screen::action_items().iter().position(|(_, a)| *a == Action::Palette).unwrap();
+            click(&mut app, screen::ScreenHit::ActionRow(index));
             let commands = app.pick_items("", true);
             for index in 0..commands.len() {
                 app.mode = Mode::Picker { query: String::new(), sel: index, commands: true };
                 draw(&mut app, w, h);
-                assert!(app.hits.iter().any(|(_, target)| *target == Hit::Hy(hydra::HyHit::PickRow(index))), "every command can be scrolled into view");
+                assert!(app.hits.iter().any(|(_, target)| *target == Hit::Screen(screen::ScreenHit::PickRow(index))), "every command can be scrolled into view");
             }
             let index = commands.iter().position(|item| matches!(item.target, PickTarget::Command(Action::Help))).unwrap();
             app.mode = Mode::Picker { query: String::new(), sel: index, commands: true };
             draw(&mut app, w, h);
-            click(&mut app, hydra::HyHit::PickRow(index));
+            click(&mut app, screen::ScreenHit::PickRow(index));
             assert!(matches!(app.mode, Mode::Shortcuts { .. }));
             app.act(Action::AgentStatusSetup);
             let screen = draw(&mut app, w, h); show(&screen);
             assert!(screen.contains("Set up Codex status hooks") && screen.contains("Set up Pi status hooks") && screen.contains("Set up OpenCode status hooks"));
             for index in 0..2 {
-                assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Hy(hydra::HyHit::MenuPick(index))));
+                assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Screen(screen::ScreenHit::MenuPick(index))));
             }
             app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
             assert_eq!(app.mode, Mode::Normal);
@@ -1752,7 +1770,7 @@ mod hydra_tests {
                 let (_, mut app) = super::design_tests::render_with(100, 30);
                 let (tx, mut rx) = mpsc::unbounded_channel();
                 app.out = tx;
-                app.hy.cursor = cursor;
+                app.screen.cursor = cursor;
                 app.mode = if cursor.is_some() { Mode::Side } else { Mode::Normal };
                 let selected = &app.snap.terms[&cursor.or(app.focused()).unwrap()];
                 let expected = selected.root.clone().unwrap_or_else(|| selected.cwd.clone());
@@ -1760,7 +1778,7 @@ mod hydra_tests {
                 show(&screen);
                 if by_mouse {
                     assert!(screen.contains("+ new"), "a visible new button");
-                    let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::NewShell)).then_some((r.x + 1, r.y))).expect("+ new is clickable");
+                    let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::NewShell)).then_some((r.x + 1, r.y))).expect("+ new is clickable");
                     app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
                 } else {
                     app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
@@ -1769,7 +1787,7 @@ mod hydra_tests {
                 assert_eq!(app.mode, Mode::Normal, "new opens a shell immediately");
                 let commands: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).filter_map(|m| match m { ClientMsg::Command(c) => Some(c), _ => None }).collect();
                 assert!(matches!(commands.as_slice(), [Command::NewWorkspace { cwd: Some(cwd), name: None, cmd: None }] if cwd == &expected), "one plain shell in the selected project: {commands:?}");
-                assert!(app.hy.pending_split.is_none(), "the new session opens full screen");
+                assert!(app.screen.pending_split.is_none(), "the new session opens full screen");
             }
         }
     }
@@ -1807,7 +1825,7 @@ mod hydra_tests {
 
         let (_, mut app) = super::design_tests::render_with(100, 30);
         app.act(Action::BrowseTree);
-        let term = app.hy.cursor.expect("sidebar is on a session");
+        let term = app.screen.cursor.expect("sidebar is on a session");
         let caps_state = if cfg!(windows) {
             KeyEventState::NONE
         } else {
@@ -1834,15 +1852,15 @@ mod hydra_tests {
             let screen = draw(&mut app, 100, 30);
             show(&screen);
             assert!(screen.contains("Settings"), "Settings is visible in Actions");
-            let index = hydra::action_items().iter().position(|(_, action)| *action == Action::Settings).unwrap();
+            let index = screen::action_items().iter().position(|(_, action)| *action == Action::Settings).unwrap();
             if by_mouse {
-                let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::ActionRow(index))).then_some((r.x, r.y))).expect("Settings is clickable");
+                let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::ActionRow(index))).then_some((r.x, r.y))).expect("Settings is clickable");
                 app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
             } else {
                 for _ in 0..index { app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)); }
                 app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
             }
-            assert!(matches!(app.mode, Mode::HySettings(_)), "Settings opens from Actions");
+            assert!(matches!(app.mode, Mode::ScreenSettings(_)), "Settings opens from Actions");
             let screen = draw(&mut app, 100, 30);
             show(&screen);
             assert!(screen.contains("General") && screen.contains("Appearance"));
@@ -1855,11 +1873,11 @@ mod hydra_tests {
     fn settings_open_as_a_centered_modal_without_reflow_and_tabs_are_mouse_reachable() {
         for (width, height) in [(80, 24), (100, 30), (160, 45)] {
             let (_, mut app) = super::design_tests::render_with(width, height);
-            let before = hydra::grid(&app, Rect::new(0, 0, width, height));
+            let before = screen::grid(&app, Rect::new(0, 0, width, height));
             app.act(Action::Settings);
             let screen = draw(&mut app, width, height);
             show(&screen);
-            let grid = hydra::grid(&app, Rect::new(0, 0, width, height));
+            let grid = screen::grid(&app, Rect::new(0, 0, width, height));
             assert_eq!(grid.sheet.width, 0, "Settings does not create a side sheet at {width}x{height}");
             assert_eq!(grid.panes, before.panes, "Settings leaves the workspace geometry unchanged at {width}x{height}");
             assert!(screen.contains("Settings") && screen.contains("General"), "Settings renders in the centered modal at {width}x{height}");
@@ -1868,9 +1886,9 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(100, 30);
         app.act(Action::Settings);
         draw(&mut app, 100, 30);
-        let (x, y) = app.hits.iter().find_map(|(r, hit)| (*hit == Hit::Hy(hydra::HyHit::SetTab(2))).then_some((r.x, r.y))).expect("Appearance tab is clickable");
+        let (x, y) = app.hits.iter().find_map(|(r, hit)| (*hit == Hit::Screen(screen::ScreenHit::SetTab(2))).then_some((r.x, r.y))).expect("Appearance tab is clickable");
         app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x, row: y, modifiers: KeyModifiers::NONE });
-        assert!(matches!(&app.mode, Mode::HySettings(view) if view.cat == 2), "mouse opens Appearance without closing the modal");
+        assert!(matches!(&app.mode, Mode::ScreenSettings(view) if view.cat == 2), "mouse opens Appearance without closing the modal");
     }
 
     #[test]
@@ -1878,10 +1896,10 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let a = app.focused().unwrap();
         let b = app.snap.terms.keys().copied().find(|t| *t != a).unwrap();
-        app.hy.tabs.clear();
-        app.hy_place(a, None);
-        app.hy.pending_split = Some((a, Instant::now()));
-        app.hy_place(b, Some(a));
+        app.screen.tabs.clear();
+        app.screen_place(a, None);
+        app.screen.pending_split = Some((a, Instant::now()));
+        app.screen_place(b, Some(a));
         for t in [a, b] {
             let mut p = vt100::Parser::new(20, 60, 0);
             p.process(b"\x1b[31mred text\x1b[0m");
@@ -1927,12 +1945,12 @@ mod hydra_tests {
         let main = draw(&mut app, 160, 45);
         show(&main);
         assert!(main.lines().next().unwrap().starts_with("▎"), "flat has no outside margin and keeps a zone bar");
-        assert!(main.contains("claude") && main.contains("AGENTS 2"), "the existing sessions remain visible");
+        assert!(main.contains("claude") && main.contains("shell"), "the existing sessions remain visible");
         assert!(main.contains("+ new") && main.contains("actions"), "the sidebar keeps its two mouse-accessible controls");
         assert!(!main.lines().last().unwrap_or_default().contains("PANE"), "the full-width footer is gone");
         assert!(!main.contains('╭') && !main.contains('╮') && !main.contains('╰') && !main.contains('╯'), "flat uses square zones without card borders");
-        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Hy(hydra::HyHit::NewShell)), "New is clickable from the sidebar foot");
-        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Hy(hydra::HyHit::Actions)), "Actions is clickable from the sidebar foot");
+        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Screen(screen::ScreenHit::NewShell)), "New is clickable from the sidebar foot");
+        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Screen(screen::ScreenHit::Actions)), "Actions is clickable from the sidebar foot");
 
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         assert_eq!(app.mode, Mode::Side, "Tab focuses the sidebar");
@@ -1944,7 +1962,7 @@ mod hydra_tests {
         app.act(Action::Settings);
         let settings = draw(&mut app, 160, 45);
         assert!(settings.contains("Settings") && settings.contains("Esc close"), "the Settings modal has its square status row");
-        assert!(app.hits.iter().any(|(rect, hit)| rect.y > 0 && *hit == Hit::Hy(hydra::HyHit::Close)), "the flat modal close control is mouse reachable");
+        assert!(app.hits.iter().any(|(rect, hit)| rect.y > 0 && *hit == Hit::Screen(screen::ScreenHit::Close)), "the flat modal close control is mouse reachable");
     }
 
     #[test]
@@ -1960,12 +1978,12 @@ mod hydra_tests {
                 _ => None,
             })
         };
-        assert!(hydra::action_items().iter().any(|(name, a)| *name == "Start a fleet" && *a == Action::StartFleet), "in the actions list");
+        assert!(screen::action_items().iter().any(|(name, a)| *name == "Start a fleet" && *a == Action::StartFleet), "in the actions list");
         let c: crate::keys::KeySpec = "c".parse().unwrap();
         assert_eq!(app.keymap.prefixed.get(&c), Some(&Action::StartFleet), "with a leader key of its own: c");
-        app.hy.saved.draft = "a task left from before".into();
+        app.screen.saved.draft = "a task left from before".into();
         app.act(Action::StartFleet);
-        assert!(matches!(&app.mode, Mode::HyPane(np) if np.fleet && np.task.is_empty()), "the goal box, empty");
+        assert!(matches!(&app.mode, Mode::ScreenPane(np) if np.fleet && np.task.is_empty()), "the goal box, empty");
         for (w, h) in [(160, 45), (100, 30)] {
             let o = draw(&mut app, w, h);
             show(&o);
@@ -1973,7 +1991,7 @@ mod hydra_tests {
         }
         // No goal: nothing starts, the box stays.
         app.on_key(key(KeyCode::Enter));
-        assert!(matches!(&app.mode, Mode::HyPane(np) if np.fleet) && started(&mut rx).is_none());
+        assert!(matches!(&app.mode, Mode::ScreenPane(np) if np.fleet) && started(&mut rx).is_none());
         // A goal, quotes and all, goes to the commander as it was typed.
         let goal = r#"fix `login` & "signup" for $5, it's urgent"#;
         for c in goal.chars() {
@@ -1985,20 +2003,20 @@ mod hydra_tests {
         let said = crate::brief::commander_prompt(goal);
         assert_eq!(cmd.as_deref(), Some(format!("claude {}", app.cfg.quote_for_shell(&said)).as_str()));
         assert!(cwd.is_some_and(|d| d.ends_with("shop-api")), "in the project's own folder");
-        assert_eq!(app.hy.saved.draft, "a task left from before", "your task draft is untouched");
+        assert_eq!(app.screen.saved.draft, "a task left from before", "your task draft is untouched");
         // Esc closes it and starts nothing; a shell can't command one.
         app.act(Action::StartFleet);
         app.on_key(key(KeyCode::Char('x')));
         app.on_key(key(KeyCode::Esc));
         assert!(app.mode == Mode::Normal && started(&mut rx).is_none());
         app.act(Action::StartFleet);
-        let shell = hydra::np_agents(&app, 0).iter().position(|a| a == "shell").unwrap();
-        if let Mode::HyPane(np) = &mut app.mode {
+        let shell = screen::np_agents(&app, 0).iter().position(|a| a == "shell").unwrap();
+        if let Mode::ScreenPane(np) = &mut app.mode {
             np.task = "a goal".into();
             np.a = shell;
         }
         app.on_key(key(KeyCode::Enter));
-        assert!(matches!(&app.mode, Mode::HyPane(_)) && started(&mut rx).is_none(), "a fleet needs an agent");
+        assert!(matches!(&app.mode, Mode::ScreenPane(_)) && started(&mut rx).is_none(), "a fleet needs an agent");
     }
 
     #[test]
@@ -2017,13 +2035,13 @@ mod hydra_tests {
     #[test]
     fn the_sidebar_foot_keeps_new_and_actions_without_a_global_footer() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.hy_side_set(hydra::SideItem::Sess(2));
+        app.screen_side_set(screen::SideItem::Sess(2));
         let o = draw(&mut app, 160, 45);
         show(&o);
         // A row's keys are in its menu; the status line has the global ones.
         let rows: Vec<&str> = o.lines().collect();
         assert!(!rows[2].contains("+ new") && o.contains("+ new") && o.contains("actions"), "new and Actions are at the foot");
-        let actions_y = app.hits.iter().find_map(|(rect, hit)| (*hit == Hit::Hy(hydra::HyHit::Actions)).then_some(rect.y)).unwrap();
+        let actions_y = app.hits.iter().find_map(|(rect, hit)| (*hit == Hit::Screen(screen::ScreenHit::Actions)).then_some(rect.y)).unwrap();
         assert!(actions_y > 35, "Actions stays at the bottom of the sidebar");
         assert!(!o.lines().last().unwrap_or_default().contains("keys"), "no full-width status footer");
     }
@@ -2051,7 +2069,7 @@ mod hydra_tests {
         assert!(app.mode == Mode::Normal && typed(&mut rx).is_none(), "nothing typed into a prompt");
         // Otherwise it asks first: a slip of a key types nothing.
         app.snap.terms.get_mut(&1).unwrap().status = Status::Idle;
-        app.hy_fresh();
+        app.screen_fresh();
         app.menu_act(act.clone());
         assert!(matches!(&app.mode, Mode::Confirm(c) if c.title == "Fleet commander" && !c.danger) && typed(&mut rx).is_none(), "asks before typing");
         let o = draw(&mut app, 160, 45);
@@ -2065,7 +2083,7 @@ mod hydra_tests {
         assert_eq!((term, text.as_str()), (1, crate::brief::commander_prompt("").as_str()));
         assert!(text.contains("seshi brief") && text.contains("ask me for the goal"));
         app.snap.terms.get_mut(&1).unwrap().asleep = true;
-        app.hy_fresh();
+        app.screen_fresh();
         assert!(offered(&app, 1).is_none(), "not while it's asleep");
     }
 
@@ -2074,21 +2092,21 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         app.out = tx;
-        app.hy.tabs.clear();
-        app.hy_place(1, None);
-        app.hy.new_tab = Some((Instant::now(), 1));
-        app.hy_place(3, Some(1));
-        app.hy.new_tab = Some((Instant::now(), 1));
-        app.hy_place(2, Some(3));
+        app.screen.tabs.clear();
+        app.screen_place(1, None);
+        app.screen.new_tab = Some((Instant::now(), 1));
+        app.screen_place(3, Some(1));
+        app.screen.new_tab = Some((Instant::now(), 1));
+        app.screen_place(2, Some(3));
         assert_eq!(app.session_tabs().len(), 3, "claude's session with three tabs");
         draw(&mut app, 160, 45);
-        let pill = |app: &App, i: usize| app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::TabPick(i))).then_some((r.x + 2, r.y))).unwrap();
+        let pill = |app: &App, i: usize| app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::TabPick(i))).then_some((r.x + 2, r.y))).unwrap();
         let mouse = |app: &mut App, kind: MouseEventKind, (x, y): (u16, u16)| {
             app.on_mouse(MouseEvent { kind, column: x, row: y, modifiers: KeyModifiers::NONE });
             draw(app, 160, 45);
         };
         // The current tab carries a ✕.
-        assert!(app.hits.iter().any(|(_, h)| matches!(h, Hit::Hy(hydra::HyHit::TabClose(_)))), "a ✕ on the current tab");
+        assert!(app.hits.iter().any(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabClose(_)))), "a ✕ on the current tab");
         // Double-click: rename it in its pill.
         let first = app.session_tabs()[0];
         let at = pill(&app, first);
@@ -2105,18 +2123,18 @@ mod hydra_tests {
         draw(&mut app, 160, 45);
         // Drag the first onto the third: it moves there, and stays the one you're on.
         let (a, c) = (app.session_tabs()[0], app.session_tabs()[2]);
-        let moved = app.hy.tabs[a].focus;
+        let moved = app.screen.tabs[a].focus;
         let at = pill(&app, a);
         mouse(&mut app, MouseEventKind::Down(MouseButton::Left), at);
         let at = pill(&app, c);
         mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), at);
         let at = pill(&app, c);
         mouse(&mut app, MouseEventKind::Up(MouseButton::Left), at);
-        let order: Vec<TermId> = app.session_tabs().iter().map(|i| app.hy.tabs[*i].focus).collect();
+        let order: Vec<TermId> = app.session_tabs().iter().map(|i| app.screen.tabs[*i].focus).collect();
         assert_eq!(order.last(), Some(&moved), "dragged to the end: {order:?}");
-        assert_eq!(app.hy.tabs[app.hy.tab].focus, moved, "still the tab you're on");
+        assert_eq!(app.screen.tabs[app.screen.tab].focus, moved, "still the tab you're on");
         // A middle click closes a tab (a shell: no second click needed).
-        let shell_tab = app.session_tabs().into_iter().find(|i| app.hy.tabs[*i].focus == 3).unwrap();
+        let shell_tab = app.session_tabs().into_iter().find(|i| app.screen.tabs[*i].focus == 3).unwrap();
         let at = pill(&app, shell_tab);
         mouse(&mut app, MouseEventKind::Down(MouseButton::Middle), at);
         let closed = std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, crate::protocol::ClientMsg::Command(crate::protocol::Command::ClosePane { term: 3 })));
@@ -2127,7 +2145,7 @@ mod hydra_tests {
     fn clicking_the_sidebar_gives_it_the_keys() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         draw(&mut app, 160, 45);
-        let side = app.hy.side_rect;
+        let side = app.screen.side_rect;
         // Empty space near the bottom of the sidebar card, above its foot.
         let at = (side.x + 4, side.bottom() - 7);
         app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
@@ -2138,10 +2156,10 @@ mod hydra_tests {
     fn copy_from_several_panes_at_once() {
         let (_, mut app) = super::design_tests::render_with(200, 50);
         let (a, b) = (1, 2);
-        app.hy.tabs.clear();
-        app.hy_place(a, None);
-        app.hy.pending_split = Some((a, Instant::now()));
-        app.hy_place(b, Some(a));
+        app.screen.tabs.clear();
+        app.screen_place(a, None);
+        app.screen.pending_split = Some((a, Instant::now()));
+        app.screen_place(b, Some(a));
         for (t, word) in [(a, "alpha"), (b, "beta")] {
             let mut p = vt100::Parser::new(20, 80, 100);
             p.process(format!("ERROR {word} failed\r\nok\r\n").as_bytes());
@@ -2178,11 +2196,11 @@ mod hydra_tests {
         let rows = |app: &mut App, codex: Status| {
             app.snap.terms.get_mut(&1).unwrap().status = Status::Idle;
             app.snap.terms.get_mut(&2).unwrap().status = codex;
-            app.hy_fresh();
-            let model = app.hy_model();
-            hydra::side_lines(app, &model, &app.theme).iter().filter_map(|l| hydra::line_term(&model, l)).take(2).collect::<Vec<_>>()
+            app.screen_fresh();
+            let model = app.screen_model();
+            screen::side_lines(app, &model, &app.theme).iter().filter_map(|l| screen::line_term(&model, l)).filter(|t| *t != 3).take(2).collect::<Vec<_>>()
         };
-        // claude (1) and codex (2), agents in one group.
+        // claude (1) and codex (2) share a group with the shell (3), which isn't counted.
         assert_eq!(rows(&mut app, Status::Idle), [1, 2]);
         assert_eq!(rows(&mut app, Status::Working), [1, 2], "starting work doesn't move it");
         assert_eq!(rows(&mut app, Status::Done), [1, 2], "nor does finishing");
@@ -2206,18 +2224,18 @@ mod hydra_tests {
         for t in app.snap.terms.values_mut() {
             t.status = Status::Idle;
         }
-        app.hy_fresh();
+        app.screen_fresh();
         app
     }
 
     /// The agents' rows, top to bottom, with how deep each sits.
     fn fleet_rows(app: &mut App) -> Vec<(TermId, u8)> {
-        app.hy_fresh();
-        let model = app.hy_model();
-        hydra::side_lines(app, &model, &app.theme)
+        app.screen_fresh();
+        let model = app.screen_model();
+        screen::side_lines(app, &model, &app.theme)
             .iter()
             .filter_map(|l| match l {
-                hydra::Line::Sess(.., depth) => hydra::line_term(&model, l).map(|t| (t, *depth)),
+                screen::Line::Sess(.., depth) => screen::line_term(&model, l).map(|t| (t, *depth)),
                 _ => None,
             })
             .filter(|(t, _)| *t != 3)
@@ -2244,9 +2262,9 @@ mod hydra_tests {
     #[test]
     fn a_fleet_shows_in_the_sidebar() {
         let mut app = fleet();
-        // The shell is in another group: started by claude or not, it's an ordinary row there.
+        // The shell shares claude's group, so one claude started sits under it.
         app.snap.terms.get_mut(&3).unwrap().started_by = Some(1);
-        app.hy_fresh();
+        app.screen_fresh();
         for (w, h) in [(160, 45), (100, 30)] {
             let o = draw(&mut app, w, h);
             show(&o);
@@ -2255,17 +2273,17 @@ mod hydra_tests {
                 let side = |l: &str| l.chars().take(30).collect::<String>();
                 o.lines().find_map(|l| side(l).find(name).map(|i| side(l)[..i].chars().count())).unwrap_or_else(|| panic!("{name} is in the sidebar at {w}x{h}"))
             };
-            let model = app.hy_model();
+            let model = app.screen_model();
             let name = |t: TermId| model.iter().flat_map(|p| p.sessions()).find(|s| s.term == t).unwrap().name.clone();
             assert_eq!(col(&name(2)), col(&name(1)) + 2, "a helper steps in under its commander");
-            assert_eq!(col(&name(3)), col(&name(1)), "a session in another group doesn't");
+            assert_eq!(col(&name(3)), col(&name(1)) + 2, "a shell started by it steps in too");
         }
     }
 
     #[test]
     fn live_helpers_show_compact_pipeline_stages_without_stage_icons() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.hy_fresh();
+        app.screen_fresh();
         let mut terminal = Terminal::new(TestBackend::new(160, 45)).unwrap();
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = terminal.backend().buffer().clone();
@@ -2290,16 +2308,16 @@ mod hydra_tests {
         for t in app.snap.terms.values_mut() {
             t.status = Status::Idle;
         }
-        app.hy_fresh();
+        app.screen_fresh();
         draw(&mut app, 160, 45);
         let rows = |app: &mut App| {
-            let model = app.hy_model();
-            hydra::side_lines(app, &model, &app.theme).iter().filter_map(|l| hydra::line_term(&model, l)).collect::<Vec<_>>()
+            let model = app.screen_model();
+            screen::side_lines(app, &model, &app.theme).iter().filter_map(|l| screen::line_term(&model, l)).collect::<Vec<_>>()
         };
         let before = rows(&mut app);
-        // claude and codex: agents in one group (the shell is in the terminals section).
+        // claude, codex and the shell: one group.
         let (first, last) = (before[0], before[1]);
-        let at = |app: &App, t: TermId| app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::Session(t))).then_some((r.x + 6, r.y))).unwrap();
+        let at = |app: &App, t: TermId| app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::Session(t))).then_some((r.x + 6, r.y))).unwrap();
         let mouse = |app: &mut App, kind: MouseEventKind, (x, y): (u16, u16)| {
             app.on_mouse(MouseEvent { kind, column: x, row: y, modifiers: KeyModifiers::NONE });
             draw(app, 160, 45);
@@ -2309,14 +2327,11 @@ mod hydra_tests {
         mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), to);
         mouse(&mut app, MouseEventKind::Up(MouseButton::Left), to);
         assert_eq!(rows(&mut app)[0], last, "dragged to the top of its group: {:?}", rows(&mut app));
-        // Not across sections: the shell can't be dragged among the agents.
-        let shell = *before.last().unwrap();
-        assert!(!app.move_session(shell, first), "a terminal stays in its section");
         // A click (no move) opens it.
         let p = at(&app, first);
         mouse(&mut app, MouseEventKind::Down(MouseButton::Left), p);
         mouse(&mut app, MouseEventKind::Up(MouseButton::Left), p);
-        assert!(app.hy.drag.is_none(), "a click opens it and leaves nothing being dragged");
+        assert!(app.screen.drag.is_none(), "a click opens it and leaves nothing being dragged");
     }
 
     #[test]
@@ -2325,14 +2340,14 @@ mod hydra_tests {
         // codex works in another folder (no git): a second agents group.
         let t = app.snap.terms.get_mut(&2).unwrap();
         (t.root, t.top, t.cwd) = (None, None, std::path::PathBuf::from("/work/web"));
-        app.hy_fresh();
+        app.screen_fresh();
         draw(&mut app, 160, 45);
-        let groups = |app: &App| app.hy_model().iter().map(|p| (p.name.clone(), p.sessions().map(|s| s.term).collect::<Vec<_>>())).collect::<Vec<_>>();
+        let groups = |app: &App| app.screen_model().iter().map(|p| (p.name.clone(), p.sessions().map(|s| s.term).collect::<Vec<_>>())).collect::<Vec<_>>();
         let header = |app: &App, name: &str| {
-            let pi = app.hy_model().iter().position(|p| p.name == name && p.kind == hydra::Kind::Agents).unwrap();
-            app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::ToggleProj(pi))).then_some((r.x + 4, r.y))).unwrap()
+            let pi = app.screen_model().iter().position(|p| p.name == name && p.kind == screen::Kind::Local).unwrap();
+            app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::ToggleProj(pi))).then_some((r.x + 4, r.y))).unwrap()
         };
-        let row = |app: &App, t: TermId| app.hits.iter().find_map(|(r, h)| (*h == Hit::Hy(hydra::HyHit::Session(t))).then_some((r.x + 6, r.y))).unwrap();
+        let row = |app: &App, t: TermId| app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::Session(t))).then_some((r.x + 6, r.y))).unwrap();
         let mouse = |app: &mut App, kind: MouseEventKind, (x, y): (u16, u16)| {
             app.on_mouse(MouseEvent { kind, column: x, row: y, modifiers: KeyModifiers::NONE });
             draw(app, 160, 45);
@@ -2344,12 +2359,9 @@ mod hydra_tests {
         mouse(&mut app, MouseEventKind::Up(MouseButton::Left), to);
         let g = groups(&app);
         assert!(g.iter().any(|(n, ts)| n == "web" && ts.contains(&1) && ts.contains(&2)), "claude is in web now: {g:?}");
-        assert!(app.hy.drag.is_none());
-        // An agent can't go into the terminals section.
-        let shell_group = app.hy_model().iter().position(|p| p.kind == hydra::Kind::Terminals).unwrap();
-        assert!(!app.place_session(1, shell_group), "an agent stays among the agents");
+        assert!(app.screen.drag.is_none());
         // It stays when the agent reports its folder again.
-        app.hy_fresh();
+        app.screen_fresh();
         assert!(groups(&app).iter().any(|(n, ts)| n == "web" && ts.contains(&1)));
     }
 
@@ -2362,7 +2374,7 @@ mod hydra_tests {
         let agent = app.snap.terms.values().find(|t| t.agent.is_some()).map(|t| t.id).unwrap();
         let ti = app.snap.terms.get_mut(&agent).unwrap();
         ti.usage = crate::protocol::Usage { context: Some(76.0), cost: Some(1.2) };
-        app.hy_focus(agent);
+        app.screen_focus(agent);
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(!o.contains("claude 5h"), "no plan limits on screen");
@@ -2379,14 +2391,14 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let initial = draw(&mut app, 160, 45);
         assert!(!initial.contains("Update") && initial.contains("actions"), "actions stay in the sidebar, no update when current");
-        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Hy(hydra::HyHit::Actions)));
+        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Screen(screen::ScreenHit::Actions)));
         app.update_available = Some("9.9.9".into());
         app.update_notes = vec!["Fixed: copying".into(), "New: update button".into()];
         let updated = draw(&mut app, 160, 45);
         assert!(updated.contains("Update 9.9.9"), "the top row announces an available update");
-        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Hy(hydra::HyHit::Update)), "the update is clickable");
+        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Screen(screen::ScreenHit::Update)), "the update is clickable");
         assert!(app.palette_commands().contains(&Action::Update), "and remains in the command palette");
-        let (x, y) = app.hits.iter().find_map(|(rect, hit)| (*hit == Hit::Hy(hydra::HyHit::Update)).then_some((rect.x, rect.y))).unwrap();
+        let (x, y) = app.hits.iter().find_map(|(rect, hit)| (*hit == Hit::Screen(screen::ScreenHit::Update)).then_some((rect.x, rect.y))).unwrap();
         app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x, row: y, modifiers: KeyModifiers::NONE });
         let confirm = draw(&mut app, 160, 45);
         assert!(matches!(&app.mode, Mode::Confirm(c) if c.act == menu::Act::Update));
@@ -2426,13 +2438,13 @@ mod hydra_tests {
             ws.active_tab = id + 1;
             app.snap.workspaces.push(ws);
         }
-        app.hy_fresh();
+        app.screen_fresh();
         draw(&mut app, 160, 45);
-        let names = |app: &mut App| app.hy_model().iter().filter(|p| p.kind == hydra::Kind::Terminals).map(|p| p.name.clone()).collect::<Vec<_>>();
+        let names = |app: &mut App| app.screen_model().iter().filter(|p| p.kind == screen::Kind::Local).map(|p| p.name.clone()).collect::<Vec<_>>();
         let before = names(&mut app);
         assert_eq!(before.len(), 3, "shop-api's shell, notes, api: {before:?}");
         let header = |app: &App, name_idx: usize| {
-            app.hits.iter().find_map(|(r, h)| matches!(h, Hit::Hy(hydra::HyHit::ToggleProj(i)) if app.hy.proj_keys.get(*i).is_some_and(|k| app.hy_model().iter().any(|p| p.key == *k && p.name == before[name_idx]))).then_some((r.x + 4, r.y)))
+            app.hits.iter().find_map(|(r, h)| matches!(h, Hit::Screen(screen::ScreenHit::ToggleProj(i)) if app.screen.proj_keys.get(*i).is_some_and(|k| app.screen_model().iter().any(|p| p.key == *k && p.name == before[name_idx]))).then_some((r.x + 4, r.y)))
         };
         let (from, to) = (header(&app, 2).unwrap(), header(&app, 1).unwrap());
         let mouse = |app: &mut App, kind: MouseEventKind, (x, y): (u16, u16)| {
@@ -2443,12 +2455,12 @@ mod hydra_tests {
         mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), to);
         mouse(&mut app, MouseEventKind::Up(MouseButton::Left), to);
         assert_eq!(names(&mut app), vec![before[0].clone(), before[2].clone(), before[1].clone()], "dragged above the other");
-        assert!(!app.hy.saved.closed.iter().any(|k| k.starts_with("p:")), "a drag doesn't fold");
+        assert!(!app.screen.saved.closed.iter().any(|k| k.starts_with("p:")), "a drag doesn't fold");
         // A click (no move) folds it.
         let at = header(&app, 0).unwrap();
         mouse(&mut app, MouseEventKind::Down(MouseButton::Left), at);
         mouse(&mut app, MouseEventKind::Up(MouseButton::Left), at);
-        assert!(app.hy.saved.closed.iter().any(|k| k.starts_with("p:")), "a click folds");
+        assert!(app.screen.saved.closed.iter().any(|k| k.starts_with("p:")), "a click folds");
     }
 
     #[test]
@@ -2466,19 +2478,29 @@ mod hydra_tests {
         ws.tabs = vec![crate::protocol::TabInfo { id: 31, name: String::new(), layout: crate::layout::Node::Leaf(4), focus: 4 }];
         ws.active_tab = 31;
         app.snap.workspaces.push(ws);
-        app.hy_fresh();
-        let model = app.hy_model();
-        let kinds: Vec<(hydra::Kind, String)> = model.iter().map(|p| (p.kind, p.name.clone())).collect();
+        app.screen_fresh();
+        let model = app.screen_model();
+        let kinds: Vec<(screen::Kind, String)> = model.iter().map(|p| (p.kind, p.name.clone())).collect();
         assert_eq!(
             kinds,
-            vec![(hydra::Kind::Agents, "shop-api".into()), (hydra::Kind::Terminals, "notes".into()), (hydra::Kind::Ssh, "build-box".into())],
-            "agents, then terminals, then other machines, each grouped by where"
+            vec![(screen::Kind::Local, "shop-api".into()), (screen::Kind::Local, "notes".into()), (screen::Kind::Ssh, "build-box".into())],
+            "folders here, then other machines, each grouped by where"
         );
         let o = draw(&mut app, 160, 45);
         show(&o);
         let at = |s: &str| o.find(s).unwrap_or_else(|| panic!("{s} in the sidebar"));
-        assert!(at("▾ shop-api") < at("▾ notes") && at("▾ notes") < at("▾ build-box"), "agents, then terminals, then other machines");
-        assert!(at("AGENTS 2") < at("TERMINALS 1") && at("TERMINALS 1") < at("SSH 1"), "a heading per section, in order");
+        assert!(at("▾ shop-api") < at("▾ notes") && at("▾ notes") < at("▾ build-box"), "folders here, then other machines");
+        assert!(!o.contains("AGENTS") && !o.contains("TERMINALS") && at("SSH 1") > at("▾ notes"), "only the other machines get a heading");
+    }
+
+    #[test]
+    fn a_tight_row_shows_its_tool_as_an_icon() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.snap.terms.get_mut(&2).unwrap().label = "Rate limiter rework".into();
+        app.screen_fresh();
+        let o = draw(&mut app, 140, 30);
+        show(&o);
+        assert!(o.contains("◆ ") && !o.contains("codex ·"), "codex's row keeps its icon when it's tight");
     }
 
     #[test]
@@ -2488,8 +2510,8 @@ mod hydra_tests {
         let elsewhere = PathBuf::from(if cfg!(windows) { r"C:\notes" } else { "/notes" });
         let t = app.snap.terms.get_mut(&3).unwrap();
         (t.cwd, t.root, t.top, t.branch) = (elsewhere.clone(), None, None, None);
-        app.hy_fresh();
-        let model = app.hy_model();
+        app.screen_fresh();
+        let model = app.screen_model();
         let group_of = |term: TermId| model.iter().find(|p| p.sessions().any(|s| s.term == term)).map(|p| p.name.clone());
         assert_eq!(group_of(3).as_deref(), Some("notes"), "it moved to where it is");
         assert_eq!(group_of(1).as_deref(), Some("shop-api"), "the others stay");
@@ -2503,7 +2525,7 @@ mod hydra_tests {
         app.notice_term = Some(term);
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("claude finished") && o.contains("click to open"));
-        assert!(app.hits.iter().any(|(_, h)| *h == Hit::Hy(hydra::HyHit::Session(term))), "clicking it opens the session");
+        assert!(app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::Session(term))), "clicking it opens the session");
         // Any other note isn't.
         app.notify("saved".into(), false);
         let o = draw(&mut app, 160, 45);
@@ -2516,12 +2538,12 @@ mod hydra_tests {
         let a = app.focused().unwrap();
         let others: Vec<TermId> = app.snap.terms.keys().copied().filter(|t| *t != a).collect();
         let (b, c) = (others[0], others[1]);
-        app.hy.tabs.clear();
-        app.hy_place(a, None);
-        app.hy.pending_split = Some((a, Instant::now()));
-        app.hy_place(b, Some(a));
-        app.hy_fresh();
-        let rows: Vec<TermId> = app.hy_model().iter().flat_map(|p| p.sessions().map(|s| s.term).collect::<Vec<_>>()).collect();
+        app.screen.tabs.clear();
+        app.screen_place(a, None);
+        app.screen.pending_split = Some((a, Instant::now()));
+        app.screen_place(b, Some(a));
+        app.screen_fresh();
+        let rows: Vec<TermId> = app.screen_model().iter().flat_map(|p| p.sessions().map(|s| s.term).collect::<Vec<_>>()).collect();
         assert!(rows.contains(&a) && !rows.contains(&b), "the pane beside a isn't a session of its own: {rows:?}");
         // Its title bar still says what it is.
         let o = draw(&mut app, 200, 50);
@@ -2530,16 +2552,16 @@ mod hydra_tests {
         assert!(bar.matches(name.as_str()).count() >= 1, "the split pane's title names it ({name}): {bar}");
         // b needs you: a's row says so.
         app.snap.terms.get_mut(&b).unwrap().status = Status::Blocked;
-        app.hy_fresh();
-        let row = app.hy_model().iter().flat_map(|p| p.sessions().cloned().collect::<Vec<_>>()).find(|s| s.term == a).unwrap();
+        app.screen_fresh();
+        let row = app.screen_model().iter().flat_map(|p| p.sessions().cloned().collect::<Vec<_>>()).find(|s| s.term == a).unwrap();
         assert_eq!(row.status, Status::Blocked);
         // Picking another session shows it alone; the split is still there to go back to.
-        app.hy_place(c, Some(b));
-        assert_eq!(app.hy.tabs[app.hy.tab].layout, crate::layout::Node::Leaf(c), "full size");
+        app.screen_place(c, Some(b));
+        assert_eq!(app.screen.tabs[app.screen.tab].layout, crate::layout::Node::Leaf(c), "full size");
         assert_eq!(app.session_tabs().len(), 1, "no tab bar: the split is kept as its session's, not made a tab of this one");
-        assert!(app.hy.tabs.iter().any(|t| t.layout.leaves() == vec![a, b]), "the split is kept: {:?}", app.hy.tabs);
-        app.hy_place(a, Some(c));
-        assert_eq!(app.hy.tabs[app.hy.tab].layout.leaves(), vec![a, b], "its row brings the split back");
+        assert!(app.screen.tabs.iter().any(|t| t.layout.leaves() == vec![a, b]), "the split is kept: {:?}", app.screen.tabs);
+        app.screen_place(a, Some(c));
+        assert_eq!(app.screen.tabs[app.screen.tab].layout.leaves(), vec![a, b], "its row brings the split back");
     }
 
     #[test]
@@ -2548,21 +2570,21 @@ mod hydra_tests {
         let a = app.focused().unwrap();
         let others: Vec<TermId> = app.snap.terms.keys().copied().filter(|t| *t != a).collect();
         let (b, c) = (others[0], others[1]);
-        app.hy.tabs.clear();
-        app.hy_place(a, None);
-        app.hy.pending_split = Some((a, Instant::now()));
-        app.hy_place(b, Some(a));
-        assert_eq!(app.hy.tabs[0].layout.leaves().len(), 2);
+        app.screen.tabs.clear();
+        app.screen_place(a, None);
+        app.screen.pending_split = Some((a, Instant::now()));
+        app.screen_place(b, Some(a));
+        assert_eq!(app.screen.tabs[0].layout.leaves().len(), 2);
         // b is closed; the server then focuses some other session, c.
         app.snap.terms.remove(&b);
-        app.hy_place(c, Some(b));
-        assert_eq!(app.hy.tabs[0].layout, crate::layout::Node::Leaf(a), "a takes the room; c doesn't slide into b's place");
+        app.screen_place(c, Some(b));
+        assert_eq!(app.screen.tabs[0].layout, crate::layout::Node::Leaf(a), "a takes the room; c doesn't slide into b's place");
         // Closing from the ✕ takes it out of the split first.
-        app.hy.pending_split = Some((a, Instant::now()));
+        app.screen.pending_split = Some((a, Instant::now()));
         app.snap.terms.insert(b, app.snap.terms[&c].clone());
-        app.hy_place(b, Some(a));
+        app.screen_place(b, Some(a));
         app.menu_do(menu::Act::End(vec![b]));
-        assert_eq!(app.hy.tabs[0].layout, crate::layout::Node::Leaf(a));
+        assert_eq!(app.screen.tabs[0].layout, crate::layout::Node::Leaf(a));
     }
 
     #[test]
@@ -2582,10 +2604,10 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.snap.terms.get_mut(&2).unwrap().status = Status::Idle;
         app.snap.terms.get_mut(&3).unwrap().status = Status::Done;
-        let model = app.hy_model();
-        let rows = hydra::side_lines(&app, &model, &app.theme)
+        let model = app.screen_model();
+        let rows = screen::side_lines(&app, &model, &app.theme)
             .iter()
-            .filter_map(|line| hydra::line_term(&model, line))
+            .filter_map(|line| screen::line_term(&model, line))
             .collect::<Vec<_>>();
         assert!(rows.contains(&2) && rows.contains(&3), "resting sessions remain in the sidebar");
         let screen = draw(&mut app, 160, 45);
@@ -2605,7 +2627,7 @@ mod hydra_tests {
             (0..12).map(|i| crate::snapshot::Snapshot { commit: format!("c{i}"), at: now - 120 * (i + 1), why: "before claude's turn".into() }).collect();
         // None yet: it says when there will be, and opens nothing.
         app.snapshots_menu(dir.clone(), 1, Vec::new(), (30, 6));
-        assert!(!matches!(app.mode, Mode::HyMenu(_)));
+        assert!(!matches!(app.mode, Mode::ScreenMenu(_)));
         // Newest first, numbered, and no more than have a number to press.
         app.snapshots_menu(dir.clone(), 1, kept, (30, 6));
         let o = draw(&mut app, 160, 45);
@@ -2666,9 +2688,9 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.got_state = true;
         app.snap.terms.get_mut(&2).unwrap().asleep = true;
-        app.hy.tabs.clear();
-        app.hy_place(1, None);
-        app.hy_side_set(hydra::SideItem::Sess(2));
+        app.screen.tabs.clear();
+        app.screen_place(1, None);
+        app.screen_side_set(screen::SideItem::Sess(2));
         let o = draw(&mut app, 160, 45);
         show(&o);
         let legacy_ui = o.lines().find(|line| line.contains("asleep") || line.contains("zzZ") || line.contains("waking up"));
@@ -2680,10 +2702,10 @@ mod hydra_tests {
     #[test]
     fn a_session_taking_much_of_the_machine_says_so() {
         let gb = |n: u64| n << 30;
-        assert_eq!(hydra::load_note(5.0, gb(1)), None, "an ordinary session: nothing");
-        assert_eq!(hydra::load_note(38.0, gb(1) / 2), Some(("▲ 38% CPU · 0.5 GB".to_string(), false)), "a fifth of the CPU or more");
-        assert_eq!(hydra::load_note(3.0, gb(3)), Some(("▲ 3% CPU · 3.0 GB".to_string(), false)), "or gigabytes of memory");
-        assert!(hydra::load_note(60.0, gb(1)).unwrap().1 && hydra::load_note(1.0, gb(7)).unwrap().1, "heavy from half the CPU, or six gigabytes");
+        assert_eq!(screen::load_note(5.0, gb(1)), None, "an ordinary session: nothing");
+        assert_eq!(screen::load_note(38.0, gb(1) / 2), Some(("▲ 38% CPU · 0.5 GB".to_string(), false)), "a fifth of the CPU or more");
+        assert_eq!(screen::load_note(3.0, gb(3)), Some(("▲ 3% CPU · 3.0 GB".to_string(), false)), "or gigabytes of memory");
+        assert!(screen::load_note(60.0, gb(1)).unwrap().1 && screen::load_note(1.0, gb(7)).unwrap().1, "heavy from half the CPU, or six gigabytes");
         // Beside its state in the pane's title, in the working colour when heavy; not in the sidebar.
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let on = app.focused().unwrap();
@@ -2692,12 +2714,12 @@ mod hydra_tests {
         show(&o);
         let title = o.lines().find(|l| l.contains("▲ 62% CPU · 5.0 GB")).expect("said in the pane's title");
         assert!(title.contains('✕'), "on the title border, beside the state: {title}");
-        let model = app.hy_model();
-        assert!(!hydra::side_lines(&app, &model, &app.theme).iter().any(|l| matches!(l, hydra::Line::Note(text, ..) if text.starts_with("▲"))), "and no longer under its sidebar row");
+        let model = app.screen_model();
+        assert!(!screen::side_lines(&app, &model, &app.theme).iter().any(|l| matches!(l, screen::Line::Note(text, ..) if text.starts_with("▲"))), "and no longer under its sidebar row");
         // Its subagents fold away from the heading, and from its menu.
         let with_subs = app.snap.terms.iter().find(|(_, i)| !i.subagents.is_empty()).map(|(id, _)| *id).unwrap();
         assert!(o.contains("▾ 4 subagents"));
-        app.on_hy_hit(hydra::HyHit::ToggleSubs(with_subs), false);
+        app.on_hy_hit(screen::ScreenHit::ToggleSubs(with_subs), false);
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("▸ 4 subagents") && !o.contains("planner"), "folded");
         assert!(app.session_items(with_subs).unwrap().1.iter().any(|(l, a)| l == "Show subagents" && *a == crate::client::menu::Act::ToggleSubs(with_subs)));
@@ -2706,7 +2728,7 @@ mod hydra_tests {
     #[test]
     fn a_opens_actions_with_the_keys_in_the_sidebar_too() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.hy_side_set(hydra::SideItem::Sess(2));
+        app.screen_side_set(screen::SideItem::Sess(2));
         assert_eq!(app.mode, Mode::Side);
         app.on_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::Actions { .. }), "a is actions here, as the foot says everywhere else");
@@ -2721,7 +2743,7 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // The colour of a row's name in the sidebar (its first letter).
         let name_fg = |app: &mut App, name: &str| {
-            app.hy_fresh();
+            app.screen_fresh();
             let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
             term.draw(|f| render::draw(app, f)).unwrap();
             let buf = term.backend().buffer().clone();
@@ -2737,7 +2759,7 @@ mod hydra_tests {
             app.theme = app.cfg.theme();
             let t = app.theme.clone();
             // claude (1) is the selected row, in each state in turn.
-            app.hy_side_set(hydra::SideItem::Sess(1));
+            app.screen_side_set(screen::SideItem::Sess(1));
             for (status, want) in [(Status::Blocked, t.on_lit(t.blocked)), (Status::Done, t.on_lit(t.done))] {
                 app.snap.terms.get_mut(&1).unwrap().status = status;
                 let (fg, bg) = name_fg(&mut app, "claude");
@@ -2853,12 +2875,12 @@ mod hydra_tests {
         app.out = tx;
         let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
         let standing = |dirty: usize, merged: bool| crate::tidy::Standing { dirty, branch: Some("b".into()), merged, last_commit: "3 days ago".into() };
-        let row = |name: &str, sessions: usize, s: crate::tidy::Standing| hydra::TidyRow { path: PathBuf::from(format!("/wt/{name}")), name: name.into(), branch: format!("feat/{name}"), sessions, ticked: sessions == 0 && s.safe(), standing: s };
+        let row = |name: &str, sessions: usize, s: crate::tidy::Standing| screen::TidyRow { path: PathBuf::from(format!("/wt/{name}")), name: name.into(), branch: format!("feat/{name}"), sessions, ticked: sessions == 0 && s.safe(), standing: s };
         // It opens from the project's menu and the palette, and says it's looking.
-        let pi = app.hy_model().iter().position(|p| p.git).unwrap();
+        let pi = app.screen_model().iter().position(|p| p.git).unwrap();
         assert!(app.project_items(pi).unwrap().1.iter().any(|(l, a)| l == "Clean up worktrees…" && *a == crate::client::menu::Act::TidyOpen(pi)));
         assert!(app.palette_commands().contains(&Action::TidyWorktrees));
-        app.mode = Mode::Tidy(Box::new(hydra::TidyView { repo: PathBuf::from("/repo"), name: "shop-api".into(), rows: None, sel: 0 }));
+        app.mode = Mode::Tidy(Box::new(screen::TidyView { repo: PathBuf::from("/repo"), name: "shop-api".into(), rows: None, sel: 0 }));
         assert!(draw(&mut app, 160, 45).contains("looking at each worktree"));
         // Looked at: one safe, one never merged, one with edits, one in use.
         app.tidy_loaded(PathBuf::from("/repo"), vec![row("done", 0, standing(0, true)), row("parked", 0, standing(0, false)), row("messy", 0, standing(2, false)), row("busy", 1, standing(0, true))]);
@@ -2897,7 +2919,7 @@ mod hydra_tests {
         });
         assert_eq!(sent, Some(vec![(PathBuf::from("/wt/done"), false), (PathBuf::from("/wt/messy"), true)]), "only the edited one is forced");
         // Nothing ticked: Enter says so and the list stays.
-        app.mode = Mode::Tidy(Box::new(hydra::TidyView { repo: PathBuf::from("/repo"), name: "shop-api".into(), rows: Some(vec![row("parked", 0, standing(0, false))]), sel: 0 }));
+        app.mode = Mode::Tidy(Box::new(screen::TidyView { repo: PathBuf::from("/repo"), name: "shop-api".into(), rows: Some(vec![row("parked", 0, standing(0, false))]), sel: 0 }));
         app.on_key(key(KeyCode::Enter));
         assert!(matches!(app.mode, Mode::Tidy(_)));
         // a ticks every safe one; n unticks all.
@@ -2918,11 +2940,11 @@ mod hydra_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains(&format!("seshi {}", env!("CARGO_PKG_VERSION"))) && o.contains("up to date") && o.contains("u check now"));
-        assert!(app.hits.iter().any(|(_, h)| *h == Hit::Hy(hydra::HyHit::CheckUpdate)), "it can be clicked");
+        assert!(app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::CheckUpdate)), "it can be clicked");
         // While it's asking, the button says so and can't be pressed twice.
         app.update_checking = true;
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("checking…") && !app.hits.iter().any(|(_, h)| *h == Hit::Hy(hydra::HyHit::CheckUpdate)));
+        assert!(o.contains("checking…") && !app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::CheckUpdate)));
         // Nothing newer: you asked, so it says so. A check seshi made itself stays quiet.
         app.notice = None;
         app.update_checked_now(false, Ok(None), Vec::new());
@@ -2954,7 +2976,7 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // The fill and ink under the first letter of `word`, and the mark in front of it.
         let toast = |app: &mut App, word: &str| {
-            app.hy_fresh();
+            app.screen_fresh();
             let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
             term.draw(|f| render::draw(app, f)).unwrap();
             let buf = term.backend().buffer().clone();
@@ -2998,8 +3020,8 @@ mod hydra_tests {
         show(&o);
         assert!(o.contains("FOUND 1 ─") && o.contains("rate  codex · shop-api"), "typing finds what matches");
         let Mode::GoTo { query, sel } = app.mode.clone() else { panic!("still open") };
-        let rows = hydra::goto_rows(&app.hy_model(), &query, 0);
-        assert!(matches!(rows[sel], hydra::GoRow::Sess(..)), "it lands on the matching session");
+        let rows = screen::goto_rows(&app.screen_model(), &query, 0);
+        assert!(matches!(rows[sel], screen::GoRow::Sess(..)), "it lands on the matching session");
         app.on_key(key(KeyCode::Enter));
         assert!(matches!(app.mode, Mode::Normal), "Enter goes there");
     }
@@ -3017,7 +3039,7 @@ mod hydra_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("Split right") && !o.contains("Settings"), "typing narrows it");
-        app.mode = Mode::KeyMap(Box::new(hydra::KeyMap { query: String::new(), searching: false, step: None, sel: 0 }));
+        app.mode = Mode::KeyMap(Box::new(screen::KeyMap { query: String::new(), searching: false, step: None, sel: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
         let a = o.lines().find(|l| l.contains("inbox ● 1")).unwrap();
@@ -3030,7 +3052,7 @@ mod hydra_tests {
     fn settings_keys_tab_is_current() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let cat = modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Keys).unwrap();
-        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat, sel: 0, editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("GET AROUND") && o.contains("Inbox: what needs you") && o.contains("Command palette"));
@@ -3042,7 +3064,7 @@ mod hydra_tests {
         let rows = design::settings_rows(modal::Cat::General);
         let row_of = |p: &str| rows.iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == p)).unwrap();
         // Editor and shell: chips of what's installed, "default" first.
-        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 0, sel: row_of("editor"), editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: row_of("editor"), editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
         let line = o.lines().find(|l| l.contains("Editor")).unwrap();
@@ -3054,20 +3076,20 @@ mod hydra_tests {
         }
         // The start folder: Enter opens the folder browser for it; Esc goes back to the row.
         let sf = row_of("ui.start_dir");
-        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 0, sel: sf, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: sf, editing: None, capturing: false, scroll: 0 }));
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert!(matches!(&app.mode, Mode::Finder(fd) if fd.for_setting == Some("ui.start_dir")), "the folder browser, picking for the setting");
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("Choose the start folder"));
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::HySettings(v) if v.sel == sf), "Esc: back to Settings, on that row");
+        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.sel == sf), "Esc: back to Settings, on that row");
     }
 
     #[test]
     fn working_names_shimmer() {
         use ratatui::style::{Color, Style};
         let (base, bright) = (Color::Rgb(200, 160, 0), Color::Rgb(255, 255, 255));
-        let at = |frame| hydra::shimmer("claude", frame, base, bright, Style::default()).iter().map(|(_, s)| s.fg).collect::<Vec<_>>();
+        let at = |frame| screen::shimmer("claude", frame, base, bright, Style::default()).iter().map(|(_, s)| s.fg).collect::<Vec<_>>();
         assert_eq!(at(0).len(), 6, "one colour per letter");
         assert_ne!(at(4), at(7), "the bright band moves");
         assert!(at(7).contains(&Some(base)), "the rest stays the working colour");
@@ -3099,7 +3121,7 @@ mod hydra_tests {
         let key = |app: &mut App, c: KeyCode, m: KeyModifiers| app.on_key(KeyEvent::new(c, m));
         // claude's row (it needs you): m writes to it from the sidebar.
         app.mode = Mode::Side;
-        app.hy.cursor = Some(1);
+        app.screen.cursor = Some(1);
         key(&mut app, KeyCode::Char('m'), KeyModifiers::NONE);
         assert!(matches!(&app.mode, Mode::Compose(c) if c.term == 1 && c.side), "m: a follow-up to the row's agent");
         for ch in "use the fake clock".chars() {
@@ -3137,25 +3159,25 @@ mod hydra_tests {
     #[test]
     fn overlapping_files_stay_in_the_inbox_instead_of_cluttering_the_sidebar() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        let model = app.hy_model();
+        let model = app.screen_model();
         let p = model.iter().find(|p| p.git && p.wts.len() >= 2).expect("a repo with a worktree").clone();
         let names: Vec<String> = p.wts.iter().map(|w| w.name.clone()).collect();
         let shared = |n: usize| (0..n).map(|i| crate::client::overlap::Overlap { file: format!("src/file{i}.ts"), checkouts: names.clone() }).collect::<Vec<_>>();
         // Sixty overlapping changes remain available in the Inbox without crowding the sidebar.
-        app.hy.overlaps.insert(p.path.clone(), shared(60));
+        app.screen.overlaps.insert(p.path.clone(), shared(60));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(!o.contains("shared files") && !o.contains("file0.ts"), "sidebar stays focused on sessions");
-        let lines = hydra::side_lines(&app, &app.hy_model(), &app.theme);
+        let lines = screen::side_lines(&app, &app.screen_model(), &app.theme);
         assert!(lines.len() < 20, "the sidebar stays short: {} lines", lines.len());
         // A couple are still available through the Inbox.
-        app.hy.overlaps.insert(p.path.clone(), shared(2));
+        app.screen.overlaps.insert(p.path.clone(), shared(2));
         let o = draw(&mut app, 160, 45);
         assert!(!o.contains("file0.ts") && !o.contains("file1.ts"));
         // In the Inbox they come after what needs you and what finished, however many.
-        app.hy.overlaps.insert(p.path.clone(), shared(60));
-        let rows = hydra::goto_rows(&app.hy_model(), "", hydra::heads_up(&app).len());
-        let at = |want: &str| rows.iter().position(|r| matches!(r, hydra::GoRow::Head(h) if *h == want)).unwrap_or_else(|| panic!("{want} is a section"));
+        app.screen.overlaps.insert(p.path.clone(), shared(60));
+        let rows = screen::goto_rows(&app.screen_model(), "", screen::heads_up(&app).len());
+        let at = |want: &str| rows.iter().position(|r| matches!(r, screen::GoRow::Head(h) if *h == want)).unwrap_or_else(|| panic!("{want} is a section"));
         assert!(at("NEEDS YOU") < at("JUST FINISHED") && at("JUST FINISHED") < at("HEADS UP"));
     }
 
@@ -3164,12 +3186,12 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let key = |app: &mut App, c: char| app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
         // The fixture's repo and its two checkouts (the main folder, rate-limit).
-        let model = app.hy_model();
+        let model = app.screen_model();
         let p = model.iter().find(|p| p.git && p.wts.len() >= 2).expect("a repo with a worktree").clone();
         let names: Vec<String> = p.wts.iter().map(|w| w.name.clone()).collect();
         let o = crate::client::overlap::Overlap { file: "src/checkout.ts".into(), checkouts: names.clone() };
-        app.hy.overlaps.insert(p.path.clone(), vec![o]);
-        app.hy_fresh();
+        app.screen.overlaps.insert(p.path.clone(), vec![o]);
+        app.screen_fresh();
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(!o.contains("checkout.ts"), "worktree overlap labels stay out of the sidebar");
@@ -3179,8 +3201,8 @@ mod hydra_tests {
         show(&o);
         assert!(o.contains("HEADS UP") && o.contains("both changed checkout.ts") && o.contains("both diffs") && o.contains(" dismiss"), "the heads-up row");
         let Mode::GoTo { query, .. } = app.mode.clone() else { panic!("the Inbox") };
-        let rows = hydra::goto_rows(&app.hy_model(), &query, 1);
-        let at = rows.iter().position(|r| matches!(r, hydra::GoRow::Heads(_))).unwrap();
+        let rows = screen::goto_rows(&app.screen_model(), &query, 1);
+        let at = rows.iter().position(|r| matches!(r, screen::GoRow::Heads(_))).unwrap();
         app.mode = Mode::GoTo { query: String::new(), sel: at };
         // d: both diffs in the sheet.
         key(&mut app, 'd');
@@ -3198,10 +3220,10 @@ mod hydra_tests {
         // A finished worktree: merge is asked in its row; Esc backs out.
         let t = app.snap.terms.get_mut(&2).unwrap();
         t.status = Status::Done;
-        app.hy_fresh();
+        app.screen_fresh();
         app.act(Action::Jump);
-        let rows = hydra::goto_rows(&app.hy_model(), "", 0);
-        let done = rows.iter().position(|r| matches!(r, hydra::GoRow::Done(_))).expect("a finished row");
+        let rows = screen::goto_rows(&app.screen_model(), "", 0);
+        let done = rows.iter().position(|r| matches!(r, screen::GoRow::Done(_))).expect("a finished row");
         app.mode = Mode::GoTo { query: String::new(), sel: done };
         let o = draw(&mut app, 160, 45);
         show(&o);
@@ -3211,7 +3233,7 @@ mod hydra_tests {
         show(&o);
         assert!(o.contains("Merge into main, then remove the worktree and branch?") && o.contains("Cancel"), "asked in the row");
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(app.hy.inbox_confirm.is_none() && matches!(app.mode, Mode::GoTo { .. }), "Esc: not merged, still in the Inbox");
+        assert!(app.screen.inbox_confirm.is_none() && matches!(app.mode, Mode::GoTo { .. }), "Esc: not merged, still in the Inbox");
     }
 
     #[test]
@@ -3219,20 +3241,20 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.act(Action::Jump);
         let t = app.theme.clone();
-        let model = app.hy_model();
+        let model = app.screen_model();
         let col = Rect { x: 40, y: 4, width: 118, height: 40 };
         for step in 0..=20 {
             let frac = step as f32 / 20.0;
-            let (sheet, panes) = hydra::split_for_sheet(160, col, 2, frac);
+            let (sheet, panes) = screen::split_for_sheet(160, col, 2, frac);
             assert!(panes.width + sheet.width <= col.width, "they share the column at {frac}");
             let mut buf = ratatui::buffer::Buffer::empty(Rect::new(0, 0, 160, 45));
-            if sheet.width >= hydra::SHEET_DRAWN_FROM {
-                hydra::draw_sheet(&mut app, &mut buf, sheet, hydra::SheetKind::Inbox, &t);
+            if sheet.width >= screen::SHEET_DRAWN_FROM {
+                screen::draw_sheet(&mut app, &mut buf, sheet, screen::SheetKind::Inbox, &t);
             }
         }
         for w in 12..=40 {
             let mut buf = ratatui::buffer::Buffer::empty(Rect::new(0, 0, 160, 45));
-            hydra::draw_side(&mut app, &mut buf, Rect { x: 1, y: 1, width: w, height: 43 }, &model, &t);
+            screen::draw_side(&mut app, &mut buf, Rect { x: 1, y: 1, width: w, height: 43 }, &model, &t);
         }
     }
 
@@ -3265,7 +3287,7 @@ mod hydra_tests {
     #[test]
     fn general_settings_are_in_sections_under_one_version_line() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("up to date") && o.contains("u check now"), "one version line");
@@ -3286,7 +3308,7 @@ mod hydra_tests {
     fn a_finished_note_says_the_name_you_gave_the_session() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.snap.terms.get_mut(&2).unwrap().label = "Checkout rewrite".into();
-        app.hy_fresh();
+        app.screen_fresh();
         app.snap.terms.get_mut(&2).unwrap().status = Status::Done;
         app.on_server(crate::protocol::ServerMsg::Attention { term: 2, status: Status::Done });
         app.settling.get_mut(&2).unwrap().1 = Instant::now() - Duration::from_millis(1);
@@ -3310,7 +3332,7 @@ mod hydra_tests {
             (pane_lit, sheet_lit)
         };
         assert_eq!(lit_edges(&mut app), (true, false), "the pane has the keys: its edge is lit");
-        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 0, sel: 1, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 1, editing: None, capturing: false, scroll: 0 }));
         assert_eq!(lit_edges(&mut app), (false, false), "the modal dims the workspace and overlays it without creating a sheet edge");
     }
 
@@ -3322,7 +3344,7 @@ mod hydra_tests {
         let buf = term.backend().buffer().clone();
         // Flush edges: the sidebar card's left edge is a line on the cell's inner side, on the
         // desk's ground; the card's colour starts in the very next cell (no strip, no spill).
-        let side = app.hy.side_rect;
+        let side = app.screen.side_rect;
         let y = side.y + side.height / 2;
         assert_eq!(buf[(side.x, y)].symbol(), "▕", "the line hugs the card");
         assert_eq!(buf[(side.x, y)].bg, buf[(side.x + 1, y)].bg, "one ground: the line, not a second grey, marks the card");
@@ -3340,12 +3362,12 @@ mod hydra_tests {
     fn agent_names_wear_their_state() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // Nothing lit by the keyboard, and the window on neither of them.
-        app.hy.cursor = None;
+        app.screen.cursor = None;
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
         // The first letter of a sidebar row's name (the sidebar only, not the card titles).
-        let side = app.hy.side_rect.right();
+        let side = app.screen.side_rect.right();
         let name_at = |name: &str| {
             (0..45u16).find_map(|y| {
                 let row: String = (0..side).map(|x| buf[(x, y)].symbol().to_string()).collect();
@@ -3364,16 +3386,16 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(200, 50);
         let a = app.focused().unwrap();
         let b = app.snap.terms.keys().copied().find(|t| *t != a).unwrap();
-        app.hy.tabs.clear();
-        app.hy_place(a, None);
-        app.hy.pending_split = Some((a, Instant::now()));
-        app.hy_place(b, Some(a));
+        app.screen.tabs.clear();
+        app.screen_place(a, None);
+        app.screen.pending_split = Some((a, Instant::now()));
+        app.screen_place(b, Some(a));
         let mouse = |app: &mut App, kind: MouseEventKind, x: u16, y: u16| {
             app.on_mouse(MouseEvent { kind, column: x, row: y, modifiers: KeyModifiers::NONE });
             draw(app, 200, 50);
         };
         // The grab area is the gutter, the line its middle column.
-        let line_x = |app: &App| app.hits.iter().find_map(|(r, h)| matches!(h, Hit::Hy(hydra::HyHit::Divider(_))).then_some(r.x + 1));
+        let line_x = |app: &App| app.hits.iter().find_map(|(r, h)| matches!(h, Hit::Screen(screen::ScreenHit::Divider(_))).then_some(r.x + 1));
         // Both programs want the mouse (full-screen agents do).
         for t in [a, b] {
             let mut p = vt100::Parser::new(40, 90, 0);
@@ -3400,7 +3422,7 @@ mod hydra_tests {
         for status in [Status::Working, Status::Blocked, Status::Idle, Status::Done] {
             let t = app.snap.terms.get_mut(&2).unwrap();
             (t.status, t.bell) = (status, true);
-            app.hy_fresh();
+            app.screen_fresh();
             let o = draw(&mut app, 120, 30); show(&o);
             let row = o.lines().find(|line| line.contains("rate")).unwrap();
             assert!(!row.contains('♪'), "an agent keeps its {status:?} status when it rings: {row}");
@@ -3420,7 +3442,7 @@ mod hydra_tests {
         // codex finished and rang the bell (it does both), and you're on another session.
         let t = app.snap.terms.get_mut(&2).unwrap();
         (t.status, t.bell) = (Status::Done, true);
-        app.hy_fresh();
+        app.screen_fresh();
         let mut term = Terminal::new(TestBackend::new(120, 30)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
@@ -3508,7 +3530,7 @@ mod hydra_tests {
     }
 
     #[test]
-    fn borrowed_screens_look_like_hydra() {
+    fn borrowed_screens_look_like_the_default() {
         for (a, title) in [(Action::RenameWorkspace, "Rename"), (Action::NewWorktree(None), "Worktrees")] {
             let (_, mut app) = super::design_tests::render_with(120, 34);
             app.act(a);
@@ -3523,8 +3545,8 @@ mod hydra_tests {
     fn options_come_from_the_screen() {
         let mut p = vt100::Parser::new(10, 60, 0);
         p.process(b"Question: use WebKit or Safari?\r\n  1. WebKit build\r\n  2. Safari driver");
-        assert_eq!(hydra::options(Some(&p)), vec!["WebKit build".to_string(), "Safari driver".to_string()]);
-        assert_eq!(hydra::options(None), vec!["Yes", "Always", "No"]);
+        assert_eq!(screen::options(Some(&p)), vec!["WebKit build".to_string(), "Safari driver".to_string()]);
+        assert_eq!(screen::options(None), vec!["Yes", "Always", "No"]);
     }
 }
 
@@ -3546,9 +3568,9 @@ mod settings_splash_tests {
         app.splash = true;
         let splash = draw(&mut app);
         app.splash = false;
-        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 0, sel: 1, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 1, editing: None, capturing: false, scroll: 0 }));
         let settings = draw(&mut app);
-        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 2, sel: 8, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 2, sel: 8, editing: None, capturing: false, scroll: 0 }));
         let keys = draw(&mut app);
         if std::env::var("SESHI_SHOW").is_ok() {
             println!("{splash}\n{settings}\n{keys}");
@@ -3573,7 +3595,7 @@ mod shots {
     use ratatui::backend::TestBackend;
 
     fn cells(app: &mut App, w: u16, h: u16, name: &str, dir: &std::path::Path) {
-        app.hy_fresh();
+        app.screen_fresh();
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| render::draw(app, f)).unwrap();
         let buf = term.backend().buffer().clone();
@@ -3605,8 +3627,8 @@ mod shots {
         let (_, mut app) = render_with(160, 45);
         let mut split = crate::layout::Node::Leaf(1);
         split.split(1, crate::layout::Dir::Right, 3);
-        app.hy.tabs[0].layout = split;
-        app.hy.tabs[0].focus = 1;
+        app.screen.tabs[0].layout = split;
+        app.screen.tabs[0].focus = 1;
         cells(&mut app, 160, 45, "05-split", &dir);
         let (_, mut app) = render_with(160, 45);
         app.mode = Mode::GoTo { query: String::new(), sel: 0 };
@@ -3679,10 +3701,10 @@ mod check_row_tests {
             app.snap.workspaces[0].tabs.push(TabInfo { id: 30 + id, name: String::new(), layout: Node::Leaf(id), focus: id });
             app.parsers.insert(id, vt100::Parser::new(20, 80, 0));
         }
-        app.hy.tabs.clear();
-        app.hy.last_focus = None;
-        app.hy_sync();
-        app.hy.cursor = None;
+        app.screen.tabs.clear();
+        app.screen.last_focus = None;
+        app.screen_sync();
+        app.screen.cursor = None;
         app
     }
 
@@ -3691,7 +3713,7 @@ mod check_row_tests {
     }
 
     fn render(app: &mut App, w: u16, h: u16) -> Buffer {
-        app.hy_fresh();
+        app.screen_fresh();
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| render::draw(app, f)).unwrap();
         term.backend().buffer().clone()
@@ -3707,7 +3729,7 @@ mod check_row_tests {
     }
 
     fn side_text(buf: &Buffer, app: &App, y: u16) -> String {
-        let r = app.hy.side_rect;
+        let r = app.screen.side_rect;
         (r.x..r.right()).map(|x| buf[(x, y)].symbol()).collect()
     }
 
@@ -3716,7 +3738,7 @@ mod check_row_tests {
     }
 
     fn cell_with<'a>(buf: &'a Buffer, app: &App, y: u16, symbol: &str) -> &'a ratatui::buffer::Cell {
-        let r = app.hy.side_rect;
+        let r = app.screen.side_rect;
         (r.x..r.right()).map(|x| &buf[(x, y)]).find(|c| c.symbol() == symbol).unwrap_or_else(|| panic!("no {symbol} on row {y}"))
     }
 
@@ -3735,7 +3757,7 @@ mod check_row_tests {
                     let y = row_of(&buf, &app, NAME);
                     let at = label(layout, w, h);
                     assert!(side_text(&buf, &app, y).contains(c.glyph), "{at} {:?}: glyph {} on {:?}", c.state, c.glyph, side_text(&buf, &app, y));
-                    if w >= hydra::NARROW {
+                    if w >= screen::NARROW {
                         assert!(side_text(&buf, &app, y + 1).contains(c.words), "{at} {:?}: {:?} under the row, got {:?}", c.state, c.words, side_text(&buf, &app, y + 1));
                     } else {
                         let all: String = (0..h).map(|y| side_text(&buf, &app, y)).collect();
@@ -3782,7 +3804,7 @@ mod check_row_tests {
                 let mut app = one(w, h, layout, c);
                 let buf = render(&mut app, w, h);
                 let y = row_of(&buf, &app, NAME);
-                let bar_x = app.hy.side_rect.x + 1;
+                let bar_x = app.screen.side_rect.x + 1;
                 for line in [y, y + 1] {
                     let cell = &buf[(bar_x, line)];
                     let red = cell.symbol() == EDGE_BAR && cell.fg == app.theme.err;
@@ -3804,6 +3826,33 @@ mod check_row_tests {
         assert!(ask_line.contains('●') && !ask_line.contains('✕'), "{ask_line:?}");
         assert!(side_text(&buf, &app, bad + 1).contains("failed:"), "failed says so in words");
         assert!(!side_text(&buf, &app, bad + 1).contains("needs you"));
+    }
+
+    #[test]
+    fn a_check_stays_under_its_own_row_when_sessions_sit_in_different_folders() {
+        for layout in LAYOUTS {
+            for (w, h) in [(100, 30), (160, 45)] {
+                let failed = info(CheckState::Failed, Some(1));
+                let mut app = scene(w, h, layout, &[("t-far", Status::Done, Some(failed)), ("t-bare", Status::Done, None)]);
+                let far = app.snap.terms.get_mut(&20).unwrap();
+                (far.root, far.top, far.cwd) = (None, None, std::path::PathBuf::from("/tmp/elsewhere"));
+                app.screen_sync();
+                let buf = render(&mut app, w, h);
+                show(&buf, &format!("grouped {}", label(layout, w, h)));
+                let at = label(layout, w, h);
+                let (far_y, bare_y) = (row_of(&buf, &app, "t-far"), row_of(&buf, &app, "t-bare"));
+                assert!(side_text(&buf, &app, far_y).contains('✕'), "{at}: glyph on its own row");
+                let wide = w >= screen::NARROW;
+                assert_eq!(side_text(&buf, &app, far_y + 1).contains("failed:"), wide, "{at}: sub-line directly under it, wide only");
+                let bar_x = app.screen.side_rect.x + 1;
+                for line in if wide { vec![far_y, far_y + 1] } else { vec![far_y] } {
+                    assert_eq!(buf[(bar_x, line)].symbol(), EDGE_BAR, "{at}: edge bar on line {line}");
+                }
+                let all: String = (bare_y..bare_y + 2).map(|y| side_text(&buf, &app, y)).collect();
+                assert!(!all.contains("failed:") && !all.contains(COMMAND), "{at}: a session with no check has no sub-line: {all:?}");
+                assert_ne!(buf[(bar_x, bare_y)].fg, app.theme.err, "{at}: no red bar on a session with no check");
+            }
+        }
     }
 
     #[test]
@@ -3831,7 +3880,7 @@ mod check_row_tests {
                 app.side_frac = 0.0;
                 let buf = render(&mut app, w, h);
                 show(&buf, &format!("rail {} {:?}", label(layout, w, h), c.state));
-                let r = app.hy.side_rect;
+                let r = app.screen.side_rect;
                 let found = (r.y..r.bottom()).any(|y| (r.x..r.right()).any(|x| buf[(x, y)].symbol() == c.glyph));
                 assert!(found, "{} {:?}: {} in the rail", label(layout, w, h), c.state, c.glyph);
             }
@@ -3891,7 +3940,7 @@ mod check_row_tests {
                 let rows = |check: Option<CheckInfo>| {
                     let mut app = scene(w, h, layout, &[(NAME, Status::Done, check), (AFTER, Status::Done, None)]);
                     let buf = render(&mut app, w, h);
-                    (row_of(&buf, &app, AFTER), app.hy.row_y.len())
+                    (row_of(&buf, &app, AFTER), app.screen.row_y.len())
                 };
                 let with = rows(Some(info(CheckState::Failed, Some(1))));
                 assert_eq!(with, rows(None), "{at}: a checked session takes the same rows as an unchecked one");
@@ -3905,16 +3954,16 @@ mod check_row_tests {
         for layout in LAYOUTS {
             let mut app = one(w, h, layout, &CASES[2]);
             app.mode = Mode::Side;
-            app.hy.cursor = Some(20);
+            app.screen.cursor = Some(20);
             let buf = render(&mut app, w, h);
             show(&buf, &format!("selected {}", label(layout, w, h)));
             let y = row_of(&buf, &app, NAME);
-            let x = app.hy.side_rect.x + 10;
+            let x = app.screen.side_rect.x + 10;
             assert_eq!(buf[(x, y)].bg, buf[(x, y + 1)].bg, "{}: one tint over both lines", label(layout, w, h));
             assert_ne!(buf[(x, y)].bg, buf[(x, y + 3)].bg, "{}: and not the rows below", label(layout, w, h));
 
             let mut app = one(w, h, layout, &CASES[1]);
-            app.hover = Some(Position { x: app.hy.side_rect.x + 10, y });
+            app.hover = Some(Position { x: app.screen.side_rect.x + 10, y });
             let buf = render(&mut app, w, h);
             show(&buf, &format!("hovered {}", label(layout, w, h)));
             assert_eq!(buf[(x, y)].bg, buf[(x, y + 1)].bg, "{}: hover tints both lines", label(layout, w, h));
@@ -3963,7 +4012,7 @@ mod check_why_tests {
     }
 
     fn draw(app: &mut App, w: u16, h: u16) -> String {
-        app.hy_fresh();
+        app.screen_fresh();
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| render::draw(app, f)).unwrap();
         let buf = term.backend().buffer().clone();
@@ -4150,7 +4199,7 @@ mod check_sheet_tests {
         layout(&mut app);
         let term = app.snap.terms.get_mut(&TERM).unwrap();
         (term.status, term.said, term.check) = (Status::Done, "tests pass".into(), Some(info));
-        app.hy_sync();
+        app.screen_sync();
         app.open_check_sheet(TERM);
         if let Some(text) = output {
             app.on_server(ServerMsg::Reply(Reply::Text(text.into())));
@@ -4159,7 +4208,7 @@ mod check_sheet_tests {
     }
 
     fn render(app: &mut App, w: u16, h: u16) -> Buffer {
-        app.hy_fresh();
+        app.screen_fresh();
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| render::draw(app, f)).unwrap();
         term.backend().buffer().clone()
@@ -4189,7 +4238,7 @@ mod check_sheet_tests {
     /// sidebar beside it does not interleave.
     fn sheet_words(app: &mut App, w: u16, h: u16) -> String {
         let o = draw(app, w, h);
-        let g = hydra::grid(app, Rect::new(0, 0, w, h));
+        let g = screen::grid(app, Rect::new(0, 0, w, h));
         let cols: String = o.lines().map(|l| l.chars().skip(g.sheet.x as usize).take(g.sheet.width as usize).collect::<String>() + "\n").collect();
         words(&cols.replace(['▕', '▏', '▁', '▔', '│', '┃', '▎'], " "))
     }
@@ -4262,7 +4311,7 @@ mod check_sheet_tests {
                 info.command = command.into();
                 let mut app = open(w, h, layout, info, Some(SHORT_OUTPUT));
                 let o = draw(&mut app, w, h);
-                let g = hydra::grid(&app, Rect::new(0, 0, w, h));
+                let g = screen::grid(&app, Rect::new(0, 0, w, h));
                 let header = o
                     .lines()
                     .map(|l| l.chars().skip(g.sheet.x as usize).take(g.sheet.width as usize).collect::<String>())
@@ -4380,7 +4429,7 @@ mod check_sheet_tests {
             let sheet = |w: u16, h: u16| {
                 let mut app = open(w, h, layout, check(CheckState::Failed, Some(1)), Some(SHORT_OUTPUT));
                 draw(&mut app, w, h);
-                let g = hydra::grid(&app, Rect::new(0, 0, w, h));
+                let g = screen::grid(&app, Rect::new(0, 0, w, h));
                 (g.sheet.width, g.panes.width)
             };
             let (narrow, left) = sheet(100, 30);
@@ -4391,7 +4440,7 @@ mod check_sheet_tests {
             draw(&mut app, 100, 30);
             press(&mut app, KeyCode::Esc);
             assert!(app.view.is_none(), "{name}: Esc returns");
-            let g = hydra::grid(&app, Rect::new(0, 0, 100, 30));
+            let g = screen::grid(&app, Rect::new(0, 0, 100, 30));
             assert!(g.sheet.width == 0 && g.panes.width > 0, "{name}: the panes are back");
         }
     }
@@ -4419,10 +4468,10 @@ mod check_sheet_tests {
         for key in ['r', 'O', 'f'] {
             assert!(has(&app, Hit::Button(Btn::ViewKey(key))), "{key} is a button");
         }
-        assert!(has(&app, Hit::Hy(hydra::HyHit::ViewClose)), "the ✕");
+        assert!(has(&app, Hit::Screen(screen::ScreenHit::ViewClose)), "the ✕");
         app.on_button(Hit::Button(Btn::ViewKey('f')), false);
         assert!(sheet_words(&mut app, 160, 45).contains("1 line 1 "), "clicking full output opens it");
-        app.on_hy_hit(hydra::HyHit::ViewClose, false);
+        app.on_hy_hit(screen::ScreenHit::ViewClose, false);
         assert!(app.view.is_none());
     }
 
@@ -4474,11 +4523,11 @@ mod check_sheet_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let term = app.snap.terms.get_mut(&TERM).unwrap();
         (term.status, term.check) = (status, state.map(|s| check(s, Some(1))));
-        app.hy_sync();
+        app.screen_sync();
         draw(&mut app, 160, 45);
         app.mode = Mode::Side;
-        app.hy.cursor = Some(TERM);
-        app.hy.cursor_proj = None;
+        app.screen.cursor = Some(TERM);
+        app.screen.cursor_proj = None;
         press(&mut app, KeyCode::Enter);
         app
     }
@@ -4558,15 +4607,15 @@ mod check_inbox_tests {
             app.snap.workspaces[0].tabs.push(TabInfo { id: 30 + id, name: String::new(), layout: Node::Leaf(id), focus: id });
             app.parsers.insert(id, vt100::Parser::new(20, 80, 0));
         }
-        app.hy.tabs.clear();
-        app.hy.last_focus = None;
-        app.hy_sync();
-        app.hy.cursor = None;
+        app.screen.tabs.clear();
+        app.screen.last_focus = None;
+        app.screen_sync();
+        app.screen.cursor = None;
         app
     }
 
     fn buffer(app: &mut App, w: u16, h: u16) -> Buffer {
-        app.hy_fresh();
+        app.screen_fresh();
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| render::draw(app, f)).unwrap();
         term.backend().buffer().clone()
@@ -4593,12 +4642,12 @@ mod check_inbox_tests {
         frame.iter().position(|l| l.contains(needle))
     }
 
-    fn rows(app: &App) -> Vec<hydra::GoRow> {
-        hydra::goto_rows(&app.hy_model(), "", 0)
+    fn rows(app: &App) -> Vec<screen::GoRow> {
+        screen::goto_rows(&app.screen_model(), "", 0)
     }
 
-    fn heads(rows: &[hydra::GoRow]) -> Vec<&'static str> {
-        rows.iter().filter_map(|r| if let hydra::GoRow::Head(h) = r { Some(*h) } else { None }).collect()
+    fn heads(rows: &[screen::GoRow]) -> Vec<&'static str> {
+        rows.iter().filter_map(|r| if let screen::GoRow::Head(h) = r { Some(*h) } else { None }).collect()
     }
 
     fn label(layout: (&str, &str), w: u16, h: u16) -> String {
@@ -4619,7 +4668,7 @@ mod check_inbox_tests {
         let app = scene(160, 45, LAYOUTS[0], &extra);
         let rows = rows(&app);
         assert_eq!(heads(&rows), ["NEEDS YOU", FAILED, NOT_RUN, FINISHED]);
-        use hydra::GoRow::*;
+        use screen::GoRow::*;
         let section = |head: &str| {
             let from = rows.iter().position(|r| matches!(r, Head(h) if *h == head)).unwrap() + 1;
             rows[from..].iter().take_while(|r| !matches!(r, Head(_))).cloned().collect::<Vec<_>>()
@@ -4636,7 +4685,7 @@ mod check_inbox_tests {
         let app = scene(160, 45, LAYOUTS[0], &extra);
         let rows = rows(&app);
         assert_eq!(heads(&rows), ["NEEDS YOU", FINISHED], "the old result is about an older turn");
-        assert!(rows.contains(&hydra::GoRow::Ask(21)) && !rows.iter().any(|r| matches!(r, hydra::GoRow::Failed(_))));
+        assert!(rows.contains(&screen::GoRow::Ask(21)) && !rows.iter().any(|r| matches!(r, screen::GoRow::Failed(_))));
     }
 
     #[test]
@@ -4647,7 +4696,7 @@ mod check_inbox_tests {
                 let at_ = label(layout, w, h);
                 let mut app = scene(w, h, layout, &none);
                 assert_eq!(heads(&rows(&app)), ["NEEDS YOU", FINISHED], "{at_}");
-                let sidebar = app.hy.side_rect.right();
+                let sidebar = app.screen.side_rect.right();
                 let baseline = inbox(&mut app, w, h);
                 let text = baseline.join("\n");
                 assert!(!text.contains(FAILED) && !text.contains(NOT_RUN) && !text.contains(COMMAND), "{at_}: no check text\n{text}");
@@ -4725,8 +4774,8 @@ mod check_inbox_tests {
                 let at_ = label(layout, w, h);
                 let mut app = scene(w, h, layout, &many);
                 let rows = rows(&app);
-                let first = |p: fn(&hydra::GoRow) -> bool| rows.iter().position(p).unwrap();
-                assert!(first(|r| matches!(r, hydra::GoRow::Ask(_))) < first(|r| matches!(r, hydra::GoRow::Failed(_))), "{at_}: rows");
+                let first = |p: fn(&screen::GoRow) -> bool| rows.iter().position(p).unwrap();
+                assert!(first(|r| matches!(r, screen::GoRow::Ask(_))) < first(|r| matches!(r, screen::GoRow::Failed(_))), "{at_}: rows");
                 let frame = inbox(&mut app, w, h);
                 let (q, f) = (at(&frame, QUESTION), at(&frame, FAILED));
                 assert!(q.is_some() && f.is_some() && q < f, "{at_}: the question is above the failures\n{}", frame.join("\n"));
@@ -4739,7 +4788,7 @@ mod check_inbox_tests {
         let many: Vec<Extra> = ["a1", "b2", "c3", "d4", "e5", "f6"].iter().map(|n| (*n, Status::Done, failed())).collect();
         for layout in LAYOUTS {
             let mut app = scene(80, 24, layout, &many);
-            let last = rows(&app).iter().rposition(|r| matches!(r, hydra::GoRow::Failed(_))).unwrap();
+            let last = rows(&app).iter().rposition(|r| matches!(r, screen::GoRow::Failed(_))).unwrap();
             app.act(Action::Jump);
             app.mode = Mode::GoTo { query: String::new(), sel: last };
             let buf = buffer(&mut app, 80, 24);
@@ -4762,8 +4811,8 @@ mod check_inbox_tests {
             }
             assert!(!text.contains(NOT_RUN), "{at_}: no group without rows");
             // A failure reached by typing is still found as a session.
-            let rows = hydra::goto_rows(&app.hy_model(), "fix-footer", 0);
-            assert!(matches!(rows.as_slice(), [hydra::GoRow::Head("FOUND"), hydra::GoRow::Sess(_, 20)]), "{at_}: {rows:?}");
+            let rows = screen::goto_rows(&app.screen_model(), "fix-footer", 0);
+            assert!(matches!(rows.as_slice(), [screen::GoRow::Head("FOUND"), screen::GoRow::Sess(_, 20)]), "{at_}: {rows:?}");
         }
     }
 
@@ -4774,7 +4823,7 @@ mod check_inbox_tests {
                 let mut app = scene(100, 30, layout, &[("fix-footer", Status::Done, state)]);
                 let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
                 app.out = tx;
-                let sel = rows(&app).iter().position(|r| matches!(r, hydra::GoRow::Failed(_) | hydra::GoRow::NotRun(_))).unwrap();
+                let sel = rows(&app).iter().position(|r| matches!(r, screen::GoRow::Failed(_) | screen::GoRow::NotRun(_))).unwrap();
                 app.act(Action::Jump);
                 app.mode = Mode::GoTo { query: String::new(), sel };
                 app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
@@ -4797,14 +4846,14 @@ mod check_inbox_tests {
             let Mode::GoTo { sel, .. } = app.mode.clone() else { panic!("still in the Inbox") };
             seen.push(rows(&app)[sel].clone());
         }
-        assert_eq!(seen, [hydra::GoRow::Ask(1), hydra::GoRow::Failed(20), hydra::GoRow::NotRun(21)]);
+        assert_eq!(seen, [screen::GoRow::Ask(1), screen::GoRow::Failed(20), screen::GoRow::NotRun(21)]);
     }
 }
 
 mod check_settings_tests {
     use super::*;
     use crate::config::{CHECK_TIMEOUT_S_DEFAULT, CheckDef};
-    use crate::client::hydra::check_settings::{CheckEdit, step_timeout};
+    use crate::client::screen::check_settings::{CheckEdit, step_timeout};
     use crate::protocol::{CheckInfo, CheckState};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -4816,7 +4865,7 @@ mod check_settings_tests {
     }
 
     fn draw(app: &mut App, w: u16, h: u16) -> String {
-        app.hy_fresh();
+        app.screen_fresh();
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| render::draw(app, f)).unwrap();
         let buf = term.backend().buffer().clone();
@@ -4845,7 +4894,7 @@ mod check_settings_tests {
     }
 
     fn open_check_page(app: &mut App, sel: usize) {
-        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: check_page(), sel, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: check_page(), sel, editing: None, capturing: false, scroll: 0 }));
     }
 
     fn with_check(app: &mut App, command: &str, timeout_s: u64) {
@@ -4935,7 +4984,7 @@ mod check_settings_tests {
                     with_check(&mut app, "npm test", CHECK_TIMEOUT_S_DEFAULT);
                 }
                 let normal = draw(&mut app, 100, 30);
-                app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
+                app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
                 (normal, draw(&mut app, 100, 30))
             };
             let (plain, with) = (frames(false), frames(true));
@@ -5018,7 +5067,7 @@ mod check_settings_tests {
         let (mut app, _rx) = app_with_channel();
         open_check_page(&mut app, 0);
         app.check_saved(Err(anyhow::anyhow!("disk full")), Some("pnpm test".into()));
-        assert!(matches!(&app.mode, Mode::HySettings(v) if v.editing.as_deref() == Some("pnpm test")), "the draft is still being edited");
+        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.as_deref() == Some("pnpm test")), "the draft is still being edited");
         let (msg, _, error) = app.notice.clone().expect("a toast");
         assert!(error && msg.contains("couldn't save") && msg.contains("disk full"), "{msg}");
         assert!(app.cfg.check.is_empty(), "nothing was applied");
@@ -5037,7 +5086,7 @@ mod check_settings_tests {
             sent.push(m);
         }
         assert!(sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::ReloadConfig))), "the daemon is told to reload");
-        assert!(matches!(&app.mode, Mode::HySettings(v) if v.editing.is_none()), "a saved draft is no longer a draft");
+        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.is_none()), "a saved draft is no longer a draft");
     }
 
     #[test]
@@ -5046,10 +5095,10 @@ mod check_settings_tests {
         with_check(&mut app, "npm test", 600);
         open_check_page(&mut app, 0);
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::HySettings(v) if v.editing.as_deref() == Some("npm test")), "Enter edits the command");
+        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.as_deref() == Some("npm test")), "Enter edits the command");
         assert!(draw(&mut app, 100, 30).contains("npm test█"), "the draft shows with its cursor");
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::HySettings(v) if v.editing.is_none()), "Esc drops the draft");
+        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.is_none()), "Esc drops the draft");
         assert_eq!(app.cfg.check[0].command, "npm test");
     }
 
@@ -5072,7 +5121,7 @@ mod check_settings_tests {
         app.snap.active_ws = None;
         open_check_page(&mut app, 0);
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::HySettings(v) if v.editing.is_none()));
+        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.is_none()));
         let (msg, _, _) = app.notice.clone().expect("a toast");
         assert!(msg.contains("project"), "{msg}");
     }
@@ -5135,7 +5184,7 @@ mod check_wiring_tests {
         app.out = tx;
         let t = app.snap.terms.get_mut(&TERM).unwrap();
         (t.status, t.said, t.check) = (status, "tests pass".into(), check);
-        app.hy_sync();
+        app.screen_sync();
         (app, rx)
     }
 
@@ -5152,7 +5201,7 @@ mod check_wiring_tests {
     }
 
     fn draw(app: &mut App, w: u16, h: u16) -> String {
-        app.hy_fresh();
+        app.screen_fresh();
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| render::draw(app, f)).unwrap();
         let buf = term.backend().buffer().clone();
@@ -5255,7 +5304,7 @@ mod check_wiring_tests {
     fn pick(app: &mut App, label: &str) {
         app.menu_for_session(TERM, (20, 10));
         let (items, keys) = match &app.mode {
-            Mode::HyMenu(m) => (m.items.clone(), menu_keys(&m.items)),
+            Mode::ScreenMenu(m) => (m.items.clone(), menu_keys(&m.items)),
             other => panic!("no menu: {other:?}"),
         };
         let i = items.iter().position(|(l, _)| l == label).unwrap_or_else(|| panic!("no {label} in {items:?}"));
@@ -5299,7 +5348,7 @@ mod check_wiring_tests {
         let (mut app, mut rx) = done(CheckState::Failed);
         app.menu_for_session(TERM, (20, 10));
         app.snap.terms.get_mut(&TERM).unwrap().check = Some(info(CheckState::Passed));
-        app.hy_sync();
+        app.screen_sync();
         app.menu_act(Act::OverrideCheck(TERM, String::new()));
         assert!(commands(&mut rx).is_empty() && !matches!(app.mode, Mode::Confirm(_)), "{:?}", app.mode);
         assert!(toast(&app).0.contains("failed"), "it says why");
@@ -5370,12 +5419,12 @@ mod check_wiring_tests {
         let (mut app, mut rx) = done(CheckState::Failed);
         app.open_check_sheet(TERM);
         ask_override(&mut app);
-        click(&mut app, 100, 30, Hit::Hy(hydra::HyHit::ConfirmNo));
+        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::ConfirmNo));
         assert_eq!((app.mode.clone(), commands(&mut rx).len()), (Mode::Normal, 0), "Cancel");
         assert!(matches!(app.view, Some(View::Check(_))), "the sheet is still open behind it");
         ask_override(&mut app);
         typed(&mut app, "by mouse");
-        click(&mut app, 100, 30, Hit::Hy(hydra::HyHit::ConfirmYes));
+        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::ConfirmYes));
         assert_eq!(overrides(&commands(&mut rx)), ["by mouse"]);
         assert!(toast(&app).0.contains("overridden"));
     }
@@ -5451,7 +5500,7 @@ mod check_wiring_tests {
         assert_eq!(rerun_of(&commands(&mut rx)), 1);
         assert!(toast(&app).0.contains("queued"), "{}", toast(&app).0);
         app.snap.terms.get_mut(&TERM).unwrap().check.as_mut().unwrap().rerun_queued = true;
-        app.hy_sync();
+        app.screen_sync();
         assert!(words(&draw(&mut app, 100, 30)).contains("re-run queued"), "the sheet says it too");
         press(&mut app, KeyCode::Char('r'));
         assert_eq!(rerun_of(&commands(&mut rx)), 0, "already queued: nothing more is sent");
@@ -5468,7 +5517,7 @@ mod check_wiring_tests {
         let mut running = info(CheckState::Checking);
         running.exit_code = None;
         app.snap.terms.get_mut(&TERM).unwrap().check = Some(running);
-        app.hy_sync();
+        app.screen_sync();
         app.open_check_sheet(TERM);
         press(&mut app, KeyCode::Esc);
         let o = draw(&mut app, 160, 45);
@@ -5532,8 +5581,8 @@ mod check_wiring_tests {
         }
         for _ in 0..8 {
             let Mode::GoTo { sel, .. } = &app.mode else { panic!("no inbox: {:?}", app.mode) };
-            let rows = hydra::goto_rows(&app.hy_model(), "", 0);
-            if matches!(rows.get(*sel), Some(hydra::GoRow::Failed(TERM))) {
+            let rows = screen::goto_rows(&app.screen_model(), "", 0);
+            if matches!(rows.get(*sel), Some(screen::GoRow::Failed(TERM))) {
                 return;
             }
             press(app, KeyCode::Down);
@@ -5569,20 +5618,20 @@ mod check_wiring_tests {
         assert_eq!(rerun_of(&commands(&mut rx)), 1, "r");
         assert!(matches!(app.mode, Mode::GoTo { .. }), "the Inbox stays open");
         draw(&mut app, 100, 30);
-        click(&mut app, 100, 30, Hit::Hy(hydra::HyHit::InboxCheck(TERM, 'r')));
+        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::InboxCheck(TERM, 'r')));
         assert_eq!(rerun_of(&commands(&mut rx)), 1, "the Re-run button");
         press(&mut app, KeyCode::Char('O'));
         assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), "O");
         press(&mut app, KeyCode::Esc);
         goto_failed(&mut app);
-        click(&mut app, 100, 30, Hit::Hy(hydra::HyHit::InboxCheck(TERM, 'O')));
+        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::InboxCheck(TERM, 'O')));
         assert!(matches!(app.mode, Mode::Confirm(_)), "the Override… button");
         press(&mut app, KeyCode::Esc);
         goto_failed(&mut app);
         press(&mut app, KeyCode::Char('o'));
         assert!(matches!(&app.view, Some(View::Check(v)) if v.term == TERM) && app.mode == Mode::Normal, "o opens the output");
         goto_failed(&mut app);
-        click(&mut app, 100, 30, Hit::Hy(hydra::HyHit::InboxCheck(TERM, 'o')));
+        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::InboxCheck(TERM, 'o')));
         assert!(matches!(app.view, Some(View::Check(_))), "the Output button");
     }
 
@@ -5614,7 +5663,7 @@ mod check_wiring_tests {
 
     fn check_page(app: &mut App, sel: usize) {
         let cat = modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Check).unwrap();
-        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat, sel, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat, sel, editing: None, capturing: false, scroll: 0 }));
     }
 
     fn with_command(app: &mut App) {
@@ -5639,7 +5688,7 @@ mod check_wiring_tests {
 
     #[test]
     fn run_now_re_runs_the_latest_session_by_key_row_and_click() {
-        let run_row = crate::client::hydra::check_settings::CheckField::ALL.iter().position(|f| f.label() == "Run now").expect("a Run now row");
+        let run_row = crate::client::screen::check_settings::CheckField::ALL.iter().position(|f| f.label() == "Run now").expect("a Run now row");
         let (mut app, mut rx) = done(CheckState::Passed);
         with_command(&mut app);
         check_page(&mut app, 0);
@@ -5648,9 +5697,9 @@ mod check_wiring_tests {
         check_page(&mut app, run_row);
         press(&mut app, KeyCode::Enter);
         assert_eq!(rerun_of(&commands(&mut rx)), 1, "Enter on its row");
-        click(&mut app, 100, 30, Hit::Hy(hydra::HyHit::SetVal(run_row, usize::MAX)));
+        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::SetVal(run_row, usize::MAX)));
         assert_eq!(rerun_of(&commands(&mut rx)), 1, "a click on the button");
-        assert!(matches!(app.mode, Mode::HySettings(_)), "Settings stays open");
+        assert!(matches!(app.mode, Mode::ScreenSettings(_)), "Settings stays open");
     }
 
     #[test]
@@ -5680,7 +5729,7 @@ mod check_wiring_tests {
         check_page(&mut app, 0);
         press(&mut app, KeyCode::Enter);
         press(&mut app, KeyCode::Char('r'));
-        assert!(matches!(&app.mode, Mode::HySettings(v) if v.editing.as_deref() == Some("npm testr")));
+        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.as_deref() == Some("npm testr")));
         assert!(commands(&mut rx).is_empty());
     }
 }

@@ -412,18 +412,18 @@ Everything below is shipped on `main` unless marked.
 - Status detection: working / needs you / done (until seen) / idle, from screen patterns, OSC progress and agent hooks — shipped — `src/daemon/scan.rs`, `seshi hook` in `src/cli.rs`
 - Trusted status reports (process tree or `SESHI_PANE_TOKEN`) — shipped — `src/daemon/term.rs`, `src/cli.rs`
 - Agent kinds: Claude, Codex, Gemini, OpenCode, Cursor, Copilot, Amp, Qwen, Aider, Goose, Crush, Droid, Pi, Kiro, Grok, custom `[[agents]]` — shipped — `src/config.rs`
-- New agent task box (project, worktree, agent, model, effort), presets and recipes as its choices, prewarm — shipped — `src/client/hydra/dialogs.rs`, `src/client/recipes.rs`
+- New agent task box (project, worktree, agent, model, effort), presets and recipes as its choices, prewarm — shipped — `src/client/screen/dialogs.rs`, `src/client/recipes.rs`
 - Agents talk to agents (MCP server `seshi mcp`) — shipped — `src/mcp.rs`
 - `seshi send --wait`, `seshi wait`, `seshi read` — shipped — `src/cli.rs`
 - At most a set number of helpers working at once (`[mcp] helpers_at_once`) — shipped 0.25.0 — `Daemon::starting` in `src/daemon/mod.rs`
 - A commander runs a fleet: one agent starts, briefs and checks helpers, which sit under it in the sidebar — shipped in v0.20.0 — [intent](features/fleet/intent.md), #32–#38
 
 **The TUI (one shared session layout; ADR-0007, superseded by ADR-0012)**
-- Flat rendering style: square, full-bleed sidebar, tabs, panes and sheets; sidebar/pane focus zones, no global footer; shipped in v0.36.0; `src/client/hydra/screen.rs`, ADR-0012
-- Floating look: rounded cards with gaps, title and state in the border, unfocused cards faded, pill tabs, no app footer; floating or tiled, corners, gap, dim, focus border, pill ends in Settings — shipped by v0.30.1 — `src/client/hydra/card.rs`, `screen.rs`, ADR-0007
-- Sidebar card: projects → sessions, state glyph + name, branch · age, question under it, attention sort, helpers indented under the session that started them, keyboard and mouse, row letter keys, `a actions` / `, settings` foot — shipped — `src/client/hydra/screen.rs` `draw_side`
-- Panes: tabs as pills (named in their pill), any number of splits (grid for 3+), drag the gap between them, ✕ in the border — shipped — `src/client/hydra/screen.rs` `draw_session`
-- Inbox (what needs you first, type to go anywhere), command palette (plain-word commands), key map (searchable, second steps), actions list — shipped — `draw_goto`, `draw_palette`, `src/client/hydra/leader.rs`
+- Flat rendering style: square, full-bleed sidebar, tabs, panes and sheets; sidebar/pane focus zones, no global footer; shipped in v0.36.0; `src/client/screen/draw.rs`, ADR-0012
+- Floating look: rounded cards with gaps, title and state in the border, unfocused cards faded, pill tabs, no app footer; floating or tiled, corners, gap, dim, focus border, pill ends in Settings — shipped by v0.30.1 — `src/client/screen/card.rs`, `screen.rs`, ADR-0007
+- Sidebar card: projects → sessions, state glyph + name, branch · age, question under it, attention sort, helpers indented under the session that started them, keyboard and mouse, row letter keys, `a actions` / `, settings` foot — shipped — `src/client/screen/draw.rs` `draw_side`
+- Panes: tabs as pills (named in their pill), any number of splits (grid for 3+), drag the gap between them, ✕ in the border — shipped — `src/client/screen/draw.rs` `draw_session`
+- Inbox (what needs you first, type to go anywhere), command palette (plain-word commands), key map (searchable, second steps), actions list — shipped — `draw_goto`, `draw_palette`, `src/client/screen/leader.rs`
 - Right-click menus, confirm before closing, toasts — shipped — `src/client/menu.rs`
 - Splash: Resume / New shell here — shipped — `draw_splash`
 - Settings popup grouped by section, key rebinding, themes with contrast audit — shipped — `draw_settings`, `src/theme.rs`
@@ -432,7 +432,7 @@ Everything below is shipped on `main` unless marked.
 
 **Code and git**
 - Worktrees per agent, create / move / remove with hooks — shipped — `src/daemon/git.rs`, `src/project.rs`
-- Worktree clean-up: ones left behind are swept when nothing lives only there, and a list per repo says why each is still around and removes the ones you tick — shipped — `src/tidy.rs`, `src/daemon/worktrees.rs`, `src/client/hydra/tidy.rs`
+- Worktree clean-up: ones left behind are swept when nothing lives only there, and a list per repo says why each is still around and removes the ones you tick — shipped — `src/tidy.rs`, `src/daemon/worktrees.rs`, `src/client/screen/tidy.rs`
 - Files (tree, preview, in-place edit, external editor), find file, search code — shipped — `src/client/files.rs`, `src/client/find.rs`, `src/client/views.rs`
 - Changes (diff, review marks, commit, open a PR, git init offer), branch switcher — shipped — `src/client/branch.rs`, `src/client/views.rs`
 - Worktree hooks (`.seshi.toml` `on_create` / `on_remove`, run once allowed; `on_create` finishes before anything starts in the worktree) — shipped — `src/project.rs`, `Ev::WorktreeCreated` in `src/daemon/mod.rs`
@@ -440,17 +440,17 @@ Everything below is shipped on `main` unless marked.
 - Own worktree for `claude`/`codex` typed into a shell in a repo's main folder — shipped 0.9.12 — `seshi agent-dir`, `daemon/term.rs` `agent_functions`
 - Usage and limits meter, context per agent, continue after a limit — shipped 0.10.0 — `seshi statusline`, `src/daemon/usage.rs`
 - Automatic idle sleeping and its sleep/wake screen and animation: removed; legacy recovery remains only for sessions saved by older versions.
-- A session's share of the machine (CPU and memory) in its pane's title when it's large — shipped 0.25.0, moved off the sidebar row 0.26.2 — `src/daemon/scan.rs`, `load_note` in `src/client/hydra/screen.rs`
+- A session's share of the machine (CPU and memory) in its pane's title when it's large — shipped 0.25.0, moved off the sidebar row 0.26.2 — `src/daemon/scan.rs`, `load_note` in `src/client/screen/draw.rs`
 - Merge that cleans up (the worktree and its branch go) — shipped 0.11.0 — `src/client/view_keys.rs`
 
 **Identity**
 - Renamed hydra → Seshi: command, folders, `SESHI_*`, `.seshi.toml`, MCP, releases; one-time move of an old install — shipped by v0.30.1 — `config::migrate_old_names`, ADR-0008
-- Seshi Walnut (default), Seshi Night and Seshi Day themes; block SESHI wordmark on the splash — shipped by v0.30.1 — `src/theme.rs`, `src/client/hydra/splash.rs`
+- Seshi Walnut (default), Seshi Night and Seshi Day themes; block SESHI wordmark on the splash — shipped by v0.30.1 — `src/theme.rs`, `src/client/screen/splash.rs`
 
 **Extras**
 - Alert when an agent needs you: Seshi's two rising notes and an in-app notice; a desktop notification only with no window open. Completions stay quiet — `src/alert.rs`
 - Click a notification to jump to its session — shipped — `src/reveal.rs`, `src/alert.rs` (#19)
-- Sidebar groups sessions by where they work now (repo, or folder outside git); no projects to open; splits stay with their session — shipped — `src/client/hydra/mod.rs`
+- Sidebar groups sessions by where they work now (repo, or folder outside git); no projects to open; splits stay with their session — shipped — `src/client/screen/mod.rs`
 - Releases and installers (Windows, macOS, Linux; checksums), `seshi update` and a daily update check — shipped — `.github/workflows/release.yml`, `install.sh`, `install.ps1`, `src/update.rs`
 - CI: test and clippy on Linux and Windows, a macOS check — shipped — `.github/workflows/ci.yml`
 - Config sync across machines (local file never synced) — shipped — `src/sync.rs`
@@ -491,7 +491,7 @@ Everything below is shipped on `main` unless marked.
 - Status reports need the pane's token or its process chain — `src/daemon/mod.rs` hook handling — AGENTS.md non-negotiable 5
 - Nothing in a cloned repo runs without the user's approval — `src/project.rs` — SECURITY.md
 - Client and daemon refuse to talk across protocol versions — `src/protocol.rs` `PROTOCOL_VERSION`, checked on `Hello` — ADR-0003
-- Config selects the Cards or Flat rendering style while sharing the session layout — `src/config.rs` `Ui.layout`, `src/client/hydra/card.rs` `Look::of` — ADR-0012
+- Config selects the Cards or Flat rendering style while sharing the session layout — `src/config.rs` `Ui.layout`, `src/client/screen/card.rs` `Look::of` — ADR-0012
 - Every built-in theme passes the contrast audit — `cargo test` (theme audit test in `src/theme.rs`) — readability
 - Both platform sides compile — `cargo check --target x86_64-unknown-linux-gnu` / `aarch64-apple-darwin` — AGENTS.md non-negotiable 3
 - clippy is clean — `cargo clippy --all-targets -- -D warnings` — CODE-STANDARDS

@@ -2,7 +2,7 @@
 //! worktree. Short, hoverable, and every item does something.
 
 use super::design::{BtnKind, button, put, seg, segs_width};
-use super::hydra::{HyHit, find, hit, hovered};
+use super::screen::{ScreenHit, find, hit, hovered};
 use super::render::truncate;
 use super::{App, Mode};
 use crate::protocol::{Command, TermId};
@@ -87,10 +87,10 @@ const CONFIRM_LIST_MAX: usize = 8;
 /// (red when it destroys something) and Cancel.
 pub(super) fn draw_confirm(app: &mut App, f: &mut ratatui::Frame, area: ratatui::layout::Rect, t: &crate::theme::Theme, c: &Confirm) {
     if matches!(c.act, Act::OverrideCheck(..)) {
-        return super::hydra::draw_override(app, f, area, t, c);
+        return super::screen::draw_override(app, f, area, t, c);
     }
     use super::design::{put, seg};
-    use super::hydra::{HyHit, dim_all, hit, hovered, panel};
+    use super::screen::{ScreenHit, dim_all, hit, hovered, panel};
     use ratatui::layout::Rect;
     use ratatui::style::{Modifier, Style};
     let buf = f.buffer_mut();
@@ -125,14 +125,14 @@ pub(super) fn draw_confirm(app: &mut App, f: &mut ratatui::Frame, area: ratatui:
     put(buf, yr.x, yr.y, &yes, r.right());
     let nr = Rect { x: yr.right() + 2, y: buttons_y, width: 12, height: 1 };
     put(buf, nr.x, nr.y, &button(t, "Cancel", "Esc", BtnKind::Normal, hovered(app, nr)), r.right());
-    hit(app, area, HyHit::ConfirmNo);
-    hit(app, r, HyHit::Noop);
-    hit(app, yr, HyHit::ConfirmYes);
-    hit(app, nr, HyHit::ConfirmNo);
+    hit(app, area, ScreenHit::ConfirmNo);
+    hit(app, r, ScreenHit::Noop);
+    hit(app, yr, ScreenHit::ConfirmYes);
+    hit(app, nr, ScreenHit::ConfirmNo);
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct HyMenu {
+pub struct ScreenMenu {
     pub title: String,
     pub items: Vec<(String, Act)>,
     pub sel: usize,
@@ -143,7 +143,7 @@ impl App {
     pub(super) fn menu(&mut self, title: String, mut items: Vec<(String, Act)>, at: (u16, u16)) {
         // The destructive item last.
         items.sort_by_key(|(_, a)| matches!(a, Act::End(_) | Act::CloseProject(_)));
-        self.mode = Mode::HyMenu(Box::new(HyMenu { title, items, sel: 0, at }));
+        self.mode = Mode::ScreenMenu(Box::new(ScreenMenu { title, items, sel: 0, at }));
     }
 
     /// Right-click on a pane's content.
@@ -151,7 +151,7 @@ impl App {
         if Some(term) != self.focused() {
             self.cmd(Command::FocusPane { term });
         }
-        let model = self.hy_model();
+        let model = self.screen_model();
         let agent = find(&model, term).map(|(_, _, s)| s.agent.clone()).unwrap_or_default();
         let mut items = vec![
             ("Rename pane".to_string(), Act::RenamePane(term)),
@@ -159,7 +159,7 @@ impl App {
             ("Split down".to_string(), Act::Split(term, crate::layout::Dir::Down)),
         ];
         items.push((
-            if self.hy.right_clicks.contains(&term) { "Stop sending right-clicks to pane" } else { "Send right-clicks to pane" }.to_string(),
+            if self.screen.right_clicks.contains(&term) { "Stop sending right-clicks to pane" } else { "Send right-clicks to pane" }.to_string(),
             Act::RightClicks(term),
         ));
         // A program seshi doesn't know (an agent started by an alias, say): teach it.
@@ -180,7 +180,7 @@ impl App {
     /// A session's menu: its title and items, for right-click and for the sidebar's
     /// letter keys.
     pub(super) fn session_items(&self, term: TermId) -> Option<(String, Vec<(String, Act)>)> {
-        let model = self.hy_model();
+        let model = self.screen_model();
         let (_, _, s) = find(&model, term)?;
         let agent = s.agent.clone();
         let dir = find(&model, term).map(|(_, w, _)| w.path.clone());
@@ -206,14 +206,14 @@ impl App {
             items.push(("Fleet commander".to_string(), Act::Commander(term)));
         }
         if !s.subagents.is_empty() {
-            let label = if self.hy.subs_closed.contains(&term) { "Show subagents" } else { "Hide subagents" };
+            let label = if self.screen.subs_closed.contains(&term) { "Show subagents" } else { "Hide subagents" };
             items.push((label.to_string(), Act::ToggleSubs(term)));
         }
         if !s.queued.is_empty() {
             items.push((format!("Drop queued follow-ups ({})", s.queued.len()), Act::ClearQueue(term)));
         }
         if let Some(check) = info.and_then(|t| t.check.as_ref()) {
-            items.extend(super::hydra::check_menu_items(term, check));
+            items.extend(super::screen::check_menu_items(term, check));
         }
         items.push(("Close".to_string(), Act::End(vec![term])));
         // Titled by what it is (an agent, or the program's name), never its window title.
@@ -233,17 +233,17 @@ impl App {
             .take(SNAPSHOTS_LISTED)
             .enumerate()
             .map(|(i, s)| {
-                let when = format!("{} ago · {}", super::hydra::age(s.at), s.why);
+                let when = format!("{} ago · {}", super::screen::age(s.at), s.why);
                 (format!("{}  {when}", i + 1), Act::Restore(dir.clone(), s.commit.clone(), when, term))
             })
             .collect();
-        self.menu(format!("snapshots · {}", super::hydra::folder_name(&dir)), items, at);
+        self.menu(format!("snapshots · {}", super::screen::folder_name(&dir)), items, at);
     }
 
     /// Fold / unfold a session's subagents.
     pub(super) fn toggle_subs(&mut self, term: TermId) {
-        if !self.hy.subs_closed.remove(&term) {
-            self.hy.subs_closed.insert(term);
+        if !self.screen.subs_closed.remove(&term) {
+            self.screen.subs_closed.insert(term);
         }
     }
 
@@ -255,7 +255,7 @@ impl App {
     }
 
     pub(super) fn project_items(&self, pi: usize) -> Option<(String, Vec<(String, Act)>)> {
-        let model = self.hy_model();
+        let model = self.screen_model();
         let p = model.get(pi)?;
         let mut items = vec![("Rename".to_string(), Act::RenameProject(p.key.clone(), p.name.clone())), ("Close".to_string(), Act::CloseProject(pi))];
         if p.git {
@@ -271,8 +271,8 @@ impl App {
     /// The menu items for the sidebar cursor's row (what its letter keys do), in the
     /// menu's order.
     pub(super) fn cursor_items(&self) -> Vec<(String, Act)> {
-        let mut items = match (&self.hy.cursor_proj, self.hy.cursor) {
-            (Some(key), _) => self.hy_model().iter().position(|p| p.key == *key).and_then(|pi| self.project_items(pi)),
+        let mut items = match (&self.screen.cursor_proj, self.screen.cursor) {
+            (Some(key), _) => self.screen_model().iter().position(|p| p.key == *key).and_then(|pi| self.project_items(pi)),
             (None, Some(t)) => self.session_items(t),
             _ => None,
         }
@@ -282,16 +282,16 @@ impl App {
         items
     }
 
-    pub(super) fn on_hy_menu_key(&mut self, mut m: HyMenu, k: &KeyEvent) {
+    pub(super) fn on_hy_menu_key(&mut self, mut m: ScreenMenu, k: &KeyEvent) {
         match k.code {
             KeyCode::Esc => self.mode = Mode::Normal,
             KeyCode::Down | KeyCode::Char('j') => {
                 m.sel = (m.sel + 1) % m.items.len().max(1);
-                self.mode = Mode::HyMenu(Box::new(m));
+                self.mode = Mode::ScreenMenu(Box::new(m));
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 m.sel = (m.sel + m.items.len().max(1) - 1) % m.items.len().max(1);
-                self.mode = Mode::HyMenu(Box::new(m));
+                self.mode = Mode::ScreenMenu(Box::new(m));
             }
             KeyCode::Enter => {
                 self.mode = Mode::Normal;
@@ -321,15 +321,15 @@ impl App {
                     self.mode = Mode::Normal;
                     self.menu_act(a);
                 } else {
-                    self.mode = Mode::HyMenu(Box::new(m));
+                    self.mode = Mode::ScreenMenu(Box::new(m));
                 }
             }
-            _ => self.mode = Mode::HyMenu(Box::new(m)),
+            _ => self.mode = Mode::ScreenMenu(Box::new(m)),
         }
     }
 
     pub(super) fn menu_pick(&mut self, i: usize) {
-        let Mode::HyMenu(m) = std::mem::replace(&mut self.mode, Mode::Normal) else { return };
+        let Mode::ScreenMenu(m) = std::mem::replace(&mut self.mode, Mode::Normal) else { return };
         if let Some((_, a)) = m.items.get(i).cloned() {
             self.menu_act(a);
         }
@@ -337,7 +337,7 @@ impl App {
 
     /// What a menu item does; closing things asks first.
     pub(super) fn menu_act(&mut self, a: Act) {
-        let model = self.hy_model();
+        let model = self.screen_model();
         let ask: Option<Confirm> = match &a {
             Act::End(ts) if ts.len() == 1 => {
                 let name = find(&model, ts[0]).map(|(_, _, s)| s.name.clone()).unwrap_or_else(|| "this pane".into());
@@ -373,7 +373,7 @@ impl App {
                 Some(Confirm {
                     title: "Restore snapshot".into(),
                     sub: String::new(),
-                    what: super::hydra::folder_name(dir),
+                    what: super::screen::folder_name(dir),
                     detail: when.clone(),
                     note: if working {
                         "Its agent is working in these files right now. They go back to how they were then; what's there now is kept as a snapshot first.".into()
@@ -440,10 +440,10 @@ impl App {
                 // one asked about is going), or the same row when it stays.
                 // The cursor is still on a row when the leader key or the actions list was
                 // opened from the sidebar: that's the sidebar too.
-                let from_side = self.mode == Mode::Side || self.hy.cursor.is_some() || self.hy.cursor_proj.is_some();
-                self.hy.side_return = match &c.act {
+                let from_side = self.mode == Mode::Side || self.screen.cursor.is_some() || self.screen.cursor_proj.is_some();
+                self.screen.side_return = match &c.act {
                     _ if !from_side => None,
-                    Act::Commander(t) | Act::Restore(_, _, _, t) | Act::OverrideCheck(t, _) => Some(super::hydra::SideItem::Sess(*t)),
+                    Act::Commander(t) | Act::Restore(_, _, _, t) | Act::OverrideCheck(t, _) => Some(super::screen::SideItem::Sess(*t)),
                     _ => self.side_after_close(),
                 };
                 self.mode = Mode::Confirm(Box::new(c));
@@ -460,11 +460,11 @@ impl App {
             }
             Act::Split(t, dir) => {
                 let cwd = self.snap.terms.get(&t).map(|x| x.top.clone().unwrap_or_else(|| x.cwd.clone())).unwrap_or_else(|| self.here_dir());
-                self.hy.split_dir = Some(dir);
+                self.screen.split_dir = Some(dir);
                 if self.focused() != Some(t) {
                     self.cmd(Command::FocusPane { term: t });
                 }
-                self.hy.pending_split = Some((t, std::time::Instant::now()));
+                self.screen.pending_split = Some((t, std::time::Instant::now()));
                 self.cmd(Command::NewWorkspace { cwd: Some(cwd), name: None, cmd: None });
             }
             Act::Update => self.start_update(),
@@ -487,7 +487,7 @@ impl App {
                             Ok(()) => app.notify("it's a git repo now; new agents get their own worktree".into(), false),
                             Err(e) => app.notify(e, true),
                         }
-                        app.hy_fresh();
+                        app.screen_fresh();
                     }))
                 });
             }
@@ -496,7 +496,7 @@ impl App {
             Act::ClearQueue(term) => self.cmd(Command::ClearQueue { term }),
             Act::ToggleSubs(term) => self.toggle_subs(term),
             Act::Snapshots(dir, term) => {
-                let at = self.hy.row_y.get(&term).map(|y| (self.hy.saved.side_w.unwrap_or(0), *y)).unwrap_or((0, 0));
+                let at = self.screen.row_y.get(&term).map(|y| (self.screen.saved.side_w.unwrap_or(0), *y)).unwrap_or((0, 0));
                 self.spawn_bg(move || {
                     let kept = crate::snapshot::list(&dir);
                     super::Bg::Then(Box::new(move |app: &mut App| app.snapshots_menu(dir, term, kept, at)))
@@ -512,7 +512,7 @@ impl App {
                             Ok(n) => app.notify(format!("Restored {n} file{} · the newest snapshot takes it back", if n == 1 { "" } else { "s" }), false),
                             Err(e) => app.notify(format!("couldn't restore: {e}"), true),
                         }
-                        app.hy_fresh();
+                        app.screen_fresh();
                     }))
                 });
             }
@@ -526,14 +526,14 @@ impl App {
             }
             Act::Commander(term) => self.send_follow_up(term, &crate::brief::commander_prompt("")),
             Act::RightClicks(t) => {
-                if !self.hy.right_clicks.remove(&t) {
-                    self.hy.right_clicks.insert(t);
+                if !self.screen.right_clicks.remove(&t) {
+                    self.screen.right_clicks.insert(t);
                     self.notify("right-clicks go to this pane now (Shift+right-click for seshi's menu)".into(), false);
                 }
             }
             Act::RenameProject(key, name) => self.mode = Mode::Prompt { kind: super::PromptKind::RenameProject(key), input: name },
             Act::CloseProject(pi) => {
-                let model = self.hy_model();
+                let model = self.screen_model();
                 if let Some(p) = model.get(pi) {
                     for s in p.sessions() {
                         self.cmd(Command::ClosePane { term: s.term });
@@ -541,13 +541,13 @@ impl App {
                 }
             }
             Act::NewWorktree(pi) => {
-                self.hy_new(pi, false);
-                if let Mode::HyPane(np) = &mut self.mode {
+                self.screen_new(pi, false);
+                if let Mode::ScreenPane(np) = &mut self.mode {
                     np.place = Some(0);
                 }
             }
             Act::OpenWorktree(pi) => {
-                let model = self.hy_model();
+                let model = self.screen_model();
                 let Some(p) = model.get(pi) else { return };
                 let key = super::design::path_key(&p.path);
                 let ws = self.snap.workspaces.iter().find(|w| {
@@ -563,8 +563,8 @@ impl App {
             }
             Act::Beside(t) => {
                 if let Some(f) = self.focused() {
-                    self.hy_unshow(t);
-                    self.hy.pending_split = Some((f, std::time::Instant::now()));
+                    self.screen_unshow(t);
+                    self.screen.pending_split = Some((f, std::time::Instant::now()));
                     self.cmd(Command::FocusPane { term: t });
                 }
             }
@@ -572,7 +572,7 @@ impl App {
                 for t in ts {
                     // Out of its split first: the pane beside it takes the room (and the
                     // focus), so nothing else slides into its place.
-                    self.hy_unshow(t);
+                    self.screen_unshow(t);
                     self.cmd(Command::ClosePane { term: t });
                 }
             }
@@ -635,7 +635,7 @@ pub(super) fn menu_keys(items: &[(String, Act)]) -> Vec<Option<char>> {
         .collect()
 }
 
-pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: &HyMenu) {
+pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: &ScreenMenu) {
     let buf = f.buffer_mut();
     let keys = menu_keys(&m.items);
     let danger = |a: &Act| matches!(a, Act::End(_) | Act::CloseProject(_));
@@ -647,16 +647,16 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
     let y = if m.at.1 + h < area.bottom() { m.at.1 + 1 } else { m.at.1.saturating_sub(h) }.max(area.y);
     let r = Rect { x, y, width: w, height: h + 1 };
     // Clicking anywhere else closes it.
-    hit(app, area, HyHit::Close);
+    hit(app, area, ScreenHit::Close);
     // The same card as every popup: its title lit in the border, a ✕ that closes it.
     let bgm = t.card;
-    hit(app, r, HyHit::Noop);
+    hit(app, r, ScreenHit::Noop);
     let title = truncate(&m.title, (w - 10) as usize);
-    let mut c = super::hydra::Card::new(t, &title).lit(t.accent);
+    let mut c = super::screen::Card::new(t, &title).lit(t.accent);
     c.bg = bgm;
-    c.close = Some(HyHit::Close);
-    super::hydra::card(app, buf, r, &c, t);
-    let look = super::hydra::Look::of(&app.cfg.ui);
+    c.close = Some(ScreenHit::Close);
+    super::screen::card(app, buf, r, &c, t);
+    let look = super::screen::Look::of(&app.cfg.ui);
     let mut yy = r.y + 2;
     for (i, (label, act)) in m.items.iter().enumerate() {
         if gap && danger(act) && i + 1 == m.items.len() {
@@ -666,7 +666,7 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
         let on = i == m.sel || hovered(app, row);
         let bg = if on { t.hov } else { bgm };
         if on {
-            super::hydra::row_pill(look, f.buffer_mut(), row.x, yy, row.width, bg, bgm);
+            super::screen::row_pill(look, f.buffer_mut(), row.x, yy, row.width, bg, bgm);
         }
         if i == m.sel {
             put(f.buffer_mut(), row.x + 1, yy, &[seg("›", Style::default().fg(t.accent).bg(bg).add_modifier(Modifier::BOLD))], row.right());
@@ -679,7 +679,7 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
         if let Some(k) = keys.get(i).copied().flatten() {
             put(f.buffer_mut(), row.right().saturating_sub(3), yy, &[seg(k.to_string(), Style::default().fg(t.accent).bg(bg).add_modifier(Modifier::BOLD))], row.right());
         }
-        hit(app, row, HyHit::MenuPick(i));
+        hit(app, row, ScreenHit::MenuPick(i));
         yy += 1;
     }
 }

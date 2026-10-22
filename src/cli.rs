@@ -1023,6 +1023,24 @@ struct HookOrigin {
     token: String,
 }
 
+/// Claude's hook payloads carry no task for a subagent, but it writes the description the parent
+/// gave it next to the subagent's transcript. It may not exist yet at SubagentStart; a later
+/// hook from inside the subagent finds it.
+fn subagent_description(agent: &str, transcript: Option<&std::path::Path>, agent_id: Option<&str>) -> Option<String> {
+    if agent != "claude" {
+        return None;
+    }
+    let transcript = transcript?;
+    let meta = if transcript.file_stem()?.to_string_lossy().starts_with("agent-") {
+        transcript.with_extension("meta.json")
+    } else {
+        let id = agent_id?.trim_start_matches("agent-");
+        transcript.with_extension("").join("subagents").join(format!("agent-{id}.meta.json"))
+    };
+    let meta: Value = serde_json::from_str(&std::fs::read_to_string(meta).ok()?).ok()?;
+    meta.get("description")?.as_str().map(str::trim).filter(|d| !d.is_empty()).map(str::to_string)
+}
+
 fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) -> ClientMsg {
     let field = |names: &[&str]| names.iter().find_map(|n| payload_json.get(*n)?.as_str().map(str::to_string));
     let session = field(&["session_id", "thread-id", "thread_id", "conversation_id"]);
@@ -1045,7 +1063,7 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
         kind: field(&["agent_type", "subagent_type", "agent_name"]).unwrap_or_else(|| "subagent".into()),
         start: !matches!(event.as_str(), "SubagentStop" | "SubagentEnd"),
         reported_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
-        task: field(&["task", "description", "prompt"]).map(|task| one_line(&task, 240)),
+        task: field(&["task", "description", "prompt"]).or_else(|| subagent_description(&origin.agent, transcript.as_deref(), field(&["agent_id"]).as_deref())).map(|task| one_line(&task, 240)),
         model: field(&["model", "model_id"]),
         effort: field(&["effort", "reasoning_effort"]),
         activity: field(&["tool_name"]).map(|tool| format!("{event}: {tool}")).or_else(|| Some(event.clone())),
@@ -1833,6 +1851,22 @@ mod tests {
             assert_eq!(transcript.as_ref(), Some(&file));
         }
         std::fs::remove_file(file).unwrap();
+    }
+
+    #[test]
+    fn claude_subagent_task_comes_from_its_meta_file() {
+        let dir = std::env::temp_dir().join(format!("seshi-meta-{}", std::process::id()));
+        let subagents = dir.join("sess").join("subagents");
+        std::fs::create_dir_all(&subagents).unwrap();
+        std::fs::write(subagents.join("agent-abc.meta.json"), r#"{"agentType":"general-purpose","description":"Debugging Go back test failure"}"#).unwrap();
+        let parent = dir.join("sess.jsonl");
+        let inner = subagents.join("agent-abc.jsonl");
+        let want = Some("Debugging Go back test failure".to_string());
+        assert_eq!(super::subagent_description("claude", Some(&parent), Some("abc")), want, "from SubagentStart");
+        assert_eq!(super::subagent_description("claude", Some(&inner), None), want, "from a hook inside the subagent");
+        assert_eq!(super::subagent_description("codex", Some(&inner), None), None);
+        assert_eq!(super::subagent_description("claude", Some(&parent), Some("missing")), None);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

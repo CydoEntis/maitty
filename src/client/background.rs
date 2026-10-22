@@ -13,7 +13,7 @@ impl App {
                 }
             }
             _ => {
-                self.hy_fresh();
+                self.screen_fresh();
                 self.dirty = true;
             }
         }
@@ -50,7 +50,7 @@ impl App {
                 if first {
                     self.on_first_state();
                 }
-                self.hy_sync();
+                self.screen_sync();
                 self.check_view_sync();
                 self.maybe_restart_daemon(last_session_closed);
             }
@@ -257,7 +257,7 @@ impl App {
     }
 
     pub(super) fn on_bg(&mut self, b: Bg) {
-        self.hy_fresh();
+        self.screen_fresh();
         let b = match b {
             Bg::Branches(dir, current, list, dirty) => {
                 if let Mode::Branch(v) = &mut self.mode
@@ -275,7 +275,7 @@ impl App {
                     Ok(m) => self.notify(m, false),
                     Err(e) => self.notify(format!("couldn't switch: {e}"), true),
                 }
-                self.hy_fresh();
+                self.screen_fresh();
                 self.dirty = true;
                 return;
             }
@@ -319,7 +319,7 @@ impl App {
                         Ok(r) => {
                             let keep = v.review.as_ref().map(|o| o.sel);
                             let mut r = *r;
-                            v.reviewed = views::still_reviewed(&v.dir, &r.files, self.hy.saved.reviewed.get(&design::path_key(&v.dir)));
+                            v.reviewed = views::still_reviewed(&v.dir, &r.files, self.screen.saved.reviewed.get(&design::path_key(&v.dir)));
                             if let Some(sel) = keep {
                                 r.sel = sel.min(r.files.len().saturating_sub(1));
                                 r.diff_sel = None;
@@ -410,22 +410,22 @@ impl App {
                 }
             }
             (Bg::ChangeSize(dir, since, size), _) => {
-                self.hy.change_sizes.insert(dir, (since, size));
+                self.screen.change_sizes.insert(dir, (since, size));
             }
             (Bg::Overlaps(repo, found), _) => {
                 // Say each overlap once, when it first shows up.
-                let seen = self.hy.overlaps.get(&repo).cloned().unwrap_or_default();
+                let seen = self.screen.overlaps.get(&repo).cloned().unwrap_or_default();
                 let new: Vec<_> = found.iter().filter(|o| !seen.contains(o)).cloned().collect();
                 if let Some(msg) = super::overlap::say(&new) {
                     self.notify(msg, false);
                 }
                 // A dismissed one that has cleared may say so again next time.
-                self.hy.dismissed.retain(|(r, f)| r != &repo || found.iter().any(|o| &o.file == f));
-                self.hy.overlaps.insert(repo, found);
+                self.screen.dismissed.retain(|(r, f)| r != &repo || found.iter().any(|o| &o.file == f));
+                self.screen.overlaps.insert(repo, found);
             }
             (Bg::Merged(result, dir), _) => {
                 // A merge asked from the Inbox is over either way.
-                self.hy.inbox_confirm = None;
+                self.screen.inbox_confirm = None;
                 match result {
                     Ok(msg) => {
                         self.notify(format!("{msg}; closing its sessions and removing the worktree and branch"), false);
@@ -438,7 +438,7 @@ impl App {
                 }
             }
             (Bg::Done(result, reload), _) => {
-                self.hy.inbox_confirm = None;
+                self.screen.inbox_confirm = None;
                 match result {
                     Ok(msg) => self.notify(msg, false),
                     Err(e) => self.notify(e, true),

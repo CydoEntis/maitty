@@ -45,7 +45,7 @@ pub(in crate::client) fn np_command(app: &App, agent: &str, model: usize, task: 
 }
 
 pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, np: &NewPaneHy) {
-    let model = app.hy_model();
+    let model = app.screen_model();
     let buf = f.buffer_mut();
     dim_all(buf, area, t);
     let r = panel(app, buf, area, 86, 21, if np.fleet { "Start a fleet" } else { "New" }, &[], t);
@@ -53,7 +53,7 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
         put(buf, r.x + 3, y, &[seg(text, Style::default().fg(if np.row == row { t.accent } else { t.muted }).bg(t.card).add_modifier(Modifier::BOLD))], r.right());
     };
     // A row of chips; the selected one is filled. Long rows scroll to keep it in view.
-    let chips = |app: &mut App, buf: &mut Buffer, y: u16, items: &[String], cur: usize, mk: fn(usize) -> HyHit| {
+    let chips = |app: &mut App, buf: &mut Buffer, y: u16, items: &[String], cur: usize, mk: fn(usize) -> ScreenHit| {
         // The list can shrink under the selection (a session closed while this is open).
         let cur = cur.min(items.len().saturating_sub(1));
         let mut start = 0;
@@ -113,9 +113,9 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
         ts.push(seg(ph, s2.fg(t.muted)));
     }
     put(buf, tb.x, tb.y, &ts, tb.right());
-    hit(app, tb, HyHit::NpTask);
+    hit(app, tb, ScreenHit::NpTask);
     lab(buf, r.y + 4, "RUN", 1);
-    chips(app, buf, r.y + 4, &agents, np.a, HyHit::NpRun);
+    chips(app, buf, r.y + 4, &agents, np.a, ScreenHit::NpRun);
     lab(buf, r.y + 6, "MODEL", 2);
     let models = if agent.starts_with('★') || agent.starts_with('◇') { Vec::new() } else { np_models(app, &agent) };
     if let Some(p) = preset_of(app, &agent) {
@@ -124,22 +124,22 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
     } else if models.is_empty() {
         put(buf, r.x + 14, r.y + 6, &[seg("its default", muted)], r.right());
     } else {
-        chips(app, buf, r.y + 6, &models, np.model.min(models.len() - 1), HyHit::NpModel);
+        chips(app, buf, r.y + 6, &models, np.model.min(models.len() - 1), ScreenHit::NpModel);
     }
     let mut projs: Vec<String> = model.iter().map(|p| p.name.clone()).collect();
     projs.push("other folder…".into());
     lab(buf, r.y + 8, "PROJECT", 3);
-    chips(app, buf, r.y + 8, &projs, np.p, HyHit::NpProj);
+    chips(app, buf, r.y + 8, &projs, np.p, ScreenHit::NpProj);
     let place = np.place_for(&agent, app.cfg.worktree.per_agent);
     let proj = model.get(np.p);
     lab(buf, r.y + 10, "WHERE", 4);
     if proj.is_some_and(|p| p.git) && !agent.starts_with('⚙') {
-        chips(app, buf, r.y + 10, &np_places(proj.unwrap()), place as usize, HyHit::NpWhere);
+        chips(app, buf, r.y + 10, &np_places(proj.unwrap()), place as usize, ScreenHit::NpWhere);
     } else {
         put(buf, r.x + 14, r.y + 10, &[seg(if agent.starts_with('⚙') { "as the recipe says" } else { "in the folder" }, muted)], r.right());
     }
     lab(buf, r.y + 12, "OPEN", 5);
-    chips(app, buf, r.y + 12, &["full screen".into(), "beside this".into()], np.beside as usize, HyHit::NpBeside);
+    chips(app, buf, r.y + 12, &["full screen".into(), "beside this".into()], np.beside as usize, ScreenHit::NpBeside);
 
     // What will happen, in words.
     let branch = proj.and_then(|p| p.wts.iter().find(|w| w.main)).map(|w| w.branch.clone()).unwrap_or_default();
@@ -179,7 +179,7 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
     for (i, l) in crate::client::views::wrap(&what, (r.width - 6) as usize).into_iter().take(3).enumerate() {
         put(buf, r.x + 3, r.y + 14 + i as u16, &[seg(l, c.fg(t.text))], r.right() - 2);
     }
-    let gx = btn(app, buf, r.x + 3, r.y + 18, if np.task.trim().is_empty() && !np.fleet { "Open" } else { "Start" }, "Enter", BtnKind::Primary, HyHit::NpGo, r.right());
+    let gx = btn(app, buf, r.x + 3, r.y + 18, if np.task.trim().is_empty() && !np.fleet { "Open" } else { "Start" }, "Enter", BtnKind::Primary, ScreenHit::NpGo, r.right());
     put(buf, gx + 2, r.y + 18, &hints(t, &[("↑↓", "rows"), ("←→", "choose"), ("Esc", if np.fleet { "close" } else { "close, keeps the task" })]), r.right());
 }
 
@@ -240,7 +240,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     use crate::client::design::settings_group;
     use crate::client::modal::Cat;
     let look = Look::of(&app.cfg.ui);
-    hit(app, r, HyHit::SettingsBody);
+    hit(app, r, ScreenHit::SettingsBody);
     let c = Style::default().bg(t.card);
     // Tabs: the current one a pill; General carries a dot when an update is ready.
     let compact_tabs = r.width < 68;
@@ -279,7 +279,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
             out
         };
         put(buf, x, r.y + 2, &segs, r.right());
-        hit(app, tr, HyHit::SetTab(i));
+        hit(app, tr, ScreenHit::SetTab(i));
         x += w + 1;
     }
     // One line: which seshi this is, whether it is current, whether the daemon matches, and the
@@ -288,10 +288,10 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     let daemon = if app.snap.daemon_version.is_empty() { "unknown".to_string() } else { app.snap.daemon_version.clone() };
     let daemon = daemon.as_str();
     let (action, primary, what) = match (&app.update_available, app.updating, app.update_checking) {
-        (Some(_), true, _) => ("updating…", true, HyHit::Update),
-        (Some(_), ..) => ("Update now", true, HyHit::Update),
-        (None, _, true) => ("checking…", false, HyHit::Noop),
-        (None, ..) => ("check now", false, HyHit::CheckUpdate),
+        (Some(_), true, _) => ("updating…", true, ScreenHit::Update),
+        (Some(_), ..) => ("Update now", true, ScreenHit::Update),
+        (None, _, true) => ("checking…", false, ScreenHit::Noop),
+        (None, ..) => ("check now", false, ScreenHit::CheckUpdate),
     };
     let dot = c.fg(t.muted);
     let known = daemon != "unknown";
@@ -305,7 +305,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         let end = if primary {
             let btn = button_pill(look, t, action, "", true, hovered(app, ar), t.card);
             put(buf, vx, vy, &btn, r.right() - 3)
-        } else if what == HyHit::CheckUpdate {
+        } else if what == ScreenHit::CheckUpdate {
             put(buf, vx, vy, &[seg("u", c.fg(t.accent).add_modifier(Modifier::BOLD)), seg(" check now", if hovered(app, ar) { c.fg(t.text) } else { dot })], r.right() - 3)
         } else {
             put(buf, vx, vy, &[seg(action, dot)], r.right() - 3)
@@ -365,7 +365,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         Some(SRow::Setting(s)) => s.help.to_string(),
         Some(SRow::Bind { acts, .. }) if acts.len() > 1 => "Several keys; change them in the config file (o).".into(),
         Some(SRow::Bind { .. }) => "Enter, then press the new key.".into(),
-        Some(SRow::Check(f)) => crate::client::hydra::check_settings::help(app, *f),
+        Some(SRow::Check(f)) => crate::client::screen::check_settings::help(app, *f),
         None => String::new(),
     };
     // Lines: headings, rows with a blank between them, a wider gap between groups. The
@@ -428,7 +428,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                 if sel {
                     ls = ls.add_modifier(Modifier::BOLD);
                 }
-                hit(app, Rect { x: r.x + 1, y, width: vx - r.x - 2, height: 1 }, HyHit::SetRow(*i));
+                hit(app, Rect { x: r.x + 1, y, width: vx - r.x - 2, height: 1 }, ScreenHit::SetRow(*i));
                 let label = match row {
                     SRow::Setting(s) => s.label.to_string(),
                     SRow::Bind { label, .. } => label.to_string(),
@@ -446,17 +446,17 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                             break;
                         }
                         put(buf, cx, y, &segs, r.right() - 3);
-                        hit(app, Rect { x: cx, y, width: w, height: 1 }, HyHit::SetVal(*i, vi));
+                        hit(app, Rect { x: cx, y, width: w, height: 1 }, ScreenHit::SetVal(*i, vi));
                         cx += w + 1;
                     }
                 } else {
                     let shown = match row {
-                        SRow::Check(f) => crate::client::hydra::check_settings::control(app, t, *f, v, sel, r.right().saturating_sub(vx + 1) as usize),
+                        SRow::Check(f) => crate::client::screen::check_settings::control(app, t, *f, v, sel, r.right().saturating_sub(vx + 1) as usize),
                         _ => crate::client::design::control(app, t, row, v, sel),
                     };
                     let ctrl: Vec<Seg> = shown.into_iter().map(|(x, s)| (x, if s.bg.is_none() { s.bg(bg) } else { s })).collect();
                     put(buf, vx, y, &ctrl, r.right() - 1);
-                    hit(app, Rect { x: vx, y, width: segs_width(&ctrl).max(1), height: 1 }, HyHit::SetVal(*i, usize::MAX));
+                    hit(app, Rect { x: vx, y, width: segs_width(&ctrl).max(1), height: 1 }, ScreenHit::SetVal(*i, usize::MAX));
                 }
             }
         }

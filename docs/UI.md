@@ -96,7 +96,7 @@ A terminal UI (ratatui). Colours come only from the theme (`theme.rs`): semantic
 slots `bg`, `card`, `card2`, `hov`, `accent`/`acc_ink`, `text`/`strong`/`muted`,
 and status colours (`working`, `blocked` = needs you, `done`, `idle`, `err`).
 Every built-in theme passes a WCAG contrast audit test. Shared primitives in
-`client/design.rs` and `client/hydra/`: `panel()` (popup), `fill`, `put`/`seg`
+`client/design.rs` and `client/screen/`: `panel()` (popup), `fill`, `put`/`seg`
 (text runs), `keycap`/`keycaps`, `hints`, `button`, `dim_all`. Icons come from
 config (`[icons]`), with Nerd Font glyphs where present.
 
@@ -202,7 +202,7 @@ agent is working or asking, draws exactly as without checks.
 - The collapsed rail shows the same glyph. The ring turns with the motion setting;
   the working spinner choice is unchanged.
 - Colours are existing theme slots only; there is no check role. Code lives in
-  `client/hydra/check.rs`; the evidence sheet is `client/hydra/check_sheet.rs`.
+  `client/screen/check.rs`; the evidence sheet is `client/screen/check_sheet.rs`.
 
 ## Project-specific: Inbox check groups
 
@@ -217,7 +217,7 @@ then HEADS UP, each heading with its count. A question is never below a check.
 - A row is the result glyph (the sidebar's), name, `agent · folder` and a relative age; line 2 is
   the sidebar's result words; a failed row adds the first failing output line in `muted`.
   Enter focuses the session, as on every other row. The selected failed row grows a line of buttons: Output `o`, Re-run `r`, Override… `O` (a confirm, as in the sheet). While a failed row is selected, those three letters act instead of starting a search.
-- Existing theme slots only. Code lives in `client/hydra/check_inbox.rs`.
+- Existing theme slots only. Code lives in `client/screen/check_inbox.rs`.
 
 ## Project-specific: collapsed sidebar
 
