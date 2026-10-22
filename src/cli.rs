@@ -1,6 +1,8 @@
 //! One-shot commands: scripting the multiplexer from a shell (or from an agent inside it).
 
 use crate::ipc;
+#[cfg_attr(not(test), expect(dead_code, reason = "used by seshi handoff, which comes next"))]
+pub(crate) mod handoff;
 pub(crate) mod integrations;
 use crate::layout::Dir;
 use crate::protocol::*;
