@@ -375,7 +375,7 @@ mod tests {
             app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
             app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
             assert!(
-                matches!(&app.mode, Mode::ScreenSettings(v) if matches!(design::settings_rows(modal::Cat::Appearance).get(v.sel), Some(design::SRow::Setting(s)) if s.path == PATH))
+                matches!(&app.mode, Mode::ScreenSettings(v) if matches!(design::settings_rows(modal::Cat::Appearance, &app.cfg).get(v.sel), Some(design::SRow::Setting(s)) if s.path == PATH))
             );
         }
     }

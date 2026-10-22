@@ -128,6 +128,11 @@ files and served only by `Query::CheckOutput` under the read grant; it is never 
 never in the state snapshot. It may contain secrets the command printed, like any pane's
 output.
 
+A team job's model name (`[[team.jobs]]`) reaches a shell command line when a commander starts
+a helper for it. It comes only from the user's config, a name with whitespace fails the config
+at load, and anything but plain name characters is quoted with `quote_for_shell`, so a model
+cannot add a command.
+
 Overriding a failed check is a recorded, visible action: the time and the reason stay on the
 result and its `Overridden` state shows wherever the check does. It needs the write grant on
 the target pane, and a pane can never override or undo its own check, so an agent's claim

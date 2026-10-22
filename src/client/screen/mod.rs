@@ -67,6 +67,8 @@ pub(super) struct Screen {
     /// A question asked from the sidebar: where its cursor goes after (the row below the
     /// one being closed), so the keys stay in the sidebar.
     pub side_return: Option<SideItem>,
+    /// A question asked from Settings: the page to go back to once it is answered.
+    pub settings_return: Option<Box<SView>>,
     pub saved: Saved,
     /// The project of what you're on (the default for + New).
     pub proj: Option<String>,
@@ -991,6 +993,7 @@ mod check_actions;
 mod check_inbox;
 pub(in crate::client) mod check_settings;
 mod check_sheet;
+pub(in crate::client) mod team_settings;
 mod dialogs;
 mod leader;
 mod popups;

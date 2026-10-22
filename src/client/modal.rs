@@ -66,11 +66,12 @@ pub enum Cat {
     Appearance,
     Agents,
     Check,
+    Team,
     Keys,
 }
 
 impl Cat {
-    pub const ALL: [Cat; 6] = [Cat::General, Cat::Sessions, Cat::Appearance, Cat::Agents, Cat::Check, Cat::Keys];
+    pub const ALL: [Cat; 7] = [Cat::General, Cat::Sessions, Cat::Appearance, Cat::Agents, Cat::Check, Cat::Team, Cat::Keys];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -79,6 +80,7 @@ impl Cat {
             Cat::Appearance => "Appearance",
             Cat::Agents => "Agents",
             Cat::Check => "Check",
+            Cat::Team => "Team",
             Cat::Keys => "Keys",
         }
     }
@@ -129,6 +131,7 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "mcp.approve", label: "Agents may approve prompts", kind: Kind::Choice(&["never", "safe", "always"]), cat: Cat::Agents, help: "Through seshi mcp. safe: only prompts for commands on [mcp] safe (tests, lint, git status…). Saying no is always allowed." },
     Setting { path: "mcp.helpers_at_once", label: "Helpers working at once", kind: Kind::Int { step: 1, min: 0, max: 16 }, cat: Cat::Agents, help: "How many sessions started by other agents may be working at the same time. A commander that asks for more is told to wait for one to finish. 0: no limit." },
     Setting { path: "mcp.scope", label: "Agents can reach", kind: Kind::Choice(&["project", "all"]), cat: Cat::Agents, help: "project: only sessions in the calling agent's own repo. Set up with: seshi integrate mcp" },
+    Setting { path: "team.family", label: "Family", kind: Kind::Choice(&["claude", "codex"]), cat: Cat::Team, help: "Picks which model each job runs on: its Claude one or its Codex one. A project can choose its own below." },
     Setting { path: "detection.working_window_ms", label: "Working window (ms)", kind: Kind::Int { step: 250, min: 250, max: 10_000 }, cat: Cat::Agents, help: "For agents without hooks: output this recent counts as working." },
 ];
 

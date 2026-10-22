@@ -155,6 +155,35 @@ A = "new-worktree:claude"   # worktree picker; whatever you open or create start
 # timeout_s = 600
 # Settings > Check edits this table for the project you are in and keeps your comments.
 
+# Team: the jobs a commander gives its helpers, each with a model for Claude and one for
+# Codex. `family` picks which column is used; a [[team.projects]] entry overrides it for one
+# project (the repo's main checkout). Model names go to the agent unchanged and are not
+# checked; an empty one is the agent's default. Seshi sets the model only, never the effort.
+# This is an example, not a default: with no jobs a commander works as it always has.
+# [team]
+# family = "claude"              # claude | codex
+#
+# [[team.jobs]]
+# name = "planner"
+# claude = "opus"
+# codex = "gpt-6.1-sol"
+#
+# [[team.jobs]]
+# name = "builder"
+# claude = "sonnet"
+# codex = "gpt-6-luna"
+#
+# [[team.jobs]]
+# name = "reviewer"
+# claude = "opus"
+# codex = "gpt-6.1-sol"
+#
+# [[team.projects]]
+# project = "/home/me/code/app"
+# family = "codex"
+# Settings > Team edits these tables (Family, This project, the jobs) and keeps your comments.
+# A commander starts a job's helper with seshi_start and `job`; Seshi itself starts nothing.
+
 # Presets: saved launches, offered as ★ choices in the new-agent dialog. `{task}` is what
 # you type. where = send (tell the agent you're on) | beside (a new one in its folder) |
 # worktree (a new one in a new worktree).

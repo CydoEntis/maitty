@@ -627,11 +627,11 @@ mod screen_tests {
             show(&o);
             assert!(o.contains(needle), "overlay shows {needle}");
         }
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 1, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 1, sel: 0, editing: None, capturing: false, scroll: 0, job: None }));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains(" General ") && o.contains(" Sessions ") && o.contains("Sort sidebar by attention") && o.contains(" on "));
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 2, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 2, sel: 0, editing: None, capturing: false, scroll: 0, job: None }));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("Card edges") && o.contains("PREVIEW") && o.contains("focused") && o.contains("dimmed"), "the pane settings, with a preview");
@@ -1537,7 +1537,7 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("PANES") && o.contains("Card edges") && o.contains("PREVIEW"), "the pane settings first, with their preview");
-        let theme_row = design::settings_rows(modal::Cat::Appearance).iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme")).unwrap();
+        let theme_row = design::settings_rows(modal::Cat::Appearance, &Config::default()).iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme")).unwrap();
         for _ in 0..theme_row {
             app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
         }
@@ -3052,7 +3052,7 @@ mod screen_tests {
     fn settings_keys_tab_is_current() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let cat = modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Keys).unwrap();
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat, sel: 0, editing: None, capturing: false, scroll: 0, job: None }));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("GET AROUND") && o.contains("Inbox: what needs you") && o.contains("Command palette"));
@@ -3061,10 +3061,10 @@ mod screen_tests {
     #[test]
     fn folders_and_programs_are_picked_not_typed() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        let rows = design::settings_rows(modal::Cat::General);
+        let rows = design::settings_rows(modal::Cat::General, &Config::default());
         let row_of = |p: &str| rows.iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == p)).unwrap();
         // Editor and shell: chips of what's installed, "default" first.
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: row_of("editor"), editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: row_of("editor"), editing: None, capturing: false, scroll: 0, job: None }));
         let o = draw(&mut app, 160, 45);
         show(&o);
         let line = o.lines().find(|l| l.contains("Editor")).unwrap();
@@ -3076,7 +3076,7 @@ mod screen_tests {
         }
         // The start folder: Enter opens the folder browser for it; Esc goes back to the row.
         let sf = row_of("ui.start_dir");
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: sf, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: sf, editing: None, capturing: false, scroll: 0, job: None }));
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert!(matches!(&app.mode, Mode::Finder(fd) if fd.for_setting == Some("ui.start_dir")), "the folder browser, picking for the setting");
         let o = draw(&mut app, 160, 45);
@@ -3287,12 +3287,12 @@ mod screen_tests {
     #[test]
     fn general_settings_are_in_sections_under_one_version_line() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0, job: None }));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("up to date") && o.contains("u check now"), "one version line");
         assert!(!o.contains("Installed here") && !o.contains("This window"), "the detail lines only show when something differs");
-        let rows = design::settings_rows(modal::Cat::General);
+        let rows = design::settings_rows(modal::Cat::General, &Config::default());
         let sections: Vec<(&str, &str)> = rows.iter().filter_map(|r| match r { design::SRow::Setting(s) => Some((design::settings_group(r), s.label)), _ => None }).collect();
         let pos = |label: &str| sections.iter().position(|(_, l)| *l == label).unwrap_or_else(|| panic!("{label} is on the General page"));
         assert_eq!(sections[pos("Leader key")].0, "INPUT");
@@ -3332,7 +3332,7 @@ mod screen_tests {
             (pane_lit, sheet_lit)
         };
         assert_eq!(lit_edges(&mut app), (true, false), "the pane has the keys: its edge is lit");
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 1, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 1, editing: None, capturing: false, scroll: 0, job: None }));
         assert_eq!(lit_edges(&mut app), (false, false), "the modal dims the workspace and overlays it without creating a sheet edge");
     }
 
@@ -3568,9 +3568,9 @@ mod settings_splash_tests {
         app.splash = true;
         let splash = draw(&mut app);
         app.splash = false;
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 1, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 1, editing: None, capturing: false, scroll: 0, job: None }));
         let settings = draw(&mut app);
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 2, sel: 8, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 2, sel: 8, editing: None, capturing: false, scroll: 0, job: None }));
         let keys = draw(&mut app);
         if std::env::var("SESHI_SHOW").is_ok() {
             println!("{splash}\n{settings}\n{keys}");
@@ -4969,13 +4969,13 @@ mod check_settings_tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
-    const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
+    pub(super) const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
 
-    fn project() -> PathBuf {
+    pub(super) fn project() -> PathBuf {
         PathBuf::from(if cfg!(windows) { r"C:\code\shop-api" } else { "/code/shop-api" })
     }
 
-    fn draw(app: &mut App, w: u16, h: u16) -> String {
+    pub(super) fn draw(app: &mut App, w: u16, h: u16) -> String {
         app.screen_fresh();
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| render::draw(app, f)).unwrap();
@@ -4984,15 +4984,15 @@ mod check_settings_tests {
         frame.replace(|c| ('\u{e000}'..='\u{f8ff}').contains(&c), "")
     }
 
-    fn show(s: &str) {
+    pub(super) fn show(s: &str) {
         if std::env::var("SESHI_SHOW").is_ok() {
             println!("{s}");
         }
     }
 
-    type Layout = fn(&mut App);
+    pub(super) type Layout = fn(&mut App);
 
-    fn layouts() -> [(&'static str, Layout); 3] {
+    pub(super) fn layouts() -> [(&'static str, Layout); 3] {
         [
             ("cards floating", |a| a.cfg.ui.panes = "floating".into()),
             ("cards tiled", |a| a.cfg.ui.panes = "tiled".into()),
@@ -5005,7 +5005,7 @@ mod check_settings_tests {
     }
 
     fn open_check_page(app: &mut App, sel: usize) {
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: check_page(), sel, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: check_page(), sel, editing: None, capturing: false, scroll: 0, job: None }));
     }
 
     fn with_check(app: &mut App, command: &str, timeout_s: u64) {
@@ -5017,7 +5017,7 @@ mod check_settings_tests {
         CheckInfo { command: "npm test".into(), state, exit_code, started_at: now - 120, duration_ms: 14_200, ..Default::default() }
     }
 
-    fn words(o: &str) -> String {
+    pub(super) fn words(o: &str) -> String {
         o.split_whitespace().collect::<Vec<_>>().join(" ")
     }
 
@@ -5095,7 +5095,7 @@ mod check_settings_tests {
                     with_check(&mut app, "npm test", CHECK_TIMEOUT_S_DEFAULT);
                 }
                 let normal = draw(&mut app, 100, 30);
-                app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
+                app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0, job: None }));
                 (normal, draw(&mut app, 100, 30))
             };
             let (plain, with) = (frames(false), frames(true));
@@ -5166,7 +5166,7 @@ mod check_settings_tests {
         assert!(set("npm test", 600).apply(&mut doc).is_err());
     }
 
-    fn app_with_channel() -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
+    pub(super) fn app_with_channel() -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
         let (_, mut app) = super::design_tests::render_with(100, 30);
         let (tx, rx) = mpsc::unbounded_channel();
         app.out = tx;
@@ -5235,6 +5235,437 @@ mod check_settings_tests {
         assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.is_none()));
         let (msg, _, _) = app.notice.clone().expect("a toast");
         assert!(msg.contains("project"), "{msg}");
+    }
+}
+
+mod team_settings_tests {
+    use super::check_settings_tests::{SIZES, app_with_channel, draw, layouts, project, show, words};
+    use super::*;
+    use crate::client::screen::team_settings::{JobDraft, JobField, TeamEdit, TeamRow, step_override};
+    use crate::config::{Family, TeamJob, TeamProject};
+
+    fn team_page() -> usize {
+        modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Team).unwrap()
+    }
+
+    fn open_team_page(app: &mut App, sel: usize) {
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: team_page(), sel, editing: None, capturing: false, scroll: 0, job: None }));
+    }
+
+    /// The rows before the first job: the global family and this project's.
+    const FIRST_JOB_ROW: usize = 2;
+
+    fn with_users_team(app: &mut App) {
+        let job = |name: &str, claude: &str, codex: &str| TeamJob { name: name.into(), claude: claude.into(), codex: codex.into() };
+        app.cfg.team.jobs = vec![job("planner", "opus", "gpt-6.1-sol"), job("builder", "sonnet", "gpt-6-luna"), job("reviewer", "opus", "gpt-6.1-sol")];
+    }
+
+    fn with_override(app: &mut App, family: Family) {
+        app.cfg.team.projects = vec![TeamProject { project: project(), family }];
+    }
+
+    fn help_of(app: &mut App, sel: usize) -> String {
+        open_team_page(app, sel);
+        let rows = design::settings_rows(modal::Cat::Team, &app.cfg);
+        match rows.get(sel) {
+            Some(design::SRow::Team(row)) => crate::client::screen::team_settings::help(app, *row, &view(app)),
+            other => panic!("not a team row: {other:?}"),
+        }
+    }
+
+    /// Every layout at every size: the frame fits the screen and says each of `want`.
+    fn each_frame(setup: fn(&mut App), want: &[&str]) {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let (_, mut app) = super::design_tests::render_with(w, h);
+                layout(&mut app);
+                setup(&mut app);
+                let o = draw(&mut app, w, h);
+                show(&o);
+                let at = format!("{name} {w}x{h}");
+                let text = words(&o);
+                for want in want {
+                    assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
+                }
+                assert!(o.lines().count() <= h as usize && o.lines().all(|l| l.chars().count() <= w as usize), "{at}: fits the screen");
+            }
+        }
+    }
+
+    #[test]
+    fn the_team_tab_sits_after_check_and_the_tab_row_still_fits() {
+        assert_eq!(team_page(), modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Check).unwrap() + 1);
+        assert_eq!(modal::Cat::Team.label(), "Team");
+        each_frame(|app| open_team_page(app, 0), &["Check", "Team", "Keys"]);
+    }
+
+    #[test]
+    fn the_family_setting_steps_between_claude_and_codex() {
+        let s = modal::SETTINGS.iter().find(|s| s.path == "team.family").expect("a family setting");
+        assert_eq!((s.cat, s.kind), (modal::Cat::Team, modal::Kind::Choice(&["claude", "codex"])));
+        assert!(s.help.contains("model each job runs on"), "{}", s.help);
+        let mut cfg = crate::config::Config::default();
+        assert_eq!(modal::step(&cfg, s, 1).unwrap().as_str(), Some("codex"));
+        cfg.team.family = Family::Codex;
+        assert_eq!(modal::step(&cfg, s, -1).unwrap().as_str(), Some("claude"));
+    }
+
+    #[test]
+    fn with_no_jobs_the_team_page_says_how_to_start_one() {
+        each_frame(|app| open_team_page(app, 0), &["Family", "claude", "codex", "This project", "global", "JOBS", "No team set."]);
+    }
+
+    #[test]
+    fn the_users_three_jobs_show_with_both_models() {
+        each_frame(
+            |app| {
+                with_users_team(app);
+                open_team_page(app, 0);
+            },
+            &["planner", "builder", "reviewer", "claude opus", "codex gpt-6-luna", "claude sonnet"],
+        );
+    }
+
+    #[test]
+    fn a_project_override_shows_on_its_row() {
+        each_frame(
+            |app| {
+                with_users_team(app);
+                with_override(app, Family::Codex);
+                open_team_page(app, 1);
+            },
+            &["‹ codex ›", "builder", "gpt-6-luna"],
+        );
+    }
+
+    #[test]
+    fn the_active_familys_model_is_the_emphasised_one() {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        with_users_team(&mut app);
+        open_team_page(&mut app, FIRST_JOB_ROW + 1);
+        let bold = |app: &mut App, model: &str| {
+            let job = crate::client::screen::team_settings::TeamRow::Job(1);
+            let segs = crate::client::screen::team_settings::control(app, &app.theme.clone(), job, &view(app), false, 60);
+            segs.iter().find(|(t, _)| t == model).map(|(_, s)| s.add_modifier.contains(ratatui::style::Modifier::BOLD)).unwrap()
+        };
+        assert!(bold(&mut app, "sonnet") && !bold(&mut app, "gpt-6-luna"));
+        with_override(&mut app, Family::Codex);
+        assert!(!bold(&mut app, "sonnet") && bold(&mut app, "gpt-6-luna"), "the project's own family wins");
+    }
+
+    #[test]
+    fn a_job_rows_help_says_what_it_starts_here_now() {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        with_users_team(&mut app);
+        let help = help_of(&mut app, FIRST_JOB_ROW + 1);
+        assert!(help.contains("starts builder on claude, model sonnet"), "{help}");
+        with_override(&mut app, Family::Codex);
+        let help = help_of(&mut app, FIRST_JOB_ROW + 1);
+        assert!(help.contains("starts builder on codex, model gpt-6-luna"), "{help}");
+    }
+
+    #[test]
+    fn the_project_row_steps_global_claude_codex_and_round() {
+        assert_eq!(step_override(None, 1), Some(Family::Claude));
+        assert_eq!(step_override(Some(Family::Claude), 1), Some(Family::Codex));
+        assert_eq!(step_override(Some(Family::Codex), 1), None);
+        assert_eq!(step_override(None, -1), Some(Family::Codex));
+    }
+
+    fn edited(before: &str, edit: TeamEdit) -> (String, crate::config::Config) {
+        let mut doc: toml_edit::DocumentMut = before.parse().unwrap();
+        edit.apply(&mut doc).unwrap();
+        let out = doc.to_string();
+        let cfg: crate::config::Config = toml::from_str(&out).unwrap_or_else(|e| panic!("{e}\n{out}"));
+        crate::config::validate_team(&cfg.team).unwrap();
+        (out, cfg)
+    }
+
+    fn own(family: Option<Family>) -> TeamEdit {
+        TeamEdit::Family { project: project(), family }
+    }
+
+    #[test]
+    fn a_projects_family_is_written_in_place_keeping_the_comments() {
+        let before = "# my notes\ntheme = \"nord\"\n\n[team]\n# which column\nfamily = \"claude\"\n";
+        let (out, cfg) = edited(before, own(Some(Family::Codex)));
+        assert!(out.contains("# my notes") && out.contains("# which column"), "{out}");
+        assert_eq!(cfg.team.projects, vec![TeamProject { project: project(), family: Family::Codex }]);
+        let with_note = format!("{out}\n# the library\n[[team.projects]]\nproject = \"/code/lib\"\nfamily = \"claude\"\n");
+        let (out, cfg) = edited(&with_note, own(Some(Family::Claude)));
+        assert!(out.contains("# the library") && out.contains("# my notes"), "{out}");
+        assert_eq!(cfg.team.projects.len(), 2, "the same project is updated, not added twice: {out}");
+        assert!(cfg.team.projects.iter().all(|p| p.family == Family::Claude));
+        assert_eq!(cfg.team.family, Family::Claude);
+    }
+
+    #[test]
+    fn going_back_to_global_removes_only_the_projects_entry() {
+        let (out, cfg) = edited("theme = \"nord\"\n", own(Some(Family::Codex)));
+        assert!(out.contains("[[team.projects]]") && !out.contains("[team]\n"), "no empty [team] header: {out}");
+        assert_eq!(cfg.team.projects.len(), 1);
+        let (out, cfg) = edited(&out, own(None));
+        assert!(cfg.team.projects.is_empty() && !out.contains("team"), "the last one takes the keys with it: {out}");
+        let (out, _) = edited("[team]\nfamily = \"codex\"\n", own(None));
+        assert_eq!(out, "[team]\nfamily = \"codex\"\n", "removing what is not there changes nothing");
+    }
+
+    #[test]
+    fn a_failed_team_save_keeps_the_old_value_and_says_why() {
+        let (mut app, _rx) = app_with_channel();
+        with_override(&mut app, Family::Codex);
+        open_team_page(&mut app, 1);
+        app.team_saved(Err(anyhow::anyhow!("disk full")), None);
+        let (msg, _, error) = app.notice.clone().expect("a toast");
+        assert!(error && msg.contains("couldn't save the team") && msg.contains("disk full"), "{msg}");
+        assert_eq!(app.cfg.team.projects[0].family, Family::Codex, "nothing was applied");
+    }
+
+    #[test]
+    fn a_saved_team_reaches_the_app_and_the_daemon() {
+        let (mut app, mut rx) = app_with_channel();
+        let mut cfg = app.cfg.clone();
+        cfg.team.projects = vec![TeamProject { project: project(), family: Family::Codex }];
+        app.team_saved(Ok(cfg), None);
+        assert_eq!(app.cfg.team.projects.len(), 1);
+        let mut sent = Vec::new();
+        while let Ok(m) = rx.try_recv() {
+            sent.push(m);
+        }
+        assert!(sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::ReloadConfig))));
+    }
+
+    fn key(app: &mut App, code: KeyCode) {
+        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    fn type_text(app: &mut App, text: &str) {
+        for c in text.chars() {
+            key(app, KeyCode::Char(c));
+        }
+    }
+
+    fn clear_field(app: &mut App) {
+        for _ in 0..40 {
+            key(app, KeyCode::Backspace);
+        }
+    }
+
+    fn view(app: &App) -> design::SettingsView {
+        match &app.mode {
+            Mode::ScreenSettings(v) => (**v).clone(),
+            other => panic!("not in Settings: {other:?}"),
+        }
+    }
+
+    /// The settings row of the add-job row.
+    fn add_row(app: &App) -> usize {
+        design::settings_rows(modal::Cat::Team, &app.cfg).iter().position(|r| matches!(r, design::SRow::Team(TeamRow::Add))).unwrap()
+    }
+
+    #[test]
+    fn enter_on_a_job_walks_its_name_and_both_models_and_esc_keeps_the_old_values() {
+        let (mut app, _rx) = app_with_channel();
+        with_users_team(&mut app);
+        let before = app.cfg.team.clone();
+        open_team_page(&mut app, FIRST_JOB_ROW + 1);
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(view(&app).editing.as_deref(), Some("builder"), "the name first");
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(view(&app).editing.as_deref(), Some("sonnet"), "then the Claude model");
+        clear_field(&mut app);
+        type_text(&mut app, "opus");
+        key(&mut app, KeyCode::Enter);
+        let v = view(&app);
+        assert_eq!(v.editing.as_deref(), Some("gpt-6-luna"), "then the Codex model");
+        assert_eq!(v.job.as_ref().map(|d| d.job.claude.as_str()), Some("opus"), "the draft keeps what was typed");
+        key(&mut app, KeyCode::Esc);
+        let v = view(&app);
+        assert!(v.editing.is_none() && v.job.is_none(), "Esc drops the draft");
+        assert_eq!(app.cfg.team, before, "nothing was saved");
+        assert!(app.notice.is_none());
+    }
+
+    #[test]
+    fn the_add_row_a_and_a_click_open_the_editor_on_a_new_job() {
+        let (mut app, _rx) = app_with_channel();
+        with_users_team(&mut app);
+        open_team_page(&mut app, 0);
+        key(&mut app, KeyCode::Char('a'));
+        let v = view(&app);
+        assert_eq!((v.sel, v.editing.as_deref()), (add_row(&app), Some("")), "a moves to the add row with an empty name");
+        assert_eq!(v.job.as_ref().map(|d| d.old_name.clone()), Some(None), "a new job");
+        key(&mut app, KeyCode::Esc);
+        let row = add_row(&app);
+        open_team_page(&mut app, row);
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(view(&app).editing.as_deref(), Some(""), "Enter on the add row");
+        key(&mut app, KeyCode::Esc);
+        open_team_page(&mut app, 0);
+        let row = add_row(&app);
+        super::check_wiring_tests::click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::SetVal(row, usize::MAX)));
+        assert_eq!(view(&app).editing.as_deref(), Some(""), "a click on the add row");
+    }
+
+    /// Add a job by keys, typing `fields` and Enter after each; returns the toast, if any.
+    fn add_by_keys(fields: &[&str]) -> (App, Option<String>) {
+        let (mut app, _rx) = app_with_channel();
+        with_users_team(&mut app);
+        open_team_page(&mut app, 0);
+        key(&mut app, KeyCode::Char('a'));
+        for field in fields {
+            type_text(&mut app, field);
+            key(&mut app, KeyCode::Enter);
+        }
+        let toast = app.notice.clone().map(|(msg, _, _)| msg);
+        (app, toast)
+    }
+
+    #[test]
+    fn an_empty_name_is_refused_and_the_draft_stays() {
+        let (app, toast) = add_by_keys(&[""]);
+        assert!(toast.unwrap().contains("needs a `name`"));
+        assert_eq!(view(&app).editing.as_deref(), Some(""), "still on the name");
+        assert_eq!(app.cfg.team.jobs.len(), 3, "nothing was applied");
+    }
+
+    #[test]
+    fn a_name_another_job_has_is_refused_ignoring_case() {
+        let (app, toast) = add_by_keys(&["Builder"]);
+        assert!(toast.unwrap().contains("named twice"));
+        assert_eq!(view(&app).editing.as_deref(), Some("Builder"), "the draft is kept to fix");
+    }
+
+    #[test]
+    fn a_model_with_a_space_is_refused_on_its_own_step() {
+        let (app, toast) = add_by_keys(&["tester", "gpt 6"]);
+        assert!(toast.unwrap().contains("has a space"));
+        let v = view(&app);
+        assert_eq!(v.editing.as_deref(), Some("gpt 6"));
+        assert_eq!(v.job.as_ref().map(|d| d.job.name.as_str()), Some("tester"), "the name typed before is kept");
+    }
+
+    #[test]
+    fn del_on_a_job_asks_first_and_cancel_comes_back_to_the_page() {
+        let (mut app, _rx) = app_with_channel();
+        with_users_team(&mut app);
+        open_team_page(&mut app, FIRST_JOB_ROW + 1);
+        key(&mut app, KeyCode::Delete);
+        let Mode::Confirm(c) = &app.mode else { panic!("a confirm, not {:?}", app.mode) };
+        assert_eq!((c.what.as_str(), c.act.clone()), ("builder", crate::client::menu::Act::RemoveTeamJob("builder".into())));
+        assert!(c.detail.contains("claude sonnet") && c.danger, "{c:?}");
+        key(&mut app, KeyCode::Esc);
+        assert_eq!(view(&app).sel, FIRST_JOB_ROW + 1, "back on the same row");
+        assert_eq!(app.cfg.team.jobs.len(), 3);
+    }
+
+    fn set_job(old_name: Option<&str>, name: &str, claude: &str, codex: &str) -> TeamEdit {
+        TeamEdit::SetJob { old_name: old_name.map(String::from), job: TeamJob { name: name.into(), claude: claude.into(), codex: codex.into() } }
+    }
+
+    const JOBS: &str = "# my team\n[team]\nfamily = \"claude\"\n\n[[team.jobs]]\nname = \"planner\"\nclaude = \"opus\" # the big one\ncodex = \"gpt-6.1-sol\"\n\n# builds\n[[team.jobs]]\nname = \"builder\"\nclaude = \"sonnet\"\ncodex = \"gpt-6-luna\"\n";
+
+    fn names(cfg: &crate::config::Config) -> Vec<&str> {
+        cfg.team.jobs.iter().map(|j| j.name.as_str()).collect()
+    }
+
+    #[test]
+    fn editing_a_job_rewrites_it_in_place_keeping_comments_and_order() {
+        let (out, cfg) = edited(JOBS, set_job(Some("planner"), "architect", "opus", "gpt-7"));
+        assert!(out.contains("# my team") && out.contains("# the big one") && out.contains("# builds"), "{out}");
+        assert_eq!(names(&cfg), ["architect", "builder"], "renamed where it stood");
+        assert_eq!(cfg.team.jobs[0].codex, "gpt-7");
+    }
+
+    #[test]
+    fn adding_a_job_puts_it_last() {
+        let (out, cfg) = edited(JOBS, set_job(None, "reviewer", "opus", ""));
+        assert!(out.contains("# builds"), "{out}");
+        assert_eq!(names(&cfg), ["planner", "builder", "reviewer"]);
+        let (out, cfg) = edited("theme = \"nord\"\n", set_job(None, "planner", "opus", "gpt-6.1-sol"));
+        assert!(out.contains("[[team.jobs]]") && !out.contains("[team]\n"), "no empty [team] header: {out}");
+        assert_eq!(names(&cfg), ["planner"]);
+    }
+
+    #[test]
+    fn removing_a_job_deletes_only_its_table() {
+        let (out, cfg) = edited(JOBS, TeamEdit::RemoveJob { name: "planner".into() });
+        assert!(out.contains("# my team") && out.contains("family = \"claude\""), "{out}");
+        assert_eq!(names(&cfg), ["builder"]);
+        let (out, cfg) = edited(&out, TeamEdit::RemoveJob { name: "builder".into() });
+        assert!(cfg.team.jobs.is_empty() && !out.contains("jobs") && out.contains("[team]"), "the explicit [team] stays: {out}");
+    }
+
+    #[test]
+    fn a_job_list_written_another_way_is_refused_not_overwritten() {
+        let mut doc: toml_edit::DocumentMut = "[team]\njobs = 3\n".parse().unwrap();
+        assert!(set_job(None, "x", "", "").apply(&mut doc).is_err());
+    }
+
+    #[test]
+    fn a_failed_job_save_puts_the_draft_back_and_says_why() {
+        let (mut app, _rx) = app_with_channel();
+        open_team_page(&mut app, 1);
+        let draft = JobDraft { old_name: None, job: TeamJob { name: "tester".into(), claude: "opus".into(), codex: "gpt-6".into() }, field: JobField::Codex };
+        app.team_saved(Err(anyhow::anyhow!("disk full")), Some(draft.clone()));
+        let v = view(&app);
+        assert_eq!((v.editing.as_deref(), v.job), (Some("gpt-6"), Some(draft)));
+        let (msg, _, error) = app.notice.clone().expect("a toast");
+        assert!(error && msg.contains("disk full"), "{msg}");
+        assert!(app.cfg.team.jobs.is_empty());
+    }
+
+    #[test]
+    fn editing_a_job_fits_every_layout_and_size() {
+        each_frame(
+            |app| {
+                with_users_team(app);
+                open_team_page(app, FIRST_JOB_ROW + 1);
+                app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            },
+            &["claude model", "sonnet█", "Step 2 of 3"],
+        );
+    }
+
+    #[test]
+    fn with_no_jobs_the_add_row_sits_under_the_empty_state() {
+        each_frame(|app| open_team_page(app, 2), &["No team set.", "+ add job", "Enter or a"]);
+    }
+
+    #[test]
+    fn the_remove_confirm_fits_every_layout_and_size() {
+        each_frame(
+            |app| {
+                with_users_team(app);
+                open_team_page(app, FIRST_JOB_ROW);
+                app.on_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+            },
+            &["Remove job", "planner", "Remove", "Cancel"],
+        );
+    }
+
+    #[test]
+    fn the_page_hints_name_its_own_keys_when_they_fit() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        with_users_team(&mut app);
+        open_team_page(&mut app, FIRST_JOB_ROW);
+        let o = words(&draw(&mut app, 160, 45));
+        for hint in ["Enter edit", "a add", "Del remove"] {
+            assert!(o.contains(hint), "{hint} in\n{o}");
+        }
+    }
+
+    #[test]
+    fn without_a_project_open_the_project_row_says_so_and_writes_nothing() {
+        let (mut app, _rx) = app_with_channel();
+        app.snap.workspaces.clear();
+        app.snap.active_ws = None;
+        open_team_page(&mut app, 1);
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        let (msg, _, _) = app.notice.clone().expect("a toast");
+        assert!(msg.contains("project"), "{msg}");
+        assert!(words(&draw(&mut app, 100, 30)).contains("no project open"));
     }
 }
 
@@ -5343,7 +5774,7 @@ mod check_wiring_tests {
     }
 
     /// Click the topmost control whose hit is `want`, drawing first so it exists.
-    fn click(app: &mut App, w: u16, h: u16, want: Hit) {
+    pub(super) fn click(app: &mut App, w: u16, h: u16, want: Hit) {
         draw(app, w, h);
         let (r, _) = app.hits.iter().rev().find(|(_, hit)| *hit == want).unwrap_or_else(|| panic!("no control for {want:?}"));
         let (column, row) = (r.x, r.y);
@@ -5774,7 +6205,7 @@ mod check_wiring_tests {
 
     fn check_page(app: &mut App, sel: usize) {
         let cat = modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Check).unwrap();
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat, sel, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat, sel, editing: None, capturing: false, scroll: 0, job: None }));
     }
 
     fn with_command(app: &mut App) {

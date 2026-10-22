@@ -289,7 +289,7 @@ impl App {
 
     pub(in crate::client) fn screen_settings(&mut self) {
         self.refresh_installed_version();
-        self.mode = Mode::ScreenSettings(Box::new(SView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        self.mode = Mode::ScreenSettings(Box::new(SView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0, job: None }));
     }
 
     /// Move the sidebar cursor; bare keys then work on the sidebar until Esc or Enter.
@@ -331,6 +331,9 @@ impl App {
         let yes = act.is_some();
         if let Some(a) = act {
             self.menu_do(a);
+        }
+        if let Some(v) = self.screen.settings_return.take() {
+            self.mode = Mode::ScreenSettings(v);
         }
         if let Some(item) = back {
             if yes {
@@ -700,13 +703,13 @@ impl App {
             .iter()
             .enumerate()
             .find_map(|(ci, c)| {
-                crate::client::design::settings_rows(*c)
+                crate::client::design::settings_rows(*c, &self.cfg)
                     .iter()
                     .position(|r| matches!(r, crate::client::design::SRow::Setting(s) if s.path == path))
                     .map(|i| (ci, i))
             })
             .unwrap_or((0, 0));
-        self.mode = Mode::ScreenSettings(Box::new(SView { cat, sel, editing: None, capturing: false, scroll: 0 }));
+        self.mode = Mode::ScreenSettings(Box::new(SView { cat, sel, editing: None, capturing: false, scroll: 0, job: None }));
     }
 
     pub(in crate::client) fn finder_enter(&mut self, mut fd: Finder) {
@@ -1308,8 +1311,8 @@ impl App {
                 let Mode::ScreenSettings(v) = &mut self.mode else { return };
                 let again = v.sel == i;
                 v.sel = i;
-                let cat = crate::client::modal::Cat::ALL[v.cat.min(5)];
-                let row = crate::client::design::settings_rows(cat).get(i).cloned();
+                let cat = crate::client::modal::Cat::ALL[v.cat.min(crate::client::modal::Cat::ALL.len() - 1)];
+                let row = crate::client::design::settings_rows(cat, &self.cfg).get(i).cloned();
                 let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
                 match (h, row) {
                     (ScreenHit::SetVal(_, vi), Some(row @ SRow::Setting(_))) if vi != usize::MAX && chips_for(self, &row).is_some() => set_chip(self, &row, vi),

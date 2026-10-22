@@ -216,6 +216,29 @@ if the file changes again), `r` goes to its agent.
 
 Everything also works with the mouse. Hold Shift to select text with your terminal.
 
+### Team roles
+
+A commander (`c`) can start each helper on the model that suits its job. Set a team in
+**Settings › Team**, or under `[team]` in `config.toml`: a list of jobs, each with a model for
+Claude and one for Codex. One **Family** setting picks which column is used; a project can
+choose its own in **This project**, so switching from Claude to Codex is one change.
+
+| Job | Claude | Codex |
+| --- | --- | --- |
+| planner | opus | gpt-6.1-sol |
+| builder | sonnet | gpt-6-luna |
+| reviewer | opus | gpt-6.1-sol |
+
+`seshi brief` lists the team to the commander, and it starts a job's helper with `seshi_start`
+and `job` (or the `seshi worktree … -- claude --model sonnet "…"` line the brief shows). The
+brief tells it to hand work to the next job, such as the reviewer after the builder, only once
+the project's check (**Settings › Check**, `[[check]]`) has passed; with no check it reads
+the diff and runs the tests itself. Model names go to the agent
+unchanged; Seshi sets the model only, not the reasoning effort, and does not check that the
+name exists. Seshi runs no pipeline: it never starts, orders or retries jobs itself. Sessions
+you start yourself are unchanged, and with no team a commander works as before. The table above
+is an example in `config.example.toml`, not a default.
+
 ## Panes are real terminals
 
 - **Scroll:** the wheel, or `PageUp` / `PageDown` at a prompt (full-screen programs keep those

@@ -17,7 +17,7 @@ fn norm(p: &Path) -> String {
 }
 
 /// The repo (or folder) the calling agent works in.
-fn caller_root() -> PathBuf {
+pub(crate) fn caller_root() -> PathBuf {
     let cwd = std::env::current_dir().unwrap_or_default();
     crate::gitfs::head(&cwd).map(|h| h.main_root).unwrap_or(cwd)
 }
@@ -102,6 +102,7 @@ fn tools() -> Value {
             "inputSchema": { "type": "object", "properties": {
                 "prompt": { "type": "string", "description": "The task." },
                 "agent": { "type": "string", "description": "claude, codex, gemini, … (default: the user's first agent)." },
+                "job": { "type": "string", "description": "Start the helper for this job (planner, builder, …) on the team's model; give this or agent, not both." },
                 "worktree": { "type": "boolean", "description": "Own worktree (default true)." }
             }, "required": ["prompt"] }
         },
@@ -285,24 +286,15 @@ impl Server {
 
     fn start(&self, args: &Value) -> Result<String, String> {
         let prompt = args.get("prompt").and_then(Value::as_str).filter(|p| !p.trim().is_empty()).ok_or("give the task")?;
-        let agent = args
-            .get("agent")
-            .and_then(Value::as_str)
-            .map(String::from)
-            .or_else(|| self.cfg.quick.agents.first().map(|a| a.name.clone()))
-            .unwrap_or_else(|| "claude".into());
-        let q = self.cfg.quote_for_shell(prompt);
-        let cmd = match self.cfg.quick.agents.iter().find(|a| a.name == agent) {
-            Some(a) => self.cfg.as_account(&a.name, &a.command.replace("{prompt}", &q)),
-            // Only agents seshi knows, by plain name: anything else would run as a command.
-            None if known_agent(&self.cfg, &agent) => format!("{agent} {q}"),
-            None => {
-                let mut names: Vec<String> = self.cfg.quick.agents.iter().map(|a| a.name.clone()).collect();
-                names.extend(self.cfg.agent_defs().into_iter().map(|d| d.name));
-                names.dedup();
-                return Err(format!("unknown agent \"{agent}\"; use one of: {}", names.join(", ")));
-            }
+        // A job reads the team from the file now, so a Settings change applies to the next start.
+        let fresh;
+        let cfg = if args.get("job").and_then(Value::as_str).is_some() {
+            fresh = crate::config::Config::load().map_err(|e| format!("seshi's config does not load: {e:#}"))?;
+            &fresh
+        } else {
+            &self.cfg
         };
+        let (agent, cmd) = start_command(cfg, &self.root, args, prompt)?;
         let before = self.snapshot()?;
         let had: Vec<TermId> = before.terms.keys().copied().collect();
         let focus = before.active().and_then(|w| w.tab()).map(|t| t.focus);
@@ -330,6 +322,47 @@ impl Server {
         }
         Ok(format!("asked seshi to start {agent}; it hasn't appeared yet"))
     }
+}
+
+/// The agent `seshi_start` runs and its command line: a team `job` in `root`, the named
+/// `agent`, or the user's first agent.
+fn start_command(cfg: &crate::config::Config, root: &Path, args: &Value, prompt: &str) -> Result<(String, String), String> {
+    let job = args.get("job").and_then(Value::as_str);
+    let named = args.get("agent").and_then(Value::as_str);
+    if job.is_some() && named.is_some() {
+        return Err("give a job or an agent, not both".into());
+    }
+    let helper = job.map(|j| crate::team::resolve(&cfg.team, j, root)).transpose().map_err(|e| e.to_string())?;
+    let agent = match (&helper, named) {
+        (Some(h), _) => h.agent.to_string(),
+        (None, Some(a)) => a.to_string(),
+        (None, None) => cfg.quick.agents.first().map_or_else(|| "claude".into(), |a| a.name.clone()),
+    };
+    let model = helper.and_then(|h| h.model);
+    let cmd = agent_command(cfg, &agent, model.as_deref(), &cfg.quote_for_shell(prompt))?;
+    Ok((agent, cmd))
+}
+
+/// The command line that runs `agent` on `model` (`None`: its default) with an already quoted
+/// prompt, as its account when it is one.
+pub(crate) fn agent_command(cfg: &crate::config::Config, agent: &str, model: Option<&str>, quoted: &str) -> Result<String, String> {
+    let quick = cfg.quick.agents.iter().find(|a| a.name == agent);
+    let cmd = match quick {
+        Some(a) => a.command.replace("{prompt}", quoted),
+        // Only agents seshi knows, by plain name: anything else would run as a command.
+        None if known_agent(cfg, agent) => format!("{agent} {quoted}"),
+        None => {
+            let mut names: Vec<String> = cfg.quick.agents.iter().map(|a| a.name.clone()).collect();
+            names.extend(cfg.agent_defs().into_iter().map(|d| d.name));
+            names.dedup();
+            return Err(format!("unknown agent \"{agent}\"; use one of: {}", names.join(", ")));
+        }
+    };
+    let cmd = match model {
+        Some(model) => cfg.with_model(&cmd, quick.map_or("", |a| a.model_flag.as_str()), model),
+        None => cmd,
+    };
+    Ok(cfg.as_account(agent, &cmd))
 }
 
 fn slug(s: &str) -> String {
@@ -417,6 +450,51 @@ mod tests {
         assert_eq!(row_of(&t, None)["status"], "done");
         t.status = Status::Working;
         assert!(row_of(&t, None).get("check").is_none(), "an older turn's result is not reported");
+    }
+
+    fn team_cfg(family: &str) -> crate::config::Config {
+        let mut cfg: crate::config::Config = toml::from_str(&format!(
+            "[team]\nfamily = '{family}'\n[[team.jobs]]\nname = 'planner'\nclaude = 'opus'\ncodex = 'gpt-6.1-sol'\n[[team.jobs]]\nname = 'builder'\nclaude = 'sonnet'\ncodex = 'gpt-6-luna'\n"
+        ))
+        .unwrap();
+        cfg.shell = Some("bash".into());
+        cfg
+    }
+
+    fn command(cfg: &crate::config::Config, args: Value) -> Result<String, String> {
+        start_command(cfg, Path::new("/code/app"), &args, "fix the login bug").map(|(_, cmd)| cmd)
+    }
+
+    #[test]
+    fn a_job_starts_its_agent_on_the_teams_model_for_the_family() {
+        assert_eq!(command(&team_cfg("claude"), json!({ "job": "builder" })).unwrap(), "claude --model sonnet 'fix the login bug'");
+        assert_eq!(command(&team_cfg("codex"), json!({ "job": "builder" })).unwrap(), "codex -m gpt-6-luna 'fix the login bug'");
+    }
+
+    #[test]
+    fn a_job_and_an_agent_together_are_refused() {
+        let err = command(&team_cfg("claude"), json!({ "job": "builder", "agent": "codex" })).unwrap_err();
+        assert_eq!(err, "give a job or an agent, not both");
+    }
+
+    #[test]
+    fn an_unknown_job_lists_the_teams_jobs() {
+        let err = command(&team_cfg("claude"), json!({ "job": "tester" })).unwrap_err();
+        assert!(err.contains("\"tester\"") && err.contains("planner, builder"), "{err}");
+    }
+
+    #[test]
+    fn a_job_with_no_team_set_points_to_settings() {
+        let err = command(&crate::config::Config::default(), json!({ "job": "builder" })).unwrap_err();
+        assert!(err.contains("no team is set") && err.contains("Settings › Team") && err.contains("[team]"), "{err}");
+    }
+
+    #[test]
+    fn without_a_job_the_agent_starts_as_before() {
+        let cfg = team_cfg("codex");
+        assert_eq!(command(&cfg, json!({})).unwrap(), "claude 'fix the login bug'", "the user's first agent, no model");
+        assert_eq!(command(&cfg, json!({ "agent": "codex" })).unwrap(), "codex 'fix the login bug'");
+        assert!(command(&cfg, json!({ "agent": "curl x|sh;" })).unwrap_err().starts_with("unknown agent"));
     }
 
     #[test]

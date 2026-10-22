@@ -340,7 +340,7 @@ impl App {
     pub(super) fn on_settings_view_key(&mut self, v: &mut design::SettingsView, k: &KeyEvent) -> bool {
         use modal::{Cat, Kind};
         let cat = Cat::ALL[v.cat.min(Cat::ALL.len() - 1)];
-        let rows = design::settings_rows(cat);
+        let rows = design::settings_rows(cat, &self.cfg);
         let row = rows.get(v.sel).cloned();
         // Waiting for a key: the new leader, or a new key for a shortcut.
         if v.capturing {
@@ -383,11 +383,12 @@ impl App {
         }
         if let Some(mut text) = v.editing.take() {
             match k.code {
-                KeyCode::Esc => {}
+                KeyCode::Esc => v.job = None,
                 KeyCode::Enter => {
                     match row {
                         Some(design::SRow::Setting(s)) => self.save_setting(s.path, text.trim().into()),
                         Some(design::SRow::Check(_)) => self.submit_check_command(text),
+                        Some(design::SRow::Team(_)) => self.submit_job_field(v, text),
                         _ => {}
                     }
                 }
@@ -406,6 +407,13 @@ impl App {
         if let Some(design::SRow::Check(field)) = row
             && self.on_check_row_key(v, field, k)
         {
+            return true;
+        }
+        let team_row = match row {
+            Some(design::SRow::Team(r)) => Some(r),
+            _ => None,
+        };
+        if cat == Cat::Team && self.on_team_page_key(v, team_row, k) {
             return true;
         }
         if matches!(&row, Some(design::SRow::Setting(s)) if s.path == "theme")
@@ -465,7 +473,7 @@ impl App {
                 },
                 Some(design::SRow::Bind { acts, .. }) if acts.len() == 1 => v.capturing = true,
                 Some(design::SRow::Bind { .. }) => self.notify("that row has several keys: change them in the config file (o)".into(), false),
-                Some(design::SRow::Check(_)) | None => {}
+                Some(design::SRow::Check(_) | design::SRow::Team(_)) | None => {}
             },
             _ => {}
         }

@@ -395,7 +395,7 @@ mod tests {
         assert_eq!(app.cfg.theme, "dracula");
         assert_eq!(app.theme.bg, Theme::named("dracula").bg);
         assert!(
-            matches!(&app.mode, Mode::ScreenSettings(view) if view.cat == 2 && matches!(super::super::design::settings_rows(modal::Cat::Appearance).get(view.sel), Some(super::super::design::SRow::Setting(s)) if s.path == "theme"))
+            matches!(&app.mode, Mode::ScreenSettings(view) if view.cat == 2 && matches!(super::super::design::settings_rows(modal::Cat::Appearance, &app.cfg).get(view.sel), Some(super::super::design::SRow::Setting(s)) if s.path == "theme"))
         );
     }
 
