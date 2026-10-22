@@ -304,7 +304,7 @@ impl Server {
         for _ in 0..60 {
             std::thread::sleep(std::time::Duration::from_millis(250));
             let Ok(now) = self.snapshot() else { continue };
-            if let Some(new) = now.terms.keys().copied().find(|id| !had.contains(id)) {
+            if let Some(new) = cli::handoff::new_pane(&had, now.terms.keys().copied()) {
                 if let Some(f) = focus.filter(|f| now.terms.contains_key(f)) {
                     let _ = cli::block_on(cli::request(ClientMsg::Command(Command::FocusPane { term: f })));
                 }
