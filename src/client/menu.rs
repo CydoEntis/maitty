@@ -57,8 +57,9 @@ pub enum Act {
     /// Open a session's check output in the evidence sheet.
     CheckOutput(TermId),
     RerunCheck(TermId),
-    /// Accept a failed check; the string is the reason typed in the confirm, possibly empty.
-    OverrideCheck(TermId, String),
+    /// Accept a failed checkpoint (None: the headline); the string is the reason typed in the
+    /// confirm, possibly empty.
+    OverrideCheck(TermId, String, Option<String>),
     /// Take an override back: the check reads as failed again.
     UndoOverride(TermId),
 }
@@ -418,7 +419,7 @@ impl App {
                 danger: false,
                 act: a.clone(),
             }),
-            Act::OverrideCheck(t, _) => match self.override_confirm(*t) {
+            Act::OverrideCheck(t, _, name) => match self.override_confirm(*t, name.clone()) {
                 Some(c) => Some(c),
                 None => return,
             },
@@ -448,7 +449,7 @@ impl App {
                 let from_side = self.mode == Mode::Side || self.screen.cursor.is_some() || self.screen.cursor_proj.is_some();
                 self.screen.side_return = match &c.act {
                     _ if !from_side => None,
-                    Act::Commander(t) | Act::Restore(_, _, _, t) | Act::OverrideCheck(t, _) => Some(super::screen::SideItem::Sess(*t)),
+                    Act::Commander(t) | Act::Restore(_, _, _, t) | Act::OverrideCheck(t, ..) => Some(super::screen::SideItem::Sess(*t)),
                     _ => self.side_after_close(),
                 };
                 self.mode = Mode::Confirm(Box::new(c));
@@ -585,8 +586,8 @@ impl App {
             Act::Changes(p) => self.open_changes(p),
             Act::CheckOutput(t) => self.open_check_sheet(t),
             Act::RerunCheck(t) => self.rerun_check(t),
-            Act::OverrideCheck(t, reason) => self.override_check(t, reason),
-            Act::UndoOverride(t) => self.undo_override(t),
+            Act::OverrideCheck(t, reason, name) => self.override_check(t, name, reason),
+            Act::UndoOverride(t) => self.undo_override(t, None),
         }
     }
 }

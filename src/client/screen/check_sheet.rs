@@ -172,7 +172,7 @@ impl App {
         match k.code {
             KeyCode::Esc => return false,
             KeyCode::Char(c @ ('r' | 'O' | 'u' | ',')) => {
-                self.do_check_key(v.term, c);
+                self.do_check_key(v.term, (!v.name.is_empty()).then(|| v.name.clone()), c);
             }
             KeyCode::Char('o') => {
                 self.screen_focus(v.term);
@@ -654,6 +654,30 @@ mod tests {
             assert!(matches!(app.view, Some(View::Check(_))) && app.mode == Mode::Normal, "{layout}: Tab stays in the sheet");
             app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         }
+    }
+
+    #[test]
+    fn the_sheet_s_keys_act_on_the_checkpoint_it_shows() {
+        use crate::client::menu::Act;
+        use crate::protocol::Command;
+        let mut app = world(Stage::Multi);
+        let (tx, mut rx) = crate::client::mpsc::unbounded_channel();
+        app.out = tx;
+        app.open_check_sheet(1);
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        app.on_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE));
+        let reruns: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok())
+            .filter_map(|m| match m {
+                crate::client::ClientMsg::Command(Command::RerunCheck { term, name }) => Some((term, name)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(reruns, [(1, Some("build".to_string()))]);
+        app.on_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::NONE));
+        assert!(!matches!(app.mode, Mode::Confirm(_)), "build passed: nothing to override");
+        app.on_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
+        app.on_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::NONE));
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, Act::OverrideCheck(1, _, Some(n)) if n == "test")), "{:?}", app.mode);
     }
 
     #[test]

@@ -105,7 +105,7 @@ fn preset(name: &str) -> App {
     let mut app = match &name[..3] {
         "12 " => {
             let mut app = world(Stage::Failed);
-            app.ask_override(1);
+            app.ask_override(1, None);
             app.on_paste("flaky legal test, tracked in #212".into());
             app
         }
@@ -302,7 +302,7 @@ fn with_several_waiting_the_next_opens_after_a_choice() {
 fn overriding() -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
     let mut app = world(Stage::Failed);
     let rx = listening(&mut app);
-    app.ask_override(1);
+    app.ask_override(1, None);
     (app, rx)
 }
 

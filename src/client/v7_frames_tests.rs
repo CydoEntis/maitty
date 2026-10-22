@@ -226,7 +226,7 @@ fn open(id: &str) -> App {
             app.open_check_sheet(1);
             app.check_output_arrived(output.into());
             if over == Over::Override {
-                app.ask_override(1);
+                app.ask_override(1, None);
                 app.on_paste("flaky legal test, tracked in #212".into());
             }
         }

@@ -975,7 +975,7 @@ impl App {
             // its settings. Where it doesn't act, the key is typed.
             KeyCode::Char(c @ ('r' | 'O' | 'u' | ',')) if query.is_empty() && sel_check.as_ref().is_some_and(|i| super::check_inbox::check_key_acts(c, i)) => {
                 let Some(term) = sel_item else { return };
-                self.do_check_key(term, c);
+                self.do_check_key(term, None, c);
                 if !matches!(c, 'O' | ',') {
                     self.mode = Mode::GoTo { query, sel };
                 }
@@ -995,7 +995,7 @@ impl App {
                     Some(GoRow::Ask(t)) if query.is_empty() => return self.start_compose(t, false, Some((query, sel))),
                     Some(GoRow::Approve(t) | GoRow::Failed(t) | GoRow::NotRun(t)) => self.open_check_sheet(t),
                     Some(GoRow::Done(t)) if stale && query.is_empty() => {
-                        self.do_check_key(t, 'r');
+                        self.do_check_key(t, None, 'r');
                         self.mode = Mode::GoTo { query, sel };
                     }
                     Some(GoRow::Ask(t) | GoRow::Done(t) | GoRow::Sess(_, t)) => {

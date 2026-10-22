@@ -22,7 +22,7 @@ pub(in crate::client) fn check_menu_items(term: TermId, info: &CheckInfo) -> Vec
         items.push(("Re-run check".into(), Act::RerunCheck(term)));
     }
     if check::failed(info) {
-        items.push(("Override check…".into(), Act::OverrideCheck(term, String::new())));
+        items.push(("Override check…".into(), Act::OverrideCheck(term, String::new(), None)));
     }
     if info.state == CheckState::Overridden {
         items.push(("Undo override".into(), Act::UndoOverride(term)));
@@ -30,10 +30,10 @@ pub(in crate::client) fn check_menu_items(term: TermId, info: &CheckInfo) -> Vec
     items
 }
 
-/// What a re-run says, or why it is not sent.
-fn rerun_words(t: &TermInfo) -> Result<Option<String>, &'static str> {
+/// What a re-run of `check` (None: the session has no result yet) says, or why it is not sent.
+fn rerun_words(t: &TermInfo, check: Option<&CheckInfo>) -> Result<Option<String>, &'static str> {
     let working = t.status == Status::Working;
-    match t.check() {
+    match check {
         Some(c) if c.state == CheckState::Checking => Err("its check is already running"),
         Some(c) if c.rerun_queued => Err("a re-run is already queued: it runs when this turn ends"),
         Some(_) if working => Ok(Some("re-run queued: it runs when this turn ends".into())),
@@ -42,6 +42,11 @@ fn rerun_words(t: &TermInfo) -> Result<Option<String>, &'static str> {
         None if working => Ok(None),
         None => Ok(Some("running the check…".into())),
     }
+}
+
+/// `t`'s checkpoint `name`, or its headline for None or a name it no longer has.
+fn checkpoint<'a>(t: &'a TermInfo, name: Option<&str>) -> Option<&'a CheckInfo> {
+    name.and_then(|n| t.checks.iter().find(|c| c.name == n)).or_else(|| t.check())
 }
 
 /// `text`'s first line added to `reason`, as far as the daemon will take it.
@@ -58,7 +63,7 @@ impl App {
     /// Run `term`'s checkpoint `name` again (None: all of them).
     pub(in crate::client) fn rerun_checkpoint(&mut self, term: TermId, name: Option<String>) {
         let Some(t) = self.snap.terms.get(&term) else { return };
-        match rerun_words(t) {
+        match rerun_words(t, checkpoint(t, name.as_deref())) {
             Err(why) => self.notify(why.into(), false),
             Ok(said) => {
                 self.cmd(Command::RerunCheck { term, name });
@@ -69,20 +74,21 @@ impl App {
         }
     }
 
-    pub(in crate::client) fn override_check(&mut self, term: TermId, reason: String) {
-        self.cmd(Command::OverrideCheck { term, name: None, reason });
+    pub(in crate::client) fn override_check(&mut self, term: TermId, name: Option<String>, reason: String) {
+        self.cmd(Command::OverrideCheck { term, name, reason });
         let name = self.session_name(term);
         self.notify(format!("Overridden. {name} reads done (overridden); the failure stays in its evidence."), false);
     }
 
-    pub(in crate::client) fn undo_override(&mut self, term: TermId) {
-        self.cmd(Command::UndoOverride { term, name: None });
+    pub(in crate::client) fn undo_override(&mut self, term: TermId, name: Option<String>) {
+        self.cmd(Command::UndoOverride { term, name });
         self.notify("override undone: the check reads as failed again".into(), false);
     }
 
-    /// The confirm for overriding `term`'s check, or None (with a toast) when it is not failed.
-    pub(in crate::client) fn override_confirm(&mut self, term: TermId) -> Option<Confirm> {
-        let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check().cloned()).filter(check::failed) else {
+    /// The confirm for overriding `term`'s checkpoint `name` (None: its headline), or None (with
+    /// a toast) when it is not failed.
+    pub(in crate::client) fn override_confirm(&mut self, term: TermId, name: Option<String>) -> Option<Confirm> {
+        let Some(info) = self.snap.terms.get(&term).and_then(|t| checkpoint(t, name.as_deref()).cloned()).filter(check::failed) else {
             self.notify("that check isn't failed any more".into(), true);
             return None;
         };
@@ -96,26 +102,26 @@ impl App {
             yes: "Override".into(),
             key: '\n',
             danger: true,
-            act: Act::OverrideCheck(term, String::new()),
+            act: Act::OverrideCheck(term, String::new(), name),
         })
     }
 
-    pub(in crate::client) fn ask_override(&mut self, term: TermId) {
-        if let Some(c) = self.override_confirm(term) {
+    pub(in crate::client) fn ask_override(&mut self, term: TermId, name: Option<String>) {
+        if let Some(c) = self.override_confirm(term, name) {
             self.mode = Mode::Confirm(Box::new(c));
         }
     }
 
-    /// One of a check's keys for `term`: `o` output, `r` re-run, `O` override, `u` undo, `,` its
-    /// project's check settings. Does nothing, and says so with false, when the result does not
-    /// allow it.
-    pub(in crate::client) fn do_check_key(&mut self, term: TermId, key: char) -> bool {
-        let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check().cloned()) else { return false };
+    /// One of a check's keys for `term`'s checkpoint `name` (None: its headline): `o` output,
+    /// `r` re-run, `O` override, `u` undo, `,` its project's check settings. Does nothing, and
+    /// says so with false, when the result does not allow it.
+    pub(in crate::client) fn do_check_key(&mut self, term: TermId, name: Option<String>, key: char) -> bool {
+        let Some(info) = self.snap.terms.get(&term).and_then(|t| checkpoint(t, name.as_deref()).cloned()) else { return false };
         match key {
             'o' => self.open_check_sheet(term),
-            'r' if check::settled(&info) => self.rerun_check(term),
-            'O' if check::failed(&info) => self.ask_override(term),
-            'u' if info.state == CheckState::Overridden => self.undo_override(term),
+            'r' if check::settled(&info) => self.rerun_checkpoint(term, name),
+            'O' if check::failed(&info) => self.ask_override(term, name),
+            'u' if info.state == CheckState::Overridden => self.undo_override(term, name),
             ',' => self.open_project_check(term),
             _ => return false,
         }
@@ -125,7 +131,7 @@ impl App {
     /// Keys in the override confirm: the reason is typed into it; Enter overrides, and so does O
     /// while no reason is typed (after that O is a letter of it); Esc doesn't.
     pub(in crate::client) fn on_override_key(&mut self, mut c: Confirm, k: &KeyEvent) {
-        let no_reason = matches!(&c.act, Act::OverrideCheck(_, reason) if reason.is_empty());
+        let no_reason = matches!(&c.act, Act::OverrideCheck(_, reason, _) if reason.is_empty());
         match k.code {
             KeyCode::Char('O') if no_reason => {
                 self.mode = Mode::Normal;
@@ -141,7 +147,7 @@ impl App {
             }
             _ => {}
         }
-        if let Act::OverrideCheck(_, reason) = &mut c.act {
+        if let Act::OverrideCheck(_, reason, _) = &mut c.act {
             let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
             match k.code {
                 KeyCode::Backspace => {
@@ -159,8 +165,8 @@ impl App {
 /// The override confirm: what it will do, what it hides, where the failure stays visible, and
 /// the reason.
 pub(in crate::client) fn draw_override(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, c: &Confirm) {
-    let Act::OverrideCheck(term, reason) = &c.act else { return };
-    let info = app.snap.terms.get(term).and_then(|x| x.check().cloned()).unwrap_or_default();
+    let Act::OverrideCheck(term, reason, name) = &c.act else { return };
+    let info = app.snap.terms.get(term).and_then(|x| checkpoint(x, name.as_deref()).cloned()).unwrap_or_default();
     let mark = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).over;
     let buf = f.buffer_mut();
     dim_all(buf, area, t);

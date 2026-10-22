@@ -5467,7 +5467,7 @@ mod check_wiring_tests {
         assert_eq!(rerun_of(&commands(&mut rx)), 1, "r re-runs a settled check");
         let (mut app, _) = on_its_row(CheckState::Failed);
         app.on_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
-        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), "O asks to override: {:?}", app.mode);
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, ..))), "O asks to override: {:?}", app.mode);
         let (mut app, mut rx) = on_its_row(CheckState::Overridden);
         press(&mut app, KeyCode::Char('u'));
         assert!(commands(&mut rx).iter().any(|c| matches!(c, Command::UndoOverride { term: TERM, .. })), "u takes the override back");
@@ -5489,7 +5489,7 @@ mod check_wiring_tests {
         let (mut app, mut rx) = done(CheckState::Failed);
         app.menu_for_session(TERM, (20, 10));
         app.on_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
-        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), "O overrides: {:?}", app.mode);
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, ..))), "O overrides: {:?}", app.mode);
         assert!(commands(&mut rx).is_empty());
     }
 
@@ -5549,7 +5549,7 @@ mod check_wiring_tests {
     fn the_menus_override_item_asks_first_and_sends_the_reason_on_yes() {
         let (mut app, mut rx) = done(CheckState::Failed);
         pick(&mut app, "Override check…");
-        assert!(matches!(&app.mode, Mode::Confirm(c) if c.danger && matches!(c.act, Act::OverrideCheck(TERM, _))), "{:?}", app.mode);
+        assert!(matches!(&app.mode, Mode::Confirm(c) if c.danger && matches!(c.act, Act::OverrideCheck(TERM, ..))), "{:?}", app.mode);
         assert!(commands(&mut rx).is_empty(), "nothing is sent until it is confirmed");
         typed(&mut app, "flaky on CI");
         press(&mut app, KeyCode::Enter);
@@ -5563,7 +5563,7 @@ mod check_wiring_tests {
         app.menu_for_session(TERM, (20, 10));
         app.snap.terms.get_mut(&TERM).unwrap().checks = vec![info(CheckState::Passed)];
         app.screen_sync();
-        app.menu_act(Act::OverrideCheck(TERM, String::new()));
+        app.menu_act(Act::OverrideCheck(TERM, String::new(), None));
         assert!(commands(&mut rx).is_empty() && !matches!(app.mode, Mode::Confirm(_)), "{:?}", app.mode);
         assert!(toast(&app).0.contains("failed"), "it says why");
     }
@@ -5681,7 +5681,7 @@ mod check_wiring_tests {
         click(&mut app, 100, 30, viewkey('r'));
         assert_eq!(rerun_of(&commands(&mut rx)), 1, "Re-run");
         click(&mut app, 100, 30, viewkey('O'));
-        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), "Override…");
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, ..))), "Override…");
         app.mode = Mode::Normal;
         let (mut app, mut rx) = done(CheckState::Overridden);
         app.open_check_sheet(TERM);
@@ -5784,7 +5784,7 @@ mod check_wiring_tests {
                 assert!(!other.iter().any(|m| matches!(m, ClientMsg::Input { .. })), "{at}: r never types into the pane");
                 let (mut app, mut rx3) = open();
                 press(&mut app, KeyCode::Char('O'));
-                assert_eq!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), state == CheckState::Failed, "{at}: O");
+                assert_eq!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, ..))), state == CheckState::Failed, "{at}: O");
                 assert!(!sent(&mut rx3).iter().any(|m| matches!(m, ClientMsg::Input { .. })), "{at}: O never types into the pane");
                 sent(&mut rx);
             }
@@ -5837,7 +5837,7 @@ mod check_wiring_tests {
         click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::InboxKey('r')));
         assert_eq!(rerun_of(&commands(&mut rx)), 1, "the Re-run button");
         press(&mut app, KeyCode::Char('O'));
-        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), "O");
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, ..))), "O");
         press(&mut app, KeyCode::Esc);
         goto_failed(&mut app);
         click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::InboxKey('O')));

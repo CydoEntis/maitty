@@ -73,7 +73,7 @@ impl App {
             }
             Mode::Compose(c) => c.text.push_str(&s.replace("\r\n", "\n")),
             Mode::Confirm(c) if matches!(c.act, menu::Act::OverrideCheck(..)) => {
-                if let menu::Act::OverrideCheck(_, reason) = &mut c.act {
+                if let menu::Act::OverrideCheck(_, reason, _) = &mut c.act {
                     screen::append_reason(reason, &s);
                 }
             }

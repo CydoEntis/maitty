@@ -367,7 +367,7 @@ impl App {
             };
             if let Some((key, shown)) = key {
                 if shown {
-                    self.do_check_key(term, key);
+                    self.do_check_key(term, None, key);
                 }
                 return;
             }
