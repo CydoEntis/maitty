@@ -521,7 +521,10 @@ mod tests {
     fn a_command_that_exits_reads_by_its_code_and_keeps_what_it_printed() {
         let pass = run("echo \"all good\"; exit 0", LONG);
         assert_eq!((pass.outcome, pass.output.trim()), (CheckOutcome::Exited(0), "all good"));
-        let fail = run("echo out; echo err 1>&2; exit 3", LONG);
+        // PowerShell does not take `1>&2` the way sh does (the exit code came back 1), so
+        // it writes to stderr through the console.
+        let to_stderr = if cfg!(windows) { "[Console]::Error.WriteLine('err')" } else { "echo err 1>&2" };
+        let fail = run(&format!("echo out; {to_stderr}; exit 3"), LONG);
         assert_eq!(fail.outcome, CheckOutcome::Exited(3));
         assert!(fail.output.contains("out") && fail.output.contains("err"), "both streams: {:?}", fail.output);
     }
