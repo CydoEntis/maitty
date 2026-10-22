@@ -65,16 +65,24 @@ pub(in crate::client) fn heads_up(app: &App) -> Vec<(PathBuf, Overlap)> {
         .collect()
 }
 
+/// Columns of a sheet's title row that are not the text after its name: the corners, the
+/// name, the ✕ and the gaps between.
+const TITLE_CHROME: u16 = 24;
+
 pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t: &Theme) {
-    let (title, close) = match kind {
-        SheetKind::Inbox => ("Inbox".to_string(), ScreenHit::Close),
-        SheetKind::Changes | SheetKind::Both => ("Changes".to_string(), ScreenHit::ViewClose),
-        SheetKind::Check => (check_title(app), ScreenHit::ViewClose),
+    let (title, sub, close) = match kind {
+        SheetKind::Inbox => ("Inbox", String::new(), ScreenHit::Close),
+        SheetKind::Changes | SheetKind::Both => ("Changes", String::new(), ScreenHit::ViewClose),
+        SheetKind::Check => ("CHECK", check_title(app), ScreenHit::ViewClose),
     };
-    let mut c = Card::new(t, &title).lit(t.accent);
-    // Changes paints the desk's ground (its diff colours are tuned for it).
-    c.bg = if kind == SheetKind::Changes { t.bg } else { t.card };
-    if Look::of(&app.cfg.ui).flat {
+    let mut c = Card::new(t, title).lit(t.accent);
+    // Cut here, so a long name still shows its start rather than being left out.
+    let sub = truncate(&sub, r.width.saturating_sub(TITLE_CHROME) as usize);
+    c.sub = &sub;
+    // Changes and the evidence sheet sit on the desk's ground, like the panes.
+    c.bg = if matches!(kind, SheetKind::Changes | SheetKind::Check) { t.bg } else { t.card };
+    // The evidence sheet says Esc in its own hints.
+    if Look::of(&app.cfg.ui).flat && kind != SheetKind::Check {
         c.foot_r = vec![seg("Esc close", Style::default().fg(t.muted).bg(t.card))];
     }
     c.close = Some(close);
@@ -97,7 +105,7 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
         }
         SheetKind::Check => {
             if let Some(crate::client::View::Check(mut v)) = app.view.take() {
-                draw_check(app, buf, inside, t, &mut v);
+                draw_check(app, buf, inside, c.bg, t, &mut v);
                 app.view = Some(crate::client::View::Check(v));
             }
         }

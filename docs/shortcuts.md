@@ -159,6 +159,10 @@ or another program follow that program's own help.
 | r | Run the check again (queued while the agent is working) |
 | O | Override a failed check: opens a confirm with an optional reason |
 | u | Undo an override: the check reads as failed again |
+| o | Go to the session |
+| i | Why it reads as it does (the evidence popover) |
+| , | Settings › Check for the session's project |
+| Tab, Shift+Tab | Several checkpoints: the next or previous one |
 | Esc | Close the sheet |
 | Type, Backspace, Ctrl+U, Enter, Esc in the override confirm | Write the reason, delete, clear it, override, cancel |
 

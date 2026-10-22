@@ -12,14 +12,12 @@ pub fn ago(d: Duration) -> Instant {
 }
 
 /// The local wall-clock time of `unix` (seconds) as `14:22`.
-#[cfg_attr(not(test), expect(dead_code, reason = "check times read as clock times in the v7 rows and sheet"))]
 pub fn local_hm(unix: u64) -> String {
     let (h, m, _) = time_of_day(unix, local_offset(unix));
     format!("{h:02}:{m:02}")
 }
 
 /// The local wall-clock time of `unix` (seconds) as `14:22:05`.
-#[cfg_attr(not(test), expect(dead_code, reason = "check times read as clock times in the v7 rows and sheet"))]
 pub fn local_hms(unix: u64) -> String {
     let (h, m, s) = time_of_day(unix, local_offset(unix));
     format!("{h:02}:{m:02}:{s:02}")

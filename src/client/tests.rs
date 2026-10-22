@@ -4348,14 +4348,15 @@ mod check_sheet_tests {
                 let buf = render(&mut app, w, h);
                 let o = draw(&mut app, w, h);
                 let text = sheet_words(&mut app, w, h);
+                let ran = format!("Ran {} · took 14.2s", crate::clock::local_hms(app.snap.terms[&TERM].checks[0].started_at));
                 for want in [
-                    "Check ·",
+                    "CHECK",
                     "✕ failed",
                     "exit 1",
                     "Command npm test",
                     "Folder",
-                    "Ran 10m ago · took 14.2s · after the turn ended 10m ago",
-                    "Seen by Seshi ran this itself. The agent said \"tests pass\".",
+                    &ran,
+                    "Seen by Seshi ran this itself.",
                     "OUTPUT all 4 lines",
                     "1 ✓ renders the footer",
                     "4 Error: expected 3 got 2",
@@ -4374,23 +4375,23 @@ mod check_sheet_tests {
     }
 
     #[test]
-    fn a_long_command_truncates_the_sheet_title_once_in_every_layout_at_every_size() {
-        let command = "echo start; then echo ok; echo more output here; and keep going until the line is far wider than the sheet";
+    fn a_long_checkpoint_name_truncates_the_sheet_title_once_in_every_layout_at_every_size() {
+        let checkpoint = "echo start; then echo ok; echo more output here; and keep going until the line is far wider than the sheet";
         for (name, layout) in layouts() {
             for (w, h) in SIZES {
                 let at = format!("{name} {w}x{h}");
                 let mut info = check(CheckState::Failed, Some(1));
-                info.command = command.into();
+                info.name = checkpoint.into();
                 let mut app = open(w, h, layout, info, Some(SHORT_OUTPUT));
                 let o = draw(&mut app, w, h);
                 let g = screen::grid(&app, Rect::new(0, 0, w, h));
                 let header = o
                     .lines()
                     .map(|l| l.chars().skip(g.sheet.x as usize).take(g.sheet.width as usize).collect::<String>())
-                    .find(|l| l.contains("Check ·"))
+                    .find(|l| l.contains("CHECK"))
                     .unwrap_or_else(|| panic!("{at}: no title row in\n{o}"));
                 let (head, tail) = header.split_once('…').unwrap_or_else(|| panic!("{at}: the title is cut, so it ends in …: {header:?}"));
-                assert!(head.contains("› echo start; then"), "{at}: the command's start follows the session: {header:?}");
+                assert!(head.contains("· claude › echo start;"), "{at}: the checkpoint's start follows the session: {header:?}");
                 assert!(!tail.contains('…'), "{at}: one ellipsis: {header:?}");
                 assert!(tail.trim_matches(|c: char| c == ' ' || "─╮▁▔".contains(c)).trim() == "✕", "{at}: only the close follows the ellipsis, got {tail:?} in {header:?}");
             }
@@ -4402,7 +4403,7 @@ mod check_sheet_tests {
         let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), None);
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("+ new") && o.contains("actions"), "the foot stays");
-        assert!(o.contains("reading the output"), "no output yet:\n{o}");
+        assert!(o.contains("OUTPUT  reading…"), "no output yet:\n{o}");
     }
 
     #[test]
@@ -4416,15 +4417,16 @@ mod check_sheet_tests {
                 assert!(text.contains("of 200 lines") && text.contains("last ") && text.contains("f full output"), "{at}: the tail header in\n{o}");
                 assert!(text.contains("200 line 200"), "{at}: the end is shown, numbered");
                 assert!(!text.contains(" 1 line 1 "), "{at}: the start is not");
-                assert!(text.contains('▲'), "{at}: more above");
                 press(&mut app, KeyCode::Char('f'));
                 let full = draw(&mut app, w, h);
                 assert!(words(&full).contains("1 line 1 "), "{at}: f shows from the top:\n{full}");
                 assert!(!words(&full).contains("200 line 200"), "{at}: and scrolls");
+                assert!(sheet_words(&mut app, w, h).contains("lines 1–"), "{at}: it says which lines");
                 press(&mut app, KeyCode::PageDown);
                 press(&mut app, KeyCode::Down);
                 let moved = draw(&mut app, w, h);
                 assert!(!words(&moved).contains(" 1 line 1 "), "{at}: ↓ and PageDown scroll");
+                assert!(moved.contains('▲'), "{at}: more above once scrolled");
                 press(&mut app, KeyCode::Up);
                 press(&mut app, KeyCode::PageUp);
                 assert!(sheet_words(&mut app, w, h).contains("1 line 1 "), "{at}: ↑ and PageUp come back");
@@ -4458,7 +4460,7 @@ mod check_sheet_tests {
             assert!(!text.contains("Override") && !text.contains("lines"), "{name}: a pass has nothing to override");
             let mut failed = open(100, 30, layout, check(CheckState::Failed, Some(2)), Some("\n"));
             let text = sheet_words(&mut failed, 100, 30);
-            assert!(text.contains("(the command printed nothing)") && !text.contains("what passed it"), "{name}");
+            assert!(text.contains("(no output)") && text.contains("It exited 2 without printing.") && !text.contains("what passed it"), "{name}: {text}");
         }
     }
 
@@ -4471,7 +4473,8 @@ mod check_sheet_tests {
                 info.override_reason = "flaky on CI".into();
                 let mut app = open(w, h, layout, info, Some(SHORT_OUTPUT));
                 let text = sheet_words(&mut app, w, h);
-                for want in ["⊘ overridden", "⊘ Overridden by you 2m ago", "flaky on CI", "u undo", "next run replaces this", "Error: expected 3 got 2", "exit 1"] {
+                let by = format!("⊘ Overridden by you {}", crate::clock::local_hm(app.snap.terms[&TERM].checks[0].overridden_at.unwrap()));
+                for want in ["⊘ failed · overridden", &by, "reason: flaky on CI", "u undo", "next run replaces this", "Error: expected 3 got 2", "exit 1"] {
                     assert!(text.contains(want), "{name} {w}x{h}: missing {want:?} in {text}");
                 }
                 assert!(!text.contains("Override… O"), "{name} {w}x{h}: it is not overridden twice");
@@ -4487,8 +4490,13 @@ mod check_sheet_tests {
                 info.command = "pnpm test".into();
                 let mut app = open(w, h, layout, info, Some("sh: pnpm: not found\n"));
                 let text = sheet_words(&mut app, w, h);
-                for want in ["? could not run", "exit 127", "Not a test failure. The work hasn't been checked.", "install pnpm, then r", "sh: pnpm: not found"] {
+                for want in ["? could not run", "exit 127", "command not found", "Not a test failure.", "Fix the command in settings", "sh: pnpm: not found"] {
                     assert!(text.contains(want), "{name} {w}x{h}: missing {want:?} in {text}");
+                }
+                if w >= 100 {
+                    for want in ["Not a test failure. The work hasn't been checked.", "install pnpm, then r."] {
+                        assert!(text.contains(want), "{name} {w}x{h}: missing {want:?} in {text}");
+                    }
                 }
                 assert!(!text.contains("✕ failed") && !text.contains("Override… O"), "{name} {w}x{h}");
             }
@@ -4523,9 +4531,9 @@ mod check_sheet_tests {
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
         draw(&mut app, 160, 45);
-        for c in ['u', 'o', 'i'] {
+        for c in ['u', 'x', 'z'] {
             press(&mut app, KeyCode::Char(c));
-            assert!(matches!(app.view, Some(View::Check(_))), "{c} leaves the sheet as it is");
+            assert!(matches!(app.view, Some(View::Check(_))) && app.mode == Mode::Normal, "{c} leaves the sheet as it is");
         }
         assert!(sent(&mut rx).is_empty(), "and sends nothing");
         press(&mut app, KeyCode::Esc);
@@ -4534,15 +4542,17 @@ mod check_sheet_tests {
 
     #[test]
     fn every_button_and_the_close_are_clickable() {
-        let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), Some(&long_output(100)));
+        let mut info = check(CheckState::Failed, Some(1));
+        info.line_count = 1284;
+        let mut app = open(160, 45, |_| {}, info, Some(&long_output(100)));
         draw(&mut app, 160, 45);
         let has = |app: &App, h: Hit| app.hits.iter().any(|(_, x)| *x == h);
-        for key in ['r', 'O', 'f'] {
+        for key in ['r', 'O', 'o', 'f'] {
             assert!(has(&app, Hit::Button(Btn::ViewKey(key))), "{key} is a button");
         }
         assert!(has(&app, Hit::Screen(screen::ScreenHit::ViewClose)), "the ✕");
         app.on_button(Hit::Button(Btn::ViewKey('f')), false);
-        assert!(sheet_words(&mut app, 160, 45).contains("1 line 1 "), "clicking full output opens it");
+        assert!(sheet_words(&mut app, 160, 45).contains("1185 line 1 "), "clicking full output opens it, numbered as the whole");
         app.on_hy_hit(screen::ScreenHit::ViewClose, false);
         assert!(app.view.is_none());
     }
@@ -5586,7 +5596,7 @@ mod check_wiring_tests {
     }
 
     #[test]
-    fn the_sheets_key_hints_list_exactly_the_keys_that_act() {
+    fn the_sheets_key_hints_are_the_same_for_every_result_and_its_buttons_follow_it() {
         for (name, layout) in layouts() {
             for (w, h) in SIZES {
                 for state in ALL_STATES {
@@ -5595,10 +5605,11 @@ mod check_wiring_tests {
                     app.open_check_sheet(TERM);
                     let o = draw(&mut app, w, h);
                     let last = o.lines().rfind(|l| words(l).contains("Esc back")).unwrap_or_else(|| panic!("{at}: a hint row in\n{o}"));
-                    let hint = words(last);
-                    assert_eq!(hint.contains("r re-run"), state != CheckState::Checking, "{at}: {hint}");
-                    assert_eq!(hint.contains("O override"), state == CheckState::Failed, "{at}: {hint}");
-                    assert_eq!(hint.contains("u undo"), state == CheckState::Overridden, "{at}: {hint}");
+                    assert!(words(last).contains("Esc back r re-run f full output i why"), "{at}: {last}");
+                    let buttons = words(o.lines().rfind(|l| words(l).contains("Open session o") || words(l).contains("Re-run r")).unwrap_or(""));
+                    assert_eq!(buttons.contains("Re-run r"), state != CheckState::Checking, "{at}: {buttons}");
+                    assert_eq!(buttons.contains("Override… O"), state == CheckState::Failed, "{at}: {buttons}");
+                    assert_eq!(buttons.contains("Undo override u"), state == CheckState::Overridden, "{at}: {buttons}");
                 }
             }
         }

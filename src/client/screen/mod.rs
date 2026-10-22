@@ -1016,4 +1016,6 @@ mod sheet;
 mod inbox;
 mod splash;
 mod tidy;
+#[cfg(test)]
+mod v7_ref;
 pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, side::*, splash::*, sheet::*, popover::*, heads::*, tidy::*, check_sheet::*, check_actions::*};
