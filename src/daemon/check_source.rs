@@ -15,6 +15,7 @@ pub struct Resolved {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(not(test), expect(dead_code, reason = "repo checks wait for approval; only they are held"))]
 pub enum Gate {
     Run,
     /// A repo's command nobody approved; `previous` is the one you said Always to, if the repo
@@ -23,6 +24,9 @@ pub enum Gate {
     /// You chose never to run it.
     Never,
 }
+
+/// What `resolve` is, so a test can stand in for it.
+pub type Resolver = fn(&[CheckDef], &Path, &Path, &Approvals) -> Vec<Resolved>;
 
 /// The checks for `project` (a repo's main checkout) as run in `worktree`, in order. Blocks:
 /// call it only from a background task.

@@ -1518,7 +1518,7 @@ fn the_snapshot_carries_a_check_summary_and_a_query_returns_its_output() {
     d.handle(Ev::Connected(7, tx, false));
     d.message(7, ClientMsg::Query(Query::CheckOutput { term: t, name: None }));
     assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(_))), "no check, no output");
-    d.terms.get_mut(&t).unwrap().check = Some(failed_check("ok a\nFAIL footer.test.ts\n"));
+    d.terms.get_mut(&t).unwrap().checks.points = vec![failed_check("ok a\nFAIL footer.test.ts\n").into()];
     let info = d.snapshot().terms[&t].check().cloned().expect("the summary is in the snapshot");
     assert_eq!((info.state, info.first_failing_line.as_str()), (CheckState::Failed, "FAIL footer.test.ts"));
     d.message(7, ClientMsg::Query(Query::CheckOutput { term: t, name: None }));
@@ -1530,7 +1530,7 @@ fn the_snapshot_carries_a_check_summary_and_a_query_returns_its_output() {
 fn a_pane_may_not_read_another_panes_check_output_without_the_read_grant() {
     let (mut d, _rx) = daemon();
     let (a, b) = (pane(&mut d), pane(&mut d));
-    d.terms.get_mut(&b).unwrap().check = Some(failed_check("secret-ish output"));
+    d.terms.get_mut(&b).unwrap().checks.points = vec![failed_check("secret-ish output").into()];
     let (tx, mut out) = mpsc::channel(16);
     d.handle(Ev::Connected(7, tx, false));
     let token = d.terms[&a].token.clone();
@@ -1567,8 +1567,8 @@ fn check_results_survive_a_restart_with_their_output() {
     d.restore(persist::Saved { workspaces: vec![ws], active: 0, made_worktrees: Vec::new() });
     let t = d.workspaces[0].tabs[0].focus;
     let restored = &d.terms[&t];
-    assert_eq!(restored.check.as_ref().map(|c| c.output.as_str()), Some("latest tail"));
-    assert_eq!(restored.check_overridden.as_ref().map(|c| (&c.info, c.output.as_str())), Some((&overridden, "overridden tail")));
+    assert_eq!(restored.checks.headline().map(|c| c.output.as_str()), Some("latest tail"));
+    assert_eq!(restored.checks.points.first().and_then(|p| p.overridden.as_ref()).map(|c| (&c.info, c.output.as_str())), Some((&overridden, "overridden tail")));
     let saved = d.saved();
     let again = &saved.workspaces[0].tabs[0].panes[&t];
     assert_eq!((again.checks.iter().map(|c| c.state).collect::<Vec<_>>(), &again.checks_overridden), (vec![CheckState::Failed], &vec![overridden.clone()]));
@@ -1588,7 +1588,7 @@ fn a_check_that_was_running_when_the_server_stopped_reads_as_not_run() {
     let running = CheckInfo { state: CheckState::Checking, ..Default::default() };
     let saved = persist::SavedPane { checks: vec![running], ..Default::default() };
     d.terms.get_mut(&t).unwrap().restore_checks(&d.check_dir.clone(), 9_202, &saved);
-    assert_eq!(d.terms[&t].check.as_ref().map(|c| c.info.state), Some(CheckState::CouldNotRun));
+    assert_eq!(d.terms[&t].checks.headline().map(|c| c.info.state), Some(CheckState::CouldNotRun));
     close(&mut d, &[t]);
 }
 
@@ -1612,11 +1612,13 @@ fn end_turn(d: &mut Daemon, t: TermId) {
     d.hook(t, "claude".into(), HookStatus::Done, "Stop");
 }
 
-/// Apply the next finished check, as the daemon loop would. False if none came in time.
+/// Apply the next finished check, as the daemon loop would (and the resolving before it).
+/// False if none came in time.
 fn finish_check(d: &mut Daemon, rx: &mut mpsc::Receiver<Ev>, wait: Duration) -> bool {
     let until = Instant::now() + wait;
     while Instant::now() < until {
         match rx.try_recv() {
+            Ok(ev @ Ev::ChecksResolved { .. }) => d.handle(ev),
             Ok(ev @ Ev::CheckRan { .. }) => {
                 d.handle(ev);
                 return true;
@@ -1629,7 +1631,7 @@ fn finish_check(d: &mut Daemon, rx: &mut mpsc::Receiver<Ev>, wait: Duration) -> 
 }
 
 fn check_of(d: &Daemon, t: TermId) -> CheckInfo {
-    d.terms[&t].check.as_ref().expect("a check").info.clone()
+    d.terms[&t].checks.headline().expect("a check").info.clone()
 }
 
 const SLOW_CHECK_WAIT: Duration = Duration::from_secs(30);
@@ -1646,8 +1648,8 @@ fn a_turn_end_runs_the_projects_check_and_a_pass_is_recorded() {
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     let done = check_of(&d, t);
     assert_eq!((done.state, done.exit_code), (CheckState::Passed, Some(0)));
-    assert_eq!(d.terms[&t].check.as_ref().unwrap().output.trim(), "suite ok");
-    assert!(d.terms[&t].check_dirty, "its tail is due to be saved");
+    assert_eq!(d.terms[&t].checks.headline().unwrap().output.trim(), "suite ok");
+    assert!(d.terms[&t].checks.dirty, "its tail is due to be saved");
     close(&mut d, &[t]);
 }
 
@@ -1660,7 +1662,7 @@ fn a_failing_check_records_its_exit_code_and_output() {
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     let info = check_of(&d, t);
     assert_eq!((info.state, info.exit_code), (CheckState::Failed, Some(3)));
-    assert_eq!(d.terms[&t].check.as_ref().unwrap().output.trim(), "1 test failed");
+    assert_eq!(d.terms[&t].checks.headline().unwrap().output.trim(), "1 test failed");
     close(&mut d, &[t]);
 }
 
@@ -1676,7 +1678,7 @@ fn a_failed_check_names_its_first_failing_line_and_a_rerun_clears_it() {
     let seen = d.snapshot().terms[&t].check().cloned().expect("the summary is in the snapshot");
     assert_eq!(seen.first_failing_line, "FAIL tests/foo: boom");
     d.terms.get_mut(&t).unwrap().status = Status::Idle;
-    d.rerun_check(t).expect("a failed check can be run again");
+    d.rerun_check(t, None).expect("a failed check can be run again");
     assert!(check_of(&d, t).first_failing_line.is_empty(), "a re-run starts clean");
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     close(&mut d, &[t]);
@@ -1725,7 +1727,7 @@ fn the_screen_ending_a_turn_runs_the_check_too_but_a_cancelled_turn_does_not() {
     let _in_rt = rt.enter();
     let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
     d.set_status(t, Status::Idle, "progress bar gone, no turn end: cancelled");
-    assert!(d.terms[&t].check.is_none(), "an interrupted turn finished nothing");
+    assert!(d.terms[&t].checks.points.is_empty(), "an interrupted turn finished nothing");
     d.set_status(t, Status::Working, "test");
     d.set_status(t, Status::Done, "screen: went quiet after working");
     assert_eq!(check_of(&d, t).state, CheckState::Checking);
@@ -1742,14 +1744,14 @@ fn sessions_without_a_check_a_shell_or_a_finished_turn_behave_as_before() {
     let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
     d.cfg.check[0].project = std::env::temp_dir().join("some-other-project");
     end_turn(&mut d, t);
-    assert!(d.terms[&t].check.is_none(), "no check in this project");
+    assert!(d.terms[&t].checks.points.is_empty(), "no check in this project");
     assert_eq!(d.terms[&t].status, Status::Done, "and done as ever");
     // A shell pane in a project with a check.
     d.cfg.check[0].project = std::env::temp_dir();
     let shell = pane(&mut d);
     d.terms.get_mut(&shell).unwrap().status = Status::Working;
     d.set_status(shell, Status::Done, "test");
-    assert!(d.terms[&shell].check.is_none(), "a shell is not an agent");
+    assert!(d.terms[&shell].checks.points.is_empty(), "a shell is not an agent");
     // A turn that has not ended: working, asking, or held for its helpers.
     let busy = pane(&mut d);
     (d.terms.get_mut(&busy).unwrap().agent, d.terms.get_mut(&busy).unwrap().hooked) = (Some("claude".into()), true);
@@ -1757,9 +1759,9 @@ fn sessions_without_a_check_a_shell_or_a_finished_turn_behave_as_before() {
     d.hook(busy, "claude".into(), HookStatus::Blocked, "PreToolUse");
     d.terms.get_mut(&busy).unwrap().subagents.push(("sub".into(), "explore".into()));
     d.hook(busy, "claude".into(), HookStatus::Done, "Stop");
-    assert!(d.terms[&busy].check.is_none(), "a turn waiting on its helpers has not ended");
+    assert!(d.terms[&busy].checks.points.is_empty(), "a turn waiting on its helpers has not ended");
     d.hook(busy, "claude".into(), HookStatus::Done, "Notification:idle_prompt");
-    assert!(d.terms[&busy].check.is_none(), "a repeated idle ping is not a turn end");
+    assert!(d.terms[&busy].checks.points.is_empty(), "a repeated idle ping is not a turn end");
     close(&mut d, &[t, shell, busy]);
 }
 
@@ -1852,13 +1854,13 @@ fn a_tail_that_failed_to_write_is_written_again_at_the_next_save() {
     d.check_dir = blocked.join("tails");
     std::fs::write(&d.check_dir, "in the way").unwrap();
     let t = pane(&mut d);
-    d.terms.get_mut(&t).unwrap().check = Some(failed_check("FAIL footer\n"));
-    d.terms.get_mut(&t).unwrap().check_dirty = true;
+    d.terms.get_mut(&t).unwrap().checks.points = vec![failed_check("FAIL footer\n").into()];
+    d.terms.get_mut(&t).unwrap().checks.dirty = true;
     d.save_check_tails(persist::save_ticket(), vec![t], true);
-    assert!(d.terms[&t].check_dirty, "still due: the write did not happen");
+    assert!(d.terms[&t].checks.dirty, "still due: the write did not happen");
     std::fs::remove_file(&d.check_dir).unwrap();
     d.save_check_tails(persist::save_ticket(), vec![t], true);
-    assert!(!d.terms[&t].check_dirty);
+    assert!(!d.terms[&t].checks.dirty);
     assert_eq!(persist::read_check_output(&d.check_dir, t, "", persist::CheckSlot::Latest).as_deref(), Some("FAIL footer\n"));
     close(&mut d, &[t]);
 }
@@ -1867,9 +1869,9 @@ fn a_tail_that_failed_to_write_is_written_again_at_the_next_save() {
 fn a_background_save_that_fails_marks_its_tails_due_again() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
-    d.terms.get_mut(&t).unwrap().check = Some(failed_check("x"));
+    d.terms.get_mut(&t).unwrap().checks.points = vec![failed_check("x").into()];
     assert!(d.take_dirty_check_outputs().is_empty(), "nothing due");
-    d.terms.get_mut(&t).unwrap().check_dirty = true;
+    d.terms.get_mut(&t).unwrap().checks.dirty = true;
     assert_eq!(d.take_dirty_check_outputs().len(), 1);
     d.handle(Ev::CheckOutputsUnsaved(vec![t, 9_999]));
     assert_eq!(d.take_dirty_check_outputs().len(), 1, "due again; a pane that is gone is skipped");
@@ -1893,8 +1895,10 @@ fn a_restored_tail_stays_on_disk_until_the_new_one_is_saved() {
 
 fn with_check(d: &mut Daemon, t: TermId, state: CheckState, output: &str) {
     let record = failed_check(output);
-    let info = CheckInfo { state, exit_code: (state == CheckState::Failed).then_some(1), after_turn_ended_at: 77, ..record.info };
-    d.terms.get_mut(&t).unwrap().check = Some(check::CheckRecord::new(info, output));
+    // Named as the project's checkpoint is, so a run finds it.
+    let name = d.cfg.check.first().map(|c| c.name().to_string()).unwrap_or_default();
+    let info = CheckInfo { name, state, exit_code: (state == CheckState::Failed).then_some(1), after_turn_ended_at: 77, ..record.info };
+    d.terms.get_mut(&t).unwrap().checks.points = vec![check::CheckRecord::new(info, output).into()];
 }
 
 #[test]
@@ -1942,7 +1946,7 @@ fn a_rerun_of_an_idle_agent_starts_at_once_and_replaces_the_settled_result() {
     assert_eq!((running.state, running.after_turn_ended_at, running.rerun_queued), (CheckState::Checking, 77, false));
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     assert_eq!(check_of(&d, t).state, CheckState::Passed);
-    assert_eq!(d.terms[&t].check.as_ref().unwrap().output.trim(), "fresh");
+    assert_eq!(d.terms[&t].checks.headline().unwrap().output.trim(), "fresh");
     close(&mut d, &[t]);
 }
 
@@ -1983,9 +1987,9 @@ fn only_a_failed_check_can_be_overridden_and_the_override_is_recorded() {
     assert!(info.overridden_at.is_some_and(|at| at >= before), "the time is recorded");
     assert_eq!(d.snapshot().terms[&t].check().map(|c| c.state), Some(CheckState::Overridden));
     let term = &d.terms[&t];
-    assert_eq!(term.check.as_ref().unwrap().output, "FAIL a\nFAIL b\n", "the failure's output stays");
-    assert_eq!(term.check_overridden.as_ref().map(|c| (c.info.clone(), c.output.as_str())), Some((info, "FAIL a\nFAIL b\n")));
-    assert!(term.check_dirty, "due to be saved");
+    assert_eq!(term.checks.headline().unwrap().output, "FAIL a\nFAIL b\n", "the failure's output stays");
+    assert_eq!(term.checks.points.first().and_then(|p| p.overridden.as_ref()).map(|c| (c.info.clone(), c.output.as_str())), Some((info, "FAIL a\nFAIL b\n")));
+    assert!(term.checks.dirty, "due to be saved");
     close(&mut d, &[t]);
 }
 
@@ -2012,7 +2016,7 @@ fn undoing_an_override_restores_the_failed_result() {
     d.command(0, Command::OverrideCheck { term: t, name: None, reason: "r".into() }).unwrap();
     d.command(0, Command::UndoOverride { term: t, name: None }).unwrap();
     assert_eq!(check_of(&d, t), failed, "exactly as it was");
-    assert!(d.terms[&t].check_overridden.is_none());
+    assert!(d.terms[&t].checks.points.first().is_none_or(|p| p.overridden.is_none()));
     assert!(d.command(0, Command::UndoOverride { term: t, name: None }).is_err(), "and only once");
     close(&mut d, &[t]);
 }
@@ -2030,7 +2034,7 @@ fn the_next_run_replaces_an_override_but_keeps_the_overridden_output() {
     assert_eq!((running.state, running.overridden_at, running.override_reason.as_str()), (CheckState::Checking, None, ""));
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     assert_eq!(check_of(&d, t).state, CheckState::Passed);
-    let kept = d.terms[&t].check_overridden.as_ref().expect("the overridden result is kept");
+    let kept = d.terms[&t].checks.points.first().and_then(|p| p.overridden.as_ref()).expect("the overridden result is kept");
     assert_eq!((kept.info.state, kept.output.as_str()), (CheckState::Overridden, "FAIL a"));
     close(&mut d, &[t]);
 }
@@ -2093,12 +2097,18 @@ fn only_you_answer_a_repo_check_approval() {
 }
 
 fn checking(d: &mut Daemon, t: TermId) {
-    let info = CheckInfo { command: "npm test".into(), state: CheckState::Checking, ..Default::default() };
-    d.terms.get_mut(&t).unwrap().check = Some(check::CheckRecord::new(info, ""));
+    let info = CheckInfo { name: "test".into(), command: "npm test".into(), state: CheckState::Checking, ..Default::default() };
+    d.terms.get_mut(&t).unwrap().checks.points = vec![check::CheckRecord::new(info, "").into()];
 }
 
 fn ran(outcome: check::CheckOutcome) -> check::CheckRun {
-    check::CheckRun { outcome, output: String::new(), duration: Duration::from_millis(5) }
+    check::CheckRun { outcome, output: String::new(), lines: 0, duration: Duration::from_millis(5) }
+}
+
+/// The running checkpoint `test` (see `checking`) ends with `outcome`.
+fn check_ends(d: &mut Daemon, t: TermId, outcome: check::CheckOutcome) {
+    let run = d.terms[&t].checks.run;
+    d.check_ran(t, run, "test", ran(outcome));
 }
 
 fn working_agent(d: &mut Daemon) -> TermId {
@@ -2135,7 +2145,7 @@ fn a_finished_alert_waits_for_the_check_and_rings_once_it_passes() {
     d.terms.get_mut(&t).unwrap().alert_due = Some((Status::Done, Instant::now() - Duration::from_millis(1)));
     d.settled_alerts();
     assert!(d.terms[&t].alerted.is_none() && d.terms[&t].alert_due.is_some(), "still held");
-    d.check_ran(t, ran(check::CheckOutcome::Exited(0)));
+    check_ends(&mut d, t, check::CheckOutcome::Exited(0));
     assert!(heard(&mut seen).iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })), "announced once it passed");
     d.clients.clear();
     overdue(&mut d, t);
@@ -2151,7 +2161,7 @@ fn a_failed_check_raises_its_own_alert_and_never_a_finished_one() {
     let mut seen = viewer(&mut d);
     checking(&mut d, t);
     d.set_status(t, Status::Done, "test");
-    d.check_ran(t, ran(check::CheckOutcome::Exited(1)));
+    check_ends(&mut d, t, check::CheckOutcome::Exited(1));
     let got = heard(&mut seen);
     assert!(got.iter().any(|m| matches!(m, ServerMsg::Attention { term, status: Status::Blocked } if *term == t)));
     assert!(got.iter().any(|m| matches!(m, ServerMsg::Notice(n) if n.contains("check failed"))));
@@ -2167,7 +2177,7 @@ fn a_check_that_could_not_run_gives_a_notice_and_the_session_finishes() {
     let mut seen = viewer(&mut d);
     checking(&mut d, t);
     d.set_status(t, Status::Done, "test");
-    d.check_ran(t, ran(check::CheckOutcome::SpawnFailed));
+    check_ends(&mut d, t, check::CheckOutcome::SpawnFailed);
     let got = heard(&mut seen);
     assert!(got.iter().any(|m| matches!(m, ServerMsg::Notice(n) if n.contains("could not run"))));
     assert!(got.iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })));
@@ -2184,7 +2194,7 @@ fn a_result_for_a_session_that_went_back_to_work_says_nothing() {
     d.set_status(t, Status::Done, "test");
     d.set_status(t, Status::Working, "test");
     heard(&mut seen);
-    d.check_ran(t, ran(check::CheckOutcome::Exited(1)));
+    check_ends(&mut d, t, check::CheckOutcome::Exited(1));
     assert!(heard(&mut seen).is_empty() && d.terms[&t].alert_due.is_none());
     close(&mut d, &[t]);
 }
@@ -2214,7 +2224,7 @@ fn the_phone_hears_nothing_while_a_check_runs_or_after_it_fails() {
     d.set_status(t, Status::Done, "test");
     d.phone_alerts();
     assert_eq!(d.terms[&t].phoned, 0, "held while checking");
-    d.check_ran(t, ran(check::CheckOutcome::Exited(1)));
+    check_ends(&mut d, t, check::CheckOutcome::Exited(1));
     d.phone_alerts();
     assert_eq!(d.terms[&t].phoned, 0, "a failed check is not a finish");
     close(&mut d, &[t]);
@@ -2229,5 +2239,241 @@ fn a_queued_follow_up_still_sends_when_the_turn_ends_during_a_check() {
     d.set_status(t, Status::Done, "test");
     d.update_statuses();
     assert!(d.terms[&t].queue.is_empty() && d.terms[&t].queue_sent.is_some(), "sent as today");
+    close(&mut d, &[t]);
+}
+
+// ---- several checkpoints -----------------------------------------------------------
+
+fn checkpoint_def(project: &std::path::Path, name: &str, command: &str) -> crate::config::CheckDef {
+    crate::config::CheckDef { project: project.to_path_buf(), name: Some(name.into()), command: command.into(), timeout_s: LONG_CHECK_S }
+}
+
+/// An agent at work in `dir`, whose project names checkpoints `(name, command)` in order.
+fn agent_with_checkpoints(d: &mut Daemon, dir: &std::path::Path, points: &[(&str, &str)]) -> TermId {
+    d.cfg.check = points.iter().map(|(name, command)| checkpoint_def(dir, name, command)).collect();
+    let t = d.spawn(None, dir, 80, 24).expect("a shell pane");
+    let p = d.terms.get_mut(&t).unwrap();
+    (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Working);
+    t
+}
+
+/// Apply a run's events as the daemon loop would, until none of `t`'s checkpoints runs.
+fn finish_run(d: &mut Daemon, rx: &mut mpsc::Receiver<Ev>, t: TermId) {
+    let until = Instant::now() + SLOW_CHECK_WAIT;
+    while d.terms[&t].checks.running() {
+        assert!(Instant::now() < until, "the run did not finish");
+        match rx.try_recv() {
+            Ok(ev @ (Ev::ChecksResolved { .. } | Ev::CheckRan { .. })) => d.handle(ev),
+            Ok(_) => {}
+            Err(_) => std::thread::sleep(Duration::from_millis(10)),
+        }
+    }
+}
+
+fn states(d: &Daemon, t: TermId) -> Vec<(String, CheckState)> {
+    d.terms[&t].checks.points.iter().map(|p| (p.latest.info.name.clone(), p.latest.info.state)).collect()
+}
+
+fn named_states(pairs: &[(&str, CheckState)]) -> Vec<(String, CheckState)> {
+    pairs.iter().map(|(n, s)| (n.to_string(), *s)).collect()
+}
+
+fn point(d: &Daemon, t: TermId, name: &str) -> CheckInfo {
+    d.terms[&t].checks.named(name).expect("the checkpoint").latest.info.clone()
+}
+
+fn announced(seen: &[ServerMsg], status: Status) -> bool {
+    seen.iter().any(|m| matches!(m, ServerMsg::Attention { status: s, .. } if *s == status))
+}
+
+fn noticed(seen: &[ServerMsg], text: &str) -> usize {
+    seen.iter().filter(|m| matches!(m, ServerMsg::Notice(n) if n.contains(text))).count()
+}
+
+#[test]
+fn two_checkpoints_that_pass_run_in_order_and_finish_the_turn() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &[("build", "echo built; exit 0"), ("test", "echo tested; exit 0")]);
+    let mut seen = viewer(&mut d);
+    end_turn(&mut d, t);
+    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Checking), ("test", CheckState::Pending)]));
+    assert!(!announced(&heard(&mut seen), Status::Done), "held while they run");
+    finish_run(&mut d, &mut rx, t);
+    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Passed), ("test", CheckState::Passed)]));
+    assert!(announced(&heard(&mut seen), Status::Done), "done once both passed");
+    let test = point(&d, t, "test");
+    assert_eq!((test.turn, test.cwd.as_path(), test.line_count), (1, std::env::temp_dir().as_path(), 1));
+    assert_eq!(d.check_output(t, Some("test")).map(str::trim), Some("tested"));
+    assert_eq!(d.check_output(t, Some("build")).map(str::trim), Some("built"));
+    assert_eq!(d.snapshot().terms[&t].checks.len(), 2, "clients see both");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_failed_checkpoint_does_not_stop_the_next_and_the_turn_reads_failed() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &[("build", "echo \"FAIL build\"; exit 2"), ("test", "echo tested; exit 0")]);
+    let mut seen = viewer(&mut d);
+    end_turn(&mut d, t);
+    finish_run(&mut d, &mut rx, t);
+    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Failed), ("test", CheckState::Passed)]));
+    assert_eq!((point(&d, t, "build").exit_code, point(&d, t, "build").first_failing_line.as_str()), (Some(2), "FAIL build"));
+    let got = heard(&mut seen);
+    assert!(announced(&got, Status::Blocked) && !announced(&got, Status::Done), "a failure, never a finish");
+    assert_eq!(noticed(&got, "check failed"), 1);
+    assert_eq!(d.snapshot().terms[&t].check().map(|c| c.name.as_str()), Some("build"), "the failure is the headline");
+    assert!(d.terms[&t].check_holds_done());
+    close(&mut d, &[t]);
+}
+
+/// `build` runs; `test` waits for your approval of a changed command; `lint` you said never to.
+fn gated(user: &[crate::config::CheckDef], project: &std::path::Path, worktree: &std::path::Path, approvals: &approvals::Approvals) -> Vec<check_source::Resolved> {
+    let mut all = check_source::resolve(user, project, worktree, approvals);
+    for r in &mut all {
+        r.gate = match r.def.name() {
+            "test" => check_source::Gate::NeedsApproval { previous: Some("npm t".into()) },
+            "lint" => check_source::Gate::Never,
+            _ => check_source::Gate::Run,
+        };
+    }
+    all
+}
+
+fn never_any(user: &[crate::config::CheckDef], project: &std::path::Path, worktree: &std::path::Path, approvals: &approvals::Approvals) -> Vec<check_source::Resolved> {
+    let mut all = check_source::resolve(user, project, worktree, approvals);
+    for r in &mut all {
+        r.gate = check_source::Gate::Never;
+    }
+    all
+}
+
+#[test]
+fn a_checkpoint_waiting_for_approval_is_not_run_and_asks_for_you_once_a_turn() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    d.resolver = gated;
+    let points = [("build", "echo built; exit 0"), ("test", "npm test"), ("lint", "npm run lint")];
+    let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &points);
+    let mut seen = viewer(&mut d);
+    end_turn(&mut d, t);
+    finish_run(&mut d, &mut rx, t);
+    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Passed), ("test", CheckState::NeedsApproval), ("lint", CheckState::Never)]));
+    assert_eq!(point(&d, t, "test").previous_command.as_deref(), Some("npm t"));
+    assert_eq!(d.check_output(t, Some("test")), Some(""), "it never ran");
+    let got = heard(&mut seen);
+    assert!(announced(&got, Status::Blocked) && !announced(&got, Status::Done));
+    assert_eq!(noticed(&got, "approve check: npm test"), 1);
+    assert!(d.terms[&t].check_holds_done(), "not done until you decide");
+    d.terms.get_mut(&t).unwrap().status = Status::Done;
+    d.command(0, Command::RerunCheck { term: t, name: Some("build".into()) }).unwrap();
+    finish_run(&mut d, &mut rx, t);
+    assert_eq!(noticed(&heard(&mut seen), "approve check"), 0, "said once a turn");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_checkpoint_you_said_never_to_is_not_run_and_the_turn_finishes() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    d.resolver = never_any;
+    let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &[("test", "npm test")]);
+    let mut seen = viewer(&mut d);
+    end_turn(&mut d, t);
+    finish_run(&mut d, &mut rx, t);
+    assert_eq!(states(&d, t), named_states(&[("test", CheckState::Never)]));
+    let got = heard(&mut seen);
+    assert!(announced(&got, Status::Done), "it finishes");
+    assert_eq!(noticed(&got, "not checked: never for this repo"), 1);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_rerun_by_name_runs_only_that_checkpoint() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &[("build", "echo built; exit 0"), ("test", "echo tested; exit 0")]);
+    end_turn(&mut d, t);
+    finish_run(&mut d, &mut rx, t);
+    let build = point(&d, t, "build");
+    assert!(d.command(0, Command::RerunCheck { term: t, name: Some("lint".into()) }).is_err(), "no such checkpoint");
+    d.command(0, Command::RerunCheck { term: t, name: Some("test".into()) }).unwrap();
+    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Passed), ("test", CheckState::Checking)]));
+    finish_run(&mut d, &mut rx, t);
+    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Passed), ("test", CheckState::Passed)]));
+    assert_eq!(point(&d, t, "build"), build, "the other is left as it was");
+    assert_eq!(point(&d, t, "test").turn, 1, "a re-run checks the same turn");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn an_override_by_name_acts_on_that_checkpoint_and_says_who() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &[("build", "exit 1"), ("test", "exit 1")]);
+    end_turn(&mut d, t);
+    finish_run(&mut d, &mut rx, t);
+    d.command(0, Command::OverrideCheck { term: t, name: Some("test".into()), reason: "flaky".into() }).unwrap();
+    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Failed), ("test", CheckState::Overridden)]));
+    assert_eq!(point(&d, t, "test").overridden_by, "you");
+    let reviewer = pane(&mut d);
+    d.terms.get_mut(&reviewer).unwrap().label = "reviewer".into();
+    d.terms.get_mut(&reviewer).unwrap().grants = Some(vec!["write".into()]);
+    let (tx, mut out) = mpsc::channel(16);
+    d.handle(Ev::Connected(7, tx, false));
+    let token = d.terms[&reviewer].token.clone();
+    d.handle(Ev::From(7, reviewer, token));
+    d.message(7, ClientMsg::Command(Command::OverrideCheck { term: t, name: None, reason: String::new() }));
+    assert!(matches!(out.try_recv(), Ok(ServerMsg::Reply(Reply::Ok))));
+    assert_eq!(point(&d, t, "build").overridden_by, "reviewer", "None is the headline, and a pane signs with its name");
+    d.command(0, Command::UndoOverride { term: t, name: Some("test".into()) }).unwrap();
+    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Overridden), ("test", CheckState::Failed)]));
+    close(&mut d, &[t, reviewer]);
+}
+
+#[test]
+fn a_restart_restores_each_checkpoint_with_its_own_output() {
+    let (mut d, _rx) = daemon();
+    let tails = persist::scratch_dir();
+    d.check_dir = tails.path().to_path_buf();
+    let old: TermId = 9_401;
+    let tail = |name: &str, slot, text: &str| persist::CheckTail { term: old, name: name.into(), slot, text: text.into() };
+    let written = [tail("build", persist::CheckSlot::Latest, "build out"), tail("build", persist::CheckSlot::Overridden, "build failed"), tail("test", persist::CheckSlot::Latest, "")];
+    assert!(persist::save_check_outputs(tails.path(), persist::save_ticket(), &written, &[old]).is_empty());
+    let info = |name: &str, state| CheckInfo { name: name.into(), command: format!("make {name}"), state, turn: 3, ..Default::default() };
+    let saved = persist::SavedPane {
+        checks: vec![info("build", CheckState::Overridden), info("test", CheckState::Pending)],
+        checks_overridden: vec![info("build", CheckState::Overridden)],
+        ..Default::default()
+    };
+    let t = pane(&mut d);
+    let dir = d.check_dir.clone();
+    d.terms.get_mut(&t).unwrap().restore_checks(&dir, old, &saved);
+    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Overridden), ("test", CheckState::CouldNotRun)]), "a waiting one died with the server");
+    let checks = &d.terms[&t].checks;
+    assert_eq!(checks.named("build").unwrap().latest.output, "build out");
+    assert_eq!(checks.named("build").unwrap().overridden.as_ref().map(|o| o.output.as_str()), Some("build failed"));
+    assert!(checks.named("test").unwrap().overridden.is_none());
+    assert_eq!(checks.turn, 3, "the turn count carries on");
+    let mut written = d.take_dirty_check_outputs();
+    written.sort_by(|a, b| (&a.name, a.slot as u8).cmp(&(&b.name, b.slot as u8)));
+    assert_eq!(written.iter().map(|w| (w.name.as_str(), w.text.as_str())).collect::<Vec<_>>(), [("build", "build out"), ("build", "build failed"), ("test", "")]);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_checkpoint_never_sees_the_panes_token() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    // SAFETY: the daemon's own environment, as when it was started from inside a pane; the
+    // panes it spawns set their own token.
+    unsafe { std::env::set_var("SESHI_PANE_TOKEN", "seshi-test-secret") };
+    let print = if cfg!(windows) { "echo \"token=$env:SESHI_PANE_TOKEN\"" } else { "echo \"token=$SESHI_PANE_TOKEN\"" };
+    let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &[("env", print)]);
+    end_turn(&mut d, t);
+    finish_run(&mut d, &mut rx, t);
+    assert_eq!(point(&d, t, "env").state, CheckState::Passed);
+    assert_eq!(d.check_output(t, Some("env")).map(str::trim), Some("token="));
     close(&mut d, &[t]);
 }

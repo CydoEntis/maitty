@@ -9,7 +9,6 @@ mod approvals;
 mod check;
 #[cfg(test)]
 pub use check::first_failing_line;
-#[expect(dead_code, reason = "the checkpoint runs resolve through it; the gates come with repo checks")]
 mod check_source;
 mod git;
 mod persist;
@@ -114,8 +113,10 @@ pub enum Ev {
     MoveReady { client: ClientId, term: TermId, branch: String, result: Result<(PathBuf, String), String> },
     /// A status report, its sender checked (see `HookJob`).
     HookChecked { msg: ClientMsg, verdict: Option<bool>, chain: Vec<u32> },
-    /// A pane's check ended (see `Daemon::turn_ended`).
-    CheckRan { term: TermId, run: check::CheckRun },
+    /// A run's checkpoints, resolved and gated (see `Daemon::turn_ended`).
+    ChecksResolved { term: TermId, run: u64, resolved: Vec<check_source::Resolved> },
+    /// One checkpoint of run `run` ended.
+    CheckRan { term: TermId, run: u64, name: String, result: check::CheckRun },
     /// Check output tails a background save could not write.
     CheckOutputsUnsaved(Vec<TermId>),
 }
@@ -177,6 +178,8 @@ struct Daemon {
     last_saved: String,
     /// Where check output tails are kept.
     check_dir: PathBuf,
+    /// Which checkpoints a project has and whether each may run (tests put in their own).
+    resolver: check_source::Resolver,
     /// Worktrees seshi created; closing the last thing in one removes it.
     made_worktrees: Vec<PathBuf>,
     /// Plan limits by agent, as last reported.
@@ -483,6 +486,7 @@ impl Daemon {
             last_output_save: Instant::now(),
             last_saved: String::new(),
             check_dir: persist::check_output_dir(),
+            resolver: check_source::resolve,
             made_worktrees: Vec::new(),
             limits: BTreeMap::new(),
             spent: Vec::new(),
@@ -899,7 +903,8 @@ impl Daemon {
             }
             Ev::HookRan(msg) => self.broadcast(|_| true, ServerMsg::Notice(msg)),
             Ev::HookChecked { msg, verdict, chain } => self.apply_hook(msg, verdict, chain),
-            Ev::CheckRan { term, run } => self.check_ran(term, run),
+            Ev::ChecksResolved { term, run, resolved } => self.checks_resolved(term, run, resolved),
+            Ev::CheckRan { term, run, name, result } => self.check_ran(term, run, &name, result),
             Ev::CheckOutputsUnsaved(terms) => self.check_outputs_unsaved(&terms),
             Ev::SpareMade(repo, result) => {
                 self.spare_making = false;
@@ -1068,8 +1073,8 @@ impl Daemon {
                     Query::CheckOutput { term, .. } if self.may(client, Grant::Read, Some(term)).is_err() => {
                         ServerMsg::Error(format!("{:#}", self.may(client, Grant::Read, Some(term)).unwrap_err()))
                     }
-                    Query::CheckOutput { term, .. } => match self.terms.get(&term).and_then(|t| t.check.as_ref()) {
-                        Some(record) => ServerMsg::Reply(Reply::Text(record.output.clone())),
+                    Query::CheckOutput { term, name } => match self.check_output(term, name.as_deref()) {
+                        Some(output) => ServerMsg::Reply(Reply::Text(output.to_string())),
                         None => ServerMsg::Error(format!("no check output for pane {term}")),
                     },
                     Query::Worktrees { ws } => {
@@ -1142,7 +1147,7 @@ impl Daemon {
                     win32_input: t.win32_input,
                     usage: t.usage.clone(),
                     resume_at: t.resume_at,
-                    checks: t.check.iter().map(|c| c.info.clone()).collect(),
+                    checks: t.checks.infos(),
                     subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
                     started_by: t.started_by,
                     queued: t.queue.iter().cloned().collect(),

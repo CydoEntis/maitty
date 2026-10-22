@@ -128,12 +128,14 @@ impl Daemon {
     /// The check output tails that changed since they were last written, marked as written.
     pub(super) fn take_dirty_check_outputs(&mut self) -> Vec<persist::CheckTail> {
         let mut out = Vec::new();
-        for t in self.terms.values_mut().filter(|t| t.check_dirty) {
-            t.check_dirty = false;
-            let slots = [(persist::CheckSlot::Latest, &t.check), (persist::CheckSlot::Overridden, &t.check_overridden)];
-            out.extend(slots.into_iter().filter_map(|(slot, r)| {
-                r.as_ref().map(|r| persist::CheckTail { term: t.id, name: r.info.name.clone(), slot, text: r.output.clone() })
-            }));
+        for t in self.terms.values_mut().filter(|t| t.checks.dirty) {
+            t.checks.dirty = false;
+            for p in &t.checks.points {
+                let slots = [(persist::CheckSlot::Latest, Some(&p.latest)), (persist::CheckSlot::Overridden, p.overridden.as_ref())];
+                out.extend(slots.into_iter().filter_map(|(slot, r)| {
+                    r.map(|r| persist::CheckTail { term: t.id, name: r.info.name.clone(), slot, text: r.output.clone() })
+                }));
+            }
         }
         out
     }
@@ -152,8 +154,8 @@ impl Daemon {
             queue: term.queue.iter().cloned().collect(),
             account: term.account.clone(),
             subagent_activity: term.subagent_activity.clone(),
-            checks: term.check.iter().map(|c| c.info.clone()).collect(),
-            checks_overridden: term.check_overridden.iter().map(|c| c.info.clone()).collect(),
+            checks: term.checks.infos(),
+            checks_overridden: term.checks.points.iter().filter_map(|p| p.overridden.as_ref().map(|o| o.info.clone())).collect(),
         };
         let workspaces = self
             .workspaces

@@ -128,6 +128,10 @@ files and served only by `Query::CheckOutput` under the read grant; it is never 
 never in the state snapshot. It may contain secrets the command printed, like any pane's
 output.
 
+A project may name several check commands. Each one runs under the same rules, one after
+another in one background task, and each keeps its own output tail. A command the
+resolver holds for approval or that you said never to is not started at all.
+
 Overriding a failed check is a recorded, visible action: the time and the reason stay on the
 result and its `Overridden` state shows wherever the check does. It needs the write grant on
 the target pane, and a pane can never override or undo its own check, so an agent's claim

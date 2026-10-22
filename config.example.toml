@@ -153,6 +153,12 @@ A = "new-worktree:claude"   # worktree picker; whatever you open or create start
 # "npm test" is `test`); two in one project may not share a name.
 # `timeout_s` (default 600) stops a run that hangs, and its whole process tree with it.
 # The command does not get the pane's SESHI_PANE_TOKEN, and its output stays on the daemon.
+# Several run in the order listed, each whatever the one before it returned; the session
+# reads done only when every one passed (or you overrode it).
+# [[check]]
+# project = "/home/me/code/app"
+# name = "build"
+# command = "npm run build"
 # [[check]]
 # project = "/home/me/code/app"
 # name = "test"
