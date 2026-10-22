@@ -339,13 +339,12 @@ pub(super) struct Proj {
     pub kind: Kind,
 }
 
-/// The sidebar's sections, in order: each holds one type of session, grouped by where.
+/// The sidebar's groups: sessions here, grouped by where they work (agents and plain
+/// terminals together), then sessions on other machines.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Kind {
-    /// Coding agents, by repo or folder.
-    Agents,
-    /// Plain terminals, by repo or folder.
-    Terminals,
+    /// Agents and terminals on this machine, by repo or folder.
+    Local,
     /// Sessions on another machine (ssh, mosh), by machine.
     Ssh,
 }
@@ -353,21 +352,14 @@ pub(super) enum Kind {
 impl Kind {
     pub fn heading(self) -> &'static str {
         match self {
-            Kind::Agents => "Agents",
-            Kind::Terminals => "Terminals",
+            Kind::Local => "Sessions",
             Kind::Ssh => "SSH",
         }
     }
 
-    /// Which section a session belongs in.
+    /// Which group a session belongs in.
     pub fn of(t: &TermInfo) -> Kind {
-        if t.remote.is_some() {
-            Kind::Ssh
-        } else if t.agent.is_some() {
-            Kind::Agents
-        } else {
-            Kind::Terminals
-        }
+        if t.remote.is_some() { Kind::Ssh } else { Kind::Local }
     }
 }
 
@@ -669,7 +661,7 @@ impl App {
         projs.sort_by_key(|p| order.iter().position(|k| *k == p.key).unwrap_or(usize::MAX));
         // Attention first: a project with something that needs you goes to the top.
         projs.sort_by_key(|p| !p.sessions().any(|s| s.status == Status::Blocked));
-        // Sections: agents, then terminals, then other machines (each keeps the order above).
+        // Folders here, then other machines (each keeps the order above).
         projs.sort_by_key(|p| p.kind);
         // The same name twice in a project: number them (shell 1, shell 2), oldest first.
         for p in &mut projs {

@@ -270,7 +270,7 @@ fn codex_activity(root: &CodexSession, all: &[CodexSession]) -> Vec<SubagentActi
                 name: session.name.clone(),
                 parent: session.parent.clone(),
                 state,
-                task: None,
+                task: Some(session.name.clone()).filter(|name| name != "subagent"),
                 model: None,
                 effort: None,
                 started_at: None,
@@ -548,7 +548,7 @@ mod tests {
         let completed = activity.iter().find(|child| child.id == "ccc").unwrap();
         assert_eq!(completed.state, SubagentState::Completed);
         assert_eq!(completed.parent.as_deref(), Some("aaa"));
-        assert_eq!(completed.task, None, "the runtime file did not report the assignment text");
+        assert_eq!(completed.task.as_deref(), Some("docs_pass"), "Codex has no description; the child's task name is its title");
         assert_eq!(completed.model, None, "a parent model is never copied onto a child");
         let _ = std::fs::remove_dir_all(&dir);
     }

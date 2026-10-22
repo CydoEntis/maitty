@@ -601,7 +601,7 @@ mod screen_tests {
         assert!(lines[1].contains(" 1 ") && !lines[1].contains("claude") && lines[1].contains(" + ") && !lines[1].contains('▯'), "an unnamed tab is its number; +; no layout switch: {}", lines[1]);
         // Projects and their sessions, nothing in between.
         assert!(text.contains("▾ shop-api") && text.contains("● 1"), "a project: its fold arrow and name, what needs you on the right");
-        assert!(text.contains("AGENTS 2 ─") && text.contains("TERMINALS 1 ─") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "a heading per section");
+        assert!(!text.contains("AGENTS") && !text.contains("TERMINALS") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "no heading per kind of session");
         assert!(!text.contains("main folder"), "no 'main folder' wording");
         assert!(!text.contains("+ open a project"), "opening a project is in the header now");
         // Rows: state and name, branch · age on the right, its question underneath.
@@ -1944,7 +1944,7 @@ mod screen_tests {
         let main = draw(&mut app, 160, 45);
         show(&main);
         assert!(main.lines().next().unwrap().starts_with("▎"), "flat has no outside margin and keeps a zone bar");
-        assert!(main.contains("claude") && main.contains("AGENTS 2"), "the existing sessions remain visible");
+        assert!(main.contains("claude") && main.contains("shell"), "the existing sessions remain visible");
         assert!(main.contains("+ new") && main.contains("actions"), "the sidebar keeps its two mouse-accessible controls");
         assert!(!main.lines().last().unwrap_or_default().contains("PANE"), "the full-width footer is gone");
         assert!(!main.contains('╭') && !main.contains('╮') && !main.contains('╰') && !main.contains('╯'), "flat uses square zones without card borders");
@@ -2197,9 +2197,9 @@ mod screen_tests {
             app.snap.terms.get_mut(&2).unwrap().status = codex;
             app.screen_fresh();
             let model = app.screen_model();
-            screen::side_lines(app, &model, &app.theme).iter().filter_map(|l| screen::line_term(&model, l)).take(2).collect::<Vec<_>>()
+            screen::side_lines(app, &model, &app.theme).iter().filter_map(|l| screen::line_term(&model, l)).filter(|t| *t != 3).take(2).collect::<Vec<_>>()
         };
-        // claude (1) and codex (2), agents in one group.
+        // claude (1) and codex (2) share a group with the shell (3), which isn't counted.
         assert_eq!(rows(&mut app, Status::Idle), [1, 2]);
         assert_eq!(rows(&mut app, Status::Working), [1, 2], "starting work doesn't move it");
         assert_eq!(rows(&mut app, Status::Done), [1, 2], "nor does finishing");
@@ -2261,7 +2261,7 @@ mod screen_tests {
     #[test]
     fn a_fleet_shows_in_the_sidebar() {
         let mut app = fleet();
-        // The shell is in another group: started by claude or not, it's an ordinary row there.
+        // The shell shares claude's group, so one claude started sits under it.
         app.snap.terms.get_mut(&3).unwrap().started_by = Some(1);
         app.screen_fresh();
         for (w, h) in [(160, 45), (100, 30)] {
@@ -2275,7 +2275,7 @@ mod screen_tests {
             let model = app.screen_model();
             let name = |t: TermId| model.iter().flat_map(|p| p.sessions()).find(|s| s.term == t).unwrap().name.clone();
             assert_eq!(col(&name(2)), col(&name(1)) + 2, "a helper steps in under its commander");
-            assert_eq!(col(&name(3)), col(&name(1)), "a session in another group doesn't");
+            assert_eq!(col(&name(3)), col(&name(1)) + 2, "a shell started by it steps in too");
         }
     }
 
@@ -2314,7 +2314,7 @@ mod screen_tests {
             screen::side_lines(app, &model, &app.theme).iter().filter_map(|l| screen::line_term(&model, l)).collect::<Vec<_>>()
         };
         let before = rows(&mut app);
-        // claude and codex: agents in one group (the shell is in the terminals section).
+        // claude, codex and the shell: one group.
         let (first, last) = (before[0], before[1]);
         let at = |app: &App, t: TermId| app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::Session(t))).then_some((r.x + 6, r.y))).unwrap();
         let mouse = |app: &mut App, kind: MouseEventKind, (x, y): (u16, u16)| {
@@ -2326,9 +2326,6 @@ mod screen_tests {
         mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), to);
         mouse(&mut app, MouseEventKind::Up(MouseButton::Left), to);
         assert_eq!(rows(&mut app)[0], last, "dragged to the top of its group: {:?}", rows(&mut app));
-        // Not across sections: the shell can't be dragged among the agents.
-        let shell = *before.last().unwrap();
-        assert!(!app.move_session(shell, first), "a terminal stays in its section");
         // A click (no move) opens it.
         let p = at(&app, first);
         mouse(&mut app, MouseEventKind::Down(MouseButton::Left), p);
@@ -2346,7 +2343,7 @@ mod screen_tests {
         draw(&mut app, 160, 45);
         let groups = |app: &App| app.screen_model().iter().map(|p| (p.name.clone(), p.sessions().map(|s| s.term).collect::<Vec<_>>())).collect::<Vec<_>>();
         let header = |app: &App, name: &str| {
-            let pi = app.screen_model().iter().position(|p| p.name == name && p.kind == screen::Kind::Agents).unwrap();
+            let pi = app.screen_model().iter().position(|p| p.name == name && p.kind == screen::Kind::Local).unwrap();
             app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::ToggleProj(pi))).then_some((r.x + 4, r.y))).unwrap()
         };
         let row = |app: &App, t: TermId| app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::Session(t))).then_some((r.x + 6, r.y))).unwrap();
@@ -2362,9 +2359,6 @@ mod screen_tests {
         let g = groups(&app);
         assert!(g.iter().any(|(n, ts)| n == "web" && ts.contains(&1) && ts.contains(&2)), "claude is in web now: {g:?}");
         assert!(app.screen.drag.is_none());
-        // An agent can't go into the terminals section.
-        let shell_group = app.screen_model().iter().position(|p| p.kind == screen::Kind::Terminals).unwrap();
-        assert!(!app.place_session(1, shell_group), "an agent stays among the agents");
         // It stays when the agent reports its folder again.
         app.screen_fresh();
         assert!(groups(&app).iter().any(|(n, ts)| n == "web" && ts.contains(&1)));
@@ -2445,7 +2439,7 @@ mod screen_tests {
         }
         app.screen_fresh();
         draw(&mut app, 160, 45);
-        let names = |app: &mut App| app.screen_model().iter().filter(|p| p.kind == screen::Kind::Terminals).map(|p| p.name.clone()).collect::<Vec<_>>();
+        let names = |app: &mut App| app.screen_model().iter().filter(|p| p.kind == screen::Kind::Local).map(|p| p.name.clone()).collect::<Vec<_>>();
         let before = names(&mut app);
         assert_eq!(before.len(), 3, "shop-api's shell, notes, api: {before:?}");
         let header = |app: &App, name_idx: usize| {
@@ -2488,14 +2482,24 @@ mod screen_tests {
         let kinds: Vec<(screen::Kind, String)> = model.iter().map(|p| (p.kind, p.name.clone())).collect();
         assert_eq!(
             kinds,
-            vec![(screen::Kind::Agents, "shop-api".into()), (screen::Kind::Terminals, "notes".into()), (screen::Kind::Ssh, "build-box".into())],
-            "agents, then terminals, then other machines, each grouped by where"
+            vec![(screen::Kind::Local, "shop-api".into()), (screen::Kind::Local, "notes".into()), (screen::Kind::Ssh, "build-box".into())],
+            "folders here, then other machines, each grouped by where"
         );
         let o = draw(&mut app, 160, 45);
         show(&o);
         let at = |s: &str| o.find(s).unwrap_or_else(|| panic!("{s} in the sidebar"));
-        assert!(at("▾ shop-api") < at("▾ notes") && at("▾ notes") < at("▾ build-box"), "agents, then terminals, then other machines");
-        assert!(at("AGENTS 2") < at("TERMINALS 1") && at("TERMINALS 1") < at("SSH 1"), "a heading per section, in order");
+        assert!(at("▾ shop-api") < at("▾ notes") && at("▾ notes") < at("▾ build-box"), "folders here, then other machines");
+        assert!(!o.contains("AGENTS") && !o.contains("TERMINALS") && at("SSH 1") > at("▾ notes"), "only the other machines get a heading");
+    }
+
+    #[test]
+    fn a_tight_row_shows_its_tool_as_an_icon() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.snap.terms.get_mut(&2).unwrap().label = "Rate limiter rework".into();
+        app.screen_fresh();
+        let o = draw(&mut app, 140, 30);
+        show(&o);
+        assert!(o.contains("◆ ") && !o.contains("codex ·"), "codex's row keeps its icon when it's tight");
     }
 
     #[test]
