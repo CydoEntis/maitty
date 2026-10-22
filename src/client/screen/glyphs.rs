@@ -121,7 +121,6 @@ pub(in crate::client) struct Mark<'a> {
     pub word: &'static str,
 }
 
-#[cfg_attr(not(test), expect(dead_code, reason = "the v7 rows, Inbox and pane titles mark sessions with it"))]
 impl Kind {
     pub fn mark<'a>(self, g: &'static Glyphs, t: &Theme, ring_step: usize, working: &'a str) -> Mark<'a> {
         Mark { glyph: self.glyph(g, ring_step, working), color: self.color(t), word: self.word() }

@@ -309,8 +309,10 @@ pub(super) struct Session {
     pub started_by: Option<TermId>,
     /// Follow-ups waiting for its turn to end, next first.
     pub queued: Vec<String>,
-    /// The latest check Seshi ran after its turn.
+    /// The latest check Seshi ran after its turn: the headline of `checks`.
     pub check: Option<CheckInfo>,
+    /// Every checkpoint, in the project's order.
+    pub checks: Vec<CheckInfo>,
 }
 
 #[derive(Debug, Clone)]
@@ -647,6 +649,7 @@ impl App {
                     started_by: t.started_by,
                     queued: t.queued.clone(),
                     check: t.check().cloned(),
+                    checks: t.checks.clone(),
                 });
             }
             // The repo's other worktrees, even with nothing running in them.
