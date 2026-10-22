@@ -26,9 +26,13 @@ const CHECK_FAILED_WHAT: &str = "check failed";
 const NEEDS_APPROVAL_WHAT: &str = "needs you";
 
 /// The shell's exit code for a command it could not find (cmd.exe's is 9009). PowerShell
-/// reports a missing command as 1, which cannot be told from a failing one.
+/// reports a missing command as 1, which cannot be told from a failing one, so a check line
+/// it runs starts with `POWERSHELL_NOT_FOUND_TRAP`.
 const EXIT_COMMAND_NOT_FOUND: i32 = 127;
 const EXIT_COMMAND_NOT_FOUND_CMD: i32 = 9009;
+/// Makes PowerShell say why and exit 127 at a command it cannot find. Other errors and exit
+/// codes are left as they were.
+const POWERSHELL_NOT_FOUND_TRAP: &str = "trap [System.Management.Automation.CommandNotFoundException] { [Console]::Error.WriteLine($_); exit 127 }; ";
 
 /// How often a running check is looked at for its end or its deadline.
 const CHECK_POLL: Duration = Duration::from_millis(25);
@@ -137,7 +141,8 @@ fn run_scrubbed(shell: &[String], dir: &Path, line: &str, timeout: Duration, scr
 }
 
 fn check_command(shell: &[String], dir: &Path, line: &str, scrub: &[&str]) -> std::process::Command {
-    let mut c = crate::proc::shell(shell, line, false);
+    let line = if crate::proc::is_powershell(shell) { format!("{POWERSHELL_NOT_FOUND_TRAP}{}", crate::proc::powershell_line(line)) } else { line.to_string() };
+    let mut c = crate::proc::shell(shell, &line, false);
     c.current_dir(dir).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     for var in scrub {
         c.env_remove(var);
@@ -856,12 +861,27 @@ mod tests {
         assert_eq!(state_for(run.outcome), CheckState::CouldNotRun);
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_missing_command_reads_as_not_run_not_failed() {
         let run = run("seshi-no-such-command-xyz", LONG);
         assert_eq!(run.outcome, CheckOutcome::Exited(EXIT_COMMAND_NOT_FOUND));
         assert_eq!(state_for(run.outcome), CheckState::CouldNotRun);
+        assert!(run.output.contains("seshi-no-such-command-xyz"), "it says what was missing: {}", run.output);
+    }
+
+    #[test]
+    fn a_failing_command_still_reads_as_failed() {
+        let run = run("echo before; exit 3", LONG);
+        assert!(matches!(run.outcome, CheckOutcome::Exited(c) if c != 0 && c != EXIT_COMMAND_NOT_FOUND), "{:?}", run.outcome);
+        assert_eq!(state_for(run.outcome), CheckState::Failed);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_quoted_path_still_runs_under_powershell() {
+        let exe = std::env::var("ComSpec").unwrap_or_else(|_| r"C:\Windows\System32\cmd.exe".into());
+        let run = run_check(&["powershell.exe".into()], &std::env::temp_dir(), &format!("\"{exe}\" /c exit 0"), LONG);
+        assert_eq!(run.outcome, CheckOutcome::Exited(0), "{}", run.output);
     }
 
     #[test]

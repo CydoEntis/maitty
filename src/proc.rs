@@ -70,11 +70,10 @@ pub fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
 /// ask the user things; otherwise PowerShell is told not to.
 pub fn shell(shell: &[String], line: &str, interactive: bool) -> Command {
     let program = shell.first().map(String::as_str).unwrap_or("sh");
-    let exe = Path::new(program).file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     let mut c = Command::new(program);
-    match exe.as_str() {
+    match shell_name(program).as_str() {
         "pwsh" | "powershell" => {
-            let line = if line.starts_with('"') { format!("& {line}") } else { line.to_string() };
+            let line = powershell_line(line);
             c.arg("-NoProfile");
             if !interactive {
                 c.arg("-NonInteractive");
@@ -89,6 +88,20 @@ pub fn shell(shell: &[String], line: &str, interactive: bool) -> Command {
         }
     }
     c
+}
+
+fn shell_name(program: &str) -> String {
+    Path::new(program).file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()).unwrap_or_default()
+}
+
+/// Whether `shell` (as from `Config::shell_command`) is PowerShell.
+pub fn is_powershell(shell: &[String]) -> bool {
+    matches!(shell_name(shell.first().map_or("sh", String::as_str)).as_str(), "pwsh" | "powershell")
+}
+
+/// `line` as PowerShell runs it: a quoted path needs `&` in front.
+pub fn powershell_line(line: &str) -> String {
+    if line.starts_with('"') { format!("& {line}") } else { line.to_string() }
 }
 
 /// Put this process ahead of what runs in seshi's panes. Agents' builds and tests take every
