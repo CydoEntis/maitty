@@ -210,3 +210,15 @@ recheck the exact status before ringing. Transient auto-approved asks and stale
 attention messages must not ring while the agent is working. Background top-level
 completion uses the soft completion sound; helper completion stays quiet. Helper
 questions may ring after the same blocked delay.
+
+A session whose project has a check is not finished until the check settles. While it
+runs, no finished alert (desktop or phone) rings and `seshi wait`, `seshi send --wait` and
+MCP `seshi_wait` / `seshi_send` with `wait` stay blocked, bounded by their timeout. A
+passed check lets the normal finished alert ring. A failed check raises a blocked
+attention alert and a notice saying "check failed", rings no finished alert (desktop or
+phone), and the waiter returns with the result: `Waited::Turn` carries the check's
+`CheckInfo`, MCP replies end with its one-line result, and `seshi wait` prints that line
+to stderr and exits 4 (2 is timed out, 3 needs you). A check that could not run gives a
+notice and then the normal finished alert. Queued follow-ups still send when the turn
+ends, and `helpers_at_once` still counts only working sessions. A session with no check
+alerts and waits exactly as before.
