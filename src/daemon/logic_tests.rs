@@ -1637,10 +1637,10 @@ const SLOW_CHECK_WAIT: Duration = Duration::from_secs(30);
 fn a_turn_end_runs_the_projects_check_and_a_pass_is_recorded() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
-    let t = checked_agent(&mut d, "echo suite ok; exit 0", LONG_CHECK_S);
+    let t = checked_agent(&mut d, "echo \"suite ok\"; exit 0", LONG_CHECK_S);
     end_turn(&mut d, t);
     let running = check_of(&d, t);
-    assert_eq!((running.state, running.command.as_str()), (CheckState::Checking, "echo suite ok; exit 0"));
+    assert_eq!((running.state, running.command.as_str()), (CheckState::Checking, "echo \"suite ok\"; exit 0"));
     assert!(d.snapshot().terms[&t].check.is_some(), "clients see it checking");
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     let done = check_of(&d, t);
@@ -1654,7 +1654,7 @@ fn a_turn_end_runs_the_projects_check_and_a_pass_is_recorded() {
 fn a_failing_check_records_its_exit_code_and_output() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
-    let t = checked_agent(&mut d, "echo 1 test failed; exit 3", LONG_CHECK_S);
+    let t = checked_agent(&mut d, "echo \"1 test failed\"; exit 3", LONG_CHECK_S);
     end_turn(&mut d, t);
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     let info = check_of(&d, t);
@@ -1667,7 +1667,7 @@ fn a_failing_check_records_its_exit_code_and_output() {
 fn a_failed_check_names_its_first_failing_line_and_a_rerun_clears_it() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
-    let t = checked_agent(&mut d, "echo running; echo FAIL tests/foo: boom; exit 1", LONG_CHECK_S);
+    let t = checked_agent(&mut d, "echo running; echo \"FAIL tests/foo: boom\"; exit 1", LONG_CHECK_S);
     end_turn(&mut d, t);
     assert!(check_of(&d, t).first_failing_line.is_empty(), "nothing while it runs");
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));

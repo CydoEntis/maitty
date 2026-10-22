@@ -519,7 +519,7 @@ mod tests {
 
     #[test]
     fn a_command_that_exits_reads_by_its_code_and_keeps_what_it_printed() {
-        let pass = run("echo all good; exit 0", LONG);
+        let pass = run("echo \"all good\"; exit 0", LONG);
         assert_eq!((pass.outcome, pass.output.trim()), (CheckOutcome::Exited(0), "all good"));
         let fail = run("echo out; echo err 1>&2; exit 3", LONG);
         assert_eq!(fail.outcome, CheckOutcome::Exited(3));
