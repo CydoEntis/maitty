@@ -378,7 +378,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         Some(SRow::Bind { acts, .. }) if acts.len() > 1 => "Several keys; change them in the config file (o).".into(),
         Some(SRow::Bind { .. }) => "Enter, then press the new key.".into(),
         Some(SRow::Check(f)) => crate::client::screen::check_settings::help(app, *f),
-        Some(SRow::Team(row)) => team_settings::help(app, *row),
+        Some(SRow::Team(row)) => team_settings::help(app, *row, v),
         None => String::new(),
     };
     // Lines: headings, rows with a blank between them, a wider gap between groups. The
@@ -405,14 +405,13 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
             }
             last = g;
         }
+        if matches!(row, SRow::Team(team_settings::TeamRow::Add)) && app.cfg.team.jobs.is_empty() {
+            lines.extend(wrap_two(team_settings::EMPTY, r.right().saturating_sub(lx + 3) as usize).into_iter().map(L::Note));
+        }
         lines.push(L::Row(i));
         if !compact {
             lines.push(L::Blank);
         }
-    }
-    if cat == Cat::Team && app.cfg.team.jobs.is_empty() {
-        lines.extend([L::Blank, L::Head(team_settings::JOBS_GROUP)]);
-        lines.extend(wrap_two(team_settings::EMPTY, r.right().saturating_sub(lx + 3) as usize).into_iter().map(L::Note));
     }
     let top = r.y + 6 + lines_used;
     // Appearance keeps room at the foot for its preview.
@@ -421,7 +420,8 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     // Team's job list grows, so it uses every row down to the help's rule.
     let h = r.height.saturating_sub(if preview { 19 } else if cat == Cat::Team { 11 + lines_used } else if compact { 13 } else { 14 }) as usize;
     let at = lines.iter().position(|l| matches!(l, L::Row(i) if *i == v.sel)).unwrap_or(0);
-    let start = (at + 2).saturating_sub(h);
+    // A line under the selection stays in view, unless the selection is the last line.
+    let start = (at + 2).min(lines.len()).saturating_sub(h);
     for (k, line) in lines.iter().enumerate().skip(start).take(h) {
         let y = top + (k - start) as u16;
         match line {
@@ -475,7 +475,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                 } else {
                     let shown = match row {
                         SRow::Check(f) => crate::client::screen::check_settings::control(app, t, *f, v, sel, r.right().saturating_sub(vx + 1) as usize),
-                        SRow::Team(row) => team_settings::control(app, t, *row, sel, r.right().saturating_sub(vx + 1) as usize),
+                        SRow::Team(row) => team_settings::control(app, t, *row, v, sel, r.right().saturating_sub(vx + 1) as usize),
                         _ => crate::client::design::control(app, t, row, v, sel),
                     };
                     let ctrl: Vec<Seg> = shown.into_iter().map(|(x, s)| (x, if s.bg.is_none() { s.bg(bg) } else { s })).collect();
@@ -525,12 +525,15 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     let file = vec![seg("config.toml  ", c.fg(t.muted)), seg("o", c.fg(t.accent).add_modifier(Modifier::BOLD)), seg(" open", c.fg(t.muted))];
     let fw = segs_width(&file);
     let mut keys = hints(t, &[("↑↓", "move"), ("←→", "change"), ("Tab", "section")]);
-    if cat == Cat::Check {
-        // The Check page's own keys, when they fit beside the file link.
-        let more = hints(t, &[("↑↓", "move"), ("Enter", "edit"), ("r", "run now"), ("Del", "remove"), ("←→", "change"), ("Tab", "section")]);
-        if segs_width(&more) + fw + 8 <= r.width {
-            keys = more;
-        }
+    // A page's own keys, when they fit beside the file link.
+    let own: &[(&str, &str)] = match cat {
+        Cat::Check => &[("↑↓", "move"), ("Enter", "edit"), ("r", "run now"), ("Del", "remove"), ("←→", "change"), ("Tab", "section")],
+        Cat::Team => &[("↑↓", "move"), ("Enter", "edit"), ("a", "add"), ("Del", "remove"), ("←→", "change"), ("Tab", "section")],
+        _ => &[],
+    };
+    let more = hints(t, own);
+    if !own.is_empty() && segs_width(&more) + fw + 8 <= r.width {
+        keys = more;
     }
     put(buf, r.x + 3, r.bottom() - 2, &keys, r.right());
     put(buf, r.right().saturating_sub(fw + 3), r.bottom() - 2, &file, r.right());

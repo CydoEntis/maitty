@@ -761,6 +761,8 @@ pub(crate) struct SettingsView {
     /// Waiting for a key: the leader, or a new key for this row's action.
     pub capturing: bool,
     pub scroll: u16,
+    /// A team job being added or edited, one field at a time in `editing`.
+    pub job: Option<super::screen::team_settings::JobDraft>,
 }
 
 pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, selected: bool) -> Vec<Seg> {

@@ -223,15 +223,20 @@ pub(in crate::client) fn control(app: &App, t: &Theme, field: CheckField, v: &Se
 
 fn command_control(t: &Theme, def: Option<&CheckDef>, draft: Option<&str>, room: usize) -> Vec<Seg> {
     if let Some(draft) = draft {
-        let keep = room.saturating_sub(EDIT_CHROME_COLS);
-        let skip = draft.chars().count().saturating_sub(keep);
-        let tail: String = draft.chars().skip(skip).collect();
-        return vec![seg(format!(" {tail}"), Style::default().bg(t.card2).fg(t.strong)), seg("█ ", Style::default().bg(t.card2).fg(t.accent))];
+        return draft_segs(t, draft, room);
     }
     match def {
         Some(d) => chip(&truncate(&d.command, room.saturating_sub(CHIP_PAD_COLS)), Style::default().bg(t.btn).fg(t.strong)),
         None => chip(COMMAND_PLACEHOLDER, Style::default().bg(t.btn).fg(t.muted)),
     }
+}
+
+/// Text being typed in a Settings field, its end kept in view, with the cursor after it.
+pub(super) fn draft_segs(t: &Theme, draft: &str, room: usize) -> Vec<Seg> {
+    let keep = room.saturating_sub(EDIT_CHROME_COLS);
+    let skip = draft.chars().count().saturating_sub(keep);
+    let tail: String = draft.chars().skip(skip).collect();
+    vec![seg(format!(" {tail}"), Style::default().bg(t.card2).fg(t.strong)), seg("█ ", Style::default().bg(t.card2).fg(t.accent))]
 }
 
 fn status_control(app: &App, t: &Theme, project: Option<&Path>, has_check: bool, room: usize) -> Vec<Seg> {

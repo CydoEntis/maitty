@@ -383,11 +383,12 @@ impl App {
         }
         if let Some(mut text) = v.editing.take() {
             match k.code {
-                KeyCode::Esc => {}
+                KeyCode::Esc => v.job = None,
                 KeyCode::Enter => {
                     match row {
                         Some(design::SRow::Setting(s)) => self.save_setting(s.path, text.trim().into()),
                         Some(design::SRow::Check(_)) => self.submit_check_command(text),
+                        Some(design::SRow::Team(_)) => self.submit_job_field(v, text),
                         _ => {}
                     }
                 }
@@ -408,9 +409,11 @@ impl App {
         {
             return true;
         }
-        if let Some(design::SRow::Team(team_row)) = row
-            && self.on_team_row_key(team_row, k)
-        {
+        let team_row = match row {
+            Some(design::SRow::Team(r)) => Some(r),
+            _ => None,
+        };
+        if cat == Cat::Team && self.on_team_page_key(v, team_row, k) {
             return true;
         }
         if matches!(&row, Some(design::SRow::Setting(s)) if s.path == "theme")

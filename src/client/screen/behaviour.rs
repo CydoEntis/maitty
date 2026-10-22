@@ -289,7 +289,7 @@ impl App {
 
     pub(in crate::client) fn screen_settings(&mut self) {
         self.refresh_installed_version();
-        self.mode = Mode::ScreenSettings(Box::new(SView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        self.mode = Mode::ScreenSettings(Box::new(SView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0, job: None }));
     }
 
     /// Move the sidebar cursor; bare keys then work on the sidebar until Esc or Enter.
@@ -331,6 +331,9 @@ impl App {
         let yes = act.is_some();
         if let Some(a) = act {
             self.menu_do(a);
+        }
+        if let Some(v) = self.screen.settings_return.take() {
+            self.mode = Mode::ScreenSettings(v);
         }
         if let Some(item) = back {
             if yes {
@@ -706,7 +709,7 @@ impl App {
                     .map(|i| (ci, i))
             })
             .unwrap_or((0, 0));
-        self.mode = Mode::ScreenSettings(Box::new(SView { cat, sel, editing: None, capturing: false, scroll: 0 }));
+        self.mode = Mode::ScreenSettings(Box::new(SView { cat, sel, editing: None, capturing: false, scroll: 0, job: None }));
     }
 
     pub(in crate::client) fn finder_enter(&mut self, mut fd: Finder) {

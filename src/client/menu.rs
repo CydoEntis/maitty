@@ -59,6 +59,8 @@ pub enum Act {
     RerunCheck(TermId),
     /// Accept a failed check; the string is the reason typed in the confirm, possibly empty.
     OverrideCheck(TermId, String),
+    /// Remove this job from the team.
+    RemoveTeamJob(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -471,6 +473,7 @@ impl App {
             }
             Act::Update => self.start_update(),
             Act::RestartDaemon => self.restart_daemon_now(),
+            Act::RemoveTeamJob(name) => self.remove_team_job(name),
             Act::InstallStatus(agent) => {
                 self.notify(format!("setting up {agent} status…"), false);
                 self.spawn_bg(move || {
