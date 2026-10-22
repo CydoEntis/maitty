@@ -49,12 +49,13 @@ or another program follow that program's own help.
 | --- | --- |
 | Up / k, Down / j, Home, End | Browse rows, first row, last row; active session stays selected |
 | Right, Left | Expand project or enter session; fold project or go to session's project |
-| Enter | Toggle project or open selected session; opening a sleeping session wakes it. On a session whose check failed, could not run or was overridden, open its evidence sheet instead |
+| Enter | Toggle project or open selected session; opening a sleeping session wakes it. On a session whose check failed, could not run, was overridden, went stale or is never run for its repo, open its evidence sheet instead |
 | Space | Open New for the selected project |
-| m, i, s, a | Follow-up to selected agent, status evidence, inspect its subagent activity, Actions |
+| m, i, s, a | Follow-up to selected agent, why it reads as it does, inspect its subagent activity, Actions |
+| r, O, u, o | On a session with a check: re-run it (once it has a result), override it (failed only, asked first), undo the override (overridden only), its output. A key the result doesn't take says why |
 | Up, Down in the activity inspector | Inspect the previous or next child record |
 | Delete | Ask to close the selected session or project |
-| Menu letters | Use the letters shown in the selected row's right-click menu; r renames, x closes. A session with a check also lists Check output, Re-run check and (when it failed) Override check… |
+| Menu letters | Use the letters shown in the selected row's right-click menu; r renames, x closes. A session with a check also lists Check output (o), Re-run check (r), Override check… (O, failed) and Undo override (u, overridden); there Rename takes e |
 | Esc | Return keyboard focus to the active pane |
 
 ## Command palette and text prompts

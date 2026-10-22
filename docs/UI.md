@@ -174,35 +174,67 @@ working glyph; blocked/done/idle status colors and icons keep their meaning.
 
 ## Project-specific: sidebar check result
 
-A session with a check result (`TermInfo::check()`, the headline checkpoint) swaps its status glyph for the
-check's and adds one line under the row. A session with no result, or one whose
-agent is working or asking, draws exactly as without checks.
+The sidebar is the v7 handoff's `drawSide` (`docs/design/v7/checks7.js`); its rows are
+tested cell for cell against the reference frames (`client/screen/side_frames.txt`).
 
-| Result | Glyph (Unicode / ASCII) | Colour slot | Line under the row |
+- **Title:** `SESSIONS` bold and the count, then right-aligned `●n` (`blocked`, bold:
+  asking or waiting for check approval) and `✕n` (`err`, bold: failed checks), each only
+  above zero.
+- **Folder:** fold glyph (`accent`), name (`strong`, bold, never cut before the meta),
+  meta right-aligned in `muted`: `⎇ main` plus ` · check: <name>` or ` · N checkpoints`,
+  or `no git`. The meta shows only with 6 or more columns free, cut with `…`. A blank row
+  follows each folder.
+- **Row line 1:** the session's mark (`client/screen/glyphs.rs` `Kind`; bold for failed,
+  needs you and approve), the name (`strong` when selected or failed, else `text`, bold;
+  working keeps its shimmer), the age right-aligned in `muted`.
+- **Row line 2:** the headline check's result (`TermInfo::check()`) by checkpoint name, or
+  the question, or what the session is doing. While the agent works or asks, its last
+  result is about an older turn and is not shown.
+- **Row line 3** (140 columns and up): a failed check's first failing line (`muted`), or
+  every checkpoint by name: `build ✓ · test ✕` (a failed name in `err`).
+
+| State | Glyph (Unicode / ASCII) | Colour slot | Line 2 |
 | --- | --- | --- | --- |
-| checking | `◜◝◞◟` / `- \ \| /` | `sky()` | `checking <cmd> · <age>` |
-| passed | `✓` / `+` | `done` | `<cmd> ✓ · <took> · <age> ago` |
-| failed | `✕` bold / `x` | `err` | `failed: <cmd> · exit N`, bold |
-| overridden | `⊘` / `/` | `text`, never green | `<cmd> ✕ overridden by you` |
-| could not run | `?` / `?` | `muted`, not a failure | `<cmd> could not run · not found` |
+| working | the spinner you chose | `accent` | `claude · working` |
+| needs you | `●` / `!` | `blocked` | `asks: <question>` |
+| done, not seen / seen | `✓` / `+`; `○` / `o` | `done`; `muted` | `finished · not seen` / `finished` |
+| asleep | `z` | `muted` | `asleep zzZ` |
+| checking | `◜◝◞◟` / `- \ \| /` | `sky()` | `checking test · 6s` |
+| passed | `✓` / `+` | `done` | `passed: test` (bold) ` · 14.2s · 14:22` (`muted`, local clock) |
+| failed | `✕` / `x` | `err` | `failed: test · exit 1` (bold) |
+| overridden | `⊘` / `/` | `text`, never green | `failed, overridden: test` (bold) |
+| could not run | `?` / `?` | `violet()`, not a failure | `test could not run · not found` |
+| stale | `◷` / `~` | `text`, never green | `stale pass: test` (bold) ` · 3 files changed` (`muted`) |
+| never for this repo | `?` / `?` | `violet()` | `not checked: never for this repo` |
+| waits for approval | `●` / `!` | `blocked` | `approve check: <command>` |
 
-- Shape and word carry the meaning; colour only backs them. Failed (`✕`, "failed")
-  and needs-you (`●`, the question) differ in glyph, word and colour.
-- A failed row keeps a red `▎` edge bar on both lines even when not selected.
-  Could not run has no bar.
-- Glyphs come from the set `[ui] glyphs` picks (`client/screen/glyphs.rs`: unicode, ascii,
-  nerd); `auto` uses ASCII when the `blocked`, `done` and `idle` icons are all ASCII.
-- The line is dropped below `NARROW` columns, before the glyph; the folder name is
-  never touched. A long command is shortened first so the result still reads.
-- The collapsed rail shows the same glyph. The ring turns with the motion setting;
-  the working spinner choice is unchanged.
-- Colours are existing theme slots only; there is no check role. `Theme::violet()` (the
-  theme's first project colour, made readable) and `sky()` are derived, not roles. Code lives in
-  `client/screen/check.rs`; the evidence sheet is `client/screen/check_sheet.rs`.
+- **Several checkpoints:** line 2 is the headline (worst) checkpoint's word, then one bold
+  glyph per checkpoint (pass `✓` `done`, fail `✕` `err`, ring `sky()`, could not run or
+  never `?` `violet()`, stale `◷` `muted`, overridden `⊘` `text`, approval `●` `blocked`,
+  pending `…` `muted`). Words: `failed: <name>` (`err`), `could not run: <name>`,
+  `needs you: <name>` (`blocked`), `checking: <name>` (`sky()`), `next: <name>` (`muted`),
+  `stale pass: <name>`, `not checked: <name>`, `overridden: <name>`, `all passed` (`done`).
+  The glyphs are clipped, never the word.
+- **What gives way:** the folder meta first (by its room), then the age (below 100
+  columns), then line 3 (below 140), then line 2 of rows with no check result, question
+  or plan-limit wait. Queued follow-ups and subagents keep their lines after these.
+- **Selection:** the keyboard's row (while the sidebar has the keys) or the open session
+  is tinted (`Theme::sel_bg()`) from X to one past RX on all its lines, with `▎` at X:
+  `accent` while the sidebar has the keys, else `muted`; while the keyboard browses, the
+  open row keeps a `muted` bar. A failed row carries `▎` in `err` on every line, selected
+  or not. X is 2 columns in (1 in Flat), RX 3 from the right (2 in Flat).
+- **Foot:** `+ new` at the left and `a actions` right-aligned, on the last row inside.
+- Shape and word carry the meaning; colour only backs them, so every state reads in the
+  ASCII set and without colour. Glyphs come from `[ui] glyphs` (`unicode`, `ascii`,
+  `nerd`, or `auto`: ASCII when the `blocked`, `done` and `idle` icons are all ASCII);
+  a Nerd icon is clipped to one cell.
+- Colours are existing theme slots only; there is no check role. `Theme::violet()` and
+  `sky()` are derived, not roles. Code: `client/screen/side.rs` (the card),
+  `client/screen/check.rs` (a result's words and marks).
 
 ## Project-specific: check evidence sheet
 
-The check evidence sheet (Enter on a sidebar row whose check failed, could not run or was overridden; every other row still focuses its session) docks right like the Inbox and takes the pane column below `NARROW`. It shows the result chip with its exit code, a banner for an override (when, the reason, `u undo`) or a command that could not run ("Not a test failure. The work hasn't been checked."), the Command / Folder / Ran / Seen by rows with relative ages, and the output on a darker block with line numbers (`✓` lines in `done`, error lines in `err`). Output longer than the block shows the tail that fits ("last N of M lines"); `f` or the arrows open all of it and scroll. Empty output reads "(the command printed nothing)", with "exit 0 is what passed it." for a pass. Re-run (`r`, not while it runs), Override… (`O`, failed only) and Undo override (`u`, overridden only) are buttons and keys; the hint row lists the ones that apply. A re-run queued behind a working agent reads `re-run queued` beside the result chip.
+The check evidence sheet (Enter on a sidebar row whose check failed, could not run, was overridden, went stale or is never run for its repo; every other row still focuses its session) docks right like the Inbox and takes the pane column below `NARROW`. It shows the result chip with its exit code, a banner for an override (when, the reason, `u undo`) or a command that could not run ("Not a test failure. The work hasn't been checked."), the Command / Folder / Ran / Seen by rows with relative ages, and the output on a darker block with line numbers (`✓` lines in `done`, error lines in `err`). Output longer than the block shows the tail that fits ("last N of M lines"); `f` or the arrows open all of it and scroll. Empty output reads "(the command printed nothing)", with "exit 0 is what passed it." for a pass. Re-run (`r`, not while it runs), Override… (`O`, failed only) and Undo override (`u`, overridden only) are buttons and keys; the hint row lists the ones that apply. A re-run queued behind a working agent reads `re-run queued` beside the result chip.
 
 The row menu of a session with a check adds Check output (any result), Re-run check (not while it runs) and Override check… (failed only); letters come from `menu_keys` like every item. Output comes from `Query::CheckOutput` and is fetched again when a new run replaces the result. Command output is not trusted: colour codes and control characters are stripped before drawing.
 
@@ -240,7 +272,8 @@ The v7 layout and checkpoints follow [`docs/design/v7/`](design/v7/README.md) (`
 ## Project-specific: home screen check counters
 
 The home screen's "while you were away" line counts a session as finished by the Inbox's rule
-(`check::finished`: see Inbox check groups).
+(`check::finished`: see Inbox check groups; a stale pass or a check never run here counts as
+finished), and a check waiting for approval as needing you.
 A `✕ N check failed` (`N checks failed`) count follows, in `err`, only when N is above zero.
 When the line does not fit the width, the lead-in "while you were away" is dropped so no count
 is cut. A project with no check draws the line it always did. Code lives in `client/screen/splash.rs`.
@@ -248,8 +281,10 @@ is cut. A project with no check draws the line it always did. Code lives in `cli
 ## Project-specific: collapsed sidebar
 
 Hiding the full sidebar leaves a seven-column rail on the configured side.
-Show each session's status and first two non-space title characters, including
-sessions in folded groups. Reuse the working spinner and blocked/done colors.
+Show each session's mark (the same glyph and colour as its sidebar row, from the
+`[ui] glyphs` set, so stale, never-run and waiting-for-approval checks read there too)
+and first two non-space title characters, including sessions in folded groups. A plain
+terminal keeps its `›`.
 Keep active selection distinct from hover; reveal project and full title on hover.
 Click rows to focus or resume a legacy sleeping session; retain keyboard browsing and wheel scrolling. Keep the
 total blocked count visible even when its rows are off-screen. Provide a mouse
