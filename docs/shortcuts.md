@@ -49,7 +49,7 @@ or another program follow that program's own help.
 | --- | --- |
 | Up / k, Down / j, Home, End | Browse rows, first row, last row; active session stays selected |
 | Right, Left | Expand project or enter session; fold project or go to session's project |
-| Enter | Toggle project or open selected session; opening a sleeping session wakes it. On a session whose check failed, could not run or was overridden, open its evidence sheet instead |
+| Enter | Toggle project or open selected session; opening a sleeping session wakes it. On a session whose check failed, could not run or was overridden, open its evidence sheet instead; on one whose repo command waits for approval, open the approval |
 | Space | Open New for the selected project |
 | m, i, s, a | Follow-up to selected agent, status evidence, inspect its subagent activity, Actions |
 | Up, Down in the activity inspector | Inspect the previous or next child record |
@@ -83,12 +83,13 @@ or another program follow that program's own help.
 | --- | --- |
 | Type, Backspace | Filter by project or session |
 | Up, Down, PgUp, PgDn | Choose a row |
-| Enter | Open the selected session (also a failed or could-not-run check) |
+| Enter | Open the selected session (also a failed or could-not-run check); a repo command waiting for approval opens the approval |
 | 1–9 | Answer selected agent question when search is empty |
 | m | Follow-up to selected asking/finished agent when search is empty |
 | d, M, x | Finished worktree: diff, ask to merge, ask to discard; empty search |
 | d, m, k | Shared-file warning: diff, message its agent, dismiss; empty search |
 | o, r, O | Failed check: its output, run it again, override it (asks first); empty search |
+| , | The selected session's project check (`PROJECT · <name>`); empty search |
 | Delete | Mark selected finished session, or unrun check, seen |
 | Enter, Esc in confirmation | Confirm action, or cancel |
 | Esc | Close Inbox |
@@ -159,8 +160,28 @@ or another program follow that program's own help.
 | r | Run the check again (queued while the agent is working) |
 | O | Override a failed check: opens a confirm with an optional reason |
 | u | Undo an override: the check reads as failed again |
+| , | The project's check (`PROJECT · <name>`) |
 | Esc | Close the sheet |
-| Type, Backspace, Ctrl+U, Enter, Esc in the override confirm | Write the reason, delete, clear it, override, cancel |
+
+## Check modals
+
+| Keys | Action |
+| --- | --- |
+| Type, paste, Backspace, Ctrl+U in Override | Write the reason, delete, clear it |
+| Enter in Override | Override; O also overrides while no reason is typed (after that it is a letter) |
+| Esc in Override | Cancel |
+| 1 in the approval | Run the repo's command once; it asks again next turn |
+| 2, then 2 again, in the approval | Always for this exact command; the first 2 (or click) only arms it |
+| 3 in the approval | Never for this repo; the evidence sheet opens |
+| Esc in the approval | Not now: the item stays in the Inbox |
+| Enter, y, Space in the approval | Nothing: a toast says to choose 1, 2 or 3 |
+| Up, Down in `PROJECT · <name>` | Choose the Command, Timeout or CHECKPOINTS row |
+| Enter or typing on Command | Edit the command (your checkpoints only); Enter ends editing |
+| Left, Right on Timeout or CHECKPOINTS | Step the timeout; switch checkpoint |
+| Ctrl+S | Save the shown checkpoint |
+| r | Run it now (queued while the agent is working) |
+| Delete | Remove your checkpoint; forget your choice for a repo's |
+| Esc | Close and drop the draft |
 
 ## Branches and worktree cleanup
 
@@ -182,7 +203,7 @@ or another program follow that program's own help.
 | Left / h, Right / l, Enter, Space | Change value; Enter edits text or captures binding; theme opens browser |
 | o | Open configuration file outside Seshi |
 | R | Restart the daemon after an update (when the Restart now button shows) |
-| r on the Check page | Run the project's check now (the Run now row also takes Enter or a click) |
+| Keys on the Check page | As in `PROJECT · <name>` (see Check modals); Tab, Esc and o stay Settings' |
 | Enter, Esc when editing | Save field / cancel; when capturing press the new key or Esc |
 | Type, Backspace, Ctrl+U in themes | Filter themes, clear filter |
 | Up, Down, PgUp, PgDn, Home, End in themes | Preview themes |
