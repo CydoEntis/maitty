@@ -625,6 +625,16 @@ impl App {
                     self.menu_act(act);
                 }
             }
+            // A check's key its result doesn't take (o, r, O, u act through the row's menu
+            // above): say why rather than type the letter into the pane.
+            KeyCode::Char(c @ ('r' | 'O' | 'u')) if plain && self.screen.cursor.is_some_and(|t| self.snap.terms.get(&t).is_some_and(|x| x.check().is_some())) => {
+                let why = match c {
+                    'r' => "its check is still running",
+                    'O' => "only a failed check can be overridden",
+                    _ => "there is no override to undo",
+                };
+                self.notify(why.into(), false);
+            }
             // Anything else is typing: leave the sidebar and hand the key over.
             _ => {
                 self.screen_side_leave();

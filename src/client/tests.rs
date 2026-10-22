@@ -5412,14 +5412,72 @@ mod check_wiring_tests {
         let offered = |state: Option<CheckState>| {
             let (app, _) = rig(100, 30, |_| {}, state.map(info), Status::Done);
             let l = labels(&app);
-            ["Check output", "Re-run check", "Override check…"].map(|want| l.iter().any(|x| x == want))
+            ["Check output", "Re-run check", "Override check…", "Undo override"].map(|want| l.iter().any(|x| x == want))
         };
-        assert_eq!(offered(None), [false, false, false], "no check, no items");
-        assert_eq!(offered(Some(CheckState::Checking)), [true, false, false], "running: its output, not a second run");
-        assert_eq!(offered(Some(CheckState::Passed)), [true, true, false]);
-        assert_eq!(offered(Some(CheckState::CouldNotRun)), [true, true, false]);
-        assert_eq!(offered(Some(CheckState::Overridden)), [true, true, false], "an override is not overridden twice");
-        assert_eq!(offered(Some(CheckState::Failed)), [true, true, true]);
+        assert_eq!(offered(None), [false, false, false, false], "no check, no items");
+        assert_eq!(offered(Some(CheckState::Checking)), [true, false, false, false], "running: its output, not a second run");
+        assert_eq!(offered(Some(CheckState::Passed)), [true, true, false, false]);
+        assert_eq!(offered(Some(CheckState::CouldNotRun)), [true, true, false, false]);
+        assert_eq!(offered(Some(CheckState::Overridden)), [true, true, false, true], "an override is not overridden twice, but can be taken back");
+        assert_eq!(offered(Some(CheckState::Failed)), [true, true, true, false]);
+    }
+
+    #[test]
+    fn a_checks_menu_items_keep_their_row_keys_and_rename_moves_over() {
+        let keyed = |state: Option<CheckState>| {
+            let (app, _) = rig(100, 30, |_| {}, state.map(info), Status::Done);
+            let items = app.session_items(TERM).unwrap().1;
+            items.iter().map(|(l, _)| l.clone()).zip(menu_keys(&items)).collect::<Vec<_>>()
+        };
+        let key = |keys: &[(String, Option<char>)], label: &str| keys.iter().find(|(l, _)| l == label).and_then(|(_, k)| *k);
+        assert_eq!(key(&keyed(None), "Rename"), Some('r'), "no check: Rename keeps r");
+        let failed = keyed(Some(CheckState::Failed));
+        assert_eq!(["Check output", "Re-run check", "Override check…"].map(|l| key(&failed, l)), [Some('o'), Some('r'), Some('O')]);
+        assert_eq!(key(&failed, "Rename"), Some('e'), "Rename takes its next free letter");
+        assert_eq!(key(&keyed(Some(CheckState::Overridden)), "Undo override"), Some('u'));
+        let running = keyed(Some(CheckState::Checking));
+        assert!(running.iter().all(|(l, k)| l.starts_with("Check") || !matches!(k, Some('r' | 'o' | 'u'))), "reserved even while it runs: {running:?}");
+    }
+
+    /// `state`'s session under the sidebar's keyboard cursor.
+    fn on_its_row(state: CheckState) -> (App, Rx) {
+        let (mut app, rx) = done(state);
+        app.mode = Mode::Side;
+        app.screen.cursor = Some(TERM);
+        (app, rx)
+    }
+
+    #[test]
+    fn the_sidebar_keys_act_on_the_rows_check_and_say_why_when_they_cant() {
+        let (mut app, mut rx) = on_its_row(CheckState::Failed);
+        press(&mut app, KeyCode::Char('r'));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1, "r re-runs a settled check");
+        let (mut app, _) = on_its_row(CheckState::Failed);
+        app.on_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), "O asks to override: {:?}", app.mode);
+        let (mut app, mut rx) = on_its_row(CheckState::Overridden);
+        press(&mut app, KeyCode::Char('u'));
+        assert!(commands(&mut rx).iter().any(|c| matches!(c, Command::UndoOverride { term: TERM, .. })), "u takes the override back");
+        let (mut app, mut rx) = on_its_row(CheckState::Failed);
+        press(&mut app, KeyCode::Char('u'));
+        assert!(sent(&mut rx).iter().all(|m| !matches!(m, ClientMsg::Input { .. })) && toast(&app).0.contains("no override"), "a key that doesn't apply says so and types nothing");
+        for state in [CheckState::Failed, CheckState::CouldNotRun, CheckState::Overridden, CheckState::Stale, CheckState::Never] {
+            let (mut app, _) = on_its_row(state);
+            press(&mut app, KeyCode::Enter);
+            assert!(matches!(&app.view, Some(View::Check(v)) if v.term == TERM), "{state:?}: Enter opens its evidence");
+        }
+        let (mut app, _) = on_its_row(CheckState::Passed);
+        press(&mut app, KeyCode::Enter);
+        assert!(app.view.is_none(), "a pass is not worth a look: Enter goes to the session");
+    }
+
+    #[test]
+    fn the_menu_tells_override_from_output_by_case() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        app.menu_for_session(TERM, (20, 10));
+        app.on_key(KeyEvent::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), "O overrides: {:?}", app.mode);
+        assert!(commands(&mut rx).is_empty());
     }
 
     #[test]

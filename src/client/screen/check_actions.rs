@@ -25,6 +25,9 @@ pub(in crate::client) fn check_menu_items(term: TermId, info: &CheckInfo) -> Vec
     if check::failed(info) {
         items.push(("Override check…".into(), Act::OverrideCheck(term, String::new())));
     }
+    if info.state == CheckState::Overridden {
+        items.push(("Undo override".into(), Act::UndoOverride(term)));
+    }
     items
 }
 
