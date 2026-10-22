@@ -10,6 +10,7 @@ mod check;
 #[cfg(test)]
 pub use check::first_failing_line;
 mod check_source;
+mod check_stale;
 mod git;
 mod persist;
 mod scan;
@@ -113,10 +114,13 @@ pub enum Ev {
     MoveReady { client: ClientId, term: TermId, branch: String, result: Result<(PathBuf, String), String> },
     /// A status report, its sender checked (see `HookJob`).
     HookChecked { msg: ClientMsg, verdict: Option<bool>, chain: Vec<u32> },
-    /// A run's checkpoints, resolved and gated (see `Daemon::turn_ended`).
-    ChecksResolved { term: TermId, run: u64, resolved: Vec<check_source::Resolved> },
+    /// A run's checkpoints, resolved and gated, and the worktree's tree as it started (see
+    /// `Daemon::turn_ended`).
+    ChecksResolved { term: TermId, run: u64, resolved: Vec<check_source::Resolved>, tree: Option<String> },
     /// One checkpoint of run `run` ended.
     CheckRan { term: TermId, run: u64, name: String, result: check::CheckRun },
+    /// Passes the git poll found the files changed under.
+    ChecksStale(Vec<check_stale::Found>),
     /// Check output tails a background save could not write.
     CheckOutputsUnsaved(Vec<TermId>),
 }
@@ -620,7 +624,9 @@ impl Daemon {
         let dirs: Vec<(WsId, PathBuf)> = self.workspaces.iter().map(|w| (w.id, w.cwd.clone())).collect();
         let dir_of: HashMap<WsId, PathBuf> = dirs.iter().cloned().collect();
         let tx = self.tx.clone();
+        let stale_probes = self.stale_probes();
         tokio::task::spawn_blocking(move || {
+            check_stale::report(&stale_probes, &tx);
             let mut res: Vec<(WsId, Option<GitInfo>)> = dirs.into_iter().map(|(id, dir)| (id, git::status(&dir))).collect();
             // One worktree listing per repository, shared by its workspaces.
             let mut lists: HashMap<PathBuf, Vec<WorktreeEntry>> = HashMap::new();
@@ -903,8 +909,9 @@ impl Daemon {
             }
             Ev::HookRan(msg) => self.broadcast(|_| true, ServerMsg::Notice(msg)),
             Ev::HookChecked { msg, verdict, chain } => self.apply_hook(msg, verdict, chain),
-            Ev::ChecksResolved { term, run, resolved } => self.checks_resolved(term, run, resolved),
+            Ev::ChecksResolved { term, run, resolved, tree } => self.checks_resolved(term, run, resolved, tree),
             Ev::CheckRan { term, run, name, result } => self.check_ran(term, run, &name, result),
+            Ev::ChecksStale(found) => self.checks_went_stale(found),
             Ev::CheckOutputsUnsaved(terms) => self.check_outputs_unsaved(&terms),
             Ev::SpareMade(repo, result) => {
                 self.spare_making = false;

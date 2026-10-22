@@ -101,7 +101,8 @@ Tests never touch the user's real config (`SESHI_CONFIG` or in-memory configs).
   The runner (`run_check`) is tested with real shells: pass, fail, timeout (and no child left
   running), missing command, a scrubbed environment; the daemon hook-in in `daemon/logic_tests.rs`.
   Several checkpoints run there too, with a stand-in resolver (`Daemon::resolver`) for the
-  approval and never gates.
+  approval and never gates. Stale passes use a real temporary git repo and call the git
+  poll's probe directly (`stale_probes` then `check_stale::probe`), with no sleeps.
 - Key handling: every default binding resolves to an action, and new keys don't
   collide.
 - Every popup: a render test that it opens, fits at 100×30, and closes on Esc.

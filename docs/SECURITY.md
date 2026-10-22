@@ -130,7 +130,11 @@ output.
 
 A project may name several check commands. Each one runs under the same rules, one after
 another in one background task, and each keeps its own output tail. A command the
-resolver holds for approval or that you said never to is not started at all.
+resolver holds for approval or that you said never to is not started at all. To tell when
+a pass goes stale, the daemon writes a tree of the worktree (tracked and untracked files,
+`.gitignore` respected) when a run starts and again on the git poll, through a private
+index file in the git directory, as snapshots do. It never touches the user's index; the
+tree's blobs go into the repo's object store, where `git gc` drops them.
 
 Overriding a failed check is a recorded, visible action: the time and the reason stay on the
 result and its `Overridden` state shows wherever the check does. It needs the write grant on

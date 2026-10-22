@@ -2242,7 +2242,7 @@ fn a_queued_follow_up_still_sends_when_the_turn_ends_during_a_check() {
     close(&mut d, &[t]);
 }
 
-// ---- several checkpoints -----------------------------------------------------------
+// ---- several checkpoints and stale passes ---------------------------------------------
 
 fn checkpoint_def(project: &std::path::Path, name: &str, command: &str) -> crate::config::CheckDef {
     crate::config::CheckDef { project: project.to_path_buf(), name: Some(name.into()), command: command.into(), timeout_s: LONG_CHECK_S }
@@ -2475,5 +2475,86 @@ fn a_checkpoint_never_sees_the_panes_token() {
     finish_run(&mut d, &mut rx, t);
     assert_eq!(point(&d, t, "env").state, CheckState::Passed);
     assert_eq!(d.check_output(t, Some("env")).map(str::trim), Some("token="));
+    close(&mut d, &[t]);
+}
+
+/// A repository of its own: one committed file, and a file it ignores.
+fn temp_repo() -> persist::ScratchDir {
+    let dir = persist::scratch_dir();
+    std::fs::create_dir_all(dir.path()).unwrap();
+    for args in [&["init", "-q"][..], &["config", "user.name", "t"], &["config", "user.email", "t@t"], &["config", "core.autocrlf", "false"]] {
+        crate::proc::git(dir.path(), args).unwrap();
+    }
+    std::fs::write(dir.path().join("kept.txt"), "one\n").unwrap();
+    std::fs::write(dir.path().join(".gitignore"), "ignored.txt\n").unwrap();
+    crate::proc::git(dir.path(), &["add", "-A"]).unwrap();
+    crate::proc::git(dir.path(), &["commit", "-qm", "first"]).unwrap();
+    dir
+}
+
+/// The git poll's stale probe, run here instead of on its background task.
+fn poll_stale(d: &mut Daemon) {
+    let found: Vec<_> = d.stale_probes().iter().flat_map(check_stale::probe).collect();
+    if !found.is_empty() {
+        d.handle(Ev::ChecksStale(found));
+    }
+}
+
+#[test]
+fn a_pass_goes_stale_when_the_files_change_and_a_failure_does_not() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let repo = temp_repo();
+    let t = agent_with_checkpoints(&mut d, repo.path(), &[("build", "echo built; exit 0"), ("test", "exit 1")]);
+    end_turn(&mut d, t);
+    finish_run(&mut d, &mut rx, t);
+    poll_stale(&mut d);
+    std::fs::write(repo.path().join("ignored.txt"), "local\n").unwrap();
+    poll_stale(&mut d);
+    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Passed), ("test", CheckState::Failed)]), "nothing that counts changed");
+    let staged = crate::proc::git(repo.path(), &["diff", "--cached", "--name-only"]).unwrap();
+    std::fs::write(repo.path().join("kept.txt"), "two\n").unwrap();
+    std::fs::write(repo.path().join("new.txt"), "new\n").unwrap();
+    d.terms.get_mut(&t).unwrap().status = Status::Working;
+    poll_stale(&mut d);
+    assert_eq!(point(&d, t, "build").state, CheckState::Passed, "not while the agent works");
+    d.terms.get_mut(&t).unwrap().status = Status::Done;
+    let before = term::unix_now();
+    poll_stale(&mut d);
+    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Stale), ("test", CheckState::Failed)]), "only a pass goes stale");
+    let build = point(&d, t, "build");
+    assert!(build.stale_since.is_some_and(|at| at >= before));
+    let changed: Vec<_> = build.changed_files.iter().map(|f| (f.kind, f.path.as_str())).collect();
+    assert_eq!(changed, [('M', "kept.txt"), ('A', "new.txt")]);
+    assert_eq!(crate::proc::git(repo.path(), &["diff", "--cached", "--name-only"]).unwrap(), staged, "the real index is untouched");
+    d.command(0, Command::RerunCheck { term: t, name: Some("build".into()) }).unwrap();
+    finish_run(&mut d, &mut rx, t);
+    assert_eq!(point(&d, t, "build").state, CheckState::Passed, "a re-run replaces it");
+    poll_stale(&mut d);
+    assert_eq!(point(&d, t, "build").state, CheckState::Passed, "fresh against the files as they are");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_stale_pass_counts_as_finished_but_not_as_a_fresh_pass() {
+    let mut checks = check::Checks::default();
+    let info = CheckInfo { name: "test".into(), state: CheckState::Stale, ..Default::default() };
+    checks.points.push(check::CheckRecord::new(info, "").into());
+    assert!(!checks.holds_done() && !checks.running(), "finished");
+    assert_ne!(checks.headline().map(|c| c.info.state), Some(CheckState::Passed));
+}
+
+#[test]
+fn outside_git_a_pass_never_goes_stale() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let dir = persist::scratch_dir();
+    std::fs::create_dir_all(dir.path()).unwrap();
+    let t = agent_with_checkpoints(&mut d, dir.path(), &[("build", "exit 0")]);
+    end_turn(&mut d, t);
+    finish_run(&mut d, &mut rx, t);
+    std::fs::write(dir.path().join("x.txt"), "x").unwrap();
+    assert!(d.stale_probes().is_empty(), "no tree was recorded");
+    assert_eq!(point(&d, t, "build").state, CheckState::Passed);
     close(&mut d, &[t]);
 }

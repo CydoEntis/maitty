@@ -304,17 +304,19 @@ impl Drop for Tree {
     }
 }
 
-/// One checkpoint of a session: its latest result, and the failed one you overrode (kept
-/// until you undo it).
+/// One checkpoint of a session: its latest result, the failed one you overrode (kept until
+/// you undo it), and the worktree its run saw.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Checkpoint {
     pub latest: CheckRecord,
     pub overridden: Option<CheckRecord>,
+    /// The worktree's tree id when its run started (see `check_stale`); None outside git.
+    pub tree: Option<String>,
 }
 
 impl From<CheckRecord> for Checkpoint {
     fn from(latest: CheckRecord) -> Self {
-        Self { latest, overridden: None }
+        Self { latest, overridden: None, tree: None }
     }
 }
 
@@ -574,7 +576,7 @@ impl Daemon {
                     .map(|(i, def)| {
                         let state = if i == 0 { CheckState::Checking } else { CheckState::Pending };
                         let overridden = old.iter_mut().find(|p| p.latest.info.name == def.name()).and_then(|p| p.overridden.take());
-                        Checkpoint { latest: CheckRecord::new(plan.info(def, state), ""), overridden }
+                        Checkpoint { latest: CheckRecord::new(plan.info(def, state), ""), overridden, tree: None }
                     })
                     .collect();
             }
@@ -595,8 +597,9 @@ impl Daemon {
                 super::approvals::Approvals::default()
             });
             let resolved: Vec<_> = resolver(&user, &project, &dir, &approvals).into_iter().filter(|r| only.as_deref().is_none_or(|n| r.def.name() == n)).collect();
+            let tree = super::check_stale::fingerprint(&dir);
             let to_run: Vec<_> = resolved.iter().filter(|r| r.gate == Gate::Run).map(|r| r.def.clone()).collect();
-            let _ = tx.blocking_send(Ev::ChecksResolved { term, run, resolved });
+            let _ = tx.blocking_send(Ev::ChecksResolved { term, run, resolved, tree });
             for def in to_run {
                 let result = run_check(&shell, &dir, &def.command, def.timeout());
                 let _ = tx.blocking_send(Ev::CheckRan { term, run, name: def.name().to_string(), result });
@@ -606,7 +609,7 @@ impl Daemon {
 
     /// The run's checkpoints are known and gated: put them in place, in order. The ones that
     /// may run wait their turn; the rest are settled already.
-    pub(super) fn checks_resolved(&mut self, term: TermId, run: u64, resolved: Vec<Resolved>) {
+    pub(super) fn checks_resolved(&mut self, term: TermId, run: u64, resolved: Vec<Resolved>, tree: Option<String>) {
         let Some(t) = self.terms.get_mut(&term).filter(|t| t.checks.run == run) else { return };
         let checks = &mut t.checks;
         match checks.run_only.clone() {
@@ -614,7 +617,7 @@ impl Daemon {
             Some(only) => {
                 if let Some(point) = checks.named_mut(&only) {
                     match resolved.first() {
-                        Some(r) => point.gate(r),
+                        Some(r) => point.gate(r, &tree),
                         None => point.latest.info.state = CheckState::CouldNotRun,
                     }
                 }
@@ -629,7 +632,7 @@ impl Daemon {
                             Some(i) => old.remove(i),
                             None => CheckRecord::new(CheckInfo { name: name.to_string(), state: CheckState::Pending, ..Default::default() }, "").into(),
                         };
-                        point.gate(r);
+                        point.gate(r, &tree);
                         point
                     })
                     .collect();
@@ -705,7 +708,7 @@ impl Daemon {
 
 impl Checkpoint {
     /// Take on what resolving said of it: its command and source, and whether it runs.
-    fn gate(&mut self, r: &Resolved) {
+    fn gate(&mut self, r: &Resolved, tree: &Option<String>) {
         let info = &mut self.latest.info;
         info.command = r.def.command.clone();
         info.source = r.source.clone();
@@ -722,6 +725,7 @@ impl Checkpoint {
         if r.gate != Gate::Run {
             info.started_at = 0;
         }
+        self.tree = tree.clone().filter(|_| r.gate == Gate::Run);
     }
 }
 
@@ -761,6 +765,7 @@ impl Term {
             .map(|info| Checkpoint {
                 latest: record(info, CheckSlot::Latest),
                 overridden: saved.checks_overridden.iter().find(|o| o.name == info.name).map(|o| record(o, CheckSlot::Overridden)),
+                tree: None,
             })
             .collect();
         self.checks.turn = saved.checks.iter().map(|c| c.turn).max().unwrap_or(0);

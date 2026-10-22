@@ -75,6 +75,7 @@ src/
     restore.rs   saving sessions and recovering agents left asleep by older versions
     check.rs     a pane's check result, and the runner: the project's check command run in the session's worktree when a turn ends
     check_source.rs which checks a project has, where each comes from, whether it may run
+    check_stale.rs  a pass gone stale: the worktree's tree when a run starts, compared on the git poll
     approvals.rs your Always / Never for repo-supplied check commands, kept in Seshi's data folder
     term.rs      one pane: PTY, input thread, vt100 emulator
     scan.rs, git.rs, persist.rs
