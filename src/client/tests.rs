@@ -3781,6 +3781,20 @@ mod check_row_tests {
     }
 
     #[test]
+    fn the_lead_in_gives_way_to_a_failed_check_count_when_the_line_is_too_wide() {
+        let failed = [("t-failed", Status::Done, Some(info(CheckState::Failed, Some(1))))];
+        for layout in LAYOUTS {
+            let narrow = splash_line(80, 24, layout, &failed);
+            let at = format!("{}: {narrow}", label(layout, 80, 24));
+            assert!(!narrow.contains("while you were away"), "{at}");
+            assert!(narrow.contains("1 check failed") && narrow.contains("0 finished") && narrow.contains("1 need you"), "{at}");
+            assert!(unicode_width::UnicodeWidthStr::width(narrow.as_str()) <= 80, "{at}");
+            let wide = splash_line(100, 30, layout, &failed);
+            assert!(wide.starts_with("while you were away") && wide.contains("1 check failed"), "{}: {wide}", label(layout, 100, 30));
+        }
+    }
+
+    #[test]
     fn a_failed_check_count_shows_only_above_zero_and_counts_each() {
         for layout in LAYOUTS {
             let at = label(layout, 80, 24);
@@ -4736,6 +4750,46 @@ mod check_inbox_tests {
         assert_eq!(section(FINISHED), [Done(22), Done(23), Done(24)], "passed, no check and overridden still just finished");
     }
 
+    /// One row per check state of a Done session: whether it counts as finished, in the Inbox
+    /// and on the home screen alike.
+    fn finished_table() -> [(&'static str, Option<CheckInfo>, bool); 6] {
+        [
+            ("no check", None, true),
+            ("checking", Some(info(CheckState::Checking, None)), false),
+            ("passed", Some(info(CheckState::Passed, Some(0))), true),
+            ("failed", failed(), false),
+            ("could not run", not_run(), false),
+            ("overridden", Some(info(CheckState::Overridden, Some(1))), true),
+        ]
+    }
+
+    fn home_finished(app: &mut App, w: u16, h: u16) -> usize {
+        app.splash = true;
+        let buf = buffer(app, w, h);
+        let line = lines(&buf, 0).into_iter().find(|l| l.contains("need you") && l.contains("still working")).expect("the counters line");
+        let words: Vec<&str> = line.split_whitespace().collect();
+        let at = words.iter().position(|w| *w == "finished").expect("a finished count");
+        words[at - 1].parse().expect("a number")
+    }
+
+    #[test]
+    fn finished_means_the_same_in_the_inbox_and_on_the_home_screen() {
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                for (what, check, finished) in finished_table() {
+                    let at_ = format!("{} {what}", label(layout, w, h));
+                    let extra: [Extra; 1] = [("sub", Status::Done, check)];
+                    let mut app = scene(w, h, layout, &extra);
+                    let listed = rows(&app).contains(&screen::GoRow::Done(20));
+                    assert_eq!(listed, finished, "{at_}: listed under JUST FINISHED");
+                    inbox(&mut app, w, h);
+                    let mut home = scene(w, h, layout, &extra);
+                    assert_eq!(home_finished(&mut home, w, h), usize::from(finished), "{at_}: counted on the home screen");
+                }
+            }
+        }
+    }
+
     #[test]
     fn a_session_the_agent_is_working_on_or_asking_about_is_not_listed_for_its_old_check() {
         let extra: [Extra; 2] = [("busy", Status::Working, failed()), ("asks", Status::Blocked, failed())];
@@ -4757,7 +4811,7 @@ mod check_inbox_tests {
                 let baseline = inbox(&mut app, w, h);
                 let text = baseline.join("\n");
                 assert!(!text.contains(FAILED) && !text.contains(NOT_RUN) && !text.contains(COMMAND), "{at_}: no check text\n{text}");
-                // A result that is neither failed nor unrun leaves the sheet as it was.
+                // A result that counts as finished leaves the sheet as it was.
                 // Keycap padding varies with the glyph mode, so compare the words, not the spacing.
                 let sheet = |app: &mut App| {
                     app.act(Action::Jump);
@@ -4765,7 +4819,7 @@ mod check_inbox_tests {
                     lines(&buf, sidebar).iter().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).collect::<Vec<_>>()
                 };
                 let base = sheet(&mut scene(w, h, layout, &none));
-                for state in [CheckState::Passed, CheckState::Checking, CheckState::Overridden] {
+                for state in [CheckState::Passed, CheckState::Overridden] {
                     let mut app = scene(w, h, layout, &[("plain", Status::Done, Some(info(state, Some(0))))]);
                     assert_eq!(sheet(&mut app), base, "{at_} {state:?}: the sheet is unchanged");
                 }

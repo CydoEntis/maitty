@@ -556,11 +556,17 @@ pub struct CheckInfo {
     pub override_reason: String,
 }
 
+/// The one rule for whether a check is reported beside a status, for the daemon's callers and
+/// the client's rows alike.
+pub fn reported_check(status: Status, check: Option<&CheckInfo>) -> Option<&CheckInfo> {
+    check.filter(|_| !matches!(status, Status::Working | Status::Blocked))
+}
+
 impl TermInfo {
     /// The check to report beside the status. While the agent works or asks, the last result is
     /// about an older turn, so none is reported.
     pub fn reported_check(&self) -> Option<&CheckInfo> {
-        self.check.as_ref().filter(|_| !matches!(self.status, Status::Working | Status::Blocked))
+        reported_check(self.status, self.check.as_ref())
     }
 
     /// What to call this pane: the agent's name, else the folder a shell is sitting in, else

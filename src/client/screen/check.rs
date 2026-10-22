@@ -32,12 +32,13 @@ fn marks(app: &App) -> &'static Marks {
 /// The result to show for a session. While the agent works or asks, the last result is
 /// about an older turn, so the row says only what the agent is doing.
 pub(super) fn shown(s: &Session) -> Option<&CheckInfo> {
-    s.check.as_ref().filter(|_| !matches!(s.status, Status::Working | Status::Blocked))
+    crate::protocol::reported_check(s.status, s.check.as_ref())
 }
 
-/// The check says the work is not known to be good, so the session is not "finished" yet.
-pub(super) fn holds_done(s: &Session) -> bool {
-    shown(s).is_some_and(|info| failed(info) || info.state == CheckState::Checking)
+/// A turn that ended and whose work is not known to be bad: no check, or one that passed or
+/// was overridden. A running, failed or could-not-run check keeps it from counting as finished.
+pub(super) fn finished(s: &Session) -> bool {
+    s.status == Status::Done && shown(s).is_none_or(|info| matches!(info.state, CheckState::Passed | CheckState::Overridden))
 }
 
 /// The mark that stands for a failed check, in the same set as the sidebar's glyphs.

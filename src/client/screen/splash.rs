@@ -34,7 +34,7 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     fill(buf, area, t.bg);
     let all: Vec<&Session> = model.iter().flat_map(|p| p.sessions()).collect();
     let n = |st: Status| all.iter().filter(|s| s.status == st).count();
-    let finished = all.iter().filter(|s| s.status == Status::Done && !check::holds_done(s)).count();
+    let finished = all.iter().filter(|s| check::finished(s)).count();
     let check_failed = all.iter().filter(|s| check::shown(s).is_some_and(check::failed)).count();
     let mut y = area.y + area.height.saturating_sub(18) / 2;
     let center = |w: u16| area.x + area.width.saturating_sub(w) / 2;

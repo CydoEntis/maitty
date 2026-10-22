@@ -509,7 +509,7 @@ pub(in crate::client) fn goto_rows(model: &[Proj], q: &str, heads: usize) -> Vec
             }
         }
         out.push(GoRow::Head("JUST FINISHED"));
-        let finished = waiting.iter().filter(|(s, ..)| s.status == Status::Done && check_inbox::row(s).is_none());
+        let finished = waiting.iter().filter(|(s, ..)| check::finished(s));
         out.extend(finished.map(|(s, ..)| GoRow::Done(s.term)));
         // Last: there can be dozens (every file two checkouts both changed), and they must
         // never stand between you and an agent that needs you or has finished.

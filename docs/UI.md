@@ -210,7 +210,9 @@ The Inbox (`j`) lists, in this order: NEEDS YOU, FAILED CHECKS, COULD NOT RUN, J
 then HEADS UP, each heading with its count. A question is never below a check.
 
 - A group with no rows is not drawn, so a project with no check shows the Inbox it always had.
-- A session leaves JUST FINISHED when its check failed or could not run. A session whose agent
+- A Done session is finished (`check::finished`) only when it has no check or its check passed
+  or was overridden. It is not finished while checking, failed or could not run, so it is not
+  under JUST FINISHED. The home screen counts finished by the same rule. A session whose agent
   is working or asking is not listed for its old result (see `check::shown`).
 - A failed check stays listed until a later run replaces it, even after you have looked at the
   session. A could-not-run check is listed only until you look (`Del` marks it seen).
@@ -221,8 +223,8 @@ then HEADS UP, each heading with its count. A question is never below a check.
 
 ## Project-specific: home screen check counters
 
-The home screen's "while you were away" line counts a session as finished only when it is
-`Done` and its check is not checking or failed (`check::holds_done`, which uses `check::shown`).
+The home screen's "while you were away" line counts a session as finished by the Inbox's rule
+(`check::finished`: see Inbox check groups).
 A `✕ N check failed` (`N checks failed`) count follows, in `err`, only when N is above zero.
 When the line does not fit the width, the lead-in "while you were away" is dropped so no count
 is cut. A project with no check draws the line it always did. Code lives in `client/screen/splash.rs`.
