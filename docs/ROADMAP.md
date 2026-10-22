@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-22 at `865998b` on `main` (v0.36.13).
+Last reconciled: 2026-10-22 at `97d6d19` on `main` (v0.37.0).
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Seshi is a terminal multiplexer built for running many coding agents at once: see
@@ -11,7 +11,12 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The latest published release on `main` is v0.36.13. It restarts the local
+The latest published release on `main` is v0.37.0 (2026-10-22): checks that Seshi
+runs itself ([Phase 15](#15--checks-seshi-runs-itself--active-chosen-2026-10-22)), with
+the sidebar grouping by folder and tool icons. It moves the wire protocol to 43, so
+restart the daemon after installing it, and update remote daemons too. Five platform
+archives and checksums are published, and the release workflow's install checks passed
+on Windows, macOS and Linux. v0.36.13 restarts the local
 daemon and reconnects the window automatically after the last pane closes,
 without interrupting open sessions. Remote daemons still need to be updated on
 their host. It includes the v0.36.12 Codex root-session and helper detection,
@@ -202,7 +207,8 @@ ignored; lint, both cross-checks and dependency audit passed). Live mouse clicks
 opened a plain shell and Settings from Actions.
 
 Active phase: **15 — checks Seshi runs itself** (chosen 2026-10-22)
-Next: #94, then #95 and the UI tickets that depend only on it. Phase 13 (`seshi handoff`) is queued after the phase.
+Next: use the check in real work and finish the live validation listed in the phase status; then decide
+the deferred checkpoint items. Phase 13 (`seshi handoff`) is queued after the phase.
 
 Current user-requested work: expand the built-in themes to cover the 25 requested
 families and add a searchable preview browser in Appearance. Acceptance: all
@@ -355,7 +361,9 @@ Tickets, in order (each carries its own tests and docs):
 
 Later, not ticketed: stale detection; a command supplied by the repo with its approval.
 
-Status 2026-10-22: #94–#103 and #107 are built and on `dev`, with two fixes the live check found
+Status 2026-10-22: released in v0.37.0 (tag `v0.37.0` at `97d6d19`). CI passed on Windows, Ubuntu
+and macOS (it caught four check tests with `sh`-only commands, fixed before release), so the Windows
+runner code now compiles and its tests pass. #94–#103 and #107 are built, with two fixes the live check found
 (the Inbox's first failing line; the Flat sheet title). #107 makes `seshi ls`, `ls --json`, MCP
 `seshi_list` and the home counters show a failed or running check instead of "done", and the Inbox
 and the home screen share one rule for what counts as finished. The gate passed on the merged
@@ -365,9 +373,9 @@ missing command and on a timeout with no child left; the pane token is not passe
 survive a daemon restart; re-run, override with confirm, undo and the evidence sheet on a real
 screen in Cards and Flat. Not done, so the phase is not complete: not verified — desktop and phone
 alerts, 80×24 on a real screen, the ASCII glyph fallback, Enter on a sidebar row opening the
-sheet, #107 on a live daemon, and any run on Windows or macOS (the Windows job-object code has
-never been compiled). On Linux a check's grandchild process can outlive the daemon (documented in
-`docs/SECURITY.md`).
+sheet, #107 on a live daemon, and a check run by hand on a real Windows or macOS machine (CI
+exercised Windows only through tests). On Linux a check's grandchild process can outlive the daemon
+(documented in `docs/SECURITY.md`).
 
 - **Scope of the first slice (verify only):** a project may name one check command. When a
   session's turn ends and the session would become done, Seshi runs that command in the
