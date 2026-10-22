@@ -431,10 +431,24 @@ pub(super) fn folder_name(p: &Path) -> String {
     p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string())
 }
 
+/// Unix seconds now, or the time a test pinned for this thread so its frames read the same
+/// on every run.
+pub(in crate::client) fn now_secs() -> u64 {
+    #[cfg(test)]
+    if let Some(now) = FIXED_NOW.with(std::cell::Cell::get) {
+        return now;
+    }
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+#[cfg(test)]
+thread_local! {
+    pub(in crate::client) static FIXED_NOW: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+}
+
 /// "40s", "3m", "1h", "2d".
 pub(super) fn age(since: u64) -> String {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let s = now.saturating_sub(since);
+    let s = now_secs().saturating_sub(since);
     match s {
         0..=59 => format!("{s}s"),
         60..=3599 => format!("{}m", s / 60),
@@ -445,8 +459,7 @@ pub(super) fn age(since: u64) -> String {
 
 /// How long until `at` (unix seconds): "1h20m", "5m", "now".
 pub(super) fn until(at: u64) -> String {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let s = at.saturating_sub(now);
+    let s = at.saturating_sub(now_secs());
     match s {
         0..=59 => "now".into(),
         60..=3599 => format!("{}m", s / 60),

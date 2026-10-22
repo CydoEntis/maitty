@@ -81,7 +81,12 @@ ratatui's `TestBackend` and assert on the text and cell styles;
 
 Tests live next to the code they test. Client UI tests build a fake snapshot
 with `design_tests::render_with(w, h)` (projects, worktrees, agents in
-each state) and drive it with `app.on_key` / `app.act`. Live checks use a nested
+each state) and drive it with `app.on_key` / `app.act`. v7 layout tests use
+`client/v7_fixture.rs`: `world(stage)` is the handoff's sample world (affiliate-site,
+pixls, seshi) with fix-footer's check at one of `checks7.js`'s stages, on a pinned clock
+(`screen::FIXED_NOW`), and `frame(app, layout, w, h, glyphs)` draws it as text in Cards
+floating, Cards tiled or Flat, to compare with the handoff's frames
+(`docs/design/v7/render-frames.mjs`). Live checks use a nested
 server: `SESHI_SOCKET=test seshi`, then `seshi send` / `seshi read` against it.
 Tests never touch the user's real config (`SESHI_CONFIG` or in-memory configs).
 
