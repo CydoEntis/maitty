@@ -156,6 +156,7 @@ impl Daemon {
             subagent_activity: term.subagent_activity.clone(),
             checks: term.checks.infos(),
             checks_overridden: term.checks.points.iter().filter_map(|p| p.overridden.as_ref().map(|o| o.info.clone())).collect(),
+            check_trees: term.checks.points.iter().filter_map(|p| Some((p.latest.info.name.clone(), p.tree.clone()?))).collect(),
         };
         let workspaces = self
             .workspaces

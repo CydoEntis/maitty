@@ -1560,6 +1560,7 @@ fn check_results_survive_a_restart_with_their_output() {
         cwd: Some(dir.clone()),
         checks: vec![failed_check("").info],
         checks_overridden: vec![overridden.clone()],
+        check_trees: [(String::new(), "4b825dc".to_string())].into(),
         ..Default::default()
     };
     let tab = persist::SavedTab { name: String::new(), layout: Node::Leaf(old), focus: old, panes: [(old, pane)].into() };
@@ -1572,6 +1573,7 @@ fn check_results_survive_a_restart_with_their_output() {
     let saved = d.saved();
     let again = &saved.workspaces[0].tabs[0].panes[&t];
     assert_eq!((again.checks.iter().map(|c| c.state).collect::<Vec<_>>(), &again.checks_overridden), (vec![CheckState::Failed], &vec![overridden.clone()]));
+    assert_eq!(again.check_trees.get(""), Some(&"4b825dc".to_string()), "the tree its run saw is saved again");
     let mut written = d.take_dirty_check_outputs();
     written.sort_by_key(|w| w.slot as u8);
     let tail = |slot, text: &str| persist::CheckTail { term: t, name: String::new(), slot, text: text.into() };
@@ -2446,6 +2448,7 @@ fn a_restart_restores_each_checkpoint_with_its_own_output() {
     let saved = persist::SavedPane {
         checks: vec![info("build", CheckState::Overridden), info("test", CheckState::Pending)],
         checks_overridden: vec![info("build", CheckState::Overridden)],
+        check_trees: [("build".to_string(), "4b825dc".to_string())].into(),
         ..Default::default()
     };
     let t = pane(&mut d);
@@ -2457,6 +2460,7 @@ fn a_restart_restores_each_checkpoint_with_its_own_output() {
     assert_eq!(checks.named("build").unwrap().overridden.as_ref().map(|o| o.output.as_str()), Some("build failed"));
     assert!(checks.named("test").unwrap().overridden.is_none());
     assert_eq!(checks.turn, 3, "the turn count carries on");
+    assert_eq!(checks.named("build").unwrap().tree.as_deref(), Some("4b825dc"), "its pass can still go stale");
     let mut written = d.take_dirty_check_outputs();
     written.sort_by(|a, b| (&a.name, a.slot as u8).cmp(&(&b.name, b.slot as u8)));
     assert_eq!(written.iter().map(|w| (w.name.as_str(), w.text.as_str())).collect::<Vec<_>>(), [("build", "build out"), ("build", "build failed"), ("test", "")]);

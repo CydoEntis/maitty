@@ -80,6 +80,10 @@ pub struct SavedPane {
     /// The failed results the user overrode, kept so each override stays visible.
     #[serde(default, alias = "check_overridden", deserialize_with = "crate::protocol::one_or_many_checks")]
     pub checks_overridden: Vec<CheckInfo>,
+    /// The worktree's tree id each checkpoint's latest run saw, by checkpoint name, so a pass
+    /// can still go stale after a restart.
+    #[serde(default)]
+    pub check_trees: BTreeMap<String, String>,
 }
 
 pub fn path() -> PathBuf {

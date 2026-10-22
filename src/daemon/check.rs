@@ -781,7 +781,7 @@ impl Term {
             .map(|info| Checkpoint {
                 latest: record(info, CheckSlot::Latest),
                 overridden: saved.checks_overridden.iter().find(|o| o.name == info.name).map(|o| record(o, CheckSlot::Overridden)),
-                tree: None,
+                tree: saved.check_trees.get(&info.name).cloned(),
             })
             .collect();
         self.checks.turn = saved.checks.iter().map(|c| c.turn).max().unwrap_or(0);
