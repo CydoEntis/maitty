@@ -336,7 +336,9 @@ Shipped since v0.35.0. The gate passed on `main` at `865998b`.
 
 ### 15 — Checks Seshi runs itself · active, chosen 2026-10-22
 
-Chosen by the user 2026-10-22 (verify slice only). [Intent](features/checkpoints/intent.md).
+Today an agent saying "done" turns its session done even when the project's checks fail. This phase
+makes "done" mean something Seshi observed. Chosen by the user 2026-10-22 (verify slice only).
+[Intent](features/checkpoints/intent.md).
 Tickets, in order (each carries its own tests and docs):
 
 1. #94 protocol: check state and result on a session
@@ -349,21 +351,23 @@ Tickets, in order (each carries its own tests and docs):
 8. #101 UI: failed and could-not-run checks in the Inbox (after #94)
 9. #102 UI: settings, check command and timeout (after #94)
 10. #103 UI: re-run and override from the menu, sheet and Inbox (after #97, #100, #101, #102)
+11. #107 CLI and home screen: show a failed check in `ls`, `seshi_list` and the counters (found by the live check)
 
 Later, not ticketed: stale detection; a command supplied by the repo with its approval.
 
-Status 2026-10-22: #94–#103 are built and merged on the `keen-otter` branch (not pushed), with two
-fixes the live check found (the Inbox's first failing line; the Flat sheet title). The gate passes at
-`c134fc4`. A live run on an isolated daemon confirmed: no check reads done as before; a failing
-check keeps a session from reading done and `seshi wait` exits 4; pass; could-not-run on a missing
-command and on a timeout with no child left; the pane token is not passed on; results survive a
-daemon restart; re-run, override with confirm, undo and the evidence sheet on a real screen in
-Cards and Flat. Not done, so the phase is not complete: `seshi ls` and MCP `seshi_list` still say
-done for a pane whose check failed (needs a ticket); not verified — desktop and phone alerts,
-80×24, the ASCII glyph fallback, Enter on a sidebar row opening the sheet, and any run on Windows
-or macOS (the Windows job-object code has never been compiled). On Linux a check's grandchild
-process can outlive the daemon (documented in `docs/SECURITY.md`). Today an agent saying "done" turns its session
-done even when the project's checks fail. This phase makes "done" mean something Seshi observed.
+Status 2026-10-22: #94–#103 and #107 are built and on `dev`, with two fixes the live check found
+(the Inbox's first failing line; the Flat sheet title). #107 makes `seshi ls`, `ls --json`, MCP
+`seshi_list` and the home counters show a failed or running check instead of "done", and the Inbox
+and the home screen share one rule for what counts as finished. The gate passed on the merged
+tree. A live run on an isolated daemon (before #107) confirmed: no check reads done as before; a
+failing check keeps a session from reading done and `seshi wait` exits 4; pass; could-not-run on a
+missing command and on a timeout with no child left; the pane token is not passed on; results
+survive a daemon restart; re-run, override with confirm, undo and the evidence sheet on a real
+screen in Cards and Flat. Not done, so the phase is not complete: not verified — desktop and phone
+alerts, 80×24 on a real screen, the ASCII glyph fallback, Enter on a sidebar row opening the
+sheet, #107 on a live daemon, and any run on Windows or macOS (the Windows job-object code has
+never been compiled). On Linux a check's grandchild process can outlive the daemon (documented in
+`docs/SECURITY.md`).
 
 - **Scope of the first slice (verify only):** a project may name one check command. When a
   session's turn ends and the session would become done, Seshi runs that command in the
