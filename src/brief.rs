@@ -80,7 +80,7 @@ fn job_line(cfg: &Config, family: Family, job: &TeamJob) -> String {
     let agent = family.agent();
     let model = Some(job.model(family)).filter(|m| !m.is_empty());
     let named = model.map_or_else(|| "the agent's default model".to_string(), |m| format!("model {m}"));
-    let shell = match crate::mcp::agent_command(cfg, agent, model, "\"<the task>\"") {
+    let shell = match cfg.agent_command_quoted(agent, model, "\"<the task>\"") {
         Ok(cmd) => format!("`seshi worktree <branch> -- {cmd}`"),
         Err(e) => e,
     };

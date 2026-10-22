@@ -92,6 +92,16 @@ enum Cmd {
         #[arg(trailing_var_arg = true)]
         command: Vec<String>,
     },
+    /// Start another agent beside a pane, in the same checkout, with a short text brief of
+    /// what the pane was doing (task, last prompt, branch, changed files, recent output) as
+    /// its first prompt. Text only: the new agent gets none of the old one's conversation,
+    /// memory or tool results. The old pane keeps running.
+    Handoff {
+        pane: protocol::TermId,
+        /// The agent to start: a [quick] agent or a known agent kind (claude, codex, …).
+        #[arg(long)]
+        to: String,
+    },
     /// Open a new workspace.
     New {
         path: Option<PathBuf>,
@@ -275,6 +285,7 @@ fn main() {
         Some(Cmd::Send { pane, no_enter, text, .. }) => cli::send(pane, text.join(" "), !no_enter),
         Some(Cmd::Wait { pane, regex, timeout }) => cli::wait(pane, regex, timeout),
         Some(Cmd::Split { pane, down, command }) => cli::split(pane, down, command),
+        Some(Cmd::Handoff { pane, to }) => cli::handoff(pane, to),
         Some(Cmd::New { path, name, command }) => cli::new_workspace(path, name, command),
         Some(Cmd::Focus { pane }) => cli::focus(pane),
         Some(Cmd::Reveal { target }) => reveal::run(&target),

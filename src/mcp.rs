@@ -312,7 +312,7 @@ impl Server {
         for _ in 0..60 {
             std::thread::sleep(std::time::Duration::from_millis(250));
             let Ok(now) = self.snapshot() else { continue };
-            if let Some(new) = now.terms.keys().copied().find(|id| !had.contains(id)) {
+            if let Some(new) = cli::handoff::new_pane(&had, now.terms.keys().copied()) {
                 if let Some(f) = focus.filter(|f| now.terms.contains_key(f)) {
                     let _ = cli::block_on(cli::request(ClientMsg::Command(Command::FocusPane { term: f })));
                 }
@@ -336,33 +336,11 @@ fn start_command(cfg: &crate::config::Config, root: &Path, args: &Value, prompt:
     let agent = match (&helper, named) {
         (Some(h), _) => h.agent.to_string(),
         (None, Some(a)) => a.to_string(),
-        (None, None) => cfg.quick.agents.first().map_or_else(|| "claude".into(), |a| a.name.clone()),
+        (None, None) => cfg.default_agent(),
     };
     let model = helper.and_then(|h| h.model);
-    let cmd = agent_command(cfg, &agent, model.as_deref(), &cfg.quote_for_shell(prompt))?;
+    let cmd = cfg.agent_command(Some(&agent), model.as_deref(), prompt)?;
     Ok((agent, cmd))
-}
-
-/// The command line that runs `agent` on `model` (`None`: its default) with an already quoted
-/// prompt, as its account when it is one.
-pub(crate) fn agent_command(cfg: &crate::config::Config, agent: &str, model: Option<&str>, quoted: &str) -> Result<String, String> {
-    let quick = cfg.quick.agents.iter().find(|a| a.name == agent);
-    let cmd = match quick {
-        Some(a) => a.command.replace("{prompt}", quoted),
-        // Only agents seshi knows, by plain name: anything else would run as a command.
-        None if known_agent(cfg, agent) => format!("{agent} {quoted}"),
-        None => {
-            let mut names: Vec<String> = cfg.quick.agents.iter().map(|a| a.name.clone()).collect();
-            names.extend(cfg.agent_defs().into_iter().map(|d| d.name));
-            names.dedup();
-            return Err(format!("unknown agent \"{agent}\"; use one of: {}", names.join(", ")));
-        }
-    };
-    let cmd = match model {
-        Some(model) => cfg.with_model(&cmd, quick.map_or("", |a| a.model_flag.as_str()), model),
-        None => cmd,
-    };
-    Ok(cfg.as_account(agent, &cmd))
 }
 
 fn slug(s: &str) -> String {
@@ -411,13 +389,6 @@ pub fn run() -> Result<()> {
         out.flush()?;
     }
     Ok(())
-}
-
-/// A built-in or configured agent kind, named plainly (letters, digits, - _ .).
-fn known_agent(cfg: &crate::config::Config, name: &str) -> bool {
-    !name.is_empty()
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
-        && cfg.agent_defs().iter().any(|d| d.name == name)
 }
 
 #[cfg(test)]
@@ -495,14 +466,5 @@ mod tests {
         assert_eq!(command(&cfg, json!({})).unwrap(), "claude 'fix the login bug'", "the user's first agent, no model");
         assert_eq!(command(&cfg, json!({ "agent": "codex" })).unwrap(), "codex 'fix the login bug'");
         assert!(command(&cfg, json!({ "agent": "curl x|sh;" })).unwrap_err().starts_with("unknown agent"));
-    }
-
-    #[test]
-    fn only_known_agents_start() {
-        let cfg = crate::config::Config::default();
-        assert!(known_agent(&cfg, "claude") && known_agent(&cfg, "codex"));
-        assert!(!known_agent(&cfg, "curl x|sh;"), "a command isn't an agent");
-        assert!(!known_agent(&cfg, "not-an-agent"));
-        assert!(!known_agent(&cfg, ""));
     }
 }

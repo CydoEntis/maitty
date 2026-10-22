@@ -810,6 +810,13 @@ fn resumable(mut a: AgentDef, resume: &str, last: &str) -> AgentDef {
     a
 }
 
+/// A built-in or configured agent kind, named plainly (letters, digits, - _ .).
+fn known_agent(cfg: &Config, name: &str) -> bool {
+    !name.is_empty()
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+        && cfg.agent_defs().iter().any(|d| d.name == name)
+}
+
 pub fn builtin_agents() -> Vec<AgentDef> {
     vec![
         resumable(agent(
@@ -1118,7 +1125,20 @@ impl Config {
             .map(|x| x.to_string_lossy().to_ascii_lowercase())
             .unwrap_or_default();
         match exe.as_str() {
-            "pwsh" | "powershell" | "nu" => format!("'{}'", s.replace('\'', "''")),
+            // PowerShell also ends a single-quoted string at the curly single quotes; doubling
+            // one gives the literal character back, as for the apostrophe.
+            "pwsh" | "powershell" => {
+                let mut out = String::from("'");
+                for c in s.chars() {
+                    if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+                        out.push(c);
+                    }
+                    out.push(c);
+                }
+                out.push('\'');
+                out
+            }
+            "nu" => format!("'{}'", s.replace('\'', "''")),
             "cmd" => format!("\"{}\"", s.replace('"', "\"\"").replace(['\r', '\n'], " ")),
             _ => format!("'{}'", s.replace('\'', "'\\''")),
         }
@@ -1134,6 +1154,39 @@ impl Config {
             Some((first, rest)) => format!("{first} {flag} {model} {rest}"),
             None => format!("{cmd} {flag} {model}"),
         }
+    }
+
+    /// The agent started when none is named: the first quick agent, else claude.
+    pub fn default_agent(&self) -> String {
+        self.quick.agents.first().map(|a| a.name.clone()).unwrap_or_else(|| "claude".into())
+    }
+
+    /// The command line that starts `agent` (default: [`Config::default_agent`]) on `model`
+    /// (`None`: its default) with `prompt` as its first prompt.
+    pub fn agent_command(&self, agent: Option<&str>, model: Option<&str>, prompt: &str) -> Result<String, String> {
+        let agent = agent.map(String::from).unwrap_or_else(|| self.default_agent());
+        self.agent_command_quoted(&agent, model, &self.quote_for_shell(prompt))
+    }
+
+    /// As [`Config::agent_command`], with a prompt that is already quoted for the shell.
+    pub fn agent_command_quoted(&self, agent: &str, model: Option<&str>, quoted: &str) -> Result<String, String> {
+        let quick = self.quick.agents.iter().find(|a| a.name == agent);
+        let cmd = match quick {
+            Some(a) => a.command.replace("{prompt}", quoted),
+            // Only agents seshi knows, by plain name: anything else would run as a command.
+            None if known_agent(self, agent) => format!("{agent} {quoted}"),
+            None => {
+                let mut names: Vec<String> = self.quick.agents.iter().map(|a| a.name.clone()).collect();
+                names.extend(self.agent_defs().into_iter().map(|d| d.name));
+                names.dedup();
+                return Err(format!("unknown agent \"{agent}\"; use one of: {}", names.join(", ")));
+            }
+        };
+        let cmd = match model {
+            Some(model) => self.with_model(&cmd, quick.map_or("", |a| a.model_flag.as_str()), model),
+            None => cmd,
+        };
+        Ok(self.as_account(agent, &cmd))
     }
 
     pub fn keymap(&self) -> Keymap {
@@ -1568,5 +1621,66 @@ shell = \"pwsh\"
         assert_eq!(Config::default().keymap().global[&alt_left], Action::Focus(crate::layout::Dir::Left));
         let off: Config = toml::from_str("[ui]\nalt_arrows = false").unwrap();
         assert!(!off.keymap().global.contains_key(&alt_left), "off: the program gets them");
+    }
+
+    fn sh_config(quick: Vec<QuickAgent>) -> Config {
+        Config { shell: Some("sh".into()), quick: Quick { agents: quick }, ..Default::default() }
+    }
+
+    fn quick(name: &str, command: &str, env: &[(&str, &str)]) -> QuickAgent {
+        QuickAgent { name: name.into(), command: command.into(), env: env.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(), ..Default::default() }
+    }
+
+    #[test]
+    fn a_quick_agent_gets_the_quoted_prompt_in_place_of_the_marker() {
+        let c = sh_config(vec![quick("claude", "claude --fast {prompt}", &[])]);
+        assert_eq!(c.agent_command(Some("claude"), None, "fix it's test").unwrap(), r"claude --fast 'fix it'\''s test'");
+    }
+
+    #[test]
+    fn an_account_agent_runs_through_its_account() {
+        let c = sh_config(vec![quick("work", "claude {prompt}", &[("CLAUDE_CONFIG_DIR", "~/.claude-work")])]);
+        assert_eq!(c.agent_command(Some("work"), None, "go").unwrap(), "seshi account 'work' -- claude 'go'");
+    }
+
+    #[test]
+    fn powershell_doubles_curly_quotes_so_they_cannot_end_the_prompt() {
+        for shell in ["pwsh.exe", "powershell"] {
+            let c = Config { shell: Some(shell.into()), ..Default::default() };
+            let q = c.quote_for_shell("don\u{2019}t; Write-Output INJECTED; # \u{2018}a\u{201A}b\u{201B} it's");
+            assert_eq!(q, "'don\u{2019}\u{2019}t; Write-Output INJECTED; # \u{2018}\u{2018}a\u{201A}\u{201A}b\u{201B}\u{201B} it''s'", "{shell}");
+        }
+        assert_eq!(sh_config(vec![]).quote_for_shell("don\u{2019}t"), "'don\u{2019}t'", "sh keeps it as is");
+    }
+
+    #[test]
+    fn a_built_in_agent_not_in_quick_runs_by_its_name() {
+        let c = sh_config(vec![]);
+        assert_eq!(c.agent_command(Some("codex"), None, "go").unwrap(), "codex 'go'");
+    }
+
+    #[test]
+    fn an_unknown_or_shell_like_agent_is_refused_with_the_names() {
+        let c = sh_config(vec![quick("mine", "mine {prompt}", &[])]);
+        for bad in ["not-an-agent", "rm -rf;x"] {
+            let err = c.agent_command(Some(bad), None, "go").expect_err(bad);
+            assert!(err.starts_with(&format!("unknown agent \"{bad}\"; use one of: mine, ")) && err.contains("claude"), "{err}");
+        }
+    }
+
+    #[test]
+    fn no_agent_picks_the_first_quick_agent_else_claude() {
+        let c = sh_config(vec![quick("codex", "codex -x {prompt}", &[]), quick("claude", "claude {prompt}", &[])]);
+        assert_eq!(c.agent_command(None, None, "go").unwrap(), "codex -x 'go'");
+        assert_eq!(sh_config(vec![]).agent_command(None, None, "go").unwrap(), "claude 'go'");
+    }
+
+    #[test]
+    fn only_known_agents_start() {
+        let cfg = Config::default();
+        assert!(known_agent(&cfg, "claude") && known_agent(&cfg, "codex"));
+        assert!(!known_agent(&cfg, "curl x|sh;"), "a command isn't an agent");
+        assert!(!known_agent(&cfg, "not-an-agent"));
+        assert!(!known_agent(&cfg, ""));
     }
 }

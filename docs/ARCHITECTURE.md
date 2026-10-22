@@ -163,7 +163,7 @@ Seshi is one binary that runs in two roles:
   on Windows, Unix socket elsewhere), receives snapshots and pane output, sends
   commands and keystrokes. Many clients can attach; any can detach.
 - **CLI subcommands** (`seshi send`, `seshi read`, `seshi wait`, `seshi worktree`,
-  `seshi doctor`, `seshi mcp`, `seshi proxy`, …) talk to the same daemon.
+  `seshi handoff`, `seshi doctor`, `seshi mcp`, `seshi proxy`, …) talk to the same daemon.
 
 External systems: the agent CLIs it runs (claude, codex, …) and their hook
 callbacks (`seshi hook`), `git` and `gh`, `ssh`
@@ -214,6 +214,7 @@ The client never touches a PTY; the daemon never draws. They meet only through
 src/
   main.rs        argument parsing, picks client / daemon / CLI role
   cli.rs         one-shot subcommands (send, read, wait, hook, doctor, …)
+  cli/handoff.rs `seshi handoff`: the text brief, and the files a checkout changed
   brief.rs       `seshi brief`: a commander's instructions (brief.md), with its team when one is set
   team.rs        a commander's team: the agent and model a job runs on in a project (pure domain code, no I/O)
   tidy.rs        what removing a worktree would lose (shared by the server's sweep and the clean-up list)

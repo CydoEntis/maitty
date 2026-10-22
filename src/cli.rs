@@ -1,6 +1,7 @@
 //! One-shot commands: scripting the multiplexer from a shell (or from an agent inside it).
 
 use crate::ipc;
+pub(crate) mod handoff;
 pub(crate) mod integrations;
 use crate::layout::Dir;
 use crate::protocol::*;
@@ -436,6 +437,39 @@ pub fn split(pane: Option<TermId>, down: bool, command: Vec<String>) -> Result<(
     let term = resolve_pane(pane)?;
     let dir = if down { Dir::Down } else { Dir::Right };
     self::command(Command::Split { term, dir, cmd: join_command(command), cwd: None })
+}
+
+/// `seshi handoff <pane> --to <agent>`: start `to` beside `pane`, in its checkout, with a
+/// text brief of what the pane was doing as its first prompt. The old pane is left alone.
+pub fn handoff(pane: TermId, to: String) -> Result<()> {
+    let (cfg, _) = crate::config::Config::load_or_default();
+    let before = snapshot()?;
+    let from = handoff::check(&cfg, pane, before.terms.get(&pane), &to).map_err(|e| anyhow!(e))?;
+    let t = &before.terms[&pane];
+    let screen = match block_on(request(ClientMsg::Query(Query::Read { term: pane })))? {
+        Reply::Text(s) => s,
+        _ => bail!("unexpected reply"),
+    };
+    let checkout = t.top.clone().unwrap_or_else(|| t.cwd.clone());
+    let changed = match ipc::remote() {
+        Some(_) => Err("git isn't run on the remote machine".into()),
+        None => handoff::changed_files(&checkout, t.root.as_deref()),
+    };
+    let facts = handoff::Facts { pane, agent: from, task: t.name.clone(), last_prompt: t.summary.clone(), branch: t.branch.clone(), checkout: checkout.clone(), changed, screen };
+    let cmd = cfg.agent_command(Some(&to), None, &handoff::brief(&facts)).map_err(|e| anyhow!(e))?;
+    let had: Vec<TermId> = before.terms.keys().copied().collect();
+    command(Command::Split { term: pane, dir: Dir::Right, cmd: Some(cmd), cwd: Some(checkout) })?;
+    for _ in 0..60 {
+        std::thread::sleep(Duration::from_millis(250));
+        let Ok(now) = snapshot() else { continue };
+        if let Some(new) = handoff::new_pane(&had, now.terms.keys().copied()) {
+            let t = &now.terms[&new];
+            println!("handed pane {pane} to {to}: pane {new} in {}", t.top.as_ref().unwrap_or(&t.cwd).display());
+            return Ok(());
+        }
+    }
+    println!("asked seshi to start {to}; it hasn't appeared yet");
+    Ok(())
 }
 
 pub fn new_workspace(path: Option<PathBuf>, name: Option<String>, cmd: Vec<String>) -> Result<()> {
