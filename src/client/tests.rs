@@ -4483,3 +4483,283 @@ mod check_sheet_tests {
         assert!(!text.contains("title") && !text.contains("10%") && !text.contains("[31m") && !text.contains("[2J"), "{text}");
     }
 }
+
+mod check_inbox_tests {
+    use super::*;
+    use crate::layout::Node;
+    use crate::protocol::{CheckInfo, CheckState, ClientMsg, Command};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
+
+    const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
+    /// (ui.layout, ui.panes): Cards floating, Cards tiled, Flat.
+    const LAYOUTS: [(&str, &str); 3] = [("cards", "floating"), ("cards", "tiled"), ("flat", "tiled")];
+    const COMMAND: &str = "just ci";
+    const FAILING_LINE: &str = "FAIL footer.test.ts";
+    const QUESTION: &str = "Run npm test -- checkout?";
+    const FAILED: &str = "FAILED CHECKS";
+    const NOT_RUN: &str = "COULD NOT RUN";
+    const FINISHED: &str = "JUST FINISHED";
+
+    type Extra = (&'static str, Status, Option<CheckInfo>);
+
+    fn now() -> u64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    }
+
+    fn info(state: CheckState, exit: Option<i32>) -> CheckInfo {
+        let first_failing_line = if state == CheckState::Failed { FAILING_LINE.into() } else { String::new() };
+        CheckInfo { command: COMMAND.into(), state, exit_code: exit, started_at: now() - 180, duration_ms: 14_200, first_failing_line, ..Default::default() }
+    }
+
+    fn failed() -> Option<CheckInfo> {
+        Some(info(CheckState::Failed, Some(1)))
+    }
+
+    fn not_run() -> Option<CheckInfo> {
+        Some(info(CheckState::CouldNotRun, Some(127)))
+    }
+
+    /// The shop-api scene (claude asks) plus one agent per entry of `extra`, from term 20 up.
+    fn scene(w: u16, h: u16, layout: (&str, &str), extra: &[Extra]) -> App {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        (app.cfg.ui.layout, app.cfg.ui.panes) = (layout.0.into(), layout.1.into());
+        for (i, (label, status, check)) in extra.iter().enumerate() {
+            let id = 20 + i as TermId;
+            let mut t = app.snap.terms[&2].clone();
+            (t.id, t.label, t.status, t.check) = (id, (*label).into(), *status, check.clone());
+            app.snap.terms.insert(id, t);
+            app.snap.workspaces[0].tabs.push(TabInfo { id: 30 + id, name: String::new(), layout: Node::Leaf(id), focus: id });
+            app.parsers.insert(id, vt100::Parser::new(20, 80, 0));
+        }
+        app.hy.tabs.clear();
+        app.hy.last_focus = None;
+        app.hy_sync();
+        app.hy.cursor = None;
+        app
+    }
+
+    fn buffer(app: &mut App, w: u16, h: u16) -> Buffer {
+        app.hy_fresh();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        term.backend().buffer().clone()
+    }
+
+    /// One string per screen line, keycap edge glyphs removed, columns from `from` on.
+    fn lines(buf: &Buffer, from: u16) -> Vec<String> {
+        (0..buf.area.height)
+            .map(|y| (from..buf.area.width).map(|x| buf[(x, y)].symbol()).collect::<String>().replace(|c| ('\u{e000}'..='\u{f8ff}').contains(&c), "").trim_end().to_string())
+            .collect()
+    }
+
+    fn inbox(app: &mut App, w: u16, h: u16) -> Vec<String> {
+        app.act(Action::Jump);
+        let buf = buffer(app, w, h);
+        let out = lines(&buf, 0);
+        if std::env::var("SESHI_SHOW").is_ok() {
+            println!("--- {w}x{h} {}/{}\n{}", app.cfg.ui.layout, app.cfg.ui.panes, out.join("\n"));
+        }
+        out
+    }
+
+    fn at(frame: &[String], needle: &str) -> Option<usize> {
+        frame.iter().position(|l| l.contains(needle))
+    }
+
+    fn rows(app: &App) -> Vec<hydra::GoRow> {
+        hydra::goto_rows(&app.hy_model(), "", 0)
+    }
+
+    fn heads(rows: &[hydra::GoRow]) -> Vec<&'static str> {
+        rows.iter().filter_map(|r| if let hydra::GoRow::Head(h) = r { Some(*h) } else { None }).collect()
+    }
+
+    fn label(layout: (&str, &str), w: u16, h: u16) -> String {
+        format!("{}/{} {w}x{h}", layout.0, layout.1)
+    }
+
+    #[test]
+    fn groups_come_in_order_and_a_failed_check_leaves_just_finished() {
+        let extra: [Extra; 7] = [
+            ("f-done", Status::Done, failed()),
+            ("n-done", Status::Done, not_run()),
+            ("passed", Status::Done, Some(info(CheckState::Passed, Some(0)))),
+            ("plain", Status::Done, None),
+            ("overridden", Status::Done, Some(info(CheckState::Overridden, Some(1)))),
+            ("f-seen", Status::Idle, failed()),
+            ("n-seen", Status::Idle, not_run()),
+        ];
+        let app = scene(160, 45, LAYOUTS[0], &extra);
+        let rows = rows(&app);
+        assert_eq!(heads(&rows), ["NEEDS YOU", FAILED, NOT_RUN, FINISHED]);
+        use hydra::GoRow::*;
+        let section = |head: &str| {
+            let from = rows.iter().position(|r| matches!(r, Head(h) if *h == head)).unwrap() + 1;
+            rows[from..].iter().take_while(|r| !matches!(r, Head(_))).cloned().collect::<Vec<_>>()
+        };
+        assert_eq!(section("NEEDS YOU"), [Ask(1)]);
+        assert_eq!(section(FAILED), [Failed(20), Failed(25)], "a failure stays listed once it has been looked at");
+        assert_eq!(section(NOT_RUN), [NotRun(21)], "unchecked work is listed until it is looked at");
+        assert_eq!(section(FINISHED), [Done(22), Done(23), Done(24)], "passed, no check and overridden still just finished");
+    }
+
+    #[test]
+    fn a_session_the_agent_is_working_on_or_asking_about_is_not_listed_for_its_old_check() {
+        let extra: [Extra; 2] = [("busy", Status::Working, failed()), ("asks", Status::Blocked, failed())];
+        let app = scene(160, 45, LAYOUTS[0], &extra);
+        let rows = rows(&app);
+        assert_eq!(heads(&rows), ["NEEDS YOU", FINISHED], "the old result is about an older turn");
+        assert!(rows.contains(&hydra::GoRow::Ask(21)) && !rows.iter().any(|r| matches!(r, hydra::GoRow::Failed(_))));
+    }
+
+    #[test]
+    fn a_project_with_no_check_has_the_inbox_it_always_had() {
+        let none: [Extra; 1] = [("plain", Status::Done, None)];
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let at_ = label(layout, w, h);
+                let mut app = scene(w, h, layout, &none);
+                assert_eq!(heads(&rows(&app)), ["NEEDS YOU", FINISHED], "{at_}");
+                let sidebar = app.hy.side_rect.right();
+                let baseline = inbox(&mut app, w, h);
+                let text = baseline.join("\n");
+                assert!(!text.contains(FAILED) && !text.contains(NOT_RUN) && !text.contains(COMMAND), "{at_}: no check text\n{text}");
+                // A result that is neither failed nor unrun leaves the sheet as it was.
+                // Keycap padding varies with the glyph mode, so compare the words, not the spacing.
+                let sheet = |app: &mut App| {
+                    app.act(Action::Jump);
+                    let buf = buffer(app, w, h);
+                    lines(&buf, sidebar).iter().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).collect::<Vec<_>>()
+                };
+                let base = sheet(&mut scene(w, h, layout, &none));
+                for state in [CheckState::Passed, CheckState::Checking, CheckState::Overridden] {
+                    let mut app = scene(w, h, layout, &[("plain", Status::Done, Some(info(state, Some(0))))]);
+                    assert_eq!(sheet(&mut app), base, "{at_} {state:?}: the sheet is unchanged");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_layout_and_size_shows_the_groups_the_rows_and_the_failing_line() {
+        let extra: [Extra; 3] = [("fix-footer", Status::Done, failed()), ("add-pay", Status::Done, not_run()), ("docs", Status::Done, Some(info(CheckState::Passed, Some(0))))];
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let at_ = label(layout, w, h);
+                let mut app = scene(w, h, layout, &extra);
+                let frame = inbox(&mut app, w, h);
+                let text = frame.join("\n");
+                assert!(frame.iter().all(|l| l.chars().count() <= w as usize) && frame.len() <= h as usize, "{at_}: fits");
+                let (ask, fail) = (at(&frame, "NEEDS YOU"), at(&frame, "FAILED CHECKS 1"));
+                assert!(ask.is_some() && fail.is_some() && ask < fail, "{at_}: needs you, then failed checks\n{text}");
+                let row = at(&frame, "✕ fix-footer").unwrap_or_else(|| panic!("{at_}: the failed row\n{text}"));
+                assert!(frame[row].contains("shop-api") && frame[row].contains("2m"), "{at_}: folder and age on line 1: {:?}", frame[row]);
+                assert!(frame[row + 1].contains("failed: just ci · exit 1"), "{at_}: the result on line 2: {:?}", frame[row + 1]);
+                assert!(frame[row + 2].contains(FAILING_LINE), "{at_}: the first failing line on line 3: {:?}", frame[row + 2]);
+                if h >= 45 {
+                    for want in ["COULD NOT RUN 1", "? add-pay", "just ci could not run", "JUST FINISHED 1", "✓ docs"] {
+                        assert!(text.contains(want), "{at_}: missing {want:?}\n{text}");
+                    }
+                    assert!(at(&frame, "COULD NOT RUN").unwrap() > fail.unwrap() && at(&frame, FINISHED).unwrap() > at(&frame, "COULD NOT RUN").unwrap(), "{at_}: group order");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_could_not_run_row_says_so_without_calling_it_a_failure() {
+        let extra: [Extra; 1] = [("add-pay", Status::Done, not_run())];
+        for layout in LAYOUTS {
+            let mut app = scene(100, 30, layout, &extra);
+            let frame = inbox(&mut app, 100, 30);
+            let row = at(&frame, "? add-pay").unwrap_or_else(|| panic!("{}: the row\n{}", label(layout, 100, 30), frame.join("\n")));
+            assert!(frame[row + 1].contains("just ci could not run · not found"), "{:?}", frame[row + 1]);
+            assert!(!frame.join("\n").contains(FAILED), "unchecked work is not a failed check");
+        }
+    }
+
+    #[test]
+    fn a_question_is_never_pushed_below_a_failed_check() {
+        let many: Vec<Extra> = ["a", "b", "c", "d", "e", "f"].iter().map(|n| (*n, Status::Done, failed())).collect();
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let at_ = label(layout, w, h);
+                let mut app = scene(w, h, layout, &many);
+                let rows = rows(&app);
+                let first = |p: fn(&hydra::GoRow) -> bool| rows.iter().position(p).unwrap();
+                assert!(first(|r| matches!(r, hydra::GoRow::Ask(_))) < first(|r| matches!(r, hydra::GoRow::Failed(_))), "{at_}: rows");
+                let frame = inbox(&mut app, w, h);
+                let (q, f) = (at(&frame, QUESTION), at(&frame, FAILED));
+                assert!(q.is_some() && f.is_some() && q < f, "{at_}: the question is above the failures\n{}", frame.join("\n"));
+            }
+        }
+    }
+
+    #[test]
+    fn the_selected_row_scrolls_into_whole_view_even_when_it_is_the_last_failure() {
+        let many: Vec<Extra> = ["a1", "b2", "c3", "d4", "e5", "f6"].iter().map(|n| (*n, Status::Done, failed())).collect();
+        for layout in LAYOUTS {
+            let mut app = scene(80, 24, layout, &many);
+            let last = rows(&app).iter().rposition(|r| matches!(r, hydra::GoRow::Failed(_))).unwrap();
+            app.act(Action::Jump);
+            app.mode = Mode::GoTo { query: String::new(), sel: last };
+            let buf = buffer(&mut app, 80, 24);
+            let frame = lines(&buf, 0);
+            let row = at(&frame, "✕ f6").unwrap_or_else(|| panic!("{}: the last failure\n{}", label(layout, 80, 24), frame.join("\n")));
+            assert!(frame[row + 1].contains("failed: just ci") && frame[row + 2].contains(FAILING_LINE), "{}: whole, not cut", label(layout, 80, 24));
+        }
+    }
+
+    #[test]
+    fn empty_groups_stay_out_and_the_other_notes_still_work() {
+        for layout in LAYOUTS {
+            let at_ = label(layout, 100, 30);
+            // Only a failure: nothing waits, nothing else finished.
+            let mut app = scene(100, 30, layout, &[("fix-footer", Status::Done, failed())]);
+            app.snap.terms.get_mut(&1).unwrap().status = Status::Idle;
+            let text = inbox(&mut app, 100, 30).join("\n");
+            for want in ["Nothing is waiting on you.", "FAILED CHECKS 1", "JUST FINISHED 0", "Nothing finished since you last looked."] {
+                assert!(text.contains(want), "{at_}: missing {want:?}\n{text}");
+            }
+            assert!(!text.contains(NOT_RUN), "{at_}: no group without rows");
+            // A failure reached by typing is still found as a session.
+            let rows = hydra::goto_rows(&app.hy_model(), "fix-footer", 0);
+            assert!(matches!(rows.as_slice(), [hydra::GoRow::Head("FOUND"), hydra::GoRow::Sess(_, 20)]), "{at_}: {rows:?}");
+        }
+    }
+
+    #[test]
+    fn enter_on_a_check_row_focuses_its_session() {
+        for layout in LAYOUTS {
+            for (term, state) in [(20, failed()), (20, not_run())] {
+                let mut app = scene(100, 30, layout, &[("fix-footer", Status::Done, state)]);
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+                app.out = tx;
+                let sel = rows(&app).iter().position(|r| matches!(r, hydra::GoRow::Failed(_) | hydra::GoRow::NotRun(_))).unwrap();
+                app.act(Action::Jump);
+                app.mode = Mode::GoTo { query: String::new(), sel };
+                app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                assert!(app.mode == Mode::Normal, "{}: the Inbox closes", label(layout, 100, 30));
+                let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+                assert!(sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: t }) if *t == term)), "{sent:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn up_and_down_land_on_check_rows_and_skip_their_headings() {
+        let extra: [Extra; 2] = [("f-one", Status::Done, failed()), ("n-one", Status::Done, not_run())];
+        let mut app = scene(100, 30, LAYOUTS[0], &extra);
+        app.act(Action::Jump);
+        let Mode::GoTo { sel: start, .. } = app.mode.clone() else { panic!("the Inbox") };
+        let mut seen = vec![rows(&app)[start].clone()];
+        for _ in 0..2 {
+            app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+            let Mode::GoTo { sel, .. } = app.mode.clone() else { panic!("still in the Inbox") };
+            seen.push(rows(&app)[sel].clone());
+        }
+        assert_eq!(seen, [hydra::GoRow::Ask(1), hydra::GoRow::Failed(20), hydra::GoRow::NotRun(21)]);
+    }
+}

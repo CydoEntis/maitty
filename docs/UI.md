@@ -198,6 +198,21 @@ agent is working or asking, draws exactly as without checks.
 - Colours are existing theme slots only; there is no check role. Code lives in
   `client/hydra/check.rs`; the evidence sheet is `client/hydra/check_sheet.rs`.
 
+## Project-specific: Inbox check groups
+
+The Inbox (`j`) lists, in this order: NEEDS YOU, FAILED CHECKS, COULD NOT RUN, JUST FINISHED,
+then HEADS UP, each heading with its count. A question is never below a check.
+
+- A group with no rows is not drawn, so a project with no check shows the Inbox it always had.
+- A session leaves JUST FINISHED when its check failed or could not run. A session whose agent
+  is working or asking is not listed for its old result (see `check::shown`).
+- A failed check stays listed until a later run replaces it, even after you have looked at the
+  session. A could-not-run check is listed only until you look (`Del` marks it seen).
+- A row is the result glyph (the sidebar's), name, `agent · folder` and a relative age; line 2 is
+  the sidebar's result words; a failed row adds the first failing output line in `muted`.
+  Enter focuses the session, as on every other row. Re-run and override are not in the Inbox yet.
+- Existing theme slots only. Code lives in `client/hydra/check_inbox.rs`.
+
 ## Project-specific: collapsed sidebar
 
 Hiding the full sidebar leaves a seven-column rail on the configured side.

@@ -83,12 +83,12 @@ or another program follow that program's own help.
 | --- | --- |
 | Type, Backspace | Filter by project or session |
 | Up, Down, PgUp, PgDn | Choose a row |
-| Enter | Open the selected session |
+| Enter | Open the selected session (also a failed or could-not-run check) |
 | 1–9 | Answer selected agent question when search is empty |
 | m | Follow-up to selected asking/finished agent when search is empty |
 | d, M, x | Finished worktree: diff, ask to merge, ask to discard; empty search |
 | d, m, k | Shared-file warning: diff, message its agent, dismiss; empty search |
-| Delete | Mark selected finished session seen |
+| Delete | Mark selected finished session, or unrun check, seen |
 | Enter, Esc in confirmation | Confirm action, or cancel |
 | Esc | Close Inbox |
 

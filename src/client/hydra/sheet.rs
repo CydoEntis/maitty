@@ -179,6 +179,8 @@ fn row_height(row: &GoRow, compose: Option<&Compose>, box_rows: u16, asking: Opt
         GoRow::Ask(_) => 4,
         GoRow::Heads(_) => 4,
         GoRow::Done(_) => 4,
+        GoRow::Failed(_) => check_inbox::FAILED_ROWS,
+        GoRow::NotRun(_) => check_inbox::NOT_RUN_ROWS,
 
         _ => 1,
     }
@@ -371,6 +373,10 @@ fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme) {
                         }
                     }
                 }
+            }
+            GoRow::Failed(term) | GoRow::NotRun(term) => {
+                let Some((p, _, s)) = find(&model, *term) else { continue };
+                check_inbox::draw(app, buf, (x, y, w), bg, (p, s), t);
             }
             GoRow::Sess(pi, term) => {
                 let Some((_, _, s)) = find(&model, *term) else { continue };

@@ -945,15 +945,15 @@ impl App {
                 }
                 return;
             }
-            KeyCode::Delete if matches!(sel_row, Some(GoRow::Done(_))) => {
-                if let Some(GoRow::Done(term)) = sel_row {
+            KeyCode::Delete if matches!(sel_row, Some(GoRow::Done(_) | GoRow::NotRun(_))) => {
+                if let Some(GoRow::Done(term) | GoRow::NotRun(term)) = sel_row {
                     self.cmd(Command::MarkSeen { term });
                 }
             }
             KeyCode::Enter => {
                 self.mode = Mode::Normal;
                 match sel_row.as_ref() {
-                    Some(GoRow::Ask(t) | GoRow::Done(t)) => self.hy_focus(*t),
+                    Some(GoRow::Ask(t) | GoRow::Done(t) | GoRow::Failed(t) | GoRow::NotRun(t)) => self.hy_focus(*t),
                     Some(GoRow::Head(_) | GoRow::Heads(_)) => {}
                     Some(GoRow::Sess(_, t)) => self.hy_focus(*t),
                     // A project: its most urgent session, or a shell there.
