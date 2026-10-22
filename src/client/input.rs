@@ -72,6 +72,11 @@ impl App {
                 *scroll = 0;
             }
             Mode::Compose(c) => c.text.push_str(&s.replace("\r\n", "\n")),
+            Mode::Confirm(c) if matches!(c.act, menu::Act::OverrideCheck(..)) => {
+                if let menu::Act::OverrideCheck(_, reason) = &mut c.act {
+                    screen::append_reason(reason, &s);
+                }
+            }
             Mode::Themes { query, sel, saving: false } => {
                 themes::append_query(query, s.lines().next().unwrap_or(""));
                 *sel = 0;
@@ -150,7 +155,9 @@ impl App {
         }
         match self.mode.clone() {
             Mode::Normal => {
-                if screen::Look::of(&self.cfg.ui).flat && matches!(k.code, KeyCode::Tab | KeyCode::BackTab | KeyCode::Esc) {
+                // Esc belongs to the evidence sheet while it is open: it closes it.
+                let closes_sheet = k.code == KeyCode::Esc && matches!(self.view, Some(View::Check(_)));
+                if screen::Look::of(&self.cfg.ui).flat && matches!(k.code, KeyCode::Tab | KeyCode::BackTab | KeyCode::Esc) && !closes_sheet {
                     self.mode = Mode::Side;
                     self.screen.cursor = self.focused();
                     self.screen.cursor_proj = None;
@@ -178,8 +185,9 @@ impl App {
             Mode::Tidy(v) => self.on_tidy_key(*v, &k),
             Mode::GoTo { query, sel } => self.on_goto_key(query, sel, &k),
             Mode::Compose(c) => self.on_compose_key(*c, &k),
-            Mode::Why { side, .. } => self.on_why_key(side, &k),
+            Mode::Why { term, side } => self.on_why_key(term, side, &k),
             Mode::SubagentInfo { term, index } => self.on_subagent_info_key(term, index, &k),
+            Mode::Confirm(c) if matches!(c.act, crate::client::menu::Act::OverrideCheck(..)) => self.on_override_key(*c, &k),
             Mode::Confirm(c) => match k.code {
                 KeyCode::Enter | KeyCode::Char('y') => {
                     self.mode = Mode::Normal;
@@ -950,7 +958,7 @@ impl App {
                             self.on_view_key(&KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
                         }
                     }
-                    Some(View::Both(_)) | None => {}
+                    Some(View::Both(_) | View::Check(_)) | None => {}
                 },
             },
             _ => return false,

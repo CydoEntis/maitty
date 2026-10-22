@@ -133,7 +133,9 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         let r = Rect { x: whole.x + (whole.width - w) / 2, y: whole.y + (whole.height - h) / 2, width: w, height: h };
         draw_session(app, f, r, term, true, &model, t);
     }
-    draw_toast(app, f.buffer_mut(), g.panes, t);
+    // A sheet that takes the pane column would hide the toast, so it shows over the sheet.
+    let toast_at = if g.panes.width < TOAST_ROOM && g.sheet.width >= SHEET_DRAWN_FROM { g.sheet } else { g.panes };
+    draw_toast(app, f.buffer_mut(), toast_at, t);
     // Files open over everything in one tool-window size; Esc closes. (Changes is a sheet.)
     if let Some(view) = app.view.take_if(|v| matches!(v, crate::client::View::Files(_))) {
         let buf = f.buffer_mut();
@@ -151,7 +153,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
                 app.view = Some(crate::client::View::Files(v));
             }
             // In the sheet (above).
-            v @ (crate::client::View::Changes(_) | crate::client::View::Both(_)) => app.view = Some(v),
+            v @ (crate::client::View::Changes(_) | crate::client::View::Both(_) | crate::client::View::Check(_)) => app.view = Some(v),
         }
     }
     g.panes
@@ -195,6 +197,8 @@ pub(in crate::client) enum Line {
     /// A dim line under an agent: what it's on, its question, a subagent. Shares the
     /// agent's highlight.
     Note(String, Color, TermId),
+    /// The check result under a session's row.
+    Check(TermId),
     /// A legacy live helper label.
     Subagent(String, TermId),
     /// A runtime-reported child with a stable identity and retained lifecycle.
@@ -227,6 +231,9 @@ pub(in crate::client) fn load_note(cpu: f32, mem: u64) -> Option<(String, bool)>
 
 pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme, out: &mut Vec<Line>) {
     let notes_c = t.muted;
+    if check::shown(s).is_some() {
+        out.push(Line::Check(s.term));
+    }
     if let Some(q) = &s.question {
         out.push(Line::Note(q.clone(), blend(t.blocked, t.sidebar_bg, 0.25), s.term));
     }
@@ -414,7 +421,10 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     app.screen.side_rect = r;
     hit(app, r, ScreenHit::SideFocus);
     let small = buf.area.width < NARROW;
-    let lines = side_lines(app, model, t);
+    let mut lines = side_lines(app, model, t);
+    if small {
+        lines.retain(|l| !matches!(l, Line::Check(_)));
+    }
     let shown: Vec<TermId> = app.screen.tabs.get(app.screen.tab).map(|t| t.layout.leaves()).unwrap_or_default();
     // In a split, the split's row (its first pane's) is the open one, whichever side you're on.
     let focus = app.focused().map(|f| if shown.len() > 1 && shown.contains(&f) { shown[0] } else { f });
@@ -472,7 +482,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
         let last = indents.last().copied().unwrap_or(0);
         indents.push(match l {
             Line::Sess(.., depth) => u16::from(*depth) * FLEET_INDENT,
-            Line::Note(..) | Line::Subagent(..) | Line::SubagentRecord(..) | Line::Subs(..) => last,
+            Line::Note(..) | Line::Check(..) | Line::Subagent(..) | Line::SubagentRecord(..) | Line::Subs(..) => last,
             _ => 0,
         });
     }
@@ -529,7 +539,10 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 if let Some(gy) = glide {
                     gliding = Some((gy, row));
                 }
-                let lit = shade(app, s.term, row, glide.is_some());
+                let chk = check::shown(s);
+                // Its result line under it is one row with it: one tint, one hover.
+                let span = Rect { height: if matches!(lines.get(i + 1), Some(Line::Check(_))) { 2 } else { 1 }, ..row };
+                let lit = shade(app, s.term, span, glide.is_some());
                 let bg = lit.unwrap_or(pb);
                 if lit.is_some() {
                     if look.flat {
@@ -555,6 +568,9 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                         cell.set_symbol("▎").set_style(Style::default().fg(bar).bg(bg));
                     }
                 }
+                if chk.is_some_and(check::failed) {
+                    check::edge(buf, x0 + 1, y, bg, t);
+                }
                 if active || keyboard {
                     put(buf, x0 + 3 + indent, y, &[seg(if active { "▸" } else { "›" }, Style::default().bg(bg).fg(t.strong))], x0 + 5 + indent);
                 }
@@ -563,13 +579,15 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 // A state's colour on this row: the theme's own, kept readable when the
                 // row is lit.
                 let state = |c: Color| if lit.is_some() { t.on_lit(c) } else { c };
-                let (gl, gc) = if s.is_agent || s.status != Status::None {
+                let (gl, gc) = if let Some(c) = chk {
+                    (check::glyph(app, c).to_string(), state(check::color(t, c)))
+                } else if s.is_agent || s.status != Status::None {
                     (glyph(app, s.status), state(state_color(t, s.status)))
                 } else {
                     ("›".to_string(), t.muted)
                 };
                 let mut gs = st.fg(gc);
-                if s.status == Status::Blocked {
+                if s.status == Status::Blocked || chk.is_some_and(check::failed) {
                     gs = gs.add_modifier(Modifier::BOLD);
                 }
                 let open_row = Some(s.term) == focus;
@@ -632,6 +650,26 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 if menu {
                     row_menu_button(app, buf, Rect { x: right.saturating_sub(1), y, width: 1, height: 1 }, bg, t, ScreenHit::RowMenuSess(s.term));
                 }
+            }
+            Line::Check(term) => {
+                let Some((_, _, s)) = find(model, *term) else { continue };
+                let Some(info) = check::shown(s) else { continue };
+                let lit = shade(app, *term, Rect { y: y.saturating_sub(1), height: 2, ..row }, false);
+                let bg = lit.unwrap_or(pb);
+                if lit.is_some() {
+                    if look.flat {
+                        row_pill(look, buf, row.x, y, row.width, bg, pb);
+                    } else {
+                        fill(buf, Rect { x: r.x + 1, y, width: r.width.saturating_sub(2), height: 1 }, bg);
+                    }
+                }
+                let x = x0 + 7 + indent;
+                let text = check::words(app, info, right.saturating_sub(x) as usize);
+                put(buf, x, y, &[seg(text, check::words_style(info, t, bg, lit.is_some()))], right);
+                if check::failed(info) {
+                    check::edge(buf, x0 + 1, y, bg, t);
+                }
+                hit(app, row, ScreenHit::Session(*term));
             }
             Line::Note(text, c, term) => {
                 if small {
@@ -1145,6 +1183,9 @@ pub(in crate::client) fn toast_hold(err: bool, about: bool) -> std::time::Durati
         2500
     })
 }
+
+/// Panes narrower than this leave no room for a toast.
+const TOAST_ROOM: u16 = 40;
 
 /// How far a toast's hint ("click to open") sinks into its fill: readable, second to the news.
 const TOAST_HINT_FADE: f32 = 0.3;

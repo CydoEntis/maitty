@@ -5,7 +5,10 @@ use std::time::Duration;
 
 fn daemon() -> (Daemon, mpsc::Receiver<Ev>) {
     let (tx, rx) = mpsc::channel(4096);
-    (Daemon::new(Config::default(), tx), rx)
+    let mut d = Daemon::new(Config::default(), tx);
+    // Its own folder (made only if something is written to it), so tests never share check tails.
+    d.check_dir = persist::scratch_dir().path().to_path_buf();
+    (d, rx)
 }
 
 fn pane(d: &mut Daemon) -> TermId {
@@ -1494,4 +1497,716 @@ fn codex_expanded_question_overrides_working_until_dismissed() {
     }
     close(&mut d, &[id]);
     assert_eq!(observed, [Status::Blocked, Status::Working, Status::Blocked, Status::Working]);
+}
+
+fn failed_check(output: &str) -> check::CheckRecord {
+    let info = CheckInfo {
+        command: "npm test".into(),
+        state: CheckState::Failed,
+        exit_code: Some(1),
+        first_failing_line: "FAIL footer.test.ts".into(),
+        ..Default::default()
+    };
+    check::CheckRecord::new(info, output)
+}
+
+#[test]
+fn the_snapshot_carries_a_check_summary_and_a_query_returns_its_output() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let (tx, mut out) = mpsc::channel(16);
+    d.handle(Ev::Connected(7, tx, false));
+    d.message(7, ClientMsg::Query(Query::CheckOutput { term: t }));
+    assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(_))), "no check, no output");
+    d.terms.get_mut(&t).unwrap().check = Some(failed_check("ok a\nFAIL footer.test.ts\n"));
+    let info = d.snapshot().terms[&t].check.clone().expect("the summary is in the snapshot");
+    assert_eq!((info.state, info.first_failing_line.as_str()), (CheckState::Failed, "FAIL footer.test.ts"));
+    d.message(7, ClientMsg::Query(Query::CheckOutput { term: t }));
+    assert!(matches!(out.try_recv(), Ok(ServerMsg::Reply(Reply::Text(text))) if text == "ok a\nFAIL footer.test.ts\n"));
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_pane_may_not_read_another_panes_check_output_without_the_read_grant() {
+    let (mut d, _rx) = daemon();
+    let (a, b) = (pane(&mut d), pane(&mut d));
+    d.terms.get_mut(&b).unwrap().check = Some(failed_check("secret-ish output"));
+    let (tx, mut out) = mpsc::channel(16);
+    d.handle(Ev::Connected(7, tx, false));
+    let token = d.terms[&a].token.clone();
+    d.handle(Ev::From(7, a, token));
+    d.terms.get_mut(&a).unwrap().grants = Some(Vec::new());
+    d.message(7, ClientMsg::Query(Query::CheckOutput { term: b }));
+    assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(_))), "read is a grant");
+    close(&mut d, &[a, b]);
+}
+
+#[test]
+fn check_results_survive_a_restart_with_their_output() {
+    let (mut d, _rx) = daemon();
+    let dir = std::env::temp_dir();
+    let tails = persist::scratch_dir();
+    d.check_dir = tails.path().to_path_buf();
+    let old: TermId = 9_201;
+    let overridden = CheckInfo { state: CheckState::Overridden, overridden_at: Some(5), override_reason: "flaky".into(), ..failed_check("").info };
+    let unsaved = persist::save_check_outputs(
+        tails.path(),
+        persist::save_ticket(),
+        &[(old, persist::CheckSlot::Latest, "latest tail".into()), (old, persist::CheckSlot::Overridden, "overridden tail".into())],
+        &[old],
+    );
+    assert!(unsaved.is_empty());
+    let pane = persist::SavedPane {
+        cwd: Some(dir.clone()),
+        check: Some(failed_check("").info),
+        check_overridden: Some(overridden.clone()),
+        ..Default::default()
+    };
+    let tab = persist::SavedTab { name: String::new(), layout: Node::Leaf(old), focus: old, panes: [(old, pane)].into() };
+    let ws = persist::SavedWs { name: String::new(), cwd: dir, worktree: false, color: None, group: None, tabs: vec![tab], active_tab: 0 };
+    d.restore(persist::Saved { workspaces: vec![ws], active: 0, made_worktrees: Vec::new() });
+    let t = d.workspaces[0].tabs[0].focus;
+    let restored = &d.terms[&t];
+    assert_eq!(restored.check.as_ref().map(|c| c.output.as_str()), Some("latest tail"));
+    assert_eq!(restored.check_overridden.as_ref().map(|c| (&c.info, c.output.as_str())), Some((&overridden, "overridden tail")));
+    let saved = d.saved();
+    let again = &saved.workspaces[0].tabs[0].panes[&t];
+    assert_eq!((again.check.as_ref().map(|c| c.state), again.check_overridden.as_ref()), (Some(CheckState::Failed), Some(&overridden)));
+    let mut written = d.take_dirty_check_outputs();
+    written.sort_by_key(|(_, slot, _)| *slot as u8);
+    let expected = [(t, persist::CheckSlot::Latest, "latest tail".to_string()), (t, persist::CheckSlot::Overridden, "overridden tail".to_string())];
+    assert_eq!(written, expected, "its output is written again under the new id");
+    assert!(d.take_dirty_check_outputs().is_empty(), "and only once");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_check_that_was_running_when_the_server_stopped_reads_as_not_run() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let running = CheckInfo { state: CheckState::Checking, ..Default::default() };
+    let saved = persist::SavedPane { check: Some(running), ..Default::default() };
+    d.terms.get_mut(&t).unwrap().restore_checks(&d.check_dir.clone(), 9_202, &saved);
+    assert_eq!(d.terms[&t].check.as_ref().map(|c| c.info.state), Some(CheckState::CouldNotRun));
+    close(&mut d, &[t]);
+}
+
+fn runtime() -> tokio::runtime::Runtime {
+    tokio::runtime::Runtime::new().expect("a runtime for the blocking tasks")
+}
+
+const LONG_CHECK_S: u64 = 600;
+
+/// An agent session in the temp folder (not a repo, so the folder is its project), whose
+/// project has a check running `command`.
+fn checked_agent(d: &mut Daemon, command: &str, timeout_s: u64) -> TermId {
+    d.cfg.check = vec![crate::config::CheckDef { project: std::env::temp_dir(), command: command.into(), timeout_s }];
+    let t = pane(d);
+    let p = d.terms.get_mut(&t).unwrap();
+    (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Working);
+    t
+}
+
+fn end_turn(d: &mut Daemon, t: TermId) {
+    d.hook(t, "claude".into(), HookStatus::Done, "Stop");
+}
+
+/// Apply the next finished check, as the daemon loop would. False if none came in time.
+fn finish_check(d: &mut Daemon, rx: &mut mpsc::Receiver<Ev>, wait: Duration) -> bool {
+    let until = Instant::now() + wait;
+    while Instant::now() < until {
+        match rx.try_recv() {
+            Ok(ev @ Ev::CheckRan { .. }) => {
+                d.handle(ev);
+                return true;
+            }
+            Ok(_) => {}
+            Err(_) => std::thread::sleep(Duration::from_millis(10)),
+        }
+    }
+    false
+}
+
+fn check_of(d: &Daemon, t: TermId) -> CheckInfo {
+    d.terms[&t].check.as_ref().expect("a check").info.clone()
+}
+
+const SLOW_CHECK_WAIT: Duration = Duration::from_secs(30);
+
+#[test]
+fn a_turn_end_runs_the_projects_check_and_a_pass_is_recorded() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "echo \"suite ok\"; exit 0", LONG_CHECK_S);
+    end_turn(&mut d, t);
+    let running = check_of(&d, t);
+    assert_eq!((running.state, running.command.as_str()), (CheckState::Checking, "echo \"suite ok\"; exit 0"));
+    assert!(d.snapshot().terms[&t].check.is_some(), "clients see it checking");
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    let done = check_of(&d, t);
+    assert_eq!((done.state, done.exit_code), (CheckState::Passed, Some(0)));
+    assert_eq!(d.terms[&t].check.as_ref().unwrap().output.trim(), "suite ok");
+    assert!(d.terms[&t].check_dirty, "its tail is due to be saved");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_failing_check_records_its_exit_code_and_output() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "echo \"1 test failed\"; exit 3", LONG_CHECK_S);
+    end_turn(&mut d, t);
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    let info = check_of(&d, t);
+    assert_eq!((info.state, info.exit_code), (CheckState::Failed, Some(3)));
+    assert_eq!(d.terms[&t].check.as_ref().unwrap().output.trim(), "1 test failed");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_failed_check_names_its_first_failing_line_and_a_rerun_clears_it() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "echo running; echo \"FAIL tests/foo: boom\"; exit 1", LONG_CHECK_S);
+    end_turn(&mut d, t);
+    assert!(check_of(&d, t).first_failing_line.is_empty(), "nothing while it runs");
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    assert_eq!(check_of(&d, t).first_failing_line, "FAIL tests/foo: boom");
+    let seen = d.snapshot().terms[&t].check.clone().expect("the summary is in the snapshot");
+    assert_eq!(seen.first_failing_line, "FAIL tests/foo: boom");
+    d.terms.get_mut(&t).unwrap().status = Status::Idle;
+    d.rerun_check(t).expect("a failed check can be run again");
+    assert!(check_of(&d, t).first_failing_line.is_empty(), "a re-run starts clean");
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_check_that_outruns_its_timeout_reads_as_not_run() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let slow = if cfg!(windows) { "Start-Sleep 60" } else { "sleep 60" };
+    let t = checked_agent(&mut d, slow, 1);
+    end_turn(&mut d, t);
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    let info = check_of(&d, t);
+    assert_eq!((info.state, info.exit_code), (CheckState::CouldNotRun, None));
+    close(&mut d, &[t]);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_check_whose_command_is_not_found_reads_as_not_run() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "seshi-no-such-command-xyz", LONG_CHECK_S);
+    end_turn(&mut d, t);
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    assert_eq!(check_of(&d, t).state, CheckState::CouldNotRun);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_shell_that_cannot_start_leaves_the_check_not_run() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
+    d.cfg.shell = Some("/no/such/shell-for-seshi".into());
+    end_turn(&mut d, t);
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    assert_eq!(check_of(&d, t).state, CheckState::CouldNotRun, "never stuck checking");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn the_screen_ending_a_turn_runs_the_check_too_but_a_cancelled_turn_does_not() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
+    d.set_status(t, Status::Idle, "progress bar gone, no turn end: cancelled");
+    assert!(d.terms[&t].check.is_none(), "an interrupted turn finished nothing");
+    d.set_status(t, Status::Working, "test");
+    d.set_status(t, Status::Done, "screen: went quiet after working");
+    assert_eq!(check_of(&d, t).state, CheckState::Checking);
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    assert_eq!(check_of(&d, t).state, CheckState::Passed);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn sessions_without_a_check_a_shell_or_a_finished_turn_behave_as_before() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    // A project with no check.
+    let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
+    d.cfg.check[0].project = std::env::temp_dir().join("some-other-project");
+    end_turn(&mut d, t);
+    assert!(d.terms[&t].check.is_none(), "no check in this project");
+    assert_eq!(d.terms[&t].status, Status::Done, "and done as ever");
+    // A shell pane in a project with a check.
+    d.cfg.check[0].project = std::env::temp_dir();
+    let shell = pane(&mut d);
+    d.terms.get_mut(&shell).unwrap().status = Status::Working;
+    d.set_status(shell, Status::Done, "test");
+    assert!(d.terms[&shell].check.is_none(), "a shell is not an agent");
+    // A turn that has not ended: working, asking, or held for its helpers.
+    let busy = pane(&mut d);
+    (d.terms.get_mut(&busy).unwrap().agent, d.terms.get_mut(&busy).unwrap().hooked) = (Some("claude".into()), true);
+    d.hook(busy, "claude".into(), HookStatus::Working, "UserPromptSubmit");
+    d.hook(busy, "claude".into(), HookStatus::Blocked, "PreToolUse");
+    d.terms.get_mut(&busy).unwrap().subagents.push(("sub".into(), "explore".into()));
+    d.hook(busy, "claude".into(), HookStatus::Done, "Stop");
+    assert!(d.terms[&busy].check.is_none(), "a turn waiting on its helpers has not ended");
+    d.hook(busy, "claude".into(), HookStatus::Done, "Notification:idle_prompt");
+    assert!(d.terms[&busy].check.is_none(), "a repeated idle ping is not a turn end");
+    close(&mut d, &[t, shell, busy]);
+}
+
+#[test]
+fn a_turn_ending_while_its_check_runs_does_not_start_a_second_run() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
+    end_turn(&mut d, t);
+    let first = check_of(&d, t);
+    d.hook(t, "claude".into(), HookStatus::Working, "UserPromptSubmit");
+    end_turn(&mut d, t);
+    assert_eq!(check_of(&d, t), first, "the running check is left as it was");
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    assert!(!finish_check(&mut d, &mut rx, Duration::from_millis(500)), "only one run was started");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_done_hook_after_the_screen_ended_the_turn_and_its_check_settled_starts_no_second_run() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
+    d.set_status(t, Status::Done, "screen: went quiet after working");
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    let settled = check_of(&d, t);
+    assert_eq!(settled.state, CheckState::Passed);
+    end_turn(&mut d, t);
+    assert_eq!(check_of(&d, t), settled, "the same turn is not checked twice");
+    assert!(!finish_check(&mut d, &mut rx, Duration::from_millis(500)), "no second run was started");
+    d.hook(t, "claude".into(), HookStatus::Working, "UserPromptSubmit");
+    end_turn(&mut d, t);
+    assert_eq!(check_of(&d, t).state, CheckState::Checking, "a new turn is checked");
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn the_next_turn_end_checks_again() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "exit 1", LONG_CHECK_S);
+    end_turn(&mut d, t);
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    assert_eq!(check_of(&d, t).state, CheckState::Failed);
+    d.hook(t, "claude".into(), HookStatus::Working, "UserPromptSubmit");
+    end_turn(&mut d, t);
+    assert_eq!(check_of(&d, t).state, CheckState::Checking);
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_result_for_a_pane_that_closed_is_dropped() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
+    end_turn(&mut d, t);
+    close(&mut d, &[t]);
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT), "the result still arrives and is ignored");
+    assert!(!d.terms.contains_key(&t));
+}
+
+#[test]
+fn the_tail_of_a_closed_pane_goes_on_a_full_save_even_when_no_tail_changed() {
+    let (mut d, _rx) = daemon();
+    let tails = persist::scratch_dir();
+    d.check_dir = tails.path().to_path_buf();
+    let (open, closed): (TermId, TermId) = (pane(&mut d), 7_001);
+    let unsaved = persist::save_check_outputs(
+        tails.path(),
+        persist::save_ticket(),
+        &[(open, persist::CheckSlot::Latest, "kept".into()), (closed, persist::CheckSlot::Latest, "gone".into())],
+        &[open, closed],
+    );
+    assert!(unsaved.is_empty());
+    d.save_check_tails(persist::save_ticket(), vec![open], true);
+    assert_eq!(persist::read_check_output(tails.path(), closed, persist::CheckSlot::Latest), None, "pruned at shutdown");
+    assert_eq!(persist::read_check_output(tails.path(), open, persist::CheckSlot::Latest).as_deref(), Some("kept"));
+    close(&mut d, &[open]);
+}
+
+#[test]
+fn a_tail_that_failed_to_write_is_written_again_at_the_next_save() {
+    let (mut d, _rx) = daemon();
+    let tails = persist::scratch_dir();
+    let blocked = tails.path().to_path_buf();
+    std::fs::create_dir_all(&blocked).unwrap();
+    // A file where the folder should be: every write fails.
+    d.check_dir = blocked.join("tails");
+    std::fs::write(&d.check_dir, "in the way").unwrap();
+    let t = pane(&mut d);
+    d.terms.get_mut(&t).unwrap().check = Some(failed_check("FAIL footer\n"));
+    d.terms.get_mut(&t).unwrap().check_dirty = true;
+    d.save_check_tails(persist::save_ticket(), vec![t], true);
+    assert!(d.terms[&t].check_dirty, "still due: the write did not happen");
+    std::fs::remove_file(&d.check_dir).unwrap();
+    d.save_check_tails(persist::save_ticket(), vec![t], true);
+    assert!(!d.terms[&t].check_dirty);
+    assert_eq!(persist::read_check_output(&d.check_dir, t, persist::CheckSlot::Latest).as_deref(), Some("FAIL footer\n"));
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_background_save_that_fails_marks_its_tails_due_again() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.terms.get_mut(&t).unwrap().check = Some(failed_check("x"));
+    assert!(d.take_dirty_check_outputs().is_empty(), "nothing due");
+    d.terms.get_mut(&t).unwrap().check_dirty = true;
+    assert_eq!(d.take_dirty_check_outputs().len(), 1);
+    d.handle(Ev::CheckOutputsUnsaved(vec![t, 9_999]));
+    assert_eq!(d.take_dirty_check_outputs().len(), 1, "due again; a pane that is gone is skipped");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_restored_tail_stays_on_disk_until_the_new_one_is_saved() {
+    let (mut d, _rx) = daemon();
+    let tails = persist::scratch_dir();
+    d.check_dir = tails.path().to_path_buf();
+    let old: TermId = 9_301;
+    assert!(persist::save_check_outputs(tails.path(), persist::save_ticket(), &[(old, persist::CheckSlot::Latest, "tail".into())], &[old]).is_empty());
+    let t = pane(&mut d);
+    let saved = persist::SavedPane { check: Some(failed_check("").info), ..Default::default() };
+    let dir = d.check_dir.clone();
+    d.terms.get_mut(&t).unwrap().restore_checks(&dir, old, &saved);
+    assert_eq!(persist::read_check_output(tails.path(), old, persist::CheckSlot::Latest).as_deref(), Some("tail"), "a crash now loses nothing");
+    close(&mut d, &[t]);
+}
+
+fn with_check(d: &mut Daemon, t: TermId, state: CheckState, output: &str) {
+    let record = failed_check(output);
+    let info = CheckInfo { state, exit_code: (state == CheckState::Failed).then_some(1), after_turn_ended_at: 77, ..record.info };
+    d.terms.get_mut(&t).unwrap().check = Some(check::CheckRecord::new(info, output));
+}
+
+#[test]
+fn a_rerun_while_the_agent_works_waits_for_the_turn_to_end() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "echo again; exit 0", LONG_CHECK_S);
+    with_check(&mut d, t, CheckState::Failed, "old failure");
+    d.command(0, Command::RerunCheck { term: t }).unwrap();
+    let waiting = check_of(&d, t);
+    assert_eq!((waiting.state, waiting.rerun_queued), (CheckState::Failed, true), "the result stands, and says a re-run is queued");
+    assert!(d.snapshot().terms[&t].check.as_ref().is_some_and(|c| c.rerun_queued), "clients see it");
+    assert!(!finish_check(&mut d, &mut rx, Duration::from_millis(300)), "nothing runs mid-turn");
+    end_turn(&mut d, t);
+    let running = check_of(&d, t);
+    assert_eq!((running.state, running.rerun_queued), (CheckState::Checking, false));
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    assert!(!finish_check(&mut d, &mut rx, Duration::from_millis(500)), "the queued re-run and the turn end are one run");
+    assert_eq!(check_of(&d, t).state, CheckState::Passed);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_queued_rerun_is_dropped_when_the_project_no_longer_has_a_check() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
+    with_check(&mut d, t, CheckState::Failed, "old");
+    d.command(0, Command::RerunCheck { term: t }).unwrap();
+    d.cfg.check.clear();
+    end_turn(&mut d, t);
+    assert!(!check_of(&d, t).rerun_queued, "nothing is queued any more");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_rerun_of_an_idle_agent_starts_at_once_and_replaces_the_settled_result() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "echo fresh; exit 0", LONG_CHECK_S);
+    d.terms.get_mut(&t).unwrap().status = Status::Done;
+    with_check(&mut d, t, CheckState::Failed, "old failure");
+    d.command(0, Command::RerunCheck { term: t }).unwrap();
+    let running = check_of(&d, t);
+    assert_eq!((running.state, running.after_turn_ended_at, running.rerun_queued), (CheckState::Checking, 77, false));
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    assert_eq!(check_of(&d, t).state, CheckState::Passed);
+    assert_eq!(d.terms[&t].check.as_ref().unwrap().output.trim(), "fresh");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_rerun_that_has_nothing_to_run_is_an_error() {
+    let (rt, (mut d, _rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
+    assert!(d.command(0, Command::RerunCheck { term: t }).is_err(), "working, never checked: its turn end checks it");
+    d.terms.get_mut(&t).unwrap().status = Status::Done;
+    with_check(&mut d, t, CheckState::Checking, "");
+    assert!(d.command(0, Command::RerunCheck { term: t }).is_err(), "already running");
+    d.cfg.check.clear();
+    with_check(&mut d, t, CheckState::Failed, "");
+    assert!(d.command(0, Command::RerunCheck { term: t }).is_err(), "no check in this project");
+    let shell = pane(&mut d);
+    assert!(d.command(0, Command::RerunCheck { term: shell }).is_err(), "a shell is not checked");
+    assert!(d.command(0, Command::RerunCheck { term: 9_999 }).is_err(), "no such pane");
+    close(&mut d, &[t, shell]);
+}
+
+#[test]
+fn only_a_failed_check_can_be_overridden_and_the_override_is_recorded() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let cmd = |reason: &str| Command::OverrideCheck { term: t, reason: reason.into() };
+    assert!(d.command(0, cmd("")).is_err(), "no result");
+    for state in [CheckState::Passed, CheckState::Checking, CheckState::CouldNotRun, CheckState::Overridden] {
+        with_check(&mut d, t, state, "out");
+        assert!(d.command(0, cmd("")).is_err(), "{state:?}");
+        assert_eq!(check_of(&d, t).state, state, "left as it was");
+    }
+    with_check(&mut d, t, CheckState::Failed, "FAIL a\nFAIL b\n");
+    let before = term::unix_now();
+    d.command(0, cmd("  flaky on CI  ")).unwrap();
+    let info = check_of(&d, t);
+    assert_eq!((info.state, info.override_reason.as_str(), info.exit_code), (CheckState::Overridden, "flaky on CI", Some(1)));
+    assert!(info.overridden_at.is_some_and(|at| at >= before), "the time is recorded");
+    assert_eq!(d.snapshot().terms[&t].check.as_ref().map(|c| c.state), Some(CheckState::Overridden));
+    let term = &d.terms[&t];
+    assert_eq!(term.check.as_ref().unwrap().output, "FAIL a\nFAIL b\n", "the failure's output stays");
+    assert_eq!(term.check_overridden.as_ref().map(|c| (c.info.clone(), c.output.as_str())), Some((info, "FAIL a\nFAIL b\n")));
+    assert!(term.check_dirty, "due to be saved");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn an_override_reason_is_optional_and_bounded() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    with_check(&mut d, t, CheckState::Failed, "");
+    let too_long = "x".repeat(super::check::OVERRIDE_REASON_MAX_CHARS + 1);
+    assert!(d.command(0, Command::OverrideCheck { term: t, reason: too_long }).is_err());
+    assert_eq!(check_of(&d, t).state, CheckState::Failed, "refused whole");
+    d.command(0, Command::OverrideCheck { term: t, reason: String::new() }).unwrap();
+    assert_eq!(check_of(&d, t).override_reason, "");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn undoing_an_override_restores_the_failed_result() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    with_check(&mut d, t, CheckState::Failed, "FAIL a");
+    let failed = check_of(&d, t);
+    assert!(d.command(0, Command::UndoOverride { term: t }).is_err(), "nothing to undo on a failure");
+    d.command(0, Command::OverrideCheck { term: t, reason: "r".into() }).unwrap();
+    d.command(0, Command::UndoOverride { term: t }).unwrap();
+    assert_eq!(check_of(&d, t), failed, "exactly as it was");
+    assert!(d.terms[&t].check_overridden.is_none());
+    assert!(d.command(0, Command::UndoOverride { term: t }).is_err(), "and only once");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn the_next_run_replaces_an_override_but_keeps_the_overridden_output() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "echo green; exit 0", LONG_CHECK_S);
+    d.terms.get_mut(&t).unwrap().status = Status::Done;
+    with_check(&mut d, t, CheckState::Failed, "FAIL a");
+    d.command(0, Command::OverrideCheck { term: t, reason: "r".into() }).unwrap();
+    d.command(0, Command::RerunCheck { term: t }).unwrap();
+    let running = check_of(&d, t);
+    assert_eq!((running.state, running.overridden_at, running.override_reason.as_str()), (CheckState::Checking, None, ""));
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    assert_eq!(check_of(&d, t).state, CheckState::Passed);
+    let kept = d.terms[&t].check_overridden.as_ref().expect("the overridden result is kept");
+    assert_eq!((kept.info.state, kept.output.as_str()), (CheckState::Overridden, "FAIL a"));
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_read_only_pane_may_not_rerun_or_override_another_panes_check() {
+    let (mut d, _rx) = daemon();
+    let (a, b) = (pane(&mut d), pane(&mut d));
+    with_check(&mut d, b, CheckState::Failed, "FAIL");
+    let (tx, mut out) = mpsc::channel(16);
+    d.handle(Ev::Connected(7, tx, false));
+    let token = d.terms[&a].token.clone();
+    d.handle(Ev::From(7, a, token));
+    d.terms.get_mut(&a).unwrap().grants = Some(vec!["read".into()]);
+    for cmd in [Command::RerunCheck { term: b }, Command::OverrideCheck { term: b, reason: String::new() }, Command::UndoOverride { term: b }] {
+        d.message(7, ClientMsg::Command(cmd.clone()));
+        assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(_))), "{cmd:?} needs write");
+    }
+    assert_eq!(check_of(&d, b).state, CheckState::Failed, "untouched");
+    d.terms.get_mut(&a).unwrap().grants = Some(vec!["read".into(), "write".into()]);
+    d.message(7, ClientMsg::Command(Command::OverrideCheck { term: b, reason: "ok".into() }));
+    assert!(matches!(out.try_recv(), Ok(ServerMsg::Reply(Reply::Ok))), "write allows it");
+    assert_eq!(check_of(&d, b).state, CheckState::Overridden);
+    close(&mut d, &[a, b]);
+}
+
+#[test]
+fn a_pane_may_not_override_its_own_check() {
+    let (mut d, _rx) = daemon();
+    let a = pane(&mut d);
+    with_check(&mut d, a, CheckState::Failed, "FAIL");
+    let (tx, mut out) = mpsc::channel(16);
+    d.handle(Ev::Connected(7, tx, false));
+    let token = d.terms[&a].token.clone();
+    d.handle(Ev::From(7, a, token));
+    d.message(7, ClientMsg::Command(Command::OverrideCheck { term: a, reason: "trust me".into() }));
+    assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(_))), "an agent's claim never counts");
+    assert_eq!(check_of(&d, a).state, CheckState::Failed);
+    close(&mut d, &[a]);
+}
+
+fn checking(d: &mut Daemon, t: TermId) {
+    let info = CheckInfo { command: "npm test".into(), state: CheckState::Checking, ..Default::default() };
+    d.terms.get_mut(&t).unwrap().check = Some(check::CheckRecord::new(info, ""));
+}
+
+fn ran(outcome: check::CheckOutcome) -> check::CheckRun {
+    check::CheckRun { outcome, output: String::new(), duration: Duration::from_millis(5) }
+}
+
+fn working_agent(d: &mut Daemon) -> TermId {
+    let t = pane(d);
+    d.terms.get_mut(&t).unwrap().agent = Some("claude".into());
+    d.set_status(t, Status::Working, "test");
+    t
+}
+
+fn overdue(d: &mut Daemon, t: TermId) {
+    d.terms.get_mut(&t).unwrap().alert_due.as_mut().unwrap().1 = Instant::now() - Duration::from_millis(1);
+}
+
+fn viewer(d: &mut Daemon) -> mpsc::Receiver<ServerMsg> {
+    let (tx, mut rx) = mpsc::channel(64);
+    d.handle(Ev::Connected(40, tx, true));
+    while rx.try_recv().is_ok() {}
+    rx
+}
+
+fn heard(rx: &mut mpsc::Receiver<ServerMsg>) -> Vec<ServerMsg> {
+    std::iter::from_fn(|| rx.try_recv().ok()).collect()
+}
+
+#[test]
+fn a_finished_alert_waits_for_the_check_and_rings_once_it_passes() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut seen = viewer(&mut d);
+    checking(&mut d, t);
+    d.set_status(t, Status::Done, "test");
+    assert!(!heard(&mut seen).iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })), "not announced while checking");
+    // Even a deadline that is already due holds back.
+    d.terms.get_mut(&t).unwrap().alert_due = Some((Status::Done, Instant::now() - Duration::from_millis(1)));
+    d.settled_alerts();
+    assert!(d.terms[&t].alerted.is_none() && d.terms[&t].alert_due.is_some(), "still held");
+    d.check_ran(t, ran(check::CheckOutcome::Exited(0)));
+    assert!(heard(&mut seen).iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })), "announced once it passed");
+    d.clients.clear();
+    overdue(&mut d, t);
+    d.settled_alerts();
+    assert_eq!(d.terms[&t].alerted.map(|(s, _)| s), Some(Status::Done));
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_failed_check_raises_its_own_alert_and_never_a_finished_one() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut seen = viewer(&mut d);
+    checking(&mut d, t);
+    d.set_status(t, Status::Done, "test");
+    d.check_ran(t, ran(check::CheckOutcome::Exited(1)));
+    let got = heard(&mut seen);
+    assert!(got.iter().any(|m| matches!(m, ServerMsg::Attention { term, status: Status::Blocked } if *term == t)));
+    assert!(got.iter().any(|m| matches!(m, ServerMsg::Notice(n) if n.contains("check failed"))));
+    assert!(!got.iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })));
+    assert!(d.terms[&t].alert_due.is_none(), "no finished alert is left to ring");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_check_that_could_not_run_gives_a_notice_and_the_session_finishes() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut seen = viewer(&mut d);
+    checking(&mut d, t);
+    d.set_status(t, Status::Done, "test");
+    d.check_ran(t, ran(check::CheckOutcome::SpawnFailed));
+    let got = heard(&mut seen);
+    assert!(got.iter().any(|m| matches!(m, ServerMsg::Notice(n) if n.contains("could not run"))));
+    assert!(got.iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })));
+    assert!(d.terms[&t].alert_due.is_some());
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_result_for_a_session_that_went_back_to_work_says_nothing() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut seen = viewer(&mut d);
+    checking(&mut d, t);
+    d.set_status(t, Status::Done, "test");
+    d.set_status(t, Status::Working, "test");
+    heard(&mut seen);
+    d.check_ran(t, ran(check::CheckOutcome::Exited(1)));
+    assert!(heard(&mut seen).is_empty() && d.terms[&t].alert_due.is_none());
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_session_with_no_check_announces_its_finish_at_once() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut seen = viewer(&mut d);
+    d.set_status(t, Status::Done, "test");
+    assert!(heard(&mut seen).iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })));
+    d.clients.clear();
+    overdue(&mut d, t);
+    d.settled_alerts();
+    assert_eq!(d.terms[&t].alerted.map(|(s, _)| s), Some(Status::Done));
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn the_phone_hears_nothing_while_a_check_runs_or_after_it_fails() {
+    let (mut d, _rx) = daemon();
+    d.cfg.notify.phone_topic = "seshi-test-topic".into();
+    d.cfg.notify.phone_done = true;
+    d.cfg.notify.phone_after = 0;
+    let t = working_agent(&mut d);
+    checking(&mut d, t);
+    d.set_status(t, Status::Done, "test");
+    d.phone_alerts();
+    assert_eq!(d.terms[&t].phoned, 0, "held while checking");
+    d.check_ran(t, ran(check::CheckOutcome::Exited(1)));
+    d.phone_alerts();
+    assert_eq!(d.terms[&t].phoned, 0, "a failed check is not a finish");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_queued_follow_up_still_sends_when_the_turn_ends_during_a_check() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    d.terms.get_mut(&t).unwrap().queue.push_back("and the docs".into());
+    checking(&mut d, t);
+    d.set_status(t, Status::Done, "test");
+    d.update_statuses();
+    assert!(d.terms[&t].queue.is_empty() && d.terms[&t].queue_sent.is_some(), "sent as today");
+    close(&mut d, &[t]);
 }

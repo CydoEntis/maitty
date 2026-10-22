@@ -114,9 +114,19 @@ The sidebar's **+ new** uses the same shell action as leader + `n`, including it
 
 When an update is available, show **Update <version>** in the tab row and open the existing confirmation flow when clicked. Do not show the control when Seshi is current. Keep status icons and pane status tags clickable to open the evidence explanation. Terminal bells do not add sidebar indicators or history entries.
 
+The evidence popover (`i`, or a click on a status) explains a session's status from its hook, screen and process reports. For a session with a check, it shows a timeline instead: when the agent's turn ended and what it said, when Seshi ran the command, and the result with exit code and duration, each with its age (`2m ago`). Its keycap hints list only the keys that apply, and each one acts: `⏎` evidence and `r` re-run once there is a result, `O` override for a failed one, `Esc` close. A key the popover does not show closes it and is not passed to the pane. A session without a check keeps the source rows.
+
+The check evidence sheet (Enter on a sidebar row whose check failed, could not run or was overridden; every other row still focuses its session) docks right like the Inbox and takes the pane column below `NARROW`. It shows the result chip with its exit code, a banner for an override (when, the reason, `u undo`) or a command that could not run ("Not a test failure. The work hasn't been checked."), the Command / Folder / Ran / Seen by rows with relative ages, and the output on a darker block with line numbers (`✓` lines in `done`, error lines in `err`). Output longer than the block shows the tail that fits ("last N of M lines"); `f` or the arrows open all of it and scroll. Empty output reads "(the command printed nothing)", with "exit 0 is what passed it." for a pass. Re-run (`r`, not while it runs), Override… (`O`, failed only) and Undo override (`u`, overridden only) are buttons and keys; the hint row lists the ones that apply. A re-run queued behind a working agent reads `re-run queued` beside the result chip.
+
+Override opens a danger confirm over everything: what the session will read (done, overridden), "This hides a failure. It stays visible: ⊘ on the row, in the Inbox history and in the evidence, for this result only; the next run replaces it", and an optional reason (at most `OVERRIDE_REASON_MAX_CHARS`; typing, paste, Backspace and Ctrl+U edit it). Enter overrides, Esc or Cancel does not. The sheet, Inbox and row menu all open this one confirm. A re-run says `re-running <cmd>…` in a toast, or `re-run queued` while the agent works; a daemon error (`ServerMsg::Error`) is a toast. While a sheet takes the pane column, toasts show over the sheet.
+
+The row menu of a session with a check adds Check output (any result), Re-run check (not while it runs) and Override check… (failed only); letters come from `menu_keys` like every item. Output comes from `Query::CheckOutput` and is fetched again when a new run replaces the result. Command output is not trusted: colour codes and control characters are stripped before drawing.
+
 Mark one selected sidebar row independently from hover: the keyboard selection stays selected when the mouse moves; hover is a separate, quieter tint. The open session keeps a dim selection bar while another row is under the keyboard. Preserve agent status icons and colors in each state.
 
 Settings opens on General and reports installed, window and daemon versions separately, with a labeled remote daemon and restart-pending notice when they differ. General groups controls under INPUT, LAYOUT, SHELL and UPDATES. Show the update action only when an update is available; keep release notes and confirmation in the existing flow.
+
+Settings > Check sets the check for the project of the workspace you are in: Command (Enter edits, empty or Del removes), Timeout (stepped, default 10 min), where it runs, the latest result among that project's sessions, and the project. It writes that project's `[[check]]` table in place, keeping comments, off the UI thread; a failed save keeps the draft in the field and shows a toast. A saved change reloads the daemon's config. Run now (`r` on any row of the page, or Enter or a click on its row) re-runs the check in the session with the latest result, else the focused or first agent of the project; it says so when no command is set, and a working agent queues it.
 
 Show reported child agents under their parent, never as independent projects. Keep the sidebar list live: remove a child when its reported state is completed, failed, cancelled or unconfirmed, while retaining lifecycle evidence in daemon state. Make active child rows clickable to inspect reported task and stage details. Keep parent session status colors unchanged. Active subagents use muted neutral gray with no per-helper animation; their compact task or role label is muted, dim and non-bold, with no generic gear icon. Use the provider-reported task when available; otherwise show a reported current tool action, recognizable role stage, meaningful reported role name, or `Working` when none is available. Preserve standard needs-you and error colors for blocked or failed children. Do not show lifecycle group labels or counts beyond the parent heading total. Do not assign role colors that could be confused with done, working, blocked or idle.
 
@@ -167,6 +177,57 @@ settings row. Custom accepts space-separated frames, cursor editing, paste and
 Ctrl+U. Retain invalid drafts and show inline errors. Save in a background task;
 disable duplicate saves and retain the draft on failure. Choices affect only the
 working glyph; blocked/done/idle status colors and icons keep their meaning.
+
+## Project-specific: sidebar check result
+
+A session with a check result (`TermInfo.check`) swaps its status glyph for the
+check's and adds one line under the row. A session with no result, or one whose
+agent is working or asking, draws exactly as without checks.
+
+| Result | Glyph (Unicode / ASCII) | Colour slot | Line under the row |
+| --- | --- | --- | --- |
+| checking | `◜◝◞◟` / `- \ \| /` | `sky()` | `checking <cmd> · <age>` |
+| passed | `✓` / `+` | `done` | `<cmd> ✓ · <took> · <age> ago` |
+| failed | `✕` bold / `x` | `err` | `failed: <cmd> · exit N`, bold |
+| overridden | `⊘` / `/` | `text`, never green | `<cmd> ✕ overridden by you` |
+| could not run | `?` / `?` | `muted`, not a failure | `<cmd> could not run · not found` |
+
+- Shape and word carry the meaning; colour only backs them. Failed (`✕`, "failed")
+  and needs-you (`●`, the question) differ in glyph, word and colour.
+- A failed row keeps a red `▎` edge bar on both lines even when not selected.
+  Could not run has no bar.
+- ASCII glyphs are used when the `blocked`, `done` and `idle` icons are all ASCII.
+- The line is dropped below `NARROW` columns, before the glyph; the folder name is
+  never touched. A long command is shortened first so the result still reads.
+- The collapsed rail shows the same glyph. The ring turns with the motion setting;
+  the working spinner choice is unchanged.
+- Colours are existing theme slots only; there is no check role. Code lives in
+  `client/screen/check.rs`; the evidence sheet is `client/screen/check_sheet.rs`.
+
+## Project-specific: Inbox check groups
+
+The Inbox (`j`) lists, in this order: NEEDS YOU, FAILED CHECKS, COULD NOT RUN, JUST FINISHED,
+then HEADS UP, each heading with its count. A question is never below a check.
+
+- A group with no rows is not drawn, so a project with no check shows the Inbox it always had.
+- A Done session is finished (`check::finished`) only when it has no check or its check passed
+  or was overridden. It is not finished while checking, failed or could not run, so it is not
+  under JUST FINISHED. The home screen counts finished by the same rule. A session whose agent
+  is working or asking is not listed for its old result (see `check::shown`).
+- A failed check stays listed until a later run replaces it, even after you have looked at the
+  session. A could-not-run check is listed only until you look (`Del` marks it seen).
+- A row is the result glyph (the sidebar's), name, `agent · folder` and a relative age; line 2 is
+  the sidebar's result words; a failed row adds the first failing output line in `muted`.
+  Enter focuses the session, as on every other row. The selected failed row grows a line of buttons: Output `o`, Re-run `r`, Override… `O` (a confirm, as in the sheet). While a failed row is selected, those three letters act instead of starting a search.
+- Existing theme slots only. Code lives in `client/screen/check_inbox.rs`.
+
+## Project-specific: home screen check counters
+
+The home screen's "while you were away" line counts a session as finished by the Inbox's rule
+(`check::finished`: see Inbox check groups).
+A `✕ N check failed` (`N checks failed`) count follows, in `err`, only when N is above zero.
+When the line does not fit the width, the lead-in "while you were away" is dropped so no count
+is cut. A project with no check draws the line it always did. Code lives in `client/screen/splash.rs`.
 
 ## Project-specific: collapsed sidebar
 

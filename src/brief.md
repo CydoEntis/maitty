@@ -6,7 +6,9 @@ coordinating. The helpers do the work.
 
 Use seshi's tools if you have them (`seshi_list`, `seshi_start`, `seshi_send`,
 `seshi_wait`, `seshi_read`). If you don't, the same things are shell commands,
-shown below. Session numbers come from `seshi ls` or `seshi_list`.
+shown below. Session numbers come from `seshi ls` or `seshi_list`. A helper can read
+`done` and still carry a failed check (`claude: done · check failed (exit 1)`); that is not
+finished work.
 
 ## Split the goal
 
@@ -36,7 +38,8 @@ shown below. Session numbers come from `seshi ls` or `seshi_list`.
 ## Wait and read
 
 - Wait for a helper with `seshi_wait`, or `seshi wait --pane <n>`. It returns when the
-  helper finishes its turn or needs an answer.
+  helper finishes its turn or needs an answer. If the project has a check, it returns
+  after the check has run and says how it came out; a failed check is not finished work.
 - See where a helper is with `seshi_read`, or `seshi read <n>`.
 - Send a follow-up with `seshi_send`, or `seshi send --pane <n> --wait "<text>"`. Say
   what is wrong and what you want instead; don't repeat the whole task.

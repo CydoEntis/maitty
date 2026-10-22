@@ -471,10 +471,21 @@ pub(in crate::client) enum GoRow {
     Done(TermId),
     /// Two checkouts changed the same file (index into `heads_up`).
     Heads(usize),
+    /// One whose check failed: the result and the first failing output line.
+    Failed(TermId),
+    /// One whose check could not run: the work was never checked.
+    NotRun(TermId),
     Sess(usize, TermId),
 }
 
 impl GoRow {
+    pub fn term(&self) -> Option<TermId> {
+        match self {
+            GoRow::Ask(t) | GoRow::Done(t) | GoRow::Failed(t) | GoRow::NotRun(t) | GoRow::Sess(_, t) => Some(*t),
+            GoRow::Head(_) | GoRow::Heads(_) => None,
+        }
+    }
+
     pub fn pickable(&self) -> bool {
         !matches!(self, GoRow::Head(_))
     }
@@ -488,8 +499,18 @@ pub(in crate::client) fn goto_rows(model: &[Proj], q: &str, heads: usize) -> Vec
         let of = |st: Status| waiting.iter().filter(|(s, ..)| s.status == st).map(|(s, ..)| s.term).collect::<Vec<_>>();
         out.push(GoRow::Head("NEEDS YOU"));
         out.extend(of(Status::Blocked).into_iter().map(GoRow::Ask));
+        for (head, rows) in [
+            (check_inbox::FAILED_HEAD, check_inbox::rows(model, |r| matches!(r, GoRow::Failed(_)))),
+            (check_inbox::NOT_RUN_HEAD, check_inbox::rows(model, |r| matches!(r, GoRow::NotRun(_)))),
+        ] {
+            if !rows.is_empty() {
+                out.push(GoRow::Head(head));
+                out.extend(rows);
+            }
+        }
         out.push(GoRow::Head("JUST FINISHED"));
-        out.extend(of(Status::Done).into_iter().map(GoRow::Done));
+        let finished = waiting.iter().filter(|(s, ..)| check::finished(s));
+        out.extend(finished.map(|(s, ..)| GoRow::Done(s.term)));
         // Last: there can be dozens (every file two checkouts both changed), and they must
         // never stand between you and an agent that needs you or has finished.
         if heads > 0 {

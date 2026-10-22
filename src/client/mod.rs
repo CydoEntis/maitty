@@ -125,6 +125,8 @@ pub(super) enum View {
     Files(Box<views::FilesTree>),
     /// Both diffs of a file two checkouts changed (in the sheet).
     Both(Box<screen::BothView>),
+    /// A check's evidence (in the sheet).
+    Check(Box<screen::CheckView>),
 }
 
 /// Clickable chips and buttons.
@@ -653,7 +655,7 @@ impl App {
                     }
                     let frame = self.spinner_frame();
                     self.settle_alerts();
-                    if frame != last_frame && (self.any_working() || matches!(self.mode, Mode::Spinners(_))) {
+                    if frame != last_frame && (self.any_working() || self.any_checking() || matches!(self.mode, Mode::Spinners(_))) {
                         last_frame = frame;
                         self.dirty = true;
                     }
@@ -916,6 +918,11 @@ impl App {
 
     fn spinner_frame(&self) -> u64 {
         (self.started.elapsed().as_millis() / 90) as u64
+    }
+
+    /// A check's ring turns while it runs.
+    fn any_checking(&self) -> bool {
+        self.snap.terms.values().any(|term| term.check.as_ref().is_some_and(|c| c.state == crate::protocol::CheckState::Checking))
     }
 
     fn any_working(&self) -> bool {

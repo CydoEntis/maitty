@@ -66,6 +66,7 @@ mod design_tests {
             popup: false,
             usage: Default::default(),
             resume_at: None,
+            check: None,
         }
     }
 
@@ -3644,5 +3645,2202 @@ mod shots {
         let (_, mut app) = render_with(160, 45);
         app.splash = true;
         cells(&mut app, 160, 45, "01-splash", &dir);
+    }
+}
+
+mod check_row_tests {
+    use super::*;
+    use crate::layout::Node;
+    use crate::protocol::{CheckInfo, CheckState};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Position;
+    use ratatui::style::Modifier;
+
+    const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
+    /// (ui.layout, ui.panes): Cards floating, Cards tiled, Flat.
+    const LAYOUTS: [(&str, &str); 3] = [("cards", "floating"), ("cards", "tiled"), ("flat", "tiled")];
+    const NAME: &str = "t-row";
+    const COMMAND: &str = "just ci";
+    const EDGE_BAR: &str = "▎";
+
+    struct Case {
+        state: CheckState,
+        exit: Option<i32>,
+        glyph: &'static str,
+        plain: &'static str,
+        words: &'static str,
+    }
+
+    const CASES: [Case; 5] = [
+        Case { state: CheckState::Checking, exit: None, glyph: "◜", plain: "-", words: "checking" },
+        Case { state: CheckState::Passed, exit: Some(0), glyph: "✓", plain: "+", words: "✓ · 14.2s" },
+        Case { state: CheckState::Failed, exit: Some(1), glyph: "✕", plain: "x", words: "· exit 1" },
+        Case { state: CheckState::Overridden, exit: Some(1), glyph: "⊘", plain: "/", words: "✕ overridden by you" },
+        Case { state: CheckState::CouldNotRun, exit: Some(127), glyph: "?", plain: "?", words: "could not run" },
+    ];
+
+    fn now() -> u64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    }
+
+    fn info(state: CheckState, exit: Option<i32>) -> CheckInfo {
+        CheckInfo { command: COMMAND.into(), state, exit_code: exit, started_at: now() - 180, duration_ms: 14_200, ..Default::default() }
+    }
+
+    /// The shop-api scene plus one finished agent per entry of `extra`, each with its check.
+    fn scene(w: u16, h: u16, layout: (&str, &str), extra: &[(&str, Status, Option<CheckInfo>)]) -> App {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        (app.cfg.ui.layout, app.cfg.ui.panes) = (layout.0.into(), layout.1.into());
+        for (i, (label, status, check)) in extra.iter().enumerate() {
+            let id = 20 + i as TermId;
+            let mut t = app.snap.terms[&2].clone();
+            (t.id, t.label, t.status, t.check) = (id, (*label).into(), *status, check.clone());
+            app.snap.terms.insert(id, t);
+            app.snap.workspaces[0].tabs.push(TabInfo { id: 30 + id, name: String::new(), layout: Node::Leaf(id), focus: id });
+            app.parsers.insert(id, vt100::Parser::new(20, 80, 0));
+        }
+        app.screen.tabs.clear();
+        app.screen.last_focus = None;
+        app.screen_sync();
+        app.screen.cursor = None;
+        app
+    }
+
+    fn one(w: u16, h: u16, layout: (&str, &str), c: &Case) -> App {
+        scene(w, h, layout, &[(NAME, Status::Done, Some(info(c.state, c.exit)))])
+    }
+
+    fn render(app: &mut App, w: u16, h: u16) -> Buffer {
+        app.screen_fresh();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        term.backend().buffer().clone()
+    }
+
+    fn show(buf: &Buffer, title: &str) {
+        if std::env::var("SESHI_SHOW").is_ok() {
+            println!("--- {title}");
+            for y in 0..buf.area.height {
+                println!("{}", (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect::<String>().trim_end());
+            }
+        }
+    }
+
+    fn side_text(buf: &Buffer, app: &App, y: u16) -> String {
+        let r = app.screen.side_rect;
+        (r.x..r.right()).map(|x| buf[(x, y)].symbol()).collect()
+    }
+
+    fn row_of(buf: &Buffer, app: &App, name: &str) -> u16 {
+        (0..buf.area.height).find(|&y| side_text(buf, app, y).contains(name)).unwrap_or_else(|| panic!("no sidebar row named {name}"))
+    }
+
+    fn cell_with<'a>(buf: &'a Buffer, app: &App, y: u16, symbol: &str) -> &'a ratatui::buffer::Cell {
+        let r = app.screen.side_rect;
+        (r.x..r.right()).map(|x| &buf[(x, y)]).find(|c| c.symbol() == symbol).unwrap_or_else(|| panic!("no {symbol} on row {y}"))
+    }
+
+    fn label(layout: (&str, &str), w: u16, h: u16) -> String {
+        format!("{}/{} {w}x{h}", layout.0, layout.1)
+    }
+
+    /// The home screen's counters line.
+    fn away_line(buf: &Buffer) -> String {
+        let rows = (0..buf.area.height).map(|y| (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect::<String>());
+        rows.map(|r| r.trim().to_string()).find(|r| r.contains("need you") && r.contains("still working")).expect("the counters line")
+    }
+
+    fn splash_line(w: u16, h: u16, layout: (&str, &str), extra: &[(&str, Status, Option<CheckInfo>)]) -> String {
+        let mut app = scene(w, h, layout, extra);
+        app.splash = true;
+        let buf = render(&mut app, w, h);
+        show(&buf, &format!("splash {}", label(layout, w, h)));
+        away_line(&buf)
+    }
+
+    #[test]
+    fn the_home_counters_do_not_call_a_checking_or_failed_session_finished() {
+        let extra = [
+            ("t-failed", Status::Done, Some(info(CheckState::Failed, Some(1)))),
+            ("t-running", Status::Done, Some(info(CheckState::Checking, None))),
+            ("t-passed", Status::Done, Some(info(CheckState::Passed, Some(0)))),
+            ("t-plain", Status::Done, None),
+        ];
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let line = splash_line(w, h, layout, &extra);
+                let at = format!("{}: {line}", label(layout, w, h));
+                assert!(line.contains("2 finished"), "only the passed and the unchecked finished: {at}");
+                assert!(line.contains("1 check failed"), "{at}");
+                assert!(line.contains("1 need you") && line.contains("1 still working"), "{at}");
+                assert!(unicode_width::UnicodeWidthStr::width(line.as_str()) <= w as usize, "{at}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_lead_in_gives_way_to_a_failed_check_count_when_the_line_is_too_wide() {
+        let failed = [("t-failed", Status::Done, Some(info(CheckState::Failed, Some(1))))];
+        for layout in LAYOUTS {
+            let narrow = splash_line(80, 24, layout, &failed);
+            let at = format!("{}: {narrow}", label(layout, 80, 24));
+            assert!(!narrow.contains("while you were away"), "{at}");
+            assert!(narrow.contains("1 check failed") && narrow.contains("0 finished") && narrow.contains("1 need you"), "{at}");
+            assert!(unicode_width::UnicodeWidthStr::width(narrow.as_str()) <= 80, "{at}");
+            let wide = splash_line(100, 30, layout, &failed);
+            assert!(wide.starts_with("while you were away") && wide.contains("1 check failed"), "{}: {wide}", label(layout, 100, 30));
+        }
+    }
+
+    #[test]
+    fn a_failed_check_count_shows_only_above_zero_and_counts_each() {
+        for layout in LAYOUTS {
+            let at = label(layout, 80, 24);
+            let ok = [("t-passed", Status::Done, Some(info(CheckState::Passed, Some(0)))), ("t-late", Status::Done, Some(info(CheckState::Overridden, Some(1))))];
+            let line = splash_line(80, 24, layout, &ok);
+            assert!(!line.contains("check") && line.contains("2 finished"), "{at}: {line}");
+            let two = [("t-a", Status::Done, Some(info(CheckState::Failed, Some(1)))), ("t-b", Status::Done, Some(info(CheckState::Failed, Some(2))))];
+            let line = splash_line(80, 24, layout, &two);
+            assert!(line.contains("2 checks failed") && line.contains("0 finished"), "{at}: {line}");
+        }
+    }
+
+    #[test]
+    fn a_project_with_no_check_keeps_its_home_counters_as_they_were() {
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let line = splash_line(w, h, layout, &[("t-plain", Status::Done, None)]);
+                assert_eq!(line, "while you were away   ● 1 need you   ⣾ 1 still working   ● 1 finished", "{}", label(layout, w, h));
+            }
+        }
+    }
+
+    #[test]
+    fn each_state_shows_its_glyph_and_words_in_every_layout_and_size() {
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                for c in &CASES {
+                    let mut app = one(w, h, layout, c);
+                    let buf = render(&mut app, w, h);
+                    show(&buf, &format!("{} {:?}", label(layout, w, h), c.state));
+                    let y = row_of(&buf, &app, NAME);
+                    let at = label(layout, w, h);
+                    assert!(side_text(&buf, &app, y).contains(c.glyph), "{at} {:?}: glyph {} on {:?}", c.state, c.glyph, side_text(&buf, &app, y));
+                    if w >= screen::NARROW {
+                        assert!(side_text(&buf, &app, y + 1).contains(c.words), "{at} {:?}: {:?} under the row, got {:?}", c.state, c.words, side_text(&buf, &app, y + 1));
+                    } else {
+                        let all: String = (0..h).map(|y| side_text(&buf, &app, y)).collect();
+                        assert!(!all.contains(COMMAND), "{at} {:?}: the narrow sidebar drops the sub-line", c.state);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn glyphs_use_existing_theme_slots_only() {
+        let (w, h) = (160, 45);
+        for layout in LAYOUTS {
+            for c in &CASES {
+                let mut app = one(w, h, layout, c);
+                let buf = render(&mut app, w, h);
+                let t = app.theme.clone();
+                let want = match c.state {
+                    CheckState::Checking => t.sky(),
+                    CheckState::Passed => t.done,
+                    CheckState::Failed => t.err,
+                    CheckState::Overridden => t.text,
+                    CheckState::CouldNotRun => t.muted,
+                };
+                let y = row_of(&buf, &app, NAME);
+                let cell = cell_with(&buf, &app, y, c.glyph);
+                assert_eq!(cell.fg, want, "{} {:?}", label(layout, w, h), c.state);
+                if c.state == CheckState::Failed {
+                    assert!(cell.modifier.contains(Modifier::BOLD), "failed is bold");
+                }
+                if c.state == CheckState::Overridden {
+                    assert_ne!(cell.fg, t.done, "an override is never green");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_failed_row_has_a_red_edge_bar_on_both_lines_and_no_other_state_does() {
+        let (w, h) = (160, 45);
+        for layout in LAYOUTS {
+            for c in &CASES {
+                let mut app = one(w, h, layout, c);
+                let buf = render(&mut app, w, h);
+                let y = row_of(&buf, &app, NAME);
+                let bar_x = app.screen.side_rect.x + 1;
+                for line in [y, y + 1] {
+                    let cell = &buf[(bar_x, line)];
+                    let red = cell.symbol() == EDGE_BAR && cell.fg == app.theme.err;
+                    assert_eq!(red, c.state == CheckState::Failed, "{} {:?} line {line}: {:?}", label(layout, w, h), c.state, cell.symbol());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn failed_and_needs_you_differ_in_glyph_and_word_without_colour() {
+        let (w, h) = (160, 45);
+        let failed = info(CheckState::Failed, Some(1));
+        let mut app = scene(w, h, ("cards", "floating"), &[("t-bad", Status::Done, Some(failed)), ("t-ask", Status::Blocked, None)]);
+        let buf = render(&mut app, w, h);
+        let (bad, ask) = (row_of(&buf, &app, "t-bad"), row_of(&buf, &app, "t-ask"));
+        let (bad_line, ask_line) = (side_text(&buf, &app, bad), side_text(&buf, &app, ask));
+        assert!(bad_line.contains('✕') && !bad_line.contains('●'), "{bad_line:?}");
+        assert!(ask_line.contains('●') && !ask_line.contains('✕'), "{ask_line:?}");
+        assert!(side_text(&buf, &app, bad + 1).contains("failed:"), "failed says so in words");
+        assert!(!side_text(&buf, &app, bad + 1).contains("needs you"));
+    }
+
+    #[test]
+    fn a_check_stays_under_its_own_row_when_sessions_sit_in_different_folders() {
+        for layout in LAYOUTS {
+            for (w, h) in [(100, 30), (160, 45)] {
+                let failed = info(CheckState::Failed, Some(1));
+                let mut app = scene(w, h, layout, &[("t-far", Status::Done, Some(failed)), ("t-bare", Status::Done, None)]);
+                let far = app.snap.terms.get_mut(&20).unwrap();
+                (far.root, far.top, far.cwd) = (None, None, std::path::PathBuf::from("/tmp/elsewhere"));
+                app.screen_sync();
+                let buf = render(&mut app, w, h);
+                show(&buf, &format!("grouped {}", label(layout, w, h)));
+                let at = label(layout, w, h);
+                let (far_y, bare_y) = (row_of(&buf, &app, "t-far"), row_of(&buf, &app, "t-bare"));
+                assert!(side_text(&buf, &app, far_y).contains('✕'), "{at}: glyph on its own row");
+                let wide = w >= screen::NARROW;
+                assert_eq!(side_text(&buf, &app, far_y + 1).contains("failed:"), wide, "{at}: sub-line directly under it, wide only");
+                let bar_x = app.screen.side_rect.x + 1;
+                for line in if wide { vec![far_y, far_y + 1] } else { vec![far_y] } {
+                    assert_eq!(buf[(bar_x, line)].symbol(), EDGE_BAR, "{at}: edge bar on line {line}");
+                }
+                let all: String = (bare_y..bare_y + 2).map(|y| side_text(&buf, &app, y)).collect();
+                assert!(!all.contains("failed:") && !all.contains(COMMAND), "{at}: a session with no check has no sub-line: {all:?}");
+                assert_ne!(buf[(bar_x, bare_y)].fg, app.theme.err, "{at}: no red bar on a session with no check");
+            }
+        }
+    }
+
+    #[test]
+    fn plain_icons_use_the_ascii_check_glyphs() {
+        let (w, h) = (160, 45);
+        for c in &CASES {
+            let mut app = one(w, h, ("cards", "floating"), c);
+            (app.cfg.icons.blocked, app.cfg.icons.done, app.cfg.icons.idle) = ("!".into(), "+".into(), "o".into());
+            let buf = render(&mut app, w, h);
+            let y = row_of(&buf, &app, NAME);
+            let (top, sub) = (side_text(&buf, &app, y), side_text(&buf, &app, y + 1));
+            assert!(top.contains(c.plain), "{:?}: {} on {top:?}", c.state, c.plain);
+            let unicode = ["◜", "✓", "✕", "⊘"];
+            assert!(!unicode.iter().any(|g| top.contains(g) || sub.contains(g)), "{:?}: no Unicode marks left: {top:?} {sub:?}", c.state);
+        }
+    }
+
+    #[test]
+    fn the_collapsed_rail_shows_the_same_glyphs() {
+        let (w, h) = (160, 45);
+        for layout in LAYOUTS {
+            for c in &CASES {
+                let mut app = one(w, h, layout, c);
+                app.sidebar = false;
+                app.side_frac = 0.0;
+                let buf = render(&mut app, w, h);
+                show(&buf, &format!("rail {} {:?}", label(layout, w, h), c.state));
+                let r = app.screen.side_rect;
+                let found = (r.y..r.bottom()).any(|y| (r.x..r.right()).any(|x| buf[(x, y)].symbol() == c.glyph));
+                assert!(found, "{} {:?}: {} in the rail", label(layout, w, h), c.state, c.glyph);
+            }
+        }
+    }
+
+    #[test]
+    fn a_project_without_a_check_renders_as_before() {
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let mut none = scene(w, h, layout, &[(NAME, Status::Done, None)]);
+                let plain = render(&mut none, w, h);
+                show(&plain, &format!("no check {}", label(layout, w, h)));
+                let all: String = (0..h).map(|y| side_text(&plain, &none, y)).collect();
+                assert!(!all.contains(COMMAND) && !all.contains('⊘') && !all.contains('✕'), "{}", label(layout, w, h));
+                // A result about a turn that is no longer the last one is not drawn.
+                for status in [Status::Working, Status::Blocked] {
+                    let failed = Some(info(CheckState::Failed, Some(1)));
+                    let mut app = scene(w, h, layout, &[(NAME, status, failed)]);
+                    let mut bare = scene(w, h, layout, &[(NAME, status, None)]);
+                    assert_eq!(render(&mut app, w, h), render(&mut bare, w, h), "{} {status:?}", label(layout, w, h));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_narrow_sidebar_drops_the_words_before_the_glyph_and_keeps_the_folder_name() {
+        let (w, h) = (80, 24);
+        for layout in LAYOUTS {
+            let mut app = one(w, h, layout, &CASES[2]);
+            let buf = render(&mut app, w, h);
+            let y = row_of(&buf, &app, NAME);
+            assert!(side_text(&buf, &app, y).contains('✕'), "the glyph stays");
+            assert!(!side_text(&buf, &app, y + 1).contains("failed"), "the sub-line goes");
+            assert!(side_text(&buf, &app, row_of(&buf, &app, "shop-api")).contains("shop-api"), "{}: folder name whole", label(layout, w, h));
+        }
+    }
+
+    #[test]
+    fn a_running_check_keeps_the_redraw_tick_going() {
+        let mut app = one(160, 45, LAYOUTS[0], &CASES[0]);
+        assert!(app.any_checking(), "a check in progress animates its ring");
+        for c in &CASES[1..] {
+            app = one(160, 45, LAYOUTS[0], c);
+            assert!(!app.any_checking(), "{:?} is finished and needs no tick", c.state);
+        }
+        assert!(!scene(160, 45, LAYOUTS[0], &[(NAME, Status::Done, None)]).any_checking());
+    }
+
+    #[test]
+    fn a_narrow_check_adds_no_row() {
+        const AFTER: &str = "after-agent";
+        for layout in LAYOUTS {
+            for (w, h) in [(80, 24), (100, 30)] {
+                let at = label(layout, w, h);
+                let rows = |check: Option<CheckInfo>| {
+                    let mut app = scene(w, h, layout, &[(NAME, Status::Done, check), (AFTER, Status::Done, None)]);
+                    let buf = render(&mut app, w, h);
+                    (row_of(&buf, &app, AFTER), app.screen.row_y.len())
+                };
+                let with = rows(Some(info(CheckState::Failed, Some(1))));
+                assert_eq!(with, rows(None), "{at}: a checked session takes the same rows as an unchecked one");
+            }
+        }
+    }
+
+    #[test]
+    fn selected_and_hovered_check_rows_tint_both_lines() {
+        let (w, h) = (160, 45);
+        for layout in LAYOUTS {
+            let mut app = one(w, h, layout, &CASES[2]);
+            app.mode = Mode::Side;
+            app.screen.cursor = Some(20);
+            let buf = render(&mut app, w, h);
+            show(&buf, &format!("selected {}", label(layout, w, h)));
+            let y = row_of(&buf, &app, NAME);
+            let x = app.screen.side_rect.x + 10;
+            assert_eq!(buf[(x, y)].bg, buf[(x, y + 1)].bg, "{}: one tint over both lines", label(layout, w, h));
+            assert_ne!(buf[(x, y)].bg, buf[(x, y + 3)].bg, "{}: and not the rows below", label(layout, w, h));
+
+            let mut app = one(w, h, layout, &CASES[1]);
+            app.hover = Some(Position { x: app.screen.side_rect.x + 10, y });
+            let buf = render(&mut app, w, h);
+            show(&buf, &format!("hovered {}", label(layout, w, h)));
+            assert_eq!(buf[(x, y)].bg, buf[(x, y + 1)].bg, "{}: hover tints both lines", label(layout, w, h));
+        }
+    }
+
+    #[test]
+    fn a_long_command_gives_way_so_the_exit_code_still_reads() {
+        let (w, h) = (160, 45);
+        let mut long = info(CheckState::Failed, Some(1));
+        long.command = "npm run test:unit -- --coverage".into();
+        let mut app = scene(w, h, ("cards", "floating"), &[(NAME, Status::Done, Some(long))]);
+        let buf = render(&mut app, w, h);
+        let sub = side_text(&buf, &app, row_of(&buf, &app, NAME) + 1);
+        assert!(sub.contains("failed: ") && sub.contains("exit 1") && sub.contains('…'), "{sub:?}");
+    }
+}
+
+mod check_why_tests {
+    use super::*;
+    use crate::protocol::{CheckInfo, CheckState};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
+
+    fn now() -> u64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+    }
+
+    fn turn_ended() -> u64 {
+        now() - 3_000
+    }
+
+    fn check(state: CheckState, exit_code: Option<i32>) -> CheckInfo {
+        CheckInfo {
+            command: "npm test".into(),
+            state,
+            exit_code,
+            started_at: turn_ended() + 14,
+            duration_ms: 14_200,
+            after_turn_ended_at: turn_ended(),
+            first_failing_line: "1 of 59 tests failed".into(),
+            ..Default::default()
+        }
+    }
+
+    fn draw(app: &mut App, w: u16, h: u16) -> String {
+        app.screen_fresh();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let frame: String = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>().trim_end().to_string() + "\n").collect();
+        // Keycap edges are private-use glyphs a reader doesn't see.
+        frame.replace(|c| ('\u{e000}'..='\u{f8ff}').contains(&c), "")
+    }
+
+    fn show(s: &str) {
+        if std::env::var("SESHI_SHOW").is_ok() {
+            println!("{s}");
+        }
+    }
+
+    type Layout = fn(&mut App);
+
+    fn layouts() -> [(&'static str, Layout); 3] {
+        [
+            ("cards floating", |a| a.cfg.ui.panes = "floating".into()),
+            ("cards tiled", |a| a.cfg.ui.panes = "tiled".into()),
+            ("flat", |a| a.cfg.ui.layout = "flat".into()),
+        ]
+    }
+
+    fn app_with(w: u16, h: u16, layout: Layout, check: Option<CheckInfo>) -> App {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        layout(&mut app);
+        let info = app.snap.terms.get_mut(&1).unwrap();
+        info.said = "done".into();
+        info.check = check;
+        app.mode = Mode::Why { term: 1, side: false };
+        app
+    }
+
+    #[test]
+    fn a_failed_check_reads_as_a_timeline_in_every_layout_at_every_size() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let mut app = app_with(w, h, layout, Some(check(CheckState::Failed, Some(1))));
+                let o = draw(&mut app, w, h);
+                show(&o);
+                let at = format!("{name} {w}x{h}");
+                // Flat pads keycaps with spaces where cards use edge glyphs.
+                let text = o.split_whitespace().collect::<Vec<_>>().join(" ");
+                for want in [
+                    "agent's turn ended · it said \"done\"",
+                    "Seshi ran npm test in its worktree",
+                    "✕ exit 1 after 14.2s",
+                    "m ago",
+                    "Esc close",
+                    "◂",
+                ] {
+                    assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
+                }
+                // A narrow popover drops the trailing keys whole rather than clip one.
+                let all = ["⏎ evidence", "r re-run", "O override"].iter().filter(|k| text.contains(*k)).count();
+                assert!(w < 100 || all == 3, "{at}: every key shows when there is room");
+                assert!(!text.contains("O override") || all == 3, "{at}: no half-drawn key");
+                assert!(text.contains("⏎ evidence") || !text.contains("r re-run"), "{at}: keys drop from the end");
+                assert!(!o.contains("most specific source wins"), "{at}: the check replaces the source rows");
+                assert!(o.lines().count() <= h as usize && o.lines().all(|l| l.chars().count() <= w as usize), "{at}: fits the screen");
+                app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                assert!(app.mode == Mode::Normal, "{at}: Esc closes it");
+            }
+        }
+    }
+
+    #[test]
+    fn the_longest_timeline_line_is_cut_at_the_card_edge_at_80x24() {
+        for (name, layout) in layouts() {
+            let mut app = app_with(80, 24, layout, Some(check(CheckState::Failed, Some(1))));
+            app.snap.terms.get_mut(&1).unwrap().said = "x".repeat(200);
+            let o = draw(&mut app, 80, 24);
+            show(&o);
+            let line = o.lines().find(|l| l.contains("agent's turn ended")).unwrap_or_else(|| panic!("{name}: no turn line in\n{o}"));
+            assert!(line.chars().count() <= 80, "{name}: the line stays on screen");
+            assert!(!line.contains(&"x".repeat(200)), "{name}: the long quote is cut");
+            assert!(line.contains("x…"), "{name}: the cut ends in an ellipsis: {line:?}");
+            let hints = o.lines().find(|l| l.contains("Esc")).unwrap_or_else(|| panic!("{name}: Esc hint clipped in\n{o}"));
+            let words = hints.split_whitespace().collect::<Vec<_>>().join(" ");
+            assert!(words.contains("Esc close"), "{name}: the Esc hint is cut: {hints:?}");
+        }
+    }
+
+    #[test]
+    fn a_check_with_no_start_time_shows_no_finish_time() {
+        let mut c = check(CheckState::Failed, Some(1));
+        c.started_at = 0;
+        let mut app = app_with(100, 30, |_| {}, Some(c));
+        let o = draw(&mut app, 100, 30);
+        let line = o.lines().find(|l| l.contains("✕ exit 1")).unwrap();
+        assert!(!line.contains("ago"), "no time for a run that never recorded its start: {line:?}");
+    }
+
+    #[test]
+    fn hints_show_only_the_keys_that_apply_to_the_result() {
+        let hints = |state, code| {
+            let mut app = app_with(100, 30, |_| {}, Some(check(state, code)));
+            draw(&mut app, 100, 30)
+        };
+        let passed = hints(CheckState::Passed, Some(0));
+        assert!(passed.contains("✓ exit 0 after 14.2s") && passed.contains("⏎ evidence") && passed.contains("r re-run"));
+        assert!(!passed.contains("O override"), "only a failure can be overridden");
+        let running = hints(CheckState::Checking, None);
+        assert!(running.contains("Seshi ran npm test") && running.contains("checking"));
+        assert!(!running.contains("⏎ evidence") && !running.contains("r re-run") && !running.contains("O override"));
+        let missing = hints(CheckState::CouldNotRun, Some(127));
+        assert!(missing.contains("? could not run · exit 127") && missing.contains("r re-run") && !missing.contains("O override"));
+    }
+
+    #[test]
+    fn an_override_and_a_queued_re_run_stay_visible() {
+        let mut c = check(CheckState::Overridden, Some(1));
+        c.overridden_at = Some(turn_ended() + 60);
+        c.override_reason = "flaky".into();
+        c.rerun_queued = true;
+        let mut app = app_with(100, 30, |_| {}, Some(c));
+        let o = draw(&mut app, 100, 30);
+        show(&o);
+        assert!(o.contains("✕ exit 1 after 14.2s") && o.contains("⊘ overridden by you · flaky") && o.contains("runs again when this turn settles"));
+        assert!(!o.contains("O override"), "an overridden result is not overridden twice");
+    }
+
+    #[test]
+    fn a_session_with_no_check_shows_the_popover_as_before() {
+        for (name, layout) in layouts() {
+            let mut app = app_with(100, 30, layout, None);
+            let plain = draw(&mut app, 100, 30);
+            assert!(plain.contains("Status uncertain") && plain.contains("most specific source wins"), "{name}");
+            assert!(!plain.contains("evidence") && !plain.contains("Seshi ran"), "{name}: no check text anywhere");
+            app.snap.terms.get_mut(&1).unwrap().check = Some(check(CheckState::Failed, Some(1)));
+            assert_ne!(draw(&mut app, 100, 30), plain, "{name}: a check changes it");
+            app.snap.terms.get_mut(&1).unwrap().check = None;
+            assert_eq!(draw(&mut app, 100, 30), plain, "{name}: with no check it is the same frame");
+        }
+    }
+}
+
+mod check_sheet_tests {
+    use super::*;
+    use crate::protocol::{CheckInfo, CheckState, Query, Reply};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
+    use ratatui::style::Color;
+
+    const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
+    const TERM: TermId = 1;
+    /// The sheet's widths: beside the panes, and from 200 columns.
+    const SHEET_W: u16 = 72;
+    const SHEET_W_WIDE: u16 = 96;
+    const SHORT_OUTPUT: &str = "✓ renders the footer\n✓ links resolve\n✗ keeps the sticky footer\nError: expected 3 got 2\n";
+
+    fn now() -> u64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+    }
+
+    fn check(state: CheckState, exit_code: Option<i32>) -> CheckInfo {
+        CheckInfo {
+            command: "npm test".into(),
+            state,
+            exit_code,
+            started_at: now() - 600,
+            duration_ms: 14_200,
+            after_turn_ended_at: now() - 620,
+            first_failing_line: "Error: expected 3 got 2".into(),
+            ..Default::default()
+        }
+    }
+
+    type Layout = fn(&mut App);
+
+    fn layouts() -> [(&'static str, Layout); 3] {
+        [
+            ("cards floating", |a| a.cfg.ui.panes = "floating".into()),
+            ("cards tiled", |a| a.cfg.ui.panes = "tiled".into()),
+            ("flat", |a| a.cfg.ui.layout = "flat".into()),
+        ]
+    }
+
+    /// Session 1 finished, with `check`; its sheet open and its output arrived.
+    fn open(w: u16, h: u16, layout: Layout, info: CheckInfo, output: Option<&str>) -> App {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        layout(&mut app);
+        let term = app.snap.terms.get_mut(&TERM).unwrap();
+        (term.status, term.said, term.check) = (Status::Done, "tests pass".into(), Some(info));
+        app.screen_sync();
+        app.open_check_sheet(TERM);
+        if let Some(text) = output {
+            app.on_server(ServerMsg::Reply(Reply::Text(text.into())));
+        }
+        app
+    }
+
+    fn render(app: &mut App, w: u16, h: u16) -> Buffer {
+        app.screen_fresh();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        term.backend().buffer().clone()
+    }
+
+    fn frame(buf: &Buffer) -> String {
+        let a = buf.area;
+        let text: String = (0..a.height).map(|y| (0..a.width).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>().trim_end().to_string() + "\n").collect();
+        // Keycap edges are private-use glyphs a reader doesn't see.
+        text.replace(|c| ('\u{e000}'..='\u{f8ff}').contains(&c), "")
+    }
+
+    fn draw(app: &mut App, w: u16, h: u16) -> String {
+        let o = frame(&render(app, w, h));
+        if std::env::var("SESHI_SHOW").is_ok() {
+            println!("{o}");
+        }
+        o
+    }
+
+    /// Flat pads keycaps with spaces where cards use edge glyphs.
+    fn words(o: &str) -> String {
+        o.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    /// Only the sheet's columns, read top to bottom, so a line it wrapped reads whole and the
+    /// sidebar beside it does not interleave.
+    fn sheet_words(app: &mut App, w: u16, h: u16) -> String {
+        let o = draw(app, w, h);
+        let g = screen::grid(app, Rect::new(0, 0, w, h));
+        let cols: String = o.lines().map(|l| l.chars().skip(g.sheet.x as usize).take(g.sheet.width as usize).collect::<String>() + "\n").collect();
+        words(&cols.replace(['▕', '▏', '▁', '▔', '│', '┃', '▎'], " "))
+    }
+
+    fn fg_at(buf: &Buffer, needle: &str) -> Color {
+        let a = buf.area;
+        for y in 0..a.height {
+            let row: Vec<String> = (0..a.width).map(|x| buf[(x, y)].symbol().to_string()).collect();
+            let line = row.concat();
+            if let Some(at) = line.find(needle) {
+                return buf[(line[..at].chars().count() as u16, y)].fg;
+            }
+        }
+        panic!("no {needle:?} on screen in\n{}", frame(buf));
+    }
+
+    fn press(app: &mut App, code: KeyCode) {
+        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    fn sent(rx: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Vec<ClientMsg> {
+        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    }
+
+    fn long_output(n: usize) -> String {
+        (1..=n).map(|i| format!("line {i}\n")).collect()
+    }
+
+    #[test]
+    fn a_failed_result_shows_its_chip_rows_and_numbered_output_in_every_layout_at_every_size() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let at = format!("{name} {w}x{h}");
+                let mut app = open(w, h, layout, check(CheckState::Failed, Some(1)), Some(SHORT_OUTPUT));
+                let buf = render(&mut app, w, h);
+                let o = draw(&mut app, w, h);
+                let text = sheet_words(&mut app, w, h);
+                for want in [
+                    "Check ·",
+                    "✕ failed",
+                    "exit 1",
+                    "Command npm test",
+                    "Folder",
+                    "Ran 10m ago · took 14.2s · after the turn ended 10m ago",
+                    "Seen by Seshi ran this itself. The agent said \"tests pass\".",
+                    "OUTPUT all 4 lines",
+                    "1 ✓ renders the footer",
+                    "4 Error: expected 3 got 2",
+                    "Re-run r",
+                    "Override… O",
+                ] {
+                    assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
+                }
+                assert!(o.lines().count() <= h as usize && o.lines().all(|l| l.chars().count() <= w as usize), "{at}: fits the screen");
+                assert_eq!(fg_at(&buf, "✓ renders the footer"), app.theme.done, "{at}: passing lines are done-green");
+                assert_eq!(fg_at(&buf, "Error: expected 3 got 2"), app.theme.err, "{at}: error lines are err");
+                assert_eq!(fg_at(&buf, "✗ keeps the sticky footer"), app.theme.err, "{at}: ✗ lines are err");
+                assert_eq!(fg_at(&buf, "links resolve"), app.theme.done, "{at}: the whole line");
+            }
+        }
+    }
+
+    #[test]
+    fn a_long_command_truncates_the_sheet_title_once_in_every_layout_at_every_size() {
+        let command = "echo start; then echo ok; echo more output here; and keep going until the line is far wider than the sheet";
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let at = format!("{name} {w}x{h}");
+                let mut info = check(CheckState::Failed, Some(1));
+                info.command = command.into();
+                let mut app = open(w, h, layout, info, Some(SHORT_OUTPUT));
+                let o = draw(&mut app, w, h);
+                let g = screen::grid(&app, Rect::new(0, 0, w, h));
+                let header = o
+                    .lines()
+                    .map(|l| l.chars().skip(g.sheet.x as usize).take(g.sheet.width as usize).collect::<String>())
+                    .find(|l| l.contains("Check ·"))
+                    .unwrap_or_else(|| panic!("{at}: no title row in\n{o}"));
+                let (head, tail) = header.split_once('…').unwrap_or_else(|| panic!("{at}: the title is cut, so it ends in …: {header:?}"));
+                assert!(head.contains("› echo start; then"), "{at}: the command's start follows the session: {header:?}");
+                assert!(!tail.contains('…'), "{at}: one ellipsis: {header:?}");
+                assert!(tail.trim_matches(|c: char| c == ' ' || "─╮▁▔".contains(c)).trim() == "✕", "{at}: only the close follows the ellipsis, got {tail:?} in {header:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_sheet_keeps_the_sidebars_foot_and_waits_for_output_it_has_not_got() {
+        let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), None);
+        let o = draw(&mut app, 160, 45);
+        assert!(o.contains("+ new") && o.contains("actions"), "the foot stays");
+        assert!(o.contains("reading the output"), "no output yet:\n{o}");
+    }
+
+    #[test]
+    fn long_output_shows_the_tail_that_fits_and_f_opens_all_of_it() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let at = format!("{name} {w}x{h}");
+                let mut app = open(w, h, layout, check(CheckState::Failed, Some(1)), Some(&long_output(200)));
+                let o = draw(&mut app, w, h);
+                let text = sheet_words(&mut app, w, h);
+                assert!(text.contains("of 200 lines") && text.contains("last ") && text.contains("f full output"), "{at}: the tail header in\n{o}");
+                assert!(text.contains("200 line 200"), "{at}: the end is shown, numbered");
+                assert!(!text.contains(" 1 line 1 "), "{at}: the start is not");
+                assert!(text.contains('▲'), "{at}: more above");
+                press(&mut app, KeyCode::Char('f'));
+                let full = draw(&mut app, w, h);
+                assert!(words(&full).contains("1 line 1 "), "{at}: f shows from the top:\n{full}");
+                assert!(!words(&full).contains("200 line 200"), "{at}: and scrolls");
+                press(&mut app, KeyCode::PageDown);
+                press(&mut app, KeyCode::Down);
+                let moved = draw(&mut app, w, h);
+                assert!(!words(&moved).contains(" 1 line 1 "), "{at}: ↓ and PageDown scroll");
+                press(&mut app, KeyCode::Up);
+                press(&mut app, KeyCode::PageUp);
+                assert!(sheet_words(&mut app, w, h).contains("1 line 1 "), "{at}: ↑ and PageUp come back");
+                for _ in 0..40 {
+                    press(&mut app, KeyCode::PageDown);
+                }
+                assert!(sheet_words(&mut app, w, h).contains("200 line 200"), "{at}: scrolling stops at the end");
+                press(&mut app, KeyCode::Char('f'));
+                assert!(sheet_words(&mut app, w, h).contains("last "), "{at}: f again is the tail");
+            }
+        }
+    }
+
+    #[test]
+    fn an_arrow_on_the_tail_scrolls_from_where_the_tail_starts() {
+        let mut app = open(100, 30, |_| {}, check(CheckState::Failed, Some(1)), Some(&long_output(200)));
+        draw(&mut app, 100, 30);
+        press(&mut app, KeyCode::Up);
+        let o = sheet_words(&mut app, 100, 30);
+        assert!(o.contains("200 line 200") || o.contains("199 line 199"), "one line up from the tail still shows nearly the end: {o}");
+        assert!(!o.contains(" 1 line 1 "));
+    }
+
+    #[test]
+    fn empty_output_says_so_and_what_passed_it() {
+        for (name, layout) in layouts() {
+            let mut app = open(100, 30, layout, check(CheckState::Passed, Some(0)), Some(""));
+            let text = sheet_words(&mut app, 100, 30);
+            assert!(text.contains("✓ passed") && text.contains("exit 0"), "{name}");
+            assert!(text.contains("(the command printed nothing)") && text.contains("exit 0 is what passed it."), "{name}: {text}");
+            assert!(!text.contains("Override") && !text.contains("lines"), "{name}: a pass has nothing to override");
+            let mut failed = open(100, 30, layout, check(CheckState::Failed, Some(2)), Some("\n"));
+            let text = sheet_words(&mut failed, 100, 30);
+            assert!(text.contains("(the command printed nothing)") && !text.contains("what passed it"), "{name}");
+        }
+    }
+
+    #[test]
+    fn an_override_shows_its_banner_with_the_failing_output_still_below() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let mut info = check(CheckState::Overridden, Some(1));
+                info.overridden_at = Some(now() - 120);
+                info.override_reason = "flaky on CI".into();
+                let mut app = open(w, h, layout, info, Some(SHORT_OUTPUT));
+                let text = sheet_words(&mut app, w, h);
+                for want in ["⊘ overridden", "⊘ Overridden by you 2m ago", "flaky on CI", "u undo", "next run replaces this", "Error: expected 3 got 2", "exit 1"] {
+                    assert!(text.contains(want), "{name} {w}x{h}: missing {want:?} in {text}");
+                }
+                assert!(!text.contains("Override… O"), "{name} {w}x{h}: it is not overridden twice");
+            }
+        }
+    }
+
+    #[test]
+    fn could_not_run_says_it_is_not_a_test_failure() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let mut info = check(CheckState::CouldNotRun, Some(127));
+                info.command = "pnpm test".into();
+                let mut app = open(w, h, layout, info, Some("sh: pnpm: not found\n"));
+                let text = sheet_words(&mut app, w, h);
+                for want in ["? could not run", "exit 127", "Not a test failure. The work hasn't been checked.", "install pnpm, then r", "sh: pnpm: not found"] {
+                    assert!(text.contains(want), "{name} {w}x{h}: missing {want:?} in {text}");
+                }
+                assert!(!text.contains("✕ failed") && !text.contains("Override… O"), "{name} {w}x{h}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_sheet_takes_the_pane_column_below_140_columns_and_is_wider_from_200() {
+        for (name, layout) in layouts() {
+            let sheet = |w: u16, h: u16| {
+                let mut app = open(w, h, layout, check(CheckState::Failed, Some(1)), Some(SHORT_OUTPUT));
+                draw(&mut app, w, h);
+                let g = screen::grid(&app, Rect::new(0, 0, w, h));
+                (g.sheet.width, g.panes.width)
+            };
+            let (narrow, left) = sheet(100, 30);
+            assert!(narrow > 0 && left == 0, "{name}: at 100 columns the sheet is the pane column");
+            assert_eq!(sheet(160, 45).0, SHEET_W, "{name}");
+            assert_eq!(sheet(200, 50).0, SHEET_W_WIDE, "{name}");
+            let mut app = open(100, 30, layout, check(CheckState::Failed, Some(1)), Some(SHORT_OUTPUT));
+            draw(&mut app, 100, 30);
+            press(&mut app, KeyCode::Esc);
+            assert!(app.view.is_none(), "{name}: Esc returns");
+            let g = screen::grid(&app, Rect::new(0, 0, 100, 30));
+            assert!(g.sheet.width == 0 && g.panes.width > 0, "{name}: the panes are back");
+        }
+    }
+
+    #[test]
+    fn a_key_the_sheet_does_not_offer_leaves_it_as_it_is() {
+        let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), Some(&long_output(100)));
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        draw(&mut app, 160, 45);
+        for c in ['u', 'o', 'i'] {
+            press(&mut app, KeyCode::Char(c));
+            assert!(matches!(app.view, Some(View::Check(_))), "{c} leaves the sheet as it is");
+        }
+        assert!(sent(&mut rx).is_empty(), "and sends nothing");
+        press(&mut app, KeyCode::Esc);
+        assert!(app.view.is_none());
+    }
+
+    #[test]
+    fn every_button_and_the_close_are_clickable() {
+        let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), Some(&long_output(100)));
+        draw(&mut app, 160, 45);
+        let has = |app: &App, h: Hit| app.hits.iter().any(|(_, x)| *x == h);
+        for key in ['r', 'O', 'f'] {
+            assert!(has(&app, Hit::Button(Btn::ViewKey(key))), "{key} is a button");
+        }
+        assert!(has(&app, Hit::Screen(screen::ScreenHit::ViewClose)), "the ✕");
+        app.on_button(Hit::Button(Btn::ViewKey('f')), false);
+        assert!(sheet_words(&mut app, 160, 45).contains("1 line 1 "), "clicking full output opens it");
+        app.on_hy_hit(screen::ScreenHit::ViewClose, false);
+        assert!(app.view.is_none());
+    }
+
+    #[test]
+    fn the_buttons_follow_the_result() {
+        let buttons = |state, code| {
+            let mut app = open(160, 45, |_| {}, check(state, code), Some(SHORT_OUTPUT));
+            draw(&mut app, 160, 45);
+            [('r', Btn::ViewKey('r')), ('O', Btn::ViewKey('O')), ('u', Btn::ViewKey('u'))].map(|(_, b)| app.hits.iter().any(|(_, x)| *x == Hit::Button(b)))
+        };
+        assert_eq!(buttons(CheckState::Failed, Some(1)), [true, true, false]);
+        assert_eq!(buttons(CheckState::Overridden, Some(1)), [true, false, true]);
+        assert_eq!(buttons(CheckState::CouldNotRun, Some(127)), [true, false, false]);
+        assert_eq!(buttons(CheckState::Passed, Some(0)), [true, false, false]);
+    }
+
+    #[test]
+    fn opening_asks_the_daemon_for_the_output_and_a_new_run_asks_again() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        let term = app.snap.terms.get_mut(&TERM).unwrap();
+        (term.status, term.check) = (Status::Done, Some(check(CheckState::Failed, Some(1))));
+        app.open_check_sheet(TERM);
+        let asks = |rx: &mut mpsc::UnboundedReceiver<ClientMsg>| sent(rx).into_iter().filter(|m| matches!(m, ClientMsg::Query(Query::CheckOutput { term: TERM }))).count();
+        assert_eq!(asks(&mut rx), 1, "one query on open");
+        app.on_server(ServerMsg::Reply(Reply::Text("first run\n".into())));
+        assert!(matches!(&app.view, Some(View::Check(v)) if v.output.as_deref() == Some("first run\n")));
+        let mut next = app.snap.clone();
+        let again = next.terms.get_mut(&TERM).unwrap().check.as_mut().unwrap();
+        (again.started_at, again.exit_code) = (now(), Some(2));
+        app.on_server(ServerMsg::State(next.clone()));
+        assert!(matches!(&app.view, Some(View::Check(v)) if v.output.is_none()), "the old output is about an older run");
+        assert_eq!(asks(&mut rx), 1, "so it asks again");
+        app.on_server(ServerMsg::State(next));
+        assert_eq!(asks(&mut rx), 0, "an unchanged snapshot asks nothing");
+    }
+
+    #[test]
+    fn the_sheet_closes_when_its_check_goes_away() {
+        let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), Some(SHORT_OUTPUT));
+        let mut next = app.snap.clone();
+        next.terms.get_mut(&TERM).unwrap().check = None;
+        app.on_server(ServerMsg::State(next));
+        assert!(app.view.is_none());
+    }
+
+    fn enter_on_row(state: Option<CheckState>, status: Status) -> App {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let term = app.snap.terms.get_mut(&TERM).unwrap();
+        (term.status, term.check) = (status, state.map(|s| check(s, Some(1))));
+        app.screen_sync();
+        draw(&mut app, 160, 45);
+        app.mode = Mode::Side;
+        app.screen.cursor = Some(TERM);
+        app.screen.cursor_proj = None;
+        press(&mut app, KeyCode::Enter);
+        app
+    }
+
+    #[test]
+    fn enter_opens_the_sheet_only_for_a_result_that_needs_a_look() {
+        for state in [CheckState::Failed, CheckState::CouldNotRun, CheckState::Overridden] {
+            let app = enter_on_row(Some(state), Status::Done);
+            assert!(matches!(&app.view, Some(View::Check(v)) if v.term == TERM), "{state:?} opens the sheet");
+        }
+        for state in [None, Some(CheckState::Passed), Some(CheckState::Checking)] {
+            let app = enter_on_row(state, Status::Done);
+            assert!(app.view.is_none(), "{state:?} focuses the session as today");
+        }
+        let working = enter_on_row(Some(CheckState::Failed), Status::Working);
+        assert!(working.view.is_none(), "an old result under a working agent is not shown, so not opened");
+    }
+
+    #[test]
+    fn what_a_command_printed_cannot_restyle_or_move_the_screen() {
+        let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), Some("\x1b[31mred\x1b[0m text\x1b]0;title\x07\nprogress 10%\rprogress 100%\n\x1b[2J\x07bell\tTab\n"));
+        let buf = render(&mut app, 160, 45);
+        let o = frame(&buf);
+        assert!(!o.contains('\u{1b}') && !o.contains('\u{7}') && !o.contains('\r'), "no control character reaches the screen");
+        let text = sheet_words(&mut app, 160, 45);
+        assert!(text.contains("1 red text 2") && text.contains("2 progress 100%") && text.contains("3 bell Tab"), "{text}");
+        assert!(!text.contains("title") && !text.contains("10%") && !text.contains("[31m") && !text.contains("[2J"), "{text}");
+    }
+}
+
+mod check_inbox_tests {
+    use super::*;
+    use crate::layout::Node;
+    use crate::protocol::{CheckInfo, CheckState, ClientMsg, Command};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
+
+    const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
+    /// (ui.layout, ui.panes): Cards floating, Cards tiled, Flat.
+    const LAYOUTS: [(&str, &str); 3] = [("cards", "floating"), ("cards", "tiled"), ("flat", "tiled")];
+    const COMMAND: &str = "just ci";
+    const FAILING_LINE: &str = "FAIL footer.test.ts";
+    const QUESTION: &str = "Run npm test -- checkout?";
+    const FAILED: &str = "FAILED CHECKS";
+    const NOT_RUN: &str = "COULD NOT RUN";
+    const FINISHED: &str = "JUST FINISHED";
+
+    type Extra = (&'static str, Status, Option<CheckInfo>);
+
+    fn now() -> u64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    }
+
+    fn info(state: CheckState, exit: Option<i32>) -> CheckInfo {
+        let first_failing_line = if state == CheckState::Failed { FAILING_LINE.into() } else { String::new() };
+        CheckInfo { command: COMMAND.into(), state, exit_code: exit, started_at: now() - 180, duration_ms: 14_200, first_failing_line, ..Default::default() }
+    }
+
+    fn failed() -> Option<CheckInfo> {
+        Some(info(CheckState::Failed, Some(1)))
+    }
+
+    fn not_run() -> Option<CheckInfo> {
+        Some(info(CheckState::CouldNotRun, Some(127)))
+    }
+
+    /// The shop-api scene (claude asks) plus one agent per entry of `extra`, from term 20 up.
+    fn scene(w: u16, h: u16, layout: (&str, &str), extra: &[Extra]) -> App {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        (app.cfg.ui.layout, app.cfg.ui.panes) = (layout.0.into(), layout.1.into());
+        for (i, (label, status, check)) in extra.iter().enumerate() {
+            let id = 20 + i as TermId;
+            let mut t = app.snap.terms[&2].clone();
+            (t.id, t.label, t.status, t.check) = (id, (*label).into(), *status, check.clone());
+            app.snap.terms.insert(id, t);
+            app.snap.workspaces[0].tabs.push(TabInfo { id: 30 + id, name: String::new(), layout: Node::Leaf(id), focus: id });
+            app.parsers.insert(id, vt100::Parser::new(20, 80, 0));
+        }
+        app.screen.tabs.clear();
+        app.screen.last_focus = None;
+        app.screen_sync();
+        app.screen.cursor = None;
+        app
+    }
+
+    fn buffer(app: &mut App, w: u16, h: u16) -> Buffer {
+        app.screen_fresh();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        term.backend().buffer().clone()
+    }
+
+    /// One string per screen line, keycap edge glyphs removed, columns from `from` on.
+    fn lines(buf: &Buffer, from: u16) -> Vec<String> {
+        (0..buf.area.height)
+            .map(|y| (from..buf.area.width).map(|x| buf[(x, y)].symbol()).collect::<String>().replace(|c| ('\u{e000}'..='\u{f8ff}').contains(&c), "").trim_end().to_string())
+            .collect()
+    }
+
+    fn inbox(app: &mut App, w: u16, h: u16) -> Vec<String> {
+        app.act(Action::Jump);
+        let buf = buffer(app, w, h);
+        let out = lines(&buf, 0);
+        if std::env::var("SESHI_SHOW").is_ok() {
+            println!("--- {w}x{h} {}/{}\n{}", app.cfg.ui.layout, app.cfg.ui.panes, out.join("\n"));
+        }
+        out
+    }
+
+    fn at(frame: &[String], needle: &str) -> Option<usize> {
+        frame.iter().position(|l| l.contains(needle))
+    }
+
+    fn rows(app: &App) -> Vec<screen::GoRow> {
+        screen::goto_rows(&app.screen_model(), "", 0)
+    }
+
+    fn heads(rows: &[screen::GoRow]) -> Vec<&'static str> {
+        rows.iter().filter_map(|r| if let screen::GoRow::Head(h) = r { Some(*h) } else { None }).collect()
+    }
+
+    fn label(layout: (&str, &str), w: u16, h: u16) -> String {
+        format!("{}/{} {w}x{h}", layout.0, layout.1)
+    }
+
+    #[test]
+    fn groups_come_in_order_and_a_failed_check_leaves_just_finished() {
+        let extra: [Extra; 7] = [
+            ("f-done", Status::Done, failed()),
+            ("n-done", Status::Done, not_run()),
+            ("passed", Status::Done, Some(info(CheckState::Passed, Some(0)))),
+            ("plain", Status::Done, None),
+            ("overridden", Status::Done, Some(info(CheckState::Overridden, Some(1)))),
+            ("f-seen", Status::Idle, failed()),
+            ("n-seen", Status::Idle, not_run()),
+        ];
+        let app = scene(160, 45, LAYOUTS[0], &extra);
+        let rows = rows(&app);
+        assert_eq!(heads(&rows), ["NEEDS YOU", FAILED, NOT_RUN, FINISHED]);
+        use screen::GoRow::*;
+        let section = |head: &str| {
+            let from = rows.iter().position(|r| matches!(r, Head(h) if *h == head)).unwrap() + 1;
+            rows[from..].iter().take_while(|r| !matches!(r, Head(_))).cloned().collect::<Vec<_>>()
+        };
+        assert_eq!(section("NEEDS YOU"), [Ask(1)]);
+        assert_eq!(section(FAILED), [Failed(20), Failed(25)], "a failure stays listed once it has been looked at");
+        assert_eq!(section(NOT_RUN), [NotRun(21)], "unchecked work is listed until it is looked at");
+        assert_eq!(section(FINISHED), [Done(22), Done(23), Done(24)], "passed, no check and overridden still just finished");
+    }
+
+    /// One row per check state of a Done session: whether it counts as finished, in the Inbox
+    /// and on the home screen alike.
+    fn finished_table() -> [(&'static str, Option<CheckInfo>, bool); 6] {
+        [
+            ("no check", None, true),
+            ("checking", Some(info(CheckState::Checking, None)), false),
+            ("passed", Some(info(CheckState::Passed, Some(0))), true),
+            ("failed", failed(), false),
+            ("could not run", not_run(), false),
+            ("overridden", Some(info(CheckState::Overridden, Some(1))), true),
+        ]
+    }
+
+    fn home_finished(app: &mut App, w: u16, h: u16) -> usize {
+        app.splash = true;
+        let buf = buffer(app, w, h);
+        let line = lines(&buf, 0).into_iter().find(|l| l.contains("need you") && l.contains("still working")).expect("the counters line");
+        let words: Vec<&str> = line.split_whitespace().collect();
+        let at = words.iter().position(|w| *w == "finished").expect("a finished count");
+        words[at - 1].parse().expect("a number")
+    }
+
+    #[test]
+    fn finished_means_the_same_in_the_inbox_and_on_the_home_screen() {
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                for (what, check, finished) in finished_table() {
+                    let at_ = format!("{} {what}", label(layout, w, h));
+                    let extra: [Extra; 1] = [("sub", Status::Done, check)];
+                    let mut app = scene(w, h, layout, &extra);
+                    let listed = rows(&app).contains(&screen::GoRow::Done(20));
+                    assert_eq!(listed, finished, "{at_}: listed under JUST FINISHED");
+                    inbox(&mut app, w, h);
+                    let mut home = scene(w, h, layout, &extra);
+                    assert_eq!(home_finished(&mut home, w, h), usize::from(finished), "{at_}: counted on the home screen");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_session_the_agent_is_working_on_or_asking_about_is_not_listed_for_its_old_check() {
+        let extra: [Extra; 2] = [("busy", Status::Working, failed()), ("asks", Status::Blocked, failed())];
+        let app = scene(160, 45, LAYOUTS[0], &extra);
+        let rows = rows(&app);
+        assert_eq!(heads(&rows), ["NEEDS YOU", FINISHED], "the old result is about an older turn");
+        assert!(rows.contains(&screen::GoRow::Ask(21)) && !rows.iter().any(|r| matches!(r, screen::GoRow::Failed(_))));
+    }
+
+    #[test]
+    fn a_project_with_no_check_has_the_inbox_it_always_had() {
+        let none: [Extra; 1] = [("plain", Status::Done, None)];
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let at_ = label(layout, w, h);
+                let mut app = scene(w, h, layout, &none);
+                assert_eq!(heads(&rows(&app)), ["NEEDS YOU", FINISHED], "{at_}");
+                let sidebar = app.screen.side_rect.right();
+                let baseline = inbox(&mut app, w, h);
+                let text = baseline.join("\n");
+                assert!(!text.contains(FAILED) && !text.contains(NOT_RUN) && !text.contains(COMMAND), "{at_}: no check text\n{text}");
+                // A result that counts as finished leaves the sheet as it was.
+                // Keycap padding varies with the glyph mode, so compare the words, not the spacing.
+                let sheet = |app: &mut App| {
+                    app.act(Action::Jump);
+                    let buf = buffer(app, w, h);
+                    lines(&buf, sidebar).iter().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).collect::<Vec<_>>()
+                };
+                let base = sheet(&mut scene(w, h, layout, &none));
+                for state in [CheckState::Passed, CheckState::Overridden] {
+                    let mut app = scene(w, h, layout, &[("plain", Status::Done, Some(info(state, Some(0))))]);
+                    assert_eq!(sheet(&mut app), base, "{at_} {state:?}: the sheet is unchanged");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_failed_row_shows_the_line_the_daemon_picked_from_real_output() {
+        let line = crate::daemon::first_failing_line("running\nFAIL tests/foo: boom\n");
+        let result = CheckInfo { first_failing_line: line.clone(), ..info(CheckState::Failed, Some(1)) };
+        let (w, h) = SIZES[1];
+        let mut app = scene(w, h, LAYOUTS[0], &[("fix-footer", Status::Done, Some(result))]);
+        let frame = inbox(&mut app, w, h);
+        let row = at(&frame, "✕ fix-footer").expect("the failed row");
+        assert_eq!(line, "FAIL tests/foo: boom");
+        assert!(frame[row + 2].contains(&line), "the failing line under the result: {:?}", frame[row + 2]);
+    }
+
+    #[test]
+    fn every_layout_and_size_shows_the_groups_the_rows_and_the_failing_line() {
+        let extra: [Extra; 3] = [("fix-footer", Status::Done, failed()), ("add-pay", Status::Done, not_run()), ("docs", Status::Done, Some(info(CheckState::Passed, Some(0))))];
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let at_ = label(layout, w, h);
+                let mut app = scene(w, h, layout, &extra);
+                let frame = inbox(&mut app, w, h);
+                let text = frame.join("\n");
+                assert!(frame.iter().all(|l| l.chars().count() <= w as usize) && frame.len() <= h as usize, "{at_}: fits");
+                let (ask, fail) = (at(&frame, "NEEDS YOU"), at(&frame, "FAILED CHECKS 1"));
+                assert!(ask.is_some() && fail.is_some() && ask < fail, "{at_}: needs you, then failed checks\n{text}");
+                let row = at(&frame, "✕ fix-footer").unwrap_or_else(|| panic!("{at_}: the failed row\n{text}"));
+                assert!(frame[row].contains("shop-api") && frame[row].contains("2m"), "{at_}: folder and age on line 1: {:?}", frame[row]);
+                assert!(frame[row + 1].contains("failed: just ci · exit 1"), "{at_}: the result on line 2: {:?}", frame[row + 1]);
+                assert!(frame[row + 2].contains(FAILING_LINE), "{at_}: the first failing line on line 3: {:?}", frame[row + 2]);
+                if h >= 45 {
+                    for want in ["COULD NOT RUN 1", "? add-pay", "just ci could not run", "JUST FINISHED 1", "✓ docs"] {
+                        assert!(text.contains(want), "{at_}: missing {want:?}\n{text}");
+                    }
+                    assert!(at(&frame, "COULD NOT RUN").unwrap() > fail.unwrap() && at(&frame, FINISHED).unwrap() > at(&frame, "COULD NOT RUN").unwrap(), "{at_}: group order");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_could_not_run_row_says_so_without_calling_it_a_failure() {
+        let extra: [Extra; 1] = [("add-pay", Status::Done, not_run())];
+        for layout in LAYOUTS {
+            let mut app = scene(100, 30, layout, &extra);
+            let frame = inbox(&mut app, 100, 30);
+            let row = at(&frame, "? add-pay").unwrap_or_else(|| panic!("{}: the row\n{}", label(layout, 100, 30), frame.join("\n")));
+            assert!(frame[row + 1].contains("just ci could not run · not found"), "{:?}", frame[row + 1]);
+            assert!(!frame.join("\n").contains(FAILED), "unchecked work is not a failed check");
+        }
+    }
+
+    #[test]
+    fn a_question_is_never_pushed_below_a_failed_check() {
+        let many: Vec<Extra> = ["a", "b", "c", "d", "e", "f"].iter().map(|n| (*n, Status::Done, failed())).collect();
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let at_ = label(layout, w, h);
+                let mut app = scene(w, h, layout, &many);
+                let rows = rows(&app);
+                let first = |p: fn(&screen::GoRow) -> bool| rows.iter().position(p).unwrap();
+                assert!(first(|r| matches!(r, screen::GoRow::Ask(_))) < first(|r| matches!(r, screen::GoRow::Failed(_))), "{at_}: rows");
+                let frame = inbox(&mut app, w, h);
+                let (q, f) = (at(&frame, QUESTION), at(&frame, FAILED));
+                assert!(q.is_some() && f.is_some() && q < f, "{at_}: the question is above the failures\n{}", frame.join("\n"));
+            }
+        }
+    }
+
+    #[test]
+    fn the_selected_row_scrolls_into_whole_view_even_when_it_is_the_last_failure() {
+        let many: Vec<Extra> = ["a1", "b2", "c3", "d4", "e5", "f6"].iter().map(|n| (*n, Status::Done, failed())).collect();
+        for layout in LAYOUTS {
+            let mut app = scene(80, 24, layout, &many);
+            let last = rows(&app).iter().rposition(|r| matches!(r, screen::GoRow::Failed(_))).unwrap();
+            app.act(Action::Jump);
+            app.mode = Mode::GoTo { query: String::new(), sel: last };
+            let buf = buffer(&mut app, 80, 24);
+            let frame = lines(&buf, 0);
+            let row = at(&frame, "✕ f6").unwrap_or_else(|| panic!("{}: the last failure\n{}", label(layout, 80, 24), frame.join("\n")));
+            assert!(frame[row + 1].contains("failed: just ci") && frame[row + 2].contains(FAILING_LINE), "{}: whole, not cut", label(layout, 80, 24));
+        }
+    }
+
+    #[test]
+    fn empty_groups_stay_out_and_the_other_notes_still_work() {
+        for layout in LAYOUTS {
+            let at_ = label(layout, 100, 30);
+            // Only a failure: nothing waits, nothing else finished.
+            let mut app = scene(100, 30, layout, &[("fix-footer", Status::Done, failed())]);
+            app.snap.terms.get_mut(&1).unwrap().status = Status::Idle;
+            let text = inbox(&mut app, 100, 30).join("\n");
+            for want in ["Nothing is waiting on you.", "FAILED CHECKS 1", "JUST FINISHED 0", "Nothing finished since you last looked."] {
+                assert!(text.contains(want), "{at_}: missing {want:?}\n{text}");
+            }
+            assert!(!text.contains(NOT_RUN), "{at_}: no group without rows");
+            // A failure reached by typing is still found as a session.
+            let rows = screen::goto_rows(&app.screen_model(), "fix-footer", 0);
+            assert!(matches!(rows.as_slice(), [screen::GoRow::Head("FOUND"), screen::GoRow::Sess(_, 20)]), "{at_}: {rows:?}");
+        }
+    }
+
+    #[test]
+    fn enter_on_a_check_row_focuses_its_session() {
+        for layout in LAYOUTS {
+            for (term, state) in [(20, failed()), (20, not_run())] {
+                let mut app = scene(100, 30, layout, &[("fix-footer", Status::Done, state)]);
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+                app.out = tx;
+                let sel = rows(&app).iter().position(|r| matches!(r, screen::GoRow::Failed(_) | screen::GoRow::NotRun(_))).unwrap();
+                app.act(Action::Jump);
+                app.mode = Mode::GoTo { query: String::new(), sel };
+                app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                assert!(app.mode == Mode::Normal, "{}: the Inbox closes", label(layout, 100, 30));
+                let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+                assert!(sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: t }) if *t == term)), "{sent:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn up_and_down_land_on_check_rows_and_skip_their_headings() {
+        let extra: [Extra; 2] = [("f-one", Status::Done, failed()), ("n-one", Status::Done, not_run())];
+        let mut app = scene(100, 30, LAYOUTS[0], &extra);
+        app.act(Action::Jump);
+        let Mode::GoTo { sel: start, .. } = app.mode.clone() else { panic!("the Inbox") };
+        let mut seen = vec![rows(&app)[start].clone()];
+        for _ in 0..2 {
+            app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+            let Mode::GoTo { sel, .. } = app.mode.clone() else { panic!("still in the Inbox") };
+            seen.push(rows(&app)[sel].clone());
+        }
+        assert_eq!(seen, [screen::GoRow::Ask(1), screen::GoRow::Failed(20), screen::GoRow::NotRun(21)]);
+    }
+}
+
+mod check_settings_tests {
+    use super::*;
+    use crate::config::{CHECK_TIMEOUT_S_DEFAULT, CheckDef};
+    use crate::client::screen::check_settings::{CheckEdit, step_timeout};
+    use crate::protocol::{CheckInfo, CheckState};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
+
+    fn project() -> PathBuf {
+        PathBuf::from(if cfg!(windows) { r"C:\code\shop-api" } else { "/code/shop-api" })
+    }
+
+    fn draw(app: &mut App, w: u16, h: u16) -> String {
+        app.screen_fresh();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let frame: String = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>().trim_end().to_string() + "\n").collect();
+        frame.replace(|c| ('\u{e000}'..='\u{f8ff}').contains(&c), "")
+    }
+
+    fn show(s: &str) {
+        if std::env::var("SESHI_SHOW").is_ok() {
+            println!("{s}");
+        }
+    }
+
+    type Layout = fn(&mut App);
+
+    fn layouts() -> [(&'static str, Layout); 3] {
+        [
+            ("cards floating", |a| a.cfg.ui.panes = "floating".into()),
+            ("cards tiled", |a| a.cfg.ui.panes = "tiled".into()),
+            ("flat", |a| a.cfg.ui.layout = "flat".into()),
+        ]
+    }
+
+    fn check_page() -> usize {
+        modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Check).unwrap()
+    }
+
+    fn open_check_page(app: &mut App, sel: usize) {
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: check_page(), sel, editing: None, capturing: false, scroll: 0 }));
+    }
+
+    fn with_check(app: &mut App, command: &str, timeout_s: u64) {
+        app.cfg.check = vec![CheckDef { project: project(), command: command.into(), timeout_s }];
+    }
+
+    fn result(state: CheckState, exit_code: Option<i32>) -> CheckInfo {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        CheckInfo { command: "npm test".into(), state, exit_code, started_at: now - 120, duration_ms: 14_200, ..Default::default() }
+    }
+
+    fn words(o: &str) -> String {
+        o.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    #[test]
+    fn a_project_with_no_check_says_so_in_every_layout_at_every_size() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let (_, mut app) = super::design_tests::render_with(w, h);
+                layout(&mut app);
+                open_check_page(&mut app, 0);
+                let o = draw(&mut app, w, h);
+                show(&o);
+                let at = format!("{name} {w}x{h}");
+                let text = words(&o);
+                for want in ["Check", "Command", "e.g. npm test", "No check set.", "passes.", "working."] {
+                    assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
+                }
+                assert!(o.lines().count() <= h as usize && o.lines().all(|l| l.chars().count() <= w as usize), "{at}: fits the screen");
+            }
+        }
+    }
+
+    #[test]
+    fn a_set_check_shows_command_timeout_where_it_runs_and_the_latest_result() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let (_, mut app) = super::design_tests::render_with(w, h);
+                layout(&mut app);
+                with_check(&mut app, "npm test", CHECK_TIMEOUT_S_DEFAULT);
+                app.snap.terms.get_mut(&1).unwrap().check = Some(result(CheckState::Failed, Some(1)));
+                open_check_page(&mut app, 0);
+                let o = draw(&mut app, w, h);
+                show(&o);
+                let at = format!("{name} {w}x{h}");
+                let text = words(&o);
+                for want in ["npm test", "10 min", "after each turn", "failed", "exit 1", "2m ago"] {
+                    assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
+                }
+                assert!(!text.contains("No check set."), "{at}: a set check is not the empty state");
+                assert!(!text.contains(":2") && !text.contains(":1"), "{at}: ages, not clock times");
+            }
+        }
+    }
+
+    #[test]
+    fn the_status_row_names_each_result_by_shape_and_word() {
+        let cases = [
+            (None, "never run"),
+            (Some(result(CheckState::Passed, Some(0))), "passed"),
+            (Some(result(CheckState::Failed, Some(1))), "failed"),
+            (Some(result(CheckState::Checking, None)), "checking"),
+            (Some(result(CheckState::Overridden, Some(1))), "overridden"),
+            (Some(result(CheckState::CouldNotRun, Some(127))), "could not run"),
+        ];
+        for (info, want) in cases {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            with_check(&mut app, "npm test", CHECK_TIMEOUT_S_DEFAULT);
+            app.snap.terms.get_mut(&1).unwrap().check = info;
+            open_check_page(&mut app, 0);
+            let o = draw(&mut app, 160, 45);
+            assert!(words(&o).contains(want), "{want}: in\n{o}");
+        }
+    }
+
+    #[test]
+    fn everything_outside_the_check_page_is_the_same_with_or_without_a_check_set() {
+        for (name, layout) in layouts() {
+            let frames = |set: bool| {
+                let (_, mut app) = super::design_tests::render_with(100, 30);
+                layout(&mut app);
+                // A one-frame spinner, so two draws a moment apart cannot differ by the clock.
+                app.cfg.ui.spinner = vec!["*".into()];
+                app.cfg.ui.motion = false;
+                if set {
+                    with_check(&mut app, "npm test", CHECK_TIMEOUT_S_DEFAULT);
+                }
+                let normal = draw(&mut app, 100, 30);
+                app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
+                (normal, draw(&mut app, 100, 30))
+            };
+            let (plain, with) = (frames(false), frames(true));
+            assert_eq!(plain.0, with.0, "{name}: the sidebar ignores a project's check");
+            // Flat draws keycaps with or without edge glyphs depending on what other tests set, so
+            // compare the page's words and not its padding.
+            let squash = |s: &str| s.split_whitespace().collect::<String>();
+            assert_eq!(squash(&plain.1), squash(&with.1), "{name}: the other pages ignore a project's check");
+        }
+    }
+
+    #[test]
+    fn the_timeout_steps_through_round_values_and_clamps() {
+        assert_eq!(step_timeout(600, 1), 900);
+        assert_eq!(step_timeout(600, -1), 300);
+        assert_eq!(step_timeout(30, -1), 30, "the shortest stays");
+        assert_eq!(step_timeout(3600, 1), 3600, "the longest stays");
+        assert_eq!(step_timeout(90, 1), 120, "a hand-edited value steps to the next round one");
+        assert_eq!(step_timeout(90, -1), 60);
+    }
+
+    fn edited(before: &str, edit: CheckEdit) -> (String, crate::config::Config) {
+        let mut doc: toml_edit::DocumentMut = before.parse().unwrap();
+        edit.apply(&mut doc).unwrap();
+        let out = doc.to_string();
+        let cfg: crate::config::Config = toml::from_str(&out).unwrap();
+        (out, cfg)
+    }
+
+    fn set(command: &str, timeout_s: u64) -> CheckEdit {
+        CheckEdit::Set { project: project(), command: command.into(), timeout_s }
+    }
+
+    #[test]
+    fn saving_a_check_writes_its_table_in_place_and_keeps_the_comments() {
+        let before = "# my notes\ntheme = \"nord\"\n\n[ui]\n# my ui notes\nsidebar = true\n";
+        let (out, cfg) = edited(before, set("npm test", 600));
+        assert!(out.contains("# my notes") && out.contains("# my ui notes"), "{out}");
+        assert!(out.contains("[[check]]"), "{out}");
+        assert_eq!(cfg.check, vec![CheckDef { project: project(), command: "npm test".into(), timeout_s: 600 }]);
+
+        let with_note = format!("{out}\n# why this one\n[[check]]\nproject = \"/code/lib\"\ncommand = \"cargo test\"\n");
+        let (out, cfg) = edited(&with_note, set("pnpm test", 900));
+        assert!(out.contains("# why this one") && out.contains("# my notes"), "{out}");
+        assert_eq!(cfg.check.len(), 2, "the same project is updated, not added twice: {out}");
+        let mine = cfg.check.iter().find(|c| crate::config::same_path(&c.project, &project())).unwrap();
+        assert_eq!((mine.command.as_str(), mine.timeout_s), ("pnpm test", 900));
+        assert!(cfg.check.iter().any(|c| c.command == "cargo test"), "the other project is untouched");
+    }
+
+    #[test]
+    fn removing_a_check_deletes_only_its_table() {
+        let two = "# top\n[[check]]\nproject = \"/code/lib\"\ncommand = \"cargo test\"\n\n[[check]]\nproject = \"/code/shop-api\"\ncommand = \"npm test\"\n";
+        let two = two.replace("/code/shop-api", &project().to_string_lossy().replace('\\', "\\\\"));
+        let (out, cfg) = edited(&two, CheckEdit::Remove { project: project() });
+        assert!(out.contains("# top"), "{out}");
+        assert_eq!(cfg.check.len(), 1);
+        assert_eq!(cfg.check[0].command, "cargo test");
+        let (out, cfg) = edited(&out, CheckEdit::Remove { project: PathBuf::from("/code/lib") });
+        assert!(cfg.check.is_empty() && !out.contains("check"), "the last one takes the key with it: {out}");
+        let (_, cfg) = edited("theme = \"nord\"\n", CheckEdit::Remove { project: project() });
+        assert!(cfg.check.is_empty(), "removing what is not there is fine");
+    }
+
+    #[test]
+    fn a_check_list_written_another_way_is_refused_not_overwritten() {
+        let mut doc: toml_edit::DocumentMut = "check = 3\n".parse().unwrap();
+        assert!(set("npm test", 600).apply(&mut doc).is_err());
+    }
+
+    fn app_with_channel() -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        let (tx, rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        (app, rx)
+    }
+
+    #[test]
+    fn a_failed_save_keeps_the_draft_and_says_why() {
+        let (mut app, _rx) = app_with_channel();
+        open_check_page(&mut app, 0);
+        app.check_saved(Err(anyhow::anyhow!("disk full")), Some("pnpm test".into()));
+        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.as_deref() == Some("pnpm test")), "the draft is still being edited");
+        let (msg, _, error) = app.notice.clone().expect("a toast");
+        assert!(error && msg.contains("couldn't save") && msg.contains("disk full"), "{msg}");
+        assert!(app.cfg.check.is_empty(), "nothing was applied");
+    }
+
+    #[test]
+    fn a_saved_check_reaches_the_daemon() {
+        let (mut app, mut rx) = app_with_channel();
+        open_check_page(&mut app, 0);
+        let mut cfg = app.cfg.clone();
+        cfg.check = vec![CheckDef { project: project(), command: "npm test".into(), timeout_s: 600 }];
+        app.check_saved(Ok(cfg), Some("npm test".into()));
+        assert_eq!(app.cfg.check.len(), 1);
+        let mut sent = Vec::new();
+        while let Ok(m) = rx.try_recv() {
+            sent.push(m);
+        }
+        assert!(sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::ReloadConfig))), "the daemon is told to reload");
+        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.is_none()), "a saved draft is no longer a draft");
+    }
+
+    #[test]
+    fn keys_on_the_check_page_edit_without_saving_until_enter() {
+        let (mut app, _rx) = app_with_channel();
+        with_check(&mut app, "npm test", 600);
+        open_check_page(&mut app, 0);
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.as_deref() == Some("npm test")), "Enter edits the command");
+        assert!(draw(&mut app, 100, 30).contains("npm test█"), "the draft shows with its cursor");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.is_none()), "Esc drops the draft");
+        assert_eq!(app.cfg.check[0].command, "npm test");
+    }
+
+    #[test]
+    fn with_no_check_the_timeout_and_delete_say_what_is_missing_and_write_nothing() {
+        let (mut app, _rx) = app_with_channel();
+        open_check_page(&mut app, 1);
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        let (msg, _, _) = app.notice.clone().expect("a toast");
+        assert!(msg.contains("command first"), "{msg}");
+        app.notice = None;
+        app.on_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+        assert!(app.notice.is_none(), "nothing to remove, nothing said");
+    }
+
+    #[test]
+    fn without_a_project_open_the_command_cannot_be_edited() {
+        let (mut app, _rx) = app_with_channel();
+        app.snap.workspaces.clear();
+        app.snap.active_ws = None;
+        open_check_page(&mut app, 0);
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.is_none()));
+        let (msg, _, _) = app.notice.clone().expect("a toast");
+        assert!(msg.contains("project"), "{msg}");
+    }
+}
+
+mod check_wiring_tests {
+    use super::*;
+    use crate::client::menu::{Act, menu_keys};
+    use crate::protocol::{CheckInfo, CheckState, ClientMsg, Command, ServerMsg};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
+    const TERM: TermId = 1;
+    const COMMAND: &str = "npm test";
+    /// Keys a sidebar row already uses; a menu item must not take one (x is Close's).
+    const TAKEN: [char; 5] = ['j', 'k', 'a', 'm', 'i'];
+    const ALL_STATES: [CheckState; 5] = [CheckState::Checking, CheckState::Passed, CheckState::Failed, CheckState::Overridden, CheckState::CouldNotRun];
+    type Rx = mpsc::UnboundedReceiver<ClientMsg>;
+    type Layout = fn(&mut App);
+
+    fn layouts() -> [(&'static str, Layout); 3] {
+        [
+            ("cards floating", |a| a.cfg.ui.panes = "floating".into()),
+            ("cards tiled", |a| a.cfg.ui.panes = "tiled".into()),
+            ("flat", |a| a.cfg.ui.layout = "flat".into()),
+        ]
+    }
+
+    fn now() -> u64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+    }
+
+    fn info(state: CheckState) -> CheckInfo {
+        let exit_code = match state {
+            CheckState::Checking => None,
+            CheckState::Passed => Some(0),
+            CheckState::CouldNotRun => Some(127),
+            CheckState::Failed | CheckState::Overridden => Some(1),
+        };
+        let overridden = state == CheckState::Overridden;
+        CheckInfo {
+            command: COMMAND.into(),
+            state,
+            exit_code,
+            started_at: now() - 180,
+            duration_ms: 14_200,
+            after_turn_ended_at: now() - 200,
+            first_failing_line: "Error: expected 3 got 2".into(),
+            overridden_at: overridden.then(|| now() - 30),
+            ..Default::default()
+        }
+    }
+
+    /// The shop-api scene with session 1 finished (or as `status`) and carrying `check`.
+    fn rig(w: u16, h: u16, layout: Layout, check: Option<CheckInfo>, status: Status) -> (App, Rx) {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        layout(&mut app);
+        let (tx, rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        let t = app.snap.terms.get_mut(&TERM).unwrap();
+        (t.status, t.said, t.check) = (status, "tests pass".into(), check);
+        app.screen_sync();
+        (app, rx)
+    }
+
+    fn done(state: CheckState) -> (App, Rx) {
+        rig(100, 30, |_| {}, Some(info(state)), Status::Done)
+    }
+
+    fn sent(rx: &mut Rx) -> Vec<ClientMsg> {
+        std::iter::from_fn(|| rx.try_recv().ok()).collect()
+    }
+
+    fn commands(rx: &mut Rx) -> Vec<Command> {
+        sent(rx).into_iter().filter_map(|m| if let ClientMsg::Command(c) = m { Some(c) } else { None }).collect()
+    }
+
+    fn draw(app: &mut App, w: u16, h: u16) -> String {
+        app.screen_fresh();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let frame: String = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>().trim_end().to_string() + "\n").collect();
+        let frame = frame.replace(|c| ('\u{e000}'..='\u{f8ff}').contains(&c), "");
+        if std::env::var("SESHI_SHOW").is_ok() {
+            println!("--- {w}x{h} {}/{}\n{frame}", app.cfg.ui.layout, app.cfg.ui.panes);
+        }
+        frame
+    }
+
+    fn words(o: &str) -> String {
+        o.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    fn fits(o: &str, w: u16, h: u16) -> bool {
+        o.lines().count() <= h as usize && o.lines().all(|l| l.chars().count() <= w as usize)
+    }
+
+    fn press(app: &mut App, code: KeyCode) {
+        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    fn typed(app: &mut App, text: &str) {
+        for c in text.chars() {
+            press(app, KeyCode::Char(c));
+        }
+    }
+
+    /// Click the topmost control whose hit is `want`, drawing first so it exists.
+    fn click(app: &mut App, w: u16, h: u16, want: Hit) {
+        draw(app, w, h);
+        let (r, _) = app.hits.iter().rev().find(|(_, hit)| *hit == want).unwrap_or_else(|| panic!("no control for {want:?}"));
+        let (column, row) = (r.x, r.y);
+        for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+            app.on_mouse(MouseEvent { kind, column, row, modifiers: KeyModifiers::NONE });
+        }
+    }
+
+    fn viewkey(c: char) -> Hit {
+        Hit::Button(Btn::ViewKey(c))
+    }
+
+    fn toast(app: &App) -> (String, bool) {
+        let (msg, _, error) = app.notice.clone().expect("a toast");
+        (msg, error)
+    }
+
+    fn rerun_of(cmds: &[Command]) -> usize {
+        cmds.iter().filter(|c| matches!(c, Command::RerunCheck { term: TERM })).count()
+    }
+
+    fn overrides(cmds: &[Command]) -> Vec<String> {
+        cmds.iter().filter_map(|c| if let Command::OverrideCheck { term: TERM, reason } = c { Some(reason.clone()) } else { None }).collect()
+    }
+
+    fn labels(app: &App) -> Vec<String> {
+        app.session_items(TERM).unwrap().1.into_iter().map(|(l, _)| l).collect()
+    }
+
+    // ---- the row menu ------------------------------------------------------------------
+
+    #[test]
+    fn the_row_menu_offers_a_check_item_only_where_it_applies() {
+        let offered = |state: Option<CheckState>| {
+            let (app, _) = rig(100, 30, |_| {}, state.map(info), Status::Done);
+            let l = labels(&app);
+            ["Check output", "Re-run check", "Override check…"].map(|want| l.iter().any(|x| x == want))
+        };
+        assert_eq!(offered(None), [false, false, false], "no check, no items");
+        assert_eq!(offered(Some(CheckState::Checking)), [true, false, false], "running: its output, not a second run");
+        assert_eq!(offered(Some(CheckState::Passed)), [true, true, false]);
+        assert_eq!(offered(Some(CheckState::CouldNotRun)), [true, true, false]);
+        assert_eq!(offered(Some(CheckState::Overridden)), [true, true, false], "an override is not overridden twice");
+        assert_eq!(offered(Some(CheckState::Failed)), [true, true, true]);
+    }
+
+    #[test]
+    fn the_check_items_never_take_a_letter_the_row_already_uses() {
+        for state in ALL_STATES {
+            for status in [Status::Done, Status::Working, Status::Idle] {
+                let (app, _) = rig(100, 30, |_| {}, Some(info(state)), status);
+                let items = app.session_items(TERM).unwrap().1;
+                let keys = menu_keys(&items);
+                let mut seen = Vec::new();
+                for ((label, act), key) in items.iter().zip(&keys) {
+                    let key = key.unwrap_or_else(|| panic!("{state:?}: {label} has a key"));
+                    if matches!(act, Act::End(_)) {
+                        assert_eq!(key, 'x');
+                    } else {
+                        assert!(!TAKEN.contains(&key) && key != 'x', "{state:?} {status:?}: {label} took {key}");
+                    }
+                    assert!(!seen.contains(&key), "{state:?} {status:?}: {label} repeats {key}");
+                    seen.push(key);
+                }
+            }
+        }
+    }
+
+    fn pick(app: &mut App, label: &str) {
+        app.menu_for_session(TERM, (20, 10));
+        let (items, keys) = match &app.mode {
+            Mode::ScreenMenu(m) => (m.items.clone(), menu_keys(&m.items)),
+            other => panic!("no menu: {other:?}"),
+        };
+        let i = items.iter().position(|(l, _)| l == label).unwrap_or_else(|| panic!("no {label} in {items:?}"));
+        press(app, KeyCode::Char(keys[i].unwrap()));
+    }
+
+    #[test]
+    fn the_menus_rerun_item_asks_the_daemon_and_says_so() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        pick(&mut app, "Re-run check");
+        assert_eq!(rerun_of(&commands(&mut rx)), 1);
+        let (msg, error) = toast(&app);
+        assert!(msg.contains("re-running") && msg.contains(COMMAND) && !error, "{msg}");
+        assert_eq!(app.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn the_menus_output_item_opens_the_evidence_sheet() {
+        for state in ALL_STATES {
+            let (mut app, mut rx) = done(state);
+            pick(&mut app, "Check output");
+            assert!(matches!(&app.view, Some(View::Check(v)) if v.term == TERM), "{state:?}");
+            assert!(sent(&mut rx).iter().any(|m| matches!(m, ClientMsg::Query(crate::protocol::Query::CheckOutput { term: TERM }))), "{state:?}: the output is asked for");
+        }
+    }
+
+    #[test]
+    fn the_menus_override_item_asks_first_and_sends_the_reason_on_yes() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        pick(&mut app, "Override check…");
+        assert!(matches!(&app.mode, Mode::Confirm(c) if c.danger && matches!(c.act, Act::OverrideCheck(TERM, _))), "{:?}", app.mode);
+        assert!(commands(&mut rx).is_empty(), "nothing is sent until it is confirmed");
+        typed(&mut app, "flaky on CI");
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(overrides(&commands(&mut rx)), ["flaky on CI"]);
+    }
+
+    #[test]
+    fn a_result_that_is_no_longer_failed_is_not_overridden_from_a_stale_menu() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        app.menu_for_session(TERM, (20, 10));
+        app.snap.terms.get_mut(&TERM).unwrap().check = Some(info(CheckState::Passed));
+        app.screen_sync();
+        app.menu_act(Act::OverrideCheck(TERM, String::new()));
+        assert!(commands(&mut rx).is_empty() && !matches!(app.mode, Mode::Confirm(_)), "{:?}", app.mode);
+        assert!(toast(&app).0.contains("failed"), "it says why");
+    }
+
+    // ---- the override confirm ----------------------------------------------------------
+
+    fn ask_override(app: &mut App) {
+        press(app, KeyCode::Char('O'));
+    }
+
+    #[test]
+    fn the_override_confirm_says_what_it_hides_and_what_stays_visible_in_every_layout() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let at = format!("{name} {w}x{h}");
+                let (mut app, mut rx) = rig(w, h, layout, Some(info(CheckState::Failed)), Status::Done);
+                app.open_check_sheet(TERM);
+                ask_override(&mut app);
+                let o = draw(&mut app, w, h);
+                let text = words(&o);
+                for want in [
+                    "Override a failed check",
+                    "will read done (overridden)",
+                    "npm test failed (exit 1",
+                    "This hides a failure. It stays visible:",
+                    "⊘ on the row, in the Inbox history and in the evidence",
+                    "for this result only",
+                    "Reason (optional)",
+                    "Override Enter",
+                    "Cancel Esc",
+                ] {
+                    assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
+                }
+                assert!(fits(&o, w, h), "{at}: fits");
+                typed(&mut app, "ok");
+                assert!(words(&draw(&mut app, w, h)).contains("ok█"), "{at}: the reason shows as it is typed");
+                press(&mut app, KeyCode::Esc);
+                assert!(commands(&mut rx).is_empty(), "{at}: Esc sends nothing");
+            }
+        }
+    }
+
+    #[test]
+    fn the_reason_is_optional_editable_and_bounded() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        app.open_check_sheet(TERM);
+        ask_override(&mut app);
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(overrides(&commands(&mut rx)), [""], "an empty reason is fine");
+        app.open_check_sheet(TERM);
+        ask_override(&mut app);
+        typed(&mut app, "abc");
+        press(&mut app, KeyCode::Backspace);
+        app.on_paste("\u{e9}d\nsecond line".into());
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(overrides(&commands(&mut rx)), ["ab\u{e9}d"], "backspace edits, a paste takes its first line");
+        app.open_check_sheet(TERM);
+        ask_override(&mut app);
+        typed(&mut app, &"x".repeat(400));
+        press(&mut app, KeyCode::Enter);
+        let reason = overrides(&commands(&mut rx)).remove(0);
+        assert_eq!(reason.chars().count(), crate::protocol::OVERRIDE_REASON_MAX_CHARS, "the daemon would refuse a longer one");
+    }
+
+    #[test]
+    fn the_override_button_is_clickable_and_so_is_cancel() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        app.open_check_sheet(TERM);
+        ask_override(&mut app);
+        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::ConfirmNo));
+        assert_eq!((app.mode.clone(), commands(&mut rx).len()), (Mode::Normal, 0), "Cancel");
+        assert!(matches!(app.view, Some(View::Check(_))), "the sheet is still open behind it");
+        ask_override(&mut app);
+        typed(&mut app, "by mouse");
+        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::ConfirmYes));
+        assert_eq!(overrides(&commands(&mut rx)), ["by mouse"]);
+        assert!(toast(&app).0.contains("overridden"));
+    }
+
+    // ---- the evidence sheet ------------------------------------------------------------
+
+    #[test]
+    fn the_sheets_keys_do_what_their_buttons_say_and_only_where_they_apply() {
+        // (state, r re-runs, O asks, u undoes)
+        let table = [
+            (CheckState::Failed, true, true, false),
+            (CheckState::Passed, true, false, false),
+            (CheckState::CouldNotRun, true, false, false),
+            (CheckState::Overridden, true, false, true),
+            (CheckState::Checking, false, false, false),
+        ];
+        for (state, rerun, over, undo) in table {
+            let (mut app, mut rx) = done(state);
+            app.open_check_sheet(TERM);
+            sent(&mut rx);
+            press(&mut app, KeyCode::Char('r'));
+            let cmds = commands(&mut rx);
+            assert_eq!(rerun_of(&cmds) == 1, rerun, "{state:?}: r");
+            press(&mut app, KeyCode::Char('O'));
+            assert_eq!(matches!(app.mode, Mode::Confirm(_)), over, "{state:?}: O");
+            app.mode = Mode::Normal;
+            press(&mut app, KeyCode::Char('u'));
+            assert_eq!(commands(&mut rx).iter().filter(|c| matches!(c, Command::UndoOverride { term: TERM })).count() == 1, undo, "{state:?}: u");
+            assert!(matches!(app.view, Some(View::Check(_))), "{state:?}: the sheet stays open");
+        }
+    }
+
+    #[test]
+    fn the_sheets_buttons_click_through_to_the_same_actions() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        app.open_check_sheet(TERM);
+        click(&mut app, 100, 30, viewkey('r'));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1, "Re-run");
+        click(&mut app, 100, 30, viewkey('O'));
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), "Override…");
+        app.mode = Mode::Normal;
+        let (mut app, mut rx) = done(CheckState::Overridden);
+        app.open_check_sheet(TERM);
+        click(&mut app, 100, 30, viewkey('u'));
+        assert!(commands(&mut rx).iter().any(|c| matches!(c, Command::UndoOverride { term: TERM })), "Undo override");
+        assert!(toast(&app).0.contains("failed again"));
+    }
+
+    #[test]
+    fn the_sheets_key_hints_list_exactly_the_keys_that_act() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                for state in ALL_STATES {
+                    let at = format!("{name} {w}x{h} {state:?}");
+                    let (mut app, _rx) = rig(w, h, layout, Some(info(state)), Status::Done);
+                    app.open_check_sheet(TERM);
+                    let o = draw(&mut app, w, h);
+                    let last = o.lines().rfind(|l| words(l).contains("Esc back")).unwrap_or_else(|| panic!("{at}: a hint row in\n{o}"));
+                    let hint = words(last);
+                    assert_eq!(hint.contains("r re-run"), state != CheckState::Checking, "{at}: {hint}");
+                    assert_eq!(hint.contains("O override"), state == CheckState::Failed, "{at}: {hint}");
+                    assert_eq!(hint.contains("u undo"), state == CheckState::Overridden, "{at}: {hint}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_queued_re_run_says_queued_in_the_toast_and_the_sheet_and_is_not_sent_twice() {
+        let (mut app, mut rx) = rig(100, 30, |_| {}, Some(info(CheckState::Failed)), Status::Working);
+        app.open_check_sheet(TERM);
+        press(&mut app, KeyCode::Char('r'));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1);
+        assert!(toast(&app).0.contains("queued"), "{}", toast(&app).0);
+        app.snap.terms.get_mut(&TERM).unwrap().check.as_mut().unwrap().rerun_queued = true;
+        app.screen_sync();
+        assert!(words(&draw(&mut app, 100, 30)).contains("re-run queued"), "the sheet says it too");
+        press(&mut app, KeyCode::Char('r'));
+        assert_eq!(rerun_of(&commands(&mut rx)), 0, "already queued: nothing more is sent");
+        assert!(toast(&app).0.contains("queued"));
+    }
+
+    #[test]
+    fn a_re_run_toasts_then_the_row_shows_the_checking_ring() {
+        let (mut app, mut rx) = rig(160, 45, |_| {}, Some(info(CheckState::Failed)), Status::Done);
+        app.open_check_sheet(TERM);
+        press(&mut app, KeyCode::Char('r'));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1);
+        assert!(words(&draw(&mut app, 160, 45)).contains("re-running npm test"), "the toast shows");
+        let mut running = info(CheckState::Checking);
+        running.exit_code = None;
+        app.snap.terms.get_mut(&TERM).unwrap().check = Some(running);
+        app.screen_sync();
+        app.open_check_sheet(TERM);
+        press(&mut app, KeyCode::Esc);
+        let o = draw(&mut app, 160, 45);
+        assert!(o.contains("checking npm test") && ['◜', '◝', '◞', '◟'].iter().any(|g| o.contains(*g)), "the ring and its words:\n{o}");
+        app.open_check_sheet(TERM);
+        press(&mut app, KeyCode::Char('r'));
+        assert!(commands(&mut rx).is_empty(), "the sheet offers no r while it runs");
+        with_command(&mut app);
+        check_page(&mut app, 0);
+        press(&mut app, KeyCode::Char('r'));
+        assert!(commands(&mut rx).is_empty() && toast(&app).0.contains("already running"), "Run now does not start it twice");
+    }
+
+    #[test]
+    fn an_error_from_the_daemon_reaches_the_user_as_a_toast() {
+        let (mut app, _rx) = done(CheckState::Failed);
+        app.on_server(ServerMsg::Error("only a failed check can be overridden".into()));
+        assert_eq!(toast(&app), ("only a failed check can be overridden".to_string(), true));
+    }
+
+    // ---- the why popover ---------------------------------------------------------------
+
+    #[test]
+    fn every_key_the_why_popover_shows_acts_and_the_others_do_not_reach_the_pane() {
+        for (name, layout) in layouts() {
+            for state in ALL_STATES {
+                let at = format!("{name} {state:?}");
+                let shown = |app: &mut App| words(&draw(app, 100, 30));
+                let open = || {
+                    let (mut app, rx) = rig(100, 30, layout, Some(info(state)), Status::Done);
+                    app.mode = Mode::Why { term: TERM, side: false };
+                    (app, rx)
+                };
+                let (mut app, _) = open();
+                let text = shown(&mut app);
+                let evidence = text.contains("⏎ evidence");
+                assert_eq!((evidence, text.contains("r re-run"), text.contains("O override")), (state != CheckState::Checking, state != CheckState::Checking, state == CheckState::Failed), "{at}: {text}");
+
+                let (mut app, mut rx) = open();
+                press(&mut app, KeyCode::Enter);
+                assert_eq!(matches!(app.view, Some(View::Check(_))), evidence, "{at}: Enter");
+                let (mut app, mut rx2) = open();
+                press(&mut app, KeyCode::Char('r'));
+                let (cmds, other) = (commands(&mut rx2), sent(&mut rx2));
+                assert_eq!(rerun_of(&cmds) == 1, evidence, "{at}: r");
+                assert!(!other.iter().any(|m| matches!(m, ClientMsg::Input { .. })), "{at}: r never types into the pane");
+                let (mut app, mut rx3) = open();
+                press(&mut app, KeyCode::Char('O'));
+                assert_eq!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), state == CheckState::Failed, "{at}: O");
+                assert!(!sent(&mut rx3).iter().any(|m| matches!(m, ClientMsg::Input { .. })), "{at}: O never types into the pane");
+                sent(&mut rx);
+            }
+        }
+    }
+
+    // ---- the Inbox ---------------------------------------------------------------------
+
+    fn goto_failed(app: &mut App) {
+        if !matches!(app.mode, Mode::GoTo { .. }) {
+            app.act(Action::Jump);
+        }
+        for _ in 0..8 {
+            let Mode::GoTo { sel, .. } = &app.mode else { panic!("no inbox: {:?}", app.mode) };
+            let rows = screen::goto_rows(&app.screen_model(), "", 0);
+            if matches!(rows.get(*sel), Some(screen::GoRow::Failed(TERM))) {
+                return;
+            }
+            press(app, KeyCode::Down);
+        }
+        panic!("the failed row never got the selection");
+    }
+
+    #[test]
+    fn a_selected_failed_inbox_row_shows_the_design_buttons_in_every_layout_at_every_size() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let at = format!("{name} {w}x{h}");
+                let (mut app, _rx) = rig(w, h, layout, Some(info(CheckState::Failed)), Status::Done);
+                app.act(Action::Jump);
+                let before = words(&draw(&mut app, w, h));
+                assert!(!before.contains("Re-run r"), "{at}: no buttons while the question is selected");
+                goto_failed(&mut app);
+                let o = draw(&mut app, w, h);
+                let text = words(&o);
+                for want in ["Output o", "Re-run r", "Override… O"] {
+                    assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
+                }
+                assert!(fits(&o, w, h), "{at}: fits");
+            }
+        }
+    }
+
+    #[test]
+    fn the_inbox_buttons_and_their_keys_act() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        goto_failed(&mut app);
+        press(&mut app, KeyCode::Char('r'));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1, "r");
+        assert!(matches!(app.mode, Mode::GoTo { .. }), "the Inbox stays open");
+        draw(&mut app, 100, 30);
+        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::InboxCheck(TERM, 'r')));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1, "the Re-run button");
+        press(&mut app, KeyCode::Char('O'));
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, Act::OverrideCheck(TERM, _))), "O");
+        press(&mut app, KeyCode::Esc);
+        goto_failed(&mut app);
+        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::InboxCheck(TERM, 'O')));
+        assert!(matches!(app.mode, Mode::Confirm(_)), "the Override… button");
+        press(&mut app, KeyCode::Esc);
+        goto_failed(&mut app);
+        press(&mut app, KeyCode::Char('o'));
+        assert!(matches!(&app.view, Some(View::Check(v)) if v.term == TERM) && app.mode == Mode::Normal, "o opens the output");
+        goto_failed(&mut app);
+        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::InboxCheck(TERM, 'o')));
+        assert!(matches!(app.view, Some(View::Check(_))), "the Output button");
+    }
+
+    #[test]
+    fn enter_in_the_inbox_still_focuses_the_session_and_typing_a_search_still_searches() {
+        let (mut app, mut rx) = done(CheckState::Failed);
+        goto_failed(&mut app);
+        press(&mut app, KeyCode::Enter);
+        assert!(app.mode == Mode::Normal && app.view.is_none());
+        assert!(commands(&mut rx).iter().all(|c| !matches!(c, Command::RerunCheck { .. })));
+        app.act(Action::Jump);
+        assert!(matches!(app.mode, Mode::GoTo { .. }), "{:?}", app.mode);
+        typed(&mut app, "sh");
+        assert!(matches!(&app.mode, Mode::GoTo { query, .. } if query == "sh"), "other letters still search");
+        assert_eq!(rerun_of(&commands(&mut rx)), 0);
+        typed(&mut app, "r");
+        assert!(matches!(&app.mode, Mode::GoTo { query, .. } if query == "shr"), "and once a search has begun, r is part of it");
+    }
+
+    #[test]
+    fn a_failed_row_that_is_not_selected_and_other_rows_have_no_check_buttons() {
+        let (mut app, _rx) = done(CheckState::Passed);
+        app.act(Action::Jump);
+        let text = words(&draw(&mut app, 100, 30));
+        assert!(!text.contains("Re-run r") && !text.contains("Override…"), "{text}");
+    }
+
+    // ---- Settings > Check --------------------------------------------------------------
+
+    fn check_page(app: &mut App, sel: usize) {
+        let cat = modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Check).unwrap();
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat, sel, editing: None, capturing: false, scroll: 0 }));
+    }
+
+    fn with_command(app: &mut App) {
+        let project = PathBuf::from(if cfg!(windows) { r"C:\code\shop-api" } else { "/code/shop-api" });
+        app.cfg.check = vec![crate::config::CheckDef { project, command: COMMAND.into(), timeout_s: 600 }];
+    }
+
+    #[test]
+    fn the_check_page_has_a_run_now_button_in_every_layout_at_every_size() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let at = format!("{name} {w}x{h}");
+                let (mut app, _rx) = rig(w, h, layout, Some(info(CheckState::Passed)), Status::Done);
+                with_command(&mut app);
+                check_page(&mut app, 0);
+                let o = draw(&mut app, w, h);
+                assert!(words(&o).contains("Run now r"), "{at}: the button in\n{o}");
+                assert!(fits(&o, w, h), "{at}: fits");
+            }
+        }
+    }
+
+    #[test]
+    fn run_now_re_runs_the_latest_session_by_key_row_and_click() {
+        let run_row = crate::client::screen::check_settings::CheckField::ALL.iter().position(|f| f.label() == "Run now").expect("a Run now row");
+        let (mut app, mut rx) = done(CheckState::Passed);
+        with_command(&mut app);
+        check_page(&mut app, 0);
+        press(&mut app, KeyCode::Char('r'));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1, "r from any row of the page");
+        check_page(&mut app, run_row);
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(rerun_of(&commands(&mut rx)), 1, "Enter on its row");
+        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::SetVal(run_row, usize::MAX)));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1, "a click on the button");
+        assert!(matches!(app.mode, Mode::ScreenSettings(_)), "Settings stays open");
+    }
+
+    #[test]
+    fn run_now_with_no_check_set_sends_nothing_and_says_why() {
+        let (mut app, mut rx) = done(CheckState::Passed);
+        check_page(&mut app, 0);
+        press(&mut app, KeyCode::Char('r'));
+        assert!(commands(&mut rx).is_empty());
+        let (msg, _) = toast(&app);
+        assert!(msg.contains("command"), "{msg}");
+    }
+
+    #[test]
+    fn run_now_while_the_agent_works_queues_and_says_so() {
+        let (mut app, mut rx) = rig(100, 30, |_| {}, Some(info(CheckState::Failed)), Status::Working);
+        with_command(&mut app);
+        check_page(&mut app, 0);
+        press(&mut app, KeyCode::Char('r'));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1);
+        assert!(toast(&app).0.contains("queued"));
+    }
+
+    #[test]
+    fn typing_r_in_the_command_field_still_types_an_r() {
+        let (mut app, mut rx) = done(CheckState::Passed);
+        with_command(&mut app);
+        check_page(&mut app, 0);
+        press(&mut app, KeyCode::Enter);
+        press(&mut app, KeyCode::Char('r'));
+        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.as_deref() == Some("npm testr")));
+        assert!(commands(&mut rx).is_empty());
     }
 }

@@ -143,10 +143,7 @@ pub fn ls(as_json: bool) -> Result<()> {
                     "git": w.git, "worktree": w.worktree, "color": w.color,
                     "tabs": w.tabs.iter().map(|t| json!({
                         "id": t.id, "name": t.name, "active": t.id == w.active_tab, "focus": t.focus,
-                        "panes": t.layout.leaves().iter().filter_map(|id| snap.terms.get(id)).map(|p| json!({
-                            "id": p.id, "process": p.process, "title": p.title, "agent": p.agent, "asleep": p.asleep, "status_why": p.status_why, "win32_input": p.win32_input, "model": p.model, "name": p.name, "mem_mb": p.mem >> 20, "bell": p.bell,
-                            "status": p.status.label(), "cols": p.cols, "rows": p.rows, "cwd": p.cwd,
-                        })).collect::<Vec<_>>(),
+                        "panes": t.layout.leaves().iter().filter_map(|id| snap.terms.get(id)).map(pane_json).collect::<Vec<_>>(),
                     })).collect::<Vec<_>>(),
                 })
             })
@@ -164,7 +161,7 @@ pub fn ls(as_json: bool) -> Result<()> {
             for id in t.layout.leaves() {
                 let Some(p) = snap.terms.get(&id) else { continue };
                 let focus = if id == t.focus { ">" } else { " " };
-                let agent = p.agent.as_deref().map(|a| format!("  [{a}: {}]", p.status.label())).unwrap_or_default();
+                let agent = agent_tag(p).map(|tag| format!("  [{tag}]")).unwrap_or_default();
                 println!("    {focus} pane {id}  {}{agent}", p.process);
             }
         }
@@ -243,16 +240,88 @@ pub fn short_model(m: &str) -> String {
 /// What a wait ended on.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Waited {
-    /// The turn ended: its status then, and its last message (if hooks said).
-    Turn(Status, String),
+    /// The turn ended: its status then, its last message (if hooks said) and, when the
+    /// project has a check, how that came out.
+    Turn(Status, String, Option<CheckInfo>),
     /// The regex matched this line.
     Matched(String),
     TimedOut,
 }
 
+/// `seshi wait` exits with this when the turn ended but its check failed (2: timed out;
+/// 3: needs you).
+const EXIT_CHECK_FAILED: i32 = 4;
+
+/// How long a session may show no status before the wait calls its quiet the end of a turn.
+const QUIET_TURN_AFTER: Duration = Duration::from_secs(8);
+
+/// Whether a turn is over given what the pane shows: it was working (`seen_working`), or
+/// the wait has run past `QUIET_TURN_AFTER` (`quiet`). A turn with a check is not over until
+/// the check answers.
+fn turn_over(status: Status, said: &str, check: Option<&CheckInfo>, seen_working: bool, quiet: bool) -> Option<Waited> {
+    let ended = match status {
+        Status::Blocked | Status::Done | Status::Idle => seen_working || quiet,
+        Status::None => quiet,
+        Status::Working => false,
+    };
+    if !ended || check.is_some_and(|c| c.state == CheckState::Checking) {
+        return None;
+    }
+    let said = if status == Status::None { String::new() } else { said.to_string() };
+    Some(Waited::Turn(status, said, check.cloned()))
+}
+
+/// The check's result in one line, for a waiter to read beside the reply.
+pub fn check_line(c: &CheckInfo) -> String {
+    let exit = c.exit_code.map(|code| format!(" (exit {code})")).unwrap_or_default();
+    let line = if c.first_failing_line.is_empty() { String::new() } else { format!(": {}", c.first_failing_line) };
+    match c.state {
+        CheckState::Checking => format!("checking: {}", c.command),
+        CheckState::Passed => format!("check passed: {}", c.command),
+        CheckState::Failed => format!("check failed: {}{exit}{line}", c.command),
+        CheckState::Overridden => format!("check failed, accepted: {}{exit}{line}", c.command),
+        CheckState::CouldNotRun => format!("check could not run: {}", c.command),
+    }
+}
+
+/// What a check adds beside the status in `seshi ls` and `seshi_list`: `check failed (exit 1)`.
+pub fn check_note(c: &CheckInfo) -> String {
+    match (c.state, c.exit_code) {
+        (CheckState::Checking, _) => "checking".into(),
+        (CheckState::Passed, _) => "check passed".into(),
+        (CheckState::Failed, Some(code)) => format!("check failed (exit {code})"),
+        (CheckState::Failed, None) => "check failed".into(),
+        (CheckState::Overridden, _) => "check overridden".into(),
+        (CheckState::CouldNotRun, _) => "check could not run".into(),
+    }
+}
+
+/// `claude: done · check failed (exit 1)`, for an agent pane.
+fn agent_tag(p: &TermInfo) -> Option<String> {
+    let agent = p.agent.as_deref()?;
+    let note = p.reported_check().map(|c| format!(" · {}", check_note(c))).unwrap_or_default();
+    Some(format!("{agent}: {}{note}", p.status.label()))
+}
+
+/// One pane in `seshi ls --json`.
+fn pane_json(p: &TermInfo) -> Value {
+    let mut v = json!({
+        "id": p.id, "process": p.process, "title": p.title, "agent": p.agent, "asleep": p.asleep, "status_why": p.status_why, "win32_input": p.win32_input, "model": p.model, "name": p.name, "mem_mb": p.mem >> 20, "bell": p.bell,
+        "status": p.status.label(), "cols": p.cols, "rows": p.rows, "cwd": p.cwd,
+    });
+    if let Some(c) = p.reported_check() {
+        v["check"] = json!({
+            "state": c.state.label(), "command": c.command, "exit_code": c.exit_code, "duration_ms": c.duration_ms,
+            "first_failing_line": c.first_failing_line, "rerun_queued": c.rerun_queued, "overridden_at": c.overridden_at,
+        });
+    }
+    v
+}
+
 /// Wait on pane `term`: for its turn to end (it was working, now it isn't; a prompt that
 /// never starts a turn counts as ended after a few seconds), or for `regex` on its screen.
-/// `just_sent`: the turn hasn't started yet, so wait for it to start first.
+/// `just_sent`: the turn hasn't started yet, so wait for it to start first. A session with a
+/// check is waited on until the check has answered, within `timeout`.
 pub fn wait_on(term: TermId, regex: Option<&str>, timeout: Duration, just_sent: bool) -> Result<Waited> {
     let re = regex.map(|r| regex::RegexBuilder::new(r).case_insensitive(true).build()).transpose().context("bad --regex")?;
     let start = std::time::Instant::now();
@@ -267,14 +336,9 @@ pub fn wait_on(term: TermId, regex: Option<&str>, timeout: Duration, just_sent: 
         } else {
             let snap = snapshot()?;
             let t = snap.terms.get(&term).ok_or_else(|| anyhow!("pane {term} is gone"))?;
-            match t.status {
-                Status::Working => seen_working = true,
-                s @ (Status::Blocked | Status::Done | Status::Idle) if seen_working || start.elapsed() > Duration::from_secs(8) => {
-                    return Ok(Waited::Turn(s, t.said.clone()));
-                }
-                // An agent without hooks: no status at all, so wait on output going quiet.
-                Status::None if start.elapsed() > Duration::from_secs(8) => return Ok(Waited::Turn(Status::None, String::new())),
-                _ => {}
+            seen_working |= t.status == Status::Working;
+            if let Some(done) = turn_over(t.status, &t.said, t.check.as_ref(), seen_working, start.elapsed() > QUIET_TURN_AFTER) {
+                return Ok(done);
             }
         }
         if start.elapsed() >= timeout {
@@ -298,9 +362,12 @@ pub fn wait(pane: Option<TermId>, regex: Option<String>, timeout: u64) -> Result
 fn wait_print(term: TermId, regex: Option<String>, timeout: u64, just_sent: bool) -> Result<()> {
     match wait_on(term, regex.as_deref(), Duration::from_secs(timeout), just_sent)? {
         Waited::Matched(l) => println!("{l}"),
-        Waited::Turn(s, said) => {
+        Waited::Turn(s, said, check) => {
             if s == Status::Blocked {
                 eprintln!("(pane {term} needs you)");
+            }
+            if let Some(c) = &check {
+                eprintln!("({})", check_line(c));
             }
             if said.trim().is_empty() {
                 if let Reply::Text(screen) = block_on(request(ClientMsg::Query(Query::Read { term })))? {
@@ -312,6 +379,9 @@ fn wait_print(term: TermId, regex: Option<String>, timeout: u64, just_sent: bool
             }
             if s == Status::Blocked {
                 std::process::exit(3);
+            }
+            if check.is_some_and(|c| c.state == CheckState::Failed) {
+                std::process::exit(EXIT_CHECK_FAILED);
             }
         }
         Waited::TimedOut => {
@@ -1655,6 +1725,100 @@ pub fn allow(dir: Option<std::path::PathBuf>) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    fn check(state: CheckState) -> CheckInfo {
+        CheckInfo { command: "npm test".into(), state, exit_code: Some(1), first_failing_line: "FAIL footer.test.ts".into(), ..Default::default() }
+    }
+
+    #[test]
+    fn a_waiter_stays_blocked_while_the_check_runs() {
+        let running = check(CheckState::Checking);
+        assert_eq!(turn_over(Status::Done, "all done", Some(&running), true, false), None);
+        assert_eq!(turn_over(Status::Idle, "", Some(&running), false, true), None, "not even after the quiet-turn grace");
+        assert_eq!(turn_over(Status::Done, "", None, true, false), Some(Waited::Turn(Status::Done, String::new(), None)));
+    }
+
+    #[test]
+    fn a_waiter_gets_the_check_result_with_the_reply() {
+        for state in [CheckState::Passed, CheckState::Failed, CheckState::CouldNotRun, CheckState::Overridden] {
+            let info = check(state);
+            assert_eq!(turn_over(Status::Done, "done", Some(&info), true, false), Some(Waited::Turn(Status::Done, "done".into(), Some(info))));
+        }
+    }
+
+    #[test]
+    fn a_session_with_no_check_waits_as_before() {
+        assert_eq!(turn_over(Status::Working, "", None, false, true), None);
+        assert_eq!(turn_over(Status::Done, "x", None, false, false), None, "the turn never started");
+        assert_eq!(turn_over(Status::Blocked, "q", None, true, false), Some(Waited::Turn(Status::Blocked, "q".into(), None)));
+        assert_eq!(turn_over(Status::None, "", None, false, true), Some(Waited::Turn(Status::None, String::new(), None)));
+    }
+
+    #[test]
+    fn the_result_reads_as_one_line() {
+        assert_eq!(check_line(&check(CheckState::Passed)), "check passed: npm test");
+        assert_eq!(check_line(&check(CheckState::Failed)), "check failed: npm test (exit 1): FAIL footer.test.ts");
+        assert_eq!(check_line(&check(CheckState::CouldNotRun)), "check could not run: npm test");
+        assert_eq!(check_line(&check(CheckState::Overridden)), "check failed, accepted: npm test (exit 1): FAIL footer.test.ts");
+    }
+
+    fn pane(status: &str, agent: Option<&str>, check: Option<CheckInfo>) -> TermInfo {
+        let mut p: TermInfo = serde_json::from_value(json!({
+            "id": 3, "cols": 80, "rows": 24, "title": "", "process": "node", "agent": agent,
+            "status": status, "cwd": "/code", "summary": "", "name": "", "model": "", "said": "",
+            "branch": null, "linked": false, "subagents": [], "root": null, "top": null,
+            "since": 0, "asleep": false, "win32_input": false,
+        }))
+        .unwrap();
+        p.check = check;
+        p
+    }
+
+    #[test]
+    fn a_check_reads_beside_the_status() {
+        let note = |state, exit| check_note(&CheckInfo { state, exit_code: exit, ..check(state) });
+        assert_eq!(note(CheckState::Failed, Some(1)), "check failed (exit 1)");
+        assert_eq!(note(CheckState::Failed, None), "check failed");
+        assert_eq!(note(CheckState::Checking, None), "checking");
+        assert_eq!(note(CheckState::Passed, Some(0)), "check passed");
+        assert_eq!(note(CheckState::CouldNotRun, Some(127)), "check could not run");
+        assert_eq!(note(CheckState::Overridden, Some(1)), "check overridden");
+    }
+
+    #[test]
+    fn ls_shows_the_check_in_the_agent_tag_only_when_there_is_one() {
+        let failed = pane("Done", Some("claude"), Some(check(CheckState::Failed)));
+        assert_eq!(agent_tag(&failed).as_deref(), Some("claude: done · check failed (exit 1)"));
+        assert_eq!(agent_tag(&pane("Done", Some("claude"), None)).as_deref(), Some("claude: done"));
+        assert_eq!(agent_tag(&pane("Done", None, Some(check(CheckState::Failed)))), None, "a shell has no tag");
+        let working = pane("Working", Some("claude"), Some(check(CheckState::Failed)));
+        assert_eq!(agent_tag(&working).as_deref(), Some("claude: working"), "the last result is about an older turn");
+    }
+
+    #[test]
+    fn ls_json_gives_a_pane_with_a_check_a_check_object() {
+        let mut info = check(CheckState::Overridden);
+        (info.duration_ms, info.rerun_queued, info.overridden_at) = (14_200, true, Some(130));
+        let v = pane_json(&pane("Done", Some("claude"), Some(info)));
+        assert_eq!(
+            v["check"],
+            json!({
+                "state": "overridden", "command": "npm test", "exit_code": 1, "duration_ms": 14_200,
+                "first_failing_line": "FAIL footer.test.ts", "rerun_queued": true, "overridden_at": 130,
+            })
+        );
+        assert_eq!(v["status"], "done", "the status field itself is unchanged");
+    }
+
+    #[test]
+    fn ls_json_for_a_pane_with_no_check_is_what_it_was() {
+        let v = pane_json(&pane("Done", Some("claude"), None));
+        assert!(v.get("check").is_none());
+        assert_eq!(
+            v.to_string(),
+            r#"{"agent":"claude","asleep":false,"bell":false,"cols":80,"cwd":"/code","id":3,"mem_mb":0,"model":"","name":"","process":"node","rows":24,"status":"done","status_why":"","title":"","win32_input":false}"#
+        );
+    }
+
     #[test]
     fn codex_status_setup_requires_root_thread_and_subagent_hooks_for_each_platform() {
         let linux = r#"

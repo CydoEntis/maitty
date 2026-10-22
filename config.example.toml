@@ -144,6 +144,17 @@ A = "new-worktree:claude"   # worktree picker; whatever you open or create start
 #   on_create = "npm install"        # runs in each new worktree ($SESHI_BRANCH, $SESHI_WORKTREE, ...)
 #   on_remove = ""                   # runs before a worktree is removed
 
+# Checks: when an agent's turn ends in a project listed here, Seshi runs `command` through
+# your shell in that session's worktree and records the result (it never reads a command
+# from the repo itself). `project` is the repo's main checkout; a project has one check.
+# `timeout_s` (default 600) stops a run that hangs, and its whole process tree with it.
+# The command does not get the pane's SESHI_PANE_TOKEN, and its output stays on the daemon.
+# [[check]]
+# project = "/home/me/code/app"
+# command = "npm test"
+# timeout_s = 600
+# Settings > Check edits this table for the project you are in and keeps your comments.
+
 # Presets: saved launches, offered as ★ choices in the new-agent dialog. `{task}` is what
 # you type. where = send (tell the agent you're on) | beside (a new one in its folder) |
 # worktree (a new one in a new worktree).

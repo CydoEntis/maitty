@@ -7,18 +7,26 @@ use super::*;
 pub(in crate::client) const CAP_L: &str = "\u{e0b6}";
 pub(in crate::client) const CAP_R: &str = "\u{e0b4}";
 
-/// Round pill ends (the `ui.pill_caps` setting), for drawing that has no `Look` at hand.
-static ROUND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+thread_local! {
+    /// Round pill ends (the `ui.pill_caps` setting), for drawing that has no `Look` at hand.
+    /// Per thread because frames are drawn on one thread; a process-wide flag let tests that
+    /// draw in parallel overwrite each other's setting mid-frame.
+    static ROUND: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
+}
 
 /// Set once a frame from the settings.
 pub(in crate::client) fn set_round(on: bool) {
-    ROUND.store(on, std::sync::atomic::Ordering::Relaxed);
+    ROUND.set(on);
+}
+
+fn round() -> bool {
+    ROUND.get()
 }
 
 /// A pill's two ends in `bg`: half-circles that keep the ground under them, or plain cells
 /// of `bg` (square ends) without a Nerd Font.
 pub(in crate::client) fn ends(bg: Color) -> (Seg, Seg) {
-    if ROUND.load(std::sync::atomic::Ordering::Relaxed) {
+    if round() {
         let st = Style::default().fg(bg);
         (seg(CAP_L, st), seg(CAP_R, st))
     } else {
@@ -30,7 +38,7 @@ pub(in crate::client) fn ends(bg: Color) -> (Seg, Seg) {
 /// A one-row strip of `bg` across `r` with round ends (an input, a bar of buttons). The ends
 /// keep the ground under them; draw the strip's text from a column in.
 pub(in crate::client) fn strip(buf: &mut Buffer, r: Rect, bg: Color) {
-    if r.width < 3 || !ROUND.load(std::sync::atomic::Ordering::Relaxed) {
+    if r.width < 3 || !round() {
         fill(buf, r, bg);
         return;
     }
@@ -233,10 +241,6 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
                 cell.set_symbol("▎").set_style(Style::default().fg(edge).bg(c.bg));
             }
         }
-        if !c.title.is_empty() && r.width > 4 {
-            let title = truncate(c.title, r.width.saturating_sub(6) as usize);
-            put(buf, r.x + 3, r.y, &[seg(title, Style::default().fg(c.title_fg).add_modifier(Modifier::BOLD).bg(c.bg))], r.right().saturating_sub(3));
-        }
         let mut right = Vec::new();
         if let Some(st) = c.state {
             right.push(seg(format!("{} {}", glyph(app, st), state_label(st)), Style::default().fg(state_color(t, st)).add_modifier(Modifier::BOLD).bg(c.bg)));
@@ -386,5 +390,19 @@ pub(in crate::client) fn dim_inside(buf: &mut Buffer, r: Rect, amount: f32, t: &
             let fg = if c.fg == Color::Reset { t.fg } else { c.fg };
             c.fg = blend(fg, bg, amount);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Frames are drawn on the UI thread, but tests draw on many threads at once; one test's
+    /// layout must not change the pill ends another is drawing.
+    #[test]
+    fn the_pill_end_style_is_per_thread() {
+        set_round(true);
+        std::thread::spawn(|| set_round(false)).join().unwrap();
+        assert_eq!(ends(Color::Red).0.0, CAP_L, "another thread's setting leaked into this one");
     }
 }

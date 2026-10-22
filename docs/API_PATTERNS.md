@@ -123,7 +123,24 @@ the pane's process tree or `SESHI_PANE_TOKEN`.
 
 Saved role profiles and sequenced planner/worker/reviewer workflows are not part
 of Seshi's interface. Sessions, ordinary agent launches, fleet helpers, and
-MCP session controls remain supported. The wire protocol is version 41.
+MCP session controls remain supported. The wire protocol is version 43.
+
+A pane's check result travels as a `CheckInfo` summary on `TermInfo.check` (command, state,
+exit code, start, duration, the turn-end it followed, the first failing line (set by the server when it fails: the first failure-looking line of the output, else its last line, cut to `FIRST_FAILING_LINE_MAX_CHARS`; empty otherwise), whether a re-run
+is queued, and the override time and reason). The output tail is never in the snapshot:
+`Query::CheckOutput { term }` returns it as `Reply::Text`, under the read grant. Each result's
+tail is capped at `CHECK_OUTPUT_MAX_BYTES` (1 MiB), cut on a character boundary. The latest
+result and the overridden one are saved in `SavedPane` (`check`, `check_overridden`, both
+optional); their tails are saved beside the pane's output files.
+
+Three commands act on a check, each needing `Grant::Write` on the target pane. `RerunCheck`
+runs it again at once, or, while the agent is working, sets `rerun_queued` on the result on
+show; the turn end then runs it (a pane never checked has nothing to queue, since its turn end
+checks it). `OverrideCheck { reason }` works only on a `Failed` result: it records the time and
+the trimmed reason (at most `OVERRIDE_REASON_MAX_CHARS`), sets `Overridden`, and keeps the
+output. `UndoOverride` works only on `Overridden` and restores `Failed`. Any other state
+answers `ServerMsg::Error`. The next run replaces the result on show; `check_overridden` keeps
+the overridden one with its output. A pane may not override or undo its own check.
 
 Subagent lifecycle is carried as structured `SubagentActivity` records in each
 pane snapshot and persisted with its saved pane. Hook reports use the owning
@@ -193,3 +210,25 @@ recheck the exact status before ringing. Transient auto-approved asks and stale
 attention messages must not ring while the agent is working. Background top-level
 completion uses the soft completion sound; helper completion stays quiet. Helper
 questions may ring after the same blocked delay.
+
+A session whose project has a check is not finished until the check settles. While it
+runs, no finished alert (desktop or phone) rings and `seshi wait`, `seshi send --wait` and
+MCP `seshi_wait` / `seshi_send` with `wait` stay blocked, bounded by their timeout. A
+passed check lets the normal finished alert ring. A failed check raises a blocked
+attention alert and a notice saying "check failed", rings no finished alert (desktop or
+phone), and the waiter returns with the result: `Waited::Turn` carries the check's
+`CheckInfo`, MCP replies end with its one-line result, and `seshi wait` prints that line
+to stderr and exits 4 (2 is timed out, 3 needs you). A check that could not run gives a
+notice and then the normal finished alert. Queued follow-ups still send when the turn
+ends, and `helpers_at_once` still counts only working sessions. A session with no check
+alerts and waits exactly as before.
+
+`seshi ls`, `seshi ls --json` and MCP `seshi_list` report a check next to the status, never in
+place of it: `status` keeps its value (`done`) and `TermInfo::reported_check` decides whether a
+result is shown (not while the agent is working or asking, as in the sidebar). `cli::check_note`
+is the one wording for both text surfaces: `check failed (exit 1)`, `checking`, `check passed`,
+`check could not run`, `check overridden`. `ls` prints it in the agent tag
+(`[claude: done · check failed (exit 1)]`); `seshi_list` adds it as a `check` string. `ls --json`
+adds a `check` object (`state` as `checking`, `passed`, `failed`, `overridden` or
+`could_not_run`; `command`; `exit_code`; `duration_ms`; `first_failing_line`; `rerun_queued`;
+`overridden_at`). A pane with no check has no `check` key and its output is unchanged.

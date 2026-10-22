@@ -9,6 +9,7 @@ mod detection;
 mod gitfs;
 mod ipc;
 mod mcp;
+mod output_line;
 mod project;
 mod keys;
 mod layout;

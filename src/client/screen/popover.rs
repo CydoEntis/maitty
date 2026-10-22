@@ -2,7 +2,7 @@
 //! (`m`), and why it has the status it has (`i`). A `◂` points at the row.
 
 use super::*;
-use crate::protocol::ClientMsg;
+use crate::protocol::{CheckInfo, CheckState, ClientMsg};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// A follow-up being written: to `term`, from the sidebar (`side`: back to its cursor after)
@@ -22,9 +22,12 @@ pub(in crate::client) const INBOX_ROWS: u16 = 6;
 /// The popovers' widths, when there's room.
 const COMPOSE_W: u16 = 76;
 const WHY_W: u16 = 64;
+const WHY_H: u16 = 12;
+/// Width of the time column in the check timeline (`14:21:51 `).
+const TIME_COL: usize = 9;
 
 /// Word-wrapped to `width`, keeping blank lines.
-fn wrap(text: &str, width: usize) -> Vec<String> {
+pub(super) fn wrap(text: &str, width: usize) -> Vec<String> {
     let width = width.max(1);
     let mut out = Vec::new();
     for para in text.split('\n') {
@@ -155,12 +158,17 @@ fn source_of(why: &str) -> &'static str {
 /// the one that set it bold and marked.
 pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: Rect, side: Rect, term: TermId, t: &Theme) {
     let Some(info) = app.snap.terms.get(&term).cloned() else { return };
-    let r = pop_rect(app, screen, side, term, WHY_W, 12);
+    let r = pop_rect(app, screen, side, term, WHY_W, WHY_H);
     let title = format!("why {} {}", glyph(app, info.status), state_label(info.status));
     let mut card_ = Card::new(t, &title).lit(t.accent);
     card_.bg = t.card;
     card(app, buf, r, &card_, t);
     hit(app, r, ScreenHit::Noop);
+    if let Some(check) = &info.check {
+        draw_check_timeline(buf, r, &info, check, t);
+        pointer(buf, r, t);
+        return;
+    }
     let ago = |at: u64| if at == 0 { String::new() } else { format!("{} ago", age(at)) };
     let process = match (info.agent.as_deref(), info.pid) {
         (Some(a), 0) => format!("{a} running"),
@@ -208,6 +216,93 @@ pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: R
     };
     put(buf, r.x + 3, r.y + 9, &[seg(truncate(&note, r.width.saturating_sub(6) as usize), c.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right() - 2);
     pointer(buf, r, t);
+}
+
+/// `at` (unix seconds) as an age, `2m ago`; nothing when it was never recorded.
+fn ago(at: u64) -> String {
+    if at == 0 { String::new() } else { format!("{} ago", age(at)) }
+}
+
+/// `14.2s`, or `2m05s` once it passes a minute.
+fn took(ms: u64) -> String {
+    if ms < 60_000 {
+        return format!("{:.1}s", ms as f64 / 1000.0);
+    }
+    format!("{}m{:02}s", ms / 60_000, ms / 1000 % 60)
+}
+
+/// What the check's run came to, as the timeline's last line: its text and colour.
+fn check_result(check: &CheckInfo, t: &Theme) -> (String, Color) {
+    let code = check.exit_code.map(|c| format!("exit {c}")).unwrap_or_default();
+    let tail = if check.first_failing_line.is_empty() { String::new() } else { format!(" · {}", check.first_failing_line) };
+    match check.state {
+        CheckState::Checking => ("checking…".into(), t.working),
+        CheckState::Passed => (format!("✓ {code} after {}", took(check.duration_ms)), t.done),
+        CheckState::Failed | CheckState::Overridden => (format!("✕ {code} after {}{tail}", took(check.duration_ms)), t.err),
+        CheckState::CouldNotRun => (format!("? could not run{}", if code.is_empty() { String::new() } else { format!(" · {code}") }), t.muted),
+    }
+}
+
+/// The popover's keys, only for the results they apply to, most important first.
+fn check_keys(state: CheckState) -> Vec<(&'static str, &'static str)> {
+    // First, so a narrow popover clips the optional keys and never the way out.
+    let mut keys = vec![("Esc", "close")];
+    if state != CheckState::Checking {
+        keys.extend([("⏎", "evidence"), ("r", "re-run")]);
+    }
+    if state == CheckState::Failed {
+        keys.push(("O", "override"));
+    }
+    keys
+}
+
+/// Why a session with a check reads as it does: the turn that ended, Seshi running the
+/// command, and what came of it, one line each with the time.
+fn draw_check_timeline(buf: &mut Buffer, r: Rect, info: &TermInfo, check: &CheckInfo, t: &Theme) {
+    let c = Style::default().bg(t.card);
+    let summary = match check.state {
+        CheckState::Checking => "Seshi is running the check; the session isn't done yet.",
+        CheckState::Passed => "The check passed.",
+        CheckState::Failed => "The check failed, so the work doesn't read as done.",
+        CheckState::Overridden => "The check failed; you accepted it.",
+        CheckState::CouldNotRun => "The check could not run. The work hasn't been checked.",
+    };
+    let width = r.width.saturating_sub(6) as usize;
+    put(buf, r.x + 3, r.y + 2, &[seg(truncate(summary, width), c.fg(t.text))], r.right() - 2);
+    let body_w = width.saturating_sub(TIME_COL);
+    let said = info.said.lines().rev().map(str::trim).find(|l| !l.is_empty());
+    let mut lines: Vec<(u64, Vec<Seg>)> = Vec::new();
+    if check.after_turn_ended_at > 0 {
+        let quote = said.map(|s| format!(" · it said \"{s}\"")).unwrap_or_default();
+        lines.push((check.after_turn_ended_at, vec![seg(truncate(&format!("agent's turn ended{quote}"), body_w), c.fg(t.text))]));
+    }
+    if check.started_at > 0 {
+        let ran = vec![seg("Seshi ran ", c.fg(t.text)), seg(check.command.clone(), c.fg(t.strong).add_modifier(Modifier::BOLD)), seg(" in its worktree", c.fg(t.text))];
+        lines.push((check.started_at, ran));
+    }
+    let (result, color) = check_result(check, t);
+    let finished = if check.state == CheckState::Checking || check.started_at == 0 { 0 } else { check.started_at + check.duration_ms / 1000 };
+    lines.push((finished, vec![seg(truncate(&result, body_w), c.fg(color).add_modifier(Modifier::BOLD))]));
+    if let (CheckState::Overridden, Some(at)) = (check.state, check.overridden_at) {
+        let why = if check.override_reason.is_empty() { String::new() } else { format!(" · {}", check.override_reason) };
+        lines.push((at, vec![seg(truncate(&format!("⊘ overridden by you{why}"), body_w), c.fg(t.muted))]));
+    }
+    if check.rerun_queued {
+        lines.push((0, vec![seg("runs again when this turn settles", c.fg(t.muted).add_modifier(Modifier::ITALIC))]));
+    }
+    for (i, (at, body)) in lines.into_iter().enumerate() {
+        let when = ago(at);
+        let mut row = vec![seg(format!("{when:<TIME_COL$}"), c.fg(t.muted))];
+        row.extend(body);
+        put(buf, r.x + 3, r.y + 4 + i as u16, &row, r.x + 3 + width as u16);
+    }
+    let mut keys = check_keys(check.state);
+    let mut hints = cap_hints(t, t.card, &keys);
+    while keys.len() > 1 && usize::from(segs_width(&hints)) > width {
+        keys.pop();
+        hints = cap_hints(t, t.card, &keys);
+    }
+    put(buf, r.x + 3, r.y + 10, &hints, r.right() - 2);
 }
 
 impl App {
@@ -280,8 +375,24 @@ impl App {
     }
 
     /// `i` again or Esc closes it; any other key closes it and does its own thing.
-    pub(in crate::client) fn on_why_key(&mut self, side: bool, k: &KeyEvent) {
+    pub(in crate::client) fn on_why_key(&mut self, term: TermId, side: bool, k: &KeyEvent) {
         self.mode = if side { Mode::Side } else { Mode::Normal };
+        // A check's timeline shows the keys that act; the ones it doesn't show are not passed on
+        // to the pane behind it.
+        if let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check.clone()) {
+            let key = match k.code {
+                KeyCode::Enter => Some(('o', check::settled(&info))),
+                KeyCode::Char('r') => Some(('r', check::settled(&info))),
+                KeyCode::Char('O') => Some(('O', check::failed(&info))),
+                _ => None,
+            };
+            if let Some((key, shown)) = key {
+                if shown {
+                    self.do_check_key(term, key);
+                }
+                return;
+            }
+        }
         if !matches!(k.code, KeyCode::Esc | KeyCode::Char('i')) {
             self.on_key(*k);
         }
@@ -293,7 +404,12 @@ const ENTER_AFTER: std::time::Duration = std::time::Duration::from_millis(60);
 
 #[cfg(test)]
 mod tests {
-    use super::wrap;
+    use super::{took, wrap};
+
+    #[test]
+    fn a_duration_reads_in_seconds_then_minutes() {
+        assert_eq!((took(400).as_str(), took(14_200).as_str(), took(125_000).as_str()), ("0.4s", "14.2s", "2m05s"));
+    }
 
     #[test]
     fn the_text_area_wraps_on_words_and_keeps_blank_lines() {

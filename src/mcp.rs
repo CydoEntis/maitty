@@ -22,6 +22,25 @@ fn caller_root() -> PathBuf {
     crate::gitfs::head(&cwd).map(|h| h.main_root).unwrap_or(cwd)
 }
 
+fn row_of(t: &TermInfo, me: Option<TermId>) -> Value {
+    let mut row = json!({
+        "id": t.id,
+        "agent": t.agent.clone().unwrap_or_else(|| if t.is_shell() { "shell".into() } else { t.display_name() }),
+        "status": match t.status { Status::Blocked => "needs-you", s => s.label() },
+        "branch": t.branch,
+        "folder": t.top.clone().unwrap_or_else(|| t.cwd.clone()),
+        "on": t.summary,
+        "asleep": t.asleep,
+    });
+    if Some(t.id) == me {
+        row["you"] = json!(true);
+    }
+    if let Some(c) = t.reported_check() {
+        row["check"] = json!(cli::check_note(c));
+    }
+    row
+}
+
 fn root_of(t: &TermInfo) -> PathBuf {
     t.root.clone().unwrap_or_else(|| t.cwd.clone())
 }
@@ -176,18 +195,7 @@ impl Server {
         let snap = self.snapshot()?;
         let mut out = Vec::new();
         for t in snap.terms.values().filter(|t| self.in_scope(t)) {
-            let mut row = json!({
-                "id": t.id,
-                "agent": t.agent.clone().unwrap_or_else(|| if t.is_shell() { "shell".into() } else { t.display_name() }),
-                "status": match t.status { Status::Blocked => "needs-you", s => s.label() },
-                "branch": t.branch,
-                "folder": t.top.clone().unwrap_or_else(|| t.cwd.clone()),
-                "on": t.summary,
-                "asleep": t.asleep,
-            });
-            if Some(t.id) == self.me {
-                row["you"] = json!(true);
-            }
+            let mut row = row_of(t, self.me);
             if t.status == Status::Blocked
                 && let Ok(screen) = self.screen(t.id)
             {
@@ -234,7 +242,7 @@ impl Server {
         match cli::wait_on(term, regex, std::time::Duration::from_secs(secs), just_sent).map_err(|e| format!("{e:#}"))? {
             cli::Waited::Matched(l) => Ok(format!("matched: {l}")),
             cli::Waited::TimedOut => Err(format!("still going after {secs}s")),
-            cli::Waited::Turn(s, said) => {
+            cli::Waited::Turn(s, said, check) => {
                 let reply = if said.trim().is_empty() {
                     let screen = self.screen(term)?;
                     let lines: Vec<&str> = screen.trim_end().lines().collect();
@@ -246,7 +254,8 @@ impl Server {
                     Status::Blocked => "needs an answer (see seshi_read / seshi_answer)",
                     _ => "finished",
                 };
-                Ok(format!("{term} {state}:\n{reply}"))
+                let checked = check.map(|c| format!("\n{}", cli::check_line(&c))).unwrap_or_default();
+                Ok(format!("{term} {state}:\n{reply}{checked}"))
             }
         }
     }
@@ -390,6 +399,24 @@ mod tests {
         assert_eq!(opts.len(), 3);
         assert_eq!(opts[2], (3, "No, tell it what to do instead".into()));
         assert_eq!(slug("Fix the flaky checkout test, please"), "fix-the-flaky-checkout");
+    }
+
+    #[test]
+    fn the_list_says_what_the_check_found() {
+        let mut t: TermInfo = serde_json::from_value(json!({
+            "id": 4, "cols": 80, "rows": 24, "title": "", "process": "node", "agent": "claude",
+            "status": "Done", "cwd": "/code", "summary": "", "name": "", "model": "", "said": "",
+            "branch": null, "linked": false, "subagents": [], "root": null, "top": null,
+            "since": 0, "asleep": false, "win32_input": false,
+        }))
+        .unwrap();
+        let plain = row_of(&t, None);
+        assert!(plain.get("check").is_none(), "no check, no key");
+        t.check = Some(CheckInfo { command: "npm test".into(), state: CheckState::Failed, exit_code: Some(1), ..Default::default() });
+        assert_eq!(row_of(&t, None)["check"], "check failed (exit 1)");
+        assert_eq!(row_of(&t, None)["status"], "done");
+        t.status = Status::Working;
+        assert!(row_of(&t, None).get("check").is_none(), "an older turn's result is not reported");
     }
 
     #[test]

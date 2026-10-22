@@ -51,6 +51,7 @@ impl App {
                     self.on_first_state();
                 }
                 self.screen_sync();
+                self.check_view_sync();
                 self.maybe_restart_daemon(last_session_closed);
             }
             ServerMsg::Replay { term, cols, rows, data } => {
@@ -131,6 +132,7 @@ impl App {
                     *items = Some(list);
                 }
             }
+            ServerMsg::Reply(Reply::Text(text)) => self.check_output_arrived(text),
             ServerMsg::Welcome { .. } | ServerMsg::Reply(_) => {}
         }
     }

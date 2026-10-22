@@ -151,6 +151,9 @@ pub struct Term {
     pub last_working_hook: Option<Instant>,
     /// The last turn-end hook (or pane start), compared to input without wall-clock rounding.
     pub last_turn_end: Instant,
+    /// This turn's end has been acted on (its check started or declined); the screen and the
+    /// hook can both report one turn ending. A new working turn clears it.
+    pub turn_end_handled: bool,
     /// Activity present at turn end must not reopen that turn unless its live footer changes.
     pub ended_activity: Option<String>,
     pub screen_blocked_from: Option<Status>,
@@ -182,6 +185,11 @@ pub struct Term {
     pub usage: crate::protocol::Usage,
     /// Stopped by a plan limit: "continue" goes at this time (unix seconds).
     pub resume_at: Option<u64>,
+    /// The latest check result, and the failed one the user overrode.
+    pub check: Option<super::check::CheckRecord>,
+    pub check_overridden: Option<super::check::CheckRecord>,
+    /// A check result changed since its output was last written to disk.
+    pub check_dirty: bool,
     /// When seshi last said "continue" to it.
     pub continued: Option<Instant>,
     /// A worktree this agent moves into when its turn ends.
@@ -582,6 +590,7 @@ impl Term {
             progress_off: None,
             last_working_hook: None,
             last_turn_end: now,
+            turn_end_handled: false,
             ended_activity: None,
             screen_blocked_from: None,
             blocked_at: None,
@@ -595,6 +604,9 @@ impl Term {
             transcript: None,
             usage: Default::default(),
             resume_at: None,
+            check: None,
+            check_overridden: None,
+            check_dirty: false,
             continued: None,
             pending_move: None,
             spare: false,

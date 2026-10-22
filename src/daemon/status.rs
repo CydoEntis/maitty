@@ -42,6 +42,9 @@ static CHOICES: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| 
 /// Codex can keep working while an asynchronous question waits in its composer.
 static CODEX_QUEUED_QUESTION: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(crate::config::CODEX_QUEUED_QUESTION_PATTERN).unwrap());
 const CODEX_QUESTION_WHY: &str = "screen: Codex has an unanswered question";
+/// Why a turn that ended without a turn-end report is read as cancelled; nothing was finished,
+/// so nothing is checked.
+const CANCELLED_WHY: &str = "progress bar gone, no turn end: cancelled";
 const SCREEN_IDLE_RECOVERY_WHY: &str = "screen: explicit idle prompt recovered a missed turn end";
 /// A "done" held while subagents run is let through once none has been heard from for this
 /// long (one died without saying so). Background agents can run, and wait on CI, for a while.
@@ -305,6 +308,11 @@ impl Daemon {
             t.progress_off = None;
         }
         self.set_status(term, new, &format!("hook: {}", if event.is_empty() { "status report" } else { event }));
+        // A turn-end report can arrive when the screen never showed the turn working, so the
+        // status did not change. Claude's repeated idle ping is not a turn end.
+        if status == HookStatus::Done && !event.starts_with("Notification:") {
+            self.turn_ended(term);
+        }
         self.dirty = true;
     }
 
@@ -342,9 +350,16 @@ impl Daemon {
         t.blocked_at = (new == Status::Blocked).then(Instant::now);
         t.status = new;
         t.status_since = term::unix_now();
+        if new == Status::Working {
+            t.turn_end_handled = false;
+        }
         self.dirty = true;
+        let turn_over = turn.is_some() && matches!(new, Status::Done | Status::Idle) && why != CANCELLED_WHY;
         if let Some((agent, place, secs)) = turn {
             self.note_turn(agent, place, secs);
+        }
+        if turn_over {
+            self.turn_ended(term);
         }
         if let Some((agent, dir)) = before_turn {
             self.snapshot_before_turn(agent, dir);
@@ -358,14 +373,21 @@ impl Daemon {
                 t.alerted = None;
             }
         }
-        if matches!(new, Status::Blocked | Status::Done) {
-            self.broadcast(|c| c.attach, ServerMsg::Attention { term, status: new });
-            if (new != Status::Done || !self.is_helper(term))
-                && let Some(t) = self.terms.get_mut(&term)
-                && let Some(delay) = crate::alert::settle_delay(new)
-            {
-                t.alert_due = Some((new, std::time::Instant::now() + delay));
-            }
+        // A finish waits for its check: `check_settled` says it once the result is in.
+        let held = new == Status::Done && self.terms.get(&term).is_some_and(Term::check_running);
+        if matches!(new, Status::Blocked | Status::Done) && !held {
+            self.announce(term, new);
+        }
+    }
+
+    /// Tell attached clients `term` needs attention, and queue the desktop alert for it.
+    pub(super) fn announce(&mut self, term: TermId, status: Status) {
+        self.broadcast(|c| c.attach, ServerMsg::Attention { term, status });
+        if (status != Status::Done || !self.is_helper(term))
+            && let Some(t) = self.terms.get_mut(&term)
+            && let Some(delay) = crate::alert::settle_delay(status)
+        {
+            t.alert_due = Some((status, std::time::Instant::now() + delay));
         }
     }
 
@@ -377,17 +399,22 @@ impl Daemon {
     /// Pending alerts only ring while the matching attention status is still current.
     pub(super) fn settled_alerts(&mut self) {
         let now = std::time::Instant::now();
-        let due: Vec<_> = self.terms.values().filter_map(|t| t.alert_due.filter(|(_, at)| *at <= now).map(|(status, _)| (t.id, status))).collect();
+        let due: Vec<_> = self
+            .terms
+            .values()
+            .filter(|t| !t.check_running())
+            .filter_map(|t| t.alert_due.filter(|(_, at)| *at <= now).map(|(status, _)| (t.id, status)))
+            .collect();
         for (term, status) in due {
             let still = self.terms.get_mut(&term).is_some_and(|t| t.alert_due.take().is_some() && t.status == status);
             if still {
-                self.alert(term, status);
+                self.alert(term, status, if status == Status::Blocked { "needs you" } else { "finished" });
             }
         }
     }
 
     /// No window open: the server shows a desktop notification; needs-you also gets a sound.
-    fn alert(&mut self, term: TermId, status: Status) {
+    pub(super) fn alert(&mut self, term: TermId, status: Status, what: &str) {
         let now = std::time::Instant::now();
         let last_any = self
             .terms
@@ -407,7 +434,6 @@ impl Daemon {
             let place = t.place();
             let summary = t.summary.trim();
             let body = if summary.is_empty() { place } else { format!("{place} · {summary}") };
-            let what = if status == Status::Blocked { "needs you" } else { "finished" };
             if let Some(kind) = crate::alert::Kind::for_status(status) {
                 crate::alert::ring(&self.cfg.notify, kind);
             }
@@ -425,7 +451,7 @@ impl Daemon {
         let now = term::unix_now();
         for t in self.terms.values_mut() {
             let Some(agent) = t.agent.clone() else { continue };
-            let wanted = t.status == Status::Blocked || (t.status == Status::Done && n.phone_done);
+            let wanted = t.status == Status::Blocked || (t.status == Status::Done && n.phone_done && !t.check_holds_done());
             if !wanted || t.phoned == t.status_since || now.saturating_sub(t.status_since) < n.phone_after {
                 continue;
             }
@@ -584,7 +610,7 @@ impl Daemon {
                 // A progress bar that is off while helpers run is the agent waiting on them.
                 let helpers_running = !t.subagents.is_empty() && t.subagent_seen.is_some_and(|s| s.elapsed() <= SUBAGENTS_QUIET_AT_MOST);
                 if t.status == Status::Working && t.done_held.is_none() && !helpers_running && t.progress_off.is_some_and(|p| p.elapsed() > CANCELLED_AFTER) {
-                    changes.push((t.id, Status::Idle, "progress bar gone, no turn end: cancelled".to_string()));
+                    changes.push((t.id, Status::Idle, CANCELLED_WHY.to_string()));
                 }
                 // Agents whose hooks only say a turn ended (Codex's notify): the start of the
                 // next turn shows on screen only.

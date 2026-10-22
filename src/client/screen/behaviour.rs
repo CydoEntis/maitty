@@ -585,6 +585,10 @@ impl App {
             }
             KeyCode::Enter => match (&proj, self.screen.cursor) {
                 (Some(key), _) => self.screen_fold(key, None),
+                (None, Some(c)) if self.check_wants_a_look(c) => {
+                    self.screen_side_leave();
+                    self.open_check_sheet(c);
+                }
                 (None, c) => {
                     if let Some(c) = c {
                         self.screen_focus(c);
@@ -941,15 +945,24 @@ impl App {
                 }
                 return;
             }
-            KeyCode::Delete if matches!(sel_row, Some(GoRow::Done(_))) => {
-                if let Some(GoRow::Done(term)) = sel_row {
+            // A failed check: its output, run it again, or accept it (asked first).
+            KeyCode::Char(c @ ('o' | 'r' | 'O')) if query.is_empty() && matches!(sel_row, Some(GoRow::Failed(_))) => {
+                let Some(GoRow::Failed(term)) = sel_row else { return };
+                self.do_check_key(term, c);
+                if c == 'r' {
+                    self.mode = Mode::GoTo { query, sel };
+                }
+                return;
+            }
+            KeyCode::Delete if matches!(sel_row, Some(GoRow::Done(_) | GoRow::NotRun(_))) => {
+                if let Some(GoRow::Done(term) | GoRow::NotRun(term)) = sel_row {
                     self.cmd(Command::MarkSeen { term });
                 }
             }
             KeyCode::Enter => {
                 self.mode = Mode::Normal;
                 match sel_row.as_ref() {
-                    Some(GoRow::Ask(t) | GoRow::Done(t)) => self.screen_focus(*t),
+                    Some(GoRow::Ask(t) | GoRow::Done(t) | GoRow::Failed(t) | GoRow::NotRun(t)) => self.screen_focus(*t),
                     Some(GoRow::Head(_) | GoRow::Heads(_)) => {}
                     Some(GoRow::Sess(_, t)) => self.screen_focus(*t),
                     // A project: its most urgent session, or a shell there.
@@ -1225,6 +1238,9 @@ impl App {
             ScreenHit::InboxAnswer(term, key) => {
                 let name = self.session_name(term);
                 self.inbox_answer(term, key, &name);
+            }
+            ScreenHit::InboxCheck(term, key) => {
+                self.do_check_key(term, key);
             }
             ScreenHit::NpTask => {
                 if let Mode::ScreenPane(np) = &mut self.mode {

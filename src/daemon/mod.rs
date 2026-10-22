@@ -4,6 +4,9 @@
 //! scanner, background git work and client connections talk to it through a single
 //! channel, so there is no locking around the model.
 
+mod check;
+#[cfg(test)]
+pub use check::first_failing_line;
 mod git;
 mod persist;
 mod scan;
@@ -18,7 +21,7 @@ mod worktrees;
 use status::*;
 use worktrees::*;
 
-use crate::config::{CompiledAgent, Config};
+use crate::config::{CompiledAgent, Config, same_path};
 use crate::ipc;
 use crate::layout::Node;
 use crate::protocol::*;
@@ -107,6 +110,10 @@ pub enum Ev {
     MoveReady { client: ClientId, term: TermId, branch: String, result: Result<(PathBuf, String), String> },
     /// A status report, its sender checked (see `HookJob`).
     HookChecked { msg: ClientMsg, verdict: Option<bool>, chain: Vec<u32> },
+    /// A pane's check ended (see `Daemon::turn_ended`).
+    CheckRan { term: TermId, run: check::CheckRun },
+    /// Check output tails a background save could not write.
+    CheckOutputsUnsaved(Vec<TermId>),
 }
 
 /// How to put back what an automatic workspace changed.
@@ -115,11 +122,6 @@ enum AutoUndo {
     Moved { term: TermId, from_ws: WsId, from_tab: TabId, beside: Option<TermId> },
     /// The pane was alone, so its workspace was re-homed; restore name and folder.
     Rehomed { ws: WsId, name: String, cwd: PathBuf },
-}
-
-fn same_path(a: &std::path::Path, b: &std::path::Path) -> bool {
-    let n = |p: &std::path::Path| p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
-    n(a) == n(b)
 }
 
 struct Client {
@@ -169,6 +171,8 @@ struct Daemon {
     last_save: Instant,
     last_output_save: Instant,
     last_saved: String,
+    /// Where check output tails are kept.
+    check_dir: PathBuf,
     /// Worktrees seshi created; closing the last thing in one removes it.
     made_worktrees: Vec<PathBuf>,
     /// Plan limits by agent, as last reported.
@@ -401,6 +405,14 @@ impl Daemon {
             }
             // Typing into another pane, only later.
             Command::QueueFollowUp { term, .. } | Command::ClearQueue { term } => self.may(client, Grant::Write, Some(*term)),
+            Command::RerunCheck { term } => self.may(client, Grant::Write, Some(*term)),
+            // The pane's own claim never counts, so a pane may not accept its own failure.
+            Command::OverrideCheck { term, .. } | Command::UndoOverride { term } => {
+                if self.clients.get(&client).and_then(|c| c.from) == Some(*term) {
+                    anyhow::bail!("a pane may not override its own check; that is yours to decide");
+                }
+                self.may(client, Grant::Write, Some(*term))
+            }
             Command::AnswerHuman { id, .. } => {
                 let asker = self.questions.iter().find(|(q, ..)| q.id == *id).map(|(q, ..)| q.term);
                 self.may(client, Grant::Respond, asker.filter(|_| false))
@@ -460,6 +472,7 @@ impl Daemon {
             last_save: Instant::now(),
             last_output_save: Instant::now(),
             last_saved: String::new(),
+            check_dir: persist::check_output_dir(),
             made_worktrees: Vec::new(),
             limits: BTreeMap::new(),
             spent: Vec::new(),
@@ -876,6 +889,8 @@ impl Daemon {
             }
             Ev::HookRan(msg) => self.broadcast(|_| true, ServerMsg::Notice(msg)),
             Ev::HookChecked { msg, verdict, chain } => self.apply_hook(msg, verdict, chain),
+            Ev::CheckRan { term, run } => self.check_ran(term, run),
+            Ev::CheckOutputsUnsaved(terms) => self.check_outputs_unsaved(&terms),
             Ev::SpareMade(repo, result) => {
                 self.spare_making = false;
                 match result {
@@ -1040,6 +1055,13 @@ impl Daemon {
                         Some(t) => ServerMsg::Reply(Reply::Text(t.parser.screen().contents())),
                         None => ServerMsg::Error(format!("no pane {term}")),
                     },
+                    Query::CheckOutput { term } if self.may(client, Grant::Read, Some(term)).is_err() => {
+                        ServerMsg::Error(format!("{:#}", self.may(client, Grant::Read, Some(term)).unwrap_err()))
+                    }
+                    Query::CheckOutput { term } => match self.terms.get(&term).and_then(|t| t.check.as_ref()) {
+                        Some(record) => ServerMsg::Reply(Reply::Text(record.output.clone())),
+                        None => ServerMsg::Error(format!("no check output for pane {term}")),
+                    },
                     Query::Worktrees { ws } => {
                         let Some(dir) = self.workspaces.iter().find(|w| w.id == ws).map(|w| w.cwd.clone()) else {
                             self.send(client, ServerMsg::Error(format!("no workspace {ws}")));
@@ -1110,6 +1132,7 @@ impl Daemon {
                     win32_input: t.win32_input,
                     usage: t.usage.clone(),
                     resume_at: t.resume_at,
+                    check: t.check.as_ref().map(|c| c.info.clone()),
                     subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
                     started_by: t.started_by,
                     queued: t.queue.iter().cloned().collect(),

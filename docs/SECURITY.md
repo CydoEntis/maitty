@@ -115,6 +115,24 @@ an SSH remote being someone else's machine; what agents work on leaking through 
 (ntfy, off by default: they name the agent and folder only, unless `phone_text` is on, and
 the topic name is the only secret on the public server).
 
+A project's check is a command the daemon runs as the user when an agent's turn ends. It
+comes only from the user's own `config.toml` (`[[check]]`), never from a file in the repo, so
+cloning a repo cannot make Seshi run anything. It runs through the user's shell in the
+session's worktree with no stdin and without `SESHI_PANE_TOKEN`, so it cannot report status
+as the pane. On timeout its whole process tree is killed (process group on unix, job object
+on Windows). If the daemon dies, a check dies with it on Windows (the job closes) and on
+Linux (a parent-death signal kills the shell; a descendant the shell already started is
+left to finish or to fail on its closed pipes). On macOS there is no such call, so a check
+running when the daemon crashes lasts until it ends or writes to its closed pipes. Its output is a capped tail held by the daemon, saved beside the pane's output
+files and served only by `Query::CheckOutput` under the read grant; it is never logged and
+never in the state snapshot. It may contain secrets the command printed, like any pane's
+output.
+
+Overriding a failed check is a recorded, visible action: the time and the reason stay on the
+result and its `Overridden` state shows wherever the check does. It needs the write grant on
+the target pane, and a pane can never override or undo its own check, so an agent's claim
+cannot turn its failure into done. An override covers one result; the next run replaces it.
+
 ## Project-specific: auth and permissions
 
 No user accounts. Access to the daemon is access to its local socket: a named
