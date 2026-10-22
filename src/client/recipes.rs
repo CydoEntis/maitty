@@ -2,7 +2,7 @@
 //! in their own worktree if the recipe says so.
 
 use super::App;
-use super::hydra::Proj;
+use super::screen::Proj;
 use crate::protocol::Command;
 
 /// `fix the flaky checkout test` → `fix-the-flaky-checkout`
@@ -31,28 +31,28 @@ impl App {
         let main = p.wts.iter().find(|w| w.main).map(|w| w.path.clone()).unwrap_or_else(|| p.path.clone());
         if r.worktree && p.git {
             let branch = format!("{}-{}", slug(&r.name, 2), now() % 10_000);
-            self.hy.pending_recipe = Some((branch.clone(), rest, std::time::Instant::now()));
-            self.hy_start_worktree(p, Some(first), Some(branch));
+            self.screen.pending_recipe = Some((branch.clone(), rest, std::time::Instant::now()));
+            self.screen_start_worktree(p, Some(first), Some(branch));
         } else {
             // The last one started gets the focus, so start the first command last.
             for c in rest.iter().rev() {
                 self.cmd(Command::NewWorkspace { cwd: Some(main.clone()), name: None, cmd: Some(c.clone()) });
             }
-            self.hy_new_session(main, Some(first), false);
+            self.screen_new_session(main, Some(first), false);
         }
         self.notify(format!("recipe {}: {}", r.name, r.run.join(" + ")), false);
     }
 
     /// Once a recipe's worktree exists, start the rest of its commands there.
     pub(super) fn recipe_followup(&mut self) {
-        let Some((branch, rest, at)) = self.hy.pending_recipe.clone() else { return };
+        let Some((branch, rest, at)) = self.screen.pending_recipe.clone() else { return };
         if at.elapsed().as_secs() > 60 {
-            self.hy.pending_recipe = None;
+            self.screen.pending_recipe = None;
             return;
         }
-        let model = self.hy_model();
+        let model = self.screen_model();
         let Some(w) = model.iter().flat_map(|p| p.wts.iter()).find(|w| w.branch == branch && !w.sessions.is_empty()).cloned() else { return };
-        self.hy.pending_recipe = None;
+        self.screen.pending_recipe = None;
         for c in rest {
             self.cmd(Command::NewWorkspace { cwd: Some(w.path.clone()), name: None, cmd: Some(c) });
         }

@@ -73,7 +73,7 @@ impl App {
             // Mark reviewed (or not): it sinks, and the next one to look at comes up.
             KeyCode::Char('x') => {
                 let Some(file) = r.files.get(r.sel).map(|f| f.path.clone()) else { return true };
-                let marks = self.hy.saved.reviewed.entry(dir_key).or_default();
+                let marks = self.screen.saved.reviewed.entry(dir_key).or_default();
                 let now = !v.reviewed.contains(&file);
                 if now {
                     marks.insert(file.clone(), views::fingerprint(&v.dir, &file));
@@ -82,7 +82,7 @@ impl App {
                     marks.remove(&file);
                     v.reviewed.remove(&file);
                 }
-                self.hy.save();
+                self.screen.save();
                 let order = v.order();
                 if let Some(r) = v.review.as_mut() {
                     let next = if now { order.iter().copied().find(|i| !v.reviewed.contains(&r.files[*i].path)) } else { None };
@@ -127,7 +127,7 @@ impl App {
     /// Returns false when the view closes.
     pub(super) fn on_files_tree_key(&mut self, v: &mut views::FilesTree, k: &KeyEvent) -> bool {
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
-        let page = self.hy.preview_rect.height.saturating_sub(4).max(5) as usize;
+        let page = self.screen.preview_rect.height.saturating_sub(4).max(5) as usize;
         // Editing the file in the preview.
         if let Some(ed) = v.edit.as_mut() {
             match k.code {
@@ -438,7 +438,7 @@ impl App {
                     // A folder: pick it in the folder browser (Esc comes back here).
                     Kind::Folder => {
                         let cur = self.cfg.start_dir().or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf())).unwrap_or_default();
-                        let mut fd = hydra::Finder::new(&cur);
+                        let mut fd = screen::Finder::new(&cur);
                         fd.for_setting = Some(s.path);
                         self.mode = Mode::Finder(Box::new(fd));
                         return true;
@@ -483,11 +483,11 @@ impl App {
             PromptKind::RenamePane(term) => self.cmd(Command::RenamePane { term, name: input }),
             PromptKind::RenameProject(key) => {
                 if input.is_empty() {
-                    self.hy.saved.names.remove(&key);
+                    self.screen.saved.names.remove(&key);
                 } else {
-                    self.hy.saved.names.insert(key, input);
+                    self.screen.saved.names.insert(key, input);
                 }
-                self.hy.save();
+                self.screen.save();
             }
             PromptKind::RenameTab(ws, tab) => self.cmd(Command::RenameTab { ws, tab, name: input }),
             PromptKind::NewWorkspace => {

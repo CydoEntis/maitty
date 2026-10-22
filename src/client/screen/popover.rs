@@ -101,7 +101,7 @@ pub(in crate::client) fn compose_box(app: &mut App, buf: &mut Buffer, at: Rect, 
 /// with the row, kept on screen.
 fn pop_rect(app: &App, screen: Rect, side: Rect, term: TermId, w: u16, h: u16) -> Rect {
     let x = side.right() + 1;
-    let row = app.hy.row_y.get(&term).copied().unwrap_or(screen.y + 6);
+    let row = app.screen.row_y.get(&term).copied().unwrap_or(screen.y + 6);
     let y = row.saturating_sub(2).clamp(screen.y + 1, screen.bottom().saturating_sub(h + 1));
     Rect { x, y, width: w.min(screen.right().saturating_sub(x + 2)), height: h }
 }
@@ -123,8 +123,8 @@ pub(in crate::client) fn draw_compose_pop(app: &mut App, buf: &mut Buffer, scree
     card_.bg = t.card;
     card_.sub = info.as_ref().and_then(|i| i.agent.as_deref()).unwrap_or("");
     card(app, buf, r, &card_, t);
-    hit(app, r, HyHit::Noop);
-    let model = app.hy_model();
+    hit(app, r, ScreenHit::Noop);
+    let model = app.screen_model();
     let asks = find(&model, c.term).and_then(|(_, _, s)| (s.status == Status::Blocked).then(|| s.question.clone()).flatten());
     let (line, col) = match asks {
         Some(q) => (q, t.blocked),
@@ -160,7 +160,7 @@ pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: R
     let mut card_ = Card::new(t, &title).lit(t.accent);
     card_.bg = t.card;
     card(app, buf, r, &card_, t);
-    hit(app, r, HyHit::Noop);
+    hit(app, r, ScreenHit::Noop);
     let ago = |at: u64| if at == 0 { String::new() } else { format!("{} ago", age(at)) };
     let process = match (info.agent.as_deref(), info.pid) {
         (Some(a), 0) => format!("{a} running"),

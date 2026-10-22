@@ -63,7 +63,7 @@ pub(super) struct Saved {
 }
 
 #[derive(Debug, Default)]
-pub(super) struct Hy {
+pub(super) struct Screen {
     /// A question asked from the sidebar: where its cursor goes after (the row below the
     /// one being closed), so the keys stay in the sidebar.
     pub side_return: Option<SideItem>,
@@ -72,7 +72,7 @@ pub(super) struct Hy {
     pub proj: Option<String>,
     /// Two sessions side by side: (left, right). One of them is the focused one.
     /// Tabs: each shows one session or any number side by side.
-    pub tabs: Vec<HyTab>,
+    pub tabs: Vec<ScreenTab>,
     /// Panes whose program gets right-clicks (no seshi menu there; Shift+right-click for it).
     pub right_clicks: HashSet<TermId>,
     /// Sessions whose subagents are folded away.
@@ -87,7 +87,7 @@ pub(super) struct Hy {
     /// The next session that opens goes in a new tab (Ctrl+Space w), until this time.
     /// A new tab was asked for in this session: the next session to show goes in it.
     pub new_tab: Option<(Instant, TermId)>,
-    /// Counts frames, for `HyTab::used`.
+    /// Counts frames, for `ScreenTab::used`.
     pub tick: u64,
     /// A tab's ✕ clicked once with an agent in it: a second click closes it.
     pub close_armed: Option<(usize, Instant)>,
@@ -115,7 +115,7 @@ pub(super) struct Hy {
     pub proj_keys: Vec<String>,
     pub wt_keys: Vec<(String, PathBuf)>,
     pub branch_keys: Vec<(PathBuf, String)>,
-    /// The sidebar model, built once per event / frame (see `hy_fresh`).
+    /// The sidebar model, built once per event / frame (see `screen_fresh`).
     pub model_cache: std::cell::RefCell<Option<Vec<Proj>>>,
     /// A recipe's worktree being made: (branch, the commands to start there, since).
     pub pending_recipe: Option<(String, Vec<String>, Instant)>,
@@ -150,7 +150,7 @@ pub(super) enum SideItem {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(super) struct HyTab {
+pub(super) struct ScreenTab {
     pub layout: crate::layout::Node,
     /// The one you were on in it.
     pub focus: TermId,
@@ -218,13 +218,13 @@ fn saved_path() -> PathBuf {
     crate::config::data_dir().join(name)
 }
 
-impl Hy {
-    pub fn load() -> Hy {
+impl Screen {
+    pub fn load() -> Screen {
         if cfg!(test) {
-            return Hy::default();
+            return Screen::default();
         }
         let saved = crate::config::read_state(&saved_path());
-        Hy { saved, ..Default::default() }
+        Screen { saved, ..Default::default() }
     }
 
     pub fn save(&self) {
@@ -391,7 +391,7 @@ pub(super) fn settled(s: Status) -> bool {
 /// A split is one session: the pane it was split from keeps its row, the panes opened
 /// beside it don't get rows of their own. The row shows the most urgent of them, so an agent
 /// in a split that needs you still says so (and what it asks).
-pub(super) fn fold_splits(projs: &mut [Proj], tabs: &[HyTab]) {
+pub(super) fn fold_splits(projs: &mut [Proj], tabs: &[ScreenTab]) {
     let mut owners: Vec<TermId> = tabs.iter().map(|t| t.owner).collect();
     owners.sort_unstable();
     owners.dedup();
@@ -500,24 +500,24 @@ pub(super) fn choices(parser: Option<&vt100::Parser>) -> Vec<String> {
 impl App {
     /// Every terminal, by project (repo) and worktree.
     /// Forget the cached model (things may have changed).
-    pub(super) fn hy_fresh(&self) {
-        *self.hy.model_cache.borrow_mut() = None;
+    pub(super) fn screen_fresh(&self) {
+        *self.screen.model_cache.borrow_mut() = None;
     }
 
     /// Every terminal, by project (repo) and worktree. Cached until the next event.
-    pub(super) fn hy_model(&self) -> Vec<Proj> {
-        if let Some(m) = self.hy.model_cache.borrow().as_ref() {
+    pub(super) fn screen_model(&self) -> Vec<Proj> {
+        if let Some(m) = self.screen.model_cache.borrow().as_ref() {
             return m.clone();
         }
-        let m = self.hy_model_build();
-        *self.hy.model_cache.borrow_mut() = Some(m.clone());
+        let m = self.screen_model_build();
+        *self.screen.model_cache.borrow_mut() = Some(m.clone());
         m
     }
 
-    fn hy_model_build(&self) -> Vec<Proj> {
+    fn screen_model_build(&self) -> Vec<Proj> {
         let mut projs: Vec<Proj> = Vec::new();
         let sort = self.cfg.ui.attention_sort;
-        let order = &self.hy.saved.order;
+        let order = &self.screen.saved.order;
         let fallback: Vec<Color> = self.cfg.ui.workspace_colors.iter().filter_map(|c| crate::theme::parse_color(c)).collect();
         let add_proj = |projs: &mut Vec<Proj>, path: &Path, git: bool, kind: Kind| -> usize {
             let key = path_key(path);
@@ -529,10 +529,10 @@ impl App {
             projs.push(Proj {
                 key: key.clone(),
                 path: path.to_path_buf(),
-                name: self.hy.saved.names.get(&key).cloned().unwrap_or_else(|| folder_name(path)),
+                name: self.screen.saved.names.get(&key).cloned().unwrap_or_else(|| folder_name(path)),
                 color: self.theme.project(ci, &fallback),
                 wts: Vec::new(),
-                fresh: self.hy.fresh.contains(&key),
+                fresh: self.screen.fresh.contains(&key),
                 git,
                 branches: Vec::new(),
                 kind,
@@ -554,7 +554,7 @@ impl App {
             let leaves: Vec<TermId> = w.tabs.iter().flat_map(|t| t.layout.leaves()).collect();
             for id in &leaves {
                 let Some(t) = self.snap.terms.get(id) else { continue };
-                let placed = self.hy.saved.placed.iter().find(|(x, ..)| x == id);
+                let placed = self.screen.saved.placed.iter().find(|(x, ..)| x == id);
                 let (root, top, branch, main, git) = match (&t.root, &t.top) {
                     // Dragged into another group: it stays there.
                     _ if let Some((_, p, g)) = placed => {
@@ -642,14 +642,14 @@ impl App {
                 }
             }
         }
-        fold_splits(&mut projs, &self.hy.tabs);
+        fold_splits(&mut projs, &self.screen.tabs);
         // Groups come from where sessions are: one left with none (its only pane is inside a
         // split elsewhere) goes.
         projs.retain(|p| p.sessions().next().is_some());
         for p in &mut projs {
             if sort {
                 for w in &mut p.wts {
-                    let order = &self.hy.saved.session_order;
+                    let order = &self.screen.saved.session_order;
                     w.sessions.sort_by_key(|s| (settled(s.status), order.iter().position(|t| *t == s.term).unwrap_or(usize::MAX), s.term));
                 }
             }
@@ -685,16 +685,16 @@ impl App {
 
     /// Keep the remembered bits in step with a new state: project order, the current
     /// project, the split pair, the branch lists.
-    pub(super) fn hy_sync(&mut self) {
+    pub(super) fn screen_sync(&mut self) {
         // The daemon owns pane topology and restores it across client restarts. Rebuild the
         // visible tabs from that snapshot before handling focus changes, which otherwise
         // turns the first focused restored pane into a one-leaf tab and strands its siblings.
-        if self.hy.last_focus.is_none() && !self.snap.workspaces.is_empty() {
-            let previous = self.hy.tabs.clone();
-            let restored: Vec<HyTab> = self.snap.workspaces.iter().flat_map(|workspace| &workspace.tabs).filter(|source| source.layout.leaves().len() > 1).map(|source| {
+        if self.screen.last_focus.is_none() && !self.snap.workspaces.is_empty() {
+            let previous = self.screen.tabs.clone();
+            let restored: Vec<ScreenTab> = self.snap.workspaces.iter().flat_map(|workspace| &workspace.tabs).filter(|source| source.layout.leaves().len() > 1).map(|source| {
                 let leaves = source.layout.leaves();
                 let prior = previous.iter().find(|tab| tab.layout.leaves().iter().any(|id| leaves.contains(id)));
-                HyTab {
+                ScreenTab {
                     layout: source.layout.clone(),
                     focus: if source.layout.contains(source.focus) { source.focus } else { source.layout.first_leaf() },
                     owner: prior.map_or_else(|| source.layout.first_leaf(), |tab| tab.owner),
@@ -703,60 +703,67 @@ impl App {
                 }
             }).collect();
             if !restored.is_empty() {
-                self.hy.tabs = restored;
-                self.hy.tab = self.hy.tabs.iter().position(|tab| tab.layout.contains(self.focused().unwrap_or(tab.focus))).unwrap_or(0);
+                self.screen.tabs = restored;
+                self.screen.tab = self.screen.tabs.iter().position(|tab| tab.layout.contains(self.focused().unwrap_or(tab.focus))).unwrap_or(0);
             }
         }
         let focus = self.focused();
-        let model = self.hy_model();
+        let model = self.screen_model();
         let mut changed = false;
         for p in &model {
-            if !self.hy.saved.order.contains(&p.key) {
-                self.hy.saved.order.push(p.key.clone());
+            if !self.screen.saved.order.contains(&p.key) {
+                self.screen.saved.order.push(p.key.clone());
                 changed = true;
             }
         }
         if changed {
-            self.hy.save();
+            self.screen.save();
         }
         // You closed the last session: a shell in your home folder takes its place, so there's
         // always somewhere to type (and closing a project never closes the app).
-        if focus.is_none() && self.hy.last_focus.is_some() && self.snap.terms.is_empty() {
-            self.hy.last_focus = None;
+        if focus.is_none() && self.screen.last_focus.is_some() && self.snap.terms.is_empty() {
+            self.screen.last_focus = None;
             self.splash = false;
             let home = self.cfg.start_dir().or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf())).unwrap_or_else(std::env::temp_dir);
-            self.hy_new_session(home, None, false);
+            self.screen_new_session(home, None, false);
             return;
         }
         let proj_of = |t: TermId| model.iter().find(|p| p.sessions().any(|s| s.term == t)).map(|p| p.key.clone());
-        if focus != self.hy.last_focus {
-            self.hy.follow = true;
+        if focus != self.screen.last_focus {
+            self.screen.follow = true;
             if let Some(f) = focus {
                 if let Some(k) = proj_of(f) {
-                    self.hy.fresh.remove(&k);
-                    self.hy.proj = Some(k);
+                    self.screen.fresh.remove(&k);
+                    self.screen.proj = Some(k);
                 }
-                let prev = self.hy.last_focus;
-                self.hy_place(f, prev);
+                let prev = self.screen.last_focus;
+                self.screen_place(f, prev);
                 // Which panes share a split may have changed, and the sidebar folds those.
-                self.hy_fresh();
+                self.screen_fresh();
             }
-            self.hy.last_focus = focus;
+            self.screen.last_focus = focus;
         }
         // Sessions that ended leave their tabs; empty tabs go.
         let alive = |t: TermId| self.snap.terms.contains_key(&t);
-        let mut tabs: Vec<HyTab> = self
-            .hy
+        let mut tabs: Vec<ScreenTab> = self
+            .screen
             .tabs
             .iter()
             .cloned()
             .filter_map(|tab| {
                 let layout = tab.layout.map_leaves(&mut |id| alive(id).then_some(id))?;
                 let focus = if layout.contains(tab.focus) { tab.focus } else { layout.first_leaf() };
-                Some(HyTab { layout, focus, ..tab })
+                Some(ScreenTab { layout, focus, ..tab })
             })
             .collect();
         tabs.dedup_by(|a, b| a.layout == b.layout);
+        // Views get rebuilt as you move between sessions; the name you gave lives in the daemon.
+        for tab in tabs.iter_mut() {
+            let saved = self.snap.workspaces.iter().flat_map(|w| &w.tabs).find(|s| s.layout.contains(tab.focus)).map(|s| s.name.as_str());
+            if let Some(name) = saved {
+                tab.name = name.to_string();
+            }
+        }
         // A session that ended with other tabs left: the first of those becomes the session.
         let gone: Vec<TermId> = tabs.iter().map(|t| t.owner).filter(|o| !alive(*o)).collect();
         for o in gone {
@@ -766,13 +773,13 @@ impl App {
                 }
             }
         }
-        if tabs != self.hy.tabs {
-            self.hy_fresh();
+        if tabs != self.screen.tabs {
+            self.screen_fresh();
         }
-        self.hy.tabs = tabs;
-        self.hy.tab = self.hy.tab.min(self.hy.tabs.len().saturating_sub(1));
-        if self.hy.proj.as_ref().is_none_or(|k| !model.iter().any(|p| &p.key == k)) {
-            self.hy.proj = focus.and_then(proj_of).or_else(|| model.first().map(|p| p.key.clone()));
+        self.screen.tabs = tabs;
+        self.screen.tab = self.screen.tab.min(self.screen.tabs.len().saturating_sub(1));
+        if self.screen.proj.as_ref().is_none_or(|k| !model.iter().any(|p| &p.key == k)) {
+            self.screen.proj = focus.and_then(proj_of).or_else(|| model.first().map(|p| p.key.clone()));
         }
         self.recipe_followup();
         if !cfg!(test) {
@@ -790,10 +797,10 @@ impl App {
         for (repo, mut wts) in repos {
             wts.sort_by(|a, b| a.path.cmp(&b.path));
             wts.dedup_by(|a, b| a.path == b.path);
-            if wts.len() < 2 || self.hy.overlap_at.get(&repo).is_some_and(|t| t.elapsed() < OVERLAP_EVERY) {
+            if wts.len() < 2 || self.screen.overlap_at.get(&repo).is_some_and(|t| t.elapsed() < OVERLAP_EVERY) {
                 continue;
             }
-            self.hy.overlap_at.insert(repo.clone(), Instant::now());
+            self.screen.overlap_at.insert(repo.clone(), Instant::now());
             let tx = self.bg.clone();
             std::thread::spawn(move || {
                 let checkouts: Vec<(String, PathBuf)> = wts.iter().map(|w| (w.name.clone(), w.path.clone())).collect();
@@ -859,7 +866,7 @@ fn session_title(t: &TermInfo, name: &str, top: &Path) -> String {
 // ---- hits ----------------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) enum HyHit {
+pub(super) enum ScreenHit {
     /// Fold / unfold a project.
     ToggleProj(usize),
     /// Fold / unfold a session's subagents.
@@ -940,8 +947,8 @@ pub(super) enum HyHit {
     BranchChoice(usize),
 }
 
-pub(super) fn hit(app: &mut App, r: Rect, h: HyHit) {
-    app.hits.push((r, Hit::Hy(h)));
+pub(super) fn hit(app: &mut App, r: Rect, h: ScreenHit) {
+    app.hits.push((r, Hit::Screen(h)));
 }
 
 pub(super) fn hovered(app: &App, r: Rect) -> bool {
@@ -950,7 +957,7 @@ pub(super) fn hovered(app: &App, r: Rect) -> bool {
 
 /// A design button (" Label key "), hovered with `hov`; records its hit.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn btn(app: &mut App, buf: &mut Buffer, x: u16, y: u16, label: &str, key: &str, kind: BtnKind, h: HyHit, max_x: u16) -> u16 {
+pub(super) fn btn(app: &mut App, buf: &mut Buffer, x: u16, y: u16, label: &str, key: &str, kind: BtnKind, h: ScreenHit, max_x: u16) -> u16 {
     let t = app.theme.clone();
     let w = segs_width(&button(&t, label, key, kind, false));
     let r = Rect { x, y, width: w.min(max_x.saturating_sub(x)), height: 1 };
@@ -977,8 +984,8 @@ mod leader;
 mod popups;
 mod heads;
 mod popover;
-mod screen;
+mod draw;
 mod sheet;
 mod splash;
 mod tidy;
-pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, screen::*, splash::*, sheet::*, popover::*, heads::*, tidy::*};
+pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, splash::*, sheet::*, popover::*, heads::*, tidy::*};

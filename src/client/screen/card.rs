@@ -181,12 +181,12 @@ pub(in crate::client) struct Card<'a> {
     /// Dim, after the title, dropped when there isn't room.
     pub sub: &'a str,
     pub state: Option<Status>,
-    pub state_hit: Option<HyHit>,
+    pub state_hit: Option<ScreenHit>,
     /// A short note left of the state (what it's taking of the machine), in its colour.
     /// Dropped first when the title needs the room.
     pub note: Option<(String, Color)>,
     /// The ✕ at the right of the title border, and what a click on it does.
-    pub close: Option<HyHit>,
+    pub close: Option<ScreenHit>,
     pub border: Color,
     pub bold: bool,
     pub title_fg: Color,

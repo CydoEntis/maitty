@@ -309,10 +309,10 @@ fn from_file_url(url: &str) -> Option<String> {
 /// profile set up so each prompt also reports the directory (OSC 9;9, the Windows Terminal
 /// convention), which keeps the sidebar, splits and restores in the right folder. Runs after
 /// the profile; uses no double quotes so it survives Windows argument quoting.
-const PWSH_CWD_HOOK: &str = "$global:__hydraPrompt = $function:prompt; \
+const PWSH_CWD_HOOK: &str = "$global:__seshiPrompt = $function:prompt; \
 function global:prompt { [Console]::Write([char]27 + ']133;A' + [char]7); $l = $executionContext.SessionState.Path.CurrentLocation; \
 if ($l.Provider.Name -eq 'FileSystem') { [Console]::Write([char]27 + ']9;9;' + [char]34 + $l.ProviderPath + [char]34 + [char]7) }; \
-& $global:__hydraPrompt }";
+& $global:__seshiPrompt }";
 
 /// Agents that, typed into a pane's shell in a repo's main checkout, start in a new
 /// worktree of their own: the quick-prompt agents (with plain names).
@@ -324,7 +324,7 @@ fn worktree_agents(cfg: &Config) -> Vec<String> {
     cfg.quick.agents.iter().map(|a| a.name.clone()).filter(|n| plain(n)).collect()
 }
 
-fn hydra_exe() -> String {
+fn own_exe() -> String {
     std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| "seshi".into())
 }
 
@@ -363,7 +363,7 @@ fn bash_rc(agents: &[String]) -> Option<PathBuf> {
     let text = format!(
         "# Written by seshi for its bash panes: your ~/.bashrc, then agents started in their own worktrees.\n\
 [ -f ~/.bashrc ] && . ~/.bashrc\n{}",
-        agent_functions("bash", agents, &hydra_exe())
+        agent_functions("bash", agents, &own_exe())
     );
     if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
         std::fs::create_dir_all(path.parent()?).ok()?;
@@ -381,7 +381,7 @@ if [ -n \"${{SESHI_ZDOTDIR+x}}\" ]; then ZDOTDIR=\"$SESHI_ZDOTDIR\"; else unset 
 unset SESHI_ZDOTDIR
 [ -f \"${{ZDOTDIR:-$HOME}}/.zshenv\" ] && . \"${{ZDOTDIR:-$HOME}}/.zshenv\"
 {}",
-        agent_functions("zsh", agents, &hydra_exe())
+        agent_functions("zsh", agents, &own_exe())
     )
 }
 
@@ -420,7 +420,7 @@ fn argv(cfg: &Config, cmd: Option<&str>, once: bool) -> Vec<String> {
     let plain = shell.len() == 1;
     match (exe.as_str(), cmd) {
         ("pwsh" | "powershell", cmd) if cfg.shell_integration => {
-            let hook = format!("{PWSH_CWD_HOOK}{}", agent_functions(&exe, &agents, &hydra_exe()));
+            let hook = format!("{PWSH_CWD_HOOK}{}", agent_functions(&exe, &agents, &own_exe()));
             let script = match cmd {
                 Some(c) => format!("{hook}; {c}"),
                 None => hook,
@@ -432,7 +432,7 @@ fn argv(cfg: &Config, cmd: Option<&str>, once: bool) -> Vec<String> {
                 shell.extend(["--rcfile".into(), rc.display().to_string()]);
             }
         }
-        ("fish", None) if plain && !agents.is_empty() => shell.extend(["-C".into(), agent_functions("fish", &agents, &hydra_exe())]),
+        ("fish", None) if plain && !agents.is_empty() => shell.extend(["-C".into(), agent_functions("fish", &agents, &own_exe())]),
         (_, None) => {}
         ("pwsh" | "powershell", Some(c)) => shell.extend(["-NoExit".into(), "-Command".into(), c.into()]),
         ("cmd", Some(c)) => shell.extend(["/K".into(), c.into()]),
@@ -904,7 +904,7 @@ mod tests {
     }
 
     #[test]
-    fn a_pane_shell_starts_agents_through_hydra() {
+    fn a_pane_shell_starts_agents_through_seshi() {
         let cfg = crate::config::Config::default();
         let ps = super::agent_functions("pwsh", &["claude".into()], r"C:\it's\seshi.exe");
         assert!(ps.contains("function global:claude") && ps.contains("& 'C:\\it''s\\seshi.exe' agent-dir claude @args"), "{ps}");
@@ -919,7 +919,7 @@ mod tests {
     /// The bash function really goes to the folder seshi names, then runs the real agent.
     #[cfg(unix)]
     #[test]
-    fn the_bash_function_starts_the_agent_where_hydra_says() {
+    fn the_bash_function_starts_the_agent_where_seshi_says() {
         let tmp = std::env::temp_dir().join(format!("seshi-fn-{}", std::process::id()));
         let bin = tmp.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
@@ -930,9 +930,9 @@ mod tests {
             std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
             p
         };
-        let hydra = fake("seshi", &format!("echo {}", tmp.display()));
+        let exe = fake("seshi", &format!("echo {}", tmp.display()));
         fake("claude", "echo \"ran in $PWD with $*\"");
-        let script = format!("{}claude hi there", super::agent_functions("bash", &["claude".into()], &hydra.display().to_string()));
+        let script = format!("{}claude hi there", super::agent_functions("bash", &["claude".into()], &exe.display().to_string()));
         let out = std::process::Command::new("bash").arg("-c").arg(script).env("PATH", format!("{}:/usr/bin:/bin", bin.display())).output().unwrap();
         let out = String::from_utf8_lossy(&out.stdout);
         assert_eq!(out.trim(), format!("ran in {} with hi there", tmp.display()));

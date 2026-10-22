@@ -119,10 +119,10 @@ mod tests {
     fn paths_agents_print() {
         let mut p = vt100::Parser::new(4, 100, 0);
         p.process("• View the tileset (artifacts/undead/terrain/v2/revenant-environment.png)\r\n".as_bytes());
-        p.process(b"see src/client/hydra.rs:42 and README.md. Plain words here.\r\n");
+        p.process(b"see src/client/screen.rs:42 and README.md. Plain words here.\r\n");
         let s = p.screen();
         assert_eq!(path_at(s, 0, 30), Some(("artifacts/undead/terrain/v2/revenant-environment.png".into(), None)), "inside the brackets, without them");
-        assert_eq!(path_at(s, 1, 8), Some(("src/client/hydra.rs".into(), Some(42))), "path:line");
+        assert_eq!(path_at(s, 1, 8), Some(("src/client/screen.rs".into(), Some(42))), "path:line");
         assert_eq!(path_at(s, 1, 33), Some(("README.md".into(), None)), "a file name, the full stop dropped");
         assert_eq!(path_at(s, 1, 46), None, "plain words aren't paths");
     }

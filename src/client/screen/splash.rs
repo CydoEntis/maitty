@@ -29,7 +29,7 @@ pub(in crate::client) fn splash_options(app: &App) -> Vec<(String, String, char)
 }
 
 pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t: &Theme) {
-    let model = app.hy_model();
+    let model = app.screen_model();
     let buf = f.buffer_mut();
     fill(buf, area, t.bg);
     let all: Vec<&Session> = model.iter().flat_map(|p| p.sessions()).collect();
@@ -84,7 +84,7 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     let opts = splash_options(app);
     let wmax = opts.iter().map(|(l, ..)| l.width() as u16).max().unwrap_or(10) + 10;
     let x = center(wmax);
-    let sel = app.hy.splash_sel.min(opts.len().saturating_sub(1));
+    let sel = app.screen.splash_sel.min(opts.len().saturating_sub(1));
     for (i, (label, key, c)) in opts.iter().enumerate() {
         let yy = y + i as u16 * 2;
         let br = Rect { x, y: yy, width: wmax, height: 1 };
@@ -95,10 +95,10 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
         put(f.buffer_mut(), x + 2, yy, &[seg(label.clone(), Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD))], br.right());
         let kw = key.width() as u16;
         put(f.buffer_mut(), br.right().saturating_sub(kw + 2), yy, &[seg(key.clone(), Style::default().bg(bg).fg(kf).add_modifier(Modifier::BOLD))], br.right());
-        hit(app, br, HyHit::SplashKey(*c));
+        hit(app, br, ScreenHit::SplashKey(*c));
     }
-    let hy = y + opts.len() as u16 * 2 + 1;
-    put(f.buffer_mut(), center(36), hy, &[seg("↑↓ choose   Enter open   or its key", Style::default().fg(t.muted).bg(t.bg))], area.right());
+    let screen = y + opts.len() as u16 * 2 + 1;
+    put(f.buffer_mut(), center(36), screen, &[seg("↑↓ choose   Enter open   or its key", Style::default().fg(t.muted).bg(t.bg))], area.right());
     // Status line: version and where you were.
     let sy = area.bottom().saturating_sub(1);
     let buf = f.buffer_mut();
@@ -118,7 +118,7 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     let rr = vec![seg("?", s.fg(t.accent).add_modifier(Modifier::BOLD)), seg(" keys ", s.fg(t.muted))];
     let rw = segs_width(&rr);
     put(buf, area.right().saturating_sub(rw), sy, &rr, area.right());
-    hit(app, Rect { x: area.right().saturating_sub(rw), y: sy, width: rw, height: 1 }, HyHit::SplashKey('?'));
+    hit(app, Rect { x: area.right().saturating_sub(rw), y: sy, width: rw, height: 1 }, ScreenHit::SplashKey('?'));
 }
 
 /// "12 turns · 2h 10m working · $3.40" over the last day; None when nothing happened.

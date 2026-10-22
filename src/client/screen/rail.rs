@@ -8,8 +8,8 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: 
         c = c.lit(t.accent);
     }
     card(app, buf, r, &c, t);
-    app.hy.side_rect = r;
-    hit(app, r, HyHit::SideFocus);
+    app.screen.side_rect = r;
+    hit(app, r, ScreenHit::SideFocus);
     let row = |y| Rect {
         x: r.x + 1,
         y,
@@ -30,24 +30,24 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: 
         arrow,
         "",
         BtnKind::Ghost,
-        HyHit::ExpandSidebar,
+        ScreenHit::ExpandSidebar,
         expand.right(),
     );
-    hit(app, expand, HyHit::ExpandSidebar);
+    hit(app, expand, ScreenHit::ExpandSidebar);
 
     // Folded projects still expose their sessions and attention in the rail.
     let sessions: Vec<_> = model.iter().flat_map(Proj::sessions).collect();
-    app.hy.visible = sessions.iter().map(|s| s.term).collect();
-    app.hy.side_items = sessions.iter().map(|s| SideItem::Sess(s.term)).collect();
-    app.hy.row_y.clear();
-    app.hy.proj_keys = model.iter().map(|p| p.key.clone()).collect();
+    app.screen.visible = sessions.iter().map(|s| s.term).collect();
+    app.screen.side_items = sessions.iter().map(|s| SideItem::Sess(s.term)).collect();
+    app.screen.row_y.clear();
+    app.screen.proj_keys = model.iter().map(|p| p.key.clone()).collect();
     let count = r.height.saturating_sub(5) as usize;
-    let mut scroll = app.hy.side_scroll as usize;
+    let mut scroll = app.screen.side_scroll as usize;
     let focus = app.focused();
-    if app.hy.follow {
+    if app.screen.follow {
         if let Some(i) = sessions
             .iter()
-            .position(|s| Some(s.term) == app.hy.cursor.or(focus))
+            .position(|s| Some(s.term) == app.screen.cursor.or(focus))
         {
             if i < scroll {
                 scroll = i;
@@ -55,16 +55,16 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: 
                 scroll = i.saturating_sub(count.saturating_sub(1));
             }
         }
-        app.hy.follow = false;
+        app.screen.follow = false;
     }
     scroll = scroll.min(sessions.len().saturating_sub(count));
-    app.hy.side_scroll = scroll as u16;
+    app.screen.side_scroll = scroll as u16;
     for (i, s) in sessions.iter().skip(scroll).take(count).enumerate() {
         let rr = row(r.y + 3 + i as u16);
         let active = Some(s.term) == focus;
         let bg = if active {
             t.hov
-        } else if app.mode == Mode::Side && app.hy.cursor == Some(s.term) {
+        } else if app.mode == Mode::Side && app.screen.cursor == Some(s.term) {
             t.card2
         } else if hovered(app, rr) {
             blend(pb, t.hov, 0.4)
@@ -108,8 +108,8 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: 
             ],
             rr.right(),
         );
-        hit(app, rr, HyHit::Session(s.term));
-        app.hy.row_y.insert(s.term, rr.y);
+        hit(app, rr, ScreenHit::Session(s.term));
+        app.screen.row_y.insert(s.term, rr.y);
     }
     let foot = row(r.bottom().saturating_sub(2));
     let blocked = sessions
@@ -128,17 +128,17 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: 
         &[seg(text, Style::default().fg(color).bg(pb))],
         foot.right(),
     );
-    hit(app, foot, HyHit::Actions);
+    hit(app, foot, ScreenHit::Actions);
 }
 
 pub(super) fn hint(app: &App, buf: &mut Buffer, panes: Rect, model: &[Proj], t: &Theme) {
     if app.sidebar || !matches!(app.mode, Mode::Normal | Mode::Side) {
         return;
     }
-    let Some(pos) = app.hover.filter(|p| app.hy.side_rect.contains(*p)) else {
+    let Some(pos) = app.hover.filter(|p| app.screen.side_rect.contains(*p)) else {
         return;
     };
-    let Some((&term, _)) = app.hy.row_y.iter().find(|(_, y)| **y == pos.y) else {
+    let Some((&term, _)) = app.screen.row_y.iter().find(|(_, y)| **y == pos.y) else {
         return;
     };
     let Some((p, _, s)) = find(model, term) else {

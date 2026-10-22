@@ -22,7 +22,7 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     let area = f.area();
     let t = app.theme.clone();
     set_palette(t.ansi, t.ansi.map(|_| t.card2));
-    super::hydra::set_round(app.cfg.ui.pill_caps && app.cfg.ui.layout != "flat");
+    super::screen::set_round(app.cfg.ui.pill_caps && app.cfg.ui.layout != "flat");
     // The terminal's own background (its window padding) matches ours while we run.
     let terminal_bg = app.cfg.ui.background != "solid";
     if let Color::Rgb(r, g, b) = t.bg
@@ -45,10 +45,10 @@ pub fn draw(app: &mut App, f: &mut Frame) {
         return;
     }
     if app.splash {
-        super::hydra::draw_splash(app, f, area, &t);
+        super::screen::draw_splash(app, f, area, &t);
         return;
     }
-    super::hydra::draw(app, f, area, &t);
+    super::screen::draw(app, f, area, &t);
     draw_overlays(app, f, area, &t);
     if terminal_bg {
         use_terminal_background(f.buffer_mut(), t.bg);
@@ -73,13 +73,13 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
     match &app.mode {
         Mode::Prefix { since } => {
             if app.keymap_shown(*since) {
-                let km = super::hydra::KeyMap { query: String::new(), searching: false, step: None, sel: 0 };
-                super::hydra::draw_keymap(app, f, area, &t, &km);
+                let km = super::screen::KeyMap { query: String::new(), searching: false, step: None, sel: 0 };
+                super::screen::draw_keymap(app, f, area, &t, &km);
             }
         }
         Mode::KeyMap(km) => {
             let km = (**km).clone();
-            super::hydra::draw_keymap(app, f, area, &t, &km);
+            super::screen::draw_keymap(app, f, area, &t, &km);
         }
         Mode::Shortcuts { query, scroll } => {
             let (query, scroll) = (query.clone(), *scroll);
@@ -87,10 +87,10 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
         }
         Mode::Actions { sel } => {
             let sel = *sel;
-            super::hydra::draw_actions(app, f, area, &t, sel);
+            super::screen::draw_actions(app, f, area, &t, sel);
         }
         Mode::SubagentInfo { term, index } => {
-            super::hydra::draw_subagent_info(app, f, area, &t, *term, *index);
+            super::screen::draw_subagent_info(app, f, area, &t, *term, *index);
         }
         Mode::Confirm(c) => {
             let c = (**c).clone();
@@ -102,11 +102,11 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
         Mode::Compose(_) | Mode::Why { .. } => {}
         Mode::History { sel } => {
             let sel = *sel;
-            super::hydra::draw_history(app, f, area, &t, sel);
+            super::screen::draw_history(app, f, area, &t, sel);
         }
         Mode::Tidy(v) => {
             let v = (**v).clone();
-            super::hydra::draw_tidy(app, f, area, &t, &v);
+            super::screen::draw_tidy(app, f, area, &t, &v);
         }
         Mode::Branch(v) => {
             let v = (**v).clone();
@@ -116,19 +116,19 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             let v = (**v).clone();
             super::find::draw_find(app, f, area, &t, &v);
         }
-        Mode::HyMenu(m) => {
+        Mode::ScreenMenu(m) => {
             let m = (**m).clone();
             super::menu::draw_menu(app, f, area, &t, &m);
         }
         Mode::Finder(fd) => {
             let fd = (**fd).clone();
-            super::hydra::draw_finder(app, f, area, &t, &fd);
+            super::screen::draw_finder(app, f, area, &t, &fd);
         }
-        Mode::HyPane(np) => {
+        Mode::ScreenPane(np) => {
             let np = np.clone();
-            super::hydra::draw_new_pane(app, f, area, &t, &np);
+            super::screen::draw_new_pane(app, f, area, &t, &np);
         }
-        Mode::HySettings(_) => super::hydra::draw_settings_modal(app, f.buffer_mut(), area, &t),
+        Mode::ScreenSettings(_) => super::screen::draw_settings_modal(app, f.buffer_mut(), area, &t),
         Mode::Themes { query, sel, saving } => {
             let (query, sel, saving) = (query.clone(), *sel, *saving);
             super::themes::draw_themes(app, f, area, &t, &query, sel, saving);
@@ -427,13 +427,13 @@ pub(super) fn centered(area: Rect, w: u16, h: u16) -> Rect {
 fn draw_picker(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::Theme, query: &str, sel: usize, commands: bool) {
     if commands {
         let items = app.pick_items(query, true);
-        return super::hydra::draw_palette(app, f, area, t, query, sel, &items);
+        return super::screen::draw_palette(app, f, area, t, query, sel, &items);
     }
     let items = app.pick_items(query, commands);
     let r = centered(area, 80, 22);
-    let mut c = super::hydra::Card::new(t, "jump to").lit(t.accent);
+    let mut c = super::screen::Card::new(t, "jump to").lit(t.accent);
     c.bg = t.card;
-    let inside = super::hydra::card(app, f.buffer_mut(), r, &c, t);
+    let inside = super::screen::card(app, f.buffer_mut(), r, &c, t);
     let inner = Rect { x: inside.x + 1, width: inside.width.saturating_sub(2), ..inside };
     let input = Line::from(vec![Span::styled("› ", Style::default().fg(t.accent)), Span::raw(query.to_string())]);
     f.render_widget(Paragraph::new(input), Rect { height: 1, ..inner });
@@ -495,7 +495,7 @@ fn draw_worktrees(
 ) {
     use super::design::{put, seg};
     let buf = f.buffer_mut();
-    let (r, list, start) = super::hydra::query_list(app, buf, area, t, "Worktrees", 84, rows.len().max(12), query, "pick one, or type a new branch", sel);
+    let (r, list, start) = super::screen::query_list(app, buf, area, t, "Worktrees", 84, rows.len().max(12), query, "pick one, or type a new branch", sel);
     let c = Style::default().bg(t.card);
     if loading {
         put(buf, list.x + 2, list.y, &[seg("reading worktrees…", c.fg(t.muted).add_modifier(Modifier::ITALIC))], list.right());
@@ -506,7 +506,7 @@ fn draw_worktrees(
         let y = list.y + (i - start) as u16;
         let rr = Rect { y, height: 1, ..list };
         let on = i == sel;
-        let st = super::hydra::list_row(app, f.buffer_mut(), rr, on, t);
+        let st = super::screen::list_row(app, f.buffer_mut(), rr, on, t);
         let line = match row {
             super::WtRow::Existing(w) => {
                 let open = app.snap.workspaces.iter().any(|x| super::same_dir(&x.cwd, &w.path));
@@ -524,28 +524,28 @@ fn draw_worktrees(
         };
         put(f.buffer_mut(), rr.x + 3, y, &line, rr.right().saturating_sub(1));
     }
-    let keys = super::hydra::hints(t, &[("↑↓", "move"), ("Enter", "open"), ("Esc", "close")]);
+    let keys = super::screen::hints(t, &[("↑↓", "move"), ("Enter", "open"), ("Esc", "close")]);
     put(f.buffer_mut(), r.x + 3, r.bottom().saturating_sub(2), &keys, r.right());
 }
 
 fn draw_prompt(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::Theme, label: &str, input: &str, confirm: bool) {
     use super::design::{put, seg};
     let buf = f.buffer_mut();
-    super::hydra::dim_all(buf, area, t);
+    super::screen::dim_all(buf, area, t);
     let title = label.trim().trim_end_matches(':');
     let mut chars = title.chars();
     let title: String = chars.next().map(|c| c.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default();
-    let r = super::hydra::panel(app, buf, area, 64, 7, &title, &[], t);
+    let r = super::screen::panel(app, buf, area, 64, 7, &title, &[], t);
     if confirm {
-        let keys = super::hydra::hints(t, &[("y", "yes"), ("n", "no")]);
+        let keys = super::screen::hints(t, &[("y", "yes"), ("n", "no")]);
         put(buf, r.x + 3, r.y + 3, &keys, r.right());
         return;
     }
     let field = Rect { x: r.x + 2, y: r.y + 2, width: r.width.saturating_sub(4), height: 1 };
-    super::hydra::strip(buf, field, t.card2);
+    super::screen::strip(buf, field, t.card2);
     let s2 = Style::default().bg(t.card2);
     put(buf, field.x + 1, field.y, &[seg("› ", s2.fg(t.accent).add_modifier(Modifier::BOLD)), seg(input.to_string(), s2.fg(t.strong)), seg("█", s2.fg(t.accent))], field.right());
-    let keys = super::hydra::hints(t, &[("Enter", "save"), ("Esc", "cancel")]);
+    let keys = super::screen::hints(t, &[("Enter", "save"), ("Esc", "cancel")]);
     put(buf, r.x + 3, r.bottom().saturating_sub(2), &keys, r.right());
 }
 
