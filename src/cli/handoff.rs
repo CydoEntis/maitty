@@ -160,9 +160,9 @@ fn default_branch(top: &Path) -> Option<String> {
 /// which is skipped.
 fn uncommitted(porcelain: &str) -> Vec<String> {
     let mut out = Vec::new();
-    let mut entries = porcelain.split('\0').filter(|e| e.len() > 3);
+    let mut entries = porcelain.split('\0');
     while let Some(e) = entries.next() {
-        let (xy, path) = e.split_at(3);
+        let Some((xy, path)) = e.split_at_checked(3).filter(|(_, p)| !p.is_empty()) else { continue };
         out.push(path.to_string());
         if xy.contains('R') || xy.contains('C') {
             entries.next();
@@ -278,6 +278,7 @@ mod tests {
     fn porcelain_keeps_new_paths_and_skips_old_ones() {
         let z = " M src/a.rs\0R  new name.rs\0old name.rs\0?? docs/x.md\0A  b.rs\0";
         assert_eq!(uncommitted(z), ["src/a.rs", "new name.rs", "docs/x.md", "b.rs"]);
+        assert_eq!(uncommitted("R  new.c\0a.c\0 M x.rs\0"), ["new.c", "x.rs"], "a short old path is still skipped alone");
         assert!(uncommitted("").is_empty());
     }
 
