@@ -86,7 +86,23 @@ each state) and drive it with `app.on_key` / `app.act`. v7 layout tests use
 pixls, seshi) with fix-footer's check at one of `checks7.js`'s stages, on a pinned clock
 (`screen::FIXED_NOW`), and `frame(app, layout, w, h, glyphs)` draws it as text in Cards
 floating, Cards tiled or Flat, to compare with the handoff's frames
-(`docs/design/v7/render-frames.mjs`). Live checks use a nested
+(`docs/design/v7/render-frames.mjs`).
+
+`client/v7_frames_tests.rs` holds one test per v7 preset (01–17, A1–A5, B1–B2, C1–C2). Each
+draws the whole screen in every layout at 160×45, 100×30 and 80×24 (and ASCII at Flat 80×24)
+and compares it cell for cell with the reference in `client/v7_frames/<preset>.txt`. Its
+header lists the masks (the pane's terminal text, the working spinner and ages the fixture
+can't pin, the sample's checkpoint kinds) and every deliberate difference from the sample. A
+failure prints each differing row as got/want. The reference files are generated, never
+edited by hand; regenerate them from the repo root (Git Bash) with:
+
+```sh
+T=$(mktemp -d) && cp docs/design/v7/*.js "$T" && echo '{"type":"module"}' > "$T/package.json"
+node docs/design/v7/render-frames.mjs "$T" "$T/frames.txt"
+node src/client/v7_frames/split-frames.mjs "$T/frames.txt"
+```
+
+Live checks use a nested
 server: `SESHI_SOCKET=test seshi`, then `seshi send` / `seshi read` against it.
 Tests never touch the user's real config (`SESHI_CONFIG` or in-memory configs).
 
