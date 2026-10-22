@@ -2,7 +2,7 @@
 //! and follow it, so the instructions are the same however it was started and never have
 //! to survive a shell's quoting.
 
-use crate::config::{Config, Family, TeamJob};
+use crate::config::{Config, Family, TeamJob, same_path};
 use crate::team;
 use std::path::Path;
 
@@ -53,10 +53,28 @@ fn team_section(cfg: &Config, project: &Path) -> String {
         out.push_str(&job_line(cfg, family, job));
     }
     out.push_str(
-        "\n- Start a job's helper with `seshi_start` and its `job` (for example `job: \"builder\"`), or with its\n  shell line above.\n- Use these jobs and their models. Don't choose other agents or models for them.\n\n",
+        "\n- Start a job's helper with `seshi_start` and its `job` (for example `job: \"builder\"`), or with its\n  shell line above.\n- Use these jobs and their models. Don't choose other agents or models for them.\n",
     );
+    let checked = cfg.check.iter().any(|c| same_path(&c.project, project));
+    out.push_str(if checked { HANDOFF_AFTER_CHECK } else { HANDOFF_WITHOUT_CHECK });
+    out.push('\n');
     out
 }
+
+const HANDOFF_AFTER_CHECK: &str = "\
+- Work moves on to the next job only after its check has passed. Wait for the helper with
+  `seshi_wait`, or `seshi wait --pane <n>`, and start the next job's helper on that work (for
+  example the reviewer after the builder) only when the result says the check passed.
+- A failed check, or one that could not run, goes back to the helper that did the work, with
+  what failed. It does not go on to the next job.
+- A check the person overrode (`check overridden`) counts as passed only because they
+  overrode it. Say so in your report.
+";
+
+const HANDOFF_WITHOUT_CHECK: &str = "\
+- This project has no check. Before you hand work on to the next job, read the diff and run
+  the project's tests yourself. Suggest the person set a check in Settings › Check.
+";
 
 fn job_line(cfg: &Config, family: Family, job: &TeamJob) -> String {
     let agent = family.agent();
@@ -107,9 +125,43 @@ mod tests {
         cfg
     }
 
-    /// The plain brief and one composed with the user's three jobs.
-    fn briefs() -> [String; 2] {
-        [BRIEF.to_string(), compose(&team_cfg("claude"), Path::new("/code/app"))]
+    fn with_check(mut cfg: Config, project: &str) -> Config {
+        cfg.check.push(crate::config::CheckDef { project: project.into(), command: "npm test".into(), ..Default::default() });
+        cfg
+    }
+
+    /// The plain brief and ones composed with the user's three jobs, without and with a check.
+    fn briefs() -> [String; 3] {
+        let app = Path::new("/code/app");
+        [BRIEF.to_string(), compose(&team_cfg("claude"), app), compose(&with_check(team_cfg("claude"), "/code/app"), app)]
+    }
+
+    #[test]
+    fn with_a_check_work_moves_to_the_next_job_only_after_it_passes() {
+        let brief = compose(&with_check(team_cfg("claude"), "/code/app/"), Path::new("/code/app"));
+        for says in [
+            "only after its check has passed",
+            "`seshi_wait`, or `seshi wait --pane <n>`",
+            "the reviewer after the builder) only when the result says the check passed",
+            "A failed check, or one that could not run, goes back to the helper that did the work, with\n  what failed. It does not go on to the next job.",
+            "counts as passed only because they\n  overrode it. Say so in your report.",
+        ] {
+            assert!(brief.contains(says), "the brief says {says:?}:\n{brief}");
+        }
+        assert!(!brief.contains("has no check"));
+    }
+
+    #[test]
+    fn without_a_check_the_commander_checks_the_work_itself_and_suggests_one() {
+        let brief = compose(&with_check(team_cfg("claude"), "/code/other"), Path::new("/code/app"));
+        assert!(brief.contains("This project has no check."), "another project's check is not this one's:\n{brief}");
+        assert!(brief.contains("read the diff and run\n  the project's tests yourself") && brief.contains("Settings › Check"), "{brief}");
+        assert!(!brief.contains("only after its check has passed"));
+    }
+
+    #[test]
+    fn with_a_check_but_no_team_the_brief_is_unchanged() {
+        assert_eq!(compose(&with_check(Config::default(), "/code/app"), Path::new("/code/app")), BRIEF);
     }
 
     #[test]
