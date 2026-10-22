@@ -124,7 +124,7 @@ impl App {
     pub(in crate::client) fn on_check_key(&mut self, v: &mut CheckView, k: &KeyEvent) -> bool {
         match k.code {
             KeyCode::Esc => return false,
-            KeyCode::Char(c @ ('r' | 'O' | 'u')) => {
+            KeyCode::Char(c @ ('r' | 'O' | 'u' | ',')) => {
                 self.do_check_key(v.term, c);
             }
             KeyCode::Char('f') => v.toggle_full(),

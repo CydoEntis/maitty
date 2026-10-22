@@ -385,10 +385,8 @@ impl App {
             match k.code {
                 KeyCode::Esc => {}
                 KeyCode::Enter => {
-                    match row {
-                        Some(design::SRow::Setting(s)) => self.save_setting(s.path, text.trim().into()),
-                        Some(design::SRow::Check(_)) => self.submit_check_command(text),
-                        _ => {}
+                    if let Some(design::SRow::Setting(s)) = row {
+                        self.save_setting(s.path, text.trim().into());
                     }
                 }
                 KeyCode::Backspace => {
@@ -401,11 +399,6 @@ impl App {
                 }
                 _ => v.editing = Some(text),
             }
-            return true;
-        }
-        if let Some(design::SRow::Check(field)) = row
-            && self.on_check_row_key(v, field, k)
-        {
             return true;
         }
         if matches!(&row, Some(design::SRow::Setting(s)) if s.path == "theme")
@@ -465,7 +458,7 @@ impl App {
                 },
                 Some(design::SRow::Bind { acts, .. }) if acts.len() == 1 => v.capturing = true,
                 Some(design::SRow::Bind { .. }) => self.notify("that row has several keys: change them in the config file (o)".into(), false),
-                Some(design::SRow::Check(_)) | None => {}
+                None => {}
             },
             _ => {}
         }

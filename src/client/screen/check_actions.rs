@@ -49,11 +49,16 @@ pub(in crate::client) fn append_reason(reason: &mut String, text: &str) {
 
 impl App {
     pub(in crate::client) fn rerun_check(&mut self, term: TermId) {
+        self.rerun_checkpoint(term, None);
+    }
+
+    /// Run `term`'s checkpoint `name` again (None: all of them).
+    pub(in crate::client) fn rerun_checkpoint(&mut self, term: TermId, name: Option<String>) {
         let Some(t) = self.snap.terms.get(&term) else { return };
         match rerun_words(t) {
             Err(why) => self.notify(why.into(), false),
             Ok(said) => {
-                self.cmd(Command::RerunCheck { term, name: None });
+                self.cmd(Command::RerunCheck { term, name });
                 if let Some(said) = said {
                     self.notify(said, false);
                 }
@@ -98,8 +103,9 @@ impl App {
         }
     }
 
-    /// One of a check's keys for `term`: `o` output, `r` re-run, `O` override, `u` undo. Does
-    /// nothing, and says so with false, when the result does not allow it.
+    /// One of a check's keys for `term`: `o` output, `r` re-run, `O` override, `u` undo, `,` its
+    /// project's check settings. Does nothing, and says so with false, when the result does not
+    /// allow it.
     pub(in crate::client) fn do_check_key(&mut self, term: TermId, key: char) -> bool {
         let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check().cloned()) else { return false };
         match key {
@@ -107,6 +113,7 @@ impl App {
             'r' if check::settled(&info) => self.rerun_check(term),
             'O' if check::failed(&info) => self.ask_override(term),
             'u' if info.state == CheckState::Overridden => self.undo_override(term),
+            ',' => self.open_project_check(term),
             _ => return false,
         }
         true

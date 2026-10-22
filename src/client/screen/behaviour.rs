@@ -289,6 +289,7 @@ impl App {
 
     pub(in crate::client) fn screen_settings(&mut self) {
         self.refresh_installed_version();
+        self.screen.check_page = None;
         self.mode = Mode::ScreenSettings(Box::new(SView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
     }
 
@@ -965,6 +966,8 @@ impl App {
                 }
             }
             KeyCode::Enter if let Some(t) = sel_row.as_ref().and_then(GoRow::term) && self.approval_waits(t) => return self.open_approval(t),
+            // The project's check settings, for a row about a session.
+            KeyCode::Char(',') if query.is_empty() && let Some(t) = sel_row.as_ref().and_then(GoRow::term) => return self.open_project_check(t),
             KeyCode::Enter => {
                 self.mode = Mode::Normal;
                 match sel_row.as_ref() {
@@ -1189,6 +1192,7 @@ impl App {
                 self.confirm_done(None);
             }
             ScreenHit::Approve(h) => self.on_approve_hit(h),
+            ScreenHit::CheckDraft(h) => self.on_check_draft_hit(h),
             ScreenHit::TabPick(i) => {
                 if let Some(tab) = self.screen.tabs.get(i) {
                     let to = tab.focus;
@@ -1413,6 +1417,9 @@ impl App {
 
     /// A key for the settings sheet (shared with clicks).
     pub(in crate::client) fn screen_settings_key(&mut self, k: &KeyEvent) {
+        if self.on_check_page_key(k) {
+            return;
+        }
         let Mode::ScreenSettings(v) = self.mode.clone() else { return };
         let mut v = *v;
         let open = self.on_settings_view_key(&mut v, k);

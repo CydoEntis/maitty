@@ -140,6 +140,8 @@ pub(super) struct Screen {
     pub bar: Option<(TermId, Rect, usize)>,
     /// Where each agent row was drawn in the sidebar (for the follow-up box beside it).
     pub row_y: std::collections::HashMap<TermId, u16>,
+    /// What you changed on Settings › Check and have not saved.
+    pub check_page: Option<check_settings::CheckDraft>,
 }
 
 /// A row the sidebar cursor can rest on.
@@ -967,6 +969,8 @@ pub(super) enum ScreenHit {
     BranchChoice(usize),
     /// A button of the repo-command approval.
     Approve(check_approve::ApproveHit),
+    /// A button or row of Settings › Check.
+    CheckDraft(check_settings::DraftHit),
 }
 
 pub(super) fn hit(app: &mut App, r: Rect, h: ScreenHit) {
