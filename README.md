@@ -77,8 +77,13 @@ open). When a newer version is out, an **Update** button appears in the tab bar.
 when Seshi is current. You can also choose "Update seshi" in the command palette.
 Review the version and release notes, then confirm to install. The current window and daemon
 keep running. Settings shows **Installed here**, **This window**, **Running daemon** (or the
-remote host), and **Restart pending** until those versions match. After active tasks finish,
-restart the daemon with `seshi kill-server`, then reopen `seshi` to load daemon fixes.
+remote host), and **Restart pending** until those versions match. Next to it (and in the
+notice that follows an install) is a **Restart now** button, also `R` in Settings. It asks how
+many sessions will stop and resume and how many are working, then restarts the daemon and
+reconnects the window; Cancel changes nothing. With no sessions open it restarts at once.
+If you open a new `seshi` while an older one is still running, it offers **Restart and open**
+(Enter) or **Quit** (Esc) instead of an error. Scripts, pipes and `--remote` still get the error;
+`seshi kill-server` does the same stop by hand. A remote daemon is updated on its host.
 Stopping the daemon stops its processes; saved sessions are restored on reopening. From a
 shell it's `seshi update` (or `seshi update --check` to just
 look). To look right now, Settings has **Check for updates** by the version when no newer one is

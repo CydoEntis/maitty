@@ -1145,6 +1145,7 @@ impl App {
             }
             ScreenHit::Update => self.act(Action::Update),
             ScreenHit::CheckUpdate => self.act(Action::CheckUpdate),
+            ScreenHit::Restart => self.ask_restart(),
             ScreenHit::Why(term) => {
                 self.mode = Mode::Why { term, side: matches!(self.mode, Mode::Side) };
             }

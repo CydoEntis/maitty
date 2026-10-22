@@ -928,6 +928,8 @@ pub(super) enum ScreenHit {
     Update,
     /// Ask now whether a newer seshi is out (the same place, when none is known).
     CheckUpdate,
+    /// Restart the daemon onto the installed version (after an update).
+    Restart,
     NewShell,
     Why(TermId),
     /// A row of the worktree clean-up list (tick or untick it), and its Remove button.

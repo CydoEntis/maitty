@@ -25,6 +25,7 @@ mod view_keys;
 mod themes;
 mod spinners;
 mod shortcuts;
+pub mod restart_prompt;
 
 use crate::config::{Config, Keymap};
 use crate::ipc;
@@ -42,6 +43,16 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
+
+/// "3 sessions stop and resume, 1 is working": what a daemon restart costs.
+fn restart_summary(sessions: usize, working: usize) -> String {
+    let stops = if sessions == 1 { "1 session stops and resumes".to_string() } else { format!("{sessions} sessions stop and resume") };
+    match working {
+        0 => stops,
+        1 => format!("{stops}, 1 is working"),
+        n => format!("{stops}, {n} are working"),
+    }
+}
 
 /// How often the client looks at its timers (spinners, toasts, pending focus).
 /// How often an open window asks again whether a newer seshi is out.
@@ -308,6 +319,8 @@ pub struct App {
     notice: Option<(String, Instant, bool)>,
     /// The session the note is about (an agent finished or needs you): clicking it goes there.
     notice_term: Option<TermId>,
+    /// The toast offers Restart now (the update just installed, the daemon still old).
+    notice_restart: bool,
     /// What happened lately, newest last: (unix secs, pane, kind, text). Kinds: '!' needs
     /// you, '✓' finished, 'i' a message, 'x' an error.
     pub(super) history: std::collections::VecDeque<(u64, Option<TermId>, char, String)>,
@@ -506,6 +519,7 @@ impl App {
             cfg,
             notice: None,
             notice_term: None,
+            notice_restart: false,
             history: Default::default(),
             right_down: None,
             snap: Snapshot::default(),
@@ -756,6 +770,7 @@ impl App {
             format!("Installed seshi {version}. The daemon will restart automatically when no sessions are open.")
         };
         self.notify(message, false);
+        self.notice_restart = self.daemon_restartable();
         self.maybe_restart_daemon(false);
     }
 
@@ -776,15 +791,14 @@ impl App {
             return;
         }
 
-        self.daemon_restart_requested = true;
-        self.notify("No sessions are open. Restarting the daemon to finish the update.".into(), false);
-        self.cmd(Command::KillServer { forget: false });
+        self.request_daemon_restart("No sessions are open. Restarting the daemon to finish the update.");
     }
 
     fn notify(&mut self, msg: String, error: bool) {
         self.remember(None, if error { 'x' } else { 'i' }, msg.clone());
         self.notice = Some((msg, Instant::now(), error));
         self.notice_term = None;
+        self.notice_restart = false;
         self.dirty = true;
     }
 
@@ -840,6 +854,57 @@ impl App {
                 app.maybe_restart_daemon(false);
             }))
         });
+    }
+
+    /// A local daemon older than the installed seshi, which a restart would replace.
+    fn daemon_restartable(&self) -> bool {
+        crate::ipc::remote().is_none()
+            && !self.daemon_restart_requested
+            && !self.daemon_restart_reconnect
+            && !self.snap.daemon_version.is_empty()
+            && self.installed_version.as_ref().and_then(|r| r.as_ref().ok()).is_some_and(|v| *v != self.snap.daemon_version)
+    }
+
+    /// The toast offers Restart now: it stays long enough to be read and clicked.
+    fn toast_restart(&self) -> bool {
+        self.notice_restart && self.daemon_restartable()
+    }
+
+    /// Restart the daemon onto the installed version. Agents stop and resume, so it asks
+    /// first unless nothing is open.
+    fn ask_restart(&mut self) {
+        if !self.daemon_restartable() {
+            return;
+        }
+        let sessions = self.snap.terms.len();
+        if sessions == 0 {
+            return self.restart_daemon_now();
+        }
+        let working = self.snap.terms.values().filter(|t| t.status == Status::Working).count();
+        self.mode = Mode::Confirm(Box::new(menu::Confirm {
+            title: "Restart daemon".into(),
+            sub: String::new(),
+            what: restart_summary(sessions, working),
+            detail: String::new(),
+            note: "They come back where they left off once the new daemon is up.".into(),
+            list: Vec::new(),
+            yes: "Restart".into(),
+            key: '\n',
+            danger: working > 0,
+            act: menu::Act::RestartDaemon,
+        }));
+    }
+
+    fn restart_daemon_now(&mut self) {
+        if self.daemon_restartable() {
+            self.request_daemon_restart("Restarting the daemon…");
+        }
+    }
+
+    fn request_daemon_restart(&mut self, message: &str) {
+        self.daemon_restart_requested = true;
+        self.notify(message.into(), false);
+        self.cmd(Command::KillServer { forget: false });
     }
 
     fn restart_pending(&self) -> bool {
@@ -911,7 +976,7 @@ impl App {
     /// The toast is sliding in, settling from its flash, or fading out.
     fn toast_moving(&self) -> bool {
         let Some((_, at, err)) = &self.notice else { return false };
-        let hold = screen::toast_hold(*err, self.notice_term.is_some());
+        let hold = screen::toast_hold(*err, self.notice_term.is_some(), self.toast_restart());
         let e = at.elapsed();
         self.motion_on() && (e < motion::TOAST_IN.max(motion::TOAST_FLASH) || (e + motion::TOAST_FADE >= hold && e < hold))
     }

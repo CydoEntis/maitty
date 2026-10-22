@@ -39,6 +39,11 @@ impl std::fmt::Display for OtherVersion {
 
 impl std::error::Error for OtherVersion {}
 
+/// The protocol of the running server when an error says it is another seshi version.
+pub fn other_version(e: &anyhow::Error) -> Option<u32> {
+    e.chain().find_map(|c| c.downcast_ref::<OtherVersion>()).map(|o| o.daemon)
+}
+
 /// Where the server notes its process id, so a seshi of another version can still stop it.
 pub fn pid_file() -> std::path::PathBuf {
     crate::config::data_dir().join(format!("{}.pid", socket_id()))
@@ -310,8 +315,11 @@ async fn open_or_spawn_with(attach: bool, exe: Option<std::path::PathBuf>) -> Re
     if remote().is_some() {
         return open(attach).await;
     }
-    if let Ok(c) = open(attach).await {
-        return Ok(c);
+    match open(attach).await {
+        Ok(c) => return Ok(c),
+        // A server is running: starting another would only fail to take its socket.
+        Err(e) if other_version(&e).is_some() => return Err(e),
+        Err(_) => {}
     }
     spawn_daemon(exe.as_deref())?;
     let mut last = None;
