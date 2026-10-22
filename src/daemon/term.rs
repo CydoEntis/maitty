@@ -790,12 +790,15 @@ impl Term {
                 }
                 #[cfg(not(windows))]
                 {
-                    // The pane's shell leads its own process group.
-                    let _ = std::process::Command::new("kill")
-                        .args(["-KILL", &format!("-{pid}")])
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .status();
+                    // The pane's shell leads its own process group. Not `kill -KILL -<pid>`:
+                    // util-linux's kill reads the bare negative pid as an option and signals
+                    // every process the user owns (pid -1).
+                    if let Ok(group) = libc::pid_t::try_from(pid)
+                        && group > 1
+                    {
+                        // SAFETY: signals only the process group the pane's shell leads.
+                        unsafe { libc::kill(-group, libc::SIGKILL) };
+                    }
                 }
             }
             let _ = killer.kill();
