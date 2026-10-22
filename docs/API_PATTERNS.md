@@ -133,6 +133,15 @@ tail is capped at `CHECK_OUTPUT_MAX_BYTES` (1 MiB), cut on a character boundary.
 result and the overridden one are saved in `SavedPane` (`check`, `check_overridden`, both
 optional); their tails are saved beside the pane's output files.
 
+Three commands act on a check, each needing `Grant::Write` on the target pane. `RerunCheck`
+runs it again at once, or, while the agent is working, sets `rerun_queued` on the result on
+show; the turn end then runs it (a pane never checked has nothing to queue, since its turn end
+checks it). `OverrideCheck { reason }` works only on a `Failed` result: it records the time and
+the trimmed reason (at most `OVERRIDE_REASON_MAX_CHARS`), sets `Overridden`, and keeps the
+output. `UndoOverride` works only on `Overridden` and restores `Failed`. Any other state
+answers `ServerMsg::Error`. The next run replaces the result on show; `check_overridden` keeps
+the overridden one with its output. A pane may not override or undo its own check.
+
 Subagent lifecycle is carried as structured `SubagentActivity` records in each
 pane snapshot and persisted with its saved pane. Hook reports use the owning
 pane's authenticated process/token boundary. Codex disk records are accepted

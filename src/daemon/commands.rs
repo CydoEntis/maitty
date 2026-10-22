@@ -466,6 +466,9 @@ impl Daemon {
                     self.dirty = true;
                 }
             }
+            Command::RerunCheck { term } => self.rerun_check(term)?,
+            Command::OverrideCheck { term, reason } => self.override_check(term, &reason)?,
+            Command::UndoOverride { term } => self.undo_override(term)?,
             Command::Grant { term, grants } => {
                 let known = ["read", "write", "start", "respond", "admin"];
                 if let Some(bad) = grants.iter().flatten().find(|g| !known.contains(&g.as_str())) {

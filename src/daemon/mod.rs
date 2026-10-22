@@ -403,6 +403,14 @@ impl Daemon {
             }
             // Typing into another pane, only later.
             Command::QueueFollowUp { term, .. } | Command::ClearQueue { term } => self.may(client, Grant::Write, Some(*term)),
+            Command::RerunCheck { term } => self.may(client, Grant::Write, Some(*term)),
+            // The pane's own claim never counts, so a pane may not accept its own failure.
+            Command::OverrideCheck { term, .. } | Command::UndoOverride { term } => {
+                if self.clients.get(&client).and_then(|c| c.from) == Some(*term) {
+                    anyhow::bail!("a pane may not override its own check; that is yours to decide");
+                }
+                self.may(client, Grant::Write, Some(*term))
+            }
             Command::AnswerHuman { id, .. } => {
                 let asker = self.questions.iter().find(|(q, ..)| q.id == *id).map(|(q, ..)| q.term);
                 self.may(client, Grant::Respond, asker.filter(|_| false))

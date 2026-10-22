@@ -5,7 +5,7 @@
 use super::persist::{self, CheckSlot, SavedPane};
 use super::term::{self, Term};
 use super::{Daemon, Ev};
-use crate::protocol::{CheckInfo, CheckState, TermId};
+use crate::protocol::{CheckInfo, CheckState, Status, TermId};
 use std::path::Path;
 use std::process::{Child, Stdio};
 use std::sync::{Arc, Mutex};
@@ -14,6 +14,9 @@ use std::time::{Duration, Instant};
 /// The most output kept per result. A check's tail is what explains a failure; the rest
 /// would only grow the saved files.
 pub const CHECK_OUTPUT_MAX_BYTES: usize = 1024 * 1024;
+
+/// The longest reason an override may give; it is shown beside the result, not an essay.
+pub const OVERRIDE_REASON_MAX_CHARS: usize = 280;
 
 /// The shell's exit code for a command it could not find (cmd.exe's is 9009). PowerShell
 /// reports a missing command as 1, which cannot be told from a failing one.
@@ -272,7 +275,8 @@ impl Drop for Tree {
 impl Daemon {
     /// An agent's turn ended: run the project's check in its worktree, off the loop. Nothing
     /// happens for a shell, for a project with no check, or while a check is already running
-    /// (the new turn's code is checked by the next turn end).
+    /// (the new turn's code is checked by the next turn end). A re-run queued during the turn
+    /// is this run.
     pub(super) fn turn_ended(&mut self, term: TermId) {
         let Some(t) = self.terms.get_mut(&term) else { return };
         if std::mem::replace(&mut t.turn_end_handled, true) {
@@ -282,16 +286,102 @@ impl Daemon {
         if t.agent.is_none() || t.spare || running {
             return;
         }
-        let project = t.head.as_ref().map_or(&t.cwd, |h| &h.main_root);
-        let Some(def) = self.cfg.check.iter().find(|c| super::same_path(&c.project, project)).cloned() else { return };
-        let dir = t.head.as_ref().map_or_else(|| t.cwd.clone(), |h| h.top.clone());
-        let now = term::unix_now();
-        let info = CheckInfo { command: def.command.clone(), state: CheckState::Checking, started_at: now, after_turn_ended_at: now, ..Default::default() };
+        self.start_check(term, term::unix_now());
+    }
+
+    /// Run the check again. While the agent works, the run waits for its turn to end; the
+    /// result on show stands until then.
+    pub(super) fn rerun_check(&mut self, term: TermId) -> anyhow::Result<()> {
+        let t = self.terms.get(&term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+        if t.agent.is_none() || t.spare {
+            anyhow::bail!("only an agent's work is checked");
+        }
+        if self.check_def(term).is_none() {
+            anyhow::bail!("this project has no check to run");
+        }
+        let latest = t.check.as_ref().map(|c| c.info.clone());
+        if latest.as_ref().is_some_and(|c| c.state == CheckState::Checking) {
+            anyhow::bail!("its check is already running");
+        }
+        if t.status == Status::Working {
+            let Some(record) = self.terms.get_mut(&term).and_then(|t| t.check.as_mut()) else {
+                anyhow::bail!("its turn hasn't ended yet; it is checked when it does");
+            };
+            record.info.rerun_queued = true;
+            self.mark_check_changed(term);
+            return Ok(());
+        }
+        let turn_ended_at = latest.map_or_else(term::unix_now, |c| c.after_turn_ended_at);
+        self.start_check(term, turn_ended_at);
+        Ok(())
+    }
+
+    /// Accept a failed result as it is. The result keeps what failed and its output.
+    pub(super) fn override_check(&mut self, term: TermId, reason: &str) -> anyhow::Result<()> {
+        let reason = reason.trim();
+        if reason.chars().count() > OVERRIDE_REASON_MAX_CHARS {
+            anyhow::bail!("give a reason of at most {OVERRIDE_REASON_MAX_CHARS} characters");
+        }
+        let t = self.terms.get_mut(&term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+        let Some(record) = t.check.as_mut().filter(|c| c.info.state == CheckState::Failed) else {
+            anyhow::bail!("only a failed check can be overridden");
+        };
+        record.info.state = CheckState::Overridden;
+        record.info.overridden_at = Some(term::unix_now());
+        record.info.override_reason = reason.to_string();
+        t.check_overridden = Some(record.clone());
+        self.mark_check_changed(term);
+        Ok(())
+    }
+
+    /// Take an override back: the result reads as failed again.
+    pub(super) fn undo_override(&mut self, term: TermId) -> anyhow::Result<()> {
+        let t = self.terms.get_mut(&term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+        let Some(record) = t.check.as_mut().filter(|c| c.info.state == CheckState::Overridden) else {
+            anyhow::bail!("this check isn't overridden");
+        };
+        record.info.state = CheckState::Failed;
+        record.info.overridden_at = None;
+        record.info.override_reason.clear();
+        t.check_overridden = None;
+        self.mark_check_changed(term);
+        Ok(())
+    }
+
+    fn mark_check_changed(&mut self, term: TermId) {
         if let Some(t) = self.terms.get_mut(&term) {
-            t.check = Some(CheckRecord::new(info, ""));
             t.check_dirty = true;
         }
         self.dirty = true;
+    }
+
+    /// The check configured for the pane's project, if any.
+    fn check_def(&self, term: TermId) -> Option<crate::config::CheckDef> {
+        let t = self.terms.get(&term)?;
+        let project = t.head.as_ref().map_or(&t.cwd, |h| &h.main_root);
+        self.cfg.check.iter().find(|c| super::same_path(&c.project, project)).cloned()
+    }
+
+    /// Start the pane's check, off the loop, replacing its result. A project that no longer
+    /// has a check leaves the result alone and drops any queued re-run, which has nothing to run.
+    fn start_check(&mut self, term: TermId, after_turn_ended_at: u64) {
+        let Some(def) = self.check_def(term) else {
+            if let Some(info) = self.terms.get_mut(&term).and_then(|t| t.check.as_mut()).map(|c| &mut c.info) {
+                info.rerun_queued = false;
+            }
+            return;
+        };
+        let Some(t) = self.terms.get_mut(&term) else { return };
+        let dir = t.head.as_ref().map_or_else(|| t.cwd.clone(), |h| h.top.clone());
+        let info = CheckInfo {
+            command: def.command.clone(),
+            state: CheckState::Checking,
+            started_at: term::unix_now(),
+            after_turn_ended_at,
+            ..Default::default()
+        };
+        t.check = Some(CheckRecord::new(info, ""));
+        self.mark_check_changed(term);
         let (shell, tx, timeout) = (self.cfg.shell_command(), self.tx.clone(), def.timeout());
         tokio::task::spawn_blocking(move || {
             let run = run_check(&shell, &dir, &def.command, timeout);
@@ -335,6 +425,8 @@ impl Term {
             if info.state == CheckState::Checking {
                 info.state = CheckState::CouldNotRun;
             }
+            // Nothing is queued after a restart.
+            info.rerun_queued = false;
             Some(CheckRecord::new(info, &persist::read_check_output(dir, old, slot).unwrap_or_default()))
         };
         self.check = record(&saved.check, CheckSlot::Latest);

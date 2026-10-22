@@ -167,6 +167,12 @@ pub enum Command {
     QueueFollowUp { term: TermId, text: String },
     /// Drop the follow-ups queued for a pane.
     ClearQueue { term: TermId },
+    /// Run the pane's check again. While its agent is working the run waits for the turn to end.
+    RerunCheck { term: TermId },
+    /// Accept a failed check as it is; `reason` may be empty. Covers that one result only.
+    OverrideCheck { term: TermId, reason: String },
+    /// Take an override back: the check reads as failed again.
+    UndoOverride { term: TermId },
     /// `forget`: also discard the saved session, so the next start is a clean slate.
     KillServer { forget: bool },
 }
@@ -642,6 +648,9 @@ mod tests {
             ClientMsg::Command(Command::Grant { term: 3, grants: Some(vec!["read".into()]) }),
             ClientMsg::Command(Command::QueueFollowUp { term: 3, text: "then run the tests".into() }),
             ClientMsg::Command(Command::ClearQueue { term: 3 }),
+            ClientMsg::Command(Command::RerunCheck { term: 3 }),
+            ClientMsg::Command(Command::OverrideCheck { term: 3, reason: "flaky on CI".into() }),
+            ClientMsg::Command(Command::UndoOverride { term: 3 }),
             ClientMsg::Command(Command::TidyWorktrees { items: vec![(PathBuf::from("/code/.wt/rate"), false)] }),
             ClientMsg::Command(Command::RenamePane { term: 3, name: "x".into() }),
             ClientMsg::Command(Command::MoveToWorktree { term: 3, branch: Some("feat/x".into()) }),

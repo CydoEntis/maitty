@@ -128,6 +128,11 @@ files and served only by `Query::CheckOutput` under the read grant; it is never 
 never in the state snapshot. It may contain secrets the command printed, like any pane's
 output.
 
+Overriding a failed check is a recorded, visible action: the time and the reason stay on the
+result and its `Overridden` state shows wherever the check does. It needs the write grant on
+the target pane, and a pane can never override or undo its own check, so an agent's claim
+cannot turn its failure into done. An override covers one result; the next run replaces it.
+
 ## Project-specific: auth and permissions
 
 No user accounts. Access to the daemon is access to its local socket: a named
