@@ -22,8 +22,17 @@ pub struct Facts {
     pub last_prompt: String,
     pub branch: Option<String>,
     pub checkout: PathBuf,
-    pub changed: Result<Vec<String>, String>,
+    pub changed: Result<Changed, String>,
     pub screen: String,
+}
+
+/// What a checkout changed, as far as git could tell.
+#[derive(Debug, PartialEq)]
+pub struct Changed {
+    pub files: Vec<String>,
+    /// Why the branch's committed changes could not be listed; `files` then holds only the
+    /// uncommitted paths.
+    pub committed_unknown: Option<String>,
 }
 
 pub fn brief(facts: &Facts) -> String {
@@ -54,21 +63,22 @@ fn head(f: &Facts) -> String {
     s
 }
 
-fn changed_section(changed: &Result<Vec<String>, String>) -> String {
-    match changed {
-        Err(why) => format!("changed files: unknown ({why})\n"),
-        Ok(files) if files.is_empty() => "changed files: none\n".into(),
-        Ok(files) => {
-            let mut s = String::from("changed files:\n");
-            for f in files.iter().take(MAX_FILES) {
-                s += &format!("- {f}\n");
-            }
-            if files.len() > MAX_FILES {
-                s += &format!("… and {} more\n", files.len() - MAX_FILES);
-            }
-            s
-        }
+fn changed_section(changed: &Result<Changed, String>) -> String {
+    let c = match changed {
+        Err(why) => return format!("changed files: unknown ({why})\n"),
+        Ok(c) => c,
+    };
+    let mut s = String::from(if c.files.is_empty() { "changed files: none\n" } else { "changed files:\n" });
+    for f in c.files.iter().take(MAX_FILES) {
+        s += &format!("- {f}\n");
     }
+    if c.files.len() > MAX_FILES {
+        s += &format!("… and {} more\n", c.files.len() - MAX_FILES);
+    }
+    if let Some(why) = &c.committed_unknown {
+        s += &format!("committed changes: unknown ({why})\n");
+    }
+    s
 }
 
 /// The last non-blank screen lines (at most `TAIL_LINES`) that fit in `room` characters.
@@ -111,18 +121,39 @@ pub fn new_pane(had: &[TermId], now: impl IntoIterator<Item = TermId>) -> Option
     now.into_iter().find(|id| !had.contains(id))
 }
 
-/// What the checkout changed: uncommitted paths, plus, off the main branch, the files
+/// What the checkout changed: uncommitted paths, plus, off the base branch, the files
 /// changed since it left it. Sorted, no repeats.
-pub fn changed_files(top: &Path, root: Option<&Path>) -> Result<Vec<String>, String> {
+pub fn changed_files(top: &Path, root: Option<&Path>) -> Result<Changed, String> {
     let mut files = uncommitted(&crate::proc::git(top, &["status", "--porcelain", "-z", "--untracked-files=all"])?);
-    let here = crate::gitfs::head(top).map(|h| h.branch);
-    if let Some(main) = crate::gitfs::main_branch(root.unwrap_or(top)).filter(|m| here.as_deref() != Some(m.as_str())) {
-        let committed = crate::proc::git(top, &["diff", "--name-only", &format!("{main}...HEAD")])?;
-        files.extend(committed.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from));
+    let mut committed_unknown = None;
+    if let Some(base) = base_branch(top, root) {
+        match crate::proc::git(top, &["diff", "--name-only", &format!("{base}...HEAD")]) {
+            Ok(committed) => files.extend(committed.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from)),
+            Err(why) => committed_unknown = Some(why),
+        }
     }
     files.sort();
     files.dedup();
-    Ok(files)
+    Ok(Changed { files, committed_unknown })
+}
+
+/// The branch the checkout's work is measured against, never the one it is on: the branch
+/// the main checkout is on, else the repo's default branch. A branch made in the main
+/// checkout leaves the main checkout on that branch, hence the fallback.
+fn base_branch(top: &Path, root: Option<&Path>) -> Option<String> {
+    let here = crate::gitfs::head(top).map(|h| h.branch);
+    let elsewhere = |b: &String| here.as_deref() != Some(b.as_str());
+    crate::gitfs::main_branch(root.unwrap_or(top)).filter(elsewhere).or_else(|| default_branch(top).filter(elsewhere))
+}
+
+/// The remote's default branch when it exists locally, else a local `main` or `master`.
+fn default_branch(top: &Path) -> Option<String> {
+    // No origin, or no origin/HEAD, is normal: the local names are the fallback.
+    let remote = crate::proc::git(top, &["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])
+        .ok()
+        .and_then(|r| r.trim().strip_prefix("origin/").map(String::from));
+    let local = |b: &str| crate::proc::git(top, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{b}")]).is_ok();
+    remote.filter(|b| local(b)).or_else(|| ["main", "master"].into_iter().find(|b| local(b)).map(String::from))
 }
 
 /// The paths in `git status --porcelain -z`. A rename or copy is followed by its old path,
@@ -144,6 +175,10 @@ fn uncommitted(porcelain: &str) -> Vec<String> {
 mod tests {
     use super::*;
 
+    fn changed(files: &[&str]) -> Changed {
+        Changed { files: files.iter().map(|f| f.to_string()).collect(), committed_unknown: None }
+    }
+
     fn facts() -> Facts {
         Facts {
             pane: 3,
@@ -152,7 +187,7 @@ mod tests {
             last_prompt: "now run it again".into(),
             branch: Some("fix-checkout".into()),
             checkout: PathBuf::from("/work/app"),
-            changed: Ok(vec!["src/a.rs".into(), "src/b.rs".into()]),
+            changed: Ok(changed(&["src/a.rs", "src/b.rs"])),
             screen: "one\n\n  \ntwo   \nthree\n".into(),
         }
     }
@@ -187,13 +222,20 @@ mod tests {
     fn changed_files_that_could_not_be_read_or_are_none_say_so() {
         let b = brief(&Facts { changed: Err("over ssh".into()), ..facts() });
         assert!(b.contains("changed files: unknown (over ssh)\n"), "{b}");
-        let b = brief(&Facts { changed: Ok(vec![]), ..facts() });
+        let b = brief(&Facts { changed: Ok(changed(&[])), ..facts() });
         assert!(b.contains("changed files: none\n"), "{b}");
     }
 
     #[test]
+    fn committed_changes_that_could_not_be_read_keep_the_uncommitted_list() {
+        let c = Changed { committed_unknown: Some("bad revision".into()), ..changed(&["src/a.rs"]) };
+        let b = brief(&Facts { changed: Ok(c), ..facts() });
+        assert!(b.contains("changed files:\n- src/a.rs\ncommitted changes: unknown (bad revision)\n"), "{b}");
+    }
+
+    #[test]
     fn files_past_the_limit_are_counted() {
-        let files = |n: usize| Ok((0..n).map(|i| format!("f{i:02}")).collect());
+        let files = |n: usize| Ok(Changed { files: (0..n).map(|i| format!("f{i:02}")).collect(), committed_unknown: None });
         let b = brief(&Facts { changed: files(MAX_FILES), ..facts() });
         assert!(b.contains(&format!("- f{:02}\n", MAX_FILES - 1)) && !b.contains("more"), "{b}");
         let b = brief(&Facts { changed: files(MAX_FILES + 4), ..facts() });
@@ -230,29 +272,60 @@ mod tests {
         assert!(uncommitted("").is_empty());
     }
 
-    #[test]
-    fn a_worktree_lists_what_it_committed_and_what_it_has_not() {
-        let root = std::env::temp_dir().join(format!("seshi-handoff-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+    fn git(dir: &Path, args: &[&str]) {
+        crate::proc::git(dir, args).unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+    }
+
+    /// A repo in `<root>/repo` on `main` with one commit. Signing and hooks are switched off
+    /// so the user's global git config can't fail or stall the test.
+    fn repo(root: &Path) -> PathBuf {
+        let _ = std::fs::remove_dir_all(root);
         let repo = root.join("repo");
+        let hooks = root.join("no-hooks");
         std::fs::create_dir_all(&repo).unwrap();
-        let git = |dir: &Path, args: &[&str]| crate::proc::git(dir, args).unwrap();
+        std::fs::create_dir_all(&hooks).unwrap();
         git(&repo, &["init", "-q", "-b", "main"]);
-        git(&repo, &["config", "user.email", "t@t"]);
-        git(&repo, &["config", "user.name", "t"]);
+        for (k, v) in [("user.email", "t@t"), ("user.name", "t"), ("commit.gpgsign", "false"), ("core.hooksPath", hooks.to_str().unwrap())] {
+            git(&repo, &["config", k, v]);
+        }
         for f in ["kept.rs", "edited.rs"] {
             std::fs::write(repo.join(f), "a").unwrap();
         }
         git(&repo, &["add", "."]);
         git(&repo, &["commit", "-qm", "one"]);
+        repo
+    }
+
+    /// Commits a new `committed.rs` in `dir`, then edits `edited.rs` without committing it.
+    fn commit_one_edit_another(dir: &Path) {
+        std::fs::write(dir.join("committed.rs"), "b").unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-qm", "two"]);
+        std::fs::write(dir.join("edited.rs"), "c").unwrap();
+    }
+
+    #[test]
+    fn a_worktree_lists_what_it_committed_and_what_it_has_not() {
+        let root = std::env::temp_dir().join(format!("seshi-handoff-{}", std::process::id()));
+        let repo = repo(&root);
         let wt = root.join("orders");
         git(&repo, &["worktree", "add", "-q", "-b", "orders", wt.to_str().unwrap()]);
-        std::fs::write(wt.join("committed.rs"), "b").unwrap();
-        git(&wt, &["add", "."]);
-        git(&wt, &["commit", "-qm", "two"]);
-        std::fs::write(wt.join("edited.rs"), "c").unwrap();
-        assert_eq!(changed_files(&wt, Some(&repo)).unwrap(), ["committed.rs", "edited.rs"]);
-        assert!(changed_files(&repo, Some(&repo)).unwrap().is_empty(), "the main checkout: only what isn't committed");
+        commit_one_edit_another(&wt);
+        assert_eq!(changed_files(&wt, Some(&repo)).unwrap(), changed(&["committed.rs", "edited.rs"]));
+        assert_eq!(changed_files(&repo, Some(&repo)).unwrap(), changed(&[]), "the main checkout: only what isn't committed");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_branch_in_the_main_checkout_lists_what_it_committed_and_what_it_has_not() {
+        let root = std::env::temp_dir().join(format!("seshi-handoff-branch-{}", std::process::id()));
+        let repo = repo(&root);
+        git(&repo, &["checkout", "-q", "-b", "feat"]);
+        commit_one_edit_another(&repo);
+        assert_eq!(changed_files(&repo, Some(&repo)).unwrap(), changed(&["committed.rs", "edited.rs"]));
+        git(&repo, &["checkout", "-q", "-f", "main"]);
+        std::fs::write(repo.join("edited.rs"), "d").unwrap();
+        assert_eq!(changed_files(&repo, Some(&repo)).unwrap(), changed(&["edited.rs"]), "on main: only what isn't committed");
         let _ = std::fs::remove_dir_all(&root);
     }
 
