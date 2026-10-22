@@ -146,17 +146,53 @@ impl Approvals {
     }
 }
 
-/// The newest save written to each file; saves run one at a time and an older one is dropped.
-static SAVED: std::sync::Mutex<std::collections::BTreeMap<PathBuf, u64>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+/// One answer to write into the file.
+#[derive(Debug, Clone)]
+enum Change {
+    Decide(Approval),
+    Forget { repo: PathBuf, name: String },
+}
+
+impl Change {
+    /// The file and checkpoint it is about.
+    fn key(&self, path: &Path) -> (PathBuf, PathBuf, String) {
+        let (repo, name) = match self {
+            Change::Decide(a) => (&a.repo, &a.name),
+            Change::Forget { repo, name } => (repo, name),
+        };
+        (path.to_path_buf(), repo.clone(), name.to_ascii_lowercase())
+    }
+
+    fn apply(self, approvals: &mut Approvals) {
+        match self {
+            Change::Decide(a) => {
+                approvals.forget(&a.repo, &a.name);
+                approvals.decisions.push(a);
+            }
+            Change::Forget { repo, name } => {
+                approvals.forget(&repo, &name);
+            }
+        }
+    }
+}
+
+/// The newest change written for each checkpoint of each file; changes are written one at a
+/// time and an older one for the same checkpoint is dropped.
+static WRITTEN: std::sync::Mutex<std::collections::BTreeMap<(PathBuf, PathBuf, String), u64>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
 static SAVE_TICKETS: AtomicU64 = AtomicU64::new(1);
 
-fn save_unless_older(approvals: &Approvals, path: &Path, ticket: u64) -> Result<()> {
-    let mut saved = SAVED.lock().unwrap_or_else(|e| e.into_inner());
-    let newest = saved.entry(path.to_path_buf()).or_default();
+/// Write one answer into the file as it is now, not this daemon's whole copy: every daemon
+/// (one per `SESHI_SOCKET`) shares the file, and another's newer answers must survive. A
+/// damaged file is left as it is.
+fn write_change(change: Change, path: &Path, ticket: u64) -> Result<()> {
+    let mut written = WRITTEN.lock().unwrap_or_else(|e| e.into_inner());
+    let newest = written.entry(change.key(path)).or_default();
     if ticket < *newest {
         return Ok(());
     }
-    approvals.save(path)?;
+    let mut on_disk = Approvals::load(path)?;
+    change.apply(&mut on_disk);
+    on_disk.save(path)?;
     *newest = ticket;
     Ok(())
 }
@@ -177,7 +213,9 @@ impl Daemon {
             None => self.approvals.grant_once(term, &name, &command),
             Some(decision) => {
                 self.approvals.decide(&repo, &name, &command, decision, super::term::unix_now());
-                self.save_approvals();
+                if let Some(a) = self.approvals.find(&repo, &name) {
+                    self.save_approval(Change::Decide(a.clone()));
+                }
             }
         }
         self.rerun_check(term, Some(&name))
@@ -188,7 +226,7 @@ impl Daemon {
         if !self.approvals.forget(project, name) {
             anyhow::bail!("nothing is remembered for {name} in {}", project.display());
         }
-        self.save_approvals();
+        self.save_approval(Change::Forget { repo: project.to_path_buf(), name: name.to_string() });
         Ok(())
     }
 
@@ -211,13 +249,13 @@ impl Daemon {
         Ok((repo, info.name.clone(), info.command.clone()))
     }
 
-    /// Write the decisions off the loop. The daemon goes by its own copy, so a write that
-    /// fails costs only what the next start remembers.
-    fn save_approvals(&self) {
-        let (approvals, path) = (self.approvals.clone(), self.approvals_file.clone());
+    /// Write one answer off the loop. The daemon goes by its own copy, so a write that fails
+    /// costs only what the next start remembers.
+    fn save_approval(&self, change: Change) {
+        let path = self.approvals_file.clone();
         let ticket = SAVE_TICKETS.fetch_add(1, Ordering::Relaxed);
         tokio::task::spawn_blocking(move || {
-            if let Err(e) = save_unless_older(&approvals, &path, ticket) {
+            if let Err(e) = write_change(change, &path, ticket) {
                 tracing::warn!("saving check approvals: {e:#}");
             }
         });
@@ -295,15 +333,42 @@ mod tests {
         assert!(!file.with_extension("json.tmp").exists(), "nothing left half-written");
     }
 
+    fn ticket() -> u64 {
+        SAVE_TICKETS.fetch_add(1, Ordering::Relaxed)
+    }
+
     #[test]
-    fn an_older_save_never_overwrites_a_newer_one() {
+    fn an_older_answer_never_overwrites_a_newer_one_for_the_same_checkpoint() {
         let dir = super::super::persist::scratch_dir();
         let file = dir.path().join(FILE_NAME);
-        let (old, new) = (SAVE_TICKETS.fetch_add(1, Ordering::Relaxed), SAVE_TICKETS.fetch_add(1, Ordering::Relaxed));
-        let newer = approvals(vec![approval("/code/site", "test", "npm test", Decision::Never)]);
-        save_unless_older(&newer, &file, new).unwrap();
-        save_unless_older(&Approvals::default(), &file, old).unwrap();
-        assert_eq!(Approvals::load(&file).unwrap(), newer);
+        let (old, new) = (ticket(), ticket());
+        let never = approval("/code/site", "test", "npm test", Decision::Never);
+        write_change(Change::Decide(never.clone()), &file, new).unwrap();
+        write_change(Change::Forget { repo: "/code/site".into(), name: "TEST".into() }, &file, old).unwrap();
+        assert_eq!(Approvals::load(&file).unwrap(), approvals(vec![never]));
+    }
+
+    #[test]
+    fn an_answer_keeps_what_another_daemon_wrote_meanwhile() {
+        let dir = super::super::persist::scratch_dir();
+        let file = dir.path().join(FILE_NAME);
+        let theirs = approval("/code/site", "build", "make", Decision::Always);
+        approvals(vec![theirs.clone()]).save(&file).unwrap();
+        let mine = approval("/code/site", "test", "npm test", Decision::Never);
+        write_change(Change::Decide(mine.clone()), &file, ticket()).unwrap();
+        assert_eq!(Approvals::load(&file).unwrap(), approvals(vec![theirs.clone(), mine]));
+        write_change(Change::Forget { repo: "/code/site".into(), name: "test".into() }, &file, ticket()).unwrap();
+        assert_eq!(Approvals::load(&file).unwrap(), approvals(vec![theirs]));
+    }
+
+    #[test]
+    fn an_answer_leaves_a_damaged_file_alone() {
+        let dir = super::super::persist::scratch_dir();
+        std::fs::create_dir_all(dir.path()).unwrap();
+        let file = dir.path().join(FILE_NAME);
+        std::fs::write(&file, "{ not json").unwrap();
+        assert!(write_change(Change::Decide(approval("/code/site", "test", "npm test", Decision::Never)), &file, ticket()).is_err());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "{ not json");
     }
 
     #[test]

@@ -145,7 +145,9 @@ editing `.seshi/checks.toml`, cannot make Seshi run anything. The rules:
   pane's checkpoint go and is never saved.
 - Answers live in `check-approvals.json` in Seshi's data folder, outside every repo, written
   atomically (synced, then renamed). The daemon reads the file once at start and goes by its
-  own copy, so writing the file changes nothing while it runs.
+  own copy, so writing the file changes nothing while it runs. Every daemon shares the file,
+  so an answer is written into the file as it is then, never as the daemon's whole copy, and
+  a damaged file is left alone.
 - Only you approve: `ApproveCheck` and `ForgetCheckApproval` are refused from every pane
   connection whatever its grants, and approve only a checkpoint waiting for approval with
   the command it waits with. No key press approves on its own; the client sends the choice.
