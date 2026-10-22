@@ -28,12 +28,15 @@ seshi integrate codex --uninstall
 seshi integrate opencode --uninstall
 ```
 
-Codex installs native `SubagentStart` and `SubagentStop` hooks in
-`$CODEX_HOME/config.toml` (or `~/.codex/config.toml`). Each event carries the
-parent session ID and helper identity, so helpers appear under the correct pane
-while they are running. Seshi preserves existing Codex hooks and another
-program's `notify` command; turn completion still uses `notify` when that key is
-available.
+Codex installs `SessionStart`, `SubagentStart` and `SubagentStop` hooks in
+`$CODEX_HOME/config.toml` (or `~/.codex/config.toml`). SessionStart records the
+root thread without changing pane status, allowing thread-specific rollout-file
+detection to work when Codex does not report child lifecycle events. Native
+child events provide immediate helper identity and lifecycle when available.
+Windows also gets Codex's `commandWindows` field with PowerShell's call
+operator; Linux and macOS retain the normal shell command.
+Seshi preserves existing Codex hooks and another program's `notify` command;
+turn completion still uses `notify` when that key is available.
 
 Pi loads `~/.pi/agent/extensions/seshi.js` (or
 `$PI_CODING_AGENT_DIR/extensions/seshi.js`). Use a current Pi with
