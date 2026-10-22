@@ -7,7 +7,7 @@ mod design;
 mod files;
 mod find;
 mod branch;
-mod hydra;
+mod screen;
 mod menu;
 mod modal;
 mod motion;
@@ -80,17 +80,17 @@ enum Mode {
     /// Pick an existing worktree of the repo, or type a branch to create one.
     Worktrees { ws: WsId, cmd: Option<String>, items: Option<Vec<WorktreeEntry>>, query: String, sel: usize },
     /// Seshi layout: open a folder as a project.
-    Finder(Box<hydra::Finder>),
+    Finder(Box<screen::Finder>),
     /// Seshi layout: new pane (project, worktree, what to run).
-    HyPane(hydra::NewPaneHy),
+    ScreenPane(screen::NewPaneHy),
     /// Seshi layout: the settings overlay.
-    HySettings(Box<design::SettingsView>),
+    ScreenSettings(Box<design::SettingsView>),
     Themes { query: String, sel: usize, saving: bool },
     Spinners(Box<spinners::Picker>),
     /// Seshi layout: keyboard cursor in the sidebar; bare keys act like leader keys.
     Side,
     /// A right-click menu (seshi layout).
-    HyMenu(Box<menu::HyMenu>),
+    ScreenMenu(Box<menu::ScreenMenu>),
     /// Find a file / search the code.
     Find(Box<find::FindView>),
     /// Switch branch.
@@ -98,24 +98,24 @@ enum Mode {
     /// Notification history (the selected row, newest first).
     History { sel: usize },
     /// A repo's worktrees and which to remove.
-    Tidy(Box<hydra::TidyView>),
+    Tidy(Box<screen::TidyView>),
     /// "Close …?" with confirm / cancel.
     Confirm(Box<menu::Confirm>),
     /// The switcher: projects and sessions, typed to filter.
     GoTo { query: String, sel: usize },
     /// Writing a quick follow-up to an agent (beside its row, or in its Inbox row).
-    Compose(Box<hydra::Compose>),
+    Compose(Box<screen::Compose>),
     /// Why a session has its status (beside its row); `side`: back to the sidebar after.
     Why { term: TermId, side: bool },
       /// Runtime-reported subagent activity, retained while its parent remains available.
       SubagentInfo { term: TermId, index: usize },
     /// The leader's key map (or its second step), typed to search.
-    KeyMap(Box<hydra::KeyMap>),
+    KeyMap(Box<screen::KeyMap>),
     Shortcuts { query: String, scroll: usize },
     /// Every command with its key (the sidebar's "a actions").
     Actions { sel: usize },
     /// A tab being renamed in its pill.
-    RenameTab(Box<hydra::TabName>),
+    RenameTab(Box<screen::TabName>),
 }
 
 
@@ -124,7 +124,7 @@ pub(super) enum View {
     Changes(Box<views::ChangesView>),
     Files(Box<views::FilesTree>),
     /// Both diffs of a file two checkouts changed (in the sheet).
-    Both(Box<hydra::BothView>),
+    Both(Box<screen::BothView>),
 }
 
 /// Clickable chips and buttons.
@@ -147,7 +147,7 @@ pub(super) enum Bg {
     /// A worktree's branch merged (or not): then the worktree and its branch go.
     Merged(Result<String, String>, PathBuf),
     /// A repo's worktrees, each looked at, for the clean-up list.
-    Tidy(PathBuf, Vec<hydra::TidyRow>),
+    Tidy(PathBuf, Vec<screen::TidyRow>),
     /// Each checkout's diff of a heads-up's file: (repo, [(checkout, diff)]).
     BothDiff(PathBuf, Vec<(String, String)>),
     /// What a checkout changed: (its folder, the status time it's for, "+42 −7 · 3 files").
@@ -261,7 +261,7 @@ impl PromptKind {
 enum Hit {
     Pane(TermId),
     Button(Btn),
-    Hy(hydra::HyHit),
+    Screen(screen::ScreenHit),
 }
 
 /// A row in the jump picker.
@@ -361,7 +361,7 @@ pub struct App {
     /// The welcome screen is up; which of its panes is selected.
     splash: bool,
     /// The seshi layout's own state.
-    hy: hydra::Hy,
+    screen: screen::Screen,
     /// The terminal window has focus (for alerts about the session you're looking at).
     window_focused: bool,
     /// The background we told the terminal to use (OSC 11), so its padding matches.
@@ -531,7 +531,7 @@ impl App {
             undo_hint: false,
             last_click: None,
             splash: false,
-            hy: hydra::Hy::load(),
+            screen: screen::Screen::load(),
             window_focused: true,
             osc_bg: None,
             sync_hold: HashMap::new(),
@@ -648,7 +648,7 @@ impl App {
                     // message; look again now and then.
                     if last_fresh.elapsed() >= Duration::from_secs(1) {
                         last_fresh = Instant::now();
-                        self.hy_fresh();
+                        self.screen_fresh();
                         self.dirty = true;
                     }
                     let frame = self.spinner_frame();
@@ -909,7 +909,7 @@ impl App {
     /// The toast is sliding in, settling from its flash, or fading out.
     fn toast_moving(&self) -> bool {
         let Some((_, at, err)) = &self.notice else { return false };
-        let hold = hydra::toast_hold(*err, self.notice_term.is_some());
+        let hold = screen::toast_hold(*err, self.notice_term.is_some());
         let e = at.elapsed();
         self.motion_on() && (e < motion::TOAST_IN.max(motion::TOAST_FLASH) || (e + motion::TOAST_FADE >= hold && e < hold))
     }
@@ -957,7 +957,7 @@ impl App {
             return;
         }
         let panes = self.panes.clone();
-        let dragging = self.hy.drag.is_some();
+        let dragging = self.screen.drag.is_some();
         for (term, r) in panes {
             let want = (r.width.max(2), r.height.max(2));
             if !dragging && self.rewrap.remove(&term) {
@@ -1000,8 +1000,8 @@ impl App {
     /// What the sidebar calls a session: what you renamed it to, else its worktree or folder.
     /// Notes about a session use this, so they say the name you'd look for.
     pub(super) fn session_name(&self, term: TermId) -> String {
-        let model = self.hy_model();
-        if let Some((_, _, s)) = hydra::find(&model, term) {
+        let model = self.screen_model();
+        if let Some((_, _, s)) = screen::find(&model, term) {
             return s.name.clone();
         }
         self.snap.terms.get(&term).map(|t| if t.label.trim().is_empty() { t.display_name() } else { t.label.trim().to_string() }).unwrap_or_default()

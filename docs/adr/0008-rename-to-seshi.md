@@ -22,8 +22,9 @@ sun for what needs you, sea glass for leader mode), and its splash is a block SE
 Kept for what's already out there: an old install's config and data are copied over once
 on first start (`config::migrate_old_names`, the old default theme moved to the new one);
 hooks tagged `_hydra` are recognised and rewritten; `.hydra.toml` is still read; checkpoint
-refs stay under `refs/hydra/checkpoints/`. Internal code names (the `client::hydra`
-module, `HyHit`, …) are unchanged.
+refs stay under `refs/hydra/checkpoints/`. Internal code is named by role, not by
+product (`client::screen`, `ScreenHit`, …), and `tests/naming.rs` fails if a retired
+name appears outside the migration code, so the next rename is one constant and the docs.
 
 ## Alternatives considered
 

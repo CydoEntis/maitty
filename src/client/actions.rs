@@ -11,7 +11,7 @@ impl App {
             self.notify(format!("{} isn't available over ssh yet (agents, panes and worktrees are)", a.describe()), true);
             return;
         }
-        if self.hy_act(&a) {
+        if self.screen_act(&a) {
             return;
         }
         let ws = self.active_ws().map(|w| w.id);
@@ -37,7 +37,7 @@ impl App {
             }
             Action::ClosePane => {
                 // From the sidebar it's the row the cursor is on, as its x is.
-                if let Some(term) = self.hy.cursor.or(focused) {
+                if let Some(term) = self.screen.cursor.or(focused) {
                     self.menu_act(menu::Act::End(vec![term]));
                 }
             }
@@ -123,7 +123,7 @@ impl App {
             Action::CheckUpdate => self.check_for_update(true),
             Action::TidyWorktrees => self.tidy_open_here(),
             Action::None => {}
-            // The rest are handled by hy_act above.
+            // The rest are handled by screen_act above.
             _ => {}
         }
     }
@@ -424,7 +424,7 @@ impl App {
         };
         let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| self.here_dir());
         if ["nvim", "vim", "vi", "hx", "helix", "nano", "micro", "kak", "emacs", "ne"].contains(&name.as_str()) {
-            self.hy_new_session(dir, Some(line), true);
+            self.screen_new_session(dir, Some(line), true);
             self.view = None;
             return;
         }

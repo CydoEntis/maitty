@@ -77,7 +77,7 @@ pub(in crate::client) fn draw_both(buf: &mut Buffer, inside: Rect, t: &Theme, v:
 impl App {
     /// Both diffs of heads-up `o` in `repo`, in the sheet; they're read off the UI thread.
     pub(in crate::client) fn open_both(&mut self, repo: PathBuf, o: Overlap) {
-        let model = self.hy_model();
+        let model = self.screen_model();
         let dirs: Vec<(String, PathBuf)> = o
             .checkouts
             .iter()
@@ -106,14 +106,14 @@ impl App {
 
     /// Don't say this one again (until it clears and happens again).
     pub(in crate::client) fn dismiss_heads_up(&mut self, repo: &Path, o: &Overlap) {
-        self.hy.dismissed.insert((repo.to_path_buf(), o.file.clone()));
+        self.screen.dismissed.insert((repo.to_path_buf(), o.file.clone()));
         self.notify("Dismissed. It comes back if they touch it again.".into(), false);
     }
 
     /// A follow-up to the agent in checkout `to`, about what `other` changed in the same file
     /// (written for you; change it or send it). `inbox`: from that Inbox place.
     pub(in crate::client) fn tell_about(&mut self, repo: &Path, o: &Overlap, to: usize, inbox: Option<(String, usize)>) {
-        let model = self.hy_model();
+        let model = self.screen_model();
         let (Some(name), Some(other)) = (o.checkouts.get(to), o.checkouts.get(1 - to.min(1))) else { return };
         match agent_in(&model, repo, name) {
             Some(term) => {

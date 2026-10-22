@@ -80,7 +80,7 @@ src/
     actions.rs   what each action does
     background.rs server messages and background results
     view_keys.rs keys inside full-pane views and the remaining popups
-    hydra/       the layout: mod.rs (state, model, click targets), screen.rs (grid, sidebar
+    screen/      the layout: mod.rs (state, model, click targets), draw.rs (grid, sidebar
                  card, tab row, pane cards), card.rs (cards, pills, fading; the Look from
                  settings), leader.rs (key map, actions list, new tab), popups.rs,
                  dialogs.rs, splash.rs, popover.rs (follow-up and why, beside a row), heads.rs (same-file heads-ups,
@@ -194,7 +194,7 @@ Rules for the language live in `docs/stack/rust.md`.
   `daemon/usage.rs` (agents' usage, limits, continue after a limit).
 - **Application:** `daemon/mod.rs` (the server loop: commands in, state and
   output out) and `client/mod.rs` (the client loop: events in, commands out).
-- **Presentation:** `client/hydra/` (the layout and its popups),
+- **Presentation:** `client/screen/` (the layout and its popups),
   `client/design.rs` (shared drawing helpers), `client/render.rs`, and the
   feature views in `client/` (files, changes, branches, …).
 
@@ -222,7 +222,7 @@ src/
   theme.rs       built-in themes and contrast audit
   daemon/        the server: mod.rs (loop), term.rs (PTY + vt100), scan.rs
                  (status), git.rs, persist.rs
-  client/        the UI: mod.rs (loop, input), hydra/ (layout), design.rs
+  client/        the UI: mod.rs (loop, input), screen/ (layout), design.rs
                  (drawing helpers), render.rs, menu.rs, views.rs, and one file
                  per feature (files, find, branch, recipes, pr, …)
   mcp.rs, project.rs, gitfs.rs, alert.rs, reveal.rs, update.rs, sync.rs
@@ -237,7 +237,7 @@ spinner settings fields.
 
 `client/shortcuts.rs` derives the full shortcut reference from the active keymap
 and embeds `docs/shortcuts.md` for contextual controls. The compact leader
-overview remains in `client/hydra/leader.rs`; `Action::Help` opens the full reference.
+overview remains in `client/screen/leader.rs`; `Action::Help` opens the full reference.
 
 `detection/` evaluates the pinned 22 Herdr screen manifests in
 `vendor/herdr-detection/` using agent-owned screen regions, OSC fields, priorities
@@ -254,17 +254,17 @@ outside Seshi. No provider-specific status adapter is needed.
 
 - **Commands and snapshots.** The client sends `Command`s; the daemon answers
   with full `Snapshot`s plus per-pane output. The client derives its view model
-  (`hy_model`) from the snapshot each frame instead of caching parallel state.
+  (`screen_model`) from the snapshot each frame instead of caching parallel state.
 - **Modes.** Client UI state is one `Mode` enum (popups, sidebar focus, settings,
   …); each mode has a `draw_*` and an `on_*_key` function.
-- **Hit testing.** Drawing registers clickable rects (`hit(app, rect, HyHit::…)`);
+- **Hit testing.** Drawing registers clickable rects (`hit(app, rect, ScreenHit::…)`);
   mouse handling looks them up, so drawing and clicking can't drift.
-  `client/hydra/rail.rs` renders the collapsed sidebar from the same session
+  `client/screen/rail.rs` renders the collapsed sidebar from the same session
   model and status glyphs; it shares focus, hit testing and scroll state.
 - **Background work.** Slow work runs in `spawn_bg` and returns a `Bg` message.
 - **Other programs** go through `proc.rs` (`proc::git`, `proc::run`, `proc::shell`,
   `proc::quiet`), never a hand-built `Command` with its own window flag or error parsing.
-- **Filterable popups** use `query_list` + `list_row` (client/hydra/popups.rs).
+- **Filterable popups** use `query_list` + `list_row` (client/screen/popups.rs).
 - **Cards and pills** come from `card.rs`: `card()` for every pane, the sidebar and popups
   (title in the border, ✕ on the right), `pill()` / `row_pill()` for tabs, buttons and
   selected rows. Use accent for focus, the working colour for work, red for needs-you,

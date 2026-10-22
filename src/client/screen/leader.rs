@@ -40,7 +40,7 @@ pub(in crate::client) fn action_items() -> Vec<(&'static str, Action)> {
 fn step_items(app: &App, step: Step) -> Vec<(char, &'static str, String, Action)> {
     match step {
         Step::Worktrees => {
-            let model = app.hy_model();
+            let model = app.screen_model();
             let here = app.focused().and_then(|f| find(&model, f));
             let n = here.map(|(p, _, _)| p.wts.len()).unwrap_or(0);
             let branch = here.map(|(_, w, _)| w.branch.clone()).unwrap_or_default();
@@ -116,7 +116,7 @@ pub(in crate::client) fn draw_keymap(app: &mut App, f: &mut Frame, area: Rect, t
     let look = Look::of(&app.cfg.ui);
     let buf = f.buffer_mut();
     dim_all(buf, area, t);
-    hit(app, area, HyHit::Close);
+    hit(app, area, ScreenHit::Close);
     let w = 112.min(area.width.saturating_sub(4));
     let h = (if km.step.is_some() { 17 } else { 24 }).min(area.height.saturating_sub(2));
     let r = Rect { x: area.x + (area.width - w) / 2, y: area.y + (area.height - h) / 2, width: w, height: h };
@@ -125,7 +125,7 @@ pub(in crate::client) fn draw_keymap(app: &mut App, f: &mut Frame, area: Rect, t
     c.title_fg = t.accent;
     c.bg = t.card;
     card(app, buf, r, &c, t);
-    hit(app, r, HyHit::Noop);
+    hit(app, r, ScreenHit::Noop);
     let cs = Style::default().bg(t.card);
     // The search pill.
     let sy = r.y + 2;
@@ -148,10 +148,10 @@ pub(in crate::client) fn draw_keymap(app: &mut App, f: &mut Frame, area: Rect, t
     put(buf, r.x + 5, sy, &typed, r.right().saturating_sub(bw + 8));
     put(buf, r.right().saturating_sub(bw + 6), sy, &[seg(back, ps.fg(t.muted))], r.right().saturating_sub(5));
 
-    let needs = app.hy_model().iter().flat_map(|p| p.sessions()).filter(|s| s.status == Status::Blocked).count();
+    let needs = app.screen_model().iter().flat_map(|p| p.sessions()).filter(|s| s.status == Status::Blocked).count();
     let mut row = 0usize;
     if let Some(step) = km.step {
-        let model = app.hy_model();
+        let model = app.screen_model();
         let proj = app.focused().and_then(|f| find(&model, f)).map(|(p, _, _)| p.name.clone()).unwrap_or_default();
         put(buf, r.x + 4, r.y + 5, &[seg(format!("{} IN {}", step_name(step).to_uppercase(), proj.to_uppercase()), cs.fg(t.muted).add_modifier(Modifier::BOLD))], r.right() - 2);
         for (i, (key, label, detail, _)) in step_items(app, step).into_iter().enumerate() {
@@ -169,7 +169,7 @@ pub(in crate::client) fn draw_keymap(app: &mut App, f: &mut Frame, area: Rect, t
             put(buf, r.x + 5, y, &keycap_pill(look, t, &key.to_string(), i == km.sel, bg), r.right());
             put(buf, r.x + 11, y, &[seg(label, st.fg(if sel { t.strong } else { t.text }).add_modifier(if sel { Modifier::BOLD } else { Modifier::empty() }))], r.x + 31);
             put(buf, r.x + 32, y, &[seg(detail, st.fg(t.muted))], r.right() - 3);
-            hit(app, rr, HyHit::KeyRow(i));
+            hit(app, rr, ScreenHit::KeyRow(i));
         }
         let path = vec![
             seg(lead.clone(), cs.fg(t.accent).add_modifier(Modifier::BOLD)),
@@ -200,7 +200,7 @@ pub(in crate::client) fn draw_keymap(app: &mut App, f: &mut Frame, area: Rect, t
             let bg = if sel { t.sel_on(t.card) } else { t.card };
             let kx = put(buf, r.x + 5, y, &keycap_pill(look, t, &key, i == km.sel, bg), r.right());
             put(buf, kx.max(r.x + 14) + 1, y, &[seg(label, Style::default().bg(bg).fg(if sel { t.strong } else { t.text }))], r.right() - 3);
-            hit(app, rr, HyHit::KeyRow(i));
+            hit(app, rr, ScreenHit::KeyRow(i));
         }
         put(buf, r.x + 4, r.bottom() - 2, &[seg("Enter runs the selected one. ↑↓ to choose.", cs.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right() - 2);
         return;
@@ -234,7 +234,7 @@ pub(in crate::client) fn draw_keymap(app: &mut App, f: &mut Frame, area: Rect, t
             if let Some((e, ec)) = extra {
                 put(buf, lend + 1, y, &[seg(e, cs.fg(ec).add_modifier(Modifier::BOLD))], gx + col_w);
             }
-            hit(app, Rect { x: gx, y, width: col_w.saturating_sub(1), height: 1 }, HyHit::KeyRow(row));
+            hit(app, Rect { x: gx, y, width: col_w.saturating_sub(1), height: 1 }, ScreenHit::KeyRow(row));
             row += 1;
         }
     }
@@ -252,7 +252,7 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
     let look = Look::of(&app.cfg.ui);
     let buf = f.buffer_mut();
     dim_all(buf, area, t);
-    hit(app, area, HyHit::Close);
+    hit(app, area, ScreenHit::Close);
     let items = action_items();
     let w = 40.min(area.width.saturating_sub(4));
     let h = (items.len() as u16 + 5).min(area.height.saturating_sub(2));
@@ -263,8 +263,8 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
     let mut c = Card::new(t, "Actions").lit(t.accent);
     c.bg = t.card;
     card(app, buf, r, &c, t);
-    hit(app, r, HyHit::Noop);
-    let needs = app.hy_model().iter().flat_map(|p| p.sessions()).filter(|s| s.status == Status::Blocked).count();
+    hit(app, r, ScreenHit::Noop);
+    let needs = app.screen_model().iter().flat_map(|p| p.sessions()).filter(|s| s.status == Status::Blocked).count();
     for (i, (label, a)) in items.iter().enumerate() {
         let yy = r.y + 2 + i as u16;
         if yy >= r.bottom().saturating_sub(3) {
@@ -291,7 +291,7 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
         let key = k(app, a);
         let kw = key.width() as u16;
         put(buf, r.right().saturating_sub(4 + kw), yy, &[seg(key, st.fg(t.accent).add_modifier(Modifier::BOLD))], r.right() - 4);
-        hit(app, rr, HyHit::ActionRow(i));
+        hit(app, rr, ScreenHit::ActionRow(i));
     }
     let lead = app.keymap.prefix.to_string().replace("C-", "Ctrl+");
     let cs = Style::default().bg(t.card);
@@ -411,18 +411,18 @@ impl App {
     /// A new tab of the session you're on: a shell where you are (cd and run what you like;
     /// the sidebar groups it by where it works).
     pub(in crate::client) fn new_tab_start(&mut self) {
-        let Some(owner) = self.hy.tabs.get(self.hy.tab).map(|t| t.owner).or(self.focused()) else {
+        let Some(owner) = self.screen.tabs.get(self.screen.tab).map(|t| t.owner).or(self.focused()) else {
             self.notify("open a session first".into(), true);
             return;
         };
-        self.hy.new_tab = Some((Instant::now(), owner));
-        self.hy_act(&Action::ShellHere);
+        self.screen.new_tab = Some((Instant::now(), owner));
+        self.screen_act(&Action::ShellHere);
     }
 
     /// Rename the tab you're on, in its pill.
     pub(in crate::client) fn rename_tab_start(&mut self) {
-        let i = self.hy.tab;
-        if let Some(tab) = self.hy.tabs.get(i) {
+        let i = self.screen.tab;
+        if let Some(tab) = self.screen.tabs.get(i) {
             let name = tab.name.clone();
             self.mode = Mode::RenameTab(Box::new(TabName { tab: i, name }));
         }
@@ -433,10 +433,10 @@ impl App {
         match k.code {
             KeyCode::Enter => {
                 let name = nt.name.trim().to_string();
-                if let Some(tab) = self.hy.tabs.get_mut(nt.tab) {
+                if let Some(tab) = self.screen.tabs.get_mut(nt.tab) {
                     let focus = tab.focus;
                     // The daemon owns the name: it outlives this view's tab being rebuilt, and
-                    // `hy_sync` reads it back from the snapshot.
+                    // `screen_sync` reads it back from the snapshot.
                     match self.snap.workspaces.iter().find_map(|w| w.tabs.iter().find(|t| t.layout.contains(focus)).map(|t| (w.id, t.id))) {
                         Some((ws, tab)) => self.cmd(Command::RenameTab { ws, tab, name }),
                         None => tab.name = name,

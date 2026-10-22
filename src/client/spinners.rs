@@ -1,7 +1,7 @@
 //! Preview and persist working indicators without changing an agent's status.
 
 use super::design::{put, seg};
-use super::hydra::{HyHit, hints, hit, list_row, panel};
+use super::screen::{ScreenHit, hints, hit, list_row, panel};
 use super::{App, Bg, KeyCode, KeyEvent, Mode, modal, text_input};
 use crate::config::{Config, SPINNERS, parse_spinner};
 use crate::theme::Theme;
@@ -176,7 +176,7 @@ impl App {
 
 pub(super) fn draw(app: &mut App, frame: &mut Frame, area: Rect, theme: &Theme, view: &Picker) {
     let buf = frame.buffer_mut();
-    super::hydra::dim_all(buf, area, theme);
+    super::screen::dim_all(buf, area, theme);
     let r = panel(app, buf, area, 62, 22, "Working spinner", &[], theme);
     if r.height < 10 || r.width < 16 {
         return;
@@ -220,7 +220,7 @@ pub(super) fn draw(app: &mut App, frame: &mut Frame, area: Rect, theme: &Theme, 
                 row.right(),
             );
         }
-        hit(app, row, HyHit::SpinnerPick(i));
+        hit(app, row, ScreenHit::SpinnerPick(i));
     }
     let frames = view.frames(&app.cfg);
     let glyph = frames
@@ -348,7 +348,7 @@ mod tests {
             let hit = app
                 .hits
                 .iter()
-                .find(|(_, hit)| *hit == Hit::Hy(HyHit::SpinnerPick(preset)))
+                .find(|(_, hit)| *hit == Hit::Screen(ScreenHit::SpinnerPick(preset)))
                 .map(|(rect, _)| *rect);
             if let Some(rect) = hit {
                 app.on_mouse(MouseEvent {
@@ -375,7 +375,7 @@ mod tests {
             app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
             app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
             assert!(
-                matches!(&app.mode, Mode::HySettings(v) if matches!(design::settings_rows(modal::Cat::Appearance).get(v.sel), Some(design::SRow::Setting(s)) if s.path == PATH))
+                matches!(&app.mode, Mode::ScreenSettings(v) if matches!(design::settings_rows(modal::Cat::Appearance).get(v.sel), Some(design::SRow::Setting(s)) if s.path == PATH))
             );
         }
     }

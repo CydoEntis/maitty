@@ -135,7 +135,7 @@ pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind, hovered: 
     let bg = if hovered && matches!(kind, BtnKind::Normal | BtnKind::Ghost) { t.hov } else { bg };
     let bold = if kind == BtnKind::Ghost { Modifier::empty() } else { Modifier::BOLD };
     // A pill: the same width as " Label key " was.
-    let (l, r) = super::hydra::ends(bg);
+    let (l, r) = super::screen::ends(bg);
     let mut v = vec![l];
     if key.is_empty() {
         v.push(seg(label.to_string(), Style::default().bg(bg).fg(fg).add_modifier(bold)));
@@ -149,7 +149,7 @@ pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind, hovered: 
 
 /// A key drawn as a little keycap: the key on a raised ground.
 pub(super) fn keycap(t: &Theme, key: &str) -> Vec<Seg> {
-    super::hydra::chip(key, Style::default().bg(t.btn).fg(t.strong).add_modifier(Modifier::BOLD))
+    super::screen::chip(key, Style::default().bg(t.btn).fg(t.strong).add_modifier(Modifier::BOLD))
 }
 
 /// Keys as keycaps. Keys separated by two spaces are different sets; a set of four or more
@@ -229,7 +229,7 @@ pub(super) fn title_bar(buf: &mut Buffer, r: Rect, t: &Theme, left: &[Seg], righ
 /// The bottom action row of a view.
 fn action_row(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, buttons: &[(&str, &str, BtnKind, Hit)], tail: &[Seg]) {
     let y = r.bottom().saturating_sub(1);
-    super::hydra::strip(buf, Rect { y, height: 1, ..r }, t.card2);
+    super::screen::strip(buf, Rect { y, height: 1, ..r }, t.card2);
     // Keycap first: in a tool window you just press the key (no Ctrl+Space).
     let mut x = r.x + 2;
     for (label, key, kind, hit) in buttons {
@@ -244,7 +244,7 @@ fn action_row(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, buttons: &[(&
             Style::default().bg(t.btn).fg(t.accent).add_modifier(Modifier::BOLD)
         };
         let text_st = Style::default().bg(if hov { t.hov } else { t.card2 }).fg(t.strong);
-        let mut segs = super::hydra::chip(key, cap_st);
+        let mut segs = super::screen::chip(key, cap_st);
         segs.push(seg(text, text_st));
         x = put(buf, x, y, &segs, r.right()) + 2;
         app.hits.push((br, *hit));
@@ -527,7 +527,7 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
             header.push(seg(format!("   {who} is editing this file"), Style::default().fg(t.muted).add_modifier(Modifier::ITALIC)));
         }
         let prect = Rect { x: px, y: body.y + 3, width: body.right().saturating_sub(px + 1), height: body.bottom().saturating_sub(body.y + 3) };
-        app.hy.preview_rect = prect;
+        app.screen.preview_rect = prect;
         match &v.edit {
             Some(ed) => {
                 header = vec![
@@ -754,7 +754,7 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
     use super::modal::Kind;
     let cfg = &app.cfg;
     if selected && v.capturing {
-        return super::hydra::chip("press the new key…", Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD));
+        return super::screen::chip("press the new key…", Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD));
     }
     match row {
         SRow::Bind { acts, .. } => {
@@ -778,9 +778,9 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
                 ],
                 Kind::Bool => {
                     if cur.and_then(|v| v.as_bool()).unwrap_or(false) {
-                        super::hydra::chip("● on ", Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD))
+                        super::screen::chip("● on ", Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD))
                     } else {
-                        super::hydra::chip("○ off", Style::default().bg(t.btn).fg(t.muted).add_modifier(Modifier::BOLD))
+                        super::screen::chip("○ off", Style::default().bg(t.btn).fg(t.muted).add_modifier(Modifier::BOLD))
                     }
                 }
                 Kind::Number { min, max, .. } => {
@@ -809,7 +809,7 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
                     } else {
                         let shown = super::modal::display(cfg, s);
                         let shown = if shown.is_empty() || shown == "(shell)" { "(default)".to_string() } else { shown };
-                        super::hydra::chip(&truncate(&shown, 28), Style::default().bg(t.btn).fg(t.strong))
+                        super::screen::chip(&truncate(&shown, 28), Style::default().bg(t.btn).fg(t.strong))
                     }
                 }
                 Kind::Choice(_) | Kind::Int { .. } => {

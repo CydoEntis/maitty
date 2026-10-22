@@ -5,7 +5,7 @@ use super::*;
 pub(in crate::client) fn draw_subagent_info(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, term: TermId, index: usize) {
     dim_all(f.buffer_mut(), area, t);
     let rect = panel(app, f.buffer_mut(), area, 76, 17, "Subagent details", &[], t);
-    let model = app.hy_model();
+    let model = app.screen_model();
     let activity = model.iter().find_map(|project| project.sessions().find(|session| session.term == term).and_then(|session| session.subagent_activity.get(index))).cloned();
     let Some(activity) = activity else {
         put(f.buffer_mut(), rect.x + 2, rect.y + 2, &[seg("This activity record is no longer available.", Style::default().fg(t.muted).bg(t.card))], rect.right());
@@ -35,7 +35,7 @@ pub(in crate::client) fn draw_subagent_info(app: &mut App, f: &mut Frame, area: 
         Some(started) => duration_label(activity.updated_at.saturating_sub(started)),
         _ => "Not reported".into(),
     };
-    let stage = super::screen::subagent_stage(&activity.name, activity.task.as_deref());
+    let stage = super::draw::subagent_stage(&activity.name, activity.task.as_deref());
     let rows = [
         ("Stage", stage, t.text),
         ("Task", activity.task.as_deref().unwrap_or("Not reported"), t.text),
@@ -110,11 +110,11 @@ pub(in crate::client) fn panel(app: &mut App, buf: &mut Buffer, area: Rect, w: u
     let w = w.min(area.width.saturating_sub(2));
     let h = h.min(area.height.saturating_sub(2));
     let r = Rect { x: area.x + (area.width - w) / 2, y: area.y + (area.height - h) / 2, width: w, height: h };
-    hit(app, area, HyHit::Close);
-    hit(app, r, HyHit::Noop);
+    hit(app, area, ScreenHit::Close);
+    hit(app, r, ScreenHit::Noop);
     let mut c = Card::new(t, title).lit(t.accent);
     c.bg = t.card;
-    c.close = Some(HyHit::Close);
+    c.close = Some(ScreenHit::Close);
     card(app, buf, r, &c, t);
     if !right.is_empty() {
         let segs: Vec<Seg> = right.iter().map(|(s, st)| (s.clone(), st.bg(t.bg))).collect();
@@ -307,7 +307,7 @@ pub(in crate::client) fn draw_finder(app: &mut App, f: &mut Frame, area: Rect, t
         r.right(),
     );
     put(buf, r.x + 3, r.y + 5, &[seg(tilde(&fd.dir), c.fg(t.muted).add_modifier(Modifier::BOLD))], r.right());
-    let model = app.hy_model();
+    let model = app.screen_model();
     let rows = fd.rows();
     let max = (r.height.saturating_sub(9)) as usize;
     let start = fd.sel.saturating_sub(max.saturating_sub(1));
@@ -339,7 +339,7 @@ pub(in crate::client) fn draw_finder(app: &mut App, f: &mut Frame, area: Rect, t
             "folder"
         };
         put(buf, r.right().saturating_sub(3 + tag.width() as u16), y, &[seg(tag, st.fg(if open { t.accent } else { t.muted }))], r.right());
-        hit(app, Rect { x: r.x + 1, y, width: r.width - 2, height: 1 }, HyHit::FinderPick(i));
+        hit(app, Rect { x: r.x + 1, y, width: r.width - 2, height: 1 }, ScreenHit::FinderPick(i));
     }
     if rows.is_empty() {
         put(buf, r.x + 3, r.y + 6, &[seg("nothing matches here", c.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right());
@@ -431,7 +431,7 @@ pub(in crate::client) fn draw_palette(app: &mut App, f: &mut Frame, area: Rect, 
         let caps = keycaps(t, &key, bg);
         let kw = segs_width(&caps);
         put(buf, rr.right().saturating_sub(kw + 2), y, &caps, rr.right());
-        hit(app, rr, HyHit::PickRow(i));
+        hit(app, rr, ScreenHit::PickRow(i));
     }
     if items.is_empty() {
         put(buf, list.x + 2, list.y, &[seg("nothing matches", Style::default().bg(t.card).fg(t.muted).add_modifier(Modifier::ITALIC))], list.right());
@@ -553,7 +553,7 @@ pub(in crate::client) fn draw_history(app: &mut App, f: &mut Frame, area: Rect, 
             ],
             row.right() - 1,
         );
-        hit(app, row, HyHit::HistRow(i));
+        hit(app, row, ScreenHit::HistRow(i));
     }
     put(buf, r.x + 3, r.bottom() - 2, &hints(t, &[("Enter", "go to it"), ("c", "clear"), ("Esc", "close")]), r.right() - 1);
 }

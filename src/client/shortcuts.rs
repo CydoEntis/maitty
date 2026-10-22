@@ -314,9 +314,9 @@ pub(super) fn draw_shortcuts(
     scroll: usize,
 ) {
     let buf = frame.buffer_mut();
-    hydra::dim_all(buf, area, theme);
-    let size = hydra::tool_rect(area);
-    let r = hydra::panel(
+    screen::dim_all(buf, area, theme);
+    let size = screen::tool_rect(area);
+    let r = screen::panel(
         app,
         buf,
         area,
@@ -424,7 +424,7 @@ pub(super) fn draw_shortcuts(
         buf,
         r.x + 2,
         r.bottom().saturating_sub(2),
-        &hydra::hints(
+        &screen::hints(
             theme,
             &[
                 ("↑↓/PgUp/Dn", "scroll"),
