@@ -104,7 +104,7 @@ or another program follow that program's own help.
 | Shift+Enter, Alt+Enter | Insert a newline |
 | Ctrl+U, Esc | Clear message, or cancel |
 | i, Esc in evidence | Close status explanation; other keys close it and perform their normal action |
-| Enter, r, O in a check's evidence | Open its output sheet, run it again, override it (asks first); only the keys the popover shows act |
+| Enter, r, O in a check's evidence | Open its evidence sheet, run it again, override it (asks first); only the keys the popover shows act |
 
 ## Files tree and preview
 

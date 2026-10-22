@@ -940,6 +940,8 @@ pub(super) enum ScreenHit {
     Restart,
     NewShell,
     Why(TermId),
+    /// The why popover of a session with a check: its evidence sheet.
+    CheckEvidence(TermId),
     /// A row of the worktree clean-up list (tick or untick it), and its Remove button.
     TidyRow(usize),
     TidyGo,

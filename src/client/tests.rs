@@ -4128,13 +4128,13 @@ mod check_why_tests {
                 let at = format!("{name} {w}x{h}");
                 // Flat pads keycaps with spaces where cards use edge glyphs.
                 let text = o.split_whitespace().collect::<Vec<_>>().join(" ");
+                let ended = format!("{} agent's turn ended · it said \"done\"", crate::clock::local_hms(app.snap.terms[&1].checks[0].after_turn_ended_at));
                 for want in [
-                    "agent's turn ended · it said \"done\"",
+                    "WHY · claude reads",
+                    &ended,
                     "Seshi ran npm test in its worktree",
                     "✕ exit 1 after 14.2s",
-                    "m ago",
                     "Esc close",
-                    "◂",
                 ] {
                     assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
                 }
@@ -4161,7 +4161,8 @@ mod check_why_tests {
             let line = o.lines().find(|l| l.contains("agent's turn ended")).unwrap_or_else(|| panic!("{name}: no turn line in\n{o}"));
             assert!(line.chars().count() <= 80, "{name}: the line stays on screen");
             assert!(!line.contains(&"x".repeat(200)), "{name}: the long quote is cut");
-            assert!(line.contains("x…"), "{name}: the cut ends in an ellipsis: {line:?}");
+            let (_, after) = line.rsplit_once('x').unwrap();
+            assert!(after.chars().all(|c| c == ' ' || "│▏▕▎".contains(c)), "{name}: cut at the popover's edge, nothing after it: {line:?}");
             let hints = o.lines().find(|l| l.contains("Esc")).unwrap_or_else(|| panic!("{name}: Esc hint clipped in\n{o}"));
             let words = hints.split_whitespace().collect::<Vec<_>>().join(" ");
             assert!(words.contains("Esc close"), "{name}: the Esc hint is cut: {hints:?}");
@@ -4189,21 +4190,20 @@ mod check_why_tests {
         assert!(!passed.contains("O override"), "only a failure can be overridden");
         let running = hints(CheckState::Checking, None);
         assert!(running.contains("Seshi ran npm test") && running.contains("checking"));
-        assert!(!running.contains("⏎ evidence") && !running.contains("r re-run") && !running.contains("O override"));
+        assert!(running.contains("⏎ evidence") && !running.contains("r re-run") && !running.contains("O override"), "a run can be read, not re-run");
         let missing = hints(CheckState::CouldNotRun, Some(127));
-        assert!(missing.contains("? could not run · exit 127") && missing.contains("r re-run") && !missing.contains("O override"));
+        assert!(missing.contains("? npm test could not run · not found") && missing.contains("r re-run") && !missing.contains("O override"));
     }
 
     #[test]
-    fn an_override_and_a_queued_re_run_stay_visible() {
+    fn an_override_reads_as_its_row_says() {
         let mut c = check(CheckState::Overridden, Some(1));
         c.overridden_at = Some(turn_ended() + 60);
         c.override_reason = "flaky".into();
-        c.rerun_queued = true;
         let mut app = app_with(100, 30, |_| {}, Some(c));
         let o = draw(&mut app, 100, 30);
         show(&o);
-        assert!(o.contains("✕ exit 1 after 14.2s") && o.contains("⊘ overridden by you · flaky") && o.contains("runs again when this turn settles"));
+        assert!(o.contains("⊘ failed, overridden: npm test"), "{o}");
         assert!(!o.contains("O override"), "an overridden result is not overridden twice");
     }
 
@@ -5674,16 +5674,16 @@ mod check_wiring_tests {
                 };
                 let (mut app, _) = open();
                 let text = shown(&mut app);
-                let evidence = text.contains("⏎ evidence");
-                assert_eq!((evidence, text.contains("r re-run"), text.contains("O override")), (state != CheckState::Checking, state != CheckState::Checking, state == CheckState::Failed), "{at}: {text}");
+                let rerun = text.contains("r re-run");
+                assert_eq!((text.contains("⏎ evidence"), rerun, text.contains("O override")), (true, state != CheckState::Checking, state == CheckState::Failed), "{at}: {text}");
 
                 let (mut app, mut rx) = open();
                 press(&mut app, KeyCode::Enter);
-                assert_eq!(matches!(app.view, Some(View::Check(_))), evidence, "{at}: Enter");
+                assert!(matches!(app.view, Some(View::Check(_))), "{at}: Enter");
                 let (mut app, mut rx2) = open();
                 press(&mut app, KeyCode::Char('r'));
                 let (cmds, other) = (commands(&mut rx2), sent(&mut rx2));
-                assert_eq!(rerun_of(&cmds) == 1, evidence, "{at}: r");
+                assert_eq!(rerun_of(&cmds) == 1, rerun, "{at}: r");
                 assert!(!other.iter().any(|m| matches!(m, ClientMsg::Input { .. })), "{at}: r never types into the pane");
                 let (mut app, mut rx3) = open();
                 press(&mut app, KeyCode::Char('O'));
