@@ -350,7 +350,19 @@ Tickets, in order (each carries its own tests and docs):
 9. #102 UI: settings, check command and timeout (after #94)
 10. #103 UI: re-run and override from the menu, sheet and Inbox (after #97, #100, #101, #102)
 
-Later, not ticketed: stale detection; a command supplied by the repo with its approval. Today an agent saying "done" turns its session
+Later, not ticketed: stale detection; a command supplied by the repo with its approval.
+
+Status 2026-10-22: #94–#103 are built and merged on the `keen-otter` branch (not pushed), with two
+fixes the live check found (the Inbox's first failing line; the Flat sheet title). The gate passes at
+`c134fc4`. A live run on an isolated daemon confirmed: no check reads done as before; a failing
+check keeps a session from reading done and `seshi wait` exits 4; pass; could-not-run on a missing
+command and on a timeout with no child left; the pane token is not passed on; results survive a
+daemon restart; re-run, override with confirm, undo and the evidence sheet on a real screen in
+Cards and Flat. Not done, so the phase is not complete: `seshi ls` and MCP `seshi_list` still say
+done for a pane whose check failed (needs a ticket); not verified — desktop and phone alerts,
+80×24, the ASCII glyph fallback, Enter on a sidebar row opening the sheet, and any run on Windows
+or macOS (the Windows job-object code has never been compiled). On Linux a check's grandchild
+process can outlive the daemon (documented in `docs/SECURITY.md`). Today an agent saying "done" turns its session
 done even when the project's checks fail. This phase makes "done" mean something Seshi observed.
 
 - **Scope of the first slice (verify only):** a project may name one check command. When a
