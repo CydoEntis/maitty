@@ -96,7 +96,7 @@ A terminal UI (ratatui). Colours come only from the theme (`theme.rs`): semantic
 slots `bg`, `card`, `card2`, `hov`, `accent`/`acc_ink`, `text`/`strong`/`muted`,
 and status colours (`working`, `blocked` = needs you, `done`, `idle`, `err`).
 Every built-in theme passes a WCAG contrast audit test. Shared primitives in
-`client/design.rs` and `client/hydra/`: `panel()` (popup), `fill`, `put`/`seg`
+`client/design.rs` and `client/screen/`: `panel()` (popup), `fill`, `put`/`seg`
 (text runs), `keycap`/`keycaps`, `hints`, `button`, `dim_all`. Icons come from
 config (`[icons]`), with Nerd Font glyphs where present.
 

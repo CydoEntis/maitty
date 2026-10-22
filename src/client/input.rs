@@ -60,7 +60,7 @@ impl App {
                     input.push_str(s.lines().next().unwrap_or(""));
                 }
             }
-            Mode::HyPane(np) => np.task.push_str(&s.replace("\r\n", "\n")),
+            Mode::ScreenPane(np) => np.task.push_str(&s.replace("\r\n", "\n")),
             Mode::Prompt { input, .. } | Mode::Picker { query: input, .. } | Mode::Worktrees { query: input, .. } => {
                 input.push_str(s.lines().next().unwrap_or(""));
             }
@@ -84,7 +84,7 @@ impl App {
                 fd.sel = 0;
                 fd.refresh();
             }
-            Mode::HySettings(v) if v.editing.is_some() => {
+            Mode::ScreenSettings(v) if v.editing.is_some() => {
                 if let Some(e) = &mut v.editing {
                     e.push_str(s.lines().next().unwrap_or(""));
                 }
@@ -104,7 +104,7 @@ impl App {
     }
 
     pub(super) fn on_key(&mut self, k: KeyEvent) {
-        self.hy_fresh();
+        self.screen_fresh();
         let spec = KeySpec::from_event(&k);
         if self.splash {
             self.on_hy_splash_key(&k);
@@ -116,7 +116,7 @@ impl App {
             if matches!(k.code, KeyCode::Tab | KeyCode::BackTab) && c.input.is_none() {
                 let (term, query) = (c.term, c.query.clone());
                 let picked = c.anchor.is_some().then(|| c.selected_text()).filter(|s| !s.trim().is_empty());
-                let panes: Vec<TermId> = self.hy.tabs.get(self.hy.tab).map(|t| t.layout.leaves()).unwrap_or_default();
+                let panes: Vec<TermId> = self.screen.tabs.get(self.screen.tab).map(|t| t.layout.leaves()).unwrap_or_default();
                 if panes.len() > 1 && let Some(i) = panes.iter().position(|p| *p == term) {
                     if let Some(text) = picked {
                         self.copy_set.retain(|(p, _)| *p != term);
@@ -150,10 +150,10 @@ impl App {
         }
         match self.mode.clone() {
             Mode::Normal => {
-                if hydra::Look::of(&self.cfg.ui).flat && matches!(k.code, KeyCode::Tab | KeyCode::BackTab | KeyCode::Esc) {
+                if screen::Look::of(&self.cfg.ui).flat && matches!(k.code, KeyCode::Tab | KeyCode::BackTab | KeyCode::Esc) {
                     self.mode = Mode::Side;
-                    self.hy.cursor = self.focused();
-                    self.hy.cursor_proj = None;
+                    self.screen.cursor = self.focused();
+                    self.screen.cursor_proj = None;
                 } else if spec == self.keymap.prefix {
                     self.mode = Mode::Prefix { since: Instant::now() };
                 } else if let Some(a) = self.keymap.global.get(&spec).cloned() {
@@ -166,12 +166,12 @@ impl App {
                 }
             }
             Mode::Finder(fd) => self.on_finder_key(*fd, &k),
-            Mode::HyPane(np) => self.on_hy_pane_key(np, &k),
-            Mode::HySettings(_) => self.hy_settings_key(&k),
+            Mode::ScreenPane(np) => self.on_hy_pane_key(np, &k),
+            Mode::ScreenSettings(_) => self.screen_settings_key(&k),
             Mode::Themes { query, sel, saving } => self.on_theme_key(query, sel, saving, &k),
             Mode::Spinners(_) => self.on_spinner_key(&k),
             Mode::Side => self.on_side_key(&k),
-            Mode::HyMenu(m) => self.on_hy_menu_key(*m, &k),
+            Mode::ScreenMenu(m) => self.on_hy_menu_key(*m, &k),
             Mode::Find(v) => self.on_find_key(*v, &k),
             Mode::Branch(v) => self.on_branch_key(*v, &k),
             Mode::History { sel } => self.on_history_key(sel, &k),
@@ -215,7 +215,7 @@ impl App {
                     && let KeyCode::Char(c) = k.code
                 {
                     // The key map is up and this key does nothing: it starts a search.
-                    self.mode = Mode::KeyMap(Box::new(hydra::KeyMap { query: c.to_string(), searching: true, step: None, sel: 0 }));
+                    self.mode = Mode::KeyMap(Box::new(screen::KeyMap { query: c.to_string(), searching: true, step: None, sel: 0 }));
                 }
             }
             Mode::KeyMap(km) => self.on_keymap_key(*km, &k),
@@ -398,7 +398,7 @@ impl App {
 
     pub(super) fn on_mouse(&mut self, m: MouseEvent) {
         let pos = Position::new(m.column, m.row);
-        self.hy_fresh();
+        self.screen_fresh();
         // Ctrl+click opens a link; double-click copies a word (or a path, or a link).
         if m.kind == MouseEventKind::Down(MouseButton::Left)
             && !self.splash
@@ -435,13 +435,13 @@ impl App {
         // Programs that ask for the mouse (Claude Code's full-screen view, vim, lazygit,
         // htop, …) get it, like in any terminal: clicks, wheel, drags. Shift keeps it for
         // seshi (select text); right-click stays seshi's menu.
-        if self.hy.drag.is_none()
+        if self.screen.drag.is_none()
             && !self.splash
             && matches!(self.mode, Mode::Normal)
             && self.view.is_none()
             && !m.modifiers.contains(KeyModifiers::SHIFT)
             && let Some((term, inner)) = self.panes.iter().find(|(_, r)| r.contains(pos)).copied()
-            && (self.hy.right_clicks.contains(&term)
+            && (self.screen.right_clicks.contains(&term)
                 || !matches!(m.kind, MouseEventKind::Down(MouseButton::Right) | MouseEventKind::Up(MouseButton::Right) | MouseEventKind::Drag(MouseButton::Right)))
             // Full-screen programs own their scrolling. On a normal screen, use Seshi history
             // while it exists; pass the wheel to a mouse-aware program when that history is empty.
@@ -469,17 +469,17 @@ impl App {
             return;
         }
         // Dragging the sidebar edge or the split divider.
-        if let Some(d) = self.hy.drag {
+        if let Some(d) = self.screen.drag {
             match m.kind {
                 MouseEventKind::Drag(MouseButton::Left) => {
                     match d {
-                        hydra::Drag::Side => {
-                            let side = self.hy.side_rect;
+                        screen::Drag::Side => {
+                            let side = self.screen.side_rect;
                             let w = if self.cfg.ui.sidebar_position == "right" { side.right().saturating_sub(m.column) } else { m.column.saturating_sub(side.x) };
-                            self.hy.saved.side_w = Some(w.clamp(hydra::SIDE_MIN, hydra::SIDE_MAX));
+                            self.screen.saved.side_w = Some(w.clamp(screen::SIDE_MIN, screen::SIDE_MAX));
                         }
-                        hydra::Drag::Scroll(term) => {
-                            if let Some((t, r, total)) = self.hy.bar
+                        screen::Drag::Scroll(term) => {
+                            if let Some((t, r, total)) = self.screen.bar
                                 && t == term
                             {
                                 let from_bottom = r.bottom().saturating_sub(m.row + 1) as usize;
@@ -487,71 +487,71 @@ impl App {
                                 self.scroll_to(term, v.min(total));
                             }
                         }
-                        hydra::Drag::Session(t, _) => {
+                        screen::Drag::Session(t, _) => {
                             let over = self
                                 .hits
                                 .iter()
                                 .rev()
-                                .find(|(r, h)| r.contains(pos) && matches!(h, Hit::Hy(hydra::HyHit::Session(_) | hydra::HyHit::ToggleProj(_))))
+                                .find(|(r, h)| r.contains(pos) && matches!(h, Hit::Screen(screen::ScreenHit::Session(_) | screen::ScreenHit::ToggleProj(_))))
                                 .map(|(_, h)| *h);
                             let moved = match over {
                                 // Onto another session: into its group, at its place.
-                                Some(Hit::Hy(hydra::HyHit::Session(u))) if u != t => {
-                                    let model = self.hy_model();
+                                Some(Hit::Screen(screen::ScreenHit::Session(u))) if u != t => {
+                                    let model = self.screen_model();
                                     let into = model.iter().position(|p| p.sessions().any(|s| s.term == u));
                                     (into.is_some_and(|pi| self.place_session(t, pi))) | self.move_session(t, u)
                                 }
                                 // Onto a group's name: into that group.
-                                Some(Hit::Hy(hydra::HyHit::ToggleProj(pi))) => self.place_session(t, pi),
+                                Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) => self.place_session(t, pi),
                                 _ => false,
                             };
                             if moved {
-                                self.hy.drag = Some(hydra::Drag::Session(t, true));
+                                self.screen.drag = Some(screen::Drag::Session(t, true));
                             }
                         }
-                        hydra::Drag::Group(pi, _) => {
-                            let over = self.hits.iter().rev().find(|(r, h)| r.contains(pos) && matches!(h, Hit::Hy(hydra::HyHit::ToggleProj(_)))).map(|(_, h)| *h);
-                            if let Some(Hit::Hy(hydra::HyHit::ToggleProj(to))) = over
-                                && let Some(from) = self.hy.drag_key.clone()
-                                && let Some(target) = self.hy.proj_keys.get(to).cloned()
+                        screen::Drag::Group(pi, _) => {
+                            let over = self.hits.iter().rev().find(|(r, h)| r.contains(pos) && matches!(h, Hit::Screen(screen::ScreenHit::ToggleProj(_)))).map(|(_, h)| *h);
+                            if let Some(Hit::Screen(screen::ScreenHit::ToggleProj(to))) = over
+                                && let Some(from) = self.screen.drag_key.clone()
+                                && let Some(target) = self.screen.proj_keys.get(to).cloned()
                                 && target != from
                             {
                                 // Every group in today's order, then this one moved to the
                                 // other's place.
-                                let mut order: Vec<String> = self.hy.proj_keys.clone();
+                                let mut order: Vec<String> = self.screen.proj_keys.clone();
                                 order.retain(|k| *k != from);
                                 let at = order.iter().position(|k| *k == target).unwrap_or(order.len());
                                 let at = if to > pi { at + 1 } else { at };
                                 order.insert(at.min(order.len()), from);
                                 // Groups not on screen keep their place after these.
-                                let rest: Vec<String> = self.hy.saved.order.iter().filter(|k| !order.contains(k)).cloned().collect();
+                                let rest: Vec<String> = self.screen.saved.order.iter().filter(|k| !order.contains(k)).cloned().collect();
                                 order.extend(rest);
-                                self.hy.saved.order = order;
-                                self.hy.drag = Some(hydra::Drag::Group(to, true));
-                                self.hy_fresh();
+                                self.screen.saved.order = order;
+                                self.screen.drag = Some(screen::Drag::Group(to, true));
+                                self.screen_fresh();
                             }
                         }
-                        hydra::Drag::Tab(i) => {
-                            let over = self.hits.iter().rev().find(|(r, h)| r.contains(pos) && matches!(h, Hit::Hy(hydra::HyHit::TabPick(_)))).map(|(_, h)| *h);
-                            if let Some(Hit::Hy(hydra::HyHit::TabPick(j))) = over
+                        screen::Drag::Tab(i) => {
+                            let over = self.hits.iter().rev().find(|(r, h)| r.contains(pos) && matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_)))).map(|(_, h)| *h);
+                            if let Some(Hit::Screen(screen::ScreenHit::TabPick(j))) = over
                                 && j != i
                             {
                                 let now = self.move_tab(i, j);
-                                self.hy.drag = Some(hydra::Drag::Tab(now));
+                                self.screen.drag = Some(screen::Drag::Tab(now));
                             }
                         }
-                        hydra::Drag::Divider(i) => {
-                            if let Some((r, horizontal, path)) = self.hy.dividers.get(i).cloned() {
+                        screen::Drag::Divider(i) => {
+                            if let Some((r, horizontal, path)) = self.screen.dividers.get(i).cloned() {
                                 // The line sits in the gap after the left card (as wide as the
                                 // gap setting): put it under the pointer.
-                                let gap = hydra::Look::of(&self.cfg.ui).gap.max(1);
+                                let gap = screen::Look::of(&self.cfg.ui).gap.max(1);
                                 let f = if horizontal {
                                     (m.column + gap).saturating_sub(r.x) as f32 / r.width.max(1) as f32
                                 } else {
                                     (m.row + 1).saturating_sub(r.y) as f32 / r.height.max(1) as f32
                                 };
-                                let tab = self.hy.tab;
-                                if let Some(tab) = self.hy.tabs.get_mut(tab) {
+                                let tab = self.screen.tab;
+                                if let Some(tab) = self.screen.tabs.get_mut(tab) {
                                     tab.layout.set_ratio(&path, f);
                                 }
                             }
@@ -562,23 +562,23 @@ impl App {
                 }
                 MouseEventKind::Up(_) => {
                     // A session pressed and let go where it was: open it.
-                    if let hydra::Drag::Session(t, false) = d {
-                        self.hy.drag = None;
-                        self.on_hy_hit(hydra::HyHit::Session(t), false);
+                    if let screen::Drag::Session(t, false) = d {
+                        self.screen.drag = None;
+                        self.on_hy_hit(screen::ScreenHit::Session(t), false);
                         self.dirty = true;
                         return;
                     }
                     // A group header pressed and let go where it was: fold or open it.
-                    if let hydra::Drag::Group(pi, false) = d {
-                        self.hy.drag = None;
-                        self.hy.drag_key = None;
-                        self.on_hy_hit(hydra::HyHit::ToggleProj(pi), false);
+                    if let screen::Drag::Group(pi, false) = d {
+                        self.screen.drag = None;
+                        self.screen.drag_key = None;
+                        self.on_hy_hit(screen::ScreenHit::ToggleProj(pi), false);
                         self.dirty = true;
                         return;
                     }
-                    self.hy.drag = None;
-                    self.hy.drag_key = None;
-                    self.hy.save();
+                    self.screen.drag = None;
+                    self.screen.drag_key = None;
+                    self.screen.save();
                     self.dirty = true;
                     return;
                 }
@@ -587,7 +587,7 @@ impl App {
         }
         // A middle click on a tab closes it, as in a browser.
         if m.kind == MouseEventKind::Down(MouseButton::Middle)
-            && let Some(Hit::Hy(hydra::HyHit::TabPick(i))) = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h)
+            && let Some(Hit::Screen(screen::ScreenHit::TabPick(i))) = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h)
         {
             self.close_tab(i);
             self.dirty = true;
@@ -603,13 +603,13 @@ impl App {
             MouseEventKind::Up(MouseButton::Right) => !self.right_down.take().is_some_and(|at| at.elapsed() < Duration::from_millis(600)),
             _ => false,
         };
-        if right_click && !self.splash && !matches!(self.mode, Mode::HyMenu(_) | Mode::Confirm(_)) {
+        if right_click && !self.splash && !matches!(self.mode, Mode::ScreenMenu(_) | Mode::Confirm(_)) {
             let hit = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
             let at = (m.column, m.row);
             match hit {
-                Some(Hit::Hy(hydra::HyHit::Session(t))) => self.menu_for_session(t, at),
-                Some(Hit::Hy(hydra::HyHit::Why(t))) if self.hy.side_rect.contains(pos) => self.menu_for_session(t, at),
-                Some(Hit::Hy(hydra::HyHit::ToggleProj(pi))) => self.menu_for_project(pi, at),
+                Some(Hit::Screen(screen::ScreenHit::Session(t))) => self.menu_for_session(t, at),
+                Some(Hit::Screen(screen::ScreenHit::Why(t))) if self.screen.side_rect.contains(pos) => self.menu_for_session(t, at),
+                Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) => self.menu_for_project(pi, at),
                 _ => {
                     if let Some((term, _)) = self.pane_frames.iter().find(|(_, r)| r.contains(pos)).copied() {
                         self.menu_for_pane(term, at);
@@ -622,10 +622,10 @@ impl App {
         if m.kind == MouseEventKind::Moved {
             // Moving with no button held: a drag whose release never came (let go outside the
             // window) is over. Left in place it would keep the mouse from the panes.
-            if self.hy.drag.is_some() {
-                self.hy.drag = None;
-                self.hy.drag_key = None;
-                self.hy.save();
+            if self.screen.drag.is_some() {
+                self.screen.drag = None;
+                self.screen.drag_key = None;
+                self.screen.save();
             }
             if self.hover != Some(pos) {
                 self.hover = Some(pos);
@@ -638,27 +638,27 @@ impl App {
             let hit = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
             // A session's row: it may be dragged within its group; a plain click opens it
             // (on release).
-            if let Some(Hit::Hy(hydra::HyHit::Session(t))) = hit {
-                self.hy.drag = Some(hydra::Drag::Session(t, false));
+            if let Some(Hit::Screen(screen::ScreenHit::Session(t))) = hit {
+                self.screen.drag = Some(screen::Drag::Session(t, false));
                 self.dirty = true;
                 return;
             }
             // A group's header: it may be dragged to a new place; a plain click folds it (on
             // release).
-            if let Some(Hit::Hy(hydra::HyHit::ToggleProj(pi))) = hit {
-                self.hy.drag = Some(hydra::Drag::Group(pi, false));
-                self.hy.drag_key = self.hy.proj_keys.get(pi).cloned();
+            if let Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) = hit {
+                self.screen.drag = Some(screen::Drag::Group(pi, false));
+                self.screen.drag_key = self.screen.proj_keys.get(pi).cloned();
                 self.dirty = true;
                 return;
             }
-            if let Some(h @ Hit::Hy(hh)) = hit {
+            if let Some(h @ Hit::Screen(hh)) = hit {
                 // A tab's pill may be dragged to another tab's place.
-                if let hydra::HyHit::TabPick(i) = hh {
-                    self.hy.drag = Some(hydra::Drag::Tab(i));
+                if let screen::ScreenHit::TabPick(i) = hh {
+                    self.screen.drag = Some(screen::Drag::Tab(i));
                 }
                 let double = self.last_click.is_some_and(|(prev, at)| prev == h && at.elapsed() < DOUBLE_CLICK);
                 self.last_click = Some((h, Instant::now()));
-                if matches!(self.mode, Mode::Prefix { .. } | Mode::Side) && !matches!(hh, hydra::HyHit::Why(_)) {
+                if matches!(self.mode, Mode::Prefix { .. } | Mode::Side) && !matches!(hh, screen::ScreenHit::Why(_)) {
                     self.mode = Mode::Normal;
                 }
                 self.on_hy_hit(hh, double);
@@ -696,7 +696,7 @@ impl App {
                 let hit = self.hits.iter().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
                 match hit {
                     Some(Hit::Pane(term)) => self.cmd(Command::FocusPane { term }),
-                    Some(Hit::Button(_) | Hit::Hy(_)) => {}
+                    Some(Hit::Button(_) | Hit::Screen(_)) => {}
                     None => {
                         if let Some((term, _)) = self.pane_frames.iter().find(|(_, r)| r.contains(pos))
                             && Some(*term) != self.focused() {
@@ -713,10 +713,10 @@ impl App {
                     return;
                 }
                 let sheet_hit = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
-                if matches!(self.mode, Mode::HySettings(_))
-                    && matches!(sheet_hit, Some(Hit::Hy(hydra::HyHit::SettingsBody | hydra::HyHit::SetRow(_) | hydra::HyHit::SetVal(_, _) | hydra::HyHit::SetTab(_))))
+                if matches!(self.mode, Mode::ScreenSettings(_))
+                    && matches!(sheet_hit, Some(Hit::Screen(screen::ScreenHit::SettingsBody | screen::ScreenHit::SetRow(_) | screen::ScreenHit::SetVal(_, _) | screen::ScreenHit::SetTab(_))))
                 {
-                    self.hy_settings_key(&KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
+                    self.screen_settings_key(&KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
                     self.dirty = true;
                     return;
                 }
@@ -732,7 +732,7 @@ impl App {
                     self.on_spinner_key(&KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
                     return;
                 }
-                if self.hy.preview_rect.contains(pos)
+                if self.screen.preview_rect.contains(pos)
                     && let Some(View::Files(v)) = &mut self.view
                 {
                     let n = v.edit.as_ref().map(|e| e.lines.len()).or_else(|| v.preview.as_ref().map(|(_, l)| l.len())).unwrap_or(0);
@@ -740,8 +740,8 @@ impl App {
                     self.dirty = true;
                     return;
                 }
-                if self.hy.side_rect.contains(pos) {
-                    self.hy.side_scroll = if up { self.hy.side_scroll.saturating_sub(3) } else { self.hy.side_scroll + 3 };
+                if self.screen.side_rect.contains(pos) {
+                    self.screen.side_scroll = if up { self.screen.side_scroll.saturating_sub(3) } else { self.screen.side_scroll + 3 };
                     self.dirty = true;
                     return;
                 }
@@ -782,42 +782,42 @@ impl App {
     /// Put session `t` in group `pi` (by the sidebar's groups). Only within its section: an
     /// agent goes to another agents' group, a shell to another terminals' one.
     pub(super) fn place_session(&mut self, t: TermId, pi: usize) -> bool {
-        let model = self.hy_model();
+        let model = self.screen_model();
         let Some(to) = model.get(pi) else { return false };
         let Some(from) = model.iter().find(|p| p.sessions().any(|s| s.term == t)) else { return false };
-        if from.key == to.key || from.kind != to.kind || to.kind == hydra::Kind::Ssh {
+        if from.key == to.key || from.kind != to.kind || to.kind == screen::Kind::Ssh {
             return false;
         }
-        let placed = &mut self.hy.saved.placed;
+        let placed = &mut self.screen.saved.placed;
         placed.retain(|(x, ..)| *x != t);
         placed.push((t, to.path.clone(), to.git));
         let alive: Vec<TermId> = self.snap.terms.keys().copied().collect();
         placed.retain(|(x, ..)| alive.contains(x));
-        self.hy_fresh();
+        self.screen_fresh();
         self.dirty = true;
         true
     }
 
     pub(super) fn move_session(&mut self, t: TermId, u: TermId) -> bool {
-        let model = self.hy_model();
+        let model = self.screen_model();
         let Some(group) = model.iter().find(|p| p.sessions().any(|s| s.term == t)) else { return false };
         if !group.sessions().any(|s| s.term == u) {
             return false;
         }
         // The group's sessions as shown, then t moved to u's place.
-        let lines = hydra::side_lines(self, &model, &self.theme);
-        let mut ids: Vec<TermId> = lines.iter().filter_map(|l| hydra::line_term(&model, l)).filter(|id| group.sessions().any(|s| s.term == *id)).collect();
+        let lines = screen::side_lines(self, &model, &self.theme);
+        let mut ids: Vec<TermId> = lines.iter().filter_map(|l| screen::line_term(&model, l)).filter(|id| group.sessions().any(|s| s.term == *id)).collect();
         let (from, to) = (ids.iter().position(|x| *x == t), ids.iter().position(|x| *x == u));
         let (Some(from), Some(to)) = (from, to) else { return false };
         let id = ids.remove(from);
         ids.insert(to, id);
-        let order = &mut self.hy.saved.session_order;
+        let order = &mut self.screen.saved.session_order;
         order.retain(|x| !ids.contains(x));
         order.extend(ids);
         // Only sessions that still exist.
         let alive: Vec<TermId> = self.snap.terms.keys().copied().collect();
         order.retain(|x| alive.contains(x));
-        self.hy_fresh();
+        self.screen_fresh();
         self.dirty = true;
         true
     }
@@ -826,12 +826,12 @@ impl App {
     /// that take OSC 22: Ghostty, kitty, foot, WezTerm; others keep their arrow).
     pub(super) fn pointer_for(&mut self, pos: Position) {
         let want = match self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h) {
-            Some(Hit::Hy(hydra::HyHit::Divider(i))) => match self.hy.dividers.get(i) {
+            Some(Hit::Screen(screen::ScreenHit::Divider(i))) => match self.screen.dividers.get(i) {
                 Some((_, true, _)) => "col-resize",
                 Some(_) => "row-resize",
                 None => "default",
             },
-            Some(Hit::Hy(hydra::HyHit::SideEdge)) => "col-resize",
+            Some(Hit::Screen(screen::ScreenHit::SideEdge)) => "col-resize",
             _ => "default",
         };
         if self.pointer != want {

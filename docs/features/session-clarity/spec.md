@@ -1,6 +1,6 @@
 # Spec: clear session state and workflow controls
 
-Intent: [intent.md](intent.md) · Status: accepted · Date: 2026-10-15
+Intent: [intent.md](intent.md) · Status: accepted, partly superseded (R4 and R5 removed 2026-10-18) · Date: 2026-10-15
 
 ## Concerns
 
@@ -24,10 +24,10 @@ smoothness; keep wall-clock thresholds out of ordinary CI tests.
   Show a plain-language explanation, uncertainty without confirmation, and actual
   observation ages. Repeated screen observations must not reset turn duration or
   repeat transition alerts. Check: status-click and repeated-observation tests.
-- **R4:** Setup previews custom roles and instructions using the selected saved
+- **R4 (removed 2026-10-18 with the workflow feature):** Setup previews custom roles and instructions using the selected saved
   workflow name. Explicitly copy instructions and explain where to paste and that
   existing sessions must reread them. Check: setup test and clipboard/UI check.
-- **R5:** Sidebar labels show stage, review round, questions and ended states.
+- **R5 (removed 2026-10-18 with the workflow feature):** Sidebar labels show stage, review round, questions and ended states.
   Inbox includes plan approvals even without a live stage pane. Mouse and keyboard
   open the exact run; navigation never approves. Keep approvals until daemon state
   advances. Check: stage-label, Inbox approval and daemon authorization tests.

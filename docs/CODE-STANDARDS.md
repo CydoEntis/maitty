@@ -226,7 +226,9 @@ blocking calls inside async tasks or on the UI loop.
 
 Standard Rust: `snake_case` files, functions and modules; `PascalCase` types and
 enum variants; `SCREAMING_SNAKE_CASE` consts. Drawing functions are `draw_*`, key
-handlers `on_*_key`, seshi-layout methods on `App` are prefixed `hy_`. Config
+handlers `on_*_key`, main-screen methods on `App` are prefixed `screen_`. Name modules, types and
+functions by role, never by the product's name; the product name lives in user-facing
+strings, paths and env vars only (`tests/naming.rs` enforces it for retired names). Config
 action names are `kebab-case` (`split-right`, `go-to`).
 
 ## Project-specific: formatting and linting

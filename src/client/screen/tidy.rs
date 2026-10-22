@@ -52,7 +52,7 @@ impl TidyView {
 impl App {
     /// The clean-up list for project `pi`. Each worktree is looked at off the UI thread.
     pub(in crate::client) fn tidy_open(&mut self, pi: usize) {
-        let model = self.hy_model();
+        let model = self.screen_model();
         let Some(p) = model.get(pi).filter(|p| p.git) else {
             self.notify("worktrees belong to a git repo: this folder isn't one".into(), true);
             return;
@@ -80,8 +80,8 @@ impl App {
 
     /// The clean-up list for the project you're in (or the sidebar cursor's).
     pub(in crate::client) fn tidy_open_here(&mut self) {
-        let model = self.hy_model();
-        let key = self.hy.cursor.and_then(|c| model.iter().find(|p| p.sessions().any(|s| s.term == c)).map(|p| p.key.clone())).or(self.hy.proj.clone());
+        let model = self.screen_model();
+        let key = self.screen.cursor.and_then(|c| model.iter().find(|p| p.sessions().any(|s| s.term == c)).map(|p| p.key.clone())).or(self.screen.proj.clone());
         match model.iter().position(|p| Some(&p.key) == key.as_ref() && p.git).or_else(|| model.iter().position(|p| p.git)) {
             Some(pi) => self.tidy_open(pi),
             None => self.notify("no git repo is open to clean up".into(), true),
@@ -217,7 +217,7 @@ pub(in crate::client) fn draw_tidy(app: &mut App, f: &mut Frame, area: Rect, t: 
                     ],
                     rr.right().saturating_sub(1),
                 );
-                hit(app, rr, HyHit::TidyRow(i));
+                hit(app, rr, ScreenHit::TidyRow(i));
             }
         }
     }
@@ -225,6 +225,6 @@ pub(in crate::client) fn draw_tidy(app: &mut App, f: &mut Frame, area: Rect, t: 
     let losing = picked.iter().any(|r| r.standing.dirty > 0);
     let by = r.bottom().saturating_sub(3);
     let label = format!("Remove {}", picked.len());
-    let gx = btn(app, buf, r.x + 3, by, &label, "Enter", if losing { BtnKind::Danger } else { BtnKind::Primary }, HyHit::TidyGo, r.right());
+    let gx = btn(app, buf, r.x + 3, by, &label, "Enter", if losing { BtnKind::Danger } else { BtnKind::Primary }, ScreenHit::TidyGo, r.right());
     put(buf, gx + 3, by, &hints(t, &[("Space", "tick"), ("a", "all the safe ones"), ("n", "none"), ("Esc", "close")]), r.right().saturating_sub(2));
 }
