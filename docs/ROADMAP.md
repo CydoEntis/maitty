@@ -210,8 +210,8 @@ ignored; lint, both cross-checks and dependency audit passed). Live mouse clicks
 opened a plain shell and Settings from Actions.
 
 Active phase: **15 — checks Seshi runs itself** (chosen 2026-10-22)
-Next: use the check in real work and finish the live validation listed in the phase status; then decide
-the deferred checkpoint items. Phase 13 (`seshi handoff`) is queued after the phase.
+Next: Phase 18 (the v7 layout) is being built; phases 13 and 17 are on local `dev`. Then the Phase 17 live
+trial, the open Phase 15 items, and a release.
 
 Current user-requested work: expand the built-in themes to cover the 25 requested
 families and add a searchable preview browser in Appearance. Acceptance: all
@@ -312,9 +312,10 @@ have square edges and no gaps, keyboard focus zones,
 working mouse targets and sensible narrow-screen behavior; docs and tests cover
 the option; the verification gate passes before the phase ships.
 
-### 13 — Borrowed from T3 Code, round two · proposed 2026-10-19
+### 13 — Borrowed from T3 Code, round two · built on `dev` 2026-10-22
 
-Approved by the user 2026-10-19 after a second read of `pingdotgg/t3code`. Not started; no tickets yet. One item.
+Approved by the user 2026-10-19 after a second read of `pingdotgg/t3code`. [Intent](features/handoff/intent.md).
+Tickets: #116 one function builds an agent's start command, #117 the handoff brief, #118 `seshi handoff`.
 
 - **Handoff:** `seshi handoff <pane> --to <agent>` starts another agent in the same worktree with a
   short text brief (the first prompt, branch, changed files, a tail of recent output). Text only; it
@@ -323,6 +324,14 @@ Approved by the user 2026-10-19 after a second read of `pingdotgg/t3code`. Not s
 - Phone alerts are not part of this phase: ntfy alerts already ship (`[notify] phone_topic`). An earlier
   draft of this phase listed them by mistake.
 - Acceptance: a ticket, tests, docs and a passing verification gate before it is marked shipped.
+
+Status 2026-10-22: built and merged to local `dev`, not released. The gate passed on the merged tree
+(575 tests). A live run on an isolated daemon with stub agents checked the brief, the refusals (no pane, no
+agent, unknown agent) and the grants. The brief goes in as the new agent's first prompt on its command line,
+not through `seshi send` (avoids racing the agent's start screen); four choices made while planning are
+recorded in the intent for the user to confirm. Known gaps: the brief uses the pane's name as its task
+(the real first prompt is not on the wire); in a main checkout with `worktree.per_agent` the new agent may
+land in a fresh worktree; nushell quoting of a prompt with an apostrophe is unchanged from before.
 
 Done outside the phase: saved pane output no longer races at shutdown (saves run one at a time,
 newest wins, fsynced) and restored history starts at a clean line.
@@ -374,10 +383,13 @@ tree. A live run on an isolated daemon (before #107) confirmed: no check reads d
 failing check keeps a session from reading done and `seshi wait` exits 4; pass; could-not-run on a
 missing command and on a timeout with no child left; the pane token is not passed on; results
 survive a daemon restart; re-run, override with confirm, undo and the evidence sheet on a real
-screen in Cards and Flat. Not done, so the phase is not complete: not verified — desktop and phone
-alerts, 80×24 on a real screen, the ASCII glyph fallback, Enter on a sidebar row opening the
-sheet, #107 on a live daemon, and a check run by hand on a real Windows or macOS machine (CI
-exercised Windows only through tests). On Linux a check's grandchild process can outlive the daemon
+screen in Cards and Flat. Validation on Windows, 2026-10-22 (isolated daemons, PowerShell):
+pass, fail with `seshi wait` exiting 4, timeout as could-not-run, #107 in `ls` and `ls --json` on a live
+daemon, 80×24 frames in all three layouts, and Enter on a row opening the sheet all checked. The ASCII glyph
+fallback was broken on the sheet banner, why popover and override (Unicode marks); fixed with a regression
+test. Found, not fixed (a decision): under PowerShell a missing check command exits 1, so it reads
+**failed**, not could-not-run. Still not verified: desktop and phone alerts, and a check run by hand on
+macOS. On Linux a check's grandchild process can outlive the daemon
 (documented in `docs/SECURITY.md`).
 
 - **Scope of the first slice (verify only):** a project may name one check command. When a
@@ -426,7 +438,7 @@ faked snapshot), and Windows beyond CI. Known gaps: the prompt shows protocol nu
 numbers (an older daemon reports only its protocol); it installs no panic hook to switch mouse
 capture back off; the offer-then-restart glue in `open_client` has no test of its own.
 
-### 17 — Team roles for the commander · queued 2026-10-22
+### 17 — Team roles for the commander · built on `dev` 2026-10-22, live trial open
 
 [A team list for the commander](features/team-roles/intent.md): a Settings › Team list of jobs
 (planner, builder, reviewer, or the user's own), each with a model per agent family (Claude, Codex),
@@ -434,9 +446,25 @@ one global family switch and a per-project override. A commander reads the list 
 on its job's model. Handoffs are gated by Phase 15 checks, which the commander is told to wait on.
 Seshi runs no pipeline and normal sessions are unchanged.
 
-Queued behind Phase 15, whose verify check should be used in real work first; the user chose this
-2026-10-22. No tickets yet (only the active phase has them); the draft list is in the intent.
-Order against the queued Phase 13 is the user's call.
+The user asked on 2026-10-22 to build it now. Tickets: #113 config, #114 start a helper for a job,
+#115 the team in the brief, #119 hand on only after a passing check, #120 Settings › Team with the family
+switch, #121 add/edit/remove jobs, #122 docs, #123 live trial on the user's models (manual).
+
+Status 2026-10-22: #113–#115 and #119–#122 built and merged to local `dev`, not released; the gate passed on
+the merged tree. Not done, so the phase is not complete: #123, a commander running a small ticket set on the
+user's models. Known gaps: no key-driven test that saving a job writes the file (covered below that level);
+one click on the Family row while a job is being edited leaves the edit open.
+
+### 18 — The v7 layout and checkpoints · in progress 2026-10-22
+
+The user supplied the v7 handoff on 2026-10-22 ([`design/v7/`](design/v7/), `checks7.js` is the spec) and
+asked for all of it: a new layout for the app, not a pass over the old one. Covers the frame in all three
+layouts (Cards floating, Cards tiled, Flat) at 160×45, 100×30 and 80×24 with the drop order below 140 and
+100 columns, every check screen, approving a repo's `.seshi/checks.toml` command (Enter, y and Space never
+approve; Always needs pressing twice; a changed command asks again), stale passes, and several named check
+commands per project. Not built: the working shimmer and 3-bar spinner (user's choice), and checkpoint kinds
+other than a command (commits, plan approval, review), which the design only shapes. Tickets are labelled
+`phase-18`. One protocol bump for the whole phase.
 
 ## In scope
 
