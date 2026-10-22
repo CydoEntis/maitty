@@ -161,7 +161,11 @@ pub(super) fn install_kimi(exe: &str, uninstall: bool) -> Result<PathBuf> {
 }
 
 pub(super) fn codex_hooks_at(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<()> {
-    const EVENTS: &[&str] = &["SubagentStart", "SubagentStop"];
+    codex_hooks_at_for_platform(path, exe, uninstall, cfg!(windows))
+}
+
+fn codex_hooks_at_for_platform(path: &std::path::Path, exe: &str, uninstall: bool, windows: bool) -> Result<()> {
+    const EVENTS: &[(&str, Option<&str>)] = &[("SessionStart", Some("same")), ("SubagentStart", None), ("SubagentStop", None)];
     const TIMEOUT_SECONDS: i64 = 3;
     regular_target(path)?;
     let text = match std::fs::read_to_string(path) {
@@ -180,7 +184,7 @@ pub(super) fn codex_hooks_at(path: &std::path::Path, exe: &str, uninstall: bool)
     let hooks = doc["hooks"].as_table_mut().context("Codex hooks must be a table; preserved")?;
     let command = format!("{} hook codex", serde_json::to_string(exe)?);
 
-    for event in EVENTS {
+    for (event, status) in EVENTS {
         if !hooks.contains_key(event) {
             if uninstall {
                 continue;
@@ -196,8 +200,11 @@ pub(super) fn codex_hooks_at(path: &std::path::Path, exe: &str, uninstall: bool)
                 .with_context(|| format!("Codex hooks.{event}.hooks must be an array of tables; preserved"))?;
             let before = handlers.len();
             handlers.retain(|handler| {
+                let configured_command = handler.get("command").and_then(toml_edit::Item::as_str);
                 handler.get("type").and_then(toml_edit::Item::as_str) != Some("command")
-                    || handler.get("command").and_then(toml_edit::Item::as_str) != Some(&command)
+                    || !configured_command.is_some_and(|configured| {
+                        configured == command || configured == format!("{command} --status same")
+                    })
             });
             if handlers.len() != before {
                 owned_blocks.push(index);
@@ -215,7 +222,15 @@ pub(super) fn codex_hooks_at(path: &std::path::Path, exe: &str, uninstall: bool)
         if !uninstall {
             let mut handler = toml_edit::Table::new();
             handler["type"] = toml_edit::value("command");
+            let command = status.map_or_else(|| command.clone(), |status| format!("{command} --status {status}"));
             handler["command"] = toml_edit::value(&command);
+            if windows {
+                let windows_command = status.map_or_else(
+                    || format!("& \"{exe}\" hook codex"),
+                    |status| format!("& \"{exe}\" hook codex --status {status}"),
+                );
+                handler["commandWindows"] = toml_edit::value(windows_command);
+            }
             handler["timeout"] = toml_edit::value(TIMEOUT_SECONDS);
             let mut handlers = toml_edit::ArrayOfTables::new();
             handlers.push(handler);
@@ -579,20 +594,29 @@ mod tests {
         let path = dir.join("config.toml");
         std::fs::write(&path, "# keep my settings\nmodel = \"gpt-5\"\nnotify = [\"my-notifier\"]\n[[hooks.SubagentStart]]\nmatcher = \"reviewer\"\n[[hooks.SubagentStart.hooks]]\ntype = \"command\"\ncommand = \"my-start-hook\"\n").unwrap();
 
-        codex_hooks_at(&path, r#"C:\Program Files\Seshi\seshi.exe"#, false).unwrap();
+        codex_hooks_at_for_platform(&path, r#"C:\Program Files\Seshi\seshi.exe"#, false, true).unwrap();
         let first = std::fs::read_to_string(&path).unwrap();
-        codex_hooks_at(&path, r#"C:\Program Files\Seshi\seshi.exe"#, false).unwrap();
+        codex_hooks_at_for_platform(&path, r#"C:\Program Files\Seshi\seshi.exe"#, false, true).unwrap();
         let second = std::fs::read_to_string(&path).unwrap();
         assert_eq!(first, second, "setup is idempotent");
         assert!(second.contains("# keep my settings") && second.contains("my-notifier"));
         let config: toml::Value = toml::from_str(&second).unwrap();
-        for event in ["SubagentStart", "SubagentStop"] {
+        for event in ["SessionStart", "SubagentStart", "SubagentStop"] {
             let entries = config["hooks"][event].as_array().unwrap();
-            assert_eq!(entries.iter().filter(|entry| {
-                entry["hooks"].as_array().is_some_and(|handlers| handlers.iter().any(|handler| {
-                    handler["command"].as_str().is_some_and(|command| command.ends_with("hook codex"))
-                }))
-            }).count(), 1, "one live handler for {event}");
+            let seshi_handlers: Vec<_> = entries.iter().flat_map(|entry| {
+                entry["hooks"].as_array().into_iter().flatten()
+            }).filter(|handler| {
+                handler["command"].as_str().is_some_and(|command| command.contains("hook codex"))
+            }).collect();
+            assert_eq!(seshi_handlers.len(), 1, "one live handler for {event}");
+            let command = seshi_handlers[0]["command"].as_str().unwrap();
+            if event == "SessionStart" {
+                assert!(command.ends_with("hook codex --status same"));
+                assert_eq!(seshi_handlers[0]["commandWindows"].as_str(), Some(r#"& "C:\Program Files\Seshi\seshi.exe" hook codex --status same"#));
+            } else {
+                assert!(command.ends_with("hook codex"));
+                assert_eq!(seshi_handlers[0]["commandWindows"].as_str(), Some(r#"& "C:\Program Files\Seshi\seshi.exe" hook codex"#));
+            }
         }
         assert_eq!(config["hooks"]["SubagentStart"][0]["matcher"].as_str(), Some("reviewer"));
         assert_eq!(config["hooks"]["SubagentStart"][0]["hooks"][0]["command"].as_str(), Some("my-start-hook"));
@@ -601,6 +625,23 @@ mod tests {
         let removed = std::fs::read_to_string(&path).unwrap();
         assert!(removed.contains("# keep my settings") && removed.contains("my-notifier") && removed.contains("my-start-hook"));
         assert!(!removed.contains("hook codex"), "only seshi's hooks are removed");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn codex_linux_hooks_keep_the_bash_command_and_capture_the_root_thread() {
+        let dir = std::env::temp_dir().join(format!("seshi-codex-linux-hooks-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        codex_hooks_at_for_platform(&path, "/home/test/.local/bin/seshi", false, false).unwrap();
+        let config: toml::Value = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let start = &config["hooks"]["SessionStart"][0]["hooks"][0];
+        assert_eq!(start["command"].as_str(), Some("\"/home/test/.local/bin/seshi\" hook codex --status same"));
+        assert!(start.get("commandWindows").is_none(), "Linux config must not contain a PowerShell command");
+        assert!(config["hooks"].get("SubagentStart").is_some());
+        assert!(config["hooks"].get("SubagentStop").is_some());
+        codex_hooks_at_for_platform(&path, "/home/test/.local/bin/seshi", true, false).unwrap();
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("hook codex"));
         std::fs::remove_dir_all(dir).unwrap();
     }
 

@@ -22,6 +22,12 @@ Windows, macOS and Linux. Provider reload and live reporting still need
 confirmation in sessions on the machines where those providers run. Pi
 full-screen scroll behavior remains an open live-validation item below.
 
+Codex helper visibility needs cross-platform live validation. The integration
+records the root thread on session start so local rollout-file detection can
+work when Codex omits child events; Windows additionally needs a PowerShell
+`commandWindows` invocation. Restart Codex after installing the hooks, then
+verify active and completed helpers on both Windows and Linux/Omarchy.
+
 User-reported sidebar hiding was removed: idle and completed sessions remain
 visible, with no snooze or automatic settling. Background top-level completions
 now use the soft alert sound; the focused session and helper completions stay
