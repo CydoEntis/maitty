@@ -2,7 +2,7 @@
 
 Type: feature
 Author: Cody · Status: accepted
-Date: 2026-10-11 · Plan: [phase 9](../../ROADMAP.md#9--one-agent-runs-a-fleet-for-you--active)
+Date: 2026-10-11 · Plan: [phase 9](../../ROADMAP.md#9--one-agent-runs-a-fleet-for-you--complete-2026-10-16-at-63b1a72)
 
 ## Problem
 

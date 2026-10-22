@@ -1,8 +1,8 @@
 # Intent: clear session state and workflow controls
 
 Type: change and feature
-Author: Cody · Status: accepted
-Date: 2026-10-15 · Plan: [phase 9](../../ROADMAP.md#9--one-agent-runs-a-fleet-for-you--active)
+Author: Cody · Status: accepted, partly superseded 2026-10-18 (the workflow parts were removed; see [Out](../../ROADMAP.md#out))
+Date: 2026-10-15 · Plan: [phase 9](../../ROADMAP.md#9--one-agent-runs-a-fleet-for-you--complete-2026-10-16-at-63b1a72)
 
 ## Problem
 

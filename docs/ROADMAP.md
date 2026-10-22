@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-22 against `origin/main` at v0.36.13.
+Last reconciled: 2026-10-22 at `865998b` on `main` (v0.36.13).
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Seshi is a terminal multiplexer built for running many coding agents at once: see
@@ -200,8 +200,8 @@ check. Status: verified for 0.28.1 (253 tests passed, three pre-existing tests
 ignored; lint, both cross-checks and dependency audit passed). Live mouse clicks
 opened a plain shell and Settings from Actions.
 
-Active phase: **9 — one agent runs a fleet for you** (chosen 2026-10-11)
-Next: the phase's live check (#32–#38 are on `dev`, released in 0.20.0)
+Active phase: **15 — checks Seshi runs itself** (chosen 2026-10-22)
+Next: file small tickets for the verify slice. Phase 13 (`seshi handoff`) is queued after it.
 
 Current user-requested work: expand the built-in themes to cover the 25 requested
 families and add a searchable preview browser in Appearance. Acceptance: all
@@ -293,7 +293,7 @@ The user canceled this direction before implementation and chose to keep Seshi
 terminal-first, using T3 Code when they want a chat-first GUI. No code, tickets,
 branch, or worktree were created. Revisit only through a new proposal.
 
-### 12 - Flat rendering style - included in the v0.36.0 candidate
+### 12 - Flat rendering style - shipped in v0.36.0
 
 Add an optional full-bleed Flat style from the supplied design handoff. Keep the
 Cards layout as default and share session state, tabs, splits, sheets, status and
@@ -317,23 +317,52 @@ Approved by the user 2026-10-19 after a second read of `pingdotgg/t3code`. Not s
 Done outside the phase: saved pane output no longer races at shutdown (saves run one at a time,
 newest wins, fsynced) and restored history starts at a clean line.
 
-### 14 — Design v5 cleanup pass · done on this branch, awaiting merge
+### 14 — Design v5 cleanup pass · complete 2026-10-22 at `865998b`
 
 The user supplied the v5 cleanup handoff ([`design/v5/README.md`](design/v5/README.md); `seshi-app.js`
 is the spec) on 2026-10-19 and approved following it where it differs from older UI rules, including
 dropping model, context and cost from Seshi's own chrome. One commit per step, each with the full gate:
 
-1. One background (terminal default or solid) — done on this branch.
-2. Spacing (1-column margin and gap; sidebar has no footer) — done on this branch.
-3. Each fact shows once (pane title, status line holds path/branch/PR) — done on this branch, except the PR, server and `⇆` tags, which step 6 moves into the status line.
-4. Colour jobs (working is never amber; neutral selection tint and `▎` bar) — done on this branch (sidebar, sheet and popup lists).
-5. Exactly one lit edge — done on this branch.
-6. Status line in both layouts — done on this branch, without the `#PR` and dev-server tags (no data yet).
-7. Settings › General sections — done on this branch.
+1. One background (terminal default or solid) — done.
+2. Spacing (1-column margin and gap; sidebar has no footer) — done.
+3. Each fact shows once (pane title, status line holds path/branch/PR) — done, except the PR, server and `⇆` tags, which step 6 moves into the status line.
+4. Colour jobs (working is never amber; neutral selection tint and `▎` bar) — done (sidebar, sheet and popup lists).
+5. Exactly one lit edge — done.
+6. Status line in both layouts — done, without the `#PR` and dev-server tags (no data yet).
+7. Settings › General sections — done.
+
+Shipped since v0.35.0. The gate passed on `main` at `865998b`.
+
+### 15 — Checks Seshi runs itself · active, chosen 2026-10-22
+
+Chosen by the user 2026-10-22 (verify slice only). No tickets, no branch yet. Today an agent saying "done" turns its session
+done even when the project's checks fail. This phase makes "done" mean something Seshi observed.
+
+- **Scope of the first slice (verify only):** a project may name one check command. When a
+  session's turn ends and the session would become done, Seshi runs that command in the
+  session's worktree as a background task, records the exit code, the time and the tail of the
+  output, and shows the session as done only if it passed. A failure shows `failed: <check>`, appears in
+  the Inbox, and keeps the session visible. The user can override a failure; the override is recorded.
+- **Opt-in:** a project with no check command behaves exactly as today.
+- **Not a workflow runner:** Seshi runs one user-named command and reports the result. It starts no
+  role, assigns no task and does not stop an agent from working, so it stays clear of the runner cut
+  on 2026-10-18. The user confirmed this reading on 2026-10-22: checkpoints replace the cut
+  workflows.
+- **Rules it must keep:** the check runs off the UI thread (`spawn_bg`) and survives the UI closing,
+  so the daemon owns it; the result is trusted because Seshi ran the command, not because the agent said so; the command runs
+  only with the user's approval, like other project-supplied commands (SECURITY.md); it works on
+  Windows (PowerShell), macOS and Linux; the saved session and `PROTOCOL_VERSION` change together.
+- **Open decisions (ask before building):** where the command is configured (user config or the
+  repo); the timeout; whether a re-run happens on every turn end or only when the files changed;
+  what the Inbox says for a check that cannot run.
+- **Design:** [design brief v6](design-brief-v6.md), for the designer to work alongside. The first
+  slice needs only a status glyph, one line of text and the Inbox row.
+- Acceptance: tickets, tests, docs and a passing verification gate before it is marked shipped,
+  plus a live check where a failing check keeps a session from reading done.
 
 ## In scope
 
-Everything below is shipped on `dev` unless marked.
+Everything below is shipped on `main` unless marked.
 
 **Core**
 - Daemon owns sessions; detach / reattach; many clients — shipped — `src/daemon/mod.rs`, ADR-0001
@@ -355,7 +384,7 @@ Everything below is shipped on `dev` unless marked.
 - A commander runs a fleet: one agent starts, briefs and checks helpers, which sit under it in the sidebar — shipped in v0.20.0 — [intent](features/fleet/intent.md), #32–#38
 
 **The TUI (one shared session layout; ADR-0007, superseded by ADR-0012)**
-- Flat rendering style: square, full-bleed sidebar, tabs, panes and sheets; sidebar/pane focus zones, no global footer; in progress in Phase 12; `src/client/hydra/screen.rs`, ADR-0012
+- Flat rendering style: square, full-bleed sidebar, tabs, panes and sheets; sidebar/pane focus zones, no global footer; shipped in v0.36.0; `src/client/hydra/screen.rs`, ADR-0012
 - Floating look: rounded cards with gaps, title and state in the border, unfocused cards faded, pill tabs, no app footer; floating or tiled, corners, gap, dim, focus border, pill ends in Settings — shipped by v0.30.1 — `src/client/hydra/card.rs`, `screen.rs`, ADR-0007
 - Sidebar card: projects → sessions, state glyph + name, branch · age, question under it, attention sort, helpers indented under the session that started them, keyboard and mouse, row letter keys, `a actions` / `, settings` foot — shipped — `src/client/hydra/screen.rs` `draw_side`
 - Panes: tabs as pills (named in their pill), any number of splits (grid for 3+), drag the gap between them, ✕ in the border — shipped — `src/client/hydra/screen.rs` `draw_session`
@@ -407,20 +436,19 @@ Everything below is shipped on `dev` unless marked.
 
 - Non-blocking validation follow-ups: run the Phase 9 live fleet check with two helpers visible under the commander; use the four Phase 10 features in real work; address the squash-merged-branch detection gap.
 
-- Personas (a saved name, brief, agent, model and permissions) — deferred 2026-10-11: the user wants to think about them more. Comes back when the user decides what a persona holds.
-- The designed team view, threads between agents, take over and hand back, pause the fleet, stop all, cost per fleet — deferred 2026-10-11: waiting on the design from [design brief v5](design-brief-v5.md). Comes back when the prototype is in.
+- Personas are dropped, not deferred: saved role profiles were removed 2026-10-18 (see [Out](#out)). Phase 15 replaces the idea with checkpoints that Seshi checks itself.
+- Checkpoint kinds beyond the first (`commits`, `approval`, `review`) and a project-defined checkpoint list — deferred 2026-10-22 until Phase 15's verify check has been used in real work. `approval` and `review` sit close to the workflow runner cut on 2026-10-18; each needs the user's explicit re-approval before any ticket.
+- The designed team view, threads between agents, take over and hand back, pause the fleet, stop all, cost per fleet — deferred 2026-10-11: waiting on the design from [design brief v5](design-brief-v5.md), which [design brief v6](design-brief-v6.md) narrows. Comes back when the prototype is in.
 
 ## Decisions
 
-- [ADR-0001](docs/adr/0001-daemon-owns-sessions.md) — A daemon owns every session; clients only draw. Rules out: sessions inside the UI process.
-- [ADR-0002](docs/adr/0002-portable-pty-and-vt100.md) — portable-pty (ConPTY) and vt100 for terminals. Rules out: a home-grown PTY layer.
-- [ADR-0003](docs/adr/0003-msgpack-over-local-sockets.md) — msgpack frames over local sockets, versioned. Rules out: unversioned message changes; network listeners.
-- [ADR-0009](docs/adr/0009-leader-keys-after-the-cut.md) — Leader keys: a shell is one key, and only kept features have keys (supersedes ADR-0006). Rules out: keys for features that don't exist; defaults that differ from the key map shown in the app.
-- [ADR-0008](docs/adr/0008-rename-to-seshi.md) — The app is called Seshi; an old hydra install is brought over once. Rules out: new code or paths under the old name.
-- [ADR-0007](docs/adr/0007-floating-and-tiled-styles.md) — Cards layout, drawn floating or tiled (supersedes ADR-0004); superseded by ADR-0012.
-- [ADR-0012](docs/adr/0012-flat-rendering-style.md) — Add a flat rendering style over the shared session layout; Cards stays default.
-- [ADR-0010](docs/adr/0010-optional-desktop-client.md) — Offer an optional desktop client. Superseded by ADR-0011.
-- [ADR-0011](docs/adr/0011-keep-seshi-terminal-first.md) — Keep Seshi terminal-first. Rules out: adding a separate desktop GUI client to this project.
+- [ADR-0001](adr/0001-daemon-owns-sessions.md) — A daemon owns every session; clients only draw. Rules out: sessions inside the UI process.
+- [ADR-0002](adr/0002-portable-pty-and-vt100.md) — portable-pty (ConPTY) and vt100 for terminals. Rules out: a home-grown PTY layer.
+- [ADR-0003](adr/0003-msgpack-over-local-sockets.md) — msgpack frames over local sockets, versioned. Rules out: unversioned message changes; network listeners.
+- [ADR-0009](adr/0009-leader-keys-after-the-cut.md) — Leader keys: a shell is one key, and only kept features have keys (supersedes ADR-0006). Rules out: keys for features that don't exist; defaults that differ from the key map shown in the app.
+- [ADR-0008](adr/0008-rename-to-seshi.md) — The app is called Seshi; an old hydra install is brought over once. Rules out: new code or paths under the old name.
+- [ADR-0012](adr/0012-flat-rendering-style.md) — Add a flat rendering style over the shared session layout; Cards stays default.
+- [ADR-0011](adr/0011-keep-seshi-terminal-first.md) — Keep Seshi terminal-first. Rules out: adding a separate desktop GUI client to this project.
 
 ## Rules
 
@@ -437,7 +465,11 @@ Everything below is shipped on `dev` unless marked.
 ## Records
 
 Docs: `AGENTS.md`, `docs/` (architecture, standards, testing, security, UI, API patterns), `docs/stack/rust.md`.
-Design references: [design brief](design-brief.md), [design brief v3](design-brief-v3.md).
+Design references: [design brief](design-brief.md), [design brief v3](design-brief-v3.md),
+[design brief v4](design-brief-v4.md) and its handoff [`design/v4/`](design/v4/),
+[design brief v5](design-brief-v5.md) (the lead and personas; narrowed by [v6](design-brief-v6.md)),
+the v5 cleanup handoff [`design/v5/`](design/v5/), the Flat handoff [`design/flat/`](design/flat/)
+and the wake-up transition handoff [`design/wake/`](design/wake/).
 Glossary: none yet.
 Feature docs: `docs/features/`. Each live intent is linked from In scope or a phase.
 Session clarity: [intent](features/session-clarity/intent.md),
