@@ -1303,6 +1303,8 @@ mod hydra_tests {
         // Ctrl+Space t in claude's session: a shell where you are, straight away, as a tab of
         // claude's (no card to fill in first).
         let key = |app: &mut App, c: KeyCode| app.on_key(KeyEvent::new(c, KeyModifiers::NONE));
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
         app.act(Action::NewTab);
         assert_eq!(app.mode, Mode::Normal, "nothing to answer first");
         assert!(matches!(app.hy.new_tab, Some((_, 1))), "the next session is a tab of claude's: {:?}", app.hy.new_tab);
@@ -1322,8 +1324,24 @@ mod hydra_tests {
         show(&o);
         assert!(o.contains("Rename tab") && o.contains("tests█"), "the dialog shows the draft: {o}");
         key(&mut app, KeyCode::Enter);
+        // The daemon owns the name: play its part by applying the command to the snapshot.
+        let (rws, rtab, rname) = std::iter::from_fn(|| rx.try_recv().ok())
+            .find_map(|m| match m {
+                crate::protocol::ClientMsg::Command(crate::protocol::Command::RenameTab { ws, tab, name }) => Some((ws, tab, name)),
+                _ => None,
+            })
+            .expect("the rename is sent to the daemon");
+        for t in app.snap.workspaces.iter_mut().filter(|w| w.id == rws).flat_map(|w| w.tabs.iter_mut()).filter(|t| t.id == rtab) {
+            t.name = rname.clone();
+        }
+        app.hy_sync();
         let o = draw(&mut app, 160, 45);
         assert!(o.contains(" tests ") && !o.contains("2 tests"), "renamed: the pill is its name");
+        // Views get rebuilt (another session reuses the slot, the client restarts): the name stays.
+        app.hy.tabs.iter_mut().for_each(|t| t.name.clear());
+        app.hy_sync();
+        let o = draw(&mut app, 160, 45);
+        assert!(o.contains(" tests "), "the name comes back from the daemon: {o}");
         // Another session: its own view, with its own rail.
         app.hy_place(2, Some(3));
         draw(&mut app, 160, 45);

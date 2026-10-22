@@ -432,8 +432,15 @@ impl App {
     pub(in crate::client) fn on_rename_tab_key(&mut self, mut nt: TabName, k: &KeyEvent) {
         match k.code {
             KeyCode::Enter => {
+                let name = nt.name.trim().to_string();
                 if let Some(tab) = self.hy.tabs.get_mut(nt.tab) {
-                    tab.name = nt.name.trim().to_string();
+                    let focus = tab.focus;
+                    // The daemon owns the name: it outlives this view's tab being rebuilt, and
+                    // `hy_sync` reads it back from the snapshot.
+                    match self.snap.workspaces.iter().find_map(|w| w.tabs.iter().find(|t| t.layout.contains(focus)).map(|t| (w.id, t.id))) {
+                        Some((ws, tab)) => self.cmd(Command::RenameTab { ws, tab, name }),
+                        None => tab.name = name,
+                    }
                 }
                 self.last_click = None;
                 self.mode = Mode::Normal;

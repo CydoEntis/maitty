@@ -765,6 +765,13 @@ impl App {
             })
             .collect();
         tabs.dedup_by(|a, b| a.layout == b.layout);
+        // Views get rebuilt as you move between sessions; the name you gave lives in the daemon.
+        for tab in tabs.iter_mut() {
+            let saved = self.snap.workspaces.iter().flat_map(|w| &w.tabs).find(|s| s.layout.contains(tab.focus)).map(|s| s.name.as_str());
+            if let Some(name) = saved {
+                tab.name = name.to_string();
+            }
+        }
         // A session that ended with other tabs left: the first of those becomes the session.
         let gone: Vec<TermId> = tabs.iter().map(|t| t.owner).filter(|o| !alive(*o)).collect();
         for o in gone {
