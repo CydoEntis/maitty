@@ -1,5 +1,5 @@
-//! The floating look's pieces: rounded cards with their title set into the top border,
-//! pills (tabs, buttons, selected rows), and fading what isn't in focus.
+//! The frame's pieces: cards with their title chip set into the top border (Flat: a header
+//! strip), pills (buttons, selected rows), and fading what isn't in focus.
 
 use super::*;
 
@@ -81,7 +81,6 @@ pub(in crate::client) fn state_color(t: &Theme, st: Status) -> Color {
 #[derive(Clone, Copy)]
 pub(in crate::client) struct Look {
     pub flat: bool,
-    pub tiled: bool,
     pub rounded: bool,
     /// Rows between stacked cards, and columns between cards side by side.
     pub gap: u16,
@@ -95,7 +94,6 @@ impl Look {
         let tiled = ui.panes == "tiled" || flat;
         Look {
             flat,
-            tiled,
             rounded: ui.corners == "rounded",
             gap: if tiled { 0 } else { ui.gap.parse().unwrap_or(1).min(2) },
             dim: if flat { 0.0 } else { match ui.dim.as_str() {
@@ -128,25 +126,9 @@ pub(in crate::client) fn row_pill(look: Look, buf: &mut Buffer, x: u16, y: u16, 
     put(buf, x, y, &segs, x + w);
 }
 
-/// The glyphs a card's border is drawn with.
-pub(in crate::client) struct Edges {
-    pub top: &'static str,
-    pub bottom: &'static str,
-    pub left: &'static str,
-    pub right: &'static str,
-    /// Top left, top right, bottom left, bottom right.
-    pub corners: [&'static str; 4],
-}
-
-impl Edges {
-    pub fn of(look: Look) -> Edges {
-        if look.rounded {
-            Edges { top: "─", bottom: "─", left: "│", right: "│", corners: ["╭", "╮", "╰", "╯"] }
-        } else {
-            // Each on the side of its cell that faces the card.
-            Edges { top: "▁", bottom: "▔", left: "▕", right: "▏", corners: [" ", " ", " ", " "] }
-        }
-    }
+/// A card's corners by the setting: top left, top right, bottom left, bottom right.
+pub(in crate::client) fn corners(look: Look) -> [&'static str; 4] {
+    if look.rounded { ["╭", "╮", "╰", "╯"] } else { ["┌", "┐", "└", "┘"] }
 }
 
 /// A row's highlight laid over what's already drawn there (a glide passing over rows): its
@@ -173,8 +155,10 @@ pub(in crate::client) fn keycap_pill(look: Look, t: &Theme, key: &str, on: bool,
 }
 
 /// A button as a pill: the primary one in the accent, the others raised with their key lit.
-pub(in crate::client) fn button_pill(look: Look, t: &Theme, label: &str, key: &str, primary: bool, hovered: bool, outer: Color) -> Vec<Seg> {
-    let (bg, fg, kf) = if primary { (t.accent, t.acc_ink, t.acc_ink) } else { (if hovered { t.hov } else { t.btn }, t.strong, t.accent) };
+/// The pointer's tint is laid over every clickable region after drawing (`render`).
+// shortcut: `_hovered` stays until the packages drawing buttons in parallel stop passing it.
+pub(in crate::client) fn button_pill(look: Look, t: &Theme, label: &str, key: &str, primary: bool, _hovered: bool, outer: Color) -> Vec<Seg> {
+    let (bg, fg, kf) = if primary { (t.accent, t.acc_ink, t.acc_ink) } else { (t.btn, t.strong, t.accent) };
     let b = Style::default().add_modifier(Modifier::BOLD);
     let mut segs = vec![seg(format!("{label} "), b.fg(fg))];
     if !key.is_empty() {
@@ -186,195 +170,139 @@ pub(in crate::client) fn button_pill(look: Look, t: &Theme, label: &str, key: &s
 /// What a card shows in and around its border.
 pub(in crate::client) struct Card<'a> {
     pub title: &'a str,
-    /// Dim, after the title, dropped when there isn't room.
+    /// After the title in its chip.
     pub sub: &'a str,
-    pub state: Option<Status>,
-    pub state_hit: Option<ScreenHit>,
-    /// A short note left of the state (what it's taking of the machine), in its colour.
-    /// Dropped first when the title needs the room.
-    pub note: Option<(String, Color)>,
-    /// The ✕ at the right of the title border, and what a click on it does.
+    /// Drawn as they are in place of the title chip (a pane's tab chips).
+    pub chips: Vec<Seg>,
+    /// On the top border at the right, before the ✕.
+    pub right: Vec<Seg>,
+    /// The ✕ at the right of the top border, and what a click on it does.
     pub close: Option<ScreenHit>,
     pub border: Color,
+    /// Focused: the border (Cards) or the left rule (Flat), and the title chip, in `border`.
     pub bold: bool,
+    /// The title's ink when not focused.
     pub title_fg: Color,
     /// The inside's ground.
     pub bg: Color,
-    /// The last row inside: left, and right-aligned.
-    pub foot: Vec<Seg>,
-    pub foot_r: Vec<Seg>,
 }
 
 impl<'a> Card<'a> {
     pub fn new(t: &Theme, title: &'a str) -> Card<'a> {
-        Card { title, sub: "", state: None, state_hit: None, note: None, close: None, border: t.line, bold: false, title_fg: t.text, bg: pane_bg(t), foot: Vec::new(), foot_r: Vec::new() }
+        Card { title, sub: "", chips: Vec::new(), right: Vec::new(), close: None, border: t.line, bold: false, title_fg: t.strong, bg: pane_bg(t) }
     }
 
-    /// The focused look: the border and title in `c`, bold.
+    /// The focused look: the border and the title chip in `c`.
     pub fn lit(mut self, c: Color) -> Card<'a> {
         self.border = c;
-        self.title_fg = c;
         self.bold = true;
         self
     }
 }
 
-/// Draw a card: its border on the desk, title in the top border with a break around it,
-/// state and ✕ on the right of it, a footer row inside. Returns the inside (within the border).
-///
-/// A cell has one ground, and a box-drawing line runs through its middle, so a filled card
-/// with a centred line either shows a strip of desk inside the line or spills its fill past it.
-/// Flush edges (the default) draw the border with eighth blocks that sit on the cell's inner
-/// edge instead, so the fill meets the line exactly; the corner cells stay empty, where the
-/// two lines meet at a point. Rounded keeps the centred line and its strip.
+/// Where a card's title chip starts: on the top border two in (Cards), one in on the header
+/// strip (Flat).
+pub(in crate::client) fn title_x(look: Look, r: Rect) -> u16 {
+    r.x + if look.flat { 1 } else { 2 }
+}
+
+/// Where a card's right-hand segments end (exclusive): a padding space before the corner
+/// (Cards), a column before the zone's edge (Flat).
+pub(in crate::client) fn right_end(look: Look, r: Rect) -> u16 {
+    r.right().saturating_sub(if look.flat { 1 } else { 2 })
+}
+
+/// The title chip, at most `room` wide: the title (and its sub, dropped first) padded by a
+/// space each side on `btn`, or on the focus colour when focused.
+fn title_chip(c: &Card, t: &Theme, room: u16) -> Vec<Seg> {
+    if !c.chips.is_empty() || c.title.is_empty() {
+        return c.chips.clone();
+    }
+    let (bg, fg) = if c.bold { (c.border, if c.border == t.accent { t.acc_ink } else { t.ink_on(c.border) }) } else { (t.btn, c.title_fg) };
+    let st = Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD);
+    let sub = if c.sub.is_empty() { String::new() } else { format!(" · {}", c.sub) };
+    let fits = |s: &str| s.width() as u16 + 2 <= room;
+    let (title, sub) = if fits(&format!("{}{sub}", c.title)) { (c.title.to_string(), sub) } else { (truncate(c.title, room.saturating_sub(2) as usize), String::new()) };
+    let mut out = vec![seg(format!(" {title}"), st)];
+    if !sub.is_empty() {
+        out.push(seg(sub, Style::default().bg(bg).fg(if c.bold { fg } else { t.text })));
+    }
+    out.push(seg(" ", st));
+    out
+}
+
+/// Draw a card. Cards: a box in `line` (`border` when focused) with square or rounded
+/// corners, the title chip on the top border two in and the right-hand segments ending three
+/// before the corner. Flat: no box; the first row is a header strip of `card` with the chip one
+/// in and the right-hand segments one from the edge, and a zone that doesn't start at the
+/// screen's edge has a `│` rule down its left (in `border` when focused). Returns the inside.
 pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card, t: &Theme) -> Rect {
     let look = Look::of(&app.cfg.ui);
     let r = r.intersection(buf.area);
     if r.width < 4 || r.height < 2 {
         return Rect { width: 0, height: 0, ..r };
     }
-    if look.flat {
-        fill(buf, r, c.bg);
-        let edge = if c.bold { t.accent } else { t.line };
-        for y in r.top()..r.bottom() {
-            if let Some(cell) = buf.cell_mut((r.x, y)) {
-                cell.set_symbol("▎").set_style(Style::default().fg(edge).bg(c.bg));
-            }
-        }
-        let mut right = Vec::new();
-        if let Some(st) = c.state {
-            right.push(seg(format!("{} {}", glyph(app, st), state_label(st)), Style::default().fg(state_color(t, st)).add_modifier(Modifier::BOLD).bg(c.bg)));
-        }
-        if c.close.is_some() {
-            right.push(seg("  ✕ ", Style::default().fg(t.muted).bg(c.bg)));
-        }
-        let right_width = segs_width(&right);
-        if right_width > 0 {
-            put(buf, r.right().saturating_sub(right_width + 1), r.y, &right, r.right());
-            if let (Some(h), Some(st)) = (c.state_hit, c.state) {
-                let width = (glyph(app, st).width() + state_label(st).width() + 1) as u16;
-                hit(app, Rect { x: r.right().saturating_sub(right_width + 1), y: r.y, width: width.min(right_width), height: 1 }, h);
-            }
-            if let Some(h) = c.close {
-                hit(app, Rect { x: r.right().saturating_sub(4), y: r.y, width: 3, height: 1 }, h);
-            }
-        }
-        if !c.title.is_empty() && r.width > 8 {
-            let max_width = r.width.saturating_sub(8 + right_width) as usize;
-            let mut title = truncate(c.title, max_width.max(1));
-            if !c.sub.is_empty() && title.width() + c.sub.width() + 3 < max_width {
-                title.push_str(&format!("  {}", c.sub));
-            }
-            put(buf, r.x + 3, r.y, &[seg(title, Style::default().fg(c.title_fg).add_modifier(Modifier::BOLD).bg(c.bg))], r.right().saturating_sub(right_width + 2));
-        }
-        let inside = Rect { x: r.x + 1, y: r.y + 1, width: r.width.saturating_sub(2), height: r.height.saturating_sub(2) };
-        if r.height >= 3 {
-            let y = r.bottom() - 1;
-            let right_width = segs_width(&c.foot_r);
-            if right_width > 0 && right_width + 2 < r.width {
-                let segs: Vec<Seg> = c.foot_r.iter().map(|(s, st)| (s.clone(), if st.bg.is_none() { st.bg(c.bg) } else { *st })).collect();
-                put(buf, r.right().saturating_sub(right_width + 1), y, &segs, r.right());
-            }
-            let segs: Vec<Seg> = c.foot.iter().map(|(s, st)| (s.clone(), if st.bg.is_none() { st.bg(c.bg) } else { *st })).collect();
-            put(buf, r.x + 3, y, &segs, r.right().saturating_sub(right_width + 2));
-        }
-        return inside;
+    let inside = if look.flat { flat_frame(buf, r, c, t) } else { box_frame(buf, r, c, look) };
+    let ground = if look.flat { t.card } else { t.bg };
+    let mut right = c.right.clone();
+    if c.close.is_some() {
+        let gap = if right.is_empty() { "" } else { "  " };
+        let close = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close;
+        right.push(seg(format!("{gap}{close} "), Style::default().fg(t.muted)));
     }
+    let end = right_end(look, r);
+    let rw = segs_width(&right);
+    let rx = end.saturating_sub(rw);
+    let chip_x = title_x(look, r);
+    let shown = rw > 0 && rx > chip_x + 1;
+    if shown {
+        let pad = u16::from(!look.flat);
+        let space = seg(" ".repeat(pad as usize), Style::default());
+        let segs: Vec<Seg> = std::iter::once(space.clone()).chain(right).chain(std::iter::once(space)).map(|(s, st)| (s, if st.bg.is_none() { st.bg(ground) } else { st })).collect();
+        put(buf, rx - pad, r.y, &segs, end + pad);
+        if let Some(h) = c.close {
+            hit(app, Rect { x: end.saturating_sub(3), y: r.y, width: 3, height: 1 }, h);
+        }
+    }
+    let chip_end = if shown { rx.saturating_sub(2) } else { end };
+    put(buf, chip_x, r.y, &title_chip(c, t, chip_end.saturating_sub(chip_x)), chip_end);
+    inside
+}
+
+/// The Cards box: `line` (or the focus colour) all round, corners by the setting.
+fn box_frame(buf: &mut Buffer, r: Rect, c: &Card, look: Look) -> Rect {
     fill(buf, Rect { x: r.x + 1, y: r.y + 1, width: r.width - 2, height: r.height - 2 }, c.bg);
-    let mut b = Style::default().fg(c.border);
-    if c.bold {
-        b = b.add_modifier(Modifier::BOLD);
-    }
-    let edges = Edges::of(look);
+    let b = Style::default().fg(c.border);
     let (x, y, right, bottom) = (r.x, r.y, r.right() - 1, r.bottom() - 1);
     for xx in x + 1..right {
-        buf[(xx, y)].set_symbol(edges.top).set_style(b);
-        buf[(xx, bottom)].set_symbol(edges.bottom).set_style(b);
+        buf[(xx, y)].set_symbol("─").set_style(b);
+        buf[(xx, bottom)].set_symbol("─").set_style(b);
     }
     for yy in y + 1..bottom {
-        buf[(x, yy)].set_symbol(edges.left).set_style(b);
-        buf[(right, yy)].set_symbol(edges.right).set_style(b);
+        buf[(x, yy)].set_symbol("│").set_style(b);
+        buf[(right, yy)].set_symbol("│").set_style(b);
     }
-    let [tl, tr, bl, br] = edges.corners;
+    let [tl, tr, bl, br] = corners(look);
     buf[(x, y)].set_symbol(tl).set_style(b);
     buf[(right, y)].set_symbol(tr).set_style(b);
     buf[(x, bottom)].set_symbol(bl).set_style(b);
     buf[(right, bottom)].set_symbol(br).set_style(b);
+    Rect { x: x + 1, y: y + 1, width: r.width - 2, height: r.height - 2 }
+}
 
-    // The title border: " title ─ sub ───── ● needs you ─ ✕ ─".
-    let desk = Style::default();
-    let (l_x, r_x) = (x + 3, r.right().saturating_sub(4));
-    let span = r_x.saturating_sub(l_x);
-    let tag = |short: bool| -> Vec<Seg> {
-        let mut out = Vec::new();
-        if let Some((note, colour)) = c.note.as_ref().filter(|_| !short) {
-            out.push(seg(format!(" {note} "), desk.fg(*colour)));
-            if c.state.is_some() {
-                out.push(seg(edges.top, b));
-            }
-        }
-        if let Some(st) = c.state {
-            let mut s = desk.fg(state_color(t, st));
-            if st == Status::Blocked {
-                s = s.add_modifier(Modifier::BOLD);
-            }
-            let label = if short { String::new() } else { format!(" {}", state_label(st)) };
-            out.push(seg(format!(" {}{label} ", glyph(app, st)), s));
-        }
-        if c.state.is_some() && c.close.is_some() {
-            out.push(seg(edges.top, b));
-        }
-        if c.close.is_some() {
-            out.push(seg(" ✕ ", desk.fg(if c.bold { t.text } else { t.muted })));
-        }
-        out
-    };
-    let title_w = if c.title.is_empty() { 0 } else { c.title.width() as u16 + 2 };
-    let mut right_segs = tag(false);
-    let mut short = false;
-    if title_w + 3 + segs_width(&right_segs) > span {
-        right_segs = tag(true);
-        short = true;
-    }
-    let rw = segs_width(&right_segs);
-    if rw > 0 && rw <= span {
-        let rx = r_x + 1 - rw;
-        put(buf, rx, y, &right_segs, r_x + 1);
-        if let (Some(h), Some(st)) = (c.state_hit, c.state) {
-            let width = glyph(app, st).width() as u16 + 2 + if short { 0 } else { state_label(st).width() as u16 + 1 };
-            let end = (r_x + 1).saturating_sub(if c.close.is_some() { 4 } else { 0 });
-            hit(app, Rect { x: end.saturating_sub(width).max(rx), y, width: width.min(end.saturating_sub(rx)), height: 1 }, h);
-        }
-        if let Some(h) = c.close {
-            hit(app, Rect { x: r_x + 1 - 3, y, width: 3, height: 1 }, h);
+/// The Flat zone: a header strip of `card` on its first row, and a `│` rule down its left
+/// unless it starts at the screen's edge.
+fn flat_frame(buf: &mut Buffer, r: Rect, c: &Card, t: &Theme) -> Rect {
+    fill(buf, r, c.bg);
+    fill(buf, Rect { height: 1, ..r }, t.card);
+    if r.x > buf.area.x {
+        buf[(r.x, r.y)].set_symbol("│").set_style(Style::default().fg(t.line).bg(t.card));
+        let rule = Style::default().fg(if c.bold { c.border } else { t.line }).bg(c.bg);
+        for yy in r.y + 1..r.bottom() {
+            buf[(r.x, yy)].set_symbol("│").set_style(rule);
         }
     }
-    if !c.title.is_empty() {
-        let max_t = span.saturating_sub(rw + 4) as usize;
-        let title = truncate(c.title, max_t.max(1));
-        let mut ts = desk.fg(c.title_fg).add_modifier(Modifier::BOLD);
-        if !c.bold && c.title_fg == c.border {
-            ts = ts.remove_modifier(Modifier::BOLD);
-        }
-        let mut segs = vec![seg(format!(" {title} "), ts)];
-        if !c.sub.is_empty() && (title.width() + c.sub.width() + 8) < span.saturating_sub(rw) as usize {
-            segs.push(seg(edges.top, b));
-            segs.push(seg(format!(" {} ", c.sub), desk.fg(t.muted)));
-        }
-        put(buf, l_x - 1, y, &segs, r_x.saturating_sub(rw));
-    }
-    let inside = Rect { x: x + 1, y: y + 1, width: r.width - 2, height: r.height - 2 };
-    if r.height >= 4 {
-        let fy = bottom - 1;
-        let fr = segs_width(&c.foot_r);
-        if !c.foot_r.is_empty() && fr + 4 < r.width {
-            let segs: Vec<Seg> = c.foot_r.iter().map(|(s, st)| (s.clone(), if st.bg.is_none() { st.bg(c.bg) } else { *st })).collect();
-            put(buf, r_x + 1 - fr, fy, &segs, r_x + 1);
-        }
-        let segs: Vec<Seg> = c.foot.iter().map(|(s, st)| (s.clone(), if st.bg.is_none() { st.bg(c.bg) } else { *st })).collect();
-        put(buf, l_x, fy, &segs, r_x.saturating_sub(fr + 1).max(l_x));
-    }
-    inside
+    Rect { x: r.x + 1, y: r.y + 1, width: r.width - 1, height: r.height - 1 }
 }
 
 /// Fade everything inside `r` toward its own ground by `amount`, keeping colours recognisable.

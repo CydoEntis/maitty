@@ -66,8 +66,6 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: 
             t.hov
         } else if app.mode == Mode::Side && app.screen.cursor == Some(s.term) {
             t.card2
-        } else if hovered(app, rr) {
-            blend(pb, t.hov, 0.4)
         } else {
             pb
         };

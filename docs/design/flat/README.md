@@ -1,5 +1,10 @@
 # Handoff: Seshi flat layout (OpenCode-like)
 
+> **Superseded for the frame by v7.** Flat's current contract (no tab row, the header strip
+> on row 0 holding every title chip, one `│` rule between zones, no bottom status line, the
+> 72-column sheet) is [`docs/design/v7/`](../v7/README.md) and [ADR 0013](../../adr/0013-v7-frame.md).
+> This handoff is kept for the reasoning behind Flat; where the two disagree, v7 wins.
+
 ## Overview
 An alternative layout for Seshi that users can pick: **Settings › Appearance › Layout › cards / flat**. It carries the same features, states and keys as the v4 handoff (`design_handoff_seshi_v4`). Only the chrome changes: no cards, borders, gaps or rounded ends. The look is full-bleed tinted zones with square ends, in the spirit of OpenCode, using Seshi's own colour roles.
 

@@ -349,11 +349,6 @@ impl Theme {
         mix(ground, self.text, 0.06)
     }
 
-    /// A pointed-at row: half as far from the background as the selection.
-    pub fn hover_bg(&self) -> Color {
-        mix(self.bg, self.text, 0.06)
-    }
-
     /// A state's colour as drawn on the lit row: itself where it reads on `hov`, else moved
     /// toward the theme's strongest text just far enough to. A row you select keeps saying
     /// its state, and no theme needs colours of its own for that (some put a red on a

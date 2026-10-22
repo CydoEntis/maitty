@@ -50,8 +50,38 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     }
     super::screen::draw(app, f, area, &t);
     draw_overlays(app, f, area, &t);
+    tint_hovered(app, f.buffer_mut(), &t);
     if terminal_bg {
         use_terminal_background(f.buffer_mut(), t.bg);
+    }
+}
+
+/// How far the pointer's tint takes a clickable region's ground toward the text.
+const HOVER_TINT: f32 = 0.10;
+
+/// Regions that take a click but are not a control to tint: a pane's terminal, the ground
+/// inside or around an overlay, the sidebar's or settings' body, and the edges you drag
+/// (they light their own line).
+fn tints(h: &super::Hit) -> bool {
+    use super::screen::ScreenHit as S;
+    !matches!(h, super::Hit::Pane(_) | super::Hit::Screen(S::Noop | S::SideFocus | S::SettingsBody | S::Divider(_) | S::SideEdge | S::ScrollBar(_)))
+}
+
+/// Tint the topmost clickable region under the pointer, the one a click there would hit, once:
+/// every row, chip, button and ✕ shows it the same way, so no widget tints itself.
+fn tint_hovered(app: &App, buf: &mut Buffer, t: &crate::theme::Theme) {
+    let Some(at) = app.hover else { return };
+    let Some((r, h)) = app.hits.iter().rev().find(|(r, _)| r.contains(at)) else { return };
+    if !tints(h) || *r == buf.area {
+        return;
+    }
+    let r = r.intersection(buf.area);
+    for y in r.top()..r.bottom() {
+        for x in r.left()..r.right() {
+            let cell = &mut buf[(x, y)];
+            let ground = if cell.bg == Color::Reset { t.bg } else { cell.bg };
+            cell.bg = crate::theme::mix(ground, t.text, HOVER_TINT);
+        }
     }
 }
 
@@ -430,11 +460,8 @@ fn draw_picker(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::Theme
         return super::screen::draw_palette(app, f, area, t, query, sel, &items);
     }
     let items = app.pick_items(query, commands);
-    let r = centered(area, 80, 22);
-    let mut c = super::screen::Card::new(t, "jump to").lit(t.accent);
-    c.bg = t.card;
-    let inside = super::screen::card(app, f.buffer_mut(), r, &c, t);
-    let inner = Rect { x: inside.x + 1, width: inside.width.saturating_sub(2), ..inside };
+    let r = super::screen::panel_at(app, f.buffer_mut(), centered(area, 80, 22), "jump to", &[], t);
+    let inner = Rect { x: r.x + 2, y: r.y + 1, width: r.width.saturating_sub(4), height: r.height.saturating_sub(2) };
     let input = Line::from(vec![Span::styled("› ", Style::default().fg(t.accent)), Span::raw(query.to_string())]);
     f.render_widget(Paragraph::new(input), Rect { height: 1, ..inner });
     f.set_cursor_position(Position::new(inner.x + 2 + query.width() as u16, inner.y));
