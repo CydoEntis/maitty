@@ -19,7 +19,7 @@ mod worktrees;
 use status::*;
 use worktrees::*;
 
-use crate::config::{CompiledAgent, Config};
+use crate::config::{CompiledAgent, Config, same_path};
 use crate::ipc;
 use crate::layout::Node;
 use crate::protocol::*;
@@ -120,11 +120,6 @@ enum AutoUndo {
     Moved { term: TermId, from_ws: WsId, from_tab: TabId, beside: Option<TermId> },
     /// The pane was alone, so its workspace was re-homed; restore name and folder.
     Rehomed { ws: WsId, name: String, cwd: PathBuf },
-}
-
-fn same_path(a: &std::path::Path, b: &std::path::Path) -> bool {
-    let n = |p: &std::path::Path| p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
-    n(a) == n(b)
 }
 
 struct Client {

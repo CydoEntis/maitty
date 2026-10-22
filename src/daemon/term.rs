@@ -151,6 +151,9 @@ pub struct Term {
     pub last_working_hook: Option<Instant>,
     /// The last turn-end hook (or pane start), compared to input without wall-clock rounding.
     pub last_turn_end: Instant,
+    /// This turn's end has been acted on (its check started or declined); the screen and the
+    /// hook can both report one turn ending. A new working turn clears it.
+    pub turn_end_handled: bool,
     /// Activity present at turn end must not reopen that turn unless its live footer changes.
     pub ended_activity: Option<String>,
     pub screen_blocked_from: Option<Status>,
@@ -587,6 +590,7 @@ impl Term {
             progress_off: None,
             last_working_hook: None,
             last_turn_end: now,
+            turn_end_handled: false,
             ended_activity: None,
             screen_blocked_from: None,
             blocked_at: None,

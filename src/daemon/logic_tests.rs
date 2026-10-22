@@ -1760,6 +1760,25 @@ fn a_turn_ending_while_its_check_runs_does_not_start_a_second_run() {
 }
 
 #[test]
+fn a_done_hook_after_the_screen_ended_the_turn_and_its_check_settled_starts_no_second_run() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
+    d.set_status(t, Status::Done, "screen: went quiet after working");
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    let settled = check_of(&d, t);
+    assert_eq!(settled.state, CheckState::Passed);
+    end_turn(&mut d, t);
+    assert_eq!(check_of(&d, t), settled, "the same turn is not checked twice");
+    assert!(!finish_check(&mut d, &mut rx, Duration::from_millis(500)), "no second run was started");
+    d.hook(t, "claude".into(), HookStatus::Working, "UserPromptSubmit");
+    end_turn(&mut d, t);
+    assert_eq!(check_of(&d, t).state, CheckState::Checking, "a new turn is checked");
+    assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn the_next_turn_end_checks_again() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();

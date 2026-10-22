@@ -116,9 +116,37 @@ fn check_command(shell: &[String], dir: &Path, line: &str, scrub: &[&str]) -> st
     }
     crate::proc::quiet(&mut c);
     #[cfg(unix)]
-    std::os::unix::process::CommandExt::process_group(&mut c, 0);
+    {
+        std::os::unix::process::CommandExt::process_group(&mut c, 0);
+        die_with_daemon(&mut c);
+    }
     c
 }
+
+/// A check leads its own process group, so the panes' hang-up on a closing PTY never reaches
+/// it. Where the kernel can say so, make it die with the daemon: Linux's parent-death signal
+/// kills the shell. The signal is tied to the thread that spawned the child, which stays in
+/// `run_check` for as long as the child lives. macOS has no such call, so there a check
+/// outlives a crashed daemon until it ends or writes to its closed pipes (SIGPIPE); see
+/// docs/SECURITY.md.
+#[cfg(target_os = "linux")]
+fn die_with_daemon(c: &mut std::process::Command) {
+    let daemon = std::process::id() as libc::pid_t;
+    // SAFETY: runs between fork and exec and calls only async-signal-safe functions.
+    unsafe {
+        std::os::unix::process::CommandExt::pre_exec(c, move || {
+            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL as libc::c_ulong);
+            // The daemon may have died before the signal was armed, and the signal never fires then.
+            if libc::getppid() != daemon {
+                libc::_exit(1);
+            }
+            Ok(())
+        });
+    }
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn die_with_daemon(_: &mut std::process::Command) {}
 
 fn wait_for(child: &mut Child, tree: &Tree, timeout: Duration, started: Instant) -> CheckOutcome {
     loop {
@@ -246,7 +274,10 @@ impl Daemon {
     /// happens for a shell, for a project with no check, or while a check is already running
     /// (the new turn's code is checked by the next turn end).
     pub(super) fn turn_ended(&mut self, term: TermId) {
-        let Some(t) = self.terms.get(&term) else { return };
+        let Some(t) = self.terms.get_mut(&term) else { return };
+        if std::mem::replace(&mut t.turn_end_handled, true) {
+            return;
+        }
         let running = t.check.as_ref().is_some_and(|c| c.info.state == CheckState::Checking);
         if t.agent.is_none() || t.spare || running {
             return;
@@ -423,6 +454,52 @@ mod tests {
             std::thread::sleep(CHECK_POLL);
         }
         assert!(!alive(), "the child {pid} outlived the check");
+    }
+
+    const KILLED_DAEMON_ENV: &str = "SESHI_TEST_CHECK_AS_DAEMON";
+
+    /// Run as the stand-in daemon for `a_check_dies_with_the_daemon_that_started_it`: start a
+    /// check that writes its pid and waits, and never return.
+    #[cfg(target_os = "linux")]
+    fn be_the_killed_daemon(pidfile: &str) {
+        let line = format!("echo $$ > '{pidfile}'; exec sleep 60");
+        run_check(&test_shell(), &std::env::temp_dir(), &line, LONG);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_check_dies_with_the_daemon_that_started_it() {
+        if let Ok(pidfile) = std::env::var(KILLED_DAEMON_ENV) {
+            return be_the_killed_daemon(&pidfile);
+        }
+        let dir = persist::scratch_dir();
+        std::fs::create_dir_all(dir.path()).unwrap();
+        let pidfile = dir.path().join("check.pid");
+        let mut daemon = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "daemon::check::tests::a_check_dies_with_the_daemon_that_started_it", "--nocapture"])
+            .env(KILLED_DAEMON_ENV, &pidfile)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("start the stand-in daemon");
+        let started_by = Instant::now() + Duration::from_secs(30);
+        while !pidfile.exists() && Instant::now() < started_by {
+            std::thread::sleep(CHECK_POLL);
+        }
+        let pid = std::fs::read_to_string(&pidfile).expect("the check started").trim().to_string();
+        assert!(alive(&pid), "the check runs while its daemon does");
+        daemon.kill().unwrap();
+        let _ = daemon.wait();
+        let gone_by = Instant::now() + Duration::from_secs(10);
+        while alive(&pid) && Instant::now() < gone_by {
+            std::thread::sleep(CHECK_POLL);
+        }
+        let outlived = alive(&pid);
+        if outlived {
+            // SAFETY: stops the process this test started so a failure leaves nothing behind.
+            unsafe { libc::kill(pid.parse().unwrap(), libc::SIGKILL) };
+        }
+        assert!(!outlived, "the check {pid} outlived its daemon");
     }
 
     #[test]

@@ -207,6 +207,12 @@ impl Default for CheckDef {
     }
 }
 
+/// Whether two paths name the same place, ignoring separator style, a trailing separator and case.
+pub fn same_path(a: &Path, b: &Path) -> bool {
+    let n = |p: &Path| p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    n(a) == n(b)
+}
+
 /// Refuse a `[[check]]` that could never run, or two for one project, so a typo shows when the
 /// config loads and not as a check that silently never happens.
 pub fn validate_checks(checks: &[CheckDef]) -> Result<()> {
@@ -216,7 +222,12 @@ pub fn validate_checks(checks: &[CheckDef]) -> Result<()> {
         anyhow::ensure!(!c.command.trim().is_empty(), "[[check]] #{n} ({}) needs a `command`", c.project.display());
         anyhow::ensure!(c.timeout_s > 0, "[[check]] #{n} ({}) needs a `timeout_s` above 0", c.project.display());
         anyhow::ensure!(
-            !checks[..i].iter().any(|o| o.project == c.project),
+            !c.project.to_string_lossy().starts_with('~'),
+            "[[check]] #{n}: `project` {} starts with `~`, which is not expanded; give the full path",
+            c.project.display()
+        );
+        anyhow::ensure!(
+            !checks[..i].iter().any(|o| same_path(&o.project, &c.project)),
             "[[check]] #{n}: {} already has a check; a project has one",
             c.project.display()
         );
@@ -1160,6 +1171,25 @@ mod tests {
             let err = check(bad).expect_err(bad);
             assert!(err.contains(why), "{bad:?} -> {err}");
         }
+    }
+
+    #[test]
+    fn two_checks_for_one_project_are_found_however_the_path_is_spelled() {
+        let check = |a: &str, b: &str| {
+            let c: super::Config = toml::from_str(&format!("[[check]]\nproject = '{a}'\ncommand = \"t\"\n[[check]]\nproject = '{b}'\ncommand = \"u\"\n")).unwrap();
+            super::validate_checks(&c.check)
+        };
+        let err = check("/a", "/a/").expect_err("a trailing slash is the same project").to_string();
+        assert!(err.contains("already has a check"), "{err}");
+        assert!(check("C:\\work\\App", "c:/work/app/").is_err(), "separators and case do not make a project");
+        assert!(check("/a", "/b").is_ok());
+    }
+
+    #[test]
+    fn a_project_starting_with_a_tilde_is_refused_because_it_is_never_expanded() {
+        let c: super::Config = toml::from_str("[[check]]\nproject = \"~/work/app\"\ncommand = \"t\"\n").unwrap();
+        let err = super::validate_checks(&c.check).expect_err("~ is not expanded").to_string();
+        assert!(err.contains("~") && err.contains("full path"), "{err}");
     }
 
     #[test]

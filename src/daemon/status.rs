@@ -350,6 +350,9 @@ impl Daemon {
         t.blocked_at = (new == Status::Blocked).then(Instant::now);
         t.status = new;
         t.status_since = term::unix_now();
+        if new == Status::Working {
+            t.turn_end_handled = false;
+        }
         self.dirty = true;
         let turn_over = turn.is_some() && matches!(new, Status::Done | Status::Idle) && why != CANCELLED_WHY;
         if let Some((agent, place, secs)) = turn {
