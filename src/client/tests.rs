@@ -5935,6 +5935,39 @@ mod check_wiring_tests {
     }
 
     #[test]
+    fn plain_icons_leave_no_unicode_check_mark_on_the_sheet_popover_or_override() {
+        let plain = |app: &mut App| (app.cfg.icons.blocked, app.cfg.icons.done, app.cfg.icons.idle) = ("!".into(), "+".into(), "o".into());
+        let (w, h) = (80, 24);
+        for (name, layout) in layouts() {
+            let at = format!("{name} {w}x{h}");
+            let (mut app, _rx) = rig(w, h, layout, Some(info(CheckState::Overridden)), Status::Done);
+            plain(&mut app);
+            app.open_check_sheet(TERM);
+            let sheet = words(&draw(&mut app, w, h));
+            assert!(sheet.contains("/ Overridden by you") && !sheet.contains('⊘'), "{at}: the sheet's override banner\n{sheet}");
+
+            for (state, want) in [(CheckState::Passed, "+ exit 0 after"), (CheckState::Failed, "x exit 1 after"), (CheckState::Overridden, "/ overridden by you")] {
+                let (mut app, _rx) = rig(w, h, layout, Some(info(state)), Status::Done);
+                plain(&mut app);
+                app.mode = Mode::Why { term: TERM, side: false };
+                let why = words(&draw(&mut app, w, h));
+                assert!(why.contains(want), "{at} {state:?}: the popover's timeline says {want:?}\n{why}");
+                assert!(!["✓ exit", "✕ exit", "⊘"].iter().any(|g| why.contains(g)), "{at} {state:?}: no Unicode mark\n{why}");
+            }
+
+            let (mut app, _rx) = rig(w, h, layout, Some(info(CheckState::Failed)), Status::Done);
+            plain(&mut app);
+            app.open_check_sheet(TERM);
+            ask_override(&mut app);
+            let confirm = words(&draw(&mut app, w, h));
+            assert!(confirm.contains("/ on the row, in the Inbox history") && !confirm.contains('⊘'), "{at}: the override confirm\n{confirm}");
+            press(&mut app, KeyCode::Enter);
+            let (said, _) = toast(&app);
+            assert!(said.contains("overridden: / stays on the row") && !said.contains('⊘'), "{at}: the toast: {said:?}");
+        }
+    }
+
+    #[test]
     fn the_reason_is_optional_editable_and_bounded() {
         let (mut app, mut rx) = done(CheckState::Failed);
         app.open_check_sheet(TERM);

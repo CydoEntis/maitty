@@ -12,11 +12,11 @@ const MIN_COMMAND_COLS: usize = 2;
 const SECS_PER_MIN: u64 = 60;
 const EDGE_BAR: &str = "▎";
 
-struct Marks {
+pub(super) struct Marks {
     ring: [&'static str; 4],
-    passed: &'static str,
-    failed: &'static str,
-    overridden: &'static str,
+    pub(super) passed: &'static str,
+    pub(super) failed: &'static str,
+    pub(super) overridden: &'static str,
     unknown: &'static str,
 }
 
@@ -24,7 +24,7 @@ const UNICODE: Marks = Marks { ring: ["◜", "◝", "◞", "◟"], passed: "✓"
 const ASCII: Marks = Marks { ring: ["-", "\\", "|", "/"], passed: "+", failed: "x", overridden: "/", unknown: "?" };
 
 /// Plain icons (ASCII status icons in config) get ASCII check glyphs too.
-fn marks(app: &App) -> &'static Marks {
+pub(super) fn marks(app: &App) -> &'static Marks {
     let i = &app.cfg.icons;
     if [&i.blocked, &i.done, &i.idle].iter().all(|icon| icon.is_ascii()) { &ASCII } else { &UNICODE }
 }

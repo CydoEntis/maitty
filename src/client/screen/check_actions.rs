@@ -13,7 +13,7 @@ const OVERRIDE_WIDTH: u16 = 72;
 const FIELD_CHROME_COLS: usize = 4;
 const REASON_PLACEHOLDER: &str = "e.g. flaky on CI";
 const HIDES: &str = "This hides a failure. It stays visible:";
-const STAYS: &str = "⊘ on the row, in the Inbox history and in the evidence";
+const STAYS: &str = "on the row, in the Inbox history and in the evidence";
 const SCOPE: &str = "for this result only; the next run replaces it";
 
 /// The row menu's items for a session whose check has a result, in menu order.
@@ -64,7 +64,7 @@ impl App {
 
     pub(in crate::client) fn override_check(&mut self, term: TermId, reason: String) {
         self.cmd(Command::OverrideCheck { term, reason });
-        self.notify("overridden: ⊘ stays on the row until the next run replaces it".into(), false);
+        self.notify(format!("overridden: {} stays on the row until the next run replaces it", check::marks(self).overridden), false);
     }
 
     pub(in crate::client) fn undo_override(&mut self, term: TermId) {
@@ -166,7 +166,7 @@ pub(in crate::client) fn draw_override(app: &mut App, f: &mut Frame, area: Rect,
     }
     y += 1;
     put(buf, x, y, &[seg(HIDES, card.fg(t.text))], right);
-    put(buf, x + 2, y + 1, &[seg(STAYS, card.fg(t.muted))], right);
+    put(buf, x + 2, y + 1, &[seg(format!("{} {STAYS}", check::marks(app).overridden), card.fg(t.muted))], right);
     put(buf, x + 2, y + 2, &[seg(SCOPE, card.fg(t.muted))], right);
     y += 4;
     put(buf, x, y, &[seg("Reason (optional)", card.fg(t.muted).add_modifier(Modifier::BOLD))], right);
