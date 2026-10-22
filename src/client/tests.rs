@@ -3932,3 +3932,129 @@ mod check_row_tests {
         assert!(sub.contains("failed: ") && sub.contains("exit 1") && sub.contains('…'), "{sub:?}");
     }
 }
+
+mod check_why_tests {
+    use super::*;
+    use crate::protocol::{CheckInfo, CheckState};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    const TURN_ENDED: u64 = 1_700_000_000;
+
+    fn check(state: CheckState, exit_code: Option<i32>) -> CheckInfo {
+        CheckInfo {
+            command: "npm test".into(),
+            state,
+            exit_code,
+            started_at: TURN_ENDED + 14,
+            duration_ms: 14_200,
+            after_turn_ended_at: TURN_ENDED,
+            first_failing_line: "1 of 59 tests failed".into(),
+            ..Default::default()
+        }
+    }
+
+    fn draw(app: &mut App, w: u16, h: u16) -> String {
+        app.hy_fresh();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let frame: String = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>().trim_end().to_string() + "\n").collect();
+        // Keycap edges are private-use glyphs a reader doesn't see.
+        frame.replace(|c| ('\u{e000}'..='\u{f8ff}').contains(&c), "")
+    }
+
+    fn show(s: &str) {
+        if std::env::var("SESHI_SHOW").is_ok() {
+            println!("{s}");
+        }
+    }
+
+    type Layout = fn(&mut App);
+
+    fn layouts() -> [(&'static str, Layout); 3] {
+        [
+            ("cards floating", |a| a.cfg.ui.panes = "floating".into()),
+            ("cards tiled", |a| a.cfg.ui.panes = "tiled".into()),
+            ("flat", |a| a.cfg.ui.layout = "flat".into()),
+        ]
+    }
+
+    fn app_with(w: u16, h: u16, layout: Layout, check: Option<CheckInfo>) -> App {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        layout(&mut app);
+        let info = app.snap.terms.get_mut(&1).unwrap();
+        info.said = "tests pass".into();
+        info.check = check;
+        app.mode = Mode::Why { term: 1, side: false };
+        app
+    }
+
+    #[test]
+    fn a_failed_check_reads_as_a_timeline_in_every_layout() {
+        for (name, layout) in layouts() {
+            let mut app = app_with(100, 30, layout, Some(check(CheckState::Failed, Some(1))));
+            let o = draw(&mut app, 100, 30);
+            show(&o);
+            // Flat pads keycaps with spaces where cards use edge glyphs.
+            let text = o.split_whitespace().collect::<Vec<_>>().join(" ");
+            for want in [
+                "agent's turn ended · it said \"tests pass\"",
+                "Seshi ran npm test in its worktree",
+                "✕ exit 1 after 14.2s · 1 of 59 tests failed",
+                "⏎ evidence",
+                "r re-run",
+                "O override",
+                "Esc close",
+            ] {
+                assert!(text.contains(want), "{name}: missing {want:?} in\n{o}");
+            }
+            assert!(!o.contains("most specific source wins"), "{name}: the check replaces the source rows");
+            app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+            assert!(app.mode == Mode::Normal, "{name}: Esc closes it");
+        }
+    }
+
+    #[test]
+    fn hints_show_only_the_keys_that_apply_to_the_result() {
+        let hints = |state, code| {
+            let mut app = app_with(100, 30, |_| {}, Some(check(state, code)));
+            draw(&mut app, 100, 30)
+        };
+        let passed = hints(CheckState::Passed, Some(0));
+        assert!(passed.contains("✓ exit 0 after 14.2s") && passed.contains("⏎ evidence") && passed.contains("r re-run"));
+        assert!(!passed.contains("O override"), "only a failure can be overridden");
+        let running = hints(CheckState::Checking, None);
+        assert!(running.contains("Seshi ran npm test") && running.contains("checking"));
+        assert!(!running.contains("⏎ evidence") && !running.contains("r re-run") && !running.contains("O override"));
+        let missing = hints(CheckState::CouldNotRun, Some(127));
+        assert!(missing.contains("? could not run · exit 127") && missing.contains("r re-run") && !missing.contains("O override"));
+    }
+
+    #[test]
+    fn an_override_and_a_queued_re_run_stay_visible() {
+        let mut c = check(CheckState::Overridden, Some(1));
+        c.overridden_at = Some(TURN_ENDED + 60);
+        c.override_reason = "flaky".into();
+        c.rerun_queued = true;
+        let mut app = app_with(100, 30, |_| {}, Some(c));
+        let o = draw(&mut app, 100, 30);
+        show(&o);
+        assert!(o.contains("✕ exit 1 after 14.2s") && o.contains("⊘ overridden by you · flaky") && o.contains("runs again when this turn settles"));
+        assert!(!o.contains("O override"), "an overridden result is not overridden twice");
+    }
+
+    #[test]
+    fn a_session_with_no_check_shows_the_popover_as_before() {
+        for (name, layout) in layouts() {
+            let mut app = app_with(100, 30, layout, None);
+            let plain = draw(&mut app, 100, 30);
+            assert!(plain.contains("Status uncertain") && plain.contains("most specific source wins"), "{name}");
+            assert!(!plain.contains("evidence") && !plain.contains("Seshi ran"), "{name}: no check text anywhere");
+            app.snap.terms.get_mut(&1).unwrap().check = Some(check(CheckState::Failed, Some(1)));
+            assert_ne!(draw(&mut app, 100, 30), plain, "{name}: a check changes it");
+            app.snap.terms.get_mut(&1).unwrap().check = None;
+            assert_eq!(draw(&mut app, 100, 30), plain, "{name}: with no check it is the same frame");
+        }
+    }
+}
