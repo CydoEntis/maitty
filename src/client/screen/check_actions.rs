@@ -31,7 +31,7 @@ pub(in crate::client) fn check_menu_items(term: TermId, info: &CheckInfo) -> Vec
 /// What a re-run says, or why it is not sent.
 fn rerun_words(t: &TermInfo) -> Result<Option<String>, &'static str> {
     let working = t.status == Status::Working;
-    match &t.check {
+    match t.check() {
         Some(c) if c.state == CheckState::Checking => Err("its check is already running"),
         Some(c) if c.rerun_queued => Err("a re-run is already queued: it runs when this turn ends"),
         Some(_) if working => Ok(Some("re-run queued: it runs when this turn ends".into())),
@@ -54,7 +54,7 @@ impl App {
         match rerun_words(t) {
             Err(why) => self.notify(why.into(), false),
             Ok(said) => {
-                self.cmd(Command::RerunCheck { term });
+                self.cmd(Command::RerunCheck { term, name: None });
                 if let Some(said) = said {
                     self.notify(said, false);
                 }
@@ -63,18 +63,18 @@ impl App {
     }
 
     pub(in crate::client) fn override_check(&mut self, term: TermId, reason: String) {
-        self.cmd(Command::OverrideCheck { term, reason });
+        self.cmd(Command::OverrideCheck { term, name: None, reason });
         self.notify("overridden: ⊘ stays on the row until the next run replaces it".into(), false);
     }
 
     pub(in crate::client) fn undo_override(&mut self, term: TermId) {
-        self.cmd(Command::UndoOverride { term });
+        self.cmd(Command::UndoOverride { term, name: None });
         self.notify("override undone: the check reads as failed again".into(), false);
     }
 
     /// The confirm for overriding `term`'s check, or None (with a toast) when it is not failed.
     pub(in crate::client) fn override_confirm(&mut self, term: TermId) -> Option<Confirm> {
-        let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check.clone()).filter(check::failed) else {
+        let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check().cloned()).filter(check::failed) else {
             self.notify("that check isn't failed any more".into(), true);
             return None;
         };
@@ -101,7 +101,7 @@ impl App {
     /// One of a check's keys for `term`: `o` output, `r` re-run, `O` override, `u` undo. Does
     /// nothing, and says so with false, when the result does not allow it.
     pub(in crate::client) fn do_check_key(&mut self, term: TermId, key: char) -> bool {
-        let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check.clone()) else { return false };
+        let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check().cloned()) else { return false };
         match key {
             'o' => self.open_check_sheet(term),
             'r' if check::settled(&info) => self.rerun_check(term),
@@ -145,7 +145,7 @@ pub(in crate::client) fn draw_override(app: &mut App, f: &mut Frame, area: Rect,
     let Act::OverrideCheck(term, reason) = &c.act else { return };
     let buf = f.buffer_mut();
     dim_all(buf, area, t);
-    let info = app.snap.terms.get(term).and_then(|x| x.check.clone()).unwrap_or_default();
+    let info = app.snap.terms.get(term).and_then(|x| x.check().cloned()).unwrap_or_default();
     let w = OVERRIDE_WIDTH.min(area.width.saturating_sub(2));
     let text_w = w.saturating_sub(6) as usize;
     let result = match info.exit_code {

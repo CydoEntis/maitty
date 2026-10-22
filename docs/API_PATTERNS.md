@@ -123,17 +123,25 @@ the pane's process tree or `SESHI_PANE_TOKEN`.
 
 Saved role profiles and sequenced planner/worker/reviewer workflows are not part
 of Seshi's interface. Sessions, ordinary agent launches, fleet helpers, and
-MCP session controls remain supported. The wire protocol is version 43.
+MCP session controls remain supported. The wire protocol is version 44.
 
-A pane's check result travels as a `CheckInfo` summary on `TermInfo.check` (command, state,
-exit code, start, duration, the turn-end it followed, the first failing line (set by the server when it fails: the first failure-looking line of the output, else its last line, cut to `FIRST_FAILING_LINE_MAX_CHARS`; empty otherwise), whether a re-run
-is queued, and the override time and reason). The output tail is never in the snapshot:
-`Query::CheckOutput { term }` returns it as `Reply::Text`, under the read grant. Each result's
+A pane's check results travel as `CheckInfo` summaries on `TermInfo.checks`, one per
+checkpoint in project order; `TermInfo::check()` is the headline one (the worst state wins:
+Failed > CouldNotRun > NeedsApproval > Checking > Pending > Stale > Never > Overridden >
+Passed, the first in order on ties), and `reported_check` applies to it. A summary holds the
+command, state, exit code, start, duration, the turn-end it followed, the first failing line (set by the server when it fails: the first failure-looking line of the output, else its last line, cut to `FIRST_FAILING_LINE_MAX_CHARS`; empty otherwise), whether a re-run
+is queued, the override time and reason, the checkpoint `name`, the folder it ran in, the turn
+it checked, the full output's line count, `stale_since` and `changed_files`, who overrode it,
+its `source` (`User`, or `Repo` with the file and commit) and, on `NeedsApproval`, the
+`previous_command`. The output tail is never in the snapshot:
+`Query::CheckOutput { term, name }` returns it as `Reply::Text`, under the read grant (`name`
+None: the headline checkpoint). Each result's
 tail is capped at `CHECK_OUTPUT_MAX_BYTES` (1 MiB), cut on a character boundary. The latest
 result and the overridden one are saved in `SavedPane` (`check`, `check_overridden`, both
 optional); their tails are saved beside the pane's output files.
 
-Three commands act on a check, each needing `Grant::Write` on the target pane. `RerunCheck`
+Three commands act on a check, each needing `Grant::Write` on the target pane and each naming
+a checkpoint (`name` None: all of them for a re-run, the headline for the others). `RerunCheck`
 runs it again at once, or, while the agent is working, sets `rerun_queued` on the result on
 show; the turn end then runs it (a pane never checked has nothing to queue, since its turn end
 checks it). `OverrideCheck { reason }` works only on a `Failed` result: it records the time and
@@ -141,6 +149,11 @@ the trimmed reason (at most `OVERRIDE_REASON_MAX_CHARS`), sets `Overridden`, and
 output. `UndoOverride` works only on `Overridden` and restores `Failed`. Any other state
 answers `ServerMsg::Error`. The next run replaces the result on show; `check_overridden` keeps
 the overridden one with its output. A pane may not override or undo its own check.
+
+`ApproveCheck { term, name, choice }` (`Once`, `Always`, `Never`) answers a repo-supplied
+check command and `ForgetCheckApproval { project, name }` drops a remembered answer. No pane
+may send either, whatever its grants; until the daemon runs repo commands both answer
+`ServerMsg::Error("not built yet")`.
 
 Subagent lifecycle is carried as structured `SubagentActivity` records in each
 pane snapshot and persisted with its saved pane. Hook reports use the owning

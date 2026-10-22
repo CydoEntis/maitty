@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Bump whenever a message shape changes; client and daemon refuse to talk across versions.
-pub const PROTOCOL_VERSION: u32 = 43;
+pub const PROTOCOL_VERSION: u32 = 44;
 
 pub type TermId = u32;
 pub type WsId = u32;
@@ -167,12 +167,19 @@ pub enum Command {
     QueueFollowUp { term: TermId, text: String },
     /// Drop the follow-ups queued for a pane.
     ClearQueue { term: TermId },
-    /// Run the pane's check again. While its agent is working the run waits for the turn to end.
-    RerunCheck { term: TermId },
-    /// Accept a failed check as it is; `reason` may be empty. Covers that one result only.
-    OverrideCheck { term: TermId, reason: String },
-    /// Take an override back: the check reads as failed again.
-    UndoOverride { term: TermId },
+    /// Run the pane's checkpoint `name` again (None: all of them). While its agent is working
+    /// the run waits for the turn to end.
+    RerunCheck { term: TermId, name: Option<String> },
+    /// Accept a failed checkpoint as it is (None: the headline one); `reason` may be empty.
+    /// Covers that one result only.
+    OverrideCheck { term: TermId, name: Option<String>, reason: String },
+    /// Take an override back (None: the headline checkpoint): it reads as failed again.
+    UndoOverride { term: TermId, name: Option<String> },
+    /// Your answer to a repo-supplied check command waiting for approval. Only you can (not
+    /// from inside a pane).
+    ApproveCheck { term: TermId, name: String, choice: ApprovalChoice },
+    /// Drop a remembered Always or Never for a repo's checkpoint. Only you can.
+    ForgetCheckApproval { project: PathBuf, name: String },
     /// `forget`: also discard the saved session, so the next start is a clean slate.
     KillServer { forget: bool },
 }
@@ -184,8 +191,18 @@ pub enum Query {
     Read { term: TermId },
     /// Every worktree of the repository a workspace is in.
     Worktrees { ws: WsId },
-    /// The tail of a pane's last check output; the snapshot carries only a summary.
-    CheckOutput { term: TermId },
+    /// The tail of a pane's last output for checkpoint `name` (None: the headline one); the
+    /// snapshot carries only a summary.
+    CheckOutput { term: TermId, name: Option<String> },
+}
+
+/// What you chose for a repo-supplied check command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ApprovalChoice {
+    Once,
+    /// This exact command, until it changes.
+    Always,
+    Never,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -502,9 +519,23 @@ pub struct TermInfo {
     /// It hit a plan limit; seshi says "continue" at this time (unix seconds).
     #[serde(default)]
     pub resume_at: Option<u64>,
-    /// The latest check Seshi ran after its turn ended, if any. The output stays on the daemon.
-    #[serde(default)]
-    pub check: Option<CheckInfo>,
+    /// The latest result of each checkpoint Seshi runs after its turn ends, in project order.
+    /// The output stays on the daemon. An older peer's single `check` reads as one checkpoint.
+    #[serde(default, alias = "check", deserialize_with = "one_or_many_checks")]
+    pub checks: Vec<CheckInfo>,
+}
+
+fn one_or_many_checks<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<CheckInfo>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Shape {
+        Many(Vec<CheckInfo>),
+        One(Option<Box<CheckInfo>>),
+    }
+    Ok(match Shape::deserialize(d)? {
+        Shape::Many(checks) => checks,
+        Shape::One(check) => check.map(|c| *c).into_iter().collect(),
+    })
 }
 
 /// The longest reason an override may carry, in characters.
@@ -520,6 +551,14 @@ pub enum CheckState {
     Overridden,
     #[default]
     CouldNotRun,
+    /// Waiting its turn behind another checkpoint in the same run.
+    Pending,
+    /// A repo-supplied command that nobody has approved yet.
+    NeedsApproval,
+    /// It passed, but the agent changed files after it ran.
+    Stale,
+    /// You chose never to run this repo's command.
+    Never,
 }
 
 impl CheckState {
@@ -531,8 +570,45 @@ impl CheckState {
             CheckState::Failed => "failed",
             CheckState::Overridden => "overridden",
             CheckState::CouldNotRun => "could_not_run",
+            CheckState::Pending => "pending",
+            CheckState::NeedsApproval => "needs_approval",
+            CheckState::Stale => "stale",
+            CheckState::Never => "never",
         }
     }
+
+    /// Rank for the checkpoint a session is reported by: the lowest is the headline.
+    fn headline_rank(self) -> u8 {
+        match self {
+            CheckState::Failed => 0,
+            CheckState::CouldNotRun => 1,
+            CheckState::NeedsApproval => 2,
+            CheckState::Checking => 3,
+            CheckState::Pending => 4,
+            CheckState::Stale => 5,
+            CheckState::Never => 6,
+            CheckState::Overridden => 7,
+            CheckState::Passed => 8,
+        }
+    }
+}
+
+/// Who named a check command.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CheckSource {
+    /// You, in Seshi's settings.
+    #[default]
+    User,
+    /// The repository's own file (`.seshi/checks.toml`), as of `commit` when it is committed.
+    Repo { file: String, commit: Option<String>, committed_at: Option<u64>, uncommitted: bool },
+}
+
+/// A file the agent changed after a check ran.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChangedFile {
+    /// `M`, `A`, `D` or `R`, as git reports it.
+    pub kind: char,
+    pub path: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -554,6 +630,22 @@ pub struct CheckInfo {
     /// When the user overrode a failure (unix seconds); only set on `Overridden`.
     pub overridden_at: Option<u64>,
     pub override_reason: String,
+    /// The checkpoint's name (`test`, `build`).
+    pub name: String,
+    /// The folder it ran in.
+    pub cwd: PathBuf,
+    /// Which of the session's turns it checked.
+    pub turn: u32,
+    /// Lines of the full output, before the tail was capped.
+    pub line_count: u64,
+    /// When files changed after it passed (unix seconds); set on `Stale`.
+    pub stale_since: Option<u64>,
+    pub changed_files: Vec<ChangedFile>,
+    /// Who overrode it; set on `Overridden`.
+    pub overridden_by: String,
+    pub source: CheckSource,
+    /// On `NeedsApproval`: the command you had said Always to, before the repo changed it.
+    pub previous_command: Option<String>,
 }
 
 /// The one rule for whether a check is reported beside a status, for the daemon's callers and
@@ -562,11 +654,21 @@ pub fn reported_check(status: Status, check: Option<&CheckInfo>) -> Option<&Chec
     check.filter(|_| !matches!(status, Status::Working | Status::Blocked))
 }
 
+/// The checkpoint a session is reported by: the worst state wins, the first in order on ties.
+pub fn headline(checks: &[CheckInfo]) -> Option<&CheckInfo> {
+    checks.iter().min_by_key(|c| c.state.headline_rank())
+}
+
 impl TermInfo {
+    /// The headline checkpoint (see `headline`), if any ran or waits.
+    pub fn check(&self) -> Option<&CheckInfo> {
+        headline(&self.checks)
+    }
+
     /// The check to report beside the status. While the agent works or asks, the last result is
     /// about an older turn, so none is reported.
     pub fn reported_check(&self) -> Option<&CheckInfo> {
-        reported_check(self.status, self.check.as_ref())
+        reported_check(self.status, self.check())
     }
 
     /// What to call this pane: the agent's name, else the folder a shell is sitting in, else
@@ -664,7 +766,8 @@ mod tests {
             ClientMsg::Query(Query::List),
             ClientMsg::Query(Query::Read { term: 3 }),
             ClientMsg::Query(Query::Worktrees { ws: 1 }),
-            ClientMsg::Query(Query::CheckOutput { term: 3 }),
+            ClientMsg::Query(Query::CheckOutput { term: 3, name: None }),
+            ClientMsg::Query(Query::CheckOutput { term: 3, name: Some("build".into()) }),
             ClientMsg::Command(Command::NewWorkspace { cwd: Some(PathBuf::from("/code")), name: None, cmd: Some("claude".into()) }),
             ClientMsg::Command(Command::Split { term: 3, dir: crate::layout::Dir::Down, cmd: None, cwd: None }),
             ClientMsg::Command(Command::ClosePane { term: 3 }),
@@ -676,9 +779,14 @@ mod tests {
             ClientMsg::Command(Command::Grant { term: 3, grants: Some(vec!["read".into()]) }),
             ClientMsg::Command(Command::QueueFollowUp { term: 3, text: "then run the tests".into() }),
             ClientMsg::Command(Command::ClearQueue { term: 3 }),
-            ClientMsg::Command(Command::RerunCheck { term: 3 }),
-            ClientMsg::Command(Command::OverrideCheck { term: 3, reason: "flaky on CI".into() }),
-            ClientMsg::Command(Command::UndoOverride { term: 3 }),
+            ClientMsg::Command(Command::RerunCheck { term: 3, name: None }),
+            ClientMsg::Command(Command::RerunCheck { term: 3, name: Some("test".into()) }),
+            ClientMsg::Command(Command::OverrideCheck { term: 3, name: Some("test".into()), reason: "flaky on CI".into() }),
+            ClientMsg::Command(Command::UndoOverride { term: 3, name: None }),
+            ClientMsg::Command(Command::ApproveCheck { term: 3, name: "test".into(), choice: ApprovalChoice::Once }),
+            ClientMsg::Command(Command::ApproveCheck { term: 3, name: "test".into(), choice: ApprovalChoice::Always }),
+            ClientMsg::Command(Command::ApproveCheck { term: 3, name: "test".into(), choice: ApprovalChoice::Never }),
+            ClientMsg::Command(Command::ForgetCheckApproval { project: PathBuf::from("/code/api"), name: "test".into() }),
             ClientMsg::Command(Command::TidyWorktrees { items: vec![(PathBuf::from("/code/.wt/rate"), false)] }),
             ClientMsg::Command(Command::RenamePane { term: 3, name: "x".into() }),
             ClientMsg::Command(Command::MoveToWorktree { term: 3, branch: Some("feat/x".into()) }),
@@ -715,8 +823,8 @@ mod tests {
             "since": 0, "asleep": false, "win32_input": false,
         }))
         .expect("a pane from a peer that knows no checks");
-        assert_eq!(term.check, None);
-        term.check = Some(CheckInfo {
+        assert_eq!(term.check(), None);
+        term.checks = vec![CheckInfo {
             command: "npm test".into(),
             state: CheckState::Overridden,
             exit_code: Some(1),
@@ -727,7 +835,8 @@ mod tests {
             rerun_queued: true,
             overridden_at: Some(130),
             override_reason: "flaky".into(),
-        });
+            ..Default::default()
+        }];
         round_trips(&ServerMsg::State(Snapshot { terms: [(3, term)].into(), ..Default::default() }));
     }
 
@@ -736,5 +845,103 @@ mod tests {
         let bytes = rmp_serde::to_vec_named(&BTreeMap::from([("command", "npm test")])).unwrap();
         let info: CheckInfo = decode(&bytes).expect("only the command");
         assert_eq!((info.command.as_str(), info.exit_code, info.rerun_queued), ("npm test", None, false));
+    }
+
+    fn every_field_check() -> CheckInfo {
+        CheckInfo {
+            command: "npm test".into(),
+            state: CheckState::NeedsApproval,
+            exit_code: Some(1),
+            started_at: 100,
+            duration_ms: 14_200,
+            after_turn_ended_at: 90,
+            first_failing_line: "FAIL footer.test.ts".into(),
+            rerun_queued: true,
+            overridden_at: Some(130),
+            override_reason: "flaky".into(),
+            name: "test".into(),
+            cwd: PathBuf::from("/code/api"),
+            turn: 3,
+            line_count: 1_284,
+            stale_since: Some(140),
+            changed_files: vec![ChangedFile { kind: 'M', path: "src/a.rs".into() }, ChangedFile { kind: 'A', path: "tests/b.rs".into() }],
+            overridden_by: "you".into(),
+            source: CheckSource::Repo { file: ".seshi/checks.toml".into(), commit: Some("a1b2c3d".into()), committed_at: Some(80), uncommitted: true },
+            previous_command: Some("npm t".into()),
+        }
+    }
+
+    /// A pane as a peer sends it, with `extra` fields on top.
+    fn pane_from(extra: serde_json::Value) -> TermInfo {
+        let mut v = serde_json::json!({
+            "id": 3, "cols": 80, "rows": 24, "title": "", "process": "", "agent": null,
+            "status": "Done", "cwd": "/code", "summary": "", "name": "", "model": "", "said": "",
+            "branch": null, "linked": false, "subagents": [], "root": null, "top": null,
+            "since": 0, "asleep": false, "win32_input": false,
+        });
+        v.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        decode(&rmp_serde::to_vec_named(&v).unwrap()).expect("a pane")
+    }
+
+    #[test]
+    fn a_check_with_every_field_round_trips() {
+        round_trips(&every_field_check());
+        let mut term = pane_from(serde_json::json!({}));
+        term.checks = vec![every_field_check(), CheckInfo { name: "build".into(), state: CheckState::Pending, ..Default::default() }];
+        round_trips(&ServerMsg::State(Snapshot { terms: [(3, term)].into(), ..Default::default() }));
+    }
+
+    #[test]
+    fn a_v43_check_decodes_with_the_new_fields_defaulted() {
+        let v43 = serde_json::json!({
+            "command": "npm test", "state": "Failed", "exit_code": 1, "started_at": 100, "duration_ms": 14200,
+            "after_turn_ended_at": 90, "first_failing_line": "FAIL", "rerun_queued": false,
+            "overridden_at": null, "override_reason": "",
+        });
+        let info: CheckInfo = decode(&rmp_serde::to_vec_named(&v43).unwrap()).expect("a v43 check");
+        assert_eq!((info.state, info.exit_code), (CheckState::Failed, Some(1)));
+        assert_eq!((info.name.as_str(), info.source, info.changed_files.len(), info.previous_command), ("", CheckSource::User, 0, None));
+    }
+
+    #[test]
+    fn a_pane_with_the_old_single_check_reads_as_one_checkpoint() {
+        let old = pane_from(serde_json::json!({ "check": { "command": "npm test", "state": "Failed", "exit_code": 1 } }));
+        assert_eq!(old.checks.iter().map(|c| (c.command.as_str(), c.state)).collect::<Vec<_>>(), [("npm test", CheckState::Failed)]);
+        assert!(pane_from(serde_json::json!({ "check": null })).checks.is_empty());
+        assert!(pane_from(serde_json::json!({})).checks.is_empty());
+    }
+
+    #[test]
+    fn the_headline_is_the_worst_checkpoint_and_the_first_on_ties() {
+        use CheckState::*;
+        let order = [Failed, CouldNotRun, NeedsApproval, Checking, Pending, Stale, Never, Overridden, Passed];
+        let at = |state: CheckState, name: &str| CheckInfo { state, name: name.into(), ..Default::default() };
+        for (i, &worse) in order.iter().enumerate() {
+            for &better in &order[i + 1..] {
+                for checks in [vec![at(worse, "a"), at(better, "b")], vec![at(better, "b"), at(worse, "a")]] {
+                    assert_eq!(headline(&checks).map(|c| c.state), Some(worse), "{worse:?} over {better:?}");
+                }
+            }
+            let tie = [at(worse, "first"), at(worse, "second")];
+            assert_eq!(headline(&tie).map(|c| c.name.as_str()), Some("first"), "{worse:?} tie");
+        }
+        assert_eq!(headline(&[]), None);
+    }
+
+    #[test]
+    fn the_headline_is_not_reported_while_the_agent_works_or_asks() {
+        let mut term = pane_from(serde_json::json!({}));
+        term.checks = vec![CheckInfo { state: CheckState::Passed, ..Default::default() }, CheckInfo { state: CheckState::Failed, name: "test".into(), ..Default::default() }];
+        assert_eq!(term.reported_check().map(|c| c.name.as_str()), Some("test"));
+        for status in [Status::Working, Status::Blocked] {
+            term.status = status;
+            assert_eq!(term.reported_check(), None, "{status:?}");
+        }
+    }
+
+    #[test]
+    fn new_check_states_have_their_script_labels() {
+        let got = [CheckState::Pending, CheckState::NeedsApproval, CheckState::Stale, CheckState::Never].map(CheckState::label);
+        assert_eq!(got, ["pending", "needs_approval", "stale", "never"]);
     }
 }

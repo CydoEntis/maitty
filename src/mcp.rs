@@ -412,7 +412,7 @@ mod tests {
         .unwrap();
         let plain = row_of(&t, None);
         assert!(plain.get("check").is_none(), "no check, no key");
-        t.check = Some(CheckInfo { command: "npm test".into(), state: CheckState::Failed, exit_code: Some(1), ..Default::default() });
+        t.checks = vec![CheckInfo { command: "npm test".into(), state: CheckState::Failed, exit_code: Some(1), ..Default::default() }];
         assert_eq!(row_of(&t, None)["check"], "check failed (exit 1)");
         assert_eq!(row_of(&t, None)["status"], "done");
         t.status = Status::Working;

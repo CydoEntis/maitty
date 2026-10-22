@@ -164,7 +164,7 @@ pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: R
     card_.bg = t.card;
     card(app, buf, r, &card_, t);
     hit(app, r, ScreenHit::Noop);
-    if let Some(check) = &info.check {
+    if let Some(check) = info.check() {
         draw_check_timeline(buf, r, &info, check, t);
         pointer(buf, r, t);
         return;
@@ -240,6 +240,10 @@ fn check_result(check: &CheckInfo, t: &Theme) -> (String, Color) {
         CheckState::Passed => (format!("✓ {code} after {}", took(check.duration_ms)), t.done),
         CheckState::Failed | CheckState::Overridden => (format!("✕ {code} after {}{tail}", took(check.duration_ms)), t.err),
         CheckState::CouldNotRun => (format!("? could not run{}", if code.is_empty() { String::new() } else { format!(" · {code}") }), t.muted),
+        CheckState::Pending => ("… waiting its turn".into(), t.muted),
+        CheckState::NeedsApproval => ("● waits for your approval".into(), t.blocked),
+        CheckState::Stale => (format!("◷ {code} after {}, on older code", took(check.duration_ms)), t.text),
+        CheckState::Never => ("? not run: never for this repo".into(), t.muted),
     }
 }
 
@@ -266,6 +270,10 @@ fn draw_check_timeline(buf: &mut Buffer, r: Rect, info: &TermInfo, check: &Check
         CheckState::Failed => "The check failed, so the work doesn't read as done.",
         CheckState::Overridden => "The check failed; you accepted it.",
         CheckState::CouldNotRun => "The check could not run. The work hasn't been checked.",
+        CheckState::Pending => "The check waits its turn; the session isn't done yet.",
+        CheckState::NeedsApproval => "The repo's check command waits for your approval.",
+        CheckState::Stale => "The check passed, but files changed after it ran.",
+        CheckState::Never => "Not checked: you chose never for this repo's command.",
     };
     let width = r.width.saturating_sub(6) as usize;
     put(buf, r.x + 3, r.y + 2, &[seg(truncate(summary, width), c.fg(t.text))], r.right() - 2);
@@ -379,7 +387,7 @@ impl App {
         self.mode = if side { Mode::Side } else { Mode::Normal };
         // A check's timeline shows the keys that act; the ones it doesn't show are not passed on
         // to the pane behind it.
-        if let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check.clone()) {
+        if let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check().cloned()) {
             let key = match k.code {
                 KeyCode::Enter => Some(('o', check::settled(&info))),
                 KeyCode::Char('r') => Some(('r', check::settled(&info))),

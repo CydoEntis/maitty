@@ -987,7 +987,7 @@ impl App {
 
     /// A check's ring turns while it runs.
     fn any_checking(&self) -> bool {
-        self.snap.terms.values().any(|term| term.check.as_ref().is_some_and(|c| c.state == crate::protocol::CheckState::Checking))
+        self.snap.terms.values().any(|term| term.check().is_some_and(|c| c.state == crate::protocol::CheckState::Checking))
     }
 
     fn any_working(&self) -> bool {

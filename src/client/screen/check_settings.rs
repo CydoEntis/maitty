@@ -142,11 +142,11 @@ fn in_project(t: &TermInfo, project: &Path) -> bool {
 
 /// The most recently started result among the project's sessions, with the session's name.
 fn latest<'a>(app: &'a App, project: &Path) -> Option<(&'a CheckInfo, String)> {
-    latest_term(app, project).and_then(|t| t.check.as_ref().map(|c| (c, t.display_name())))
+    latest_term(app, project).and_then(|t| t.check().map(|c| (c, t.display_name())))
 }
 
 fn latest_term<'a>(app: &'a App, project: &Path) -> Option<&'a TermInfo> {
-    app.snap.terms.values().filter(|t| in_project(t, project)).filter(|t| t.check.is_some()).max_by_key(|t| t.check.as_ref().map_or(0, |c| c.started_at))
+    app.snap.terms.values().filter(|t| in_project(t, project)).filter(|t| t.check().is_some()).max_by_key(|t| t.check().map_or(0, |c| c.started_at))
 }
 
 /// The session "Run now" runs the check in: the one with the latest result, else the focused
@@ -177,6 +177,10 @@ fn result_words(info: &CheckInfo, name: &str) -> String {
         CheckState::Failed => format!("failed{code}{ago} · {name}"),
         CheckState::Overridden => format!("overridden by you{ago} · {name}"),
         CheckState::CouldNotRun => format!("could not run{}{ago} · {name}", check::why_not_run(info.exit_code)),
+        CheckState::Pending => format!("next · {name}"),
+        CheckState::NeedsApproval => format!("needs your approval · {name}"),
+        CheckState::Stale => format!("stale pass{ago} · {name}"),
+        CheckState::Never => format!("never for this repo · {name}"),
     }
 }
 

@@ -242,7 +242,7 @@ pub fn short_model(m: &str) -> String {
 pub enum Waited {
     /// The turn ended: its status then, its last message (if hooks said) and, when the
     /// project has a check, how that came out.
-    Turn(Status, String, Option<CheckInfo>),
+    Turn(Status, String, Option<Box<CheckInfo>>),
     /// The regex matched this line.
     Matched(String),
     TimedOut,
@@ -264,11 +264,11 @@ fn turn_over(status: Status, said: &str, check: Option<&CheckInfo>, seen_working
         Status::None => quiet,
         Status::Working => false,
     };
-    if !ended || check.is_some_and(|c| c.state == CheckState::Checking) {
+    if !ended || check.is_some_and(|c| matches!(c.state, CheckState::Checking | CheckState::Pending)) {
         return None;
     }
     let said = if status == Status::None { String::new() } else { said.to_string() };
-    Some(Waited::Turn(status, said, check.cloned()))
+    Some(Waited::Turn(status, said, check.cloned().map(Box::new)))
 }
 
 /// The check's result in one line, for a waiter to read beside the reply.
@@ -281,6 +281,10 @@ pub fn check_line(c: &CheckInfo) -> String {
         CheckState::Failed => format!("check failed: {}{exit}{line}", c.command),
         CheckState::Overridden => format!("check failed, accepted: {}{exit}{line}", c.command),
         CheckState::CouldNotRun => format!("check could not run: {}", c.command),
+        CheckState::Pending => format!("check waiting its turn: {}", c.command),
+        CheckState::NeedsApproval => format!("check needs your approval: {}", c.command),
+        CheckState::Stale => format!("check passed on older code: {}", c.command),
+        CheckState::Never => format!("check not run, never for this repo: {}", c.command),
     }
 }
 
@@ -293,6 +297,10 @@ pub fn check_note(c: &CheckInfo) -> String {
         (CheckState::Failed, None) => "check failed".into(),
         (CheckState::Overridden, _) => "check overridden".into(),
         (CheckState::CouldNotRun, _) => "check could not run".into(),
+        (CheckState::Pending, _) => "check pending".into(),
+        (CheckState::NeedsApproval, _) => "check needs approval".into(),
+        (CheckState::Stale, _) => "check stale".into(),
+        (CheckState::Never, _) => "check never runs here".into(),
     }
 }
 
@@ -337,7 +345,7 @@ pub fn wait_on(term: TermId, regex: Option<&str>, timeout: Duration, just_sent: 
             let snap = snapshot()?;
             let t = snap.terms.get(&term).ok_or_else(|| anyhow!("pane {term} is gone"))?;
             seen_working |= t.status == Status::Working;
-            if let Some(done) = turn_over(t.status, &t.said, t.check.as_ref(), seen_working, start.elapsed() > QUIET_TURN_AFTER) {
+            if let Some(done) = turn_over(t.status, &t.said, t.check(), seen_working, start.elapsed() > QUIET_TURN_AFTER) {
                 return Ok(done);
             }
         }
@@ -1741,7 +1749,7 @@ mod tests {
     fn a_waiter_gets_the_check_result_with_the_reply() {
         for state in [CheckState::Passed, CheckState::Failed, CheckState::CouldNotRun, CheckState::Overridden] {
             let info = check(state);
-            assert_eq!(turn_over(Status::Done, "done", Some(&info), true, false), Some(Waited::Turn(Status::Done, "done".into(), Some(info))));
+            assert_eq!(turn_over(Status::Done, "done", Some(&info), true, false), Some(Waited::Turn(Status::Done, "done".into(), Some(Box::new(info)))));
         }
     }
 
@@ -1769,7 +1777,7 @@ mod tests {
             "since": 0, "asleep": false, "win32_input": false,
         }))
         .unwrap();
-        p.check = check;
+        p.checks = check.into_iter().collect();
         p
     }
 

@@ -1516,12 +1516,12 @@ fn the_snapshot_carries_a_check_summary_and_a_query_returns_its_output() {
     let t = pane(&mut d);
     let (tx, mut out) = mpsc::channel(16);
     d.handle(Ev::Connected(7, tx, false));
-    d.message(7, ClientMsg::Query(Query::CheckOutput { term: t }));
+    d.message(7, ClientMsg::Query(Query::CheckOutput { term: t, name: None }));
     assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(_))), "no check, no output");
     d.terms.get_mut(&t).unwrap().check = Some(failed_check("ok a\nFAIL footer.test.ts\n"));
-    let info = d.snapshot().terms[&t].check.clone().expect("the summary is in the snapshot");
+    let info = d.snapshot().terms[&t].check().cloned().expect("the summary is in the snapshot");
     assert_eq!((info.state, info.first_failing_line.as_str()), (CheckState::Failed, "FAIL footer.test.ts"));
-    d.message(7, ClientMsg::Query(Query::CheckOutput { term: t }));
+    d.message(7, ClientMsg::Query(Query::CheckOutput { term: t, name: None }));
     assert!(matches!(out.try_recv(), Ok(ServerMsg::Reply(Reply::Text(text))) if text == "ok a\nFAIL footer.test.ts\n"));
     close(&mut d, &[t]);
 }
@@ -1536,7 +1536,7 @@ fn a_pane_may_not_read_another_panes_check_output_without_the_read_grant() {
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
     d.terms.get_mut(&a).unwrap().grants = Some(Vec::new());
-    d.message(7, ClientMsg::Query(Query::CheckOutput { term: b }));
+    d.message(7, ClientMsg::Query(Query::CheckOutput { term: b, name: None }));
     assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(_))), "read is a grant");
     close(&mut d, &[a, b]);
 }
@@ -1641,7 +1641,7 @@ fn a_turn_end_runs_the_projects_check_and_a_pass_is_recorded() {
     end_turn(&mut d, t);
     let running = check_of(&d, t);
     assert_eq!((running.state, running.command.as_str()), (CheckState::Checking, "echo \"suite ok\"; exit 0"));
-    assert!(d.snapshot().terms[&t].check.is_some(), "clients see it checking");
+    assert!(d.snapshot().terms[&t].check().is_some(), "clients see it checking");
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     let done = check_of(&d, t);
     assert_eq!((done.state, done.exit_code), (CheckState::Passed, Some(0)));
@@ -1672,7 +1672,7 @@ fn a_failed_check_names_its_first_failing_line_and_a_rerun_clears_it() {
     assert!(check_of(&d, t).first_failing_line.is_empty(), "nothing while it runs");
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     assert_eq!(check_of(&d, t).first_failing_line, "FAIL tests/foo: boom");
-    let seen = d.snapshot().terms[&t].check.clone().expect("the summary is in the snapshot");
+    let seen = d.snapshot().terms[&t].check().cloned().expect("the summary is in the snapshot");
     assert_eq!(seen.first_failing_line, "FAIL tests/foo: boom");
     d.terms.get_mut(&t).unwrap().status = Status::Idle;
     d.rerun_check(t).expect("a failed check can be run again");
@@ -1902,10 +1902,10 @@ fn a_rerun_while_the_agent_works_waits_for_the_turn_to_end() {
     let _in_rt = rt.enter();
     let t = checked_agent(&mut d, "echo again; exit 0", LONG_CHECK_S);
     with_check(&mut d, t, CheckState::Failed, "old failure");
-    d.command(0, Command::RerunCheck { term: t }).unwrap();
+    d.command(0, Command::RerunCheck { term: t, name: None }).unwrap();
     let waiting = check_of(&d, t);
     assert_eq!((waiting.state, waiting.rerun_queued), (CheckState::Failed, true), "the result stands, and says a re-run is queued");
-    assert!(d.snapshot().terms[&t].check.as_ref().is_some_and(|c| c.rerun_queued), "clients see it");
+    assert!(d.snapshot().terms[&t].check().is_some_and(|c| c.rerun_queued), "clients see it");
     assert!(!finish_check(&mut d, &mut rx, Duration::from_millis(300)), "nothing runs mid-turn");
     end_turn(&mut d, t);
     let running = check_of(&d, t);
@@ -1922,7 +1922,7 @@ fn a_queued_rerun_is_dropped_when_the_project_no_longer_has_a_check() {
     let _in_rt = rt.enter();
     let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
     with_check(&mut d, t, CheckState::Failed, "old");
-    d.command(0, Command::RerunCheck { term: t }).unwrap();
+    d.command(0, Command::RerunCheck { term: t, name: None }).unwrap();
     d.cfg.check.clear();
     end_turn(&mut d, t);
     assert!(!check_of(&d, t).rerun_queued, "nothing is queued any more");
@@ -1936,7 +1936,7 @@ fn a_rerun_of_an_idle_agent_starts_at_once_and_replaces_the_settled_result() {
     let t = checked_agent(&mut d, "echo fresh; exit 0", LONG_CHECK_S);
     d.terms.get_mut(&t).unwrap().status = Status::Done;
     with_check(&mut d, t, CheckState::Failed, "old failure");
-    d.command(0, Command::RerunCheck { term: t }).unwrap();
+    d.command(0, Command::RerunCheck { term: t, name: None }).unwrap();
     let running = check_of(&d, t);
     assert_eq!((running.state, running.after_turn_ended_at, running.rerun_queued), (CheckState::Checking, 77, false));
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
@@ -1950,16 +1950,16 @@ fn a_rerun_that_has_nothing_to_run_is_an_error() {
     let (rt, (mut d, _rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
     let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
-    assert!(d.command(0, Command::RerunCheck { term: t }).is_err(), "working, never checked: its turn end checks it");
+    assert!(d.command(0, Command::RerunCheck { term: t, name: None }).is_err(), "working, never checked: its turn end checks it");
     d.terms.get_mut(&t).unwrap().status = Status::Done;
     with_check(&mut d, t, CheckState::Checking, "");
-    assert!(d.command(0, Command::RerunCheck { term: t }).is_err(), "already running");
+    assert!(d.command(0, Command::RerunCheck { term: t, name: None }).is_err(), "already running");
     d.cfg.check.clear();
     with_check(&mut d, t, CheckState::Failed, "");
-    assert!(d.command(0, Command::RerunCheck { term: t }).is_err(), "no check in this project");
+    assert!(d.command(0, Command::RerunCheck { term: t, name: None }).is_err(), "no check in this project");
     let shell = pane(&mut d);
-    assert!(d.command(0, Command::RerunCheck { term: shell }).is_err(), "a shell is not checked");
-    assert!(d.command(0, Command::RerunCheck { term: 9_999 }).is_err(), "no such pane");
+    assert!(d.command(0, Command::RerunCheck { term: shell, name: None }).is_err(), "a shell is not checked");
+    assert!(d.command(0, Command::RerunCheck { term: 9_999, name: None }).is_err(), "no such pane");
     close(&mut d, &[t, shell]);
 }
 
@@ -1967,7 +1967,7 @@ fn a_rerun_that_has_nothing_to_run_is_an_error() {
 fn only_a_failed_check_can_be_overridden_and_the_override_is_recorded() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
-    let cmd = |reason: &str| Command::OverrideCheck { term: t, reason: reason.into() };
+    let cmd = |reason: &str| Command::OverrideCheck { term: t, name: None, reason: reason.into() };
     assert!(d.command(0, cmd("")).is_err(), "no result");
     for state in [CheckState::Passed, CheckState::Checking, CheckState::CouldNotRun, CheckState::Overridden] {
         with_check(&mut d, t, state, "out");
@@ -1980,7 +1980,7 @@ fn only_a_failed_check_can_be_overridden_and_the_override_is_recorded() {
     let info = check_of(&d, t);
     assert_eq!((info.state, info.override_reason.as_str(), info.exit_code), (CheckState::Overridden, "flaky on CI", Some(1)));
     assert!(info.overridden_at.is_some_and(|at| at >= before), "the time is recorded");
-    assert_eq!(d.snapshot().terms[&t].check.as_ref().map(|c| c.state), Some(CheckState::Overridden));
+    assert_eq!(d.snapshot().terms[&t].check().map(|c| c.state), Some(CheckState::Overridden));
     let term = &d.terms[&t];
     assert_eq!(term.check.as_ref().unwrap().output, "FAIL a\nFAIL b\n", "the failure's output stays");
     assert_eq!(term.check_overridden.as_ref().map(|c| (c.info.clone(), c.output.as_str())), Some((info, "FAIL a\nFAIL b\n")));
@@ -1994,9 +1994,9 @@ fn an_override_reason_is_optional_and_bounded() {
     let t = pane(&mut d);
     with_check(&mut d, t, CheckState::Failed, "");
     let too_long = "x".repeat(super::check::OVERRIDE_REASON_MAX_CHARS + 1);
-    assert!(d.command(0, Command::OverrideCheck { term: t, reason: too_long }).is_err());
+    assert!(d.command(0, Command::OverrideCheck { term: t, name: None, reason: too_long }).is_err());
     assert_eq!(check_of(&d, t).state, CheckState::Failed, "refused whole");
-    d.command(0, Command::OverrideCheck { term: t, reason: String::new() }).unwrap();
+    d.command(0, Command::OverrideCheck { term: t, name: None, reason: String::new() }).unwrap();
     assert_eq!(check_of(&d, t).override_reason, "");
     close(&mut d, &[t]);
 }
@@ -2007,12 +2007,12 @@ fn undoing_an_override_restores_the_failed_result() {
     let t = pane(&mut d);
     with_check(&mut d, t, CheckState::Failed, "FAIL a");
     let failed = check_of(&d, t);
-    assert!(d.command(0, Command::UndoOverride { term: t }).is_err(), "nothing to undo on a failure");
-    d.command(0, Command::OverrideCheck { term: t, reason: "r".into() }).unwrap();
-    d.command(0, Command::UndoOverride { term: t }).unwrap();
+    assert!(d.command(0, Command::UndoOverride { term: t, name: None }).is_err(), "nothing to undo on a failure");
+    d.command(0, Command::OverrideCheck { term: t, name: None, reason: "r".into() }).unwrap();
+    d.command(0, Command::UndoOverride { term: t, name: None }).unwrap();
     assert_eq!(check_of(&d, t), failed, "exactly as it was");
     assert!(d.terms[&t].check_overridden.is_none());
-    assert!(d.command(0, Command::UndoOverride { term: t }).is_err(), "and only once");
+    assert!(d.command(0, Command::UndoOverride { term: t, name: None }).is_err(), "and only once");
     close(&mut d, &[t]);
 }
 
@@ -2023,8 +2023,8 @@ fn the_next_run_replaces_an_override_but_keeps_the_overridden_output() {
     let t = checked_agent(&mut d, "echo green; exit 0", LONG_CHECK_S);
     d.terms.get_mut(&t).unwrap().status = Status::Done;
     with_check(&mut d, t, CheckState::Failed, "FAIL a");
-    d.command(0, Command::OverrideCheck { term: t, reason: "r".into() }).unwrap();
-    d.command(0, Command::RerunCheck { term: t }).unwrap();
+    d.command(0, Command::OverrideCheck { term: t, name: None, reason: "r".into() }).unwrap();
+    d.command(0, Command::RerunCheck { term: t, name: None }).unwrap();
     let running = check_of(&d, t);
     assert_eq!((running.state, running.overridden_at, running.override_reason.as_str()), (CheckState::Checking, None, ""));
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
@@ -2044,13 +2044,13 @@ fn a_read_only_pane_may_not_rerun_or_override_another_panes_check() {
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
     d.terms.get_mut(&a).unwrap().grants = Some(vec!["read".into()]);
-    for cmd in [Command::RerunCheck { term: b }, Command::OverrideCheck { term: b, reason: String::new() }, Command::UndoOverride { term: b }] {
+    for cmd in [Command::RerunCheck { term: b, name: None }, Command::OverrideCheck { term: b, name: None, reason: String::new() }, Command::UndoOverride { term: b, name: None }] {
         d.message(7, ClientMsg::Command(cmd.clone()));
         assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(_))), "{cmd:?} needs write");
     }
     assert_eq!(check_of(&d, b).state, CheckState::Failed, "untouched");
     d.terms.get_mut(&a).unwrap().grants = Some(vec!["read".into(), "write".into()]);
-    d.message(7, ClientMsg::Command(Command::OverrideCheck { term: b, reason: "ok".into() }));
+    d.message(7, ClientMsg::Command(Command::OverrideCheck { term: b, name: None, reason: "ok".into() }));
     assert!(matches!(out.try_recv(), Ok(ServerMsg::Reply(Reply::Ok))), "write allows it");
     assert_eq!(check_of(&d, b).state, CheckState::Overridden);
     close(&mut d, &[a, b]);
@@ -2065,9 +2065,29 @@ fn a_pane_may_not_override_its_own_check() {
     d.handle(Ev::Connected(7, tx, false));
     let token = d.terms[&a].token.clone();
     d.handle(Ev::From(7, a, token));
-    d.message(7, ClientMsg::Command(Command::OverrideCheck { term: a, reason: "trust me".into() }));
+    d.message(7, ClientMsg::Command(Command::OverrideCheck { term: a, name: None, reason: "trust me".into() }));
     assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(_))), "an agent's claim never counts");
     assert_eq!(check_of(&d, a).state, CheckState::Failed);
+    close(&mut d, &[a]);
+}
+
+#[test]
+fn only_you_answer_a_repo_check_approval() {
+    let (mut d, _rx) = daemon();
+    let a = pane(&mut d);
+    let (tx, mut out) = mpsc::channel(16);
+    d.handle(Ev::Connected(7, tx, false));
+    let token = d.terms[&a].token.clone();
+    d.handle(Ev::From(7, a, token));
+    d.terms.get_mut(&a).unwrap().grants = Some(["read", "write", "start", "respond", "admin"].map(String::from).into());
+    let approve = Command::ApproveCheck { term: a, name: "test".into(), choice: crate::protocol::ApprovalChoice::Always };
+    let forget = Command::ForgetCheckApproval { project: std::env::temp_dir(), name: "test".into() };
+    for cmd in [approve, forget] {
+        d.message(7, ClientMsg::Command(cmd.clone()));
+        assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(e)) if e.contains("yours")), "{cmd:?}: a pane may not, whatever its grants");
+        let err = d.command(0, cmd.clone()).expect_err("not built yet");
+        assert_eq!(err.to_string(), "not built yet", "{cmd:?}");
+    }
     close(&mut d, &[a]);
 }
 

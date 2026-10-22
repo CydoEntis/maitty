@@ -633,7 +633,7 @@ impl App {
                     resume_at: t.resume_at,
                     started_by: t.started_by,
                     queued: t.queued.clone(),
-                    check: t.check.clone(),
+                    check: t.check().cloned(),
                 });
             }
             // The repo's other worktrees, even with nothing running in them.

@@ -90,18 +90,18 @@ impl App {
     }
 
     pub(in crate::client) fn open_check_sheet(&mut self, term: TermId) {
-        let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check.as_ref()) else { return };
+        let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check()) else { return };
         let run = run_key(info);
         self.mode = Mode::Normal;
         self.view = Some(View::Check(Box::new(CheckView { term, output: None, run, full: false, scroll: 0, room: 0 })));
-        self.send(ClientMsg::Query(Query::CheckOutput { term }));
+        self.send(ClientMsg::Query(Query::CheckOutput { term, name: None }));
     }
 
     /// After a snapshot: a sheet whose check is gone closes, and one whose run was replaced
     /// forgets the output it had and asks for the new one.
     pub(in crate::client) fn check_view_sync(&mut self) {
         let Some(View::Check(v)) = &mut self.view else { return };
-        let Some(info) = self.snap.terms.get(&v.term).and_then(|t| t.check.as_ref()) else {
+        let Some(info) = self.snap.terms.get(&v.term).and_then(|t| t.check()) else {
             self.view = None;
             return;
         };
@@ -110,7 +110,7 @@ impl App {
         }
         let term = v.term;
         (v.run, v.output, v.full, v.scroll) = (run_key(info), None, false, 0);
-        self.send(ClientMsg::Query(Query::CheckOutput { term }));
+        self.send(ClientMsg::Query(Query::CheckOutput { term, name: None }));
     }
 
     /// The output the daemon sent for the open sheet.
@@ -143,7 +143,7 @@ pub(in crate::client) fn check_title(app: &App) -> String {
     let Some(View::Check(v)) = &app.view else { return "Check".into() };
     let model = app.screen_model();
     let name = find(&model, v.term).map(|(.., s)| s.name.clone()).unwrap_or_default();
-    let command = app.snap.terms.get(&v.term).and_then(|t| t.check.as_ref()).map(|c| c.command.clone()).unwrap_or_default();
+    let command = app.snap.terms.get(&v.term).and_then(|t| t.check()).map(|c| c.command.clone()).unwrap_or_default();
     format!("Check · {name} › {command}")
 }
 
@@ -154,6 +154,10 @@ fn state_word(info: &CheckInfo) -> &'static str {
         CheckState::Failed => "failed",
         CheckState::Overridden => "overridden",
         CheckState::CouldNotRun => "could not run",
+        CheckState::Pending => "next",
+        CheckState::NeedsApproval => "needs approval",
+        CheckState::Stale => "stale pass",
+        CheckState::Never => "not checked",
     }
 }
 
@@ -337,7 +341,7 @@ const WANT_BLOCK_ROWS: usize = 4;
 /// The sheet's inside.
 pub(in crate::client) fn draw_check(app: &mut App, buf: &mut Buffer, inside: Rect, t: &Theme, v: &mut CheckView) {
     let Some(term) = app.snap.terms.get(&v.term).cloned() else { return };
-    let Some(info) = term.check.clone() else { return };
+    let Some(info) = term.check().cloned() else { return };
     let (x, w) = (inside.x + 2, inside.width.saturating_sub(4));
     let c = Style::default().bg(t.card);
     let folder = term.top.clone().unwrap_or_else(|| term.cwd.clone());

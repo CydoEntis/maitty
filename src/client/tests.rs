@@ -66,7 +66,7 @@ mod design_tests {
             popup: false,
             usage: Default::default(),
             resume_at: None,
-            check: None,
+            checks: Vec::new(),
         }
     }
 
@@ -3696,7 +3696,7 @@ mod check_row_tests {
         for (i, (label, status, check)) in extra.iter().enumerate() {
             let id = 20 + i as TermId;
             let mut t = app.snap.terms[&2].clone();
-            (t.id, t.label, t.status, t.check) = (id, (*label).into(), *status, check.clone());
+            (t.id, t.label, t.status, t.checks) = (id, (*label).into(), *status, check.clone().into_iter().collect());
             app.snap.terms.insert(id, t);
             app.snap.workspaces[0].tabs.push(TabInfo { id: 30 + id, name: String::new(), layout: Node::Leaf(id), focus: id });
             app.parsers.insert(id, vt100::Parser::new(20, 80, 0));
@@ -3853,6 +3853,7 @@ mod check_row_tests {
                     CheckState::Failed => t.err,
                     CheckState::Overridden => t.text,
                     CheckState::CouldNotRun => t.muted,
+                    other => unreachable!("not among the cases: {other:?}"),
                 };
                 let y = row_of(&buf, &app, NAME);
                 let cell = cell_with(&buf, &app, y, c.glyph);
@@ -4113,7 +4114,7 @@ mod check_why_tests {
         layout(&mut app);
         let info = app.snap.terms.get_mut(&1).unwrap();
         info.said = "done".into();
-        info.check = check;
+        info.checks = check.into_iter().collect();
         app.mode = Mode::Why { term: 1, side: false };
         app
     }
@@ -4214,9 +4215,9 @@ mod check_why_tests {
             let plain = draw(&mut app, 100, 30);
             assert!(plain.contains("Status uncertain") && plain.contains("most specific source wins"), "{name}");
             assert!(!plain.contains("evidence") && !plain.contains("Seshi ran"), "{name}: no check text anywhere");
-            app.snap.terms.get_mut(&1).unwrap().check = Some(check(CheckState::Failed, Some(1)));
+            app.snap.terms.get_mut(&1).unwrap().checks = vec![check(CheckState::Failed, Some(1))];
             assert_ne!(draw(&mut app, 100, 30), plain, "{name}: a check changes it");
-            app.snap.terms.get_mut(&1).unwrap().check = None;
+            app.snap.terms.get_mut(&1).unwrap().checks.clear();
             assert_eq!(draw(&mut app, 100, 30), plain, "{name}: with no check it is the same frame");
         }
     }
@@ -4269,7 +4270,7 @@ mod check_sheet_tests {
         let (_, mut app) = super::design_tests::render_with(w, h);
         layout(&mut app);
         let term = app.snap.terms.get_mut(&TERM).unwrap();
-        (term.status, term.said, term.check) = (Status::Done, "tests pass".into(), Some(info));
+        (term.status, term.said, term.checks) = (Status::Done, "tests pass".into(), vec![info]);
         app.screen_sync();
         app.open_check_sheet(TERM);
         if let Some(text) = output {
@@ -4565,14 +4566,14 @@ mod check_sheet_tests {
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
         let term = app.snap.terms.get_mut(&TERM).unwrap();
-        (term.status, term.check) = (Status::Done, Some(check(CheckState::Failed, Some(1))));
+        (term.status, term.checks) = (Status::Done, vec![check(CheckState::Failed, Some(1))]);
         app.open_check_sheet(TERM);
-        let asks = |rx: &mut mpsc::UnboundedReceiver<ClientMsg>| sent(rx).into_iter().filter(|m| matches!(m, ClientMsg::Query(Query::CheckOutput { term: TERM }))).count();
+        let asks = |rx: &mut mpsc::UnboundedReceiver<ClientMsg>| sent(rx).into_iter().filter(|m| matches!(m, ClientMsg::Query(Query::CheckOutput { term: TERM, name: None }))).count();
         assert_eq!(asks(&mut rx), 1, "one query on open");
         app.on_server(ServerMsg::Reply(Reply::Text("first run\n".into())));
         assert!(matches!(&app.view, Some(View::Check(v)) if v.output.as_deref() == Some("first run\n")));
         let mut next = app.snap.clone();
-        let again = next.terms.get_mut(&TERM).unwrap().check.as_mut().unwrap();
+        let again = next.terms.get_mut(&TERM).unwrap().checks.first_mut().unwrap();
         (again.started_at, again.exit_code) = (now(), Some(2));
         app.on_server(ServerMsg::State(next.clone()));
         assert!(matches!(&app.view, Some(View::Check(v)) if v.output.is_none()), "the old output is about an older run");
@@ -4585,7 +4586,7 @@ mod check_sheet_tests {
     fn the_sheet_closes_when_its_check_goes_away() {
         let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), Some(SHORT_OUTPUT));
         let mut next = app.snap.clone();
-        next.terms.get_mut(&TERM).unwrap().check = None;
+        next.terms.get_mut(&TERM).unwrap().checks.clear();
         app.on_server(ServerMsg::State(next));
         assert!(app.view.is_none());
     }
@@ -4593,7 +4594,7 @@ mod check_sheet_tests {
     fn enter_on_row(state: Option<CheckState>, status: Status) -> App {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let term = app.snap.terms.get_mut(&TERM).unwrap();
-        (term.status, term.check) = (status, state.map(|s| check(s, Some(1))));
+        (term.status, term.checks) = (status, state.map(|s| check(s, Some(1))).into_iter().collect());
         app.screen_sync();
         draw(&mut app, 160, 45);
         app.mode = Mode::Side;
@@ -4673,7 +4674,7 @@ mod check_inbox_tests {
         for (i, (label, status, check)) in extra.iter().enumerate() {
             let id = 20 + i as TermId;
             let mut t = app.snap.terms[&2].clone();
-            (t.id, t.label, t.status, t.check) = (id, (*label).into(), *status, check.clone());
+            (t.id, t.label, t.status, t.checks) = (id, (*label).into(), *status, check.clone().into_iter().collect());
             app.snap.terms.insert(id, t);
             app.snap.workspaces[0].tabs.push(TabInfo { id: 30 + id, name: String::new(), layout: Node::Leaf(id), focus: id });
             app.parsers.insert(id, vt100::Parser::new(20, 80, 0));
@@ -5047,7 +5048,7 @@ mod check_settings_tests {
                 let (_, mut app) = super::design_tests::render_with(w, h);
                 layout(&mut app);
                 with_check(&mut app, "npm test", CHECK_TIMEOUT_S_DEFAULT);
-                app.snap.terms.get_mut(&1).unwrap().check = Some(result(CheckState::Failed, Some(1)));
+                app.snap.terms.get_mut(&1).unwrap().checks = vec![result(CheckState::Failed, Some(1))];
                 open_check_page(&mut app, 0);
                 let o = draw(&mut app, w, h);
                 show(&o);
@@ -5075,7 +5076,7 @@ mod check_settings_tests {
         for (info, want) in cases {
             let (_, mut app) = super::design_tests::render_with(160, 45);
             with_check(&mut app, "npm test", CHECK_TIMEOUT_S_DEFAULT);
-            app.snap.terms.get_mut(&1).unwrap().check = info;
+            app.snap.terms.get_mut(&1).unwrap().checks = info.into_iter().collect();
             open_check_page(&mut app, 0);
             let o = draw(&mut app, 160, 45);
             assert!(words(&o).contains(want), "{want}: in\n{o}");
@@ -5268,8 +5269,8 @@ mod check_wiring_tests {
 
     fn info(state: CheckState) -> CheckInfo {
         let exit_code = match state {
-            CheckState::Checking => None,
-            CheckState::Passed => Some(0),
+            CheckState::Checking | CheckState::Pending | CheckState::NeedsApproval | CheckState::Never => None,
+            CheckState::Passed | CheckState::Stale => Some(0),
             CheckState::CouldNotRun => Some(127),
             CheckState::Failed | CheckState::Overridden => Some(1),
         };
@@ -5294,7 +5295,7 @@ mod check_wiring_tests {
         let (tx, rx) = mpsc::unbounded_channel();
         app.out = tx;
         let t = app.snap.terms.get_mut(&TERM).unwrap();
-        (t.status, t.said, t.check) = (status, "tests pass".into(), check);
+        (t.status, t.said, t.checks) = (status, "tests pass".into(), check.into_iter().collect());
         app.screen_sync();
         (app, rx)
     }
@@ -5362,11 +5363,11 @@ mod check_wiring_tests {
     }
 
     fn rerun_of(cmds: &[Command]) -> usize {
-        cmds.iter().filter(|c| matches!(c, Command::RerunCheck { term: TERM })).count()
+        cmds.iter().filter(|c| matches!(c, Command::RerunCheck { term: TERM, name: None })).count()
     }
 
     fn overrides(cmds: &[Command]) -> Vec<String> {
-        cmds.iter().filter_map(|c| if let Command::OverrideCheck { term: TERM, reason } = c { Some(reason.clone()) } else { None }).collect()
+        cmds.iter().filter_map(|c| if let Command::OverrideCheck { term: TERM, name: None, reason } = c { Some(reason.clone()) } else { None }).collect()
     }
 
     fn labels(app: &App) -> Vec<String> {
@@ -5438,7 +5439,7 @@ mod check_wiring_tests {
             let (mut app, mut rx) = done(state);
             pick(&mut app, "Check output");
             assert!(matches!(&app.view, Some(View::Check(v)) if v.term == TERM), "{state:?}");
-            assert!(sent(&mut rx).iter().any(|m| matches!(m, ClientMsg::Query(crate::protocol::Query::CheckOutput { term: TERM }))), "{state:?}: the output is asked for");
+            assert!(sent(&mut rx).iter().any(|m| matches!(m, ClientMsg::Query(crate::protocol::Query::CheckOutput { term: TERM, name: None }))), "{state:?}: the output is asked for");
         }
     }
 
@@ -5458,7 +5459,7 @@ mod check_wiring_tests {
     fn a_result_that_is_no_longer_failed_is_not_overridden_from_a_stale_menu() {
         let (mut app, mut rx) = done(CheckState::Failed);
         app.menu_for_session(TERM, (20, 10));
-        app.snap.terms.get_mut(&TERM).unwrap().check = Some(info(CheckState::Passed));
+        app.snap.terms.get_mut(&TERM).unwrap().checks = vec![info(CheckState::Passed)];
         app.screen_sync();
         app.menu_act(Act::OverrideCheck(TERM, String::new()));
         assert!(commands(&mut rx).is_empty() && !matches!(app.mode, Mode::Confirm(_)), "{:?}", app.mode);
@@ -5563,7 +5564,7 @@ mod check_wiring_tests {
             assert_eq!(matches!(app.mode, Mode::Confirm(_)), over, "{state:?}: O");
             app.mode = Mode::Normal;
             press(&mut app, KeyCode::Char('u'));
-            assert_eq!(commands(&mut rx).iter().filter(|c| matches!(c, Command::UndoOverride { term: TERM })).count() == 1, undo, "{state:?}: u");
+            assert_eq!(commands(&mut rx).iter().filter(|c| matches!(c, Command::UndoOverride { term: TERM, name: None })).count() == 1, undo, "{state:?}: u");
             assert!(matches!(app.view, Some(View::Check(_))), "{state:?}: the sheet stays open");
         }
     }
@@ -5580,7 +5581,7 @@ mod check_wiring_tests {
         let (mut app, mut rx) = done(CheckState::Overridden);
         app.open_check_sheet(TERM);
         click(&mut app, 100, 30, viewkey('u'));
-        assert!(commands(&mut rx).iter().any(|c| matches!(c, Command::UndoOverride { term: TERM })), "Undo override");
+        assert!(commands(&mut rx).iter().any(|c| matches!(c, Command::UndoOverride { term: TERM, name: None })), "Undo override");
         assert!(toast(&app).0.contains("failed again"));
     }
 
@@ -5610,7 +5611,7 @@ mod check_wiring_tests {
         press(&mut app, KeyCode::Char('r'));
         assert_eq!(rerun_of(&commands(&mut rx)), 1);
         assert!(toast(&app).0.contains("queued"), "{}", toast(&app).0);
-        app.snap.terms.get_mut(&TERM).unwrap().check.as_mut().unwrap().rerun_queued = true;
+        app.snap.terms.get_mut(&TERM).unwrap().checks.first_mut().unwrap().rerun_queued = true;
         app.screen_sync();
         assert!(words(&draw(&mut app, 100, 30)).contains("re-run queued"), "the sheet says it too");
         press(&mut app, KeyCode::Char('r'));
@@ -5627,7 +5628,7 @@ mod check_wiring_tests {
         assert!(words(&draw(&mut app, 160, 45)).contains("re-running npm test"), "the toast shows");
         let mut running = info(CheckState::Checking);
         running.exit_code = None;
-        app.snap.terms.get_mut(&TERM).unwrap().check = Some(running);
+        app.snap.terms.get_mut(&TERM).unwrap().checks = vec![running];
         app.screen_sync();
         app.open_check_sheet(TERM);
         press(&mut app, KeyCode::Esc);

@@ -405,9 +405,9 @@ impl Daemon {
             }
             // Typing into another pane, only later.
             Command::QueueFollowUp { term, .. } | Command::ClearQueue { term } => self.may(client, Grant::Write, Some(*term)),
-            Command::RerunCheck { term } => self.may(client, Grant::Write, Some(*term)),
+            Command::RerunCheck { term, .. } => self.may(client, Grant::Write, Some(*term)),
             // The pane's own claim never counts, so a pane may not accept its own failure.
-            Command::OverrideCheck { term, .. } | Command::UndoOverride { term } => {
+            Command::OverrideCheck { term, .. } | Command::UndoOverride { term, .. } => {
                 if self.clients.get(&client).and_then(|c| c.from) == Some(*term) {
                     anyhow::bail!("a pane may not override its own check; that is yours to decide");
                 }
@@ -420,6 +420,12 @@ impl Daemon {
             // Only you hand out grants.
             Command::Grant { .. } if self.clients.get(&client).is_some_and(|c| c.from.is_some()) => {
                 anyhow::bail!("grants are yours to give: run seshi grant outside seshi's panes, or use the pane's menu")
+            }
+            // Approving a repo's command is approving what it runs: an agent may not.
+            Command::ApproveCheck { .. } | Command::ForgetCheckApproval { .. }
+                if self.clients.get(&client).is_some_and(|c| c.from.is_some()) =>
+            {
+                anyhow::bail!("check approvals are yours to give, not a pane's")
             }
             _ => Ok(()),
         }
@@ -1055,10 +1061,10 @@ impl Daemon {
                         Some(t) => ServerMsg::Reply(Reply::Text(t.parser.screen().contents())),
                         None => ServerMsg::Error(format!("no pane {term}")),
                     },
-                    Query::CheckOutput { term } if self.may(client, Grant::Read, Some(term)).is_err() => {
+                    Query::CheckOutput { term, .. } if self.may(client, Grant::Read, Some(term)).is_err() => {
                         ServerMsg::Error(format!("{:#}", self.may(client, Grant::Read, Some(term)).unwrap_err()))
                     }
-                    Query::CheckOutput { term } => match self.terms.get(&term).and_then(|t| t.check.as_ref()) {
+                    Query::CheckOutput { term, .. } => match self.terms.get(&term).and_then(|t| t.check.as_ref()) {
                         Some(record) => ServerMsg::Reply(Reply::Text(record.output.clone())),
                         None => ServerMsg::Error(format!("no check output for pane {term}")),
                     },
@@ -1132,7 +1138,7 @@ impl Daemon {
                     win32_input: t.win32_input,
                     usage: t.usage.clone(),
                     resume_at: t.resume_at,
-                    check: t.check.as_ref().map(|c| c.info.clone()),
+                    checks: t.check.iter().map(|c| c.info.clone()).collect(),
                     subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
                     started_by: t.started_by,
                     queued: t.queue.iter().cloned().collect(),

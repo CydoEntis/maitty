@@ -18,10 +18,13 @@ struct Marks {
     failed: &'static str,
     overridden: &'static str,
     unknown: &'static str,
+    stale: &'static str,
+    needs: &'static str,
+    pending: &'static str,
 }
 
-const UNICODE: Marks = Marks { ring: ["◜", "◝", "◞", "◟"], passed: "✓", failed: "✕", overridden: "⊘", unknown: "?" };
-const ASCII: Marks = Marks { ring: ["-", "\\", "|", "/"], passed: "+", failed: "x", overridden: "/", unknown: "?" };
+const UNICODE: Marks = Marks { ring: ["◜", "◝", "◞", "◟"], passed: "✓", failed: "✕", overridden: "⊘", unknown: "?", stale: "◷", needs: "●", pending: "…" };
+const ASCII: Marks = Marks { ring: ["-", "\\", "|", "/"], passed: "+", failed: "x", overridden: "/", unknown: "?", stale: "~", needs: "!", pending: "." };
 
 /// Plain icons (ASCII status icons in config) get ASCII check glyphs too.
 fn marks(app: &App) -> &'static Marks {
@@ -67,7 +70,10 @@ pub(super) fn glyph(app: &App, info: &CheckInfo) -> &'static str {
         CheckState::Passed => m.passed,
         CheckState::Failed => m.failed,
         CheckState::Overridden => m.overridden,
-        CheckState::CouldNotRun => m.unknown,
+        CheckState::CouldNotRun | CheckState::Never => m.unknown,
+        CheckState::Stale => m.stale,
+        CheckState::NeedsApproval => m.needs,
+        CheckState::Pending => m.pending,
     }
 }
 
@@ -77,8 +83,9 @@ pub(super) fn color(t: &Theme, info: &CheckInfo) -> Color {
         CheckState::Checking => t.sky(),
         CheckState::Passed => t.done,
         CheckState::Failed => t.err,
-        CheckState::Overridden => t.text,
-        CheckState::CouldNotRun => t.muted,
+        CheckState::Overridden | CheckState::Stale => t.text,
+        CheckState::CouldNotRun | CheckState::Never | CheckState::Pending => t.muted,
+        CheckState::NeedsApproval => t.blocked,
     }
 }
 
@@ -121,6 +128,10 @@ fn compose(app: &App, info: &CheckInfo, cmd: &str) -> String {
         },
         CheckState::Overridden => format!("{cmd} {} overridden by you", m.failed),
         CheckState::CouldNotRun => format!("{cmd} could not run{}", why_not_run(info.exit_code)),
+        CheckState::Pending => format!("next: {cmd}"),
+        CheckState::NeedsApproval => format!("approve check: {cmd}"),
+        CheckState::Stale => format!("stale pass: {cmd}"),
+        CheckState::Never => "not checked: never for this repo".into(),
     }
 }
 

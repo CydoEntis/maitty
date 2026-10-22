@@ -214,7 +214,7 @@ impl App {
         if !s.queued.is_empty() {
             items.push((format!("Drop queued follow-ups ({})", s.queued.len()), Act::ClearQueue(term)));
         }
-        if let Some(check) = info.and_then(|t| t.check.as_ref()) {
+        if let Some(check) = info.and_then(|t| t.check()) {
             items.extend(super::screen::check_menu_items(term, check));
         }
         items.push(("Close".to_string(), Act::End(vec![term])));
