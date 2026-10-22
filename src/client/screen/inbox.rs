@@ -498,6 +498,19 @@ mod tests {
     }
 
     #[test]
+    fn a_failing_line_is_marked_in_the_chosen_glyph_set() {
+        for (glyphs, mark) in [("unicode", "✗"), ("ascii", "x")] {
+            let mut app = inbox_world(Stage::Failed, 1);
+            app.cfg.ui.glyphs = glyphs.into();
+            app.snap.terms.get_mut(&1).unwrap().checks[0].first_failing_line = "FAIL footer shows current year".into();
+            app.screen_fresh();
+            let area = reference("11 Inbox", "floating", 160, 45).area;
+            let rows = draw(&mut app, area, 160, 45);
+            assert!(rows.iter().any(|r| r.contains(&format!("{mark} FAIL footer shows current year"))), "{glyphs}: {rows:#?}");
+        }
+    }
+
+    #[test]
     fn a_button_is_a_click_of_its_key() {
         let mut app = inbox_world(Stage::Couldnt, 1);
         let area = reference("11 Inbox", "floating", 100, 30).area;
