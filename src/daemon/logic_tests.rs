@@ -1552,14 +1552,14 @@ fn check_results_survive_a_restart_with_their_output() {
     let unsaved = persist::save_check_outputs(
         tails.path(),
         persist::save_ticket(),
-        &[(old, persist::CheckSlot::Latest, "latest tail".into()), (old, persist::CheckSlot::Overridden, "overridden tail".into())],
+        &[persist::CheckTail { term: old, name: String::new(), slot: persist::CheckSlot::Latest, text: "latest tail".into() }, persist::CheckTail { term: old, name: String::new(), slot: persist::CheckSlot::Overridden, text: "overridden tail".into() }],
         &[old],
     );
     assert!(unsaved.is_empty());
     let pane = persist::SavedPane {
         cwd: Some(dir.clone()),
-        check: Some(failed_check("").info),
-        check_overridden: Some(overridden.clone()),
+        checks: vec![failed_check("").info],
+        checks_overridden: vec![overridden.clone()],
         ..Default::default()
     };
     let tab = persist::SavedTab { name: String::new(), layout: Node::Leaf(old), focus: old, panes: [(old, pane)].into() };
@@ -1571,10 +1571,11 @@ fn check_results_survive_a_restart_with_their_output() {
     assert_eq!(restored.check_overridden.as_ref().map(|c| (&c.info, c.output.as_str())), Some((&overridden, "overridden tail")));
     let saved = d.saved();
     let again = &saved.workspaces[0].tabs[0].panes[&t];
-    assert_eq!((again.check.as_ref().map(|c| c.state), again.check_overridden.as_ref()), (Some(CheckState::Failed), Some(&overridden)));
+    assert_eq!((again.checks.iter().map(|c| c.state).collect::<Vec<_>>(), &again.checks_overridden), (vec![CheckState::Failed], &vec![overridden.clone()]));
     let mut written = d.take_dirty_check_outputs();
-    written.sort_by_key(|(_, slot, _)| *slot as u8);
-    let expected = [(t, persist::CheckSlot::Latest, "latest tail".to_string()), (t, persist::CheckSlot::Overridden, "overridden tail".to_string())];
+    written.sort_by_key(|w| w.slot as u8);
+    let tail = |slot, text: &str| persist::CheckTail { term: t, name: String::new(), slot, text: text.into() };
+    let expected = [tail(persist::CheckSlot::Latest, "latest tail"), tail(persist::CheckSlot::Overridden, "overridden tail")];
     assert_eq!(written, expected, "its output is written again under the new id");
     assert!(d.take_dirty_check_outputs().is_empty(), "and only once");
     close(&mut d, &[t]);
@@ -1585,7 +1586,7 @@ fn a_check_that_was_running_when_the_server_stopped_reads_as_not_run() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
     let running = CheckInfo { state: CheckState::Checking, ..Default::default() };
-    let saved = persist::SavedPane { check: Some(running), ..Default::default() };
+    let saved = persist::SavedPane { checks: vec![running], ..Default::default() };
     d.terms.get_mut(&t).unwrap().restore_checks(&d.check_dir.clone(), 9_202, &saved);
     assert_eq!(d.terms[&t].check.as_ref().map(|c| c.info.state), Some(CheckState::CouldNotRun));
     close(&mut d, &[t]);
@@ -1831,13 +1832,13 @@ fn the_tail_of_a_closed_pane_goes_on_a_full_save_even_when_no_tail_changed() {
     let unsaved = persist::save_check_outputs(
         tails.path(),
         persist::save_ticket(),
-        &[(open, persist::CheckSlot::Latest, "kept".into()), (closed, persist::CheckSlot::Latest, "gone".into())],
+        &[persist::CheckTail { term: open, name: String::new(), slot: persist::CheckSlot::Latest, text: "kept".into() }, persist::CheckTail { term: closed, name: String::new(), slot: persist::CheckSlot::Latest, text: "gone".into() }],
         &[open, closed],
     );
     assert!(unsaved.is_empty());
     d.save_check_tails(persist::save_ticket(), vec![open], true);
-    assert_eq!(persist::read_check_output(tails.path(), closed, persist::CheckSlot::Latest), None, "pruned at shutdown");
-    assert_eq!(persist::read_check_output(tails.path(), open, persist::CheckSlot::Latest).as_deref(), Some("kept"));
+    assert_eq!(persist::read_check_output(tails.path(), closed, "", persist::CheckSlot::Latest), None, "pruned at shutdown");
+    assert_eq!(persist::read_check_output(tails.path(), open, "", persist::CheckSlot::Latest).as_deref(), Some("kept"));
     close(&mut d, &[open]);
 }
 
@@ -1858,7 +1859,7 @@ fn a_tail_that_failed_to_write_is_written_again_at_the_next_save() {
     std::fs::remove_file(&d.check_dir).unwrap();
     d.save_check_tails(persist::save_ticket(), vec![t], true);
     assert!(!d.terms[&t].check_dirty);
-    assert_eq!(persist::read_check_output(&d.check_dir, t, persist::CheckSlot::Latest).as_deref(), Some("FAIL footer\n"));
+    assert_eq!(persist::read_check_output(&d.check_dir, t, "", persist::CheckSlot::Latest).as_deref(), Some("FAIL footer\n"));
     close(&mut d, &[t]);
 }
 
@@ -1881,12 +1882,12 @@ fn a_restored_tail_stays_on_disk_until_the_new_one_is_saved() {
     let tails = persist::scratch_dir();
     d.check_dir = tails.path().to_path_buf();
     let old: TermId = 9_301;
-    assert!(persist::save_check_outputs(tails.path(), persist::save_ticket(), &[(old, persist::CheckSlot::Latest, "tail".into())], &[old]).is_empty());
+    assert!(persist::save_check_outputs(tails.path(), persist::save_ticket(), &[persist::CheckTail { term: old, name: String::new(), slot: persist::CheckSlot::Latest, text: "tail".into() }], &[old]).is_empty());
     let t = pane(&mut d);
-    let saved = persist::SavedPane { check: Some(failed_check("").info), ..Default::default() };
+    let saved = persist::SavedPane { checks: vec![failed_check("").info], ..Default::default() };
     let dir = d.check_dir.clone();
     d.terms.get_mut(&t).unwrap().restore_checks(&dir, old, &saved);
-    assert_eq!(persist::read_check_output(tails.path(), old, persist::CheckSlot::Latest).as_deref(), Some("tail"), "a crash now loses nothing");
+    assert_eq!(persist::read_check_output(tails.path(), old, "", persist::CheckSlot::Latest).as_deref(), Some("tail"), "a crash now loses nothing");
     close(&mut d, &[t]);
 }
 

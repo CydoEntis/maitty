@@ -73,12 +73,13 @@ pub struct SavedPane {
     /// Child activity records survive daemon restarts and completed turns.
     #[serde(default)]
     pub subagent_activity: Vec<SubagentActivity>,
-    /// The latest check result; its output tail is kept beside the pane's output files.
-    #[serde(default)]
-    pub check: Option<CheckInfo>,
-    /// The failed result the user overrode, kept so the override stays visible.
-    #[serde(default)]
-    pub check_overridden: Option<CheckInfo>,
+    /// The latest result of each checkpoint; their output tails are kept beside the pane's
+    /// output files. A pane saved with a single `check` loads it as one checkpoint.
+    #[serde(default, alias = "check", deserialize_with = "crate::protocol::one_or_many_checks")]
+    pub checks: Vec<CheckInfo>,
+    /// The failed results the user overrode, kept so each override stays visible.
+    #[serde(default, alias = "check_overridden", deserialize_with = "crate::protocol::one_or_many_checks")]
+    pub checks_overridden: Vec<CheckInfo>,
 }
 
 pub fn path() -> PathBuf {
@@ -160,25 +161,52 @@ pub fn check_output_dir() -> PathBuf {
     crate::config::data_dir().join(format!("check-output-{label}"))
 }
 
-fn check_output_file(dir: &Path, term: TermId, slot: CheckSlot) -> PathBuf {
+/// What an unnamed checkpoint's tail is filed under.
+const UNNAMED_CHECKPOINT: &str = "check";
+
+/// One checkpoint's output tail, for one of a pane's two kept results.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckTail {
+    pub term: TermId,
+    /// The checkpoint's name.
+    pub name: String,
+    pub slot: CheckSlot,
+    pub text: String,
+}
+
+/// `<term>-<name>-<slot>.txt`. A name comes from config or a repo's file, so anything that
+/// could leave the folder or clash with the separators is replaced.
+fn check_output_file(dir: &Path, term: TermId, name: &str, slot: CheckSlot) -> PathBuf {
+    let safe: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' }).collect();
+    let name = if safe.is_empty() { UNNAMED_CHECKPOINT } else { &safe };
+    dir.join(format!("{term}-{name}-{}.txt", slot.file_suffix()))
+}
+
+/// Where a tail was kept before checkpoints had names: one per pane and slot.
+fn legacy_check_output_file(dir: &Path, term: TermId, slot: CheckSlot) -> PathBuf {
     dir.join(format!("{term}-{}.txt", slot.file_suffix()))
+}
+
+fn is_legacy_check_output(file: &str) -> bool {
+    let rest = file.split_once('-').map_or("", |(_, rest)| rest);
+    [CheckSlot::Latest, CheckSlot::Overridden].iter().any(|s| rest == format!("{}.txt", s.file_suffix()))
 }
 
 /// What a folder of check tails has had written to it, so a slow background save can't put
 /// an older tail over a newer one (as `Written` does for panes' output).
 #[derive(Default)]
 struct CheckWritten {
-    tails: std::collections::HashMap<(TermId, CheckSlot), u64>,
+    tails: std::collections::HashMap<(TermId, String, CheckSlot), u64>,
     cleaned: u64,
 }
 
 static CHECK_WRITTEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, CheckWritten>>> = std::sync::Mutex::new(None);
 
-/// Keep each check output tail in `dir`, and drop the files of panes not in `live`. Saves
-/// run one at a time; a tail already written by a newer `ticket` (from `save_ticket`) is left
-/// alone. One file failing doesn't stop the rest. Returns the panes whose tail was not
-/// written, so the caller can try again.
-pub fn save_check_outputs(dir: &Path, ticket: u64, outputs: &[(TermId, CheckSlot, String)], live: &[TermId]) -> Vec<TermId> {
+/// Keep each check output tail in `dir`, and drop the files of panes not in `live` and those
+/// named the old way (read once, at restore). Saves run one at a time; a tail already written
+/// by a newer `ticket` (from `save_ticket`) is left alone. One file failing doesn't stop the
+/// rest. Returns the panes whose tail was not written, so the caller can try again.
+pub fn save_check_outputs(dir: &Path, ticket: u64, outputs: &[CheckTail], live: &[TermId]) -> Vec<TermId> {
     let mut guard = CHECK_WRITTEN.lock().unwrap_or_else(|e| e.into_inner());
     let written = guard.get_or_insert_with(Default::default).entry(dir.to_path_buf()).or_default();
     let mut failed: Vec<TermId> = Vec::new();
@@ -186,17 +214,18 @@ pub fn save_check_outputs(dir: &Path, ticket: u64, outputs: &[(TermId, CheckSlot
         && let Err(e) = std::fs::create_dir_all(dir)
     {
         tracing::warn!("saving checks' output: {e}");
-        return outputs.iter().map(|(term, ..)| *term).collect();
+        return outputs.iter().map(|o| o.term).collect();
     }
-    for (term, slot, text) in outputs {
-        if written.tails.get(&(*term, *slot)).is_some_and(|&t| t > ticket) {
+    for CheckTail { term, name, slot, text } in outputs {
+        let key = (*term, name.clone(), *slot);
+        if written.tails.get(&key).is_some_and(|&t| t > ticket) {
             continue;
         }
-        let path = check_output_file(dir, *term, *slot);
+        let path = check_output_file(dir, *term, name, *slot);
         let tmp = path.with_extension("tmp");
         match std::fs::write(&tmp, text).and_then(|()| std::fs::rename(&tmp, &path)) {
             Ok(()) => {
-                written.tails.insert((*term, *slot), ticket);
+                written.tails.insert(key, ticket);
             }
             Err(e) => {
                 tracing::warn!("saving checks' output: {e}");
@@ -206,12 +235,13 @@ pub fn save_check_outputs(dir: &Path, ticket: u64, outputs: &[(TermId, CheckSlot
     }
     if ticket > written.cleaned {
         written.cleaned = ticket;
-        written.tails.retain(|(id, _), _| live.contains(id));
+        written.tails.retain(|(id, ..), _| live.contains(id));
         // A folder that was never made has nothing to prune.
         for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
             let name = e.file_name();
-            let id = name.to_str().and_then(|n| n.split('-').next()).and_then(|n| n.parse::<TermId>().ok());
-            if id.is_none_or(|id| !live.contains(&id)) {
+            let name = name.to_str().unwrap_or_default();
+            let id = name.split('-').next().and_then(|n| n.parse::<TermId>().ok());
+            if id.is_none_or(|id| !live.contains(&id)) || is_legacy_check_output(name) {
                 let _ = std::fs::remove_file(e.path());
             }
         }
@@ -221,10 +251,11 @@ pub fn save_check_outputs(dir: &Path, ticket: u64, outputs: &[(TermId, CheckSlot
     failed
 }
 
-/// A pane's kept check output. Left in place: the pane it is restored into writes its own
-/// under its new id, and the next save drops this one, so a crash in between loses nothing.
-pub fn read_check_output(dir: &Path, term: TermId, slot: CheckSlot) -> Option<String> {
-    let bytes = std::fs::read(check_output_file(dir, term, slot)).ok()?;
+/// A pane's kept output for checkpoint `name`, else the one kept before checkpoints had names.
+/// Left in place: the pane it is restored into writes its own under its new id, and the next
+/// save drops this one, so a crash in between loses nothing.
+pub fn read_check_output(dir: &Path, term: TermId, name: &str, slot: CheckSlot) -> Option<String> {
+    let bytes = std::fs::read(check_output_file(dir, term, name, slot)).or_else(|_| std::fs::read(legacy_check_output_file(dir, term, slot))).ok()?;
     Some(check::cap_output(&String::from_utf8_lossy(&bytes)))
 }
 
@@ -326,6 +357,17 @@ pub(super) fn scratch_dir() -> ScratchDir {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::CheckState;
+
+    fn tail(term: TermId, name: &str, slot: CheckSlot, text: &str) -> CheckTail {
+        CheckTail { term, name: name.into(), slot, text: text.into() }
+    }
+
+    fn files_in(dir: &Path) -> Vec<String> {
+        let mut files: Vec<String> = std::fs::read_dir(dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        files.sort();
+        files
+    }
 
     #[test]
     fn a_slow_older_save_cannot_overwrite_a_newer_one() {
@@ -339,29 +381,70 @@ mod tests {
 
     #[test]
     fn check_results_round_trip_and_older_panes_load_without_them() {
-        let info = CheckInfo { command: "npm test".into(), state: crate::protocol::CheckState::Failed, exit_code: Some(1), ..Default::default() };
-        let pane = SavedPane { check: Some(info.clone()), check_overridden: Some(info.clone()), ..Default::default() };
+        let info = CheckInfo { command: "npm test".into(), name: "test".into(), state: CheckState::Failed, exit_code: Some(1), ..Default::default() };
+        let build = CheckInfo { name: "build".into(), ..info.clone() };
+        let pane = SavedPane { checks: vec![build.clone(), info.clone()], checks_overridden: vec![info.clone()], ..Default::default() };
         let back: SavedPane = serde_json::from_str(&serde_json::to_string(&pane).unwrap()).unwrap();
-        assert_eq!((back.check, back.check_overridden), (Some(info.clone()), Some(info)));
+        assert_eq!((back.checks, back.checks_overridden), (vec![build, info.clone()], vec![info]));
         let old: SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":null,"session":null}"#).expect("a pane saved before checks");
-        assert_eq!((old.check, old.check_overridden), (None, None));
+        assert_eq!((old.checks, old.checks_overridden), (vec![], vec![]));
+    }
+
+    #[test]
+    fn a_pane_saved_with_one_check_loads_it_as_one_checkpoint() {
+        let old: SavedPane = serde_json::from_str(
+            r#"{"cwd":null,"cmd":null,"agent":null,"session":null,
+               "check":{"command":"npm test","state":"Failed","exit_code":1},
+               "check_overridden":{"command":"npm test","state":"Overridden"}}"#,
+        )
+        .expect("a pane saved by protocol 43");
+        let states = |c: &[CheckInfo]| c.iter().map(|c| (c.command.clone(), c.state)).collect::<Vec<_>>();
+        assert_eq!(states(&old.checks), [("npm test".to_string(), CheckState::Failed)]);
+        assert_eq!(states(&old.checks_overridden), [("npm test".to_string(), CheckState::Overridden)]);
+        let none: SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":null,"session":null,"check":null}"#).unwrap();
+        assert!(none.checks.is_empty());
+    }
+
+    #[test]
+    fn each_checkpoint_keeps_its_own_output_file() {
+        let dir = scratch_dir();
+        let outputs = [tail(7, "build", CheckSlot::Latest, "built"), tail(7, "test", CheckSlot::Latest, "FAIL a"), tail(7, "test", CheckSlot::Overridden, "FAIL b")];
+        assert!(save_check_outputs(dir.path(), save_ticket(), &outputs, &[7]).is_empty());
+        assert_eq!(files_in(dir.path()), ["7-build-latest.txt", "7-test-latest.txt", "7-test-overridden.txt"]);
+        assert_eq!(read_check_output(dir.path(), 7, "build", CheckSlot::Latest).as_deref(), Some("built"));
+        assert_eq!(read_check_output(dir.path(), 7, "test", CheckSlot::Latest).as_deref(), Some("FAIL a"));
+    }
+
+    #[test]
+    fn a_name_cannot_lead_a_tail_out_of_its_folder() {
+        let dir = scratch_dir();
+        let outputs = [tail(7, "../x/y", CheckSlot::Latest, "t"), tail(7, "", CheckSlot::Latest, "u")];
+        assert!(save_check_outputs(dir.path(), save_ticket(), &outputs, &[7]).is_empty());
+        assert_eq!(files_in(dir.path()), ["7-___x_y-latest.txt", "7-check-latest.txt"]);
+    }
+
+    #[test]
+    fn a_tail_kept_before_checkpoints_had_names_is_read_once() {
+        let dir = scratch_dir();
+        std::fs::create_dir_all(dir.path()).unwrap();
+        std::fs::write(dir.path().join("7-latest.txt"), "old tail").unwrap();
+        assert_eq!(read_check_output(dir.path(), 7, "test", CheckSlot::Latest).as_deref(), Some("old tail"));
+        assert!(save_check_outputs(dir.path(), save_ticket(), &[tail(7, "test", CheckSlot::Latest, "new tail")], &[7]).is_empty());
+        assert_eq!(files_in(dir.path()), ["7-test-latest.txt"], "the next save drops the old file");
+        assert_eq!(read_check_output(dir.path(), 7, "test", CheckSlot::Latest).as_deref(), Some("new tail"));
     }
 
     #[test]
     fn check_output_is_kept_per_slot_read_back_and_dropped_with_its_pane() {
         let dir = scratch_dir();
         let (kept, gone): (crate::protocol::TermId, crate::protocol::TermId) = (7, 8);
-        let outputs = [
-            (kept, CheckSlot::Latest, "FAIL a\n".to_string()),
-            (kept, CheckSlot::Overridden, "FAIL b\n".to_string()),
-            (gone, CheckSlot::Latest, "FAIL c\n".to_string()),
-        ];
+        let outputs = [tail(kept, "test", CheckSlot::Latest, "FAIL a"), tail(kept, "test", CheckSlot::Overridden, "FAIL b"), tail(gone, "test", CheckSlot::Latest, "FAIL c")];
         assert!(save_check_outputs(dir.path(), save_ticket(), &outputs, &[kept, gone]).is_empty());
         assert!(save_check_outputs(dir.path(), save_ticket(), &[], &[kept]).is_empty());
-        assert_eq!(read_check_output(dir.path(), gone, CheckSlot::Latest), None, "a closed pane's tail goes");
-        assert_eq!(read_check_output(dir.path(), kept, CheckSlot::Overridden).as_deref(), Some("FAIL b\n"));
-        assert_eq!(read_check_output(dir.path(), kept, CheckSlot::Latest).as_deref(), Some("FAIL a\n"));
-        assert_eq!(read_check_output(dir.path(), kept, CheckSlot::Latest).as_deref(), Some("FAIL a\n"), "reading leaves it for the next restart");
+        assert_eq!(read_check_output(dir.path(), gone, "test", CheckSlot::Latest), None, "a closed pane's tail goes");
+        assert_eq!(read_check_output(dir.path(), kept, "test", CheckSlot::Overridden).as_deref(), Some("FAIL b"));
+        assert_eq!(read_check_output(dir.path(), kept, "test", CheckSlot::Latest).as_deref(), Some("FAIL a"));
+        assert_eq!(read_check_output(dir.path(), kept, "test", CheckSlot::Latest).as_deref(), Some("FAIL a"), "reading leaves it for the next restart");
     }
 
     #[test]
@@ -369,9 +452,9 @@ mod tests {
         let dir = scratch_dir();
         let term: crate::protocol::TermId = 3;
         let (old, new) = (save_ticket(), save_ticket());
-        assert!(save_check_outputs(dir.path(), new, &[(term, CheckSlot::Latest, "newer".into())], &[term]).is_empty());
-        assert!(save_check_outputs(dir.path(), old, &[(term, CheckSlot::Latest, "older".into())], &[term]).is_empty());
-        assert_eq!(read_check_output(dir.path(), term, CheckSlot::Latest).as_deref(), Some("newer"));
+        assert!(save_check_outputs(dir.path(), new, &[tail(term, "test", CheckSlot::Latest, "newer")], &[term]).is_empty());
+        assert!(save_check_outputs(dir.path(), old, &[tail(term, "test", CheckSlot::Latest, "older")], &[term]).is_empty());
+        assert_eq!(read_check_output(dir.path(), term, "test", CheckSlot::Latest).as_deref(), Some("newer"));
     }
 
     #[test]
@@ -380,7 +463,7 @@ mod tests {
         std::fs::create_dir_all(dir.path()).unwrap();
         let blocker = dir.path().join("not-a-folder");
         std::fs::write(&blocker, "x").unwrap();
-        let failed = save_check_outputs(&blocker, save_ticket(), &[(4, CheckSlot::Latest, "t".into()), (5, CheckSlot::Overridden, "u".into())], &[4, 5]);
+        let failed = save_check_outputs(&blocker, save_ticket(), &[tail(4, "test", CheckSlot::Latest, "t"), tail(5, "test", CheckSlot::Overridden, "u")], &[4, 5]);
         assert_eq!(failed, [4, 5]);
     }
 
@@ -389,9 +472,9 @@ mod tests {
         let (a, b) = (scratch_dir(), scratch_dir());
         let term: crate::protocol::TermId = 6;
         let (old, new) = (save_ticket(), save_ticket());
-        assert!(save_check_outputs(a.path(), new, &[(term, CheckSlot::Latest, "a".into())], &[term]).is_empty());
-        assert!(save_check_outputs(b.path(), old, &[(term, CheckSlot::Latest, "b".into())], &[term]).is_empty());
-        assert_eq!(read_check_output(b.path(), term, CheckSlot::Latest).as_deref(), Some("b"));
+        assert!(save_check_outputs(a.path(), new, &[tail(term, "test", CheckSlot::Latest, "a")], &[term]).is_empty());
+        assert!(save_check_outputs(b.path(), old, &[tail(term, "test", CheckSlot::Latest, "b")], &[term]).is_empty());
+        assert_eq!(read_check_output(b.path(), term, "test", CheckSlot::Latest).as_deref(), Some("b"));
     }
 
     #[test]

@@ -525,7 +525,7 @@ pub struct TermInfo {
     pub checks: Vec<CheckInfo>,
 }
 
-fn one_or_many_checks<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<CheckInfo>, D::Error> {
+pub(crate) fn one_or_many_checks<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<CheckInfo>, D::Error> {
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum Shape {

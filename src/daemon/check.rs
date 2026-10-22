@@ -469,18 +469,20 @@ impl Term {
 
     /// Take back the check results a pane had before the server restarted, tails read from `dir`. A check that was
     /// running died with the server, so it reads as not run rather than checking forever.
+    /// One check runs per pane for now: the first saved checkpoint.
     pub fn restore_checks(&mut self, dir: &Path, old: TermId, saved: &SavedPane) {
-        let record = |info: &Option<CheckInfo>, slot| {
-            let mut info = info.clone()?;
+        let record = |infos: &[CheckInfo], slot| {
+            let mut info = infos.first()?.clone();
             if info.state == CheckState::Checking {
                 info.state = CheckState::CouldNotRun;
             }
             // Nothing is queued after a restart.
             info.rerun_queued = false;
-            Some(CheckRecord::new(info, &persist::read_check_output(dir, old, slot).unwrap_or_default()))
+            let output = persist::read_check_output(dir, old, &info.name, slot).unwrap_or_default();
+            Some(CheckRecord::new(info, &output))
         };
-        self.check = record(&saved.check, CheckSlot::Latest);
-        self.check_overridden = record(&saved.check_overridden, CheckSlot::Overridden);
+        self.check = record(&saved.checks, CheckSlot::Latest);
+        self.check_overridden = record(&saved.checks_overridden, CheckSlot::Overridden);
         self.check_dirty = self.check.is_some() || self.check_overridden.is_some();
     }
 }

@@ -137,8 +137,11 @@ its `source` (`User`, or `Repo` with the file and commit) and, on `NeedsApproval
 `Query::CheckOutput { term, name }` returns it as `Reply::Text`, under the read grant (`name`
 None: the headline checkpoint). Each result's
 tail is capped at `CHECK_OUTPUT_MAX_BYTES` (1 MiB), cut on a character boundary. The latest
-result and the overridden one are saved in `SavedPane` (`check`, `check_overridden`, both
-optional); their tails are saved beside the pane's output files.
+result and the overridden one of each checkpoint are saved in `SavedPane` (`checks`,
+`checks_overridden`; a pane saved with the single `check` / `check_overridden` loads them as
+one checkpoint); their tails are saved beside the pane's output files as
+`<term>-<name>-<slot>.txt`, and a tail under the old `<term>-<slot>.txt` name is read once at
+restore and dropped by the next save. The daemon runs one check per pane for now: the first.
 
 Three commands act on a check, each needing `Grant::Write` on the target pane and each naming
 a checkpoint (`name` None: all of them for a re-run, the headline for the others). `RerunCheck`
