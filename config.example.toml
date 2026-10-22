@@ -181,6 +181,8 @@ A = "new-worktree:claude"   # worktree picker; whatever you open or create start
 # [[team.projects]]
 # project = "/home/me/code/app"
 # family = "codex"
+# Settings > Team edits these tables (Family, This project, the jobs) and keeps your comments.
+# A commander starts a job's helper with seshi_start and `job`; Seshi itself starts nothing.
 
 # Presets: saved launches, offered as ★ choices in the new-agent dialog. `{task}` is what
 # you type. where = send (tell the agent you're on) | beside (a new one in its folder) |
