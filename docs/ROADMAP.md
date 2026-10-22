@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-22 against `origin/main` at v0.36.12.
+Last reconciled: 2026-10-22 against `origin/main` at v0.36.13.
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Seshi is a terminal multiplexer built for running many coding agents at once: see
@@ -11,17 +11,15 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The latest published release on `main` is v0.36.12. It adds Codex root-session
-and helper detection on top of the v0.36.11 sidebar and session reliability
-work below. Five platform archives and checksums are published, and installer
-checks passed on Windows, macOS and Linux. Provider reload and live reporting
-still need confirmation in sessions on the machines where those providers run.
-Pi full-screen scroll behavior remains an open live-validation item below.
-
-Update restart behavior: keep open panes running, then automatically restart
-and reconnect a local daemon when no sessions remain. Remote daemons must be
-updated on their host. Implementation and cross-platform compile checks are
-complete locally; this is not in a release yet.
+The latest published release on `main` is v0.36.13. It restarts the local
+daemon and reconnects the window automatically after the last pane closes,
+without interrupting open sessions. Remote daemons still need to be updated on
+their host. It includes the v0.36.12 Codex root-session and helper detection,
+plus the v0.36.11 sidebar and session reliability work below. Five platform
+archives and checksums are published, and installer checks passed on Windows,
+macOS and Linux. Provider reload and live reporting still need confirmation in
+sessions on the machines where those providers run. Pi full-screen scroll
+behavior remains an open live-validation item below.
 
 Codex helper visibility needs cross-platform live validation. The integration
 records the root thread on session start so local rollout-file detection can
