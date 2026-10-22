@@ -196,6 +196,9 @@ agent is working or asking, draws exactly as without checks.
 | overridden | `⊘` / `/` | `text`, never green | `<cmd> ✕ overridden by you` |
 | could not run | `?` / `?` | `muted`, not a failure | `<cmd> could not run · not found` |
 
+- ASCII status icons (`[icons]` blocked, done and idle all ASCII) switch every check mark to
+  the ASCII column: the row, the Inbox, the evidence sheet, the why popover and the override
+  confirm and toast. Take marks from `check::marks`, never a literal.
 - Shape and word carry the meaning; colour only backs them. Failed (`✕`, "failed")
   and needs-you (`●`, the question) differ in glyph, word and colour.
 - A failed row keeps a red `▎` edge bar on both lines even when not selected.

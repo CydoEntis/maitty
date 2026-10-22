@@ -195,13 +195,13 @@ fn wrapped(text: &str, width: usize, style: Style) -> Vec<Vec<Seg>> {
 }
 
 /// The rows of a banner under the result chip, if its state has one.
-fn banner(info: &CheckInfo, width: usize, t: &Theme) -> Vec<Vec<Seg>> {
+fn banner(info: &CheckInfo, width: usize, overridden: &str, t: &Theme) -> Vec<Vec<Seg>> {
     let c = Style::default().bg(t.card);
     match info.state {
         CheckState::Overridden => {
             let by = match info.overridden_at {
-                Some(at) => format!("⊘ Overridden by you {}", ago(at)),
-                None => "⊘ Overridden by you".into(),
+                Some(at) => format!("{overridden} Overridden by you {}", ago(at)),
+                None => format!("{overridden} Overridden by you"),
             };
             let mut rows = vec![[vec![seg(by, c.fg(t.strong).add_modifier(Modifier::BOLD)), seg(" · ", c.fg(t.muted))], cap_hints(t, t.card, &[("u", "undo")])].concat()];
             if !info.override_reason.is_empty() {
@@ -343,7 +343,7 @@ pub(in crate::client) fn draw_check(app: &mut App, buf: &mut Buffer, inside: Rec
     let folder = term.top.clone().unwrap_or_else(|| term.cwd.clone());
     let value_w = (w as usize).saturating_sub(LABEL_W);
     let strong = c.fg(t.strong).add_modifier(Modifier::BOLD);
-    let banner = banner(&info, w as usize, t);
+    let banner = banner(&info, w as usize, super::check::marks(app).overridden, t);
     let rows = [
         ("Command", vec![vec![seg(truncate(&info.command, value_w), strong)]]),
         ("Folder", vec![vec![seg(truncate(&folder.display().to_string(), value_w), c.fg(t.text))]]),

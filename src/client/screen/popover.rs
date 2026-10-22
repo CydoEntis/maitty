@@ -165,7 +165,7 @@ pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: R
     card(app, buf, r, &card_, t);
     hit(app, r, ScreenHit::Noop);
     if let Some(check) = &info.check {
-        draw_check_timeline(buf, r, &info, check, t);
+        draw_check_timeline(buf, r, &info, check, super::check::marks(app), t);
         pointer(buf, r, t);
         return;
     }
@@ -232,13 +232,13 @@ fn took(ms: u64) -> String {
 }
 
 /// What the check's run came to, as the timeline's last line: its text and colour.
-fn check_result(check: &CheckInfo, t: &Theme) -> (String, Color) {
+fn check_result(check: &CheckInfo, m: &super::check::Marks, t: &Theme) -> (String, Color) {
     let code = check.exit_code.map(|c| format!("exit {c}")).unwrap_or_default();
     let tail = if check.first_failing_line.is_empty() { String::new() } else { format!(" · {}", check.first_failing_line) };
     match check.state {
         CheckState::Checking => ("checking…".into(), t.working),
-        CheckState::Passed => (format!("✓ {code} after {}", took(check.duration_ms)), t.done),
-        CheckState::Failed | CheckState::Overridden => (format!("✕ {code} after {}{tail}", took(check.duration_ms)), t.err),
+        CheckState::Passed => (format!("{} {code} after {}", m.passed, took(check.duration_ms)), t.done),
+        CheckState::Failed | CheckState::Overridden => (format!("{} {code} after {}{tail}", m.failed, took(check.duration_ms)), t.err),
         CheckState::CouldNotRun => (format!("? could not run{}", if code.is_empty() { String::new() } else { format!(" · {code}") }), t.muted),
     }
 }
@@ -258,7 +258,7 @@ fn check_keys(state: CheckState) -> Vec<(&'static str, &'static str)> {
 
 /// Why a session with a check reads as it does: the turn that ended, Seshi running the
 /// command, and what came of it, one line each with the time.
-fn draw_check_timeline(buf: &mut Buffer, r: Rect, info: &TermInfo, check: &CheckInfo, t: &Theme) {
+fn draw_check_timeline(buf: &mut Buffer, r: Rect, info: &TermInfo, check: &CheckInfo, m: &super::check::Marks, t: &Theme) {
     let c = Style::default().bg(t.card);
     let summary = match check.state {
         CheckState::Checking => "Seshi is running the check; the session isn't done yet.",
@@ -280,12 +280,12 @@ fn draw_check_timeline(buf: &mut Buffer, r: Rect, info: &TermInfo, check: &Check
         let ran = vec![seg("Seshi ran ", c.fg(t.text)), seg(check.command.clone(), c.fg(t.strong).add_modifier(Modifier::BOLD)), seg(" in its worktree", c.fg(t.text))];
         lines.push((check.started_at, ran));
     }
-    let (result, color) = check_result(check, t);
+    let (result, color) = check_result(check, m, t);
     let finished = if check.state == CheckState::Checking || check.started_at == 0 { 0 } else { check.started_at + check.duration_ms / 1000 };
     lines.push((finished, vec![seg(truncate(&result, body_w), c.fg(color).add_modifier(Modifier::BOLD))]));
     if let (CheckState::Overridden, Some(at)) = (check.state, check.overridden_at) {
         let why = if check.override_reason.is_empty() { String::new() } else { format!(" · {}", check.override_reason) };
-        lines.push((at, vec![seg(truncate(&format!("⊘ overridden by you{why}"), body_w), c.fg(t.muted))]));
+        lines.push((at, vec![seg(truncate(&format!("{} overridden by you{why}", m.overridden), body_w), c.fg(t.muted))]));
     }
     if check.rerun_queued {
         lines.push((0, vec![seg("runs again when this turn settles", c.fg(t.muted).add_modifier(Modifier::ITALIC))]));
