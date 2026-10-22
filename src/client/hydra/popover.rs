@@ -169,7 +169,6 @@ pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: R
         pointer(buf, r, t);
         return;
     }
-    let ago = |at: u64| if at == 0 { String::new() } else { format!("{} ago", age(at)) };
     let process = match (info.agent.as_deref(), info.pid) {
         (Some(a), 0) => format!("{a} running"),
         (Some(a), pid) => format!("{a} running · pid {pid}"),
@@ -218,25 +217,9 @@ pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: R
     pointer(buf, r, t);
 }
 
-/// `at` (unix seconds) as the wall clock the user lives by, `14:21:51`.
-#[cfg(unix)]
-fn clock(at: u64) -> String {
-    let Ok(secs) = libc::time_t::try_from(at) else { return format!("{} ago", age(at)) };
-    // SAFETY: `tm` is plain data that `localtime_r` fills in; it reads only `secs`.
-    let tm = unsafe {
-        let mut tm: libc::tm = std::mem::zeroed();
-        if libc::localtime_r(&secs, &mut tm).is_null() {
-            return format!("{} ago", age(at));
-        }
-        tm
-    };
-    format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
-}
-
-/// Without a local-time call here, an age says when just as well.
-#[cfg(not(unix))]
-fn clock(at: u64) -> String {
-    format!("{} ago", age(at))
+/// `at` (unix seconds) as an age, `2m ago`; nothing when it was never recorded.
+fn ago(at: u64) -> String {
+    if at == 0 { String::new() } else { format!("{} ago", age(at)) }
 }
 
 /// `14.2s`, or `2m05s` once it passes a minute.
@@ -259,16 +242,16 @@ fn check_result(check: &CheckInfo, t: &Theme) -> (String, Color) {
     }
 }
 
-/// The popover's keys, only for the results they apply to.
+/// The popover's keys, only for the results they apply to, most important first.
 fn check_keys(state: CheckState) -> Vec<(&'static str, &'static str)> {
-    let mut keys = Vec::new();
+    // First, so a narrow popover clips the optional keys and never the way out.
+    let mut keys = vec![("Esc", "close")];
     if state != CheckState::Checking {
         keys.extend([("⏎", "evidence"), ("r", "re-run")]);
     }
     if state == CheckState::Failed {
         keys.push(("O", "override"));
     }
-    keys.push(("Esc", "close"));
     keys
 }
 
@@ -283,35 +266,42 @@ fn draw_check_timeline(buf: &mut Buffer, r: Rect, info: &TermInfo, check: &Check
         CheckState::Overridden => "The check failed; you accepted it.",
         CheckState::CouldNotRun => "The check could not run. The work hasn't been checked.",
     };
-    put(buf, r.x + 3, r.y + 2, &[seg(summary, c.fg(t.text))], r.right() - 2);
+    let width = r.width.saturating_sub(6) as usize;
+    put(buf, r.x + 3, r.y + 2, &[seg(truncate(summary, width), c.fg(t.text))], r.right() - 2);
+    let body_w = width.saturating_sub(TIME_COL);
     let said = info.said.lines().rev().map(str::trim).find(|l| !l.is_empty());
     let mut lines: Vec<(u64, Vec<Seg>)> = Vec::new();
     if check.after_turn_ended_at > 0 {
         let quote = said.map(|s| format!(" · it said \"{s}\"")).unwrap_or_default();
-        lines.push((check.after_turn_ended_at, vec![seg(format!("agent's turn ended{quote}"), c.fg(t.text))]));
+        lines.push((check.after_turn_ended_at, vec![seg(truncate(&format!("agent's turn ended{quote}"), body_w), c.fg(t.text))]));
     }
     if check.started_at > 0 {
         let ran = vec![seg("Seshi ran ", c.fg(t.text)), seg(check.command.clone(), c.fg(t.strong).add_modifier(Modifier::BOLD)), seg(" in its worktree", c.fg(t.text))];
         lines.push((check.started_at, ran));
     }
     let (result, color) = check_result(check, t);
-    let finished = if check.state == CheckState::Checking { 0 } else { check.started_at + check.duration_ms / 1000 };
-    lines.push((finished, vec![seg(result, c.fg(color).add_modifier(Modifier::BOLD))]));
+    let finished = if check.state == CheckState::Checking || check.started_at == 0 { 0 } else { check.started_at + check.duration_ms / 1000 };
+    lines.push((finished, vec![seg(truncate(&result, body_w), c.fg(color).add_modifier(Modifier::BOLD))]));
     if let (CheckState::Overridden, Some(at)) = (check.state, check.overridden_at) {
         let why = if check.override_reason.is_empty() { String::new() } else { format!(" · {}", check.override_reason) };
-        lines.push((at, vec![seg(format!("⊘ overridden by you{why}"), c.fg(t.muted))]));
+        lines.push((at, vec![seg(truncate(&format!("⊘ overridden by you{why}"), body_w), c.fg(t.muted))]));
     }
     if check.rerun_queued {
         lines.push((0, vec![seg("runs again when this turn settles", c.fg(t.muted).add_modifier(Modifier::ITALIC))]));
     }
-    let width = r.width.saturating_sub(6) as usize;
     for (i, (at, body)) in lines.into_iter().enumerate() {
-        let when = if at == 0 { String::new() } else { clock(at) };
+        let when = ago(at);
         let mut row = vec![seg(format!("{when:<TIME_COL$}"), c.fg(t.muted))];
         row.extend(body);
         put(buf, r.x + 3, r.y + 4 + i as u16, &row, r.x + 3 + width as u16);
     }
-    put(buf, r.x + 3, r.y + 10, &cap_hints(t, t.card, &check_keys(check.state)), r.right() - 2);
+    let mut keys = check_keys(check.state);
+    let mut hints = cap_hints(t, t.card, &keys);
+    while keys.len() > 1 && usize::from(segs_width(&hints)) > width {
+        keys.pop();
+        hints = cap_hints(t, t.card, &keys);
+    }
+    put(buf, r.x + 3, r.y + 10, &hints, r.right() - 2);
 }
 
 impl App {

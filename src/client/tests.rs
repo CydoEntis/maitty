@@ -3939,16 +3939,24 @@ mod check_why_tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
-    const TURN_ENDED: u64 = 1_700_000_000;
+    const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
+
+    fn now() -> u64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+    }
+
+    fn turn_ended() -> u64 {
+        now() - 3_000
+    }
 
     fn check(state: CheckState, exit_code: Option<i32>) -> CheckInfo {
         CheckInfo {
             command: "npm test".into(),
             state,
             exit_code,
-            started_at: TURN_ENDED + 14,
+            started_at: turn_ended() + 14,
             duration_ms: 14_200,
-            after_turn_ended_at: TURN_ENDED,
+            after_turn_ended_at: turn_ended(),
             first_failing_line: "1 of 59 tests failed".into(),
             ..Default::default()
         }
@@ -3984,35 +3992,69 @@ mod check_why_tests {
         let (_, mut app) = super::design_tests::render_with(w, h);
         layout(&mut app);
         let info = app.snap.terms.get_mut(&1).unwrap();
-        info.said = "tests pass".into();
+        info.said = "done".into();
         info.check = check;
         app.mode = Mode::Why { term: 1, side: false };
         app
     }
 
     #[test]
-    fn a_failed_check_reads_as_a_timeline_in_every_layout() {
+    fn a_failed_check_reads_as_a_timeline_in_every_layout_at_every_size() {
         for (name, layout) in layouts() {
-            let mut app = app_with(100, 30, layout, Some(check(CheckState::Failed, Some(1))));
-            let o = draw(&mut app, 100, 30);
-            show(&o);
-            // Flat pads keycaps with spaces where cards use edge glyphs.
-            let text = o.split_whitespace().collect::<Vec<_>>().join(" ");
-            for want in [
-                "agent's turn ended · it said \"tests pass\"",
-                "Seshi ran npm test in its worktree",
-                "✕ exit 1 after 14.2s · 1 of 59 tests failed",
-                "⏎ evidence",
-                "r re-run",
-                "O override",
-                "Esc close",
-            ] {
-                assert!(text.contains(want), "{name}: missing {want:?} in\n{o}");
+            for (w, h) in SIZES {
+                let mut app = app_with(w, h, layout, Some(check(CheckState::Failed, Some(1))));
+                let o = draw(&mut app, w, h);
+                show(&o);
+                let at = format!("{name} {w}x{h}");
+                // Flat pads keycaps with spaces where cards use edge glyphs.
+                let text = o.split_whitespace().collect::<Vec<_>>().join(" ");
+                for want in [
+                    "agent's turn ended · it said \"done\"",
+                    "Seshi ran npm test in its worktree",
+                    "✕ exit 1 after 14.2s",
+                    "m ago",
+                    "Esc close",
+                    "◂",
+                ] {
+                    assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
+                }
+                // A narrow popover drops the trailing keys whole rather than clip one.
+                let all = ["⏎ evidence", "r re-run", "O override"].iter().filter(|k| text.contains(*k)).count();
+                assert!(w < 100 || all == 3, "{at}: every key shows when there is room");
+                assert!(!text.contains("O override") || all == 3, "{at}: no half-drawn key");
+                assert!(text.contains("⏎ evidence") || !text.contains("r re-run"), "{at}: keys drop from the end");
+                assert!(!o.contains("most specific source wins"), "{at}: the check replaces the source rows");
+                assert!(o.lines().count() <= h as usize && o.lines().all(|l| l.chars().count() <= w as usize), "{at}: fits the screen");
+                app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                assert!(app.mode == Mode::Normal, "{at}: Esc closes it");
             }
-            assert!(!o.contains("most specific source wins"), "{name}: the check replaces the source rows");
-            app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-            assert!(app.mode == Mode::Normal, "{name}: Esc closes it");
         }
+    }
+
+    #[test]
+    fn the_longest_timeline_line_is_cut_at_the_card_edge_at_80x24() {
+        for (name, layout) in layouts() {
+            let mut app = app_with(80, 24, layout, Some(check(CheckState::Failed, Some(1))));
+            app.snap.terms.get_mut(&1).unwrap().said = "x".repeat(200);
+            let o = draw(&mut app, 80, 24);
+            show(&o);
+            let line = o.lines().find(|l| l.contains("agent's turn ended")).unwrap_or_else(|| panic!("{name}: no turn line in\n{o}"));
+            assert!(line.chars().count() <= 80, "{name}: the line stays on screen");
+            assert!(!line.contains(&"x".repeat(200)), "{name}: the long quote is cut");
+            assert!(line.contains("x…"), "{name}: the cut ends in an ellipsis: {line:?}");
+            let hints = o.lines().find(|l| l.contains("Esc")).unwrap_or_else(|| panic!("{name}: Esc hint clipped in\n{o}"));
+            assert!(hints.contains("Esc close"), "{name}: {hints:?}");
+        }
+    }
+
+    #[test]
+    fn a_check_with_no_start_time_shows_no_finish_time() {
+        let mut c = check(CheckState::Failed, Some(1));
+        c.started_at = 0;
+        let mut app = app_with(100, 30, |_| {}, Some(c));
+        let o = draw(&mut app, 100, 30);
+        let line = o.lines().find(|l| l.contains("✕ exit 1")).unwrap();
+        assert!(!line.contains("ago"), "no time for a run that never recorded its start: {line:?}");
     }
 
     #[test]
@@ -4034,7 +4076,7 @@ mod check_why_tests {
     #[test]
     fn an_override_and_a_queued_re_run_stay_visible() {
         let mut c = check(CheckState::Overridden, Some(1));
-        c.overridden_at = Some(TURN_ENDED + 60);
+        c.overridden_at = Some(turn_ended() + 60);
         c.override_reason = "flaky".into();
         c.rerun_queued = true;
         let mut app = app_with(100, 30, |_| {}, Some(c));

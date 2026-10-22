@@ -114,7 +114,7 @@ The sidebar's **+ new** uses the same shell action as leader + `n`, including it
 
 When an update is available, show **Update <version>** in the tab row and open the existing confirmation flow when clicked. Do not show the control when Seshi is current. Keep status icons and pane status tags clickable to open the evidence explanation. Terminal bells do not add sidebar indicators or history entries.
 
-The evidence popover (`i`, or a click on a status) explains a session's status from its hook, screen and process reports. For a session with a check, it shows a timeline instead: when the agent's turn ended and what it said, when Seshi ran the command, and the result with exit code and duration, in local time (an age on Windows). Its keycap hints list only the keys that apply: `⏎` evidence and `r` re-run once there is a result, `O` override for a failed one, `Esc` close. A session without a check keeps the source rows.
+The evidence popover (`i`, or a click on a status) explains a session's status from its hook, screen and process reports. For a session with a check, it shows a timeline instead: when the agent's turn ended and what it said, when Seshi ran the command, and the result with exit code and duration, each with its age (`2m ago`). Its keycap hints list only the keys that apply: `⏎` evidence and `r` re-run once there is a result, `O` override for a failed one, `Esc` close. A session without a check keeps the source rows.
 
 Mark one selected sidebar row independently from hover: the keyboard selection stays selected when the mouse moves; hover is a separate, quieter tint. The open session keeps a dim selection bar while another row is under the keyboard. Preserve agent status icons and colors in each state.
 
