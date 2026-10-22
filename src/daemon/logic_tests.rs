@@ -2052,3 +2052,143 @@ fn a_pane_may_not_override_its_own_check() {
     assert_eq!(check_of(&d, a).state, CheckState::Failed);
     close(&mut d, &[a]);
 }
+
+fn checking(d: &mut Daemon, t: TermId) {
+    let info = CheckInfo { command: "npm test".into(), state: CheckState::Checking, ..Default::default() };
+    d.terms.get_mut(&t).unwrap().check = Some(check::CheckRecord::new(info, ""));
+}
+
+fn ran(outcome: check::CheckOutcome) -> check::CheckRun {
+    check::CheckRun { outcome, output: String::new(), duration: Duration::from_millis(5) }
+}
+
+fn working_agent(d: &mut Daemon) -> TermId {
+    let t = pane(d);
+    d.terms.get_mut(&t).unwrap().agent = Some("claude".into());
+    d.set_status(t, Status::Working, "test");
+    t
+}
+
+fn overdue(d: &mut Daemon, t: TermId) {
+    d.terms.get_mut(&t).unwrap().alert_due.as_mut().unwrap().1 = Instant::now() - Duration::from_millis(1);
+}
+
+fn viewer(d: &mut Daemon) -> mpsc::Receiver<ServerMsg> {
+    let (tx, mut rx) = mpsc::channel(64);
+    d.handle(Ev::Connected(40, tx, true));
+    while rx.try_recv().is_ok() {}
+    rx
+}
+
+fn heard(rx: &mut mpsc::Receiver<ServerMsg>) -> Vec<ServerMsg> {
+    std::iter::from_fn(|| rx.try_recv().ok()).collect()
+}
+
+#[test]
+fn a_finished_alert_waits_for_the_check_and_rings_once_it_passes() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut seen = viewer(&mut d);
+    checking(&mut d, t);
+    d.set_status(t, Status::Done, "test");
+    assert!(!heard(&mut seen).iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })), "not announced while checking");
+    // Even a deadline that is already due holds back.
+    d.terms.get_mut(&t).unwrap().alert_due = Some((Status::Done, Instant::now() - Duration::from_millis(1)));
+    d.settled_alerts();
+    assert!(d.terms[&t].alerted.is_none() && d.terms[&t].alert_due.is_some(), "still held");
+    d.check_ran(t, ran(check::CheckOutcome::Exited(0)));
+    assert!(heard(&mut seen).iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })), "announced once it passed");
+    d.clients.clear();
+    overdue(&mut d, t);
+    d.settled_alerts();
+    assert_eq!(d.terms[&t].alerted.map(|(s, _)| s), Some(Status::Done));
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_failed_check_raises_its_own_alert_and_never_a_finished_one() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut seen = viewer(&mut d);
+    checking(&mut d, t);
+    d.set_status(t, Status::Done, "test");
+    d.check_ran(t, ran(check::CheckOutcome::Exited(1)));
+    let got = heard(&mut seen);
+    assert!(got.iter().any(|m| matches!(m, ServerMsg::Attention { term, status: Status::Blocked } if *term == t)));
+    assert!(got.iter().any(|m| matches!(m, ServerMsg::Notice(n) if n.contains("check failed"))));
+    assert!(!got.iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })));
+    assert!(d.terms[&t].alert_due.is_none(), "no finished alert is left to ring");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_check_that_could_not_run_gives_a_notice_and_the_session_finishes() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut seen = viewer(&mut d);
+    checking(&mut d, t);
+    d.set_status(t, Status::Done, "test");
+    d.check_ran(t, ran(check::CheckOutcome::SpawnFailed));
+    let got = heard(&mut seen);
+    assert!(got.iter().any(|m| matches!(m, ServerMsg::Notice(n) if n.contains("could not run"))));
+    assert!(got.iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })));
+    assert!(d.terms[&t].alert_due.is_some());
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_result_for_a_session_that_went_back_to_work_says_nothing() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut seen = viewer(&mut d);
+    checking(&mut d, t);
+    d.set_status(t, Status::Done, "test");
+    d.set_status(t, Status::Working, "test");
+    heard(&mut seen);
+    d.check_ran(t, ran(check::CheckOutcome::Exited(1)));
+    assert!(heard(&mut seen).is_empty() && d.terms[&t].alert_due.is_none());
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_session_with_no_check_announces_its_finish_at_once() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    let mut seen = viewer(&mut d);
+    d.set_status(t, Status::Done, "test");
+    assert!(heard(&mut seen).iter().any(|m| matches!(m, ServerMsg::Attention { status: Status::Done, .. })));
+    d.clients.clear();
+    overdue(&mut d, t);
+    d.settled_alerts();
+    assert_eq!(d.terms[&t].alerted.map(|(s, _)| s), Some(Status::Done));
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn the_phone_hears_nothing_while_a_check_runs_or_after_it_fails() {
+    let (mut d, _rx) = daemon();
+    d.cfg.notify.phone_topic = "seshi-test-topic".into();
+    d.cfg.notify.phone_done = true;
+    d.cfg.notify.phone_after = 0;
+    let t = working_agent(&mut d);
+    checking(&mut d, t);
+    d.set_status(t, Status::Done, "test");
+    d.phone_alerts();
+    assert_eq!(d.terms[&t].phoned, 0, "held while checking");
+    d.check_ran(t, ran(check::CheckOutcome::Exited(1)));
+    d.phone_alerts();
+    assert_eq!(d.terms[&t].phoned, 0, "a failed check is not a finish");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_queued_follow_up_still_sends_when_the_turn_ends_during_a_check() {
+    let (mut d, _rx) = daemon();
+    let t = working_agent(&mut d);
+    d.terms.get_mut(&t).unwrap().queue.push_back("and the docs".into());
+    checking(&mut d, t);
+    d.set_status(t, Status::Done, "test");
+    d.update_statuses();
+    assert!(d.terms[&t].queue.is_empty() && d.terms[&t].queue_sent.is_some(), "sent as today");
+    close(&mut d, &[t]);
+}

@@ -373,14 +373,21 @@ impl Daemon {
                 t.alerted = None;
             }
         }
-        if matches!(new, Status::Blocked | Status::Done) {
-            self.broadcast(|c| c.attach, ServerMsg::Attention { term, status: new });
-            if (new != Status::Done || !self.is_helper(term))
-                && let Some(t) = self.terms.get_mut(&term)
-                && let Some(delay) = crate::alert::settle_delay(new)
-            {
-                t.alert_due = Some((new, std::time::Instant::now() + delay));
-            }
+        // A finish waits for its check: `check_settled` says it once the result is in.
+        let held = new == Status::Done && self.terms.get(&term).is_some_and(Term::check_running);
+        if matches!(new, Status::Blocked | Status::Done) && !held {
+            self.announce(term, new);
+        }
+    }
+
+    /// Tell attached clients `term` needs attention, and queue the desktop alert for it.
+    pub(super) fn announce(&mut self, term: TermId, status: Status) {
+        self.broadcast(|c| c.attach, ServerMsg::Attention { term, status });
+        if (status != Status::Done || !self.is_helper(term))
+            && let Some(t) = self.terms.get_mut(&term)
+            && let Some(delay) = crate::alert::settle_delay(status)
+        {
+            t.alert_due = Some((status, std::time::Instant::now() + delay));
         }
     }
 
@@ -392,17 +399,22 @@ impl Daemon {
     /// Pending alerts only ring while the matching attention status is still current.
     pub(super) fn settled_alerts(&mut self) {
         let now = std::time::Instant::now();
-        let due: Vec<_> = self.terms.values().filter_map(|t| t.alert_due.filter(|(_, at)| *at <= now).map(|(status, _)| (t.id, status))).collect();
+        let due: Vec<_> = self
+            .terms
+            .values()
+            .filter(|t| !t.check_running())
+            .filter_map(|t| t.alert_due.filter(|(_, at)| *at <= now).map(|(status, _)| (t.id, status)))
+            .collect();
         for (term, status) in due {
             let still = self.terms.get_mut(&term).is_some_and(|t| t.alert_due.take().is_some() && t.status == status);
             if still {
-                self.alert(term, status);
+                self.alert(term, status, if status == Status::Blocked { "needs you" } else { "finished" });
             }
         }
     }
 
     /// No window open: the server shows a desktop notification; needs-you also gets a sound.
-    fn alert(&mut self, term: TermId, status: Status) {
+    pub(super) fn alert(&mut self, term: TermId, status: Status, what: &str) {
         let now = std::time::Instant::now();
         let last_any = self
             .terms
@@ -422,7 +434,6 @@ impl Daemon {
             let place = t.place();
             let summary = t.summary.trim();
             let body = if summary.is_empty() { place } else { format!("{place} · {summary}") };
-            let what = if status == Status::Blocked { "needs you" } else { "finished" };
             if let Some(kind) = crate::alert::Kind::for_status(status) {
                 crate::alert::ring(&self.cfg.notify, kind);
             }
@@ -440,7 +451,7 @@ impl Daemon {
         let now = term::unix_now();
         for t in self.terms.values_mut() {
             let Some(agent) = t.agent.clone() else { continue };
-            let wanted = t.status == Status::Blocked || (t.status == Status::Done && n.phone_done);
+            let wanted = t.status == Status::Blocked || (t.status == Status::Done && n.phone_done && !t.check_holds_done());
             if !wanted || t.phoned == t.status_since || now.saturating_sub(t.status_since) < n.phone_after {
                 continue;
             }

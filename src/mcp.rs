@@ -234,7 +234,7 @@ impl Server {
         match cli::wait_on(term, regex, std::time::Duration::from_secs(secs), just_sent).map_err(|e| format!("{e:#}"))? {
             cli::Waited::Matched(l) => Ok(format!("matched: {l}")),
             cli::Waited::TimedOut => Err(format!("still going after {secs}s")),
-            cli::Waited::Turn(s, said) => {
+            cli::Waited::Turn(s, said, check) => {
                 let reply = if said.trim().is_empty() {
                     let screen = self.screen(term)?;
                     let lines: Vec<&str> = screen.trim_end().lines().collect();
@@ -246,7 +246,8 @@ impl Server {
                     Status::Blocked => "needs an answer (see seshi_read / seshi_answer)",
                     _ => "finished",
                 };
-                Ok(format!("{term} {state}:\n{reply}"))
+                let checked = check.map(|c| format!("\n{}", cli::check_line(&c))).unwrap_or_default();
+                Ok(format!("{term} {state}:\n{reply}{checked}"))
             }
         }
     }

@@ -5,7 +5,7 @@
 use super::persist::{self, CheckSlot, SavedPane};
 use super::term::{self, Term};
 use super::{Daemon, Ev};
-use crate::protocol::{CheckInfo, CheckState, Status, TermId};
+use crate::protocol::{CheckInfo, CheckState, ServerMsg, Status, TermId};
 use std::path::Path;
 use std::process::{Child, Stdio};
 use std::sync::{Arc, Mutex};
@@ -17,6 +17,9 @@ pub const CHECK_OUTPUT_MAX_BYTES: usize = 1024 * 1024;
 
 /// The longest reason an override may give; it is shown beside the result, not an essay.
 pub const OVERRIDE_REASON_MAX_CHARS: usize = 280;
+
+/// What the desktop alert says when a check fails.
+const CHECK_FAILED_WHAT: &str = "check failed";
 
 /// The shell's exit code for a command it could not find (cmd.exe's is 9009). PowerShell
 /// reports a missing command as 1, which cannot be told from a failing one.
@@ -404,6 +407,29 @@ impl Daemon {
         record.output = cap_output(&run.output);
         t.check_dirty = true;
         self.dirty = true;
+        self.check_settled(term);
+    }
+
+    /// Say what the turn's end held back, now the check has an answer. A pass (or a check
+    /// that never ran) is the finish; a failure is news of its own, never a finish.
+    fn check_settled(&mut self, term: TermId) {
+        let Some(t) = self.terms.get(&term) else { return };
+        let Some(state) = t.check.as_ref().map(|c| c.info.state) else { return };
+        let (status, place) = (t.status, t.place());
+        match state {
+            CheckState::Failed if matches!(status, Status::Done | Status::Idle) => {
+                self.broadcast(|c| c.attach, ServerMsg::Attention { term, status: Status::Blocked });
+                self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{place}: check failed")));
+                self.alert(term, Status::Blocked, CHECK_FAILED_WHAT);
+            }
+            CheckState::CouldNotRun | CheckState::Passed if status == Status::Done => {
+                if state == CheckState::CouldNotRun {
+                    self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{place}: check could not run")));
+                }
+                self.announce(term, Status::Done);
+            }
+            _ => {}
+        }
     }
 
     /// Output tails that could not be written are written again at the next save.
@@ -417,6 +443,16 @@ impl Daemon {
 }
 
 impl Term {
+    /// A turn ended and its check has not answered yet.
+    pub fn check_running(&self) -> bool {
+        self.check.as_ref().is_some_and(|c| c.info.state == CheckState::Checking)
+    }
+
+    /// The work is not known to be good: a check is running or has failed.
+    pub fn check_holds_done(&self) -> bool {
+        self.check.as_ref().is_some_and(|c| matches!(c.info.state, CheckState::Checking | CheckState::Failed))
+    }
+
     /// Take back the check results a pane had before the server restarted, tails read from `dir`. A check that was
     /// running died with the server, so it reads as not run rather than checking forever.
     pub fn restore_checks(&mut self, dir: &Path, old: TermId, saved: &SavedPane) {
