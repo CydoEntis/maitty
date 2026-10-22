@@ -127,8 +127,9 @@ pub fn changed_files(top: &Path, root: Option<&Path>) -> Result<Changed, String>
     let mut files = uncommitted(&crate::proc::git(top, &["status", "--porcelain", "-z", "--untracked-files=all"])?);
     let mut committed_unknown = None;
     if let Some(base) = base_branch(top, root) {
-        match crate::proc::git(top, &["diff", "--name-only", &format!("{base}...HEAD")]) {
-            Ok(committed) => files.extend(committed.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from)),
+        // -z as for status, so a non-ASCII path is spelled the same way in both lists.
+        match crate::proc::git(top, &["diff", "--name-only", "-z", &format!("{base}...HEAD")]) {
+            Ok(committed) => files.extend(committed.split('\0').filter(|p| !p.is_empty()).map(String::from)),
             Err(why) => committed_unknown = Some(why),
         }
     }
