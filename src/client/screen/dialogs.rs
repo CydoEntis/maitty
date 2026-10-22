@@ -303,7 +303,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     let act = |app: &mut App, buf: &mut Buffer, vx: u16| -> u16 {
         let ar = Rect { x: vx, y: vy, width: action.width() as u16 + if primary { 4 } else { 2 }, height: 1 };
         let end = if primary {
-            let btn = button_pill(look, t, action, "", true, hovered(app, ar), t.card);
+            let btn = button_pill(look, t, action, "", true, t.card);
             put(buf, vx, vy, &btn, r.right() - 3)
         } else if what == ScreenHit::CheckUpdate {
             put(buf, vx, vy, &[seg("u", c.fg(t.accent).add_modifier(Modifier::BOLD)), seg(" check now", if hovered(app, ar) { c.fg(t.text) } else { dot })], r.right() - 3)
@@ -351,8 +351,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         let lead = "Restart pending — ";
         say(buf, lead.into(), c.fg(t.accent).add_modifier(Modifier::BOLD));
         let (x, y) = (r.x + 4 + lead.width() as u16, vy + lines_used);
-        let ar = Rect { x, y, width: "Restart now R".width() as u16 + 4, height: 1 };
-        let btn = button_pill(look, t, "Restart now", "R", true, hovered(app, ar), t.card);
+        let btn = button_pill(look, t, "Restart now", "R", true, t.card);
         let end = put(buf, x, y, &btn, r.right() - 3);
         hit(app, Rect { x, y, width: end.saturating_sub(x).max(1), height: 1 }, ScreenHit::Restart);
         put(buf, end, y, &[seg("  or when all sessions close", dot)], r.right() - 3);

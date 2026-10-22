@@ -493,7 +493,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         for (i, o) in opts.iter().enumerate().take(4) {
             let key = char::from_digit(i as u32 + 1, 10).unwrap_or('1').to_string();
             let label = if keys_only { String::new() } else { o.clone() };
-            let segs = button_pill(look, t, &label, &key, i == 0, false, t.card2);
+            let segs = button_pill(look, t, &label, &key, i == 0, t.card2);
             let br = Rect { x, y: ay, width: segs_width(&segs), height: 1 };
             x = put(f.buffer_mut(), x, ay, &segs, rx) + 1;
             app.hits.push((br, Hit::Button(crate::client::Btn::Answer(term, key.chars().next().unwrap_or('1')))));
@@ -558,7 +558,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     let mut body = vec![seg(mark, Style::default().fg(colour).add_modifier(Modifier::BOLD)), seg(text, Style::default().fg(t.strong)), seg(hint, Style::default().fg(blend(t.strong, fill_c, TOAST_HINT_FADE)))];
     if restart {
         body.push(seg("  ", Style::default()));
-        body.extend(button_pill(look, t, "Restart now", "", false, false, fill_c));
+        body.extend(button_pill(look, t, "Restart now", "", false, fill_c));
     }
     let segs = pill(look, body, fill_c, t.bg);
     let w = segs_width(&segs);

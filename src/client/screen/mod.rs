@@ -978,13 +978,12 @@ pub(super) fn hovered(app: &App, r: Rect) -> bool {
     app.hover.is_some_and(|p| r.contains(p))
 }
 
-/// A design button (" Label key "), hovered with `hov`; records its hit.
+/// A design button (" Label key "); records its hit.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn btn(app: &mut App, buf: &mut Buffer, x: u16, y: u16, label: &str, key: &str, kind: BtnKind, h: ScreenHit, max_x: u16) -> u16 {
     let t = app.theme.clone();
-    let w = segs_width(&button(&t, label, key, kind, false));
-    let r = Rect { x, y, width: w.min(max_x.saturating_sub(x)), height: 1 };
-    let segs = button(&t, label, key, kind, hovered(app, r));
+    let segs = button(&t, label, key, kind);
+    let r = Rect { x, y, width: segs_width(&segs).min(max_x.saturating_sub(x)), height: 1 };
     let nx = put(buf, x, y, &segs, max_x);
     hit(app, r, h);
     nx

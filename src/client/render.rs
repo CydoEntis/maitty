@@ -75,6 +75,11 @@ fn tint_hovered(app: &App, buf: &mut Buffer, t: &crate::theme::Theme) {
     if !tints(h) || *r == buf.area {
         return;
     }
+    tint(buf, *r, t);
+}
+
+/// Lay the pointer's tint over `r`.
+pub(super) fn tint(buf: &mut Buffer, r: Rect, t: &crate::theme::Theme) {
     let r = r.intersection(buf.area);
     for y in r.top()..r.bottom() {
         for x in r.left()..r.right() {

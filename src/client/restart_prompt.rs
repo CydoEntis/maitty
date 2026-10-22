@@ -79,8 +79,8 @@ impl Prompt {
         }
         let y = top + BLOCK_HEIGHT - 1;
         let buttons = [
-            (Choice::Restart, button(t, "Restart and open", "Enter", BtnKind::Primary, self.hover == Some(Choice::Restart))),
-            (Choice::Quit, button(t, "Quit", "Esc", BtnKind::Normal, self.hover == Some(Choice::Quit))),
+            (Choice::Restart, button(t, "Restart and open", "Enter", BtnKind::Primary)),
+            (Choice::Quit, button(t, "Quit", "Esc", BtnKind::Normal)),
         ];
         let total: u16 = buttons.iter().map(|(_, b)| segs_width(b)).sum::<u16>() + BUTTON_GAP;
         let mut x = area.x + area.width.saturating_sub(total) / 2;
@@ -88,6 +88,9 @@ impl Prompt {
             let w = segs_width(&segs);
             put(buf, x, y, &segs, area.right());
             let r = Rect { x, y, width: w, height: 1 }.intersection(area);
+            if self.hover == Some(choice) {
+                super::render::tint(buf, r, t);
+            }
             if r.width > 0 && r.height > 0 {
                 self.hits.push((r, choice));
             }
@@ -227,8 +230,15 @@ mod tests {
         let mut prompt = Prompt::new(OLD_PROTOCOL, &cfg(LAYOUTS[0]));
         drawn(&mut prompt, 100, 30);
         let quit = button_at(&prompt, Choice::Quit);
+        let bg = |prompt: &mut Prompt| {
+            let mut term = Terminal::new(TestBackend::new(100, 30)).unwrap();
+            term.draw(|f| prompt.draw(f)).unwrap();
+            term.backend().buffer()[(quit.x + 1, quit.y)].bg
+        };
+        let plain = bg(&mut prompt);
         assert_eq!(mouse(&mut prompt, MouseEventKind::Moved, quit), None);
         assert_eq!(prompt.hover, Some(Choice::Quit));
+        assert_ne!(bg(&mut prompt), plain, "the button under the pointer is tinted");
         prompt.on_mouse(MouseEvent { kind: MouseEventKind::Moved, column: 0, row: 0, modifiers: KeyModifiers::NONE });
         assert_eq!(prompt.hover, None);
     }

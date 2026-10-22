@@ -94,7 +94,7 @@ pub(super) fn draw_confirm(app: &mut App, f: &mut ratatui::Frame, area: ratatui:
         return super::screen::draw_override(app, f, area, t, c);
     }
     use super::design::{put, seg};
-    use super::screen::{ScreenHit, dim_all, hit, hovered, panel};
+    use super::screen::{ScreenHit, dim_all, hit, panel};
     use ratatui::layout::Rect;
     use ratatui::style::{Modifier, Style};
     let buf = f.buffer_mut();
@@ -123,12 +123,12 @@ pub(super) fn draw_confirm(app: &mut App, f: &mut ratatui::Frame, area: ratatui:
     }
     let buttons_y = r.y + 6 + list_h;
     let key = if c.key == '\n' { "Enter".to_string() } else { c.key.to_string() };
-    let yes = button(t, &c.yes, &key, if c.danger { BtnKind::Danger } else { BtnKind::Primary }, false);
+    let yes = button(t, &c.yes, &key, if c.danger { BtnKind::Danger } else { BtnKind::Primary });
     let yw = segs_width(&yes);
     let yr = Rect { x: r.x + 3, y: buttons_y, width: yw, height: 1 };
     put(buf, yr.x, yr.y, &yes, r.right());
     let nr = Rect { x: yr.right() + 2, y: buttons_y, width: 12, height: 1 };
-    put(buf, nr.x, nr.y, &button(t, "Cancel", "Esc", BtnKind::Normal, hovered(app, nr)), r.right());
+    put(buf, nr.x, nr.y, &button(t, "Cancel", "Esc", BtnKind::Normal), r.right());
     hit(app, area, ScreenHit::ConfirmNo);
     hit(app, r, ScreenHit::Noop);
     hit(app, yr, ScreenHit::ConfirmYes);

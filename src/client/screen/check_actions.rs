@@ -189,11 +189,10 @@ pub(in crate::client) fn draw_override(app: &mut App, f: &mut Frame, area: Rect,
     let shown = if reason.is_empty() { seg(REASON_PLACEHOLDER, field.fg(t.muted).add_modifier(Modifier::ITALIC)) } else { seg(tail.clone(), field.fg(t.strong).add_modifier(Modifier::BOLD)) };
     put(buf, x + 1, fy, &[shown], right);
     let by = r.bottom().saturating_sub(2);
-    let yes = |hov| button(t, "Override", "O", BtnKind::Danger, hov);
-    let no = |hov| button(t, "Cancel", "Esc", BtnKind::Normal, hov);
-    let yr = Rect { x, y: by, width: segs_width(&yes(false)), height: 1 };
-    let nr = Rect { x: yr.right() + 1, y: by, width: segs_width(&no(false)), height: 1 };
-    let (yes, no) = (yes(hovered(app, yr)), no(hovered(app, nr)));
+    let yes = button(t, "Override", "O", BtnKind::Danger);
+    let no = button(t, "Cancel", "Esc", BtnKind::Normal);
+    let yr = Rect { x, y: by, width: segs_width(&yes), height: 1 };
+    let nr = Rect { x: yr.right() + 1, y: by, width: segs_width(&no), height: 1 };
     put(buf, yr.x, by, &yes, right);
     put(buf, nr.x, by, &no, right);
     hit(app, area, ScreenHit::ConfirmNo);

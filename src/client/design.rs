@@ -126,8 +126,7 @@ pub(super) enum BtnKind {
 
 /// The design's button: " Label " + "key " on a filled ground. The pointer's tint is laid
 /// over every clickable region after drawing (`render`).
-// shortcut: `_hovered` stays until the packages drawing buttons in parallel stop passing it.
-pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind, _hovered: bool) -> Vec<Seg> {
+pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind) -> Vec<Seg> {
     let (bg, fg, kfg) = match kind {
         BtnKind::Primary => (t.accent, t.acc_ink, t.acc_ink),
         BtnKind::Danger => (t.danger_fill(), t.ink_on(t.danger_fill()), t.ink_on(t.danger_fill())),
