@@ -137,6 +137,8 @@ pub(super) struct Screen {
     pub bar: Option<(TermId, Rect, usize)>,
     /// Where each agent row was drawn in the sidebar (for the follow-up box beside it).
     pub row_y: std::collections::HashMap<TermId, u16>,
+    /// What you changed on Settings › Check and have not saved.
+    pub check_page: Option<check_settings::CheckDraft>,
 }
 
 /// A row the sidebar cursor can rest on.
@@ -962,6 +964,10 @@ pub(super) enum ScreenHit {
     GoPick(usize),
     HistRow(usize),
     BranchChoice(usize),
+    /// A button of the repo-command approval.
+    Approve(check_approve::ApproveHit),
+    /// A button or row of Settings › Check.
+    CheckDraft(check_settings::DraftHit),
 }
 
 pub(super) fn hit(app: &mut App, r: Rect, h: ScreenHit) {
@@ -998,7 +1004,10 @@ mod behaviour;
 mod card;
 mod check;
 mod check_actions;
+mod check_approve;
 mod check_inbox;
+#[cfg(test)]
+mod check_modals_tests;
 pub(in crate::client) mod check_settings;
 mod check_sheet;
 mod dialogs;
@@ -1017,4 +1026,4 @@ mod tidy;
 mod v7_frame_tests;
 #[cfg(test)]
 mod v7_ref;
-pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, side::*, splash::*, sheet::*, popover::*, heads::*, tidy::*, check_sheet::*, check_actions::*};
+pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, side::*, splash::*, sheet::*, popover::*, heads::*, tidy::*, check_sheet::*, check_actions::*, check_approve::*};

@@ -112,6 +112,10 @@ enum Mode {
     Tidy(Box<screen::TidyView>),
     /// "Close …?" with confirm / cancel.
     Confirm(Box<menu::Confirm>),
+    /// Run a repo's check command? Asked only when you open its waiting item.
+    Approve(Box<screen::Approve>),
+    /// A project's checkpoints (`PROJECT · <name>`), being edited.
+    ProjectCheck(Box<screen::check_settings::CheckDraft>),
     /// The switcher: projects and sessions, typed to filter.
     GoTo { query: String, sel: usize },
     /// Writing a quick follow-up to an agent (beside its row, or in its Inbox row).

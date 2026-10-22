@@ -159,6 +159,14 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             super::screen::draw_new_pane(app, f, area, &t, &np);
         }
         Mode::ScreenSettings(_) => super::screen::draw_settings_modal(app, f.buffer_mut(), area, &t),
+        Mode::Approve(a) => {
+            let a = (**a).clone();
+            super::screen::draw_approve(app, f.buffer_mut(), area, &t, &a);
+        }
+        Mode::ProjectCheck(d) => {
+            let d = (**d).clone();
+            super::screen::check_settings::draw_project_check(app, f.buffer_mut(), area, &t, &d);
+        }
         Mode::Themes { query, sel, saving } => {
             let (query, sel, saving) = (query.clone(), *sel, *saving);
             super::themes::draw_themes(app, f, area, &t, &query, sel, saving);

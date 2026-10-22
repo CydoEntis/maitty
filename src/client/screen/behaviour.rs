@@ -289,6 +289,7 @@ impl App {
 
     pub(in crate::client) fn screen_settings(&mut self) {
         self.refresh_installed_version();
+        self.screen.check_page = None;
         self.mode = Mode::ScreenSettings(Box::new(SView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
     }
 
@@ -544,6 +545,11 @@ impl App {
             return;
         }
         let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        if k.code == KeyCode::Enter && proj.is_none() && let Some(c) = self.screen.cursor && self.approval_waits(c) {
+            self.screen_side_leave();
+            self.open_approval(c);
+            return;
+        }
         match spec.code {
             KeyCode::Tab | KeyCode::BackTab if crate::client::screen::Look::of(&self.cfg.ui).flat => self.screen_side_leave(),
             KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => self.screen_side_move(-1),
@@ -969,11 +975,8 @@ impl App {
             // its settings. Where it doesn't act, the key is typed.
             KeyCode::Char(c @ ('r' | 'O' | 'u' | ',')) if query.is_empty() && sel_check.as_ref().is_some_and(|i| super::check_inbox::check_key_acts(c, i)) => {
                 let Some(term) = sel_item else { return };
-                if c == ',' {
-                    return self.open_check_settings(term);
-                }
                 self.do_check_key(term, c);
-                if c != 'O' {
+                if !matches!(c, 'O' | ',') {
                     self.mode = Mode::GoTo { query, sel };
                 }
                 return;
@@ -983,7 +986,9 @@ impl App {
                     self.cmd(Command::MarkSeen { term });
                 }
             }
-            // The item's first button.
+            KeyCode::Enter if let Some(t) = sel_row.as_ref().and_then(GoRow::term) && self.approval_waits(t) => return self.open_approval(t),
+            // The project's check settings, for a row about a session.
+            KeyCode::Char(',') if query.is_empty() && let Some(t) = sel_row.as_ref().and_then(GoRow::term) => return self.open_project_check(t),
             KeyCode::Enter => {
                 let stale = sel_check.as_ref().is_some_and(|i| i.state == crate::protocol::CheckState::Stale);
                 match sel_row {
@@ -1214,6 +1219,8 @@ impl App {
                 self.mode = Mode::Normal;
                 self.confirm_done(None);
             }
+            ScreenHit::Approve(h) => self.on_approve_hit(h),
+            ScreenHit::CheckDraft(h) => self.on_check_draft_hit(h),
             ScreenHit::TabPick(i) => {
                 if let Some(tab) = self.screen.tabs.get(i) {
                     let to = tab.focus;
@@ -1439,6 +1446,9 @@ impl App {
 
     /// A key for the settings sheet (shared with clicks).
     pub(in crate::client) fn screen_settings_key(&mut self, k: &KeyEvent) {
+        if self.on_check_page_key(k) {
+            return;
+        }
         let Mode::ScreenSettings(v) = self.mode.clone() else { return };
         let mut v = *v;
         let open = self.on_settings_view_key(&mut v, k);

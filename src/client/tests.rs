@@ -5088,11 +5088,11 @@ mod check_settings_tests {
                 show(&o);
                 let at = format!("{name} {w}x{h}");
                 let text = words(&o);
-                for want in ["npm test", "10 min", "after each turn", "failed", "exit 1", "2m ago"] {
+                let ran = crate::clock::local_hm(app.snap.terms[&1].checks[0].started_at);
+                for want in ["npm test", "10 min", "after each turn", "failed on", "exit 1", ran.as_str()] {
                     assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
                 }
                 assert!(!text.contains("No check set."), "{at}: a set check is not the empty state");
-                assert!(!text.contains(":2") && !text.contains(":1"), "{at}: ages, not clock times");
             }
         }
     }
@@ -5163,7 +5163,7 @@ mod check_settings_tests {
     }
 
     fn set(command: &str, timeout_s: u64) -> CheckEdit {
-        CheckEdit::Set { project: project(), command: command.into(), timeout_s }
+        CheckEdit::Set { project: project(), name: Some("test".into()), command: command.into(), timeout_s }
     }
 
     #[test]
@@ -5187,13 +5187,14 @@ mod check_settings_tests {
     fn removing_a_check_deletes_only_its_table() {
         let two = "# top\n[[check]]\nproject = \"/code/lib\"\ncommand = \"cargo test\"\n\n[[check]]\nproject = \"/code/shop-api\"\ncommand = \"npm test\"\n";
         let two = two.replace("/code/shop-api", &project().to_string_lossy().replace('\\', "\\\\"));
-        let (out, cfg) = edited(&two, CheckEdit::Remove { project: project() });
+        let remove = |project: PathBuf| CheckEdit::Remove { project, name: "test".into() };
+        let (out, cfg) = edited(&two, remove(project()));
         assert!(out.contains("# top"), "{out}");
         assert_eq!(cfg.check.len(), 1);
         assert_eq!(cfg.check[0].command, "cargo test");
-        let (out, cfg) = edited(&out, CheckEdit::Remove { project: PathBuf::from("/code/lib") });
+        let (out, cfg) = edited(&out, remove(PathBuf::from("/code/lib")));
         assert!(cfg.check.is_empty() && !out.contains("check"), "the last one takes the key with it: {out}");
-        let (_, cfg) = edited("theme = \"nord\"\n", CheckEdit::Remove { project: project() });
+        let (_, cfg) = edited("theme = \"nord\"\n", remove(project()));
         assert!(cfg.check.is_empty(), "removing what is not there is fine");
     }
 
@@ -5210,12 +5211,18 @@ mod check_settings_tests {
         (app, rx)
     }
 
+    fn draft(app: &App) -> Option<&crate::client::screen::check_settings::CheckDraft> {
+        app.screen.check_page.as_ref()
+    }
+
     #[test]
     fn a_failed_save_keeps_the_draft_and_says_why() {
         let (mut app, _rx) = app_with_channel();
         open_check_page(&mut app, 0);
-        app.check_saved(Err(anyhow::anyhow!("disk full")), Some("pnpm test".into()));
-        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.as_deref() == Some("pnpm test")), "the draft is still being edited");
+        app.on_key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE));
+        app.check_saved(Err(anyhow::anyhow!("disk full")), "Saved.", true);
+        assert!(matches!(&app.mode, Mode::ScreenSettings(_)));
+        assert!(draft(&app).is_some_and(|d| d.command.as_deref() == Some("p") && !d.saving), "the draft is still there");
         let (msg, _, error) = app.notice.clone().expect("a toast");
         assert!(error && msg.contains("couldn't save") && msg.contains("disk full"), "{msg}");
         assert!(app.cfg.check.is_empty(), "nothing was applied");
@@ -5225,41 +5232,42 @@ mod check_settings_tests {
     fn a_saved_check_reaches_the_daemon() {
         let (mut app, mut rx) = app_with_channel();
         open_check_page(&mut app, 0);
+        app.on_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
         let mut cfg = app.cfg.clone();
         cfg.check = vec![CheckDef { project: project(), name: None, command: "npm test".into(), timeout_s: 600 }];
-        app.check_saved(Ok(cfg), Some("npm test".into()));
+        app.check_saved(Ok(cfg), "Saved. Runs after the next turn ends.", true);
         assert_eq!(app.cfg.check.len(), 1);
         let mut sent = Vec::new();
         while let Ok(m) = rx.try_recv() {
             sent.push(m);
         }
         assert!(sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::ReloadConfig))), "the daemon is told to reload");
-        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.is_none()), "a saved draft is no longer a draft");
+        assert!(draft(&app).is_none(), "a saved draft is no longer a draft");
+        assert_eq!(app.notice.clone().expect("a toast").0, "Saved. Runs after the next turn ends.");
     }
 
     #[test]
-    fn keys_on_the_check_page_edit_without_saving_until_enter() {
+    fn keys_on_the_check_page_edit_the_draft_and_esc_drops_it() {
         let (mut app, _rx) = app_with_channel();
         with_check(&mut app, "npm test", 600);
         open_check_page(&mut app, 0);
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.as_deref() == Some("npm test")), "Enter edits the command");
+        assert!(draft(&app).is_some_and(|d| d.editing && d.command.as_deref() == Some("npm test")), "Enter edits the command");
         assert!(draw(&mut app, 100, 30).contains("npm test█"), "the draft shows with its cursor");
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.is_none()), "Esc drops the draft");
+        assert!(draft(&app).is_none(), "Esc drops the draft");
         assert_eq!(app.cfg.check[0].command, "npm test");
     }
 
     #[test]
-    fn with_no_check_the_timeout_and_delete_say_what_is_missing_and_write_nothing() {
+    fn with_no_check_the_arrows_and_delete_write_nothing() {
         let (mut app, _rx) = app_with_channel();
-        open_check_page(&mut app, 1);
-        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
-        let (msg, _, _) = app.notice.clone().expect("a toast");
-        assert!(msg.contains("command first"), "{msg}");
-        app.notice = None;
-        app.on_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
-        assert!(app.notice.is_none(), "nothing to remove, nothing said");
+        open_check_page(&mut app, 0);
+        for code in [KeyCode::Down, KeyCode::Right, KeyCode::Delete] {
+            app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+        }
+        assert!(app.notice.is_none(), "nothing to change, nothing said");
+        assert!(draft(&app).is_some_and(|d| !d.saving));
     }
 
     #[test]
@@ -5269,7 +5277,7 @@ mod check_settings_tests {
         app.snap.active_ws = None;
         open_check_page(&mut app, 0);
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.is_none()));
+        assert!(matches!(&app.mode, Mode::ScreenSettings(_)) && draft(&app).is_none());
         let (msg, _, _) = app.notice.clone().expect("a toast");
         assert!(msg.contains("project"), "{msg}");
     }
@@ -5399,7 +5407,7 @@ mod check_wiring_tests {
     }
 
     fn rerun_of(cmds: &[Command]) -> usize {
-        cmds.iter().filter(|c| matches!(c, Command::RerunCheck { term: TERM, name: None })).count()
+        cmds.iter().filter(|c| matches!(c, Command::RerunCheck { term: TERM, .. })).count()
     }
 
     fn overrides(cmds: &[Command]) -> Vec<String> {
@@ -5577,21 +5585,24 @@ mod check_wiring_tests {
                 let o = draw(&mut app, w, h);
                 let text = words(&o);
                 for want in [
-                    "Override a failed check",
+                    "OVERRIDE A FAILED CHECK",
                     "will read done (overridden)",
-                    "npm test failed (exit 1",
+                    "npm test failed",
+                    "(exit 1 at",
                     "This hides a failure. It stays visible:",
                     "⊘ on the row, in the Inbox history and in the evidence",
                     "for this result only",
                     "Reason (optional)",
-                    "Override Enter",
+                    "why is this OK?",
+                    "Override O",
                     "Cancel Esc",
                 ] {
                     assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
                 }
                 assert!(fits(&o, w, h), "{at}: fits");
                 typed(&mut app, "ok");
-                assert!(words(&draw(&mut app, w, h)).contains("ok█"), "{at}: the reason shows as it is typed");
+                let o = draw(&mut app, w, h);
+                assert!(words(&o).contains("ok") && !words(&o).contains("why is this OK?"), "{at}: the reason shows as it is typed");
                 press(&mut app, KeyCode::Esc);
                 assert!(commands(&mut rx).is_empty(), "{at}: Esc sends nothing");
             }
@@ -5895,29 +5906,24 @@ mod check_wiring_tests {
     }
 
     #[test]
-    fn run_now_re_runs_the_latest_session_by_key_row_and_click() {
-        let run_row = crate::client::screen::check_settings::CheckField::ALL.iter().position(|f| f.label() == "Run now").expect("a Run now row");
+    fn run_now_re_runs_the_latest_session_by_key_and_click() {
         let (mut app, mut rx) = done(CheckState::Passed);
         with_command(&mut app);
         check_page(&mut app, 0);
         press(&mut app, KeyCode::Char('r'));
-        assert_eq!(rerun_of(&commands(&mut rx)), 1, "r from any row of the page");
-        check_page(&mut app, run_row);
-        press(&mut app, KeyCode::Enter);
-        assert_eq!(rerun_of(&commands(&mut rx)), 1, "Enter on its row");
-        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::SetVal(run_row, usize::MAX)));
+        assert_eq!(rerun_of(&commands(&mut rx)), 1, "r on the page");
+        click(&mut app, 100, 30, Hit::Screen(screen::ScreenHit::CheckDraft(screen::check_settings::DraftHit::RunNow)));
         assert_eq!(rerun_of(&commands(&mut rx)), 1, "a click on the button");
         assert!(matches!(app.mode, Mode::ScreenSettings(_)), "Settings stays open");
     }
 
     #[test]
-    fn run_now_with_no_check_set_sends_nothing_and_says_why() {
+    fn with_no_check_set_r_is_typed_into_the_command() {
         let (mut app, mut rx) = done(CheckState::Passed);
         check_page(&mut app, 0);
         press(&mut app, KeyCode::Char('r'));
         assert!(commands(&mut rx).is_empty());
-        let (msg, _) = toast(&app);
-        assert!(msg.contains("command"), "{msg}");
+        assert_eq!(app.screen.check_page.as_ref().and_then(|d| d.command.as_deref()), Some("r"));
     }
 
     #[test]
@@ -5937,7 +5943,7 @@ mod check_wiring_tests {
         check_page(&mut app, 0);
         press(&mut app, KeyCode::Enter);
         press(&mut app, KeyCode::Char('r'));
-        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if v.editing.as_deref() == Some("npm testr")));
+        assert_eq!(app.screen.check_page.as_ref().and_then(|d| d.command.as_deref()), Some("npm testr"));
         assert!(commands(&mut rx).is_empty());
     }
 }

@@ -478,7 +478,7 @@ mod tests {
         let (app, _) = enter(Stage::Couldnt, 1);
         assert!(matches!(&app.view, Some(View::Check(v)) if v.term == 1), "could not run: Output");
         let (app, _) = enter(Stage::Approve, 1);
-        assert!(matches!(&app.view, Some(View::Check(v)) if v.term == 1), "a command waiting: read it");
+        assert!(matches!(&app.mode, Mode::Approve(a) if a.term == 1), "a command waiting: read it");
         let (app, sent) = enter(Stage::Passed, 1);
         assert!(app.mode == Mode::Normal && app.view.is_none() && focused(&sent, 1), "no buttons: the session");
         let (app, sent) = enter(Stage::Failed, 4);
@@ -504,7 +504,7 @@ mod tests {
         draw(&mut app, area, 100, 30);
         assert!(app.hits.iter().any(|(_, h)| *h == Hit::Screen(ScreenHit::InboxKey(','))), "Settings ,");
         app.on_hy_hit(ScreenHit::InboxKey(','), false);
-        assert!(matches!(&app.mode, Mode::ScreenSettings(_)), "opens Settings › Check");
+        assert!(matches!(&app.mode, Mode::ProjectCheck(_)), "opens PROJECT · <name>");
     }
 
     #[test]

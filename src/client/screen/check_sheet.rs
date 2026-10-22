@@ -167,20 +167,11 @@ impl App {
         self.ask_check_output(v);
     }
 
-    /// Settings › Check for the session's project.
-    pub(in crate::client) fn open_check_settings(&mut self, term: TermId) {
-        if let Some(ws) = self.snap.locate(term).map(|(w, _)| w.id) {
-            self.snap.active_ws = Some(ws);
-        }
-        let cat = crate::client::modal::Cat::ALL.iter().position(|c| *c == crate::client::modal::Cat::Check).unwrap_or(0);
-        self.mode = Mode::ScreenSettings(Box::new(SView { cat, sel: 0, editing: None, capturing: false, scroll: 0 }));
-    }
-
     /// Keys in the sheet; returns false when it closes.
     pub(in crate::client) fn on_check_key(&mut self, v: &mut CheckView, k: &KeyEvent) -> bool {
         match k.code {
             KeyCode::Esc => return false,
-            KeyCode::Char(c @ ('r' | 'O' | 'u')) => {
+            KeyCode::Char(c @ ('r' | 'O' | 'u' | ',')) => {
                 self.do_check_key(v.term, c);
             }
             KeyCode::Char('o') => {
@@ -188,10 +179,6 @@ impl App {
                 return false;
             }
             KeyCode::Char('i') => self.mode = Mode::Why { term: v.term, side: false },
-            KeyCode::Char(',') => {
-                self.open_check_settings(v.term);
-                return false;
-            }
             KeyCode::Char('f') => v.toggle_full(),
             KeyCode::Tab => self.step_checkpoint(v, false),
             KeyCode::BackTab => self.step_checkpoint(v, true),
@@ -676,7 +663,7 @@ mod tests {
         assert_eq!(app.mode, Mode::Why { term: 1, side: false });
         let mut app = sheet_world(Stage::Never, "", Some(0));
         app.on_key(KeyEvent::new(KeyCode::Char(','), KeyModifiers::NONE));
-        assert!(matches!(&app.mode, Mode::ScreenSettings(v) if crate::client::modal::Cat::ALL[v.cat] == crate::client::modal::Cat::Check));
+        assert!(matches!(&app.mode, Mode::ProjectCheck(_)), ", opens PROJECT · <name>");
         let mut app = sheet_world(Stage::Failed, OUT_FAIL, None);
         app.on_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
         assert!(app.view.is_none(), "o leaves the sheet for the session");
