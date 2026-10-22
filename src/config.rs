@@ -406,6 +406,9 @@ pub struct Quick {
     pub agents: Vec<QuickAgent>,
 }
 
+/// The flag that picks a model when an agent's `model_flag` is empty.
+pub const DEFAULT_MODEL_FLAG: &str = "--model";
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct QuickAgent {
@@ -1121,6 +1124,18 @@ impl Config {
         }
     }
 
+    /// `cmd` with `flag model` right after its program (`--model` when `flag` is empty). A
+    /// model with anything but plain name characters is quoted, since it comes from config.
+    pub fn with_model(&self, cmd: &str, flag: &str, model: &str) -> String {
+        let flag = if flag.is_empty() { DEFAULT_MODEL_FLAG } else { flag };
+        let plain = !model.is_empty() && model.chars().all(|c| c.is_ascii_alphanumeric() || "-_.:/@+=".contains(c));
+        let model = if plain { model.to_string() } else { self.quote_for_shell(model) };
+        match cmd.split_once(' ') {
+            Some((first, rest)) => format!("{first} {flag} {model} {rest}"),
+            None => format!("{cmd} {flag} {model}"),
+        }
+    }
+
     pub fn keymap(&self) -> Keymap {
         let mut warnings = Vec::new();
         let prefix = self.prefix.parse::<KeySpec>().unwrap_or_else(|e| {
@@ -1359,6 +1374,15 @@ mod tests {
         for key in ["[team]", "family", "[[team.jobs]]", "[[team.projects]]"] {
             assert!(super::EXAMPLE.lines().any(|l| l.starts_with("# ") && l.contains(key)), "{key}");
         }
+    }
+
+    #[test]
+    fn a_model_goes_right_after_the_program_quoted_only_when_it_needs_it() {
+        let c = super::Config { shell: Some("bash".into()), ..Default::default() };
+        assert_eq!(c.with_model("claude 'fix it'", "", "sonnet"), "claude --model sonnet 'fix it'");
+        assert_eq!(c.with_model("codex", "-m", "gpt-6.1-sol"), "codex -m gpt-6.1-sol");
+        assert_eq!(c.with_model("claude 'x'", "--model", "a;rm -rf ~"), "claude --model 'a;rm -rf ~' 'x'");
+        assert_eq!(c.with_model("claude", "", "it's"), "claude --model 'it'\\''s'");
     }
 
     #[test]

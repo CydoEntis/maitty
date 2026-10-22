@@ -36,9 +36,7 @@ pub(in crate::client) fn np_command(app: &App, agent: &str, model: usize, task: 
         format!("{base} {}", app.cfg.quote_for_shell(task))
     };
     if let Some(m) = np_models(app, agent).get(model).filter(|_| model > 0) {
-        let flag = q.map(|q| q.model_flag.clone()).filter(|f| !f.is_empty()).unwrap_or_else(|| "--model".into());
-        let (first, rest) = cmd.split_once(' ').map(|(a, b)| (a.to_string(), format!(" {b}"))).unwrap_or((cmd.clone(), String::new()));
-        cmd = format!("{first} {flag} {m}{rest}");
+        cmd = app.cfg.with_model(&cmd, q.map_or("", |q| q.model_flag.as_str()), m);
     }
     // An account runs through `seshi account`, which gives it its own sign-in.
     Some(app.cfg.as_account(agent, &cmd))

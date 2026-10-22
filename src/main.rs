@@ -16,6 +16,7 @@ mod layout;
 mod proc;
 mod protocol;
 mod sync;
+mod team;
 mod theme;
 mod tidy;
 mod update;
