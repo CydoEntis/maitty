@@ -406,6 +406,8 @@ mod hydra_tests {
         let (_, mut app) = super::design_tests::render_with(100, 30);
         let (tx, mut rx) = mpsc::unbounded_channel(); app.out = tx;
         let focused = app.focused();
+        app.got_state = true;
+        app.snap.daemon_version = "0.36.11".into();
         app.updating = true;
         app.update_available = Some("9.9.9".into());
         app.update_installed("9.9.9".into());
@@ -414,7 +416,64 @@ mod hydra_tests {
         assert!(app.quit.is_none() && app.restart_pending());
         assert_eq!(app.focused(), focused);
         assert!(rx.try_recv().is_err(), "install completion sends no session commands");
-        assert!(app.notice.as_ref().is_some_and(|(text, ..)| text.contains("restart after active tasks finish")));
+        assert!(app.notice.as_ref().is_some_and(|(text, ..)| text.contains("restart automatically when no sessions are open")));
+    }
+
+    #[test]
+    fn installing_an_update_restarts_the_daemon_when_no_sessions_are_open() {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.got_state = true;
+        app.snap.terms.clear();
+        app.snap.daemon_version = "0.36.11".into();
+        app.update_installed("0.36.12".into());
+
+        assert!(matches!(rx.try_recv(), Ok(ClientMsg::Command(Command::KillServer { forget: false }))));
+    }
+
+    #[test]
+    fn daemon_update_waits_until_the_last_session_closes() {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.installed_version = Some(Ok("0.36.12".into()));
+        app.snap.daemon_version = "0.36.11".into();
+        assert!(rx.try_recv().is_err(), "open sessions must not be interrupted");
+
+        let mut snapshot = app.snap.clone();
+        snapshot.terms.clear();
+        app.on_server(ServerMsg::State(snapshot));
+
+        assert!(matches!(rx.try_recv(), Ok(ClientMsg::Command(Command::KillServer { forget: false }))));
+    }
+
+    #[test]
+    fn a_matching_daemon_version_completes_the_automatic_restart() {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.installed_version = Some(Ok(env!("CARGO_PKG_VERSION").into()));
+        app.daemon_restart_requested = true;
+        app.daemon_restart_reconnect = true;
+        let mut snapshot = app.snap.clone();
+        snapshot.daemon_version = env!("CARGO_PKG_VERSION").into();
+
+        app.on_server(ServerMsg::State(snapshot));
+
+        assert!(!app.daemon_restart_requested && !app.daemon_restart_reconnect);
+        assert!(rx.try_recv().is_err(), "a current daemon must not be restarted again");
+        assert!(app.notice.as_ref().is_some_and(|(text, ..)| text.contains("daemon restarted with the update")));
+    }
+    #[test]
+    fn planned_daemon_restart_keeps_the_window_open_for_reconnect() {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        app.daemon_restart_requested = true;
+
+        app.on_server(ServerMsg::Bye);
+
+        assert!(app.quit.is_none());
+        assert!(app.daemon_restart_reconnect);
     }
 
     #[test]

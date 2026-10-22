@@ -347,7 +347,12 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         say(buf, format!("{host}: {daemon}"), c.fg(t.muted));
     }
     if app.restart_pending() {
-        say(buf, "Restart pending — restart after active tasks finish.".into(), c.fg(t.accent).add_modifier(Modifier::BOLD));
+        let note = if crate::ipc::remote().is_some() {
+            "Remote daemon differs — update it on its host after its sessions are closed."
+        } else {
+            "Restart pending — waiting until all sessions are closed."
+        };
+        say(buf, note.into(), c.fg(t.accent).add_modifier(Modifier::BOLD));
     }
     hline(buf, r.x + 3, r.y + 3, r.width.saturating_sub(6), t, t.card);
     let cat = Cat::ALL[v.cat.min(Cat::ALL.len() - 1)];

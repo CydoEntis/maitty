@@ -57,9 +57,13 @@ fn installed_path(exe: &Path) -> PathBuf {
     }
 }
 
+pub(crate) fn installed_executable() -> Result<PathBuf> {
+    Ok(installed_path(&std::env::current_exe()?))
+}
+
 pub fn installed_version() -> Result<String, String> {
-    let exe = std::env::current_exe().map_err(|e| format!("finding installed Seshi: {e}"))?;
-    let text = crate::proc::run(Command::new(installed_path(&exe)).arg("--version"))?;
+    let exe = installed_executable().map_err(|e| format!("finding installed Seshi: {e}"))?;
+    let text = crate::proc::run(Command::new(exe).arg("--version"))?;
     let value = text.trim().strip_prefix("seshi ").ok_or("installed program did not report a Seshi version")?;
     if version(value).is_none() || !value.chars().all(|c| c.is_ascii_alphanumeric() || ".-+".contains(c)) { return Err("installed Seshi reported an invalid version".into()); }
     Ok(value.to_string())

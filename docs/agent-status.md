@@ -152,7 +152,4 @@ meaningful reported role name, or `Working` when the runtime provides no useful
 label. The inspector marks missing metadata **Not reported**. It does not expose
 hidden reasoning or claim transcript access that a runtime does not provide.
 
-Installing a new executable does not replace an already-running window or
-daemon. **Settings → General** shows installed/window/daemon versions and a
-restart-pending notice. Restart the daemon only when its sessions are safe to
-interrupt; closing a window alone leaves it running.
+Installing a new executable does not replace an already-running window. **Settings → General** shows installed/window/daemon versions and a restart-pending notice. Local open sessions keep running; once no panes remain, Seshi restarts the daemon and reconnects the window automatically. Closing a window alone leaves the daemon running. A remote daemon must be updated on its host.
