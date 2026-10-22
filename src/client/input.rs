@@ -779,8 +779,7 @@ impl App {
 
     /// Put session `t` where `u` is, within their group (the order you dragged them to).
     /// False when they aren't in the same group.
-    /// Put session `t` in group `pi` (by the sidebar's groups). Only within its section: an
-    /// agent goes to another agents' group, a shell to another terminals' one.
+    /// Put session `t` in group `pi` (by the sidebar's groups). Not onto another machine's group.
     pub(super) fn place_session(&mut self, t: TermId, pi: usize) -> bool {
         let model = self.screen_model();
         let Some(to) = model.get(pi) else { return false };

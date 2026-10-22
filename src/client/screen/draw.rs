@@ -170,10 +170,23 @@ pub(in crate::client) fn hline(buf: &mut Buffer, x: u16, y: u16, w: u16, t: &The
     }
 }
 
+/// A tool's mark for a tight sidebar row: one glyph, or two letters for a tool without one.
+fn tool_icon(agent: &str) -> String {
+    match agent {
+        "claude" => "✻".into(),
+        "codex" => "◆".into(),
+        "gemini" => "✦".into(),
+        "opencode" => "▣".into(),
+        "pi" => "π".into(),
+        "shell" => "›".into(),
+        other => other.chars().take(2).collect(),
+    }
+}
+
 /// A line of the sidebar tree.
 #[derive(Debug, Clone)]
 pub(in crate::client) enum Line {
-    /// A section's heading: AGENTS, TERMINALS, SSH (with how many sessions).
+    /// The heading over the other machines' sessions (with how many).
     Section(Kind, usize),
     Proj(usize),
     /// A heading: BRANCHES or WORKTREES.
@@ -321,7 +334,7 @@ type Rows = Vec<(usize, usize)>;
 pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec<Line> {
     let mut out = Vec::new();
     for (pi, p) in model.iter().enumerate() {
-        if pi == 0 || model[pi - 1].kind != p.kind {
+        if p.kind == Kind::Ssh && (pi == 0 || model[pi - 1].kind != p.kind) {
             let n = model.iter().filter(|q| q.kind == p.kind).map(|q| q.sessions().count()).sum();
             out.push(Line::Section(p.kind, n));
         }
@@ -590,19 +603,20 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     vec![]
                 } else if let Some(at) = s.resume_at {
                     vec![seg(format!("⏸ resumes in {}", until(at)), st.fg(t.muted))]
-                } else if s.is_agent {
+                } else {
                     let col = if s.status == Status::Blocked { t.blocked } else { t.muted };
                     let first = if s.agent.is_empty() || s.agent == s.name { String::new() } else { format!("{} · ", truncate(&s.agent, 16)) };
-                    vec![seg(format!("{first}{}", age(s.since)), st.fg(col))]
-                } else {
-                    vec![]
+                    // A shell has no turn to time: just say what it is.
+                    let when = if s.is_agent { age(s.since) } else { String::new() };
+                    vec![seg(format!("{first}{when}").trim_end_matches(" · ").to_string(), st.fg(col))]
                 };
-                // The name comes first: when it doesn't fit, the agent gives way (the age stays).
+                // The name comes first: when it doesn't fit, the tool shrinks to its icon.
                 let name_x = x0 + 7 + indent;
                 let room = right.saturating_sub(name_x) as usize;
-                let tail = if s.is_agent && !sel && s.resume_at.is_none() && !small && segs_width(&left) as usize + segs_width(&tail) as usize + 2 > room {
+                let tail = if !sel && s.resume_at.is_none() && !small && segs_width(&left) as usize + segs_width(&tail) as usize + 2 > room {
                     let col = if s.status == Status::Blocked { t.blocked } else { t.muted };
-                    vec![seg(age(s.since), st.fg(col))]
+                    let when = if s.is_agent { age(s.since) } else { String::new() };
+                    vec![seg(format!("{} {when}", tool_icon(&s.agent)).trim_end().to_string(), st.fg(col))]
                 } else {
                     tail
                 };
