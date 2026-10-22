@@ -35,8 +35,8 @@ fn row_of(t: &TermInfo, me: Option<TermId>) -> Value {
     if Some(t.id) == me {
         row["you"] = json!(true);
     }
-    if let Some(c) = t.reported_check() {
-        row["check"] = json!(cli::check_note(c));
+    if let Some(note) = cli::checks_note(t) {
+        row["check"] = json!(note);
     }
     row
 }
@@ -417,6 +417,10 @@ mod tests {
         assert_eq!(row_of(&t, None)["status"], "done");
         t.status = Status::Working;
         assert!(row_of(&t, None).get("check").is_none(), "an older turn's result is not reported");
+        t.status = Status::Done;
+        let stale = CheckInfo { name: "test".into(), state: CheckState::Stale, changed_files: vec![crate::protocol::ChangedFile { kind: 'M', path: "a".into() }], ..Default::default() };
+        t.checks = vec![CheckInfo { name: "build".into(), state: CheckState::Passed, ..Default::default() }, stale];
+        assert_eq!(row_of(&t, None)["check"], "stale pass: test · 1 file changed · 2 checkpoints");
     }
 
     #[test]

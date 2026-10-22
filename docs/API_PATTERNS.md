@@ -239,6 +239,13 @@ notice and then the normal finished alert. Queued follow-ups still send when the
 ends, and `helpers_at_once` still counts only working sessions. A session with no check
 alerts and waits exactly as before.
 
+A project with several checkpoints runs them in order, each whatever the one before it
+returned. The session is reported by its headline checkpoint (`protocol::headline`, the
+worst). A waiter stays blocked while any checkpoint is checking or pending and exits 4 when
+any failed. A checkpoint waiting for approval, one you said never to, one that could not
+run and a stale pass all exit 0. Waiting for approval raises a blocked attention alert and
+the notice `<place>: approve check: <command>` once a turn; it is never a finish.
+
 `seshi ls`, `seshi ls --json` and MCP `seshi_list` report a check next to the status, never in
 place of it: `status` keeps its value (`done`) and `TermInfo::reported_check` decides whether a
 result is shown (not while the agent is working or asking, as in the sidebar). `cli::check_note`
@@ -248,3 +255,9 @@ is the one wording for both text surfaces: `check failed (exit 1)`, `checking`, 
 adds a `check` object (`state` as `checking`, `passed`, `failed`, `overridden` or
 `could_not_run`; `command`; `exit_code`; `duration_ms`; `first_failing_line`; `rerun_queued`;
 `overridden_at`). A pane with no check has no `check` key and its output is unchanged.
+The newer states read `pending`, `approve check: npm test`, `stale pass: test · 3 files
+changed` and `not checked: never for this repo`. With several checkpoints the note ends in
+`· n checkpoints`, and `ls --json` also lists every one under `checks` (`name`, `state`,
+`command`, `exit_code`, `duration_ms`, `first_failing_line`, `line_count`, `turn`,
+`rerun_queued`, `overridden_at`, `overridden_by`, `stale_since`, `changed_files` as
+`{kind, path}`); `check` stays the headline.
