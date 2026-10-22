@@ -93,17 +93,21 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: 
             .filter(|c| !c.is_whitespace())
             .take(2)
             .collect();
-        let icon = if s.is_agent {
+        let chk = check::shown(s);
+        let icon = if let Some(c) = chk {
+            check::glyph(app, c).to_string()
+        } else if s.is_agent {
             glyph(app, s.status)
         } else {
             "›".into()
         };
+        let icon_color = chk.map_or(color, |c| check::color(t, c));
         put(
             buf,
             rr.x,
             rr.y,
             &[
-                seg(icon, style.fg(color)),
+                seg(icon, style.fg(icon_color)),
                 seg(format!(" {initials}"), style),
             ],
             rr.right(),

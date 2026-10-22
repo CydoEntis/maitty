@@ -15,7 +15,7 @@ use super::design::{
 use super::render::{blend, render_screen, truncate};
 use super::{App, Hit, Mode};
 use crate::keys::Action;
-use crate::protocol::{Status, SubagentActivity, TermId, TermInfo};
+use crate::protocol::{CheckInfo, Status, SubagentActivity, TermId, TermInfo};
 use crate::theme::Theme;
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
@@ -309,6 +309,8 @@ pub(super) struct Session {
     pub started_by: Option<TermId>,
     /// Follow-ups waiting for its turn to end, next first.
     pub queued: Vec<String>,
+    /// The latest check Seshi ran after its turn.
+    pub check: Option<CheckInfo>,
 }
 
 #[derive(Debug, Clone)]
@@ -639,6 +641,7 @@ impl App {
                     resume_at: t.resume_at,
                     started_by: t.started_by,
                     queued: t.queued.clone(),
+                    check: t.check.clone(),
                 });
             }
             // The repo's other worktrees, even with nothing running in them.
@@ -980,6 +983,7 @@ pub(super) fn k(app: &App, a: &Action) -> String {
 mod rail;
 mod behaviour;
 mod card;
+mod check;
 mod dialogs;
 mod leader;
 mod popups;

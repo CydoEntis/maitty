@@ -3625,3 +3625,282 @@ mod shots {
         cells(&mut app, 160, 45, "01-splash", &dir);
     }
 }
+
+mod check_row_tests {
+    use super::*;
+    use crate::layout::Node;
+    use crate::protocol::{CheckInfo, CheckState};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Position;
+    use ratatui::style::Modifier;
+
+    const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
+    /// (ui.layout, ui.panes): Cards floating, Cards tiled, Flat.
+    const LAYOUTS: [(&str, &str); 3] = [("cards", "floating"), ("cards", "tiled"), ("flat", "tiled")];
+    const NAME: &str = "t-row";
+    const COMMAND: &str = "just ci";
+    const EDGE_BAR: &str = "▎";
+
+    struct Case {
+        state: CheckState,
+        exit: Option<i32>,
+        glyph: &'static str,
+        plain: &'static str,
+        words: &'static str,
+    }
+
+    const CASES: [Case; 5] = [
+        Case { state: CheckState::Checking, exit: None, glyph: "◜", plain: "-", words: "checking" },
+        Case { state: CheckState::Passed, exit: Some(0), glyph: "✓", plain: "+", words: "✓ · 14.2s" },
+        Case { state: CheckState::Failed, exit: Some(1), glyph: "✕", plain: "x", words: "· exit 1" },
+        Case { state: CheckState::Overridden, exit: Some(1), glyph: "⊘", plain: "/", words: "✕ overridden by you" },
+        Case { state: CheckState::CouldNotRun, exit: Some(127), glyph: "?", plain: "?", words: "could not run" },
+    ];
+
+    fn now() -> u64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    }
+
+    fn info(state: CheckState, exit: Option<i32>) -> CheckInfo {
+        CheckInfo { command: COMMAND.into(), state, exit_code: exit, started_at: now() - 180, duration_ms: 14_200, ..Default::default() }
+    }
+
+    /// The shop-api scene plus one finished agent per entry of `extra`, each with its check.
+    fn scene(w: u16, h: u16, layout: (&str, &str), extra: &[(&str, Status, Option<CheckInfo>)]) -> App {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        (app.cfg.ui.layout, app.cfg.ui.panes) = (layout.0.into(), layout.1.into());
+        for (i, (label, status, check)) in extra.iter().enumerate() {
+            let id = 20 + i as TermId;
+            let mut t = app.snap.terms[&2].clone();
+            (t.id, t.label, t.status, t.check) = (id, (*label).into(), *status, check.clone());
+            app.snap.terms.insert(id, t);
+            app.snap.workspaces[0].tabs.push(TabInfo { id: 30 + id, name: String::new(), layout: Node::Leaf(id), focus: id });
+            app.parsers.insert(id, vt100::Parser::new(20, 80, 0));
+        }
+        app.hy.tabs.clear();
+        app.hy.last_focus = None;
+        app.hy_sync();
+        app.hy.cursor = None;
+        app
+    }
+
+    fn one(w: u16, h: u16, layout: (&str, &str), c: &Case) -> App {
+        scene(w, h, layout, &[(NAME, Status::Done, Some(info(c.state, c.exit)))])
+    }
+
+    fn render(app: &mut App, w: u16, h: u16) -> Buffer {
+        app.hy_fresh();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        term.backend().buffer().clone()
+    }
+
+    fn show(buf: &Buffer, title: &str) {
+        if std::env::var("SESHI_SHOW").is_ok() {
+            println!("--- {title}");
+            for y in 0..buf.area.height {
+                println!("{}", (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect::<String>().trim_end());
+            }
+        }
+    }
+
+    fn side_text(buf: &Buffer, app: &App, y: u16) -> String {
+        let r = app.hy.side_rect;
+        (r.x..r.right()).map(|x| buf[(x, y)].symbol()).collect()
+    }
+
+    fn row_of(buf: &Buffer, app: &App, name: &str) -> u16 {
+        (0..buf.area.height).find(|&y| side_text(buf, app, y).contains(name)).unwrap_or_else(|| panic!("no sidebar row named {name}"))
+    }
+
+    fn cell_with<'a>(buf: &'a Buffer, app: &App, y: u16, symbol: &str) -> &'a ratatui::buffer::Cell {
+        let r = app.hy.side_rect;
+        (r.x..r.right()).map(|x| &buf[(x, y)]).find(|c| c.symbol() == symbol).unwrap_or_else(|| panic!("no {symbol} on row {y}"))
+    }
+
+    fn label(layout: (&str, &str), w: u16, h: u16) -> String {
+        format!("{}/{} {w}x{h}", layout.0, layout.1)
+    }
+
+    #[test]
+    fn each_state_shows_its_glyph_and_words_in_every_layout_and_size() {
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                for c in &CASES {
+                    let mut app = one(w, h, layout, c);
+                    let buf = render(&mut app, w, h);
+                    show(&buf, &format!("{} {:?}", label(layout, w, h), c.state));
+                    let y = row_of(&buf, &app, NAME);
+                    let at = label(layout, w, h);
+                    assert!(side_text(&buf, &app, y).contains(c.glyph), "{at} {:?}: glyph {} on {:?}", c.state, c.glyph, side_text(&buf, &app, y));
+                    if w >= hydra::NARROW {
+                        assert!(side_text(&buf, &app, y + 1).contains(c.words), "{at} {:?}: {:?} under the row, got {:?}", c.state, c.words, side_text(&buf, &app, y + 1));
+                    } else {
+                        let all: String = (0..h).map(|y| side_text(&buf, &app, y)).collect();
+                        assert!(!all.contains(COMMAND), "{at} {:?}: the narrow sidebar drops the sub-line", c.state);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn glyphs_use_existing_theme_slots_only() {
+        let (w, h) = (160, 45);
+        for layout in LAYOUTS {
+            for c in &CASES {
+                let mut app = one(w, h, layout, c);
+                let buf = render(&mut app, w, h);
+                let t = app.theme.clone();
+                let want = match c.state {
+                    CheckState::Checking => t.sky(),
+                    CheckState::Passed => t.done,
+                    CheckState::Failed => t.err,
+                    CheckState::Overridden => t.text,
+                    CheckState::CouldNotRun => t.muted,
+                };
+                let y = row_of(&buf, &app, NAME);
+                let cell = cell_with(&buf, &app, y, c.glyph);
+                assert_eq!(cell.fg, want, "{} {:?}", label(layout, w, h), c.state);
+                if c.state == CheckState::Failed {
+                    assert!(cell.modifier.contains(Modifier::BOLD), "failed is bold");
+                }
+                if c.state == CheckState::Overridden {
+                    assert_ne!(cell.fg, t.done, "an override is never green");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_failed_row_has_a_red_edge_bar_on_both_lines_and_no_other_state_does() {
+        let (w, h) = (160, 45);
+        for layout in LAYOUTS {
+            for c in &CASES {
+                let mut app = one(w, h, layout, c);
+                let buf = render(&mut app, w, h);
+                let y = row_of(&buf, &app, NAME);
+                let bar_x = app.hy.side_rect.x + 1;
+                for line in [y, y + 1] {
+                    let cell = &buf[(bar_x, line)];
+                    let red = cell.symbol() == EDGE_BAR && cell.fg == app.theme.err;
+                    assert_eq!(red, c.state == CheckState::Failed, "{} {:?} line {line}: {:?}", label(layout, w, h), c.state, cell.symbol());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn failed_and_needs_you_differ_in_glyph_and_word_without_colour() {
+        let (w, h) = (160, 45);
+        let failed = info(CheckState::Failed, Some(1));
+        let mut app = scene(w, h, ("cards", "floating"), &[("t-bad", Status::Done, Some(failed)), ("t-ask", Status::Blocked, None)]);
+        let buf = render(&mut app, w, h);
+        let (bad, ask) = (row_of(&buf, &app, "t-bad"), row_of(&buf, &app, "t-ask"));
+        let (bad_line, ask_line) = (side_text(&buf, &app, bad), side_text(&buf, &app, ask));
+        assert!(bad_line.contains('✕') && !bad_line.contains('●'), "{bad_line:?}");
+        assert!(ask_line.contains('●') && !ask_line.contains('✕'), "{ask_line:?}");
+        assert!(side_text(&buf, &app, bad + 1).contains("failed:"), "failed says so in words");
+        assert!(!side_text(&buf, &app, bad + 1).contains("needs you"));
+    }
+
+    #[test]
+    fn plain_icons_use_the_ascii_check_glyphs() {
+        let (w, h) = (160, 45);
+        for c in &CASES {
+            let mut app = one(w, h, ("cards", "floating"), c);
+            (app.cfg.icons.blocked, app.cfg.icons.done, app.cfg.icons.idle) = ("!".into(), "+".into(), "o".into());
+            let buf = render(&mut app, w, h);
+            let y = row_of(&buf, &app, NAME);
+            let (top, sub) = (side_text(&buf, &app, y), side_text(&buf, &app, y + 1));
+            assert!(top.contains(c.plain), "{:?}: {} on {top:?}", c.state, c.plain);
+            let unicode = ["◜", "✓", "✕", "⊘"];
+            assert!(!unicode.iter().any(|g| top.contains(g) || sub.contains(g)), "{:?}: no Unicode marks left: {top:?} {sub:?}", c.state);
+        }
+    }
+
+    #[test]
+    fn the_collapsed_rail_shows_the_same_glyphs() {
+        let (w, h) = (160, 45);
+        for layout in LAYOUTS {
+            for c in &CASES {
+                let mut app = one(w, h, layout, c);
+                app.sidebar = false;
+                app.side_frac = 0.0;
+                let buf = render(&mut app, w, h);
+                show(&buf, &format!("rail {} {:?}", label(layout, w, h), c.state));
+                let r = app.hy.side_rect;
+                let found = (r.y..r.bottom()).any(|y| (r.x..r.right()).any(|x| buf[(x, y)].symbol() == c.glyph));
+                assert!(found, "{} {:?}: {} in the rail", label(layout, w, h), c.state, c.glyph);
+            }
+        }
+    }
+
+    #[test]
+    fn a_project_without_a_check_renders_as_before() {
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let mut none = scene(w, h, layout, &[(NAME, Status::Done, None)]);
+                let plain = render(&mut none, w, h);
+                show(&plain, &format!("no check {}", label(layout, w, h)));
+                let all: String = (0..h).map(|y| side_text(&plain, &none, y)).collect();
+                assert!(!all.contains(COMMAND) && !all.contains('⊘') && !all.contains('✕'), "{}", label(layout, w, h));
+                // A result about a turn that is no longer the last one is not drawn.
+                for status in [Status::Working, Status::Blocked] {
+                    let failed = Some(info(CheckState::Failed, Some(1)));
+                    let mut app = scene(w, h, layout, &[(NAME, status, failed)]);
+                    let mut bare = scene(w, h, layout, &[(NAME, status, None)]);
+                    assert_eq!(render(&mut app, w, h), render(&mut bare, w, h), "{} {status:?}", label(layout, w, h));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_narrow_sidebar_drops_the_words_before_the_glyph_and_keeps_the_folder_name() {
+        let (w, h) = (80, 24);
+        for layout in LAYOUTS {
+            let mut app = one(w, h, layout, &CASES[2]);
+            let buf = render(&mut app, w, h);
+            let y = row_of(&buf, &app, NAME);
+            assert!(side_text(&buf, &app, y).contains('✕'), "the glyph stays");
+            assert!(!side_text(&buf, &app, y + 1).contains("failed"), "the sub-line goes");
+            assert!(side_text(&buf, &app, row_of(&buf, &app, "shop-api")).contains("shop-api"), "{}: folder name whole", label(layout, w, h));
+        }
+    }
+
+    #[test]
+    fn selected_and_hovered_check_rows_tint_both_lines() {
+        let (w, h) = (160, 45);
+        for layout in LAYOUTS {
+            let mut app = one(w, h, layout, &CASES[2]);
+            app.mode = Mode::Side;
+            app.hy.cursor = Some(20);
+            let buf = render(&mut app, w, h);
+            show(&buf, &format!("selected {}", label(layout, w, h)));
+            let y = row_of(&buf, &app, NAME);
+            let x = app.hy.side_rect.x + 10;
+            assert_eq!(buf[(x, y)].bg, buf[(x, y + 1)].bg, "{}: one tint over both lines", label(layout, w, h));
+            assert_ne!(buf[(x, y)].bg, buf[(x, y + 3)].bg, "{}: and not the rows below", label(layout, w, h));
+
+            let mut app = one(w, h, layout, &CASES[1]);
+            app.hover = Some(Position { x: app.hy.side_rect.x + 10, y });
+            let buf = render(&mut app, w, h);
+            show(&buf, &format!("hovered {}", label(layout, w, h)));
+            assert_eq!(buf[(x, y)].bg, buf[(x, y + 1)].bg, "{}: hover tints both lines", label(layout, w, h));
+        }
+    }
+
+    #[test]
+    fn a_long_command_gives_way_so_the_exit_code_still_reads() {
+        let (w, h) = (160, 45);
+        let mut long = info(CheckState::Failed, Some(1));
+        long.command = "npm run test:unit -- --coverage".into();
+        let mut app = scene(w, h, ("cards", "floating"), &[(NAME, Status::Done, Some(long))]);
+        let buf = render(&mut app, w, h);
+        let sub = side_text(&buf, &app, row_of(&buf, &app, NAME) + 1);
+        assert!(sub.contains("failed: ") && sub.contains("exit 1") && sub.contains('…'), "{sub:?}");
+    }
+}
