@@ -985,6 +985,7 @@ mod behaviour;
 mod card;
 mod check;
 mod check_inbox;
+pub(in crate::client) mod check_settings;
 mod check_sheet;
 mod dialogs;
 mod leader;

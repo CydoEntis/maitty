@@ -4763,3 +4763,280 @@ mod check_inbox_tests {
         assert_eq!(seen, [hydra::GoRow::Ask(1), hydra::GoRow::Failed(20), hydra::GoRow::NotRun(21)]);
     }
 }
+
+mod check_settings_tests {
+    use super::*;
+    use crate::config::{CHECK_TIMEOUT_S_DEFAULT, CheckDef};
+    use crate::client::hydra::check_settings::{CheckEdit, step_timeout};
+    use crate::protocol::{CheckInfo, CheckState};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
+
+    fn project() -> PathBuf {
+        PathBuf::from(if cfg!(windows) { r"C:\code\shop-api" } else { "/code/shop-api" })
+    }
+
+    fn draw(app: &mut App, w: u16, h: u16) -> String {
+        app.hy_fresh();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let frame: String = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>().trim_end().to_string() + "\n").collect();
+        frame.replace(|c| ('\u{e000}'..='\u{f8ff}').contains(&c), "")
+    }
+
+    fn show(s: &str) {
+        if std::env::var("SESHI_SHOW").is_ok() {
+            println!("{s}");
+        }
+    }
+
+    type Layout = fn(&mut App);
+
+    fn layouts() -> [(&'static str, Layout); 3] {
+        [
+            ("cards floating", |a| a.cfg.ui.panes = "floating".into()),
+            ("cards tiled", |a| a.cfg.ui.panes = "tiled".into()),
+            ("flat", |a| a.cfg.ui.layout = "flat".into()),
+        ]
+    }
+
+    fn check_page() -> usize {
+        modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Check).unwrap()
+    }
+
+    fn open_check_page(app: &mut App, sel: usize) {
+        app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: check_page(), sel, editing: None, capturing: false, scroll: 0 }));
+    }
+
+    fn with_check(app: &mut App, command: &str, timeout_s: u64) {
+        app.cfg.check = vec![CheckDef { project: project(), command: command.into(), timeout_s }];
+    }
+
+    fn result(state: CheckState, exit_code: Option<i32>) -> CheckInfo {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        CheckInfo { command: "npm test".into(), state, exit_code, started_at: now - 120, duration_ms: 14_200, ..Default::default() }
+    }
+
+    fn words(o: &str) -> String {
+        o.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    #[test]
+    fn a_project_with_no_check_says_so_in_every_layout_at_every_size() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let (_, mut app) = super::design_tests::render_with(w, h);
+                layout(&mut app);
+                open_check_page(&mut app, 0);
+                let o = draw(&mut app, w, h);
+                show(&o);
+                let at = format!("{name} {w}x{h}");
+                let text = words(&o);
+                for want in ["Check", "Command", "e.g. npm test", "No check set.", "passes.", "working."] {
+                    assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
+                }
+                assert!(o.lines().count() <= h as usize && o.lines().all(|l| l.chars().count() <= w as usize), "{at}: fits the screen");
+            }
+        }
+    }
+
+    #[test]
+    fn a_set_check_shows_command_timeout_where_it_runs_and_the_latest_result() {
+        for (name, layout) in layouts() {
+            for (w, h) in SIZES {
+                let (_, mut app) = super::design_tests::render_with(w, h);
+                layout(&mut app);
+                with_check(&mut app, "npm test", CHECK_TIMEOUT_S_DEFAULT);
+                app.snap.terms.get_mut(&1).unwrap().check = Some(result(CheckState::Failed, Some(1)));
+                open_check_page(&mut app, 0);
+                let o = draw(&mut app, w, h);
+                show(&o);
+                let at = format!("{name} {w}x{h}");
+                let text = words(&o);
+                for want in ["npm test", "10 min", "after each turn", "failed", "exit 1", "2m ago"] {
+                    assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
+                }
+                assert!(!text.contains("No check set."), "{at}: a set check is not the empty state");
+                assert!(!text.contains(":2") && !text.contains(":1"), "{at}: ages, not clock times");
+            }
+        }
+    }
+
+    #[test]
+    fn the_status_row_names_each_result_by_shape_and_word() {
+        let cases = [
+            (None, "never run"),
+            (Some(result(CheckState::Passed, Some(0))), "passed"),
+            (Some(result(CheckState::Failed, Some(1))), "failed"),
+            (Some(result(CheckState::Checking, None)), "checking"),
+            (Some(result(CheckState::Overridden, Some(1))), "overridden"),
+            (Some(result(CheckState::CouldNotRun, Some(127))), "could not run"),
+        ];
+        for (info, want) in cases {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            with_check(&mut app, "npm test", CHECK_TIMEOUT_S_DEFAULT);
+            app.snap.terms.get_mut(&1).unwrap().check = info;
+            open_check_page(&mut app, 0);
+            let o = draw(&mut app, 160, 45);
+            assert!(words(&o).contains(want), "{want}: in\n{o}");
+        }
+    }
+
+    #[test]
+    fn everything_outside_the_check_page_is_the_same_with_or_without_a_check_set() {
+        for (name, layout) in layouts() {
+            let frames = |set: bool| {
+                let (_, mut app) = super::design_tests::render_with(100, 30);
+                layout(&mut app);
+                // A one-frame spinner, so two draws a moment apart cannot differ by the clock.
+                app.cfg.ui.spinner = vec!["*".into()];
+                app.cfg.ui.motion = false;
+                if set {
+                    with_check(&mut app, "npm test", CHECK_TIMEOUT_S_DEFAULT);
+                }
+                let normal = draw(&mut app, 100, 30);
+                app.mode = Mode::HySettings(Box::new(design::SettingsView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
+                (normal, draw(&mut app, 100, 30))
+            };
+            let (plain, with) = (frames(false), frames(true));
+            assert_eq!(plain.0, with.0, "{name}: the sidebar ignores a project's check");
+            // Flat draws keycaps with or without edge glyphs depending on what other tests set, so
+            // compare the page's words and not its padding.
+            let squash = |s: &str| s.split_whitespace().collect::<String>();
+            assert_eq!(squash(&plain.1), squash(&with.1), "{name}: the other pages ignore a project's check");
+        }
+    }
+
+    #[test]
+    fn the_timeout_steps_through_round_values_and_clamps() {
+        assert_eq!(step_timeout(600, 1), 900);
+        assert_eq!(step_timeout(600, -1), 300);
+        assert_eq!(step_timeout(30, -1), 30, "the shortest stays");
+        assert_eq!(step_timeout(3600, 1), 3600, "the longest stays");
+        assert_eq!(step_timeout(90, 1), 120, "a hand-edited value steps to the next round one");
+        assert_eq!(step_timeout(90, -1), 60);
+    }
+
+    fn edited(before: &str, edit: CheckEdit) -> (String, crate::config::Config) {
+        let mut doc: toml_edit::DocumentMut = before.parse().unwrap();
+        edit.apply(&mut doc).unwrap();
+        let out = doc.to_string();
+        let cfg: crate::config::Config = toml::from_str(&out).unwrap();
+        (out, cfg)
+    }
+
+    fn set(command: &str, timeout_s: u64) -> CheckEdit {
+        CheckEdit::Set { project: project(), command: command.into(), timeout_s }
+    }
+
+    #[test]
+    fn saving_a_check_writes_its_table_in_place_and_keeps_the_comments() {
+        let before = "# my notes\ntheme = \"nord\"\n\n[ui]\n# my ui notes\nsidebar = true\n";
+        let (out, cfg) = edited(before, set("npm test", 600));
+        assert!(out.contains("# my notes") && out.contains("# my ui notes"), "{out}");
+        assert!(out.contains("[[check]]"), "{out}");
+        assert_eq!(cfg.check, vec![CheckDef { project: project(), command: "npm test".into(), timeout_s: 600 }]);
+
+        let with_note = format!("{out}\n# why this one\n[[check]]\nproject = \"/code/lib\"\ncommand = \"cargo test\"\n");
+        let (out, cfg) = edited(&with_note, set("pnpm test", 900));
+        assert!(out.contains("# why this one") && out.contains("# my notes"), "{out}");
+        assert_eq!(cfg.check.len(), 2, "the same project is updated, not added twice: {out}");
+        let mine = cfg.check.iter().find(|c| crate::config::same_path(&c.project, &project())).unwrap();
+        assert_eq!((mine.command.as_str(), mine.timeout_s), ("pnpm test", 900));
+        assert!(cfg.check.iter().any(|c| c.command == "cargo test"), "the other project is untouched");
+    }
+
+    #[test]
+    fn removing_a_check_deletes_only_its_table() {
+        let two = "# top\n[[check]]\nproject = \"/code/lib\"\ncommand = \"cargo test\"\n\n[[check]]\nproject = \"/code/shop-api\"\ncommand = \"npm test\"\n";
+        let two = two.replace("/code/shop-api", &project().to_string_lossy().replace('\\', "\\\\"));
+        let (out, cfg) = edited(&two, CheckEdit::Remove { project: project() });
+        assert!(out.contains("# top"), "{out}");
+        assert_eq!(cfg.check.len(), 1);
+        assert_eq!(cfg.check[0].command, "cargo test");
+        let (out, cfg) = edited(&out, CheckEdit::Remove { project: PathBuf::from("/code/lib") });
+        assert!(cfg.check.is_empty() && !out.contains("check"), "the last one takes the key with it: {out}");
+        let (_, cfg) = edited("theme = \"nord\"\n", CheckEdit::Remove { project: project() });
+        assert!(cfg.check.is_empty(), "removing what is not there is fine");
+    }
+
+    #[test]
+    fn a_check_list_written_another_way_is_refused_not_overwritten() {
+        let mut doc: toml_edit::DocumentMut = "check = 3\n".parse().unwrap();
+        assert!(set("npm test", 600).apply(&mut doc).is_err());
+    }
+
+    fn app_with_channel() -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
+        let (_, mut app) = super::design_tests::render_with(100, 30);
+        let (tx, rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        (app, rx)
+    }
+
+    #[test]
+    fn a_failed_save_keeps_the_draft_and_says_why() {
+        let (mut app, _rx) = app_with_channel();
+        open_check_page(&mut app, 0);
+        app.check_saved(Err(anyhow::anyhow!("disk full")), Some("pnpm test".into()));
+        assert!(matches!(&app.mode, Mode::HySettings(v) if v.editing.as_deref() == Some("pnpm test")), "the draft is still being edited");
+        let (msg, _, error) = app.notice.clone().expect("a toast");
+        assert!(error && msg.contains("couldn't save") && msg.contains("disk full"), "{msg}");
+        assert!(app.cfg.check.is_empty(), "nothing was applied");
+    }
+
+    #[test]
+    fn a_saved_check_reaches_the_daemon() {
+        let (mut app, mut rx) = app_with_channel();
+        open_check_page(&mut app, 0);
+        let mut cfg = app.cfg.clone();
+        cfg.check = vec![CheckDef { project: project(), command: "npm test".into(), timeout_s: 600 }];
+        app.check_saved(Ok(cfg), Some("npm test".into()));
+        assert_eq!(app.cfg.check.len(), 1);
+        let mut sent = Vec::new();
+        while let Ok(m) = rx.try_recv() {
+            sent.push(m);
+        }
+        assert!(sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::ReloadConfig))), "the daemon is told to reload");
+        assert!(matches!(&app.mode, Mode::HySettings(v) if v.editing.is_none()), "a saved draft is no longer a draft");
+    }
+
+    #[test]
+    fn keys_on_the_check_page_edit_without_saving_until_enter() {
+        let (mut app, _rx) = app_with_channel();
+        with_check(&mut app, "npm test", 600);
+        open_check_page(&mut app, 0);
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(&app.mode, Mode::HySettings(v) if v.editing.as_deref() == Some("npm test")), "Enter edits the command");
+        assert!(draw(&mut app, 100, 30).contains("npm test█"), "the draft shows with its cursor");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(matches!(&app.mode, Mode::HySettings(v) if v.editing.is_none()), "Esc drops the draft");
+        assert_eq!(app.cfg.check[0].command, "npm test");
+    }
+
+    #[test]
+    fn with_no_check_the_timeout_and_delete_say_what_is_missing_and_write_nothing() {
+        let (mut app, _rx) = app_with_channel();
+        open_check_page(&mut app, 1);
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        let (msg, _, _) = app.notice.clone().expect("a toast");
+        assert!(msg.contains("command first"), "{msg}");
+        app.notice = None;
+        app.on_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+        assert!(app.notice.is_none(), "nothing to remove, nothing said");
+    }
+
+    #[test]
+    fn without_a_project_open_the_command_cannot_be_edited() {
+        let (mut app, _rx) = app_with_channel();
+        app.snap.workspaces.clear();
+        app.snap.active_ws = None;
+        open_check_page(&mut app, 0);
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(&app.mode, Mode::HySettings(v) if v.editing.is_none()));
+        let (msg, _, _) = app.notice.clone().expect("a toast");
+        assert!(msg.contains("project"), "{msg}");
+    }
+}

@@ -65,11 +65,12 @@ pub enum Cat {
     Sessions,
     Appearance,
     Agents,
+    Check,
     Keys,
 }
 
 impl Cat {
-    pub const ALL: [Cat; 5] = [Cat::General, Cat::Sessions, Cat::Appearance, Cat::Agents, Cat::Keys];
+    pub const ALL: [Cat; 6] = [Cat::General, Cat::Sessions, Cat::Appearance, Cat::Agents, Cat::Check, Cat::Keys];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -77,6 +78,7 @@ impl Cat {
             Cat::Sessions => "Sessions",
             Cat::Appearance => "Appearance",
             Cat::Agents => "Agents",
+            Cat::Check => "Check",
             Cat::Keys => "Keys",
         }
     }
@@ -194,6 +196,31 @@ pub fn write(path: &str, value: toml_edit::Value) -> Result<()> {
 
 /// Write a value at a path of keys (a key may contain dots, like the `.` shortcut).
 pub fn write_at(parts: &[&str], mut value: toml_edit::Value) -> Result<()> {
+    edit_config(|doc| {
+        let (leaf, tables) = parts.split_last().context("empty setting path")?;
+        let mut table = doc.as_table_mut();
+        for part in tables {
+            if !table.contains_key(part) {
+                // Implicit: `[keys.prefix]` without an empty `[keys]` above it.
+                let mut new = toml_edit::Table::new();
+                new.set_implicit(true);
+                table.insert(part, toml_edit::Item::Table(new));
+            }
+            table = table[*part].as_table_mut().with_context(|| format!("`{part}` in config.toml is not a table"))?;
+        }
+        if let Some(old) = table.get_mut(leaf).and_then(toml_edit::Item::as_value_mut) {
+            // Replacing the whole entry discards comments attached to its key and value.
+            *value.decor_mut() = old.decor().clone();
+            *old = value;
+        } else {
+            table.insert(leaf, toml_edit::value(value));
+        }
+        Ok(())
+    })
+}
+
+/// Change config.toml through `edit`, keeping the rest of the file (comments included).
+pub fn edit_config(edit: impl FnOnce(&mut toml_edit::DocumentMut) -> Result<()>) -> Result<()> {
     let file = crate::config::config_path();
     let text = match std::fs::read_to_string(&file) {
         Ok(t) => t,
@@ -201,24 +228,7 @@ pub fn write_at(parts: &[&str], mut value: toml_edit::Value) -> Result<()> {
         Err(e) => return Err(e).context("reading config"),
     };
     let mut doc: toml_edit::DocumentMut = text.parse().context("config.toml has a syntax error; fix it first")?;
-    let (leaf, tables) = parts.split_last().context("empty setting path")?;
-    let mut table = doc.as_table_mut();
-    for part in tables {
-        if !table.contains_key(part) {
-            // Implicit: `[keys.prefix]` without an empty `[keys]` above it.
-            let mut new = toml_edit::Table::new();
-            new.set_implicit(true);
-            table.insert(part, toml_edit::Item::Table(new));
-        }
-        table = table[*part].as_table_mut().with_context(|| format!("`{part}` in config.toml is not a table"))?;
-    }
-    if let Some(old) = table.get_mut(leaf).and_then(toml_edit::Item::as_value_mut) {
-        // Replacing the whole entry discards comments attached to its key and value.
-        *value.decor_mut() = old.decor().clone();
-        *old = value;
-    } else {
-        table.insert(leaf, toml_edit::value(value));
-    }
+    edit(&mut doc)?;
     crate::config::write_atomic(&file, doc.to_string()).context("writing config")?;
     crate::sync::push_soon();
     Ok(())

@@ -71,7 +71,7 @@ pub(super) fn duration(ms: u64) -> String {
     if secs < SECS_PER_MIN { format!("{:.1}s", ms as f64 / 1000.0) } else { format!("{}m {}s", secs / SECS_PER_MIN, secs % SECS_PER_MIN) }
 }
 
-fn why_not_run(exit: Option<i32>) -> String {
+pub(super) fn why_not_run(exit: Option<i32>) -> String {
     match exit {
         Some(EXIT_NOT_FOUND) => " · not found".into(),
         Some(EXIT_NOT_EXECUTABLE) => " · not executable".into(),

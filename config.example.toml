@@ -153,6 +153,7 @@ A = "new-worktree:claude"   # worktree picker; whatever you open or create start
 # project = "/home/me/code/app"
 # command = "npm test"
 # timeout_s = 600
+# Settings > Check edits this table for the project you are in and keeps your comments.
 
 # Presets: saved launches, offered as ★ choices in the new-agent dialog. `{task}` is what
 # you type. where = send (tell the agent you're on) | beside (a new one in its folder) |

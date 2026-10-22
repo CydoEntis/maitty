@@ -254,6 +254,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                 Cat::Sessions => "Sess",
                 Cat::Appearance => "Look",
                 Cat::Agents => "Agent",
+                Cat::Check => "Check",
                 Cat::Keys => "Keys",
             }
         } else if compact_tabs && *cat == Cat::Appearance {
@@ -364,6 +365,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         Some(SRow::Setting(s)) => s.help.to_string(),
         Some(SRow::Bind { acts, .. }) if acts.len() > 1 => "Several keys; change them in the config file (o).".into(),
         Some(SRow::Bind { .. }) => "Enter, then press the new key.".into(),
+        Some(SRow::Check(f)) => crate::client::hydra::check_settings::help(app, *f),
         None => String::new(),
     };
     // Lines: headings, rows with a blank between them, a wider gap between groups. The
@@ -373,6 +375,8 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         Row(usize),
         Blank,
     }
+    // The Check page has a handful of rows that must all fit a 24-row window.
+    let compact = cat == Cat::Check;
     let mut lines: Vec<L> = Vec::new();
     let mut last = "";
     for (i, row) in rows.iter().enumerate() {
@@ -382,11 +386,15 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                 lines.push(L::Blank);
             }
             lines.push(L::Head(g));
-            lines.push(L::Blank);
+            if !compact {
+                lines.push(L::Blank);
+            }
             last = g;
         }
         lines.push(L::Row(i));
-        lines.push(L::Blank);
+        if !compact {
+            lines.push(L::Blank);
+        }
     }
     let top = r.y + 6 + lines_used;
     // Appearance keeps room at the foot for its preview.
@@ -423,6 +431,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                 let label = match row {
                     SRow::Setting(s) => s.label.to_string(),
                     SRow::Bind { label, .. } => label.to_string(),
+                    SRow::Check(f) => f.label().to_string(),
                 };
                 put(buf, lx, y, &[seg(truncate(&label, (vx - lx - 2) as usize), ls)], vx - 1);
                 if let Some((opts, cur)) = chips_for(app, row).filter(|_| !(sel && v.editing.is_some())) {
@@ -440,7 +449,11 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                         cx += w + 1;
                     }
                 } else {
-                    let ctrl: Vec<Seg> = crate::client::design::control(app, t, row, v, sel).into_iter().map(|(x, s)| (x, if s.bg.is_none() { s.bg(bg) } else { s })).collect();
+                    let shown = match row {
+                        SRow::Check(f) => crate::client::hydra::check_settings::control(app, t, *f, v, sel, r.right().saturating_sub(vx + 1) as usize),
+                        _ => crate::client::design::control(app, t, row, v, sel),
+                    };
+                    let ctrl: Vec<Seg> = shown.into_iter().map(|(x, s)| (x, if s.bg.is_none() { s.bg(bg) } else { s })).collect();
                     put(buf, vx, y, &ctrl, r.right() - 1);
                     hit(app, Rect { x: vx, y, width: segs_width(&ctrl).max(1), height: 1 }, HyHit::SetVal(*i, usize::MAX));
                 }
@@ -479,11 +492,40 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     }
     // The selected row's help, always in the same place.
     hline(buf, r.x + 3, r.bottom() - 5, r.width.saturating_sub(6), t, t.card);
-    if !help.is_empty() {
-        put(buf, r.x + 3, r.bottom() - 4, &[seg(truncate(&help, (r.width - 6) as usize), c.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right() - 2);
+    // Check help is longer than one line (it carries the empty-state copy), so it wraps onto two.
+    let help_lines = if cat == Cat::Check { wrap_two(&help, (r.width - 6) as usize) } else { vec![truncate(&help, (r.width - 6) as usize)] };
+    for (k, line) in help_lines.iter().enumerate().filter(|(_, l)| !l.is_empty()) {
+        put(buf, r.x + 3, r.bottom() - 4 + k as u16, &[seg(line.clone(), c.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right() - 2);
     }
-    put(buf, r.x + 3, r.bottom() - 2, &hints(t, &[("↑↓", "move"), ("←→", "change"), ("Tab", "section")]), r.right());
     let file = vec![seg("config.toml  ", c.fg(t.muted)), seg("o", c.fg(t.accent).add_modifier(Modifier::BOLD)), seg(" open", c.fg(t.muted))];
     let fw = segs_width(&file);
+    let mut keys = hints(t, &[("↑↓", "move"), ("←→", "change"), ("Tab", "section")]);
+    if cat == Cat::Check {
+        // The Check page's own keys, when they fit beside the file link.
+        let more = hints(t, &[("↑↓", "move"), ("Enter", "edit"), ("Del", "remove"), ("←→", "change"), ("Tab", "section")]);
+        if segs_width(&more) + fw + 8 <= r.width {
+            keys = more;
+        }
+    }
+    put(buf, r.x + 3, r.bottom() - 2, &keys, r.right());
     put(buf, r.right().saturating_sub(fw + 3), r.bottom() - 2, &file, r.right());
+}
+
+/// `text` on up to two lines of `width` columns, broken at spaces; the second ends in `…` if cut.
+fn wrap_two(text: &str, width: usize) -> Vec<String> {
+    let mut lines = vec![String::new()];
+    for word in text.split_whitespace() {
+        let Some(line) = lines.last_mut() else { break };
+        if line.is_empty() || line.width() + 1 + word.width() <= width {
+            if !line.is_empty() {
+                line.push(' ');
+            }
+            line.push_str(word);
+        } else if lines.len() < 2 {
+            lines.push(word.to_string());
+        } else {
+            return vec![std::mem::take(&mut lines[0]), truncate(&format!("{} {word}", lines[1]), width)];
+        }
+    }
+    lines
 }
