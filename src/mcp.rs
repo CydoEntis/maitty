@@ -17,7 +17,7 @@ fn norm(p: &Path) -> String {
 }
 
 /// The repo (or folder) the calling agent works in.
-fn caller_root() -> PathBuf {
+pub(crate) fn caller_root() -> PathBuf {
     let cwd = std::env::current_dir().unwrap_or_default();
     crate::gitfs::head(&cwd).map(|h| h.main_root).unwrap_or(cwd)
 }
@@ -338,12 +338,19 @@ fn start_command(cfg: &crate::config::Config, root: &Path, args: &Value, prompt:
         (None, Some(a)) => a.to_string(),
         (None, None) => cfg.quick.agents.first().map_or_else(|| "claude".into(), |a| a.name.clone()),
     };
-    let q = cfg.quote_for_shell(prompt);
+    let model = helper.and_then(|h| h.model);
+    let cmd = agent_command(cfg, &agent, model.as_deref(), &cfg.quote_for_shell(prompt))?;
+    Ok((agent, cmd))
+}
+
+/// The command line that runs `agent` on `model` (`None`: its default) with an already quoted
+/// prompt, as its account when it is one.
+pub(crate) fn agent_command(cfg: &crate::config::Config, agent: &str, model: Option<&str>, quoted: &str) -> Result<String, String> {
     let quick = cfg.quick.agents.iter().find(|a| a.name == agent);
     let cmd = match quick {
-        Some(a) => a.command.replace("{prompt}", &q),
+        Some(a) => a.command.replace("{prompt}", quoted),
         // Only agents seshi knows, by plain name: anything else would run as a command.
-        None if known_agent(cfg, &agent) => format!("{agent} {q}"),
+        None if known_agent(cfg, agent) => format!("{agent} {quoted}"),
         None => {
             let mut names: Vec<String> = cfg.quick.agents.iter().map(|a| a.name.clone()).collect();
             names.extend(cfg.agent_defs().into_iter().map(|d| d.name));
@@ -351,12 +358,11 @@ fn start_command(cfg: &crate::config::Config, root: &Path, args: &Value, prompt:
             return Err(format!("unknown agent \"{agent}\"; use one of: {}", names.join(", ")));
         }
     };
-    let cmd = match helper.and_then(|h| h.model) {
-        Some(model) => cfg.with_model(&cmd, quick.map_or("", |a| a.model_flag.as_str()), &model),
+    let cmd = match model {
+        Some(model) => cfg.with_model(&cmd, quick.map_or("", |a| a.model_flag.as_str()), model),
         None => cmd,
     };
-    let cmd = cfg.as_account(&agent, &cmd);
-    Ok((agent, cmd))
+    Ok(cfg.as_account(agent, &cmd))
 }
 
 fn slug(s: &str) -> String {

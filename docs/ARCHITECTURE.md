@@ -54,7 +54,7 @@ layers*. Never reverse the direction.
 src/
   main.rs        argument parsing, picks client / daemon / CLI role
   cli.rs         one-shot subcommands (send, read, wait, hook, allow, doctor, …)
-  brief.rs       `seshi brief`: a commander's instructions (brief.md)
+  brief.rs       `seshi brief`: a commander's instructions (brief.md), with its team when one is set
   team.rs        a commander's team: the agent and model a job runs on in a project (pure domain code, no I/O)
   tidy.rs        what removing a worktree would lose (shared by the server's sweep and the clean-up list)
   snapshot.rs    a checkout's files kept before each agent turn, and put back (the server takes them, the client lists and restores)
@@ -214,7 +214,7 @@ The client never touches a PTY; the daemon never draws. They meet only through
 src/
   main.rs        argument parsing, picks client / daemon / CLI role
   cli.rs         one-shot subcommands (send, read, wait, hook, doctor, …)
-  brief.rs       `seshi brief`: a commander's instructions (brief.md)
+  brief.rs       `seshi brief`: a commander's instructions (brief.md), with its team when one is set
   team.rs        a commander's team: the agent and model a job runs on in a project (pure domain code, no I/O)
   tidy.rs        what removing a worktree would lose (shared by the server's sweep and the clean-up list)
   snapshot.rs    a checkout's files kept before each agent turn, and put back (the server takes them, the client lists and restores)
