@@ -141,7 +141,7 @@ result and the overridden one of each checkpoint are saved in `SavedPane` (`chec
 `checks_overridden`; a pane saved with the single `check` / `check_overridden` loads them as
 one checkpoint); their tails are saved beside the pane's output files as
 `<term>-<name>-<slot>.txt`, and a tail under the old `<term>-<slot>.txt` name is read once at
-restore and dropped by the next save. The daemon runs one check per pane for now: the first.
+restore and dropped by the next save.
 
 Three commands act on a check, each needing `Grant::Write` on the target pane and each naming
 a checkpoint (`name` None: all of them for a re-run, the headline for the others). `RerunCheck`

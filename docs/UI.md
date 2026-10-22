@@ -241,16 +241,16 @@ tested cell for cell against the reference frames (`client/screen/side_frames.tx
 
 ## Project-specific: check evidence sheet
 
-The check evidence sheet follows v7 (`drawEvidence` in [`docs/design/v7/checks7.js`](design/v7/checks7.js)). Enter on a sidebar row whose check failed, could not run or was overridden opens it (every other row still focuses its session), as do Output in the Inbox and `⏎` in the why popover. It docks right like the Inbox and takes the pane column below `NARROW`. Its title is `CHECK · <session> › <checkpoint>`; content starts one column into the card's inside.
+The check evidence sheet follows v7 (`drawEvidence` in [`docs/design/v7/checks7.js`](design/v7/checks7.js)). Enter on a sidebar row whose check failed, could not run, was overridden, went stale or is never run for its repo opens it (a row waiting for approval opens the approval; every other row still focuses its session), as do Output in the Inbox and `⏎` in the why popover. It docks right like the Inbox and takes the pane column below `NARROW`. Its title is `CHECK · <session> › <checkpoint>`; content starts one column into the card's inside, and in Flat the sheet keeps the Cards box (the Inbox too): only the frame changes.
 
 - A result chip (` <glyph> <word> ` bold on the state's colour: `failed` on `err`, `failed · overridden` on `text`, `could not run` and `not checked` on `violet()`, `passed` on `done`, `stale pass` on `btn`), then what it came to in `strong` bold (`exit 1`, `exit 0 on older code`, `never for this repo`; `command not found` in `violet()` for exit 127).
 - Command, Folder (the run's folder, home as `~`), Ran (`14:22:05 · took 14.2s · after turn 3 ended 14:21:51`, local clock; `did not run` when it never started) and Seen by (`Seshi ran this itself. The agent said "…".`), or Source (`.seshi/checks.toml · <commit> · you chose never`) for a repo's own command. Rows are clipped at the sheet's edge, not wrapped.
 - A banner on a tint for a result that needs explaining: overridden (by whom, when, `u undo`, the reason), stale (how many files changed and when, then one `M path` row per file that fits), never, could not run.
 - `OUTPUT`, then `all N lines`, `last N of 1,284 lines` (numbered as the whole output, from `CheckInfo.line_count`; `f full output` when the daemon kept only the tail) or `empty`, on a darker block with 5-column line numbers; `✓` lines `done`, failure lines `err`, `▲` when there is more above. Empty output says why: `(no output)`, `(the command printed nothing)` / `exit 0 is what passed it.`, or `(nothing ran)`.
 - Buttons on the third row from the bottom, each a click of its key: `Check settings ,` for never, else `Re-run r` (primary when stale, absent while it runs), `Override… O` (failed only), `Undo override u` (overridden only), and `Open session o` when it fits. The last row is always `Esc back   r re-run   f full output   i why`.
-- Keys: Esc closes; `r`, `O`, `u` act as the buttons; `f` and the arrows open all of the output and scroll it; `o` goes to the session; `i` opens the why popover; `,` opens Settings › Check for the session's project. With several checkpoints it opens on the headline one, and Tab / Shift+Tab move to the next / previous; the title names the one shown and its output is fetched by name.
+- Keys: Esc closes; `r`, `O`, `u` act as the buttons; `f` and the arrows open all of the output and scroll it; `o` goes to the session; `i` opens the why popover; `,` opens `PROJECT · <name>` for the session's project. With several checkpoints it opens on the headline one, and Tab / Shift+Tab move to the next / previous; the title names the one shown and its output is fetched by name.
 
-The row menu of a session with a check adds Check output (any result), Re-run check (not while it runs) and Override check… (failed only); letters come from `menu_keys` like every item. Output comes from `Query::CheckOutput` and is fetched again when a new run replaces the result. Command output is not trusted: colour codes and control characters are stripped before drawing.
+The row menu of a session with a check adds Check output (any result), Re-run check (not while it runs), Override check… (failed only) and Undo override (overridden only); letters come from `menu_keys` like every item. Output comes from `Query::CheckOutput` and is fetched again when a new run replaces the result. Command output is not trusted: colour codes and control characters are stripped before drawing.
 
 ## Project-specific: why popover
 
@@ -294,8 +294,7 @@ with its count. A question is never below a check.
   failure keeps its red `▎` unselected. It grows its buttons, each a click of its key: question
   `Reply m` `Open o`; approval `Read the command ⏎`; failed `Output ⏎` `Re-run r` `Override… O`;
   could not run `Output ⏎` `Settings ,`; stale `Re-run r` `Output ⏎`. Enter runs the first
-  button (Read the command opens the evidence until the approval modal takes it); an item with
-  no buttons opens its session. `o` opens the session of any item; `r`, `O`, `u`, `,` act on an
+  button (Read the command opens the approval); an item with no buttons opens its session. `o` opens the session of any item; `r`, `O`, `u`, `,` act on an
   item's check where they apply and are typed otherwise. 1–9 answer a question; d, M, x and m
   act on a finished item; d, m and k on a heads-up; Delete marks seen.
 - Typing finds any session; the `› query` row shows only once you type. The last row is
@@ -305,7 +304,7 @@ with its count. A question is never below a check.
 
 ## Project-specific: v7 frame
 
-The v7 layout and checkpoints follow [`docs/design/v7/`](design/v7/README.md) (`checks7.js` is the spec). The frame is [ADR 0013](adr/0013-v7-frame.md); `client/screen/v7_frame_tests.rs` holds it to the reference frames.
+The v7 layout and checkpoints follow [`docs/design/v7/`](design/v7/README.md) (`checks7.js` is the spec). The frame is [ADR 0013](adr/0013-v7-frame.md); `client/screen/v7_frame_tests.rs` holds it to the reference frames, and `client/v7_frames_tests.rs` holds every preset's whole screen to them (see [TESTING](TESTING.md)).
 
 - **Grid** (`draw.rs` `grid`): no outer margin. The sidebar is 40 columns from 200, 34 from 140, else 26 (a width you dragged wins), the full height. Floating leaves `ui.gap` between cards, tiled none (borders side by side, never merged), Flat starts the panes on the sidebar's last column.
 - **Cards** (`card.rs` `card`): `┌┐└┘` or `╭╮╰╯` (`ui.corners`), `line`, the focused card's whole border in the accent. The title chip sits on the top border two in; the right-hand segments end a padding space before the corner. **Flat**: no box; row 0 is a header strip of `card`, the chip one in, the right-hand segments a column from the edge; a zone not at the screen's edge starts with a `│` rule.
