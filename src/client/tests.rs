@@ -3872,6 +3872,34 @@ mod check_row_tests {
     }
 
     #[test]
+    fn a_running_check_keeps_the_redraw_tick_going() {
+        let mut app = one(160, 45, LAYOUTS[0], &CASES[0]);
+        assert!(app.any_checking(), "a check in progress animates its ring");
+        for c in &CASES[1..] {
+            app = one(160, 45, LAYOUTS[0], c);
+            assert!(!app.any_checking(), "{:?} is finished and needs no tick", c.state);
+        }
+        assert!(!scene(160, 45, LAYOUTS[0], &[(NAME, Status::Done, None)]).any_checking());
+    }
+
+    #[test]
+    fn a_narrow_check_adds_no_row() {
+        const AFTER: &str = "after-agent";
+        for layout in LAYOUTS {
+            for (w, h) in [(80, 24), (100, 30)] {
+                let at = label(layout, w, h);
+                let rows = |check: Option<CheckInfo>| {
+                    let mut app = scene(w, h, layout, &[(NAME, Status::Done, check), (AFTER, Status::Done, None)]);
+                    let buf = render(&mut app, w, h);
+                    (row_of(&buf, &app, AFTER), app.hy.row_y.len())
+                };
+                let with = rows(Some(info(CheckState::Failed, Some(1))));
+                assert_eq!(with, rows(None), "{at}: a checked session takes the same rows as an unchecked one");
+            }
+        }
+    }
+
+    #[test]
     fn selected_and_hovered_check_rows_tint_both_lines() {
         let (w, h) = (160, 45);
         for layout in LAYOUTS {

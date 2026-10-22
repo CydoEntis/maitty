@@ -39,10 +39,15 @@ pub(super) fn failed(info: &CheckInfo) -> bool {
     info.state == CheckState::Failed
 }
 
+/// Which ring glyph a spinner frame shows. Apart from the clock so a test can step it.
+fn ring_step(frame: u64, len: usize) -> usize {
+    (frame / RING_TICKS % len as u64) as usize
+}
+
 pub(super) fn glyph(app: &App, info: &CheckInfo) -> &'static str {
     let m = marks(app);
     match info.state {
-        CheckState::Checking => m.ring[if app.motion_on() { (app.spinner_frame() / RING_TICKS % m.ring.len() as u64) as usize } else { 0 }],
+        CheckState::Checking => m.ring[if app.motion_on() { ring_step(app.spinner_frame(), m.ring.len()) } else { 0 }],
         CheckState::Passed => m.passed,
         CheckState::Failed => m.failed,
         CheckState::Overridden => m.overridden,
@@ -115,4 +120,15 @@ pub(super) fn words_style(info: &CheckInfo, t: &Theme, bg: Color, lit: bool) -> 
     let c = if matches!(info.state, CheckState::Checking | CheckState::Failed) { color(t, info) } else { t.muted };
     let style = Style::default().bg(bg).fg(if lit { t.on_lit(c) } else { c });
     if failed(info) { style.add_modifier(Modifier::BOLD) } else { style }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_ring_steps_every_second_spinner_frame_and_wraps() {
+        let steps: Vec<usize> = (0..10).map(|f| ring_step(f, 4)).collect();
+        assert_eq!(steps, [0, 0, 1, 1, 2, 2, 3, 3, 0, 0]);
+    }
 }

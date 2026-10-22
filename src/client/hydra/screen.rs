@@ -406,7 +406,10 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     app.hy.side_rect = r;
     hit(app, r, HyHit::SideFocus);
     let small = buf.area.width < NARROW;
-    let lines = side_lines(app, model, t);
+    let mut lines = side_lines(app, model, t);
+    if small {
+        lines.retain(|l| !matches!(l, Line::Check(_)));
+    }
     let shown: Vec<TermId> = app.hy.tabs.get(app.hy.tab).map(|t| t.layout.leaves()).unwrap_or_default();
     // In a split, the split's row (its first pane's) is the open one, whichever side you're on.
     let focus = app.focused().map(|f| if shown.len() > 1 && shown.contains(&f) { shown[0] } else { f });
@@ -634,7 +637,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
             }
             Line::Check(term) => {
                 let Some((_, _, s)) = find(model, *term) else { continue };
-                let Some(info) = check::shown(s).filter(|_| !small) else { continue };
+                let Some(info) = check::shown(s) else { continue };
                 let lit = shade(app, *term, Rect { y: y.saturating_sub(1), height: 2, ..row }, false);
                 let bg = lit.unwrap_or(pb);
                 if lit.is_some() {
