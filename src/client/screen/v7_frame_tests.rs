@@ -1,10 +1,12 @@
 //! The v7 frame set beside the handoff's reference frames (`docs/design/v7/render-frames.mjs`):
-//! the grid, the pane's title strip and right-hand mark, corners, and where a sheet goes.
-//! Sidebar rows, sheet contents and the pane's own terminal text belong to other screens and
-//! are left out.
+//! the grid, the pane's title strip and right-hand mark, corners, where a sheet goes, and the
+//! modal and popover frames. Sidebar rows, sheet and modal contents and the pane's own
+//! terminal text belong to other screens and are left out.
 use super::*;
 use crate::client::v7_fixture::{self, LAYOUTS, Layout, SIZES, Stage};
 use crate::layout::Node;
+use ratatui::Terminal;
+use ratatui::backend::TestBackend;
 
 /// Preset 01 "No check set" from the reference: row 0 from the pane column on, and the last
 /// row (Flat: from the pane column on, the sidebar's foot being its own).
@@ -20,6 +22,12 @@ const ROWS_01: [(Layout, u16, u16, &str, &str, &str); 10] = [
     (Layout::Flat, 80, 24, "unicode", "│ 1  fix-footer  2  add-payments            ✓ done  ✕", "│"),
     (Layout::Flat, 80, 24, "ascii", "│ 1  fix-footer  2  add-payments            + done  x", "│"),
 ];
+
+/// The modal sizes of presets 12 (Override?), A2 (Approve · read first) and 15 (Settings ·
+/// set) on a screen `w`×`h`.
+fn modal_sizes(w: u16, h: u16) -> [(&'static str, u16, u16); 3] {
+    [("12", (w - 2).min(70), 15), ("A2", (w - 2).min(84), (h - 1).min(20) - u16::from(h < 30)), ("15", (w - 2).min(80), (h - 2).min(20))]
+}
 
 /// The handoff's world with fix-footer's session in two tabs, as the reference draws it.
 fn world(stage: Stage) -> App {
@@ -49,6 +57,14 @@ fn from(row: &[char], x: u16) -> String {
 
 fn col(rows: &[Vec<char>], x: u16, ys: std::ops::Range<u16>) -> String {
     ys.map(|y| rows[y as usize].get(x as usize).copied().unwrap_or(' ')).collect()
+}
+
+/// `app` drawn in `layout` at `w`×`h`, as cells.
+fn buffer(app: &mut App, layout: Layout, w: u16, h: u16) -> Buffer {
+    v7_fixture::frame(app, layout, w, h, "unicode");
+    let mut term = Terminal::new(TestBackend::new(w, h)).expect("a test terminal");
+    term.draw(|f| crate::client::render::draw(app, f)).expect("a frame");
+    term.backend().buffer().clone()
 }
 
 #[test]
@@ -119,6 +135,56 @@ fn a_sheet_docks_72_wide_at_160_and_takes_the_pane_column_below_140() {
                     assert!(back.lines().next().unwrap_or_default().contains(" fix-footer "), "Esc brings the pane back: {back}");
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn a_modal_is_centred_with_an_accent_title_a_hard_shadow_and_a_bottom_border() {
+    for layout in LAYOUTS {
+        for (w, h) in SIZES {
+            for (preset, mw, mh) in modal_sizes(w, h) {
+                let mut app = world(Stage::Failed);
+                let mut buf = buffer(&mut app, layout, w, h);
+                let t = app.theme.clone();
+                let area = Rect::new(0, 0, w, h);
+                let r = panel(&mut app, &mut buf, area, mw, mh, "OVERRIDE A FAILED CHECK", &[], &t);
+                let at = format!("{preset} {layout:?} {w}x{h}");
+                assert_eq!(r, Rect::new((w - mw) / 2, (h - mh) / 2, mw, mh), "{at}");
+                let line = |y: u16, x0: u16, x1: u16| (x0..x1).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>();
+                assert!((r.x..r.right()).all(|x| buf[(x, r.y)].bg == t.accent), "the title row is the accent: {at}");
+                assert_eq!(line(r.y, r.x + 2, r.x + 25), "OVERRIDE A FAILED CHECK", "{at}");
+                assert_eq!(line(r.y, r.right() - 11, r.right() - 2), "Esc close", "{at}");
+                assert_eq!(line(r.bottom() - 1, r.x, r.right()), format!("└{}┘", "─".repeat(mw as usize - 2)), "{at}");
+                assert!((r.y + 1..r.bottom() - 1).all(|y| buf[(r.x, y)].symbol() == "│" && buf[(r.right() - 1, y)].symbol() == "│"), "{at}");
+                let shadow = buf[(r.right(), r.y + 1)].bg;
+                let cast: Vec<(u16, u16)> = (r.y + 1..=r.bottom()).map(|y| (r.right(), y)).chain((r.x + 1..=r.right()).map(|x| (x, r.bottom()))).filter(|&(x, y)| x < w && y < h).collect();
+                assert!(cast.iter().all(|&p| buf[p].bg == shadow && buf[p].symbol() == " "), "one cell right and down: {at}");
+                assert!(shadow != t.card && shadow != t.bg, "darker than the ground: {at}");
+            }
+        }
+    }
+}
+
+#[test]
+fn a_popover_sits_beside_the_sidebar_with_a_raised_title_and_a_shadow() {
+    for layout in LAYOUTS {
+        for (w, h) in SIZES {
+            let mut app = world(Stage::Failed);
+            let mut buf = buffer(&mut app, layout, w, h);
+            let t = app.theme.clone();
+            let area = Rect::new(0, 0, w, h);
+            let side = grid(&app, area).side;
+            let r = popover_at(&mut app, &mut buf, popover_rect(area, side, 60, 8), "WHY · fix-footer reads failed", &t);
+            let at = format!("{layout:?} {w}x{h}");
+            let x = (side_w(w) + 2).min(w - 40);
+            assert_eq!(r, Rect::new(x, if h < 30 { 3 } else { 5 }, 60.min(w - x - 2), 8), "{at}");
+            assert!((r.x..r.right()).all(|x| buf[(x, r.y)].bg == t.btn), "the title row is raised: {at}");
+            let title: String = (r.x..r.x + 8).map(|x| buf[(x, r.y)].symbol().to_string()).collect();
+            assert_eq!(title, "  WHY · ", "{at}");
+            assert!((r.y + 1..r.bottom()).all(|y| buf[(r.x, y)].bg == t.card && buf[(r.x, y)].symbol() == " "), "no border: {at}");
+            let shadow = buf[(r.right(), r.y + 1)].bg;
+            assert!((r.y + 1..=r.bottom()).all(|y| buf[(r.right(), y)].bg == shadow) && (r.x + 1..=r.right()).all(|x| buf[(x, r.bottom())].bg == shadow), "{at}");
         }
     }
 }

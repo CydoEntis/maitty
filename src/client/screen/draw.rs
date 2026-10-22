@@ -119,13 +119,10 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     if let Some(view) = app.view.take_if(|v| matches!(v, crate::client::View::Files(_))) {
         let buf = f.buffer_mut();
         dim_all(buf, area, t);
-        let frame = tool_rect(area);
         hit(app, area, ScreenHit::Noop);
-        // A lit card around it; the tool draws inside with a cell of air.
-        let mut c = Card::new(t, "").lit(t.accent);
-        c.bg = t.bg;
-        let inside = card(app, buf, frame, &c, t);
-        let inner = Rect { x: inside.x + 1, width: inside.width.saturating_sub(2), ..inside };
+        let r = panel_at(app, buf, tool_rect(area), "Files", &[], t);
+        // The tool draws inside with a cell of air.
+        let inner = Rect { x: r.x + 2, y: r.y + 1, width: r.width.saturating_sub(4), height: r.height.saturating_sub(2) };
         match view {
             crate::client::View::Files(v) => {
                 crate::client::design::draw_files(app, buf, inner, t, &v);

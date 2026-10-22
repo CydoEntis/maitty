@@ -103,24 +103,93 @@ pub(in crate::client) fn tool_rect(area: Rect) -> Rect {
     Rect { x: area.x + (area.width - w) / 2, y: area.y + (area.height - h) / 2, width: w, height: h }
 }
 
-/// A centred popup: a rounded card on `card`, its title lit in the top border and a ✕ that
-/// closes it; anything in `right` sits in the border before the ✕.
+/// How far toward black a modal's and a popover's hard shadow takes the ground: the design's
+/// black, kept in the theme's own hue.
+const SHADOW_DARK: f32 = 0.85;
+const ESC_CLOSE: &str = "Esc close";
+
+/// The hard shadow a modal or popover casts: `r` moved a cell right and down.
+fn shadow(buf: &mut Buffer, r: Rect, t: &Theme) {
+    let dark = blend(t.bg, Color::Rgb(0, 0, 0), SHADOW_DARK);
+    let s = Rect { x: r.x + 1, y: r.y + 1, ..r }.intersection(buf.area);
+    for y in s.top()..s.bottom() {
+        for x in s.left()..s.right() {
+            buf[(x, y)].set_symbol(" ").set_style(Style::default().bg(dark));
+        }
+    }
+}
+
+/// A centred modal over the dimmed screen: `panel_at` in the middle of `area`, at most
+/// `w`×`h`. A click outside it closes it.
 #[allow(clippy::too_many_arguments)]
 pub(in crate::client) fn panel(app: &mut App, buf: &mut Buffer, area: Rect, w: u16, h: u16, title: &str, right: &[Seg], t: &Theme) -> Rect {
     let w = w.min(area.width.saturating_sub(2));
     let h = h.min(area.height.saturating_sub(2));
     let r = Rect { x: area.x + (area.width - w) / 2, y: area.y + (area.height - h) / 2, width: w, height: h };
     hit(app, area, ScreenHit::Close);
-    hit(app, r, ScreenHit::Noop);
-    let mut c = Card::new(t, title).lit(t.accent);
-    c.bg = t.card;
-    c.close = Some(ScreenHit::Close);
-    card(app, buf, r, &c, t);
-    if !right.is_empty() {
-        let segs: Vec<Seg> = right.iter().map(|(s, st)| (s.clone(), st.bg(t.bg))).collect();
-        let rw = segs_width(&segs);
-        put(buf, r.right().saturating_sub(rw + 9), r.y, &segs, r.right().saturating_sub(8));
+    panel_at(app, buf, r, title, right, t)
+}
+
+/// A modal's frame at `r`: a hard shadow, a body of `card`, a title row filled with the accent
+/// (the title two in, bold, and `Esc close` at the right), `│` sides and a `─` bottom in
+/// `line` with corners by the setting. `right` sits in the title row before `Esc close`.
+/// Returns `r`; its contents start two in and two down.
+pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, title: &str, right: &[Seg], t: &Theme) -> Rect {
+    let r = r.intersection(buf.area);
+    if r.width < 4 || r.height < 2 {
+        return r;
     }
+    shadow(buf, r, t);
+    fill(buf, r, t.card);
+    let edge = Style::default().fg(t.line).bg(t.card);
+    let (right_x, bottom) = (r.right() - 1, r.bottom() - 1);
+    for y in r.y + 1..bottom {
+        buf[(r.x, y)].set_symbol("│").set_style(edge);
+        buf[(right_x, y)].set_symbol("│").set_style(edge);
+    }
+    for x in r.x..r.right() {
+        buf[(x, bottom)].set_symbol("─").set_style(edge);
+    }
+    let [_, _, bl, br] = corners(Look::of(&app.cfg.ui));
+    buf[(r.x, bottom)].set_symbol(bl).set_style(edge);
+    buf[(right_x, bottom)].set_symbol(br).set_style(edge);
+    fill(buf, Rect { height: 1, ..r }, t.accent);
+    let ink = Style::default().fg(t.acc_ink).bg(t.accent);
+    let esc_x = r.right().saturating_sub(ESC_CLOSE.len() as u16 + 2);
+    put(buf, esc_x, r.y, &[seg(ESC_CLOSE, ink)], r.right());
+    let segs: Vec<Seg> = right.iter().map(|(s, st)| (s.clone(), st.bg(t.accent))).collect();
+    let rx = esc_x.saturating_sub(segs_width(&segs) + 2);
+    put(buf, rx, r.y, &segs, esc_x.saturating_sub(2));
+    put(buf, r.x + 2, r.y, &[seg(title, ink.add_modifier(Modifier::BOLD))], rx.saturating_sub(1));
+    hit(app, r, ScreenHit::Noop);
+    hit(app, Rect { x: esc_x, y: r.y, width: ESC_CLOSE.len() as u16, height: 1 }, ScreenHit::Close);
+    r
+}
+
+/// A popover keeps at least this many columns from its left edge to the screen's.
+const POPOVER_ROOM: u16 = 40;
+/// Below this many rows a popover sits higher.
+const POPOVER_SHORT: u16 = 30;
+
+/// Where a popover goes: beside the sidebar's rows (two right of it, five down, three on a
+/// short screen), narrower rather than over the sidebar when the screen is small.
+pub(in crate::client) fn popover_rect(screen: Rect, side: Rect, w: u16, h: u16) -> Rect {
+    let x = (side.right() + 2).min(screen.right().saturating_sub(POPOVER_ROOM)).max(screen.x);
+    let w = w.min(screen.right().saturating_sub(x + 2));
+    let h = h.min(screen.height.saturating_sub(1));
+    let y = (screen.y + if screen.height < POPOVER_SHORT { 3 } else { 5 }).min(screen.bottom().saturating_sub(h + 1));
+    Rect { x, y, width: w, height: h }
+}
+
+/// A popover's frame at `r`: a hard shadow, a body of `card` and a title row of `btn` with
+/// ` TITLE ` in `strong` bold, a column in; no border.
+pub(in crate::client) fn popover_at(app: &mut App, buf: &mut Buffer, r: Rect, title: &str, t: &Theme) -> Rect {
+    let r = r.intersection(buf.area);
+    shadow(buf, r, t);
+    fill(buf, r, t.card);
+    fill(buf, Rect { height: 1, ..r }, t.btn);
+    put(buf, r.x + 1, r.y, &[seg(format!(" {title} "), Style::default().fg(t.strong).bg(t.btn).add_modifier(Modifier::BOLD))], r.right());
+    hit(app, r, ScreenHit::Noop);
     r
 }
 

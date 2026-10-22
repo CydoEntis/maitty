@@ -1961,7 +1961,7 @@ mod screen_tests {
 
         app.act(Action::Settings);
         let settings = draw(&mut app, 160, 45);
-        assert!(settings.contains(" Settings ") && settings.contains("✕"), "the Settings modal, its title chip and a ✕");
+        assert!(settings.contains("Settings") && settings.contains("Esc close"), "the Settings modal has its square status row");
         assert!(app.hits.iter().any(|(rect, hit)| rect.y > 0 && *hit == Hit::Screen(screen::ScreenHit::Close)), "the flat modal close control is mouse reachable");
     }
 
@@ -3533,7 +3533,7 @@ mod screen_tests {
             app.act(a);
             let o = draw(&mut app, 120, 34);
             show(&o);
-            assert!(o.contains(&format!("─ {title}")) && o.contains(" ✕  ┐"), "{title}: a seshi card (title chip on its border, ✕ to close)");
+            assert!(o.contains(title) && o.contains("Esc close"), "{title}: a seshi modal (title in its accent row, Esc to close)");
         }
     }
 
@@ -4132,7 +4132,6 @@ mod check_why_tests {
                     "✕ exit 1 after 14.2s",
                     "m ago",
                     "Esc close",
-                    "◂",
                 ] {
                     assert!(text.contains(want), "{at}: missing {want:?} in\n{o}");
                 }

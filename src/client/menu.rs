@@ -651,14 +651,10 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
     let r = Rect { x, y, width: w, height: h + 1 };
     // Clicking anywhere else closes it.
     hit(app, area, ScreenHit::Close);
-    // The same card as every popup: its title lit in the border, a ✕ that closes it.
+    // A popover, as the why one: a raised title row over a card, with a hard shadow.
     let bgm = t.card;
-    hit(app, r, ScreenHit::Noop);
     let title = truncate(&m.title, (w - 10) as usize);
-    let mut c = super::screen::Card::new(t, &title).lit(t.accent);
-    c.bg = bgm;
-    c.close = Some(ScreenHit::Close);
-    super::screen::card(app, buf, r, &c, t);
+    super::screen::popover_at(app, buf, r, &title, t);
     let look = super::screen::Look::of(&app.cfg.ui);
     let mut yy = r.y + 2;
     for (i, (label, act)) in m.items.iter().enumerate() {

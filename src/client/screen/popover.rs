@@ -158,15 +158,10 @@ fn source_of(why: &str) -> &'static str {
 /// the one that set it bold and marked.
 pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: Rect, side: Rect, term: TermId, t: &Theme) {
     let Some(info) = app.snap.terms.get(&term).cloned() else { return };
-    let r = pop_rect(app, screen, side, term, WHY_W, WHY_H);
     let title = format!("why {} {}", glyph(app, info.status), state_label(info.status));
-    let mut card_ = Card::new(t, &title).lit(t.accent);
-    card_.bg = t.card;
-    card(app, buf, r, &card_, t);
-    hit(app, r, ScreenHit::Noop);
+    let r = popover_at(app, buf, popover_rect(screen, side, WHY_W, WHY_H), &title, t);
     if let Some(check) = info.check() {
         draw_check_timeline(buf, r, &info, check, t);
-        pointer(buf, r, t);
         return;
     }
     let ago = |at: u64| if at == 0 { String::new() } else { format!("{} ago", age(at)) };
@@ -215,7 +210,6 @@ pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: R
         "The most specific source wins: hook, then screen, then process.".to_string()
     };
     put(buf, r.x + 3, r.y + 9, &[seg(truncate(&note, r.width.saturating_sub(6) as usize), c.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right() - 2);
-    pointer(buf, r, t);
 }
 
 /// `at` (unix seconds) as an age, `2m ago`; nothing when it was never recorded.

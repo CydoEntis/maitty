@@ -430,11 +430,8 @@ fn draw_picker(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::Theme
         return super::screen::draw_palette(app, f, area, t, query, sel, &items);
     }
     let items = app.pick_items(query, commands);
-    let r = centered(area, 80, 22);
-    let mut c = super::screen::Card::new(t, "jump to").lit(t.accent);
-    c.bg = t.card;
-    let inside = super::screen::card(app, f.buffer_mut(), r, &c, t);
-    let inner = Rect { x: inside.x + 1, width: inside.width.saturating_sub(2), ..inside };
+    let r = super::screen::panel_at(app, f.buffer_mut(), centered(area, 80, 22), "jump to", &[], t);
+    let inner = Rect { x: r.x + 2, y: r.y + 1, width: r.width.saturating_sub(4), height: r.height.saturating_sub(2) };
     let input = Line::from(vec![Span::styled("› ", Style::default().fg(t.accent)), Span::raw(query.to_string())]);
     f.render_widget(Paragraph::new(input), Rect { height: 1, ..inner });
     f.set_cursor_position(Position::new(inner.x + 2 + query.width() as u16, inner.y));

@@ -136,8 +136,11 @@ Only the area with the keyboard is lit: the focused pane's whole border (Cards),
 
 <!-- local: user requested distinct active, keyboard and hover sidebar states, mouse-first sidebar controls and parent-owned child-agent visibility. -->
 
-- Popups are centred `panel()`s with an accent title bar and `Esc close`; the
-  screen behind is dimmed. Settings is a centred modal that preserves the
+- Popups are centred `panel()`s (`panel_at()` for a given rectangle) with an
+  accent title row and `Esc close`, `│` sides and a `─` bottom in `line`, and a
+  hard shadow a cell right and down; the screen behind is dimmed. Small
+  explanations (why, a row's menu) are `popover_at()`s: a raised title row, no
+  border, the same shadow, beside the sidebar (`popover_rect()`). Settings is a centred modal that preserves the
   workspace layout and keeps its General, Sessions, Appearance, Agents and Keys
   sections, update controls, and keyboard and mouse editing available.
 - Selection is a neutral tint (`sel_on` of the surface it sits on) with a lime `▎` bar;

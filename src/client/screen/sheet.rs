@@ -109,11 +109,8 @@ pub(in crate::client) fn draw_settings_modal(app: &mut App, buf: &mut Buffer, ar
     };
     super::dim_all(buf, area, t);
     hit(app, area, ScreenHit::Noop);
-    let mut c = Card::new(t, "Settings").lit(t.accent);
-    c.bg = t.card;
-    c.close = Some(ScreenHit::Close);
-    let inside = card(app, buf, r, &c, t);
-    hit(app, inside, ScreenHit::Noop);
+    let r = panel_at(app, buf, r, "Settings", &[], t);
+    let inside = Rect { x: r.x + 1, y: r.y + 1, width: r.width.saturating_sub(2), height: r.height.saturating_sub(2) };
     if inside.width < 44 {
         put(buf, inside.x + 2, inside.y + 2, &[seg("Make the window wider", Style::default().fg(t.muted).bg(t.card))], inside.right());
     } else if inside.height < 18 {
