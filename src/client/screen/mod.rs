@@ -122,9 +122,6 @@ pub(super) struct Screen {
     /// Files changed in more than one checkout, per repo folder, and when each repo was
     /// last looked at.
     pub overlaps: HashMap<PathBuf, Vec<crate::client::overlap::Overlap>>,
-    /// What each finished checkout changed ("+42 −7 · 3 files"), by folder, and the status
-    /// time it was worked out for.
-    pub change_sizes: HashMap<PathBuf, (u64, String)>,
     /// Heads-ups you dismissed: (repo, file). One comes back once it clears and recurs.
     pub dismissed: HashSet<(PathBuf, String)>,
     /// A merge (or throw-away) asked inside an Inbox row: (session, merge?, under way?).
@@ -893,10 +890,8 @@ pub(super) enum ScreenHit {
     SubagentInfo(TermId, usize),
     /// The sidebar's "+ new": a plain shell in the selected project.
     Session(TermId),
-    /// An answer chip in the Inbox: send this key to that agent.
-    InboxAnswer(TermId, char),
-    /// A button on a failed check's Inbox row: the key it stands for.
-    InboxCheck(TermId, char),
+    /// A button on the selected Inbox item: the key it stands for (`\n` Enter, `\x1b` Esc).
+    InboxKey(char),
     CloseSplit(TermId),
     Divider(usize),
     /// The ⋯ on a hovered sidebar row: its menu.
@@ -945,6 +940,8 @@ pub(super) enum ScreenHit {
     Restart,
     NewShell,
     Why(TermId),
+    /// The why popover of a session with a check: its evidence sheet.
+    CheckEvidence(TermId),
     /// A row of the worktree clean-up list (tick or untick it), and its Remove button.
     TidyRow(usize),
     TidyGo,
@@ -1018,4 +1015,6 @@ mod splash;
 mod tidy;
 #[cfg(test)]
 mod v7_frame_tests;
+#[cfg(test)]
+mod v7_ref;
 pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, side::*, splash::*, sheet::*, popover::*, heads::*, tidy::*, check_sheet::*, check_actions::*};

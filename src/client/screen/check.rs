@@ -9,8 +9,6 @@ const RING_TICKS: u64 = 2;
 const RING_FRAMES: usize = 4;
 const EXIT_NOT_EXECUTABLE: i32 = 126;
 const EXIT_NOT_FOUND: i32 = 127;
-/// Below this the command is not worth showing, so the whole line is cut at its end instead.
-const MIN_COMMAND_COLS: usize = 2;
 const SECS_PER_MIN: u64 = 60;
 
 /// The set `[ui] glyphs` picks; plain ASCII icons get ASCII marks unless it says otherwise.
@@ -191,71 +189,12 @@ pub(super) fn why_not_run(exit: Option<i32>) -> String {
     }
 }
 
-/// The sub-line in `room` columns. A long command gives way first, so the result still reads.
-pub(super) fn words(app: &App, info: &CheckInfo, room: usize) -> String {
-    let full = compose(app, info, &info.command);
-    if full.width() <= room {
-        return full;
-    }
-    let fixed = compose(app, info, "").width();
-    let cmd_room = room.saturating_sub(fixed);
-    if cmd_room < MIN_COMMAND_COLS {
-        return truncate(&full, room);
-    }
-    compose(app, info, &truncate(&info.command, cmd_room))
-}
-
-fn compose(app: &App, info: &CheckInfo, cmd: &str) -> String {
-    let m = marks(app);
-    match info.state {
-        CheckState::Checking => format!("checking {cmd} · {}", age(info.started_at)),
-        CheckState::Passed => format!("{cmd} {} · {} · {} ago", m.done, duration(info.duration_ms), age(info.started_at + info.duration_ms / 1000)),
-        CheckState::Failed => match info.exit_code {
-            Some(code) => format!("failed: {cmd} · exit {code}"),
-            None => format!("failed: {cmd}"),
-        },
-        CheckState::Overridden => format!("{cmd} {} overridden by you", m.failed),
-        CheckState::CouldNotRun => format!("{cmd} could not run{}", why_not_run(info.exit_code)),
-        CheckState::Pending => format!("next: {cmd}"),
-        CheckState::NeedsApproval => format!("approve check: {cmd}"),
-        CheckState::Stale => format!("stale pass: {cmd}"),
-        CheckState::Never => "not checked: never for this repo".into(),
-    }
-}
-
-/// A button for a check action at (`x`, `y`) if it fits before `max`: its rect, with the
-/// override label in the failure colour. The caller records what a click does.
-pub(super) fn action_pill(app: &App, buf: &mut Buffer, x: u16, y: u16, max: u16, (label, key): (&str, char), t: &Theme) -> Option<Rect> {
-    let look = Look::of(&app.cfg.ui);
-    let key_s = key.to_string();
-    let w = segs_width(&button_pill(look, t, label, &key_s, false, false, t.card));
-    let r = Rect { x, y, width: w, height: 1 };
-    if x + w > max {
-        return None;
-    }
-    let mut segs = button_pill(look, t, label, &key_s, false, hovered(app, r), t.card);
-    if key == 'O'
-        && let Some(s) = segs.iter_mut().find(|(text, _)| text.starts_with(label))
-    {
-        s.1 = s.1.fg(t.err);
-    }
-    put(buf, x, y, &segs, max);
-    Some(r)
-}
-
 /// The edge bar at a row's left: the selection's, or the red one a failed row keeps whether
 /// selected or not.
 pub(super) fn edge(app: &App, buf: &mut Buffer, x: u16, y: u16, fg: Color, bg: Color) {
     if let Some(cell) = buf.cell_mut((x, y)) {
         cell.set_symbol(marks(app).bar).set_style(Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD));
     }
-}
-
-/// The words in the colour of the result, bold when it failed.
-pub(super) fn words_style(info: &CheckInfo, t: &Theme, bg: Color, lit: bool) -> Style {
-    let c = if matches!(info.state, CheckState::Checking | CheckState::Failed) { color(t, info) } else { t.muted };
-    let style = Style::default().bg(bg).fg(if lit { t.on_lit(c) } else { c });
-    if failed(info) { style.add_modifier(Modifier::BOLD) } else { style }
 }
 
 #[cfg(test)]

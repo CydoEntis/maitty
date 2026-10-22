@@ -82,14 +82,16 @@ or another program follow that program's own help.
 
 | Keys | Action |
 | --- | --- |
-| Type, Backspace | Filter by project or session |
+| Type, Backspace | Filter by project or session (the search row shows once you type) |
 | Up, Down, PgUp, PgDn | Choose a row |
-| Enter | Open the selected session (also a failed or could-not-run check) |
+| Enter | The selected item's first button: Reply (a question), Read the command (a check waiting for approval), Output (a failed or could-not-run check), Re-run (a stale pass); an item with no buttons opens its session, as does a search result |
+| o | Open the selected item's session; empty search |
 | 1–9 | Answer selected agent question when search is empty |
 | m | Follow-up to selected asking/finished agent when search is empty |
 | d, M, x | Finished worktree: diff, ask to merge, ask to discard; empty search |
 | d, m, k | Shared-file warning: diff, message its agent, dismiss; empty search |
-| o, r, O | Failed check: its output, run it again, override it (asks first); empty search |
+| r, O, u, , | The selected item's check: run it again, override it (asks first), undo an override, its settings; only where they apply, else typed; empty search |
+| Click a button | The key it shows |
 | Delete | Mark selected finished session, or unrun check, seen |
 | Enter, Esc in confirmation | Confirm action, or cancel |
 | Esc | Close Inbox |
@@ -103,7 +105,7 @@ or another program follow that program's own help.
 | Shift+Enter, Alt+Enter | Insert a newline |
 | Ctrl+U, Esc | Clear message, or cancel |
 | i, Esc in evidence | Close status explanation; other keys close it and perform their normal action |
-| Enter, r, O in a check's evidence | Open its output sheet, run it again, override it (asks first); only the keys the popover shows act |
+| Enter, r, O in a check's evidence | Open its evidence sheet, run it again, override it (asks first); only the keys the popover shows act |
 
 ## Files tree and preview
 
@@ -160,6 +162,10 @@ or another program follow that program's own help.
 | r | Run the check again (queued while the agent is working) |
 | O | Override a failed check: opens a confirm with an optional reason |
 | u | Undo an override: the check reads as failed again |
+| o | Go to the session |
+| i | Why it reads as it does (the evidence popover) |
+| , | Settings › Check for the session's project |
+| Tab, Shift+Tab | Several checkpoints: the next or previous one |
 | Esc | Close the sheet |
 | Type, Backspace, Ctrl+U, Enter, Esc in the override confirm | Write the reason, delete, clear it, override, cancel |
 

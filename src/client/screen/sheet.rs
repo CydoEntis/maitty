@@ -3,7 +3,7 @@
 //! column. One at a time; Esc closes it. Its last row is a pill of key hints.
 
 use super::*;
-use super::inbox::{draw_inbox, inbox_place};
+use super::inbox::{draw_inbox, inbox_count, inbox_place};
 use crate::client::overlap::Overlap;
 
 /// What the sheet shows.
@@ -59,21 +59,28 @@ pub(in crate::client) fn heads_up(app: &App) -> Vec<(PathBuf, Overlap)> {
         .collect()
 }
 
+/// Columns of a sheet's title row that are not the text after its name: the corners, the
+/// name, the ✕ and the gaps between.
+const TITLE_CHROME: u16 = 24;
+
 pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t: &Theme) {
-    let (title, close) = match kind {
-        SheetKind::Inbox => ("Inbox".to_string(), ScreenHit::Close),
-        SheetKind::Changes | SheetKind::Both => ("Changes".to_string(), ScreenHit::ViewClose),
-        SheetKind::Check => (check_title(app), ScreenHit::ViewClose),
+    let (title, sub, close) = match kind {
+        SheetKind::Inbox => ("INBOX", inbox_count(app).to_string(), ScreenHit::Close),
+        SheetKind::Changes | SheetKind::Both => ("Changes", String::new(), ScreenHit::ViewClose),
+        SheetKind::Check => ("CHECK", check_title(app), ScreenHit::ViewClose),
     };
-    let mut c = Card::new(t, &title).lit(t.accent);
-    // Changes paints the desk's ground (its diff colours are tuned for it).
-    c.bg = if kind == SheetKind::Changes { t.bg } else { t.card };
+    let mut c = Card::new(t, title).lit(t.accent);
+    // Cut here, so a long name still shows its start rather than being left out.
+    let sub = truncate(&sub, r.width.saturating_sub(TITLE_CHROME) as usize);
+    c.sub = &sub;
+    // The read-while-working sheets and Changes sit on the desk's ground, like the panes.
+    c.bg = if kind == SheetKind::Both { t.card } else { t.bg };
     c.close = Some(close);
     let inside = card(app, buf, r, &c, t);
     // Clicks inside it stay in it.
     hit(app, inside, ScreenHit::Noop);
     match kind {
-        SheetKind::Inbox => draw_inbox(app, buf, inside, t),
+        SheetKind::Inbox => draw_inbox(app, buf, inside, c.bg, t),
         SheetKind::Changes => {
             let inner = Rect { x: inside.x + 1, width: inside.width.saturating_sub(2), ..inside };
             if let Some(crate::client::View::Changes(v)) = app.view.take() {
@@ -88,7 +95,7 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
         }
         SheetKind::Check => {
             if let Some(crate::client::View::Check(mut v)) = app.view.take() {
-                draw_check(app, buf, inside, t, &mut v);
+                draw_check(app, buf, inside, c.bg, t, &mut v);
                 app.view = Some(crate::client::View::Check(v));
             }
         }

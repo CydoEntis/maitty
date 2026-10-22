@@ -23,6 +23,9 @@ pub(in crate::client) const INBOX_ROWS: u16 = 6;
 const COMPOSE_W: u16 = 76;
 const WHY_W: u16 = 64;
 const WHY_H: u16 = 12;
+/// The why popover of a session with a check: its three lines and the keys.
+const CHECK_WHY_W: u16 = 60;
+const CHECK_WHY_H: u16 = 8;
 /// Width of the time column in the check timeline (`14:21:51 `).
 const TIME_COL: usize = 9;
 
@@ -158,12 +161,14 @@ fn source_of(why: &str) -> &'static str {
 /// the one that set it bold and marked.
 pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: Rect, side: Rect, term: TermId, t: &Theme) {
     let Some(info) = app.snap.terms.get(&term).cloned() else { return };
-    let title = format!("why {} {}", glyph(app, info.status), state_label(info.status));
-    let r = popover_at(app, buf, popover_rect(screen, side, WHY_W, WHY_H), &title, t);
     if let Some(check) = info.check() {
-        draw_check_timeline(buf, r, &info, check, t);
+        let r = popover_at(app, buf, popover_rect(screen, side, CHECK_WHY_W, CHECK_WHY_H), &check_why_title(app, &info), t);
+        hit(app, r, ScreenHit::CheckEvidence(term));
+        draw_check_why(app, buf, r, &info, check, t);
         return;
     }
+    let title = format!("why {} {}", glyph(app, info.status), state_label(info.status));
+    let r = popover_at(app, buf, popover_rect(screen, side, WHY_W, WHY_H), &title, t);
     let ago = |at: u64| if at == 0 { String::new() } else { format!("{} ago", age(at)) };
     let process = match (info.agent.as_deref(), info.pid) {
         (Some(a), 0) => format!("{a} running"),
@@ -212,99 +217,70 @@ pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: R
     put(buf, r.x + 3, r.y + 9, &[seg(truncate(&note, r.width.saturating_sub(6) as usize), c.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right() - 2);
 }
 
-/// `at` (unix seconds) as an age, `2m ago`; nothing when it was never recorded.
-fn ago(at: u64) -> String {
-    if at == 0 { String::new() } else { format!("{} ago", age(at)) }
+/// " WHY · fix-footer reads failed ": the session and the word it reads as.
+pub(in crate::client) fn check_why_title(app: &App, info: &TermInfo) -> String {
+    let word = super::glyphs::Kind::of(info.status, info.check(), info.asleep).word();
+    format!("WHY · {} reads {word}", app.session_name(info.id))
 }
 
-/// `14.2s`, or `2m05s` once it passes a minute.
-fn took(ms: u64) -> String {
-    if ms < 60_000 {
-        return format!("{:.1}s", ms as f64 / 1000.0);
-    }
-    format!("{}m{:02}s", ms / 60_000, ms / 1000 % 60)
+/// What the check's run came to, as the last line: its words and colour. A result that isn't
+/// a plain pass or failure says what its row says.
+fn check_result(app: &App, check: &CheckInfo, t: &Theme) -> (String, Color) {
+    let g = super::check::glyph(app, check);
+    let exit = check.exit_code.map(|c| format!("exit {c}")).unwrap_or_default();
+    let took = super::check::duration(check.duration_ms);
+    let name = if check.name.is_empty() { &check.command } else { &check.name };
+    let words = match check.state {
+        CheckState::Passed | CheckState::Failed => format!("{exit} after {took}"),
+        CheckState::Overridden => format!("failed, overridden: {name}"),
+        CheckState::Stale => format!("stale pass: {name} · {} files changed", check.changed_files.len()),
+        CheckState::Never => "not checked: never for this repo".into(),
+        CheckState::NeedsApproval => format!("approve check: {}", check.command),
+        CheckState::CouldNotRun => format!("{name} could not run{}", super::check::why_not_run(check.exit_code)),
+        CheckState::Checking => format!("checking {name}"),
+        CheckState::Pending => format!("next: {name}"),
+    };
+    let color = super::glyphs::Kind::of(Status::Done, Some(check), false).color(t);
+    (format!("{g} {words}"), color)
 }
 
-/// What the check's run came to, as the timeline's last line: its text and colour.
-fn check_result(check: &CheckInfo, t: &Theme) -> (String, Color) {
-    let code = check.exit_code.map(|c| format!("exit {c}")).unwrap_or_default();
-    let tail = if check.first_failing_line.is_empty() { String::new() } else { format!(" · {}", check.first_failing_line) };
-    match check.state {
-        CheckState::Checking => ("checking…".into(), t.working),
-        CheckState::Passed => (format!("✓ {code} after {}", took(check.duration_ms)), t.done),
-        CheckState::Failed | CheckState::Overridden => (format!("✕ {code} after {}{tail}", took(check.duration_ms)), t.err),
-        CheckState::CouldNotRun => (format!("? could not run{}", if code.is_empty() { String::new() } else { format!(" · {code}") }), t.muted),
-        CheckState::Pending => ("… waiting its turn".into(), t.muted),
-        CheckState::NeedsApproval => ("● waits for your approval".into(), t.blocked),
-        CheckState::Stale => (format!("◷ {code} after {}, on older code", took(check.duration_ms)), t.text),
-        CheckState::Never => ("? not run: never for this repo".into(), t.muted),
-    }
-}
-
-/// The popover's keys, only for the results they apply to, most important first.
+/// The popover's keys, only those that act on this result.
 fn check_keys(state: CheckState) -> Vec<(&'static str, &'static str)> {
-    // First, so a narrow popover clips the optional keys and never the way out.
-    let mut keys = vec![("Esc", "close")];
+    let mut keys = vec![("⏎", "evidence")];
     if state != CheckState::Checking {
-        keys.extend([("⏎", "evidence"), ("r", "re-run")]);
+        keys.push(("r", "re-run"));
     }
     if state == CheckState::Failed {
         keys.push(("O", "override"));
     }
+    keys.push(("Esc", "close"));
     keys
 }
 
 /// Why a session with a check reads as it does: the turn that ended, Seshi running the
-/// command, and what came of it, one line each with the time.
-fn draw_check_timeline(buf: &mut Buffer, r: Rect, info: &TermInfo, check: &CheckInfo, t: &Theme) {
+/// command, and what came of it, one line each with its time, inside the popover `r`.
+fn draw_check_why(app: &App, buf: &mut Buffer, r: Rect, info: &TermInfo, check: &CheckInfo, t: &Theme) {
     let c = Style::default().bg(t.card);
-    let summary = match check.state {
-        CheckState::Checking => "Seshi is running the check; the session isn't done yet.",
-        CheckState::Passed => "The check passed.",
-        CheckState::Failed => "The check failed, so the work doesn't read as done.",
-        CheckState::Overridden => "The check failed; you accepted it.",
-        CheckState::CouldNotRun => "The check could not run. The work hasn't been checked.",
-        CheckState::Pending => "The check waits its turn; the session isn't done yet.",
-        CheckState::NeedsApproval => "The repo's check command waits for your approval.",
-        CheckState::Stale => "The check passed, but files changed after it ran.",
-        CheckState::Never => "Not checked: you chose never for this repo's command.",
-    };
-    let width = r.width.saturating_sub(6) as usize;
-    put(buf, r.x + 3, r.y + 2, &[seg(truncate(summary, width), c.fg(t.text))], r.right() - 2);
-    let body_w = width.saturating_sub(TIME_COL);
+    let (x, right) = (r.x + 2, r.right().saturating_sub(1));
+    let time = |at: u64| if at == 0 { " ".repeat(TIME_COL) } else { format!("{} ", crate::clock::local_hms(at)) };
     let said = info.said.lines().rev().map(str::trim).find(|l| !l.is_empty());
     let mut lines: Vec<(u64, Vec<Seg>)> = Vec::new();
     if check.after_turn_ended_at > 0 {
         let quote = said.map(|s| format!(" · it said \"{s}\"")).unwrap_or_default();
-        lines.push((check.after_turn_ended_at, vec![seg(truncate(&format!("agent's turn ended{quote}"), body_w), c.fg(t.text))]));
+        lines.push((check.after_turn_ended_at, vec![seg(format!("agent's turn ended{quote}"), c.fg(t.text))]));
     }
     if check.started_at > 0 {
-        let ran = vec![seg("Seshi ran ", c.fg(t.text)), seg(check.command.clone(), c.fg(t.strong).add_modifier(Modifier::BOLD)), seg(" in its worktree", c.fg(t.text))];
-        lines.push((check.started_at, ran));
+        lines.push((check.started_at, vec![seg("Seshi ran ", c.fg(t.text)), seg(check.command.clone(), c.fg(t.strong).add_modifier(Modifier::BOLD)), seg(" in its worktree", c.fg(t.text))]));
     }
-    let (result, color) = check_result(check, t);
+    let (result, color) = check_result(app, check, t);
     let finished = if check.state == CheckState::Checking || check.started_at == 0 { 0 } else { check.started_at + check.duration_ms / 1000 };
-    lines.push((finished, vec![seg(truncate(&result, body_w), c.fg(color).add_modifier(Modifier::BOLD))]));
-    if let (CheckState::Overridden, Some(at)) = (check.state, check.overridden_at) {
-        let why = if check.override_reason.is_empty() { String::new() } else { format!(" · {}", check.override_reason) };
-        lines.push((at, vec![seg(truncate(&format!("⊘ overridden by you{why}"), body_w), c.fg(t.muted))]));
-    }
-    if check.rerun_queued {
-        lines.push((0, vec![seg("runs again when this turn settles", c.fg(t.muted).add_modifier(Modifier::ITALIC))]));
-    }
+    lines.push((finished, vec![seg(result, c.fg(color).add_modifier(Modifier::BOLD))]));
     for (i, (at, body)) in lines.into_iter().enumerate() {
-        let when = ago(at);
-        let mut row = vec![seg(format!("{when:<TIME_COL$}"), c.fg(t.muted))];
+        let mut row = vec![seg(time(at), c.fg(t.muted))];
         row.extend(body);
-        put(buf, r.x + 3, r.y + 4 + i as u16, &row, r.x + 3 + width as u16);
+        put(buf, x, r.y + 2 + i as u16, &row, right);
     }
-    let mut keys = check_keys(check.state);
-    let mut hints = cap_hints(t, t.card, &keys);
-    while keys.len() > 1 && usize::from(segs_width(&hints)) > width {
-        keys.pop();
-        hints = cap_hints(t, t.card, &keys);
-    }
-    put(buf, r.x + 3, r.y + 10, &hints, r.right() - 2);
+    put(buf, x, r.y + 6, &hint_segs(t, t.card, &check_keys(check.state)), right);
 }
 
 impl App {
@@ -383,7 +359,7 @@ impl App {
         // to the pane behind it.
         if let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check().cloned()) {
             let key = match k.code {
-                KeyCode::Enter => Some(('o', check::settled(&info))),
+                KeyCode::Enter => Some(('o', true)),
                 KeyCode::Char('r') => Some(('r', check::settled(&info))),
                 KeyCode::Char('O') => Some(('O', check::failed(&info))),
                 _ => None,
@@ -406,17 +382,88 @@ const ENTER_AFTER: std::time::Duration = std::time::Duration::from_millis(60);
 
 #[cfg(test)]
 mod tests {
-    use super::{took, wrap};
-
-    #[test]
-    fn a_duration_reads_in_seconds_then_minutes() {
-        assert_eq!((took(400).as_str(), took(14_200).as_str(), took(125_000).as_str()), ("0.4s", "14.2s", "2m05s"));
-    }
+    use super::wrap;
 
     #[test]
     fn the_text_area_wraps_on_words_and_keeps_blank_lines() {
         assert_eq!(wrap("one two three", 7), vec!["one two", "three"]);
         assert_eq!(wrap("a\n\nb", 10), vec!["a", "", "b"]);
         assert_eq!(wrap("abcdefghij", 4), vec!["abcd", "efgh", "ij"], "a word longer than the line breaks");
+    }
+}
+
+#[cfg(test)]
+mod why_tests {
+    use super::super::v7_ref::{assert_same, layout_name, reference, text};
+    use super::*;
+    use crate::client::v7_fixture::{LAYOUTS, SIZES, Stage, world};
+
+    fn why_world(stage: Stage) -> App {
+        let mut app = world(stage);
+        app.cfg.ui.glyphs = "unicode".into();
+        app.snap.terms.get_mut(&1).unwrap().said = "tests pass".into();
+        app
+    }
+
+    /// The popover drawn in the rectangle the reference's inside is under.
+    fn draw(app: &App, area: Rect, w: u16, h: u16) -> Vec<String> {
+        let t = Theme::named(crate::theme::DEFAULT);
+        let mut buf = Buffer::empty(Rect { x: 0, y: 0, width: w, height: h });
+        let info = app.snap.terms[&1].clone();
+        let r = Rect { y: area.y - 1, height: CHECK_WHY_H, ..area };
+        draw_check_why(app, &mut buf, r, &info, info.check().unwrap(), &t);
+        text(&buf, area)
+    }
+
+    /// The handoff's sample counts the tests that failed, which a check's result does not carry.
+    #[test]
+    fn why_reads_the_turn_the_run_and_what_it_came_to() {
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let mut want = reference("13 Why? (i)", layout_name(layout), w, h);
+                want.set_row(3, "  14:22:19 ✕ exit 1 after 14.2s");
+                let app = why_world(Stage::Failed);
+                assert_same(&draw(&app, want.area, w, h), &want, &format!("13 {layout:?} {w}x{h}"));
+            }
+        }
+    }
+
+    #[test]
+    fn the_title_says_what_the_session_reads_as() {
+        let title = |stage| {
+            let app = why_world(stage);
+            check_why_title(&app, &app.snap.terms[&1])
+        };
+        assert_eq!(title(Stage::Failed), "WHY · fix-footer reads failed");
+        assert_eq!(title(Stage::Stale), "WHY · fix-footer reads done · stale");
+        assert_eq!(title(Stage::Never), "WHY · fix-footer reads not checked");
+    }
+
+    #[test]
+    fn a_result_that_is_not_a_plain_pass_or_failure_says_its_row_words() {
+        let lines = |stage| draw(&why_world(stage), Rect { x: 0, y: 1, width: 60, height: 7 }, 60, 9).join("\n");
+        assert!(lines(Stage::Over).contains("⊘ failed, overridden: test"), "{}", lines(Stage::Over));
+        assert!(lines(Stage::Stale).contains("◷ stale pass: test · 3 files changed"));
+        assert!(lines(Stage::Never).contains("? not checked: never for this repo"));
+        assert!(lines(Stage::Approve).contains("● approve check: npm test"));
+        assert!(lines(Stage::Passed).contains("✓ exit 0 after 14.2s"));
+    }
+
+    #[test]
+    fn a_click_on_it_opens_the_evidence() {
+        let mut app = why_world(Stage::Failed);
+        app.mode = Mode::Why { term: 1, side: false };
+        crate::client::v7_fixture::frame(&mut app, crate::client::v7_fixture::Layout::Floating, 100, 30, "unicode");
+        assert!(app.hits.iter().any(|(_, h)| *h == crate::client::Hit::Screen(ScreenHit::CheckEvidence(1))));
+        app.on_hy_hit(ScreenHit::CheckEvidence(1), false);
+        assert!(matches!(&app.view, Some(crate::client::View::Check(v)) if v.term == 1));
+    }
+
+    #[test]
+    fn its_keys_are_only_those_that_act() {
+        let keys = |state| check_keys(state).iter().map(|(k, _)| *k).collect::<Vec<_>>();
+        assert_eq!(keys(CheckState::Failed), ["⏎", "r", "O", "Esc"]);
+        assert_eq!(keys(CheckState::Passed), ["⏎", "r", "Esc"]);
+        assert_eq!(keys(CheckState::Checking), ["⏎", "Esc"]);
     }
 }

@@ -155,8 +155,9 @@ impl App {
         }
         match self.mode.clone() {
             Mode::Normal => {
-                // Esc belongs to the evidence sheet while it is open: it closes it.
-                let closes_sheet = k.code == KeyCode::Esc && matches!(self.view, Some(View::Check(_)));
+                // Esc and Tab belong to the evidence sheet while it is open: it closes, or moves
+                // to the next checkpoint.
+                let closes_sheet = matches!(k.code, KeyCode::Esc | KeyCode::Tab | KeyCode::BackTab) && matches!(self.view, Some(View::Check(_)));
                 if screen::Look::of(&self.cfg.ui).flat && matches!(k.code, KeyCode::Tab | KeyCode::BackTab | KeyCode::Esc) && !closes_sheet {
                     self.mode = Mode::Side;
                     self.screen.cursor = self.focused();
