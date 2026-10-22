@@ -266,6 +266,15 @@ mod tests {
     }
 
     #[test]
+    fn a_curly_quote_on_screen_stays_inside_the_powershell_prompt() {
+        let cfg = Config { shell: Some("pwsh".into()), ..Config::default() };
+        let b = brief(&Facts { screen: "don\u{2019}t; Write-Output INJECTED; #\n".into(), ..facts() });
+        let cmd = cfg.agent_command(Some("claude"), &b).unwrap();
+        assert!(cmd.ends_with(&format!("'{}'", b.replace('\'', "''").replace('\u{2019}', "\u{2019}\u{2019}"))), "{cmd}");
+        assert!(cmd.contains("don\u{2019}\u{2019}t; Write-Output INJECTED"), "{cmd}");
+    }
+
+    #[test]
     fn porcelain_keeps_new_paths_and_skips_old_ones() {
         let z = " M src/a.rs\0R  new name.rs\0old name.rs\0?? docs/x.md\0A  b.rs\0";
         assert_eq!(uncommitted(z), ["src/a.rs", "new name.rs", "docs/x.md", "b.rs"]);

@@ -1015,7 +1015,20 @@ impl Config {
             .map(|x| x.to_string_lossy().to_ascii_lowercase())
             .unwrap_or_default();
         match exe.as_str() {
-            "pwsh" | "powershell" | "nu" => format!("'{}'", s.replace('\'', "''")),
+            // PowerShell also ends a single-quoted string at the curly single quotes; doubling
+            // one gives the literal character back, as for the apostrophe.
+            "pwsh" | "powershell" => {
+                let mut out = String::from("'");
+                for c in s.chars() {
+                    if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+                        out.push(c);
+                    }
+                    out.push(c);
+                }
+                out.push('\'');
+                out
+            }
+            "nu" => format!("'{}'", s.replace('\'', "''")),
             "cmd" => format!("\"{}\"", s.replace('"', "\"\"").replace(['\r', '\n'], " ")),
             _ => format!("'{}'", s.replace('\'', "'\\''")),
         }
@@ -1431,6 +1444,16 @@ shell = \"pwsh\"
     fn an_account_agent_runs_through_its_account() {
         let c = sh_config(vec![quick("work", "claude {prompt}", &[("CLAUDE_CONFIG_DIR", "~/.claude-work")])]);
         assert_eq!(c.agent_command(Some("work"), "go").unwrap(), "seshi account 'work' -- claude 'go'");
+    }
+
+    #[test]
+    fn powershell_doubles_curly_quotes_so_they_cannot_end_the_prompt() {
+        for shell in ["pwsh.exe", "powershell"] {
+            let c = Config { shell: Some(shell.into()), ..Default::default() };
+            let q = c.quote_for_shell("don\u{2019}t; Write-Output INJECTED; # \u{2018}a\u{201A}b\u{201B} it's");
+            assert_eq!(q, "'don\u{2019}\u{2019}t; Write-Output INJECTED; # \u{2018}\u{2018}a\u{201A}\u{201A}b\u{201B}\u{201B} it''s'", "{shell}");
+        }
+        assert_eq!(sh_config(vec![]).quote_for_shell("don\u{2019}t"), "'don\u{2019}t'", "sh keeps it as is");
     }
 
     #[test]

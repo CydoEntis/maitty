@@ -137,7 +137,9 @@ cannot turn its failure into done. An override covers one result; the next run r
 another agent's first prompt, so whatever the screen showed (secrets included) reaches that
 agent. It adds no permission of its own: the screen read needs the read grant on the pane and
 the new pane needs the start grant, both checked by the daemon as for `seshi read` and
-`seshi split`. The brief is quoted with `Config::quote_for_shell` like any first prompt.
+`seshi split`. The brief is quoted with `Config::quote_for_shell` like any first prompt; for
+PowerShell that escapes the curly single quotes as well as `'`, since PowerShell ends a
+single-quoted string at either.
 
 ## Project-specific: auth and permissions
 
