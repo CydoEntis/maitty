@@ -426,6 +426,18 @@ faked snapshot), and Windows beyond CI. Known gaps: the prompt shows protocol nu
 numbers (an older daemon reports only its protocol); it installs no panic hook to switch mouse
 capture back off; the offer-then-restart glue in `open_client` has no test of its own.
 
+### 17 — Team roles for the commander · queued 2026-10-22
+
+[A team list for the commander](features/team-roles/intent.md): a Settings › Team list of jobs
+(planner, builder, reviewer, or the user's own), each with a model per agent family (Claude, Codex),
+one global family switch and a per-project override. A commander reads the list and starts each helper
+on its job's model. Handoffs are gated by Phase 15 checks, which the commander is told to wait on.
+Seshi runs no pipeline and normal sessions are unchanged.
+
+Queued behind Phase 15, whose verify check should be used in real work first; the user chose this
+2026-10-22. No tickets yet (only the active phase has them); the draft list is in the intent.
+Order against the queued Phase 13 is the user's call.
+
 ## In scope
 
 Everything below is shipped on `main` unless marked.
@@ -490,7 +502,7 @@ Everything below is shipped on `main` unless marked.
 
 ## Out
 
-- Saved role profiles and the planner/approval/worker/reviewer workflow runner were removed by user decision (2026-10-18). Use the agent's own configuration and external workflow tools; Seshi remains the session manager.
+- Saved role profiles and the planner/approval/worker/reviewer workflow runner were removed by user decision (2026-10-18). Use the agent's own configuration and external workflow tools; Seshi remains the session manager. Narrowed 2026-10-22 by the user: a team list for the commander (jobs with a model per agent family, [Phase 17](#17--team-roles-for-the-commander--queued-2026-10-22)) is allowed. A Seshi-run pipeline, where Seshi starts or orders stages itself, stays cut.
 
 - Features cut 2026-10-09 remain out unless re-approved: open project, go to, next agent that needs you, arrange panes, undo automatic workspace, the map, ideas, races, run a preset as a list (presets stay in the new-agent dialog), past chats, agent tools, extensions, and the tmux stand-in for Claude agent teams. Memory per session later returned as the load line under a busy session. Items explicitly restored since the cut are listed in In scope; races remain cut.
 - Desktop notifications while a seshi window is open, the terminal bell on an alert, and choosing among system sounds (or your own sound file) — cut 2026-10-11 (the user's call: three overlapping alerts, two of them the Windows error ding). Bringing one back needs a new decision.
@@ -503,7 +515,7 @@ Everything below is shipped on `main` unless marked.
 - Non-blocking validation follow-ups: run the Phase 9 live fleet check with two helpers visible under the commander; use the four Phase 10 features in real work; address the squash-merged-branch detection gap.
 
 - Personas are dropped, not deferred: saved role profiles were removed 2026-10-18 (see [Out](#out)). Phase 15 replaces the idea with checkpoints that Seshi checks itself.
-- Checkpoint kinds beyond the first (`commits`, `approval`, `review`) and a project-defined checkpoint list — deferred 2026-10-22 until Phase 15's verify check has been used in real work. `approval` and `review` sit close to the workflow runner cut on 2026-10-18; each needs the user's explicit re-approval before any ticket.
+- Checkpoint kinds beyond the first (`commits`, `approval`, `review`) and a project-defined checkpoint list — deferred 2026-10-22 until Phase 15's verify check has been used in real work. `approval` and `review` sit close to the workflow runner cut on 2026-10-18; each needs the user's explicit re-approval before any ticket. Phase 17's handoffs use the verify check only.
 - The designed team view, threads between agents, take over and hand back, pause the fleet, stop all, cost per fleet — deferred 2026-10-11: waiting on the design from [design brief v5](design-brief-v5.md), which [design brief v6](design-brief-v6.md) narrows. Comes back when the prototype is in.
 
 ## Decisions
@@ -534,7 +546,7 @@ Docs: `AGENTS.md`, `docs/` (architecture, standards, testing, security, UI, API 
 Design references: [design brief](design-brief.md), [design brief v3](design-brief-v3.md),
 [design brief v4](design-brief-v4.md) and its handoff [`design/v4/`](design/v4/),
 [design brief v5](design-brief-v5.md) (the lead and personas; narrowed by [v6](design-brief-v6.md)),
-the v5 cleanup handoff [`design/v5/`](design/v5/), the checkpoints handoff [`design/v6/`](design/v6/), the Flat handoff [`design/flat/`](design/flat/)
+the v5 cleanup handoff [`design/v5/`](design/v5/), the checkpoints handoff [`design/v6/`](design/v6/) and its follow-up [design brief v7](design-brief-v7.md) (checks in all three layouts), the Flat handoff [`design/flat/`](design/flat/)
 and the wake-up transition handoff [`design/wake/`](design/wake/).
 Glossary: none yet.
 Feature docs: `docs/features/`. Each live intent is linked from In scope or a phase.
