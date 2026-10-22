@@ -35,7 +35,7 @@ pub(in crate::client) fn draw_subagent_info(app: &mut App, f: &mut Frame, area: 
         Some(started) => duration_label(activity.updated_at.saturating_sub(started)),
         _ => "Not reported".into(),
     };
-    let stage = super::draw::subagent_stage(&activity.name, activity.task.as_deref());
+    let stage = super::side::subagent_stage(&activity.name, activity.task.as_deref());
     let rows = [
         ("Stage", stage, t.text),
         ("Task", activity.task.as_deref().unwrap_or("Not reported"), t.text),
