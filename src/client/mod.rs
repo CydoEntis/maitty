@@ -59,6 +59,8 @@ const NOTICE_FOR: Duration = Duration::from_secs(5);
 const SERVER_BURST: usize = 512;
 /// Losing the server twice within this long is the server going, not a hiccup: stop.
 const REATTACH_AT_MOST_EVERY: Duration = Duration::from_secs(10);
+/// The daemon sends Bye before exiting; wait past its graceful shutdown window before spawning it again.
+const SERVER_SHUTDOWN_GRACE: Duration = Duration::from_millis(200);
 /// Two clicks this close together are a double-click.
 pub(super) const DOUBLE_CLICK: Duration = Duration::from_millis(400);
 
@@ -290,6 +292,10 @@ pub struct App {
     update_checked: Option<Instant>,
     /// An update is downloading.
     updating: bool,
+    /// The installed daemon needs a restart after the panes are closed.
+    update_installed_this_run: bool,
+    daemon_restart_requested: bool,
+    daemon_restart_reconnect: bool,
     /// Asking, because you said to, whether a newer seshi is out.
     update_checking: bool,
     /// When this window last had to attach to the server again.
@@ -481,6 +487,9 @@ impl App {
             update_notes: Vec::new(),
             update_checked: None,
             updating: false,
+            update_installed_this_run: false,
+            daemon_restart_requested: false,
+            daemon_restart_reconnect: false,
             update_checking: false,
             reattached: None,
             theme: cfg.theme(),
@@ -685,11 +694,18 @@ impl App {
     /// window that falls too far behind): attach again, for a fresh copy of everything.
     /// False when it can't: the server is gone, or this keeps happening.
     async fn reattach(&mut self, reader: &mut ipc::Reader) -> bool {
-        if self.reattached.is_some_and(|at| at.elapsed() < REATTACH_AT_MOST_EVERY) {
+        if !self.daemon_restart_reconnect && self.reattached.is_some_and(|at| at.elapsed() < REATTACH_AT_MOST_EVERY) {
             return false;
         }
-        // Connect only: a server that has stopped must not be started again by this.
-        let Ok((r, mut writer)) = ipc::open(true).await else { return false };
+        let restarting = self.daemon_restart_reconnect;
+        let connection = if restarting {
+            tokio::time::sleep(SERVER_SHUTDOWN_GRACE).await;
+            ipc::open_or_spawn_installed(true).await
+        } else {
+            // Connect only: an unexpectedly stopped server must not be started again by this.
+            ipc::open(true).await
+        };
+        let Ok((r, mut writer)) = connection else { return false };
         *reader = r;
         let (out_tx, mut out_rx) = mpsc::unbounded_channel::<ClientMsg>();
         tokio::spawn(async move {
@@ -701,7 +717,9 @@ impl App {
         });
         self.out = out_tx;
         self.reattached = Some(Instant::now());
-        self.notify("Lost the server for a moment; connected again".into(), false);
+        if !restarting {
+            self.notify("Lost the server for a moment; connected again".into(), false);
+        }
         true
     }
 
@@ -711,7 +729,7 @@ impl App {
             return;
         }
         self.updating = true;
-        self.notify("Installing update… restart after active tasks finish.".into(), false);
+        self.notify("Installing update… the daemon will restart when no sessions are open.".into(), false);
         self.spawn_bg(|| {
             let r = crate::update::install_latest();
             Bg::Then(Box::new(move |app: &mut App| match r {
@@ -726,10 +744,39 @@ impl App {
 
     fn update_installed(&mut self, version: String) {
         self.updating = false;
+        self.update_installed_this_run = true;
         self.installed_version = Some(Ok(version.clone()));
         self.update_available = None;
         self.update_notes.clear();
-        self.notify(format!("Installed seshi {version}. This window and sessions keep running; restart after active tasks finish."), false);
+        let message = if crate::ipc::remote().is_some() {
+            format!("Installed seshi {version}. Update the remote daemon on its host after its sessions are closed.")
+        } else {
+            format!("Installed seshi {version}. The daemon will restart automatically when no sessions are open.")
+        };
+        self.notify(message, false);
+        self.maybe_restart_daemon(false);
+    }
+
+    fn maybe_restart_daemon(&mut self, last_session_closed: bool) {
+        if crate::ipc::remote().is_some()
+            || !self.got_state
+            || !self.snap.terms.is_empty()
+            || self.daemon_restart_requested
+            || self.daemon_restart_reconnect
+        {
+            return;
+        }
+        let Some(Ok(installed)) = &self.installed_version else { return };
+        if self.snap.daemon_version.is_empty() || installed == &self.snap.daemon_version {
+            return;
+        }
+        if !self.update_installed_this_run && !last_session_closed && self.snap.workspaces.is_empty() {
+            return;
+        }
+
+        self.daemon_restart_requested = true;
+        self.notify("No sessions are open. Restarting the daemon to finish the update.".into(), false);
+        self.cmd(Command::KillServer { forget: false });
     }
 
     fn notify(&mut self, msg: String, error: bool) {
@@ -786,7 +833,10 @@ impl App {
     fn refresh_installed_version(&self) {
         self.spawn_bg(|| {
             let installed = crate::update::installed_version();
-            Bg::Then(Box::new(move |app| app.installed_version = Some(installed)))
+            Bg::Then(Box::new(move |app| {
+                app.installed_version = Some(installed);
+                app.maybe_restart_daemon(false);
+            }))
         });
     }
 
@@ -833,7 +883,11 @@ impl App {
             sub: String::new(),
             what: format!("{} → {new}", env!("CARGO_PKG_VERSION")),
             detail: String::new(),
-            note: "Sessions keep running on the current daemon. Restart it after tasks finish to load daemon fixes.".into(),
+            note: if crate::ipc::remote().is_some() {
+                "Open sessions keep running. Update the remote daemon on its host after they are closed.".into()
+            } else {
+                "Open sessions keep running. The daemon restarts automatically when all sessions are closed.".into()
+            },
             list: self.update_notes.clone(),
             yes: "Update now".into(),
             key: 'u',
