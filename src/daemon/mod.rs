@@ -4,12 +4,12 @@
 //! scanner, background git work and client connections talk to it through a single
 //! channel, so there is no locking around the model.
 
-#[cfg_attr(not(test), expect(dead_code, reason = "the repo-approval work wires approvals in"))]
+#[cfg_attr(not(test), expect(dead_code, reason = "a checkpoint run takes its approvals once runs resolve"))]
 mod approvals;
 mod check;
 #[cfg(test)]
 pub use check::first_failing_line;
-#[expect(dead_code, reason = "the checkpoint runs resolve through it; the gates come with repo checks")]
+#[cfg_attr(not(test), expect(dead_code, reason = "the checkpoint runs resolve through it"))]
 mod check_source;
 mod git;
 mod persist;
@@ -177,6 +177,10 @@ struct Daemon {
     last_saved: String,
     /// Where check output tails are kept.
     check_dir: PathBuf,
+    /// What you decided about repos' check commands, read once at start: a hand edit of the
+    /// file counts only after a restart.
+    approvals: approvals::Approvals,
+    approvals_file: PathBuf,
     /// Worktrees seshi created; closing the last thing in one removes it.
     made_worktrees: Vec<PathBuf>,
     /// Plan limits by agent, as last reported.
@@ -251,6 +255,10 @@ pub fn run() -> Result<()> {
             tracing::warn!("config: {e}");
         }
         let mut d = Daemon::new(cfg, tx);
+        match approvals::Approvals::load(&d.approvals_file) {
+            Ok(a) => d.approvals = a,
+            Err(e) => tracing::warn!("check approvals: {e:#}; every repo check asks again"),
+        }
         if d.cfg.restore.enabled
             && let Some(saved) = persist::load()
         {
@@ -483,6 +491,8 @@ impl Daemon {
             last_output_save: Instant::now(),
             last_saved: String::new(),
             check_dir: persist::check_output_dir(),
+            approvals: approvals::Approvals::default(),
+            approvals_file: approvals::path(),
             made_worktrees: Vec::new(),
             limits: BTreeMap::new(),
             spent: Vec::new(),

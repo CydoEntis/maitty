@@ -147,8 +147,8 @@ A = "new-worktree:claude"   # worktree picker; whatever you open or create start
 #   on_remove = ""                   # runs before a worktree is removed
 
 # Checks: when an agent's turn ends in a project listed here, Seshi runs `command` through
-# your shell in that session's worktree and records the result (it never reads a command
-# from the repo itself). `project` is the repo's main checkout. A project may list several
+# your shell in that session's worktree and records the result. `project` is the repo's
+# main checkout. A project may list several
 # checks (checkpoints), each with its own `name` (default: the command's last word, so
 # "npm test" is `test`); two in one project may not share a name.
 # `timeout_s` (default 600) stops a run that hangs, and its whole process tree with it.
@@ -159,6 +159,21 @@ A = "new-worktree:claude"   # worktree picker; whatever you open or create start
 # command = "npm test"
 # timeout_s = 600
 # Settings > Check edits this table for the project you are in and keeps your comments.
+#
+# A repo can name its own checks in .seshi/checks.toml (same keys, no `project`). Seshi
+# reads it only for a project with no [[check]] here: yours win and the file is then ignored.
+# None of its commands runs until you approve it from a Seshi window (once, always, or never
+# for this repo); an Always holds for that exact command, so a changed command asks again.
+# Your answers are kept in check-approvals.json in Seshi's data folder, not in the repo.
+#   # .seshi/checks.toml
+#   [[check]]
+#   name = "build"
+#   command = "cargo build"
+#
+#   [[check]]
+#   name = "test"
+#   command = "cargo test"
+#   timeout_s = 900
 
 # Presets: saved launches, offered as ★ choices in the new-agent dialog. `{task}` is what
 # you type. where = send (tell the agent you're on) | beside (a new one in its folder) |

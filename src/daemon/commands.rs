@@ -469,7 +469,8 @@ impl Daemon {
             Command::RerunCheck { term, .. } => self.rerun_check(term)?,
             Command::OverrideCheck { term, reason, .. } => self.override_check(term, &reason)?,
             Command::UndoOverride { term, .. } => self.undo_override(term)?,
-            Command::ApproveCheck { .. } | Command::ForgetCheckApproval { .. } => anyhow::bail!("not built yet"),
+            Command::ApproveCheck { term, name, choice } => self.approve_check(term, &name, choice)?,
+            Command::ForgetCheckApproval { project, name } => self.forget_check_approval(&project, &name)?,
             Command::Grant { term, grants } => {
                 let known = ["read", "write", "start", "respond", "admin"];
                 if let Some(bad) = grants.iter().flatten().find(|g| !known.contains(&g.as_str())) {
