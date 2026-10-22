@@ -32,15 +32,26 @@ impl App {
                     }
                 }
                 let first = !self.got_state;
+                let last_session_closed = !self.snap.terms.is_empty() && s.terms.is_empty();
                 self.got_state = true;
                 if !first {
                     self.remember_changes(&s);
                 }
                 self.snap = s;
+                if self.daemon_restart_reconnect {
+                    let daemon_matches_install = self.installed_version.as_ref().and_then(|v| v.as_ref().ok())
+                        .is_some_and(|installed| installed == &self.snap.daemon_version);
+                    self.daemon_restart_requested = false;
+                    self.daemon_restart_reconnect = false;
+                    if daemon_matches_install {
+                        self.notify("The Seshi daemon restarted with the update.".into(), false);
+                    }
+                }
                 if first {
                     self.on_first_state();
                 }
                 self.hy_sync();
+                self.maybe_restart_daemon(last_session_closed);
             }
             ServerMsg::Replay { term, cols, rows, data } => {
                 let p = self.new_parser(rows, cols);
@@ -113,6 +124,7 @@ impl App {
                 }
             }
             ServerMsg::Raise => crate::reveal::raise_window(),
+            ServerMsg::Bye if self.daemon_restart_requested => self.daemon_restart_reconnect = true,
             ServerMsg::Bye => self.quit = Some("server exited".into()),
             ServerMsg::Reply(Reply::Worktrees(list)) => {
                 if let Mode::Worktrees { items, .. } = &mut self.mode {
