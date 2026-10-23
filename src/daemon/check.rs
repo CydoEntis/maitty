@@ -949,9 +949,12 @@ mod tests {
             "$p = Start-Process -PassThru -WindowStyle Hidden powershell -ArgumentList '-NoProfile','-Command','Start-Sleep 60'; $p.Id | Set-Content '{}'; Start-Sleep 60",
             pidfile.display()
         );
-        let run = run_check(&crate::config::Config::default().shell_command(), dir.path(), &line, Duration::from_secs(5));
+        // Under a loaded full test run PowerShell can take seconds to start the child, so the
+        // timeout leaves it room to write the pid before the check is stopped.
+        let run = run_check(&crate::config::Config::default().shell_command(), dir.path(), &line, Duration::from_secs(20));
         assert_eq!(run.outcome, CheckOutcome::TimedOut);
         let pid = std::fs::read_to_string(&pidfile).expect("the shell started its child").trim().to_string();
+        assert!(!pid.is_empty(), "the shell wrote its child's pid");
         let gone_by = Instant::now() + Duration::from_secs(10);
         let alive = || std::process::Command::new("tasklist").args(["/FI", &format!("PID eq {pid}"), "/NH"]).output().is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains(&pid));
         while alive() && Instant::now() < gone_by {
