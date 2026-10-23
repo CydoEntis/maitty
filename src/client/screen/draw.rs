@@ -313,13 +313,19 @@ fn tab_strip(app: &mut App, model: &[Proj], x: u16, y: u16, max_x: u16, lit: boo
     let ground = title_ground(look, t);
     let mut out = Vec::new();
     let mut at = x;
-    for (n, i) in app.session_tabs().into_iter().enumerate() {
+    let tabs = app.session_tabs();
+    let closable = tabs.len() > 1;
+    for (n, i) in tabs.into_iter().enumerate() {
         let tab = &app.screen.tabs[i];
         let name = tab_name(tab).unwrap_or_else(|| session_name(app, model, tab.focus));
         let on = i == app.screen.tab;
         let number = if on { Style::default().fg(t.acc_ink).bg(t.accent).add_modifier(Modifier::BOLD) } else { Style::default().fg(t.text).bg(t.btn) };
         let label = if on { name_chip(&name, lit, t) } else { seg(format!(" {name} "), Style::default().fg(t.text).bg(t.card)) };
         let mut pair = vec![seg(format!(" {} ", n + 1), number), label];
+        if closable {
+            let (fg, bg) = if on { if lit { (t.acc_ink, t.accent) } else { (t.strong, t.btn) } } else { (t.muted, t.card) };
+            pair.push(seg("✕ ", Style::default().fg(fg).bg(bg)));
+        }
         if look.round_tabs {
             pair = round_ends(pair, ground);
         }
@@ -328,6 +334,10 @@ fn tab_strip(app: &mut App, model: &[Proj], x: u16, y: u16, max_x: u16, lit: boo
             break;
         }
         hit(app, Rect { x: at, y, width: w, height: 1 }, ScreenHit::TabPick(i));
+        if closable {
+            let close_w = if look.round_tabs { 3 } else { 2 };
+            hit(app, Rect { x: at + w - close_w, y, width: 2, height: 1 }, ScreenHit::CloseTab(i));
+        }
         out.extend(pair);
         at += w;
     }
@@ -557,7 +567,7 @@ const TOAST_TEXT_PAD: usize = 8;
 const TOAST_ABOVE_INPUT: u16 = 5;
 
 /// One toast for every notice, bottom right above the agent's input area: a `card` with a
-/// `line` border and a full-height bar in the notice's colour. Row 1 is the mark and bold
+/// full-height bar in the notice's colour and no frame. Row 1 is the mark and bold
 /// title with a ✕; row 2 the detail; an optional row 3 a preview in dim italics. It clears
 /// after `toast_hold` (errors a little longer), or with the ✕ / Esc.
 pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
@@ -613,22 +623,12 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     let r = Rect { x, y, width: area.right().saturating_sub(x).min(w), height: h };
     let ink = |c: Color, bg: Color| if fade > 0.0 { blend(c, bg, fade) } else { c };
     let bg = t.card;
-    let edge = Style::default().fg(ink(t.line, bg)).bg(bg);
     for yy in r.y..r.bottom() {
         for xx in r.x..r.right() {
             if let Some(px) = buf.cell_mut((xx, yy)) {
                 px.set_symbol(" ").set_style(Style::default().bg(bg));
             }
         }
-    }
-    let rule = "─".repeat(r.width.saturating_sub(2) as usize);
-    put(buf, r.x + 1, r.y, &[seg(rule.clone(), edge)], r.right());
-    put(buf, r.x + 1, r.bottom() - 1, &[seg(rule, edge)], r.right());
-    for (cx, cy, ch) in [(r.right() - 1, r.y, "┐"), (r.right() - 1, r.bottom() - 1, "┘")] {
-        put(buf, cx, cy, &[seg(ch, edge)], r.right());
-    }
-    for yy in r.y + 1..r.bottom() - 1 {
-        put(buf, r.right() - 1, yy, &[seg("│", edge)], r.right());
     }
     for yy in r.y..r.bottom() {
         put(buf, r.x, yy, &[seg("▌", Style::default().fg(ink(colour, bg)).bg(bg))], r.x + 1);

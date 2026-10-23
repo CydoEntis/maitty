@@ -284,14 +284,39 @@ pub(super) fn cells(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str)
 /// `app` drawn in `layout` at `w`×`h` with the `glyphs` set (`unicode`, `ascii`, `nerd`), as
 /// text: one line per row, trailing spaces trimmed. `SESHI_SHOW=1` prints it under a heading
 /// like the handoff's reference frames.
-/// Row 0 as the handoff draws it: its frames have no `+` chip after the tabs (Seshi keeps
-/// one, so a tab opens with a click), so the chip reads as the title's own fill.
+/// Row 0 as the handoff draws it: its tabs end without the `✕ ` Seshi gives each, and its frames
+/// have no `+` chip after them (Seshi keeps one, so a tab opens with a click). What Seshi adds
+/// reads as the title's own fill, so everything after it keeps its column.
 fn without_new_tab_chip(row: &str) -> String {
+    let chars: Vec<char> = row.chars().collect();
+    let mut out = String::new();
+    let (mut cut, mut cut_at) = (0, 0);
+    let mut i = 0;
+    while i < chars.len() {
+        let tab_close = chars[i] == '✕'
+            && i >= 2
+            && chars[i - 1] == ' '
+            && chars[i - 2].is_alphanumeric()
+            && chars.get(i + 1) == Some(&' ')
+            && !chars[i + 1..].iter().find(|c| **c != ' ').is_some_and(|c| "┐╮│".contains(*c));
+        if tab_close {
+            cut += 2;
+            cut_at = out.len();
+            i += 2;
+        } else {
+            out.push(chars[i]);
+            i += 1;
+        }
+    }
     const CHIP: &str = " + ";
-    let Some(at) = row.find(CHIP) else { return row.to_string() };
-    let rest = &row[at + CHIP.len()..];
+    let Some(at) = out.find(CHIP) else {
+        let fill = out[cut_at..].chars().next().unwrap_or(' ');
+        out.insert_str(cut_at, &fill.to_string().repeat(cut));
+        return out;
+    };
+    let rest = &out[at + CHIP.len()..];
     let fill = rest.chars().next().unwrap_or(' ');
-    format!("{}{}{rest}", &row[..at], fill.to_string().repeat(CHIP.len()))
+    format!("{}{}{rest}", &out[..at], fill.to_string().repeat(CHIP.len() + cut))
 }
 
 /// The sidebar as the handoff's v7 frames draw it, from what v8 draws (ADR 0014). `rows` is the
@@ -366,7 +391,7 @@ fn as_the_handoff_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffer,
     let mut foot: Vec<char> = rows[foot_y][left..right].to_vec();
     let chars = |s: &str| s.chars().collect::<Vec<char>>();
     let find = |row: &[char], needle: &str| row.windows(needle.chars().count()).position(|w| w == chars(needle).as_slice());
-    // A chip is its word with a cell either side (a space, or a cap with `ui.pill_caps`).
+    // A chip is its word with a cell either side (a space, or a cap with `ui.rounded`).
     if let Some(at) = find(&foot, "new").filter(|at| *at > 0) {
         foot.splice(at - 1..at + 4, chars("+ new"));
     }

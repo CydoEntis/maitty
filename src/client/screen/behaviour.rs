@@ -1220,6 +1220,7 @@ impl App {
                     }
                 }
             }
+            ScreenHit::CloseTab(i) => self.close_tab(i),
             ScreenHit::NewTab => self.act(Action::NewTab),
             ScreenHit::SideFocus => self.act(Action::BrowseTree),
             ScreenHit::ExpandSidebar => self.act(Action::ToggleSidebar),

@@ -115,12 +115,8 @@ pub struct Ui {
     pub dim: String,
     /// The focused card's border: "accent", "bright" or "none".
     pub focus_border: String,
-    /// Round the ends of pills (buttons, selected rows, menu rows) with Nerd Font half-circles, in Cards and Flat; off: square ends.
-    pub pill_caps: bool,
-    /// Round the ends of the tab chips in a pane's title and of the sidebar's selected folder row, with Nerd Font half-circles; off: square blocks.
-    pub round_tabs: bool,
-    /// Round the ends of the sidebar's session rows (the selected one, and a failed one), each line ending in Nerd Font half-circles; off: square blocks.
-    pub round_rows: bool,
+    /// One shape for every selection, chip, button and row: round ends (Nerd Font half-circles) or, off, square blocks.
+    pub rounded: bool,
     /// Show `· N agents` on a working session's row when the agent reports helpers.
     pub subagent_count: bool,
 }
@@ -695,9 +691,7 @@ impl Default for Ui {
             gap: "1".into(),
             dim: "30%".into(),
             focus_border: "accent".into(),
-            pill_caps: true,
-            round_tabs: false,
-            round_rows: false,
+            rounded: false,
             subagent_count: true,
         }
     }
@@ -1523,17 +1517,12 @@ mod tests {
     }
 
     #[test]
-    fn round_tabs_default_off_and_read_from_the_file() {
-        assert!(!super::Ui::default().round_tabs);
-        let c: super::Config = toml::from_str("[ui]\nround_tabs = true\n").unwrap();
-        assert!(c.ui.round_tabs);
-    }
-
-    #[test]
-    fn round_rows_default_off_and_read_from_the_file() {
-        assert!(!super::Ui::default().round_rows);
-        let c: super::Config = toml::from_str("[ui]\nround_rows = true\n").unwrap();
-        assert!(c.ui.round_rows);
+    fn rounded_default_off_and_read_from_the_file() {
+        assert!(!super::Ui::default().rounded);
+        let c: super::Config = toml::from_str("[ui]
+rounded = true
+").unwrap();
+        assert!(c.ui.rounded);
     }
 
     #[test]
