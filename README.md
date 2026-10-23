@@ -24,24 +24,20 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
 - **One screen for everything.** Choose **Cards** or **Flat** in Settings → General → Layout.
   Cards (the default) shows a full-height sidebar and pane cards, with a pane's tabs as chips in
   its title. Flat draws those
-  same sessions and panes edge to edge, with square surfaces; Tab and
-  Shift+Tab move focus between the sidebar and panes, and Esc returns to the sidebar. The leader is
-  `Ctrl+Space`: a sky-blue pill says it's armed, a pause shows the compact overview,
-  and `?` opens the searchable **All shortcuts** reference.
+  same sessions and panes edge to edge, with square edges (pill ends follow Settings → Round pill ends, and Settings → Round tabs gives the tab chips round ends in either layout); Tab, Shift+Tab
+  and Esc go to the program in the pane in both layouts. The leader is
+  `Ctrl+Space`: a sky-blue pill says it's armed, a pause shows the key map,
+  and `?` opens **All keys**.
 - **Find anything.** `<leader> j` is the inbox: what needs you first, then type to go to any
-  project or session. `<leader> Space` is a command palette in plain words, and **Actions** at
-  the bottom of the sidebar lists common commands. `<leader> ?` lists every configured
-  binding (including aliases), global shortcuts and controls inside each screen.
+  project or session. `<leader> Space` searches every command in plain words, with or without a key, and **Menu** at
+  the bottom of the sidebar lists the common ones. `<leader> ?` lists every configured
+  binding (including aliases), the keys that need no leader and the commands only search finds.
 - **Status at a glance.** Working (a quiet orange, its name shimmering), needs you (the theme's alert colour), done (green until
   you look), idle. A rising sound marks a question; a soft note marks a background completion.
   Click a sidebar status icon or pane status tag to see why, the evidence's age and any uncertainty.
-- **Subagents under their agent.** What an agent has running shows under its row
-  (`↳ reconcile_audit`, repeats counted): Claude's from its hooks, Codex's from its session
-  files, and other helpers when their host exposes lifecycle events. Seshi shows the task name
-  only when the host reports one; otherwise the row uses an inferred stage and the details view
-  labels missing metadata as **Not reported**. Helpers show an icon
-  for what they are doing (`✎` planning, a book researching, `⚙` building, `⚖` reviewing) in the
-  working orange, not a colour per role.
+- **Subagents counted on the row.** When an agent reports subagents (Claude from its hooks,
+  Codex from its session files), its working row says `· 4 agents` (Settings › Agents ›
+  Count on the session row). The agent lists them in its own pane; Seshi shows no tree.
 - **Limits.** An agent stopped by a limit is told "continue" once the limit resets (Settings →
   Continue after a limit), and its card says when. Model, context and cost are the agent's own
   status line to show; seshi doesn't repeat them. Claude's limit numbers come from its status line:
@@ -75,20 +71,24 @@ another `seshi` comes first. No admin rights needed. `SESHI_VERSION=v0.3.0` pick
 for your machine from [Releases](https://github.com/CydoEntis/seshi/releases) and put `seshi` on your PATH.
 To update later: Seshi checks each time you open it (and every few hours while it stays
 open). When a newer version is out, an **Update** button appears in the tab bar. It is hidden
-when Seshi is current. You can also choose "Update seshi" in the command palette.
-Review the version and release notes, then confirm to install. The current window and daemon
-keep running. Settings shows **Installed here**, **This window**, **Running daemon** (or the
-remote host), and **Restart pending** until those versions match. Next to it (and in the
-notice that follows an install) is a **Restart now** button, also `R` in Settings. It asks how
-many sessions will stop and resume and how many are working, then restarts the daemon and
-reconnects the window; Cancel changes nothing. With no sessions open it restarts at once.
-If you open a new `seshi` while an older one is still running, it offers **Restart and open**
-(Enter) or **Quit** (Esc) instead of an error. Scripts, pipes and `--remote` still get the error;
-`seshi kill-server` does the same stop by hand. A remote daemon is updated on its host.
+when Seshi is current. You can also search for "Update seshi" (`<leader> Space`).
+Review the version and release notes, then confirm to install. Your sessions keep running
+until you choose **Restart now**: a button on the notice that follows the install, the
+`↻ Restart` pill that replaces the Update button at the top right, the *Restart seshi* search
+entry, and `R` in Settings (which also shows **Installed here**, **This window**, **Running
+daemon** and **Restart pending**). One click restarts the server and reopens Seshi on the new
+version in the same terminal; agents resume with their conversation (one that was mid-turn is
+stopped and picks up where it left off). It asks only if an agent is working or waiting for you,
+saying how many, and Enter confirms. The same happens if you install from outside Seshi
+(`cargo install`, the installer, `seshi update`): the open window shows `↻ Restart`.
+If you run a new `seshi` while an older server is still running, it replaces the server for you:
+a one-line `Updating seshi…` when nothing is working, or one screen (Enter to continue, Esc to
+quit) listing how many sessions resume when something is. Scripts, pipes and `--remote` still get
+the error; `seshi kill-server` stops the server by hand. A remote daemon is updated on its host.
 Stopping the daemon stops its processes; saved sessions are restored on reopening. From a
-shell it's `seshi update` (or `seshi update --check` to just
+shell it's `seshi update` (which offers to restart the server; or `seshi update --check` to just
 look). To look right now, Settings has **Check for updates** by the version when no newer one is
-known (also in the command palette). Turn the automatic check off in Settings (Check for updates).
+known (also found by search). Turn the automatic check off in Settings (Check for updates).
 
 **Coming from hydra?** Seshi is its new name. Install seshi as above; the first time it starts,
 it brings hydra's config, saved sessions and history over (hydra's own folders are left as they
@@ -111,9 +111,9 @@ From source (any platform with Rust): `cargo install --git https://github.com/Cy
 ## Start in five minutes
 
 1. Install Seshi, then open a terminal in the repository you want to work on and run `seshi`.
-2. Choose **+ new**, enter an agent command such as `claude` or `codex`, and start the session.
-   In a Git checkout, new Claude and Codex tasks use a separate worktree by default; resumes stay
-   in their existing checkout.
+2. Choose **+ new** (or press `Ctrl+Space`, then `n`) for a shell, and type `claude` yourself. `Ctrl+Space`, then `s`, starts your default agent at once instead; `Ctrl+Space`, then `c`, picks the agent, place and project first.
+   In a Git checkout, a new Claude or Codex (typed in a Seshi shell, or started with `s` or `c`) uses a separate worktree by default; resumes stay
+   in their existing checkout. A folder that is not a Git repository gets no worktree.
 3. Read the sidebar state: orange means working, the alert colour means the agent needs you,
    green means its turn finished, and gray means idle. Select a row to return to that session.
 4. Press **Ctrl+Space**, release it, then **?** to find shortcuts. Press **Ctrl+Space**, then
@@ -123,9 +123,10 @@ From source (any platform with Rust): `cargo install --git https://github.com/Cy
 
 ## Use
 
-Click **Actions** at the bottom of the sidebar (or press `a`) to open
-**Set up agent status**, Settings or **All commands**. All commands supports clicking rows and
-scrolling with the wheel, including configured custom commands.
+Click **menu** at the bottom of the sidebar (or press the leader, then `m`) for the common
+commands: new session, shell, pane, tab, Inbox, Search commands, All keys, the sidebar and Settings.
+**Search commands** (leader, then `Space`) finds every command, including **Connect agents**
+and your configured custom ones; rows click and the wheel scrolls.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/CydoEntis/seshi/main/install.sh | sh
@@ -171,10 +172,7 @@ for manual installation, or run `seshi update` to update an existing install.
 - Things that need you sort to the top; everything else keeps its place. Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
 - A session taking a real share of the machine says so in its pane's title, beside its state
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
-- An agent's subagents are listed under its row; the `▾ 3 subagents` heading (or **Hide
-  subagents** in its menu) folds them away.
-- The sidebar footer keeps **+ new** and **Actions** available in both layouts. A plain shell is the sidebar's **+ new**,
-  `Ctrl+Space n` or a project's **+**.
+- The sidebar footer keeps **+ new** and **Menu** available in both layouts. **+ new**, `Ctrl+Space n` and a project's **+** open a plain shell where you are; type your agent there. `Ctrl+Space s` starts a session straight away (Settings › Sessions sets the agent and whether it gets a worktree).
 - `⇆` under a row names a file that this checkout and another have each changed since their
   branches parted (a merge conflict waiting to happen); more than two are one line with a count.
 - Drag a group's name, or a session, up or down to reorder (what needs you still comes first);
@@ -185,37 +183,36 @@ for manual installation, or run `seshi update` to update an existing install.
 
 The leader key is `Ctrl+Space`. Press it and a sky-blue pill appears at the top right
 (the pane you're in turns sky too); press a key, or wait a moment for the compact key map.
-In that overview a key runs its command, Tab searches leader commands, and keys marked `›` open a
-second step (`w` worktrees: new, switch, merge, delete; Backspace goes back).
-Press **Ctrl+Space**, release, then **?** for **All shortcuts**. Type to find a key,
-action or screen; arrows, page keys, Home/End and the wheel scroll. It uses your actual
-bindings, preserves aliases and includes shortcuts that work without the leader.
-See [contextual shortcuts](docs/shortcuts.md) for every screen's controls, also shown in-app.
-The table below lists the default leader bindings; custom bindings appear in All shortcuts.
+In that key map a key runs its command, Tab (or typing a letter that is no key) searches every command,
+`?` shows all keys, and keys marked `›` open a second step (`w` worktrees: new, switch, merge,
+delete; Backspace goes back). Every action has a leader key or is found by search; no letter
+acts by itself in the sidebar.
+See [contextual shortcuts](docs/shortcuts.md) for every screen's controls.
+The table below lists the default leader bindings; custom bindings appear in All keys.
 
 | keys (after the leader) | action |
 |---|---|
 | `j` | **inbox**: what needs you (answer a question with its number, Enter goes there), then every session; type to find one |
-| `m` / `i` | follow-up to the current agent / explain its status |
-| `n` / `p` | a shell right where you are (cd and run what you like; it groups itself) / a shell beside this one |
-| `c` | start a fleet: a goal, and the agent that commands it |
-| `z` (or `b`) / `x` | hide or show the sidebar / close |
+| `M` / `i` / `m` | message the current agent / explain its status / the Menu |
+| `n` / `s` | a plain shell right where you are (cd and run what you like, or type `claude`; it groups itself) / a new session at once (your default agent; you type the task there) |
+| `c` / `S` | new session with options (agent, where, project) / stop the agent (Ctrl+C) |
+| `p` | a shell beside this one |
+| `z` / `Z` / `x` | collapse the sidebar into the top strip / hide the sessions (the same key brings them back) / close |
 | arrows | focus the pane that way (left past the edge: the sidebar). `Alt`+arrows do it without the leader (Settings → General turns that off) |
-| `v` or the pipe key (Shift+backslash) / `-` / `H J K L` | split right / split down / resize left, down, up, right |
+| `-` / `H J K L` | split down / resize left, down, up, right (`p` splits right) |
 | `t` / `r` / `]` `[` / `X` | **tabs**: new tab (a shell where you are) / rename it in its pill (or double-click it) / next, previous / close it. `Alt+1`–`9` (no leader) goes to a tab |
 | `w` / `f` / `d` | worktrees › / files / changes |
 | `W` | open the worktree picker directly; choose a worktree or type a new branch |
-| `e` / `Space` or `:` / `a` | focus the sidebar / command palette / actions |
+| `e` / `Space` | focus the sidebar / search commands |
 | `F` / `/` / `B` | find a file / search the code / switch branch |
 | `R` / `V` | rename a session / paste the clipboard's image |
 | `y` / `{` `}` / `PageUp` `PageDown` | select text with keys / previous, next command in history / scroll half a pane |
-| `,` / `?` / `N` / `q` | settings / All shortcuts / notification history / detach (agents keep running) |
+| `,` / `?` / `N` / `q` | settings / All keys / what happened / quit (agents keep running) |
 | `Ctrl+R` | reload configuration |
 | `Ctrl+Space` | send the configured leader key to the program |
-| `Ctrl+V` | paste the clipboard's image (alias for `V`) |
 
 Without the leader: **Alt+1–9** selects tabs; **Alt+arrows** moves pane focus
-when enabled in Settings. All shortcuts shows changes to these bindings too.
+when enabled in Settings. All keys shows changes to these bindings too.
 
 In **Files**: Enter puts the path in the agent's prompt, `e` opens it in your editor (`editor`
 in config; nvim, helix … open inside seshi), `y` copies the path. In **Changes**: `c` commit,
@@ -224,28 +221,21 @@ if the file changes again), `r` goes to its agent.
 
 Everything also works with the mouse. Hold Shift to select text with your terminal.
 
-### Team roles
+### Helpers
 
-A commander (`c`) can start each helper on the model that suits its job. Set a team in
-**Settings › Team**, or under `[team]` in `config.toml`: a list of jobs, each with a model for
-Claude and one for Codex. One **Family** setting picks which column is used; a project can
-choose its own in **This project**, so switching from Claude to Codex is one change.
+Any session may start helpers: other agents in their own worktrees, through `seshi mcp`
+(`seshi_start`). The first time one tries, its row turns **needs you** and says `wants to
+start 4 helpers`. Press Enter on the row (or click the line) to see the tasks, then
+**1** Allow, **2** Always in this project, **3** No, do it alone, or Esc to decide later.
+Their permission prompts come to your Inbox, and nothing merges.
 
-| Job | Claude | Codex |
-| --- | --- | --- |
-| planner | opus | gpt-6.1-sol |
-| builder | sonnet | gpt-6-luna |
-| reviewer | opus | gpt-6.1-sol |
-
-`seshi brief` lists the team to the commander, and it starts a job's helper with `seshi_start`
-and `job` (or the `seshi worktree … -- claude --model sonnet "…"` line the brief shows). The
-brief tells it to hand work to the next job, such as the reviewer after the builder, only once
-the project's check (**Settings › Check**, `[[check]]`) has passed; with no check it reads
-the diff and runs the tests itself. Model names go to the agent
-unchanged; Seshi sets the model only, not the reasoning effort, and does not check that the
-name exists. Seshi runs no pipeline: it never starts, orders or retries jobs itself. Sessions
-you start yourself are unchanged, and with no team a commander works as before. The table above
-is an example in `config.example.toml`, not a default.
+Settings › Sessions sets the rest: **Sessions may start helpers** (`ask`, `always` or
+`never`; `never` refuses with a clear error to the agent) and **Helpers at once** (2, 3 or 4
+per session; an extra one is told to wait). "Always in this project" is kept in
+`helper-projects.json` in Seshi's data folder, not in the repo, so an agent cannot give itself
+helpers. An older `[mcp] helpers_at_once` in `config.toml` still counts until `[sessions]
+helpers_at_once` is set. The commander and `[team]` jobs are gone; an old `config.toml` that
+still has them loads, and they are ignored.
 
 ## Panes are real terminals
 
@@ -352,7 +342,7 @@ seshi                 # open the current directory
 seshi ~/code/my-app   # open a project
 ```
 
-Use **+ new** or **Actions** at the bottom of the sidebar to start an agent,
+Use **+ new** or **Menu** at the bottom of the sidebar to start a session,
 open a shell, split a pane, or reach Settings. For example, the CLI can start an
 agent directly:
 
@@ -512,16 +502,25 @@ New worktrees go to `{repo_parent}/{repo}-worktrees/{branch}` (set `[worktree] d
 local or `origin/` branch is checked out instead of created. Set `[worktree] command = "claude"`
 to start an agent in every new worktree.
 
-With **Own worktree per agent** enabled (the default), typing `codex` in a Seshi
-shell in the main checkout creates a worktree, including with `-c` configuration
+With **Own worktree per agent** enabled (the default), typing `claude`, `codex`, `gemini`,
+`opencode` (or a quick agent's name) in a Seshi shell in a Git repository's main checkout
+creates a worktree and starts the agent in it, including with `-c` configuration
 or `-p` profile options. `codex resume` and `codex fork` stay in the current folder;
 explicit `--cd` and Codex's own `--worktree` are honored. Starting inside an existing
-linked worktree reuses it. This shell integration applies to shells opened by Seshi.
+linked worktree reuses it, and a folder that is not a Git repository gets no worktree and no
+error. This applies to shells opened by Seshi, whatever shell they run (bash, zsh, fish,
+PowerShell, nu, cmd, or a `shell` setting with arguments): each has Seshi's small launcher for
+each agent first on its `PATH`, so an alias or function of your own, a shim manager, `command
+claude`, or a shell started inside the pane (tmux, `bash -l`) still reaches it. The launcher
+asks Seshi, which checks the pane's own secret, so only a plain shell in that pane can ask. Two
+cases it cannot cover: an alias that runs another command or an absolute path (`alias
+claude=~/bin/claude`), and a shell that rebuilds `PATH` without the launcher folder and never
+puts it back.
 
 **Cleaning up.** Closing the last session in a worktree seshi made removes its folder (never
 with uncommitted changes; the branch is kept unless it's merged). One left behind by a session
 that crashed is removed the same way a few minutes later, once nothing in it exists only there.
-For everything else there is **Clean up worktrees** (a project's menu, or the command palette):
+For everything else there is **Clean up worktrees** (a project's menu, or search):
 every worktree of the repo with why it's still around (in use, uncommitted changes, not merged,
 when it last committed). The safe ones come ticked; tick any others, and one confirm removes
 them. It says so first when ticked ones hold uncommitted changes, which would be lost.
@@ -555,7 +554,7 @@ terminal-screen and native lifecycle evidence where available. Status means:
    `seshi integrate gemini` and `seshi integrate qwen` do the same for Gemini CLI and Qwen Code;
    `seshi integrate opencode` writes a small OpenCode plugin that tells seshi what it's doing.
    `seshi integrate pi` installs Pi's native extension. These, and Codex's hooks, can also
-   be installed with the mouse through **Actions → Set up agent status**. Restart Codex or
+   be installed with the mouse through **Settings › Agents → Set up another agent…** (or search for Connect agents). Restart Codex or
    OpenCode after setup, or reload Pi. Status follows the app with any provider, including
    z.ai and DeepSeek; see [status setup and requirements](docs/agent-status.md).
    For Codex, `seshi integrate codex` adds native `SubagentStart` / `SubagentStop`
@@ -577,7 +576,7 @@ Native Codex subagent hooks attach every helper to its parent pane as soon as it
 starts and remove it when it stops.
 Hook authority ends when a recognized agent's process exits. Seshi recognizes
 Herdr's 24 agent identities plus its five additional existing agents; OMP,
-Mastracode, Kilo and Kimi native status setup is also available through Actions.
+Mastracode, Kilo and Kimi native status setup is also available through the Menu.
 See the [pinned source audit and compatibility limits](docs/herdr-status-audit.md).
 Terminal bells do not replace the status icon or add musical-note history entries.
 Click a status icon/tag (or `<leader> i`) for a plain-language explanation and the ages of
@@ -585,7 +584,7 @@ hook, screen and process evidence; a status without confirmation is shown as unc
 
 ## Configure
 
-Open Settings from **Actions** or press **Ctrl+Space**, then `,`. Choose a theme,
+Open Settings from the **Menu** or press **Ctrl+Space**, then `,`. Choose a theme,
 layout, spinner, keys, sidebar behavior and agent settings. Settings are saved in
 your user config; `config.example.toml` lists the available options.
 

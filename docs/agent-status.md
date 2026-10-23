@@ -1,8 +1,10 @@
-# Agent status setup
+# Connect agents (status setup)
 
-Choose **Actions → Set up agent status**, then click **Codex**, **Pi**, **OpenCode**, **OMP**,
+Seshi works out whether an agent is working, needs you or is done by watching its process and screen. **Connect agents** installs a small adapter into Codex, Pi, OpenCode, OMP, Mastracode, Kilo or Kimi so the agent reports that itself. Claude needs nothing here. It's a one-time step per machine.
+
+Choose **Menu → All commands → Connect agents**, then click **Codex**, **Pi**, **OpenCode**, **OMP**,
 **Mastracode**, **Kilo** or **Kimi**.
-The same commands are available in **Actions → All commands**. Setup installs
+Setup installs
 only Seshi's adapter; it preserves other extensions and refuses to overwrite a
 different file named `seshi.js`. It does not interrupt an agent or restart the daemon.
 

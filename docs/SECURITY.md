@@ -115,6 +115,16 @@ an SSH remote being someone else's machine; what agents work on leaking through 
 (ntfy, off by default: they name the agent and folder only, unless `phone_text` is on, and
 the topic name is the only secret on the public server).
 
+The agent launchers (`src/shim.rs`) sit first on `PATH` in every plain shell pane. They are
+files in seshi's own data folder, written by the daemon as the user; a process that can write
+there can already run as the user through the shell startup files seshi writes beside them.
+A launcher asks for a worktree with `seshi agent-dir`, which sends the pane's own
+`SESHI_TERM_ID` and `SESHI_PANE_TOKEN` and nothing from its arguments; a wrong or missing token
+makes the caller "from a pane" but not that pane, and the daemon answers with nothing (worktrees,
+like status reports, are trusted only from the pane itself). A launcher passes the agent's
+arguments on as an argument vector, never through a shell, and the paths it embeds are
+single-quoted.
+
 A project's check is a command the daemon runs as the user when an agent's turn ends. It
 comes from the user's own `config.toml` (`[[check]]`) or, for a project with none there, from
 the repo's `.seshi/checks.toml` under the approval rules below. It runs through the user's shell in the
@@ -128,10 +138,11 @@ files and served only by `Query::CheckOutput` under the read grant; it is never 
 never in the state snapshot. It may contain secrets the command printed, like any pane's
 output.
 
-A team job's model name (`[[team.jobs]]`) reaches a shell command line when a commander starts
-a helper for it. It comes only from the user's config, a name with whitespace fails the config
-at load, and anything but plain name characters is quoted with `quote_for_shell`, so a model
-cannot add a command.
+An agent can start helpers only if you say so. Who is asking is proven the way status reports are
+(the pane's `SESHI_PANE_TOKEN` on the connection); the answer is `AnswerHelpers`, which the daemon
+refuses from any pane and accepts only for a request it holds. "Always in this project" is kept in
+`helper-projects.json` in Seshi's data folder, never in the repo, so an agent that can write the
+repo cannot grant itself helpers. A helper's own permission prompts still come to you.
 A project may name several check commands. Each one runs under the same rules, one after
 another in one background task, and each keeps its own output tail. A command the
 resolver holds for approval or that you said never to is not started at all. To tell when

@@ -29,6 +29,9 @@ running). Without the leader: `Alt+1`–`9` go to a tab and `Alt`+arrows move fo
 (Settings turns the arrows off). The cut features' keys stay free. Supersedes ADR
 0006.
 
+Later change (ADR 0014): `c` is no longer the fleet; `s` starts an agent session and `c`
+opens its dialog. `n` is still a shell where you are.
+
 ## Alternatives considered
 
 - **Go back to herdr's keys (ADR 0005):** `h j k l` focus, `c` new tab, `p` palette,

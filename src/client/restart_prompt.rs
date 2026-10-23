@@ -23,6 +23,8 @@ const BUTTON_GAP: u16 = 2;
 
 pub struct Prompt {
     daemon: u32,
+    /// Sessions that come back, and how many of them are mid-turn, when known.
+    resume: Option<(usize, Option<usize>)>,
     theme: Theme,
     round: bool,
     hover: Option<Choice>,
@@ -31,7 +33,22 @@ pub struct Prompt {
 
 impl Prompt {
     pub fn new(daemon: u32, cfg: &Config) -> Prompt {
-        Prompt { daemon, theme: cfg.theme(), round: cfg.ui.pill_caps && cfg.ui.layout != "flat", hover: None, hits: Vec::new() }
+        Prompt { daemon, resume: None, theme: cfg.theme(), round: cfg.ui.pill_caps, hover: None, hits: Vec::new() }
+    }
+
+    pub fn resuming(mut self, sessions: usize, busy: Option<usize>) -> Prompt {
+        self.resume = Some((sessions, busy));
+        self
+    }
+
+    /// What the restart costs, in the words of the screen's third line.
+    fn cost(&self) -> String {
+        let sessions = |n: usize| if n == 1 { "1 session resumes".to_string() } else { format!("{n} sessions resume") };
+        match self.resume {
+            Some((n, Some(busy))) if busy > 0 => format!("{} with their conversation; {busy} mid-turn now.", sessions(n)),
+            Some((n, _)) => format!("{} with their conversation.", sessions(n)),
+            None => "Running agents stop and resume when it restarts.".to_string(),
+        }
     }
 
     pub fn on_key(&mut self, k: KeyEvent) -> Option<Choice> {
@@ -67,10 +84,11 @@ impl Prompt {
         let ground = Style::default().bg(t.bg);
         let this = crate::protocol::PROTOCOL_VERSION;
         let age = if self.daemon < this { "older" } else { "newer" };
+        let cost = self.cost();
         let lines = [
             (0, "Seshi".to_string(), ground.fg(t.strong).add_modifier(Modifier::BOLD)),
             (2, format!("The running Seshi server is {age} (protocol v{}; this one is v{this}).", self.daemon), ground.fg(t.text)),
-            (3, "Running agents stop and resume when it restarts.".to_string(), ground.fg(t.muted)),
+            (3, cost, ground.fg(t.muted)),
         ];
         let top = area.y + area.height.saturating_sub(BLOCK_HEIGHT) / 2;
         for (row, text, style) in lines {
@@ -109,9 +127,9 @@ pub fn wanted(err: &anyhow::Error, terminal: bool, remote: bool) -> Option<u32> 
 }
 
 /// Show the prompt on the terminal and wait for the choice.
-pub fn offer(daemon: u32) -> Result<Choice> {
+pub fn offer(daemon: u32, sessions: usize, busy: Option<usize>) -> Result<Choice> {
     let (cfg, _) = Config::load_or_default();
-    let mut prompt = Prompt::new(daemon, &cfg);
+    let mut prompt = Prompt::new(daemon, &cfg).resuming(sessions, busy);
     let mut terminal = ratatui::init();
     if cfg.ui.mouse {
         let _ = execute!(std::io::stdout(), event::EnableMouseCapture);
@@ -193,6 +211,15 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn it_counts_the_sessions_that_resume_and_the_ones_mid_turn() {
+        let mut prompt = Prompt::new(OLD_PROTOCOL, &cfg(LAYOUTS[0])).resuming(4, Some(2));
+        let out = drawn(&mut prompt, 100, 30);
+        assert!(out.contains("4 sessions resume with their conversation; 2 mid-turn now."), "{out}");
+        let mut prompt = Prompt::new(OLD_PROTOCOL, &cfg(LAYOUTS[0])).resuming(1, None);
+        assert!(drawn(&mut prompt, 100, 30).contains("1 session resumes with"));
     }
 
     #[test]

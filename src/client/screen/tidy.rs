@@ -201,7 +201,7 @@ pub(in crate::client) fn draw_tidy(app: &mut App, f: &mut Frame, area: Rect, t: 
                 };
                 let why_c = match (row.free(), row.standing.dirty, row.standing.merged) {
                     (false, ..) => t.muted,
-                    (_, 1.., _) => t.blocked,
+                    (_, 1.., _) => t.sky(),
                     (_, _, true) => t.done,
                     _ => t.text,
                 };
@@ -225,6 +225,6 @@ pub(in crate::client) fn draw_tidy(app: &mut App, f: &mut Frame, area: Rect, t: 
     let losing = picked.iter().any(|r| r.standing.dirty > 0);
     let by = r.bottom().saturating_sub(3);
     let label = format!("Remove {}", picked.len());
-    let gx = btn(app, buf, r.x + 3, by, &label, "Enter", if losing { BtnKind::Danger } else { BtnKind::Primary }, ScreenHit::TidyGo, r.right());
-    put(buf, gx + 3, by, &hints(t, &[("Space", "tick"), ("a", "all the safe ones"), ("n", "none"), ("Esc", "close")]), r.right().saturating_sub(2));
+    btn(app, buf, r.x + 3, by, &label, "Enter", if losing { BtnKind::Danger } else { BtnKind::Primary }, ScreenHit::TidyGo, r.right());
+    panel_bar(buf, r, t, &[("Space", "tick"), ("a", "all the safe ones"), ("n", "none"), ("Esc", "close")]);
 }

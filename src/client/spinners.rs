@@ -1,7 +1,7 @@
 //! Preview and persist working indicators without changing an agent's status.
 
 use super::design::{put, seg};
-use super::screen::{ScreenHit, hints, hit, list_row, panel};
+use super::screen::{ScreenHit, hit, list_row, panel, panel_bar};
 use super::{App, Bg, KeyCode, KeyEvent, Mode, modal, text_input};
 use crate::config::{Config, SPINNERS, parse_spinner};
 use crate::theme::Theme;
@@ -269,23 +269,12 @@ pub(super) fn draw(app: &mut App, frame: &mut Frame, area: Rect, theme: &Theme, 
         )],
         r.right() - 3,
     );
-    let help = if view.editing.is_some() {
-        hints(
-            theme,
-            &[
-                ("←→", "cursor"),
-                ("Ctrl+U", "clear"),
-                ("Enter", "save"),
-                ("Esc", "back"),
-            ],
-        )
+    let help: &[(&str, &str)] = if view.editing.is_some() {
+        &[("←→", "cursor"), ("Ctrl+U", "clear"), ("Enter", "save"), ("Esc", "back")]
     } else {
-        hints(
-            theme,
-            &[("↑↓", "preview"), ("Enter", "apply"), ("Esc", "back")],
-        )
+        &[("↑↓", "preview"), ("Enter", "apply"), ("Esc", "back")]
     };
-    put(buf, r.x + 3, r.bottom() - 2, &help, r.right() - 3);
+    panel_bar(buf, r, theme, help);
 }
 
 #[cfg(test)]
@@ -375,7 +364,7 @@ mod tests {
             app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
             app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
             assert!(
-                matches!(&app.mode, Mode::ScreenSettings(v) if matches!(design::settings_rows(modal::Cat::Appearance, &app.cfg).get(v.sel), Some(design::SRow::Setting(s)) if s.path == PATH))
+                matches!(&app.mode, Mode::ScreenSettings(v) if matches!(design::settings_rows(modal::Cat::Appearance).get(v.sel), Some(design::SRow::Setting(s)) if s.path == PATH))
             );
         }
     }

@@ -49,6 +49,8 @@ pub struct Config {
     /// An agent stopped by a plan limit is told "continue" once the limit resets.
     pub auto_continue: bool,
     pub worktree: Worktree,
+    /// How a new session starts and whether sessions may start helpers (`[sessions]`).
+    pub sessions: Sessions,
     pub quick: Quick,
     pub icons: Icons,
     pub keys: Keys,
@@ -61,8 +63,6 @@ pub struct Config {
     pub agents_replace_defaults: bool,
     /// Commands Seshi runs when an agent's turn ends in the named project (`[[check]]`).
     pub check: Vec<CheckDef>,
-    /// Jobs a commander gives its helpers, each with a model per agent family (`[team]`).
-    pub team: Team,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,7 +94,7 @@ pub struct Ui {
     pub start_dir: String,
     /// Sidebar sessions (and worktrees) that need you go first; the rest keep their place.
     pub attention_sort: bool,
-    /// "cards" keeps the standard hydra look; "flat" draws full-bleed square zones.
+    /// "cards" keeps the standard hydra look; "flat" draws full-bleed zones with square edges (pill ends still follow `pill_caps`).
     pub layout: String,
     /// "terminal" leaves chrome on the terminal's own background (so transparency and a
     /// background image show through evenly); "solid" paints everything the theme's `bg`.
@@ -115,8 +115,69 @@ pub struct Ui {
     pub dim: String,
     /// The focused card's border: "accent", "bright" or "none".
     pub focus_border: String,
-    /// Round the ends of pills (tabs, buttons) with Nerd Font half-circles; off: square ends.
+    /// Round the ends of pills (buttons, selected rows, menu rows) with Nerd Font half-circles, in Cards and Flat; off: square ends.
     pub pill_caps: bool,
+    /// Round the ends of the tab chips in a pane's title and of the sidebar's selected folder row, with Nerd Font half-circles; off: square blocks.
+    pub round_tabs: bool,
+    /// Show `· N agents` on a working session's row when the agent reports helpers.
+    pub subagent_count: bool,
+}
+
+pub const NEW_AGENTS: &[&str] = &["last used", "claude", "codex", "gemini"];
+pub const NEW_WHERE: &[&str] = &["new worktree", "this folder"];
+pub const HELPERS_MAY: &[&str] = &["ask", "always", "never"];
+pub const HELPERS_AT_ONCE: &[&str] = &["2", "3", "4"];
+
+/// Settings > Sessions. `helpers` and `helpers_at_once` are read by the daemon when an agent
+/// starts a session (`Config::helpers_at_once`); the rest by the client's new-session flow.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Sessions {
+    /// Which agent leader `s` starts: one of `NEW_AGENTS`.
+    pub agent: String,
+    /// Where a new session opens: one of `NEW_WHERE`.
+    #[serde(rename = "where")]
+    pub place: String,
+    /// Whether a session may start helpers: one of `HELPERS_MAY`.
+    pub helpers: String,
+    /// Helpers one session runs at a time: one of `HELPERS_AT_ONCE`. An old `[mcp]
+    /// helpers_at_once` fills it in when this is not set (`fold_legacy_helpers`).
+    pub helpers_at_once: String,
+}
+
+impl Default for Sessions {
+    fn default() -> Self {
+        Sessions { agent: "last used".into(), place: "new worktree".into(), helpers: "ask".into(), helpers_at_once: "3".into() }
+    }
+}
+
+/// An old `[mcp] helpers_at_once` (0 to 16, 0 for no limit) is the one limit now unless
+/// `[sessions] helpers_at_once` is set: it becomes the nearest of `HELPERS_AT_ONCE`, and 0 the
+/// largest. The file itself is not rewritten.
+fn fold_legacy_helpers(value: &mut toml::Table) {
+    let sessions_set = value.get("sessions").and_then(toml::Value::as_table).is_some_and(|t| t.contains_key("helpers_at_once"));
+    let old = value.get("mcp").and_then(toml::Value::as_table).and_then(|t| t.get("helpers_at_once")).and_then(toml::Value::as_integer);
+    let (false, Some(old)) = (sessions_set, old) else { return };
+    let nearest = match old {
+        ..=2 if old > 0 => "2",
+        3 => "3",
+        _ => "4",
+    };
+    let sessions = value.entry("sessions").or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    if let Some(t) = sessions.as_table_mut() {
+        t.insert("helpers_at_once".into(), toml::Value::String(nearest.into()));
+    }
+}
+
+fn validate_sessions(s: &Sessions) -> Result<()> {
+    let one_of = |key: &str, value: &str, allowed: &[&str]| -> Result<()> {
+        anyhow::ensure!(allowed.contains(&value), "sessions.{key} is \"{value}\"; use one of: {}", allowed.join(", "));
+        Ok(())
+    };
+    one_of("agent", &s.agent, NEW_AGENTS)?;
+    one_of("where", &s.place, NEW_WHERE)?;
+    one_of("helpers", &s.helpers, HELPERS_MAY)?;
+    one_of("helpers_at_once", &s.helpers_at_once, HELPERS_AT_ONCE)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,9 +226,6 @@ pub struct Mcp {
     /// respond (answer another agent's prompt or question), admin (close other panes, stop
     /// the server).
     pub grants: Vec<String>,
-    /// How many sessions started by other agents may be working at the same time; a start
-    /// past that is refused until one finishes. 0: no limit.
-    pub helpers_at_once: usize,
 }
 
 impl Default for Mcp {
@@ -182,7 +240,6 @@ impl Default for Mcp {
             .to_vec(),
             scope: "project".into(),
             grants: ["read", "write", "start"].map(String::from).to_vec(),
-            helpers_at_once: 4,
         }
     }
 }
@@ -252,109 +309,6 @@ pub fn validate_checks(checks: &[CheckDef]) -> Result<()> {
             "[[check]] #{n}: {} already has a check named `{}`; give each a different `name`",
             c.project.display(),
             c.name()
-        );
-    }
-    Ok(())
-}
-
-/// The agent family a team's jobs run on.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum Family {
-    #[default]
-    Claude,
-    Codex,
-}
-
-impl Family {
-    pub const ALL: [Family; 2] = [Family::Claude, Family::Codex];
-
-    /// The agent's name in `[[quick.agents]]`, and the family's spelling in the config.
-    pub fn agent(self) -> &'static str {
-        match self {
-            Family::Claude => "claude",
-            Family::Codex => "codex",
-        }
-    }
-}
-
-/// A commander's team: jobs with a model per family, the active family, and per-project overrides.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct Team {
-    pub family: Family,
-    pub jobs: Vec<TeamJob>,
-    pub projects: Vec<TeamProject>,
-}
-
-/// One job, such as "builder". Model names go to the agent unchanged; empty is its default.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct TeamJob {
-    pub name: String,
-    pub claude: String,
-    pub codex: String,
-}
-
-impl TeamJob {
-    pub fn model(&self, family: Family) -> &str {
-        match family {
-            Family::Claude => &self.claude,
-            Family::Codex => &self.codex,
-        }
-    }
-}
-
-/// The family one project uses instead of the team's.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct TeamProject {
-    /// The repository's main checkout.
-    pub project: PathBuf,
-    pub family: Family,
-}
-
-/// Refuse a team a commander could not use, so the mistake shows when the config loads.
-pub fn validate_team(team: &Team) -> Result<()> {
-    for (i, job) in team.jobs.iter().enumerate() {
-        validate_job(job, i + 1)?;
-        anyhow::ensure!(
-            !team.jobs[..i].iter().any(|o| o.name.eq_ignore_ascii_case(&job.name)),
-            "[[team.jobs]] `{}` is named twice; job names differ in more than case",
-            job.name
-        );
-    }
-    for (i, p) in team.projects.iter().enumerate() {
-        let n = i + 1;
-        anyhow::ensure!(!p.project.as_os_str().is_empty(), "[[team.projects]] #{n} needs a `project`");
-        anyhow::ensure!(
-            !p.project.to_string_lossy().starts_with('~'),
-            "[[team.projects]] #{n}: `project` {} starts with `~`, which is not expanded; give the full path",
-            p.project.display()
-        );
-        anyhow::ensure!(
-            !team.projects[..i].iter().any(|o| same_path(&o.project, &p.project)),
-            "[[team.projects]] #{n}: {} already has a family; a project has one",
-            p.project.display()
-        );
-    }
-    Ok(())
-}
-
-fn validate_job(job: &TeamJob, n: usize) -> Result<()> {
-    anyhow::ensure!(!job.name.is_empty(), "[[team.jobs]] #{n} needs a `name`");
-    anyhow::ensure!(
-        job.name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
-        "[[team.jobs]] `{}`: a name uses letters, digits, `-` and `_` only",
-        job.name
-    );
-    for family in Family::ALL {
-        let model = job.model(family);
-        anyhow::ensure!(
-            !model.contains(char::is_whitespace),
-            "[[team.jobs]] `{}`: the {} model `{model}` has a space in it",
-            job.name,
-            family.agent()
         );
     }
     Ok(())
@@ -699,6 +653,7 @@ impl Default for Config {
             auto_workspace: false,
             auto_continue: true,
             worktree: Worktree::default(),
+            sessions: Sessions::default(),
             quick: Quick::default(),
             icons: Icons::default(),
             keys: Keys::default(),
@@ -708,7 +663,6 @@ impl Default for Config {
             agents: Vec::new(),
             agents_replace_defaults: false,
             check: Vec::new(),
-            team: Team::default(),
         }
     }
 }
@@ -719,7 +673,7 @@ impl Default for Ui {
             sidebar: true,
             sidebar_position: "left".into(),
             which_key_delay_ms: 600,
-            which_key: true,
+            which_key: false,
             mouse: true,
             spinner: SPINNERS[0].1.iter().map(|frame| (*frame).into()).collect(),
             workspace_colors: ["#a593ff", "#5aa9ff", "#ff7ab6", "#3dd6c0", "#e8c565", "#ff9f6b", "#c792ea", "#7fd8a4"]
@@ -740,6 +694,8 @@ impl Default for Ui {
             dim: "30%".into(),
             focus_border: "accent".into(),
             pill_caps: true,
+            round_tabs: false,
+            subagent_count: true,
         }
     }
 }
@@ -785,19 +741,34 @@ pub const SPINNERS: &[(&str, &[&str])] = &[
     ("Arrows", &["←", "↖", "↑", "↗", "→", "↘", "↓", "↙"]),
     ("Pulse", &["·", "•", "●", "•"]),
     ("Blocks", &["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃", "▂"]),
+    ("Bars", BARS_FRAMES),
     ("Static", &[]),
 ];
+/// The v7 handoff's working spinner: three Braille bars, two columns wide. The ASCII glyph set
+/// swaps it for `BARS_ASCII` (see `client::render::status_icon`).
+pub const BARS_FRAMES: &[&str] = &["⣰⡄", "⣼⡀", "⣶⡆", "⣧⡇", "⣆⡆", "⣤⡄", "⣸⡆", "⣴⡇", "⣇⡄", "⣦⡀"];
+pub const BARS_ASCII: &[&str] = &[". ", "o ", "O ", "o "];
 pub const MAX_SPINNER_FRAMES: usize = 64;
 
 pub fn spinner_name(frames: &[String]) -> &'static str {
     SPINNERS.iter().find(|(_, preset)| frames == *preset).map_or("Custom", |(name, _)| name)
 }
 
-pub fn validate_spinner(frames: &[String]) -> Result<()> {
+/// One column, or two when every character is Braille: the 3-bar spinner needs two cells, and
+/// Braille is the one block every terminal draws one cell wide each.
+fn fits_cells(frame: &str) -> bool {
     use unicode_width::UnicodeWidthStr;
+    match frame.width() {
+        1 => true,
+        2 => frame.chars().all(|c| ('\u{2800}'..='\u{28ff}').contains(&c)),
+        _ => false,
+    }
+}
+
+pub fn validate_spinner(frames: &[String]) -> Result<()> {
     anyhow::ensure!(frames.len() <= MAX_SPINNER_FRAMES, "a working spinner can have at most {MAX_SPINNER_FRAMES} frames");
-    anyhow::ensure!(frames.iter().all(|frame| !frame.trim().is_empty() && !frame.chars().any(char::is_control) && frame.width() == 1),
-        "each spinner frame must fit one terminal column and contain no control characters");
+    anyhow::ensure!(frames.iter().all(|frame| !frame.trim().is_empty() && !frame.chars().any(char::is_control) && fits_cells(frame)),
+        "each spinner frame must fit one terminal column (two for Braille) and contain no control characters");
     Ok(())
 }
 
@@ -825,6 +796,18 @@ mod spinner_tests {
             assert!(validate_spinner(&frames).is_err());
         }
         assert!(parse_spinner("\x1b[31m").is_err());
+    }
+
+    #[test]
+    fn the_bars_spinner_is_two_braille_cells_and_other_wide_frames_stay_out() {
+        use unicode_width::UnicodeWidthStr;
+        assert_eq!(BARS_FRAMES.len(), 10);
+        assert!(BARS_FRAMES.iter().all(|f| f.width() == 2 && f.chars().count() == 2));
+        assert!(BARS_ASCII.iter().all(|f| f.is_ascii() && f.width() == 2));
+        assert_eq!(parse_spinner("⣰⡄ ⣼⡀").unwrap(), ["⣰⡄", "⣼⡀"]);
+        for bad in ["ab", "🌈", "⣰a", "⣰⡄⣰"] {
+            assert!(parse_spinner(bad).is_err(), "{bad}");
+        }
     }
 }
 
@@ -1099,6 +1082,11 @@ fn copy_renamed(from: &Path, to: &Path, old: &str) {
 }
 
 impl Config {
+    /// How many helpers one session may have working at once (`sessions.helpers_at_once`).
+    pub fn helpers_at_once(&self) -> usize {
+        self.sessions.helpers_at_once.parse().unwrap_or(3)
+    }
+
     /// Load the config file; a missing file is the defaults, a broken one is an error.
     pub fn load() -> Result<Config> {
         let path = config_path();
@@ -1115,6 +1103,7 @@ impl Config {
             let over: toml::Table = toml::from_str(&s).with_context(|| format!("parsing {}", local.display()))?;
             merge(&mut value, over);
         }
+        fold_legacy_helpers(&mut value);
         let mut cfg: Config = toml::Value::Table(value).try_into().with_context(|| format!("parsing {}", path.display()))?;
         // Config files written from the old example spell out the old "done" icon; it's a
         // green dot now (any other choice is kept).
@@ -1126,7 +1115,7 @@ impl Config {
         }
         validate_spinner(&cfg.ui.spinner)?;
         validate_checks(&cfg.check)?;
-        validate_team(&cfg.team)?;
+        validate_sessions(&cfg.sessions)?;
         Ok(cfg)
     }
 
@@ -1492,6 +1481,52 @@ mod tests {
     }
 
     #[test]
+    fn new_session_settings_have_defaults_and_refuse_unknown_values() {
+        let d = super::Sessions::default();
+        assert_eq!((d.agent.as_str(), d.place.as_str(), d.helpers.as_str(), d.helpers_at_once.as_str()), ("last used", "new worktree", "ask", "3"));
+        assert!(super::Ui::default().subagent_count, "the helper count shows by default");
+        let c: super::Config = toml::from_str("[sessions]\nwhere = \"this folder\"\nhelpers = \"never\"\n[ui]\nsubagent_count = false\n").unwrap();
+        assert_eq!((c.sessions.place.as_str(), c.sessions.helpers.as_str(), c.sessions.agent.as_str()), ("this folder", "never", "last used"));
+        assert!(!c.ui.subagent_count);
+        assert!(super::validate_sessions(&c.sessions).is_ok());
+        let old: super::Config = toml::from_str("[sessions]\nplus_starts = \"with options\"\n").expect("the removed plus_starts key is ignored");
+        assert!(super::validate_sessions(&old.sessions).is_ok());
+        let bad: super::Config = toml::from_str("[sessions]\nhelpers_at_once = \"9\"\n").unwrap();
+        let err = super::validate_sessions(&bad.sessions).unwrap_err().to_string();
+        assert!(err.contains("sessions.helpers_at_once") && err.contains("2, 3, 4"), "{err}");
+    }
+
+    #[test]
+    fn an_old_config_with_a_team_table_and_other_removed_keys_still_loads() {
+        let old = "theme = \"nord\"\n[team]\nfamily = \"codex\"\n[[team.jobs]]\nname = \"planner\"\nclaude = \"opus\"\n[[team.projects]]\nproject = \"/a\"\nfamily = \"claude\"\n[fleet]\nsize = 3\n[mcp]\napprove = \"safe\"\nhelpers_at_once = 6\n[keys.prefix]\nstart-fleet = \"F\"\n";
+        let c: super::Config = toml::from_str(old).expect("removed keys are ignored, not refused");
+        assert_eq!((c.theme.as_str(), c.mcp.approve.as_str()), ("nord", "safe"));
+    }
+
+    #[test]
+    fn the_old_mcp_helper_limit_is_the_sessions_limit_unless_that_is_set() {
+        let read = |text: &str| {
+            let mut t: toml::Table = toml::from_str(text).unwrap();
+            super::fold_legacy_helpers(&mut t);
+            toml::Value::Table(t).try_into::<super::Config>().unwrap().helpers_at_once()
+        };
+        assert_eq!(read(""), 3, "the default");
+        assert_eq!(read("[sessions]\nhelpers_at_once = \"2\"\n"), 2);
+        assert_eq!(read("[mcp]\nhelpers_at_once = 6\n"), 4, "the old key still counts, held to what Settings offers");
+        assert_eq!(read("[mcp]\nhelpers_at_once = 0\n"), 4, "no limit is no longer offered");
+        assert_eq!(read("[mcp]\nhelpers_at_once = 1\n"), 2);
+        assert_eq!(read("[mcp]\nhelpers_at_once = 3\n"), 3);
+        assert_eq!(read("[mcp]\nhelpers_at_once = 6\n[sessions]\nhelpers_at_once = \"3\"\n"), 3, "the new key wins, even at its default");
+    }
+
+    #[test]
+    fn round_tabs_default_off_and_read_from_the_file() {
+        assert!(!super::Ui::default().round_tabs);
+        let c: super::Config = toml::from_str("[ui]\nround_tabs = true\n").unwrap();
+        assert!(c.ui.round_tabs);
+    }
+
+    #[test]
     fn glyphs_default_to_auto_and_corners_to_square_with_flush_read_as_square() {
         let ui = super::Config::default().ui;
         assert_eq!((ui.glyphs.as_str(), ui.corners.as_str()), ("auto", "square"));
@@ -1511,61 +1546,6 @@ mod tests {
     #[test]
     fn the_example_config_documents_the_check_keys() {
         for key in ["[[check]]", "project", "command", "timeout_s"] {
-            assert!(super::EXAMPLE.lines().any(|l| l.starts_with("# ") && l.contains(key)), "{key}");
-        }
-    }
-
-    const TEAM: &str = "[team]\nfamily = \"claude\"\n\n[[team.jobs]]\nname = \"planner\"\nclaude = \"opus\"\ncodex = \"gpt-6.1-sol\"\n\n[[team.projects]]\nproject = \"/home/me/code/app\"\nfamily = \"codex\"\n";
-
-    #[test]
-    fn a_team_table_reads_its_family_jobs_and_project_overrides() {
-        use super::{Family, Team, TeamJob, TeamProject};
-        let c: super::Config = toml::from_str(TEAM).unwrap();
-        super::validate_team(&c.team).unwrap();
-        let want = Team {
-            family: Family::Claude,
-            jobs: vec![TeamJob { name: "planner".into(), claude: "opus".into(), codex: "gpt-6.1-sol".into() }],
-            projects: vec![TeamProject { project: "/home/me/code/app".into(), family: Family::Codex }],
-        };
-        assert_eq!(c.team, want);
-        let c: super::Config = toml::from_str("[team]\nfamily = \"codex\"\n[[team.jobs]]\nname = \"x\"\n").unwrap();
-        assert_eq!((c.team.family, c.team.jobs[0].claude.as_str()), (Family::Codex, ""), "a model may be left empty");
-    }
-
-    #[test]
-    fn an_unknown_family_fails_to_parse_naming_the_key() {
-        let err = toml::from_str::<super::Config>("[team]\nfamily = \"gemini\"\n").expect_err("only claude or codex").to_string();
-        assert!(err.contains("family") && err.contains("gemini"), "{err}");
-    }
-
-    #[test]
-    fn a_team_a_commander_could_not_use_fails_the_config_at_load() {
-        let check = |toml: &str| -> Result<(), String> {
-            let c: super::Config = toml::from_str(toml).map_err(|e| e.to_string())?;
-            super::validate_team(&c.team).map_err(|e| e.to_string())
-        };
-        let job = |name: &str| format!("[[team.jobs]]\nname = '{name}'\nclaude = 'opus'\n");
-        let proj = |p: &str| format!("[[team.projects]]\nproject = '{p}'\nfamily = 'codex'\n");
-        assert!(check(&format!("{}{}{}", job("plan-1_a"), job("build"), proj("/a"))).is_ok());
-        for (bad, why) in [
-            (job(""), "#1 needs a `name`"),
-            (job("plan ner"), "`plan ner`"),
-            (job("plan.ner"), "`plan.ner`"),
-            (format!("{}{}", job("Builder"), job("builder")), "`builder` is named twice"),
-            ("[[team.jobs]]\nname = 'build'\ncodex = 'gpt 6'\n".to_string(), "`build`: the codex model `gpt 6`"),
-            ("[[team.jobs]]\nname = 'build'\nclaude = \"opus\\t\"\n".to_string(), "`build`: the claude model"),
-            ("[[team.projects]]\nfamily = 'codex'\n".to_string(), "#1 needs a `project`"),
-            (proj("~/code/app"), "~/code/app starts with `~`"),
-            (format!("{}{}", proj("C:\\work\\App"), proj("c:/work/app/")), "already has a family"),
-        ] {
-            let err = check(&bad).expect_err(&bad);
-            assert!(err.contains(why), "{bad:?} -> {err}");
-        }
-    }
-
-    #[test]
-    fn the_example_config_documents_the_team_keys() {
-        for key in ["[team]", "family", "[[team.jobs]]", "[[team.projects]]"] {
             assert!(super::EXAMPLE.lines().any(|l| l.starts_with("# ") && l.contains(key)), "{key}");
         }
     }
@@ -1611,7 +1591,6 @@ mod tests {
         let old = "[[profiles]]\nname='planner'\nagent='codex'\nmodel='gpt-5'\n\n[[workflows]]\nname='feature'\nplanner='planner'\nworker='worker'\nreviewer='reviewer'\n";
         let cfg: super::Config = toml::from_str(old).expect("legacy user settings remain readable");
         assert_eq!(cfg.theme, super::Config::default().theme);
-        assert_eq!(cfg.team, super::Team::default(), "no [team] table is an empty team");
         assert!(old.contains("[[profiles]]") && old.contains("[[workflows]]"), "loading does not edit the user's config text");
     }
 

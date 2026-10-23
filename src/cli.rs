@@ -117,18 +117,59 @@ fn codex_starts_new_work(args: &[String]) -> bool {
 /// prints the folder to start in (a new worktree), or nothing to start where it is. Never
 /// fails: the agent starts either way.
 pub fn agent_dir(cmd: &[String]) {
-    let args = cmd.get(1..).unwrap_or_default();
-    if std::env::var_os("SESHI_TERM_ID").is_none() || !starts_new_work(cmd.first().map(String::as_str).unwrap_or_default(), args) {
-        return;
+    if let Some(path) = agent_worktree(cmd) {
+        println!("{}", path.display());
     }
-    let Ok(dir) = std::env::current_dir() else { return };
+}
+
+/// The folder `agent_dir` names, if the agent should start somewhere else than here. The
+/// daemon decides, from the pane's own id and secret (`ipc::open`); this only says who is
+/// asking and what for.
+fn agent_worktree(cmd: &[String]) -> Option<PathBuf> {
+    let agent = cmd.first().map(String::as_str).unwrap_or_default();
+    if std::env::var_os("SESHI_TERM_ID").is_none() || !starts_new_work(agent, cmd.get(1..).unwrap_or_default()) {
+        return None;
+    }
+    let dir = std::env::current_dir().ok()?;
     match block_on(request(ClientMsg::Command(Command::AgentWorktree { dir }))) {
         Ok(Reply::Text(path)) if !path.is_empty() => {
-            eprintln!("seshi: {} gets its own worktree: {path}", cmd.first().map(String::as_str).unwrap_or("the agent"));
-            println!("{path}");
+            eprintln!("seshi: {agent} gets its own worktree: {path}");
+            Some(PathBuf::from(path))
         }
-        Ok(_) => {}
-        Err(e) => eprintln!("seshi: no worktree for it ({e:#}), so it starts here"),
+        Ok(_) => None,
+        Err(e) => {
+            eprintln!("seshi: no worktree for it ({e:#}), so it starts here");
+            None
+        }
+    }
+}
+
+/// `seshi agent-launch <agent> [args…]`, what the Windows launchers (`shim.rs`) run: the
+/// work of the PATH launcher on Unix. Starts the next `<agent>` on PATH after the launchers'
+/// folder, in the folder `agent-dir` names, and returns its exit code.
+pub fn agent_launch(cmd: &[String]) -> i32 {
+    const NOT_FOUND: i32 = 9009;
+    let Some(agent) = cmd.first() else { return 1 };
+    let shim = crate::shim::dir();
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let extensions: Vec<String> = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into()).split(';').filter(|e| !e.is_empty()).map(str::to_string).collect();
+    let Some(real) = crate::shim::find_on_path(agent, &path, &shim, &extensions) else {
+        eprintln!("'{agent}' is not recognized as an internal or external command, operable program or batch file.");
+        return NOT_FOUND;
+    };
+    let mut run = std::process::Command::new(real);
+    run.args(&cmd[1..]).env("PATH", crate::shim::path_without(&shim, &path)).env_remove(crate::shim::DONE_VAR);
+    if std::env::var_os(crate::shim::DONE_VAR).is_none()
+        && let Some(dir) = agent_worktree(cmd)
+    {
+        run.current_dir(dir);
+    }
+    match run.status() {
+        Ok(status) => status.code().unwrap_or(1),
+        Err(e) => {
+            eprintln!("seshi: could not start {agent}: {e}");
+            1
+        }
     }
 }
 
@@ -597,6 +638,9 @@ pub fn kill_server(forget: bool) -> Result<()> {
             println!("stopped the server (another seshi version, process {pid})");
             Ok(())
         }
+        // It answers, then lets go of its socket a moment later: a server started right
+        // after would find it.
+        Ok(()) if ipc::remote().is_none() => crate::restart::wait_until_server_gone(),
         r => r,
     }
 }
@@ -604,7 +648,7 @@ pub fn kill_server(forget: bool) -> Result<()> {
 /// Stop this socket's server by its process, for when it's a version that can't be talked
 /// to. Its saved session stays, as with `kill-server`.
 fn stop_server_process() -> Result<u32> {
-    let pid = server_pid().ok_or_else(|| {
+    let pid = server_pid().filter(|pid| is_seshi_daemon(*pid)).ok_or_else(|| {
         anyhow!("couldn't find the server's process; stop it yourself (on Linux/macOS: pkill -f \"seshi daemon\"; on Windows: end seshi.exe in Task Manager)")
     })?;
     let killed = if cfg!(windows) {
@@ -622,6 +666,23 @@ fn stop_server_process() -> Result<u32> {
     }
     let _ = std::fs::remove_file(ipc::pid_file());
     Ok(pid)
+}
+
+/// Whether `pid` is a `seshi daemon` process, so a stale pid file can't point a stop at
+/// something else that took the number. Where the process list can't be read, the pid
+/// file's word stands.
+fn is_seshi_daemon(pid: u32) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else { return false };
+        let args: Vec<&[u8]> = cmdline.split(|b| *b == 0).collect();
+        args.first().is_some_and(|a| a.ends_with(b"seshi")) && args.get(1) == Some(&b"daemon".as_slice())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        true
+    }
 }
 
 /// This socket's server process: from the id it noted, or (servers too old to note it) the
@@ -786,7 +847,7 @@ pub fn doctor() -> Result<()> {
         Ok(_) => line(Some(true), "server", format!("running ({})", ipc::socket_id())),
         Err(e) if format!("{e:#}").contains("protocol") => {
             line(Some(false), "server", format!("{e:#}"));
-            println!("{:27}fix: close seshi, `seshi kill-server`, start it again", "");
+            println!("{:27}fix: run seshi; it restarts the server itself (or `seshi kill-server`)", "");
         }
         Err(_) => line(None, "server", "not running (it starts with `seshi`)".into()),
     }
@@ -1521,6 +1582,12 @@ pub fn stale_claude_hooks() -> Vec<String> {
     let (Ok(exe), Ok(text)) = (this_exe(), std::fs::read_to_string(claude_settings())) else { return Vec::new() };
     let Ok(root) = serde_json::from_str::<Value>(&text) else { return Vec::new() };
     stale_in(&root, &format!("\"{exe}\" hook claude"))
+}
+
+/// Seshi's Claude hooks are in and run this seshi (the check `seshi doctor` makes). Reads a
+/// file: call it off the UI thread.
+pub fn claude_status_hooks_installed() -> bool {
+    std::fs::read_to_string(claude_settings()).is_ok_and(|s| s.contains("hook claude")) && stale_claude_hooks().is_empty()
 }
 
 /// Seshi's hook commands in Claude settings `root` other than `want`.

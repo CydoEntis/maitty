@@ -33,7 +33,7 @@ fn note(o: &Overlap, other: &str) -> String {
 /// The rows the both-diffs sheet shows: a heading, then each checkout's hunks.
 fn lines(v: &BothView, t: &Theme) -> Vec<Vec<Seg>> {
     let mut out = Vec::new();
-    let conf = blend(t.blocked, t.text, 0.45);
+    let conf = blend(t.sky(), t.text, 0.3);
     let who = v.overlap.checkouts.join(" and ");
     out.push(vec![seg("⇆ ", Style::default().fg(conf).add_modifier(Modifier::BOLD)), seg(format!("{who} both changed {}", v.overlap.file), Style::default().fg(t.strong))]);
     out.push(vec![]);

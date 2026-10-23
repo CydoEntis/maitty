@@ -422,20 +422,6 @@ pub(super) fn sheet_button(buf: &mut Buffer, x: u16, y: u16, max: u16, (label, k
     Some(Rect { x, y, width: w, height: 1 })
 }
 
-/// "Esc back   r re-run": the key in the accent, what it does in text.
-pub(super) fn hint_segs(t: &Theme, ground: Color, keys: &[(&str, &str)]) -> Vec<Seg> {
-    let c = Style::default().bg(ground);
-    let mut out = Vec::new();
-    for (i, (k, what)) in keys.iter().enumerate() {
-        if i > 0 {
-            out.push(seg("   ", c));
-        }
-        out.push(seg(*k, c.fg(t.accent).add_modifier(Modifier::BOLD)));
-        out.push(seg(format!(" {what}"), c.fg(t.text)));
-    }
-    out
-}
-
 /// The buttons for what can be done with this result; each stands for the key on it.
 fn buttons(app: &mut App, buf: &mut Buffer, (x, y, max): (u16, u16, u16), info: &CheckInfo, t: &Theme) {
     let mut list: Vec<(&str, char, BtnKind)> = Vec::new();
@@ -522,7 +508,7 @@ pub(in crate::client) fn draw_check(app: &mut App, buf: &mut Buffer, inside: Rec
     let block_h = room.min((v.held() as u16).max(MIN_BLOCK_ROWS));
     output_block(buf, Rect { x, y, width: right.saturating_sub(x), height: block_h }, v, &info, ground, t);
     buttons(app, buf, (x, bottom.saturating_sub(2), right), &info, t);
-    put(buf, x, bottom.saturating_sub(1), &hint_segs(t, ground, &HINTS), right);
+    action_bar(buf, Rect { y: bottom.saturating_sub(1), height: 1, ..inside }, t, t.card, &HINTS);
 }
 
 #[cfg(test)]

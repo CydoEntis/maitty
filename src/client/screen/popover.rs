@@ -4,6 +4,7 @@
 use super::*;
 use crate::protocol::{CheckInfo, CheckState, ClientMsg};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use std::time::{Duration, Instant};
 
 /// A follow-up being written: to `term`, from the sidebar (`side`: back to its cursor after)
 /// or from an Inbox row (`inbox`: the Inbox's query and row, to go back to).
@@ -15,12 +16,9 @@ pub(in crate::client) struct Compose {
     pub inbox: Option<(String, usize)>,
 }
 
-/// The text area's rows: 3 to start, growing with the text up to this many (the popover;
-/// an Inbox row grows to `INBOX_ROWS`).
-const POP_ROWS: u16 = 10;
+/// The Inbox row's text area grows to this many rows.
 pub(in crate::client) const INBOX_ROWS: u16 = 6;
 /// The popovers' widths, when there's room.
-const COMPOSE_W: u16 = 76;
 const WHY_W: u16 = 64;
 const WHY_H: u16 = 12;
 /// The why popover of a session with a check: its three lines and the keys.
@@ -103,49 +101,239 @@ pub(in crate::client) fn compose_box(app: &mut App, buf: &mut Buffer, at: Rect, 
     rows + 3
 }
 
-/// Where a popover for `term`'s row goes: just right of the sidebar, its third row level
-/// with the row, kept on screen.
-fn pop_rect(app: &App, screen: Rect, side: Rect, term: TermId, w: u16, h: u16) -> Rect {
-    let x = side.right() + 1;
-    let row = app.screen.row_y.get(&term).copied().unwrap_or(screen.y + 6);
-    let y = row.saturating_sub(2).clamp(screen.y + 1, screen.bottom().saturating_sub(h + 1));
-    Rect { x, y, width: w.min(screen.right().saturating_sub(x + 2)), height: h }
+/// The follow-up popover's widest width: you are replying, not writing a document.
+const POPOVER_W: u16 = 68;
+/// Below this width the hints and the working line use their short words.
+const POPOVER_NARROW_W: u16 = 60;
+/// The most of a message a receipt on a row repeats.
+const RECEIPT_TEXT_MAX: usize = 44;
+/// A receipt stays at least this long, so an agent that starts working at once doesn't wipe
+/// it before it is read, and at most this long.
+const RECEIPT_MIN_SHOWN: Duration = Duration::from_secs(2);
+const RECEIPT_MAX_SHOWN: Duration = Duration::from_secs(6);
+
+/// What a row says about the last message sent to its session.
+#[derive(Debug, Clone)]
+pub(in crate::client) struct Receipt {
+    text: String,
+    /// Waiting for the agent's turn to end (`◷ queued`), else delivered (`› sent`).
+    queued: bool,
+    /// The server has listed it among the session's queued follow-ups, so an empty list
+    /// afterwards means it was delivered.
+    seen_queued: bool,
+    /// When it was made, or when it was delivered.
+    since: Instant,
+    /// The session's status then: a change clears a delivered receipt.
+    status: Status,
 }
 
-/// The `◂` on the popover's left edge, pointing at its row.
-fn pointer(buf: &mut Buffer, r: Rect, t: &Theme) {
-    put(buf, r.x, r.y + 2, &[seg("◂", Style::default().fg(t.accent).bg(t.bg).add_modifier(Modifier::BOLD))], r.x + 1);
+/// Quote lines and input rows the popover allows at a screen height: 160x45, 100x30, 80x24.
+fn size_tier(screen_h: u16) -> (usize, usize) {
+    if screen_h >= 45 {
+        (4, 6)
+    } else if screen_h >= 30 {
+        (3, 4)
+    } else {
+        (2, 3)
+    }
 }
 
-/// The follow-up popover: what the agent asks (or said last), then the text area.
-pub(in crate::client) fn draw_compose_pop(app: &mut App, buf: &mut Buffer, screen: Rect, side: Rect, c: &Compose, t: &Theme) {
-    let inner_w = COMPOSE_W.min(screen.width.saturating_sub(side.width + 4)).saturating_sub(4);
-    let rows = (wrap(&c.text, inner_w.saturating_sub(6) as usize).len() as u16).clamp(3, POP_ROWS);
-    let r = pop_rect(app, screen, side, c.term, COMPOSE_W, rows + 8);
-    let info = app.snap.terms.get(&c.term).cloned();
-    let name = info.as_ref().map(|i| i.display_name()).unwrap_or_default();
-    let title = format!("message {name}");
-    let agent = info.as_ref().and_then(|i| i.agent.as_deref()).map(|a| format!("· {a}")).unwrap_or_default();
-    let mut card_ = Card::new(t, &title).lit(t.accent);
-    card_.bg = t.card;
-    card_.sub = &agent;
-    card(app, buf, r, &card_, t);
+/// The popover's top row for a session row at `anchor`: its top border a line above the row,
+/// else (opening upward) its bottom border just under the row, else pinned to the bottom of
+/// the screen. Under the row, not on its last line, so the `◂` stays on the row.
+fn place(screen: Rect, anchor: Rect, h: u16) -> u16 {
+    let mut top = anchor.y.saturating_sub(1);
+    if top + h > screen.bottom() {
+        top = (anchor.bottom() + 1).saturating_sub(h);
+        if top + h > screen.bottom() {
+            top = screen.bottom().saturating_sub(h);
+        }
+    }
+    top.max(screen.y)
+}
+
+/// A popover's frame right of the sidebar, at `(x, width, height)` as far as the screen allows,
+/// beside `term`'s row: the screen dimmed except that row, a full accent border on `card`, and
+/// a `◂` on the row. Returns the frame and the row's rect.
+pub(in crate::client) fn frame_beside_row(app: &mut App, buf: &mut Buffer, screen: Rect, side: Rect, term: TermId, (x0, w, h): (u16, u16, u16), t: &Theme) -> (Rect, Rect) {
+    let ascii = app.cfg.ui.glyphs == "ascii";
+    let hit_row = app.hits.iter().find_map(|(r, hit)| match hit {
+        crate::client::Hit::Screen(ScreenHit::Session(t)) if *t == term && r.right() <= x0 => Some(*r),
+        _ => None,
+    });
+    let anchor = hit_row.unwrap_or(Rect { x: side.x, y: screen.y + 1, width: side.width, height: 1 });
+    let top = place(screen, anchor, h);
+    let r = Rect { x: x0, y: top, width: w, height: h };
+
+    let kept = hit_row.map(|row| (row, (row.y..row.bottom()).flat_map(|y| (row.x..row.right()).map(move |x| (x, y))).map(|p| (p, buf[p].clone())).collect::<Vec<_>>()));
+    dim_all(buf, screen, t);
+    if let Some((_, cells)) = kept {
+        for (p, cell) in cells {
+            buf[p] = cell;
+        }
+    }
+
+    let look = Look::of(&app.cfg.ui);
+    fill(buf, r, t.card);
+    let edge = Style::default().fg(t.accent).bg(t.card);
+    let [tl, tr, bl, br] = corners(look);
+    for xx in r.x + 1..r.right() - 1 {
+        buf[(xx, r.y)].set_symbol("─").set_style(edge);
+        buf[(xx, r.bottom() - 1)].set_symbol("─").set_style(edge);
+    }
+    for yy in r.y + 1..r.bottom() - 1 {
+        buf[(r.x, yy)].set_symbol("│").set_style(edge);
+        buf[(r.right() - 1, yy)].set_symbol("│").set_style(edge);
+    }
+    for (xx, yy, s) in [(r.x, r.y, tl), (r.right() - 1, r.y, tr), (r.x, r.bottom() - 1, bl), (r.right() - 1, r.bottom() - 1, br)] {
+        buf[(xx, yy)].set_symbol(s).set_style(edge);
+    }
     hit(app, r, ScreenHit::Noop);
-    let model = app.screen_model();
-    let asks = find(&model, c.term).and_then(|(_, _, s)| (s.status == Status::Blocked).then(|| s.question.clone()).flatten());
-    let (line, col) = match asks {
-        Some(q) => (q, t.blocked),
-        None => (last_line(app, c.term).map(|l| format!("“{l}”")).unwrap_or_default(), t.muted),
-    };
-    put(buf, r.x + 3, r.y + 2, &[seg(truncate(&line, r.width.saturating_sub(6) as usize), Style::default().fg(col).bg(t.card).add_modifier(Modifier::ITALIC))], r.right() - 2);
-    compose_box(app, buf, Rect { x: r.x + 2, y: r.y + 4, width: r.width.saturating_sub(4), height: 0 }, c, POP_ROWS, t.card, t);
-    pointer(buf, r, t);
+    if anchor.y > r.y && anchor.y < r.bottom() - 1 {
+        put(buf, r.x, anchor.y, &[seg(if ascii { "<" } else { "◂" }, edge.add_modifier(Modifier::BOLD))], r.x + 1);
+    }
+
+    (r, anchor)
 }
 
-/// What an agent said last, one line.
-fn last_line(app: &App, term: TermId) -> Option<String> {
-    let said = app.snap.terms.get(&term)?.said.lines().rev().find(|l| !l.trim().is_empty())?.trim().to_string();
-    Some(said)
+/// The follow-up popover, beside its sidebar row with the rest of the screen dimmed.
+pub(in crate::client) fn draw_compose_pop(app: &mut App, buf: &mut Buffer, screen: Rect, side: Rect, c: &Compose, t: &Theme) {
+    let Some(info) = app.snap.terms.get(&c.term).cloned() else { return };
+    let ascii = app.cfg.ui.glyphs == "ascii";
+    let (quote_max, input_max) = size_tier(screen.height);
+    let x0 = side.right() + 1;
+    let w = POPOVER_W.min(screen.right().saturating_sub(x0 + 1));
+    if w < 20 {
+        return;
+    }
+    let (iw, x) = (w as usize - 4, x0 + 2);
+    let narrow = w < POPOVER_NARROW_W;
+
+    let agent = info.agent.clone().unwrap_or_else(|| "agent".into());
+    let blocked = info.status == Status::Blocked;
+    let working = info.status == Status::Working;
+    let said = if info.said.trim().is_empty() { quote_fallback(app, c.term) } else { info.said.clone() };
+    let quote: Vec<String> = wrap(said.trim(), iw - 2).into_iter().filter(|l| !l.trim().is_empty()).collect();
+    let shown = &quote[quote.len().saturating_sub(quote_max)..];
+    let cut = quote.len() > shown.len();
+    let input = wrap(&c.text, iw - 2);
+    let more = if input.len() > input_max { input.len() - (input_max - 1) } else { 0 };
+    let visible = if more > 0 { &input[input.len() - (input_max - 1)..] } else { &input[..] };
+    let input_rows = if more > 0 { input_max } else { input.len() } as u16;
+    let quote_rows = if shown.is_empty() { 0 } else { shown.len() as u16 + 1 };
+    let h = 2 + quote_rows + 1 + input_rows + u16::from(working) + 1;
+
+    let (r, _) = frame_beside_row(app, buf, screen, side, c.term, (x0, w, h), t);
+
+    let name = app.session_name(c.term);
+    let title = vec![
+        seg(format!(" MESSAGE {name} "), Style::default().fg(t.acc_ink).bg(t.accent).add_modifier(Modifier::BOLD)),
+        seg(format!("· {agent} "), Style::default().fg(t.muted).bg(t.card)),
+    ];
+    put(buf, r.x + 2, r.y, &title, r.right() - 2);
+    let bold = Modifier::BOLD;
+    let state = if blocked {
+        vec![seg(format!(" {} needs you ", if ascii { "!" } else { "●" }), Style::default().fg(t.blocked).bg(t.card).add_modifier(bold))]
+    } else if working {
+        vec![seg(format!(" {}working ", glyph(app, Status::Working)), Style::default().fg(t.accent).bg(t.card).add_modifier(bold))]
+    } else {
+        vec![seg(format!(" {} done ", if ascii { "o" } else { "○" }), Style::default().fg(t.muted).bg(t.card))]
+    };
+    let state_x = (r.right() - 2).saturating_sub(segs_width(&state));
+    if state_x > r.x + 2 + segs_width(&title) {
+        put(buf, state_x, r.y, &state, r.right() - 2);
+    }
+
+    let ground = Style::default().bg(t.card);
+    let mut y = r.y + 1;
+    if !shown.is_empty() {
+        let verb = if blocked { "asked" } else { "said" };
+        let tail = if cut { format!(" · last {} of {} lines", shown.len(), quote.len()) } else { String::new() };
+        put(buf, x, y, &[seg(format!("{agent} {verb}"), ground.fg(t.muted).add_modifier(bold)), seg(tail, ground.fg(t.muted))], x + iw as u16);
+        y += 1;
+        for l in shown {
+            put(buf, x, y, &[seg(if ascii { "| " } else { "▏ " }, ground.fg(t.muted)), seg(l.clone(), ground.fg(t.text))], x + iw as u16);
+            y += 1;
+        }
+    }
+    for xx in r.x + 1..r.right() - 1 {
+        buf[(xx, y)].set_symbol("─").set_style(ground.fg(t.line));
+    }
+    y += 1;
+    let well = Style::default().bg(t.bg);
+    fill(buf, Rect { x: x - 1, y, width: iw as u16 + 2, height: input_rows }, t.bg);
+    if more > 0 {
+        let up = if ascii { "^" } else { "↑" };
+        put(buf, x, y, &[seg(format!("{up} {more} more line{}", if more == 1 { "" } else { "s" }), well.fg(t.muted))], x + iw as u16);
+        y += 1;
+    }
+    for (i, l) in visible.iter().enumerate() {
+        let first = more == 0 && i == 0;
+        let mut segs = vec![seg(if first { if ascii { "> " } else { "› " } } else { "  " }, well.fg(t.accent).add_modifier(bold))];
+        if c.text.is_empty() {
+            segs.push(seg("█", well.fg(t.accent)));
+            segs.push(seg(format!(" Reply to {agent}…"), well.fg(t.muted)));
+        } else {
+            segs.push(seg(l.clone(), well.fg(t.strong)));
+            if i + 1 == visible.len() {
+                segs.push(seg("█", well.fg(t.accent)));
+            }
+        }
+        put(buf, x, y, &segs, x + iw as u16);
+        y += 1;
+    }
+    if working {
+        let rest = if narrow { "Enter queues it." } else { "Enter queues this until the turn ends." };
+        put(buf, x, y, &[seg(format!("{agent} is mid-turn. "), ground.fg(t.text)), seg(rest, ground.fg(t.muted))], x + iw as u16);
+        y += 1;
+    }
+    let keys = if working {
+        cap_hints_gap(t, t.card, if narrow { "  " } else { "   " }, &[("Enter", "queue"), ("Ctrl+Enter", if narrow { "now" } else { "send now" }), ("Esc", "cancel")])
+    } else {
+        cap_hints_gap(t, t.card, if narrow { "  " } else { "   " }, &[("Enter", "send"), ("Shift+Enter", if narrow { "line" } else { "new line" }), ("Esc", "cancel")])
+    };
+    let keys_end = put(buf, x, y, &keys, x + iw as u16);
+    let words = c.text.split_whitespace().count();
+    if words > 0 {
+        let wc = format!("{words} word{}", if words == 1 { "" } else { "s" });
+        let wx = (x + iw as u16).saturating_sub(wc.width() as u16);
+        if wx > keys_end + 1 {
+            put(buf, wx, y, &[seg(wc, ground.fg(t.muted))], x + iw as u16);
+        }
+    }
+}
+
+/// What a blocked agent asks, when it has said nothing else the popover can quote.
+fn quote_fallback(app: &App, term: TermId) -> String {
+    let model = app.screen_model();
+    find(&model, term).and_then(|(_, _, s)| s.question.clone()).unwrap_or_default()
+}
+
+/// Drop receipts that have run their time, and turn queued ones into sent once the server has
+/// handed the follow-up to the agent. Called once a frame.
+pub(in crate::client) fn refresh_receipts(app: &mut App) {
+    let now = Instant::now();
+    let snap = &app.snap.terms;
+    app.screen.receipts.retain(|term, r| {
+        let Some(info) = snap.get(term) else { return false };
+        if r.queued {
+            r.seen_queued |= !info.queued.is_empty();
+            if info.queued.is_empty() && (r.seen_queued || info.status != Status::Working) {
+                (r.queued, r.since, r.status) = (false, now, info.status);
+            }
+            return true;
+        }
+        let age = now.saturating_duration_since(r.since);
+        age < RECEIPT_MAX_SHOWN && !(info.status != r.status && age >= RECEIPT_MIN_SHOWN)
+    });
+}
+
+/// A row's second line while it carries a receipt: `◷ queued "…"` dim, or `› sent "…"` accent.
+pub(in crate::client) fn receipt_segs(app: &App, term: TermId, t: &Theme) -> Option<Vec<Seg>> {
+    let r = app.screen.receipts.get(&term)?;
+    let ascii = app.cfg.ui.glyphs == "ascii";
+    let (mark, word, color) = if r.queued { (if ascii { "~" } else { "◷" }, "queued", t.muted) } else { (if ascii { ">" } else { "›" }, "sent", t.accent) };
+    Some(vec![seg(format!("{mark} {word} "), Style::default().fg(color).add_modifier(Modifier::BOLD)), seg(format!("\"{}\"", r.text), Style::default().fg(t.text))])
 }
 
 /// Where a status came from: "hook", "screen" or "process" (the rest: you).
@@ -281,18 +469,20 @@ fn draw_check_why(app: &App, buf: &mut Buffer, r: Rect, info: &TermInfo, check: 
         row.extend(body);
         put(buf, x, r.y + 2 + i as u16, &row, right);
     }
-    put(buf, x, r.y + 6, &hint_segs(t, t.card, &check_keys(check.state)), right);
+    put(buf, x, r.y + 6, &cap_hints_fit(t, t.card, &check_keys(check.state), right.saturating_sub(x)), right);
 }
 
 impl App {
-    /// Start a follow-up to `term`; `inbox`: from that Inbox place (query, row).
+    /// Start a follow-up to `term`; `inbox`: from that Inbox place (query, row). A draft kept
+    /// with Esc comes back.
     pub(in crate::client) fn start_compose(&mut self, term: TermId, side: bool, inbox: Option<(String, usize)>) {
         let agent = self.snap.terms.get(&term).is_some_and(|t| t.agent.is_some());
         if !agent {
             self.notify("only an agent takes a follow-up".into(), true);
             return;
         }
-        self.mode = Mode::Compose(Box::new(Compose { term, text: String::new(), side, inbox }));
+        let text = self.screen.drafts.get(&term).cloned().unwrap_or_default();
+        self.mode = Mode::Compose(Box::new(Compose { term, text, side, inbox }));
     }
 
     /// Back where the follow-up was started from.
@@ -308,16 +498,27 @@ impl App {
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
         let newline = k.modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::ALT);
         match k.code {
-            KeyCode::Esc => return self.compose_back(&c),
+            KeyCode::Esc => {
+                if c.text.trim().is_empty() {
+                    self.screen.drafts.remove(&c.term);
+                } else {
+                    self.screen.drafts.insert(c.term, c.text.clone());
+                }
+                return self.compose_back(&c);
+            }
             KeyCode::Enter if newline => c.text.push('\n'),
             KeyCode::Enter => {
-                let text = if c.text.trim().is_empty() { "keep going".to_string() } else { c.text.trim_end().to_string() };
-                // Typed into a working agent it would interrupt, or be lost: it waits its turn.
-                let working = self.snap.terms.get(&c.term).is_some_and(|t| t.status == Status::Working);
-                if working && !ctrl {
-                    self.queue_follow_up(c.term, &text);
-                } else {
-                    self.send_follow_up(c.term, &text);
+                let text = c.text.trim_end().to_string();
+                if !text.trim().is_empty() {
+                    self.screen.drafts.remove(&c.term);
+                    // Typed into a working agent it would interrupt, or be lost: it waits its turn.
+                    let working = self.snap.terms.get(&c.term).is_some_and(|t| t.status == Status::Working);
+                    if working && !ctrl {
+                        self.queue_follow_up(c.term, &text);
+                    } else {
+                        self.type_follow_up(c.term, &text);
+                        self.note_receipt(c.term, &text, false);
+                    }
                 }
                 return self.compose_back(&c);
             }
@@ -331,16 +532,23 @@ impl App {
         self.mode = Mode::Compose(Box::new(c));
     }
 
+    /// Show on `term`'s row that `text` was sent now, or is queued for the end of the turn.
+    fn note_receipt(&mut self, term: TermId, text: &str, queued: bool) {
+        let first = text.lines().find(|l| !l.trim().is_empty()).unwrap_or_default().trim();
+        let status = self.snap.terms.get(&term).map(|t| t.status).unwrap_or(Status::None);
+        let receipt = Receipt { text: truncate(first, RECEIPT_TEXT_MAX), queued, seen_queued: false, since: Instant::now(), status };
+        self.screen.receipts.insert(term, receipt);
+    }
+
     /// Leave `text` with the server for the agent: it's typed in when this turn is over.
     pub(in crate::client) fn queue_follow_up(&mut self, term: TermId, text: &str) {
         self.cmd(Command::QueueFollowUp { term, text: text.to_string() });
-        let who = self.session_name(term);
-        self.notify(format!("Queued for {who}: it goes in when this turn is over"), false);
+        self.note_receipt(term, text, true);
     }
 
     /// Type `text` into the agent's prompt and press Enter (a moment later, once it has taken
     /// the text); several lines go in as one paste.
-    pub(in crate::client) fn send_follow_up(&mut self, term: TermId, text: &str) {
+    fn type_follow_up(&mut self, term: TermId, text: &str) {
         let bracketed = self.parsers.get(&term).is_some_and(|p| p.screen().bracketed_paste());
         let data = if text.contains('\n') && bracketed { format!("\x1b[200~{}\x1b[201~", text.replace('\n', "\r")) } else { text.replace('\n', " ") };
         self.send(ClientMsg::Input { term, data: data.into_bytes() });
@@ -349,8 +557,6 @@ impl App {
             std::thread::sleep(ENTER_AFTER);
             let _ = out.send(ClientMsg::Input { term, data: b"\r".to_vec() });
         });
-        let who = self.session_name(term);
-        self.notify(format!("Sent to {who} · you stayed here"), false);
     }
 
     /// `i` again or Esc closes it; any other key closes it and does its own thing.
@@ -466,5 +672,132 @@ mod why_tests {
         assert_eq!(keys(CheckState::Failed), ["⏎", "r", "O", "Esc"]);
         assert_eq!(keys(CheckState::Passed), ["⏎", "r", "Esc"]);
         assert_eq!(keys(CheckState::Checking), ["⏎", "Esc"]);
+    }
+}
+
+#[cfg(test)]
+mod message_tests {
+    use super::*;
+    use crate::client::v7_fixture::{LAYOUTS, SIZES, Stage, frame, world};
+
+    const QUESTION: &str = "Both lockfiles are in the repo.\nCI runs pnpm install, but the README says npm.\nTwo scripts call npx directly.\nUse pnpm or npm for the workspace?\nTell me which.";
+
+    fn open(term: TermId, text: &str) -> App {
+        let mut app = world(Stage::Failed);
+        app.snap.terms.get_mut(&term).unwrap().said = QUESTION.into();
+        app.start_compose(term, true, None);
+        if let Mode::Compose(c) = &mut app.mode {
+            c.text = text.into();
+        }
+        app
+    }
+
+    fn type_keys(app: &mut App, text: &str) {
+        for ch in text.chars() {
+            app.on_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE));
+        }
+    }
+
+    #[test]
+    fn it_names_the_session_quotes_the_tail_and_points_at_the_row_in_every_layout_and_size() {
+        for layout in LAYOUTS {
+            for (w, h) in SIZES {
+                let mut app = open(3, "");
+                let o = frame(&mut app, layout, w, h, "unicode");
+                let (quote, _) = size_tier(h);
+                assert!(o.contains("MESSAGE warm-finch · codex"), "{layout:?} {w}x{h}\n{o}");
+                assert!(o.contains(&format!("codex asked · last {quote} of 5 lines")) || quote >= 5, "{layout:?} {w}x{h}\n{o}");
+                assert!(o.contains("▏ Tell me which.") && !o.contains("Both lockfiles"), "the tail, not the head\n{o}");
+                assert!(o.contains("◂") && o.contains("Reply to codex…") && o.contains("● needs you"), "{layout:?} {w}x{h}\n{o}");
+                let corner = o.lines().filter(|l| l.contains("MESSAGE")).any(|l| l.contains("┌─ MESSAGE") || l.contains("╭─ MESSAGE") || l.contains("┌ MESSAGE") || l.contains(" MESSAGE"));
+                assert!(corner);
+                let top = o.lines().find(|l| l.contains("MESSAGE")).unwrap();
+                assert!(top.contains('┐') || top.contains('╮'), "a full accent border in {layout:?}: {top}");
+            }
+        }
+    }
+
+    #[test]
+    fn it_grows_a_row_a_line_then_scrolls() {
+        let rows_of = |lines: usize, w: u16, h: u16| {
+            let mut app = open(3, &(1..=lines).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n"));
+            let o = frame(&mut app, crate::client::v7_fixture::Layout::Floating, w, h, "unicode");
+            (o.lines().filter(|l| l.contains("│ › line") || l.contains("│   line ")).count(), o)
+        };
+        assert_eq!(rows_of(1, 160, 45).0, 1);
+        assert_eq!(rows_of(3, 160, 45).0, 3);
+        let (n, o) = rows_of(9, 160, 45);
+        assert!(n == 5 && o.contains("↑ 4 more lines") && o.contains("line 9█"), "{o}");
+        let (n, o) = rows_of(9, 100, 30);
+        assert!(n == 3 && o.contains("↑ 6 more lines"), "{o}");
+        let (n, o) = rows_of(9, 80, 24);
+        assert!(n == 2 && o.contains("↑ 7 more lines"), "{o}");
+    }
+
+    #[test]
+    fn it_opens_upward_then_pins_when_neither_side_has_room() {
+        let screen = Rect { x: 0, y: 0, width: 100, height: 30 };
+        assert_eq!(place(screen, Rect { x: 0, y: 5, width: 30, height: 2 }, 9), 4, "a line above the row");
+        let top = place(screen, Rect { x: 0, y: 26, width: 30, height: 2 }, 9);
+        assert_eq!(top + 9, 29, "its bottom border just under the row: {top}");
+        assert_eq!(place(screen, Rect { x: 0, y: 28, width: 30, height: 1 }, 40), 0, "taller than the screen: pinned");
+        assert_eq!(place(Rect { height: 20, ..screen }, Rect { x: 0, y: 19, width: 30, height: 1 }, 12), 8);
+    }
+
+    #[test]
+    fn a_working_agent_queues_and_the_row_says_so_then_says_sent() {
+        let mut app = open(2, "");
+        let o = frame(&mut app, crate::client::v7_fixture::Layout::Floating, 160, 45, "unicode");
+        assert!(o.contains("codex is mid-turn") || o.contains("claude is mid-turn"), "{o}");
+        assert!(o.contains("Ctrl") && o.contains("Enter") && o.contains("send now"), "{o}");
+        type_keys(&mut app, "also test a duplicate");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(app.mode == Mode::Side, "closed");
+        let o = frame(&mut app, crate::client::v7_fixture::Layout::Floating, 160, 45, "unicode");
+        assert!(o.contains("◷ queued \"also test a"), "{o}");
+        let info = app.snap.terms.get_mut(&2).unwrap();
+        info.queued = vec!["also test a duplicate".into()];
+        refresh_receipts(&mut app);
+        assert!(app.screen.receipts[&2].queued, "still waiting");
+        let info = app.snap.terms.get_mut(&2).unwrap();
+        (info.queued, info.status) = (Vec::new(), Status::Idle);
+        let o = frame(&mut app, crate::client::v7_fixture::Layout::Floating, 160, 45, "unicode");
+        assert!(o.contains("› sent \"also test a"), "{o}");
+    }
+
+    #[test]
+    fn a_sent_receipt_clears_on_a_status_change_after_its_minimum_and_by_its_maximum() {
+        let mut app = open(3, "");
+        type_keys(&mut app, "pnpm");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(!app.screen.receipts[&3].queued);
+        app.snap.terms.get_mut(&3).unwrap().status = Status::Working;
+        refresh_receipts(&mut app);
+        assert!(app.screen.receipts.contains_key(&3), "too soon to clear");
+        app.screen.receipts.get_mut(&3).unwrap().since = Instant::now() - RECEIPT_MIN_SHOWN - Duration::from_millis(1);
+        refresh_receipts(&mut app);
+        assert!(!app.screen.receipts.contains_key(&3), "the status changed");
+        app.note_receipt(3, "x", false);
+        app.screen.receipts.get_mut(&3).unwrap().since = Instant::now() - RECEIPT_MAX_SHOWN - Duration::from_millis(1);
+        refresh_receipts(&mut app);
+        assert!(!app.screen.receipts.contains_key(&3), "timed out");
+    }
+
+    #[test]
+    fn esc_keeps_the_draft_for_that_session_and_an_empty_enter_only_closes() {
+        let mut app = open(3, "");
+        type_keys(&mut app, "half a thought");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(app.mode == Mode::Side && app.screen.receipts.is_empty());
+        app.start_compose(1, true, None);
+        assert!(matches!(&app.mode, Mode::Compose(c) if c.text.is_empty()), "another session's box is empty");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        app.start_compose(3, true, None);
+        assert!(matches!(&app.mode, Mode::Compose(c) if c.text == "half a thought"), "its own draft is back");
+        for _ in 0.."half a thought".len() {
+            app.on_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+        }
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(app.mode == Mode::Side && app.screen.receipts.is_empty(), "nothing sent");
     }
 }

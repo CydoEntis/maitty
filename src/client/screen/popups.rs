@@ -2,77 +2,6 @@
 
 use super::*;
 
-pub(in crate::client) fn draw_subagent_info(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, term: TermId, index: usize) {
-    dim_all(f.buffer_mut(), area, t);
-    let rect = panel(app, f.buffer_mut(), area, 76, 17, "Subagent details", &[], t);
-    let model = app.screen_model();
-    let activity = model.iter().find_map(|project| project.sessions().find(|session| session.term == term).and_then(|session| session.subagent_activity.get(index))).cloned();
-    let Some(activity) = activity else {
-        put(f.buffer_mut(), rect.x + 2, rect.y + 2, &[seg("This activity record is no longer available.", Style::default().fg(t.muted).bg(t.card))], rect.right());
-        return;
-    };
-    let state = match activity.state {
-        crate::protocol::SubagentState::Starting => "Starting",
-        crate::protocol::SubagentState::Working => "Working",
-        crate::protocol::SubagentState::WaitingForInput => "Waiting for input",
-        crate::protocol::SubagentState::AwaitingApproval => "Awaiting approval",
-        crate::protocol::SubagentState::Completed => "Completed",
-        crate::protocol::SubagentState::Failed => "Failed",
-        crate::protocol::SubagentState::Cancelled => "Cancelled",
-        crate::protocol::SubagentState::ConnectionLost => "Connection lost; completion unconfirmed",
-    };
-    let state_color = match activity.state {
-        crate::protocol::SubagentState::Working => t.working,
-        crate::protocol::SubagentState::WaitingForInput | crate::protocol::SubagentState::AwaitingApproval => t.blocked,
-        crate::protocol::SubagentState::Completed => t.done,
-        crate::protocol::SubagentState::Failed | crate::protocol::SubagentState::ConnectionLost => t.err,
-        crate::protocol::SubagentState::Cancelled => t.muted,
-        crate::protocol::SubagentState::Starting => t.accent,
-    };
-    let started = activity.started_at.map(|at| format!("{} ago", super::age(at))).unwrap_or_else(|| "Not reported".into());
-    let elapsed = match activity.started_at {
-        Some(started) if activity.state.active() => super::age(started),
-        Some(started) => duration_label(activity.updated_at.saturating_sub(started)),
-        _ => "Not reported".into(),
-    };
-    let stage = super::side::subagent_stage(&activity.name, activity.task.as_deref());
-    let rows = [
-        ("Stage", stage, t.text),
-        ("Task", activity.task.as_deref().unwrap_or("Not reported"), t.text),
-        ("Model", activity.model.as_deref().unwrap_or("Not reported"), t.text),
-        ("Reasoning effort", activity.effort.as_deref().unwrap_or("Not reported"), t.text),
-        ("Status", state, state_color),
-        ("Started", started.as_str(), t.muted),
-        ("Elapsed", elapsed.as_str(), t.muted),
-        ("Latest activity", activity.latest_activity.as_deref().unwrap_or("Not reported"), t.text),
-        ("Result", activity.result.as_deref().unwrap_or("Not reported by runtime"), t.text),
-    ];
-    let buf = f.buffer_mut();
-    let max_width = rect.width.saturating_sub(4) as usize;
-    for (index, (label, value, color)) in rows.iter().enumerate() {
-        let y = rect.y + 2 + index as u16;
-        if y >= rect.bottom().saturating_sub(2) { break; }
-        let label_text = format!("{label}: ");
-        let value_width = max_width.saturating_sub(label_text.len() + 1);
-        put(buf, rect.x + 2, y, &[
-            seg(label_text, Style::default().fg(t.muted).bg(t.card)),
-            seg(truncate(value, value_width), Style::default().fg(*color).bg(t.card)),
-        ], rect.right().saturating_sub(2));
-    }
-    let hints = hints(t, &[("Esc", "close"), ("Enter", "close")]);
-    let hint_y = rect.bottom().saturating_sub(2);
-    put(buf, rect.x + 2, hint_y, &hints, rect.right().saturating_sub(2));
-}
-
-fn duration_label(seconds: u64) -> String {
-    match seconds {
-        0..=59 => format!("{seconds}s"),
-        60..=3_599 => format!("{}m", seconds / 60),
-        3_600..=86_399 => format!("{}h", seconds / 3_600),
-        _ => format!("{}d", seconds / 86_400),
-    }
-}
-
 // ---- overlays ------------------------------------------------------------------------------
 
 /// What a popup does to everything behind it: text toward its ground, all of it toward black.
@@ -207,6 +136,23 @@ pub(in crate::client) fn sel_row(app: &App, buf: &mut Buffer, r: Rect, y: u16, s
 
 pub(in crate::client) fn hints(t: &Theme, pairs: &[(&str, &str)]) -> Vec<Seg> {
     cap_hints(t, t.card, pairs)
+}
+
+/// A panel's key hints in a bar of their own: one row on a ground a step above the panel's,
+/// the full width of `bar` with a column of padding, keycaps then what each does. It is the
+/// last row of its panel so the actions are in the same place everywhere. `ground` is `card`
+/// for a sheet on the app's background and `card2` inside a modal.
+pub(in crate::client) fn action_bar(buf: &mut Buffer, bar: Rect, t: &Theme, ground: Color, keys: &[(&str, &str)]) {
+    let row = Rect { height: 1, ..bar };
+    fill(buf, row, ground);
+    let room = row.width.saturating_sub(2);
+    put(buf, row.x + 1, row.y, &cap_hints_fit(t, ground, keys, room), row.right().saturating_sub(1));
+}
+
+/// The action bar of a bordered modal at `panel`: the row above its bottom border, between its sides.
+pub(in crate::client) fn panel_bar(buf: &mut Buffer, panel: Rect, t: &Theme, keys: &[(&str, &str)]) {
+    let bar = Rect { x: panel.x + 1, y: panel.bottom().saturating_sub(2), width: panel.width.saturating_sub(2), height: 1 };
+    action_bar(buf, bar, t, t.card2, keys);
 }
 
 // Jump ----------------------------------------------------------------------------------------
@@ -411,7 +357,7 @@ pub(in crate::client) fn draw_finder(app: &mut App, f: &mut Frame, area: Rect, t
     if rows.is_empty() {
         put(buf, r.x + 3, r.y + 6, &[seg("nothing matches here", c.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right());
     }
-    put(buf, r.x + 3, r.bottom() - 2, &hints(t, &[("Tab", "complete"), ("Enter", "open"), ("↑↓", "choose"), ("Backspace", "edit"), ("Esc", "close")]), r.right());
+    panel_bar(buf, r, t, &[("Tab", "complete"), ("Enter", "open"), ("↑↓", "choose"), ("Backspace", "edit"), ("Esc", "close")]);
 }
 
 // New pane ----------------------------------------------------------------------------------
@@ -477,36 +423,6 @@ pub(in crate::client) fn list_row(app: &App, buf: &mut Buffer, rr: Rect, on: boo
         put(buf, rr.x + 1, rr.y, &[seg("▎", st.fg(t.accent).add_modifier(Modifier::BOLD))], rr.right());
     }
     st
-}
-
-/// The command palette, as the other popups: type words, ↑↓, Enter; each with its key.
-pub(in crate::client) fn draw_palette(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, query: &str, sel: usize, items: &[crate::client::PickItem]) {
-    let buf = f.buffer_mut();
-    let (r, list, start) = query_list(app, buf, area, t, "Command palette", 80, items.len().min(22), query, "what do you want to do?", sel);
-    for (i, item) in items.iter().enumerate().skip(start).take(list.height as usize) {
-        let y = list.y + (i - start) as u16;
-        let rr = Rect { y, height: 1, ..list };
-        let on = i == sel;
-        let st = list_row(app, buf, rr, on, t);
-        let bg = st.bg.unwrap_or(t.card);
-        let ls = st.fg(if on { t.strong } else { t.text });
-        put(buf, rr.x + 3, y, &[seg(item.label.clone(), if on { ls.add_modifier(Modifier::BOLD) } else { ls })], rr.right().saturating_sub(14));
-        let key = match &item.target {
-            crate::client::PickTarget::Command(a) => key_text(app, std::slice::from_ref(a)).split("  ").next().unwrap_or("").to_string(),
-            _ => String::new(),
-        };
-        let caps = keycaps(t, &key, bg);
-        let kw = segs_width(&caps);
-        put(buf, rr.right().saturating_sub(kw + 2), y, &caps, rr.right());
-        hit(app, rr, ScreenHit::PickRow(i));
-    }
-    if items.is_empty() {
-        put(buf, list.x + 2, list.y, &[seg("nothing matches", Style::default().bg(t.card).fg(t.muted).add_modifier(Modifier::ITALIC))], list.right());
-    }
-    let lead = app.keymap.prefix.to_string().replace("C-", "Ctrl+");
-    put(buf, r.x + 3, r.bottom() - 2, &hints(t, &[("↑↓", "move"), ("Enter", "do it"), ("Esc", "close")]), r.right());
-    let note = format!("keys go after {lead}");
-    put(buf, r.right().saturating_sub(note.width() as u16 + 3), r.bottom() - 2, &[seg(note, Style::default().bg(t.card).fg(t.muted))], r.right());
 }
 
 /// A working agent's name: the working colour with a bright band sweeping across it.
@@ -623,7 +539,7 @@ pub(in crate::client) fn draw_history(app: &mut App, f: &mut Frame, area: Rect, 
         );
         hit(app, row, ScreenHit::HistRow(i));
     }
-    put(buf, r.x + 3, r.bottom() - 2, &hints(t, &[("Enter", "go to it"), ("c", "clear"), ("Esc", "close")]), r.right() - 1);
+    panel_bar(buf, r, t, &[("Enter", "go to it"), ("c", "clear"), ("Esc", "close")]);
 }
 
 

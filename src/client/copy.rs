@@ -3,7 +3,41 @@
 
 use crate::protocol::TermId;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
+use std::time::{Duration, Instant};
 use unicode_width::UnicodeWidthChar;
+
+/// How long a copied selection stays accent-tinted before the pane is plain again.
+pub const FLASH_FOR: Duration = Duration::from_millis(700);
+
+/// A selection that was just copied, kept as cells of the pane so it can glow for a moment
+/// after copy mode has closed.
+#[derive(Debug, Clone)]
+pub struct Flash {
+    pub term: TermId,
+    /// (row, first column, one past the last column), relative to the pane's text area.
+    pub spans: Vec<(u16, u16, u16)>,
+    pub at: Instant,
+}
+
+impl Flash {
+    pub fn live(&self) -> bool {
+        self.at.elapsed() < FLASH_FOR
+    }
+
+    /// Tint the copied cells in `buf`; `pane` is where the pane's text is drawn.
+    pub fn tint(&self, buf: &mut Buffer, pane: Rect, t: &crate::theme::Theme) {
+        let bg = crate::client::render::blend(t.bg, t.accent, 0.34);
+        for &(row, x0, x1) in &self.spans {
+            for x in x0..x1 {
+                if let Some(px) = buf.cell_mut((pane.x + x, pane.y + row)) {
+                    px.set_bg(bg).set_fg(t.strong);
+                }
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Copy {
@@ -158,6 +192,46 @@ impl Copy {
 
     pub fn selected(&self, line: usize, col: usize) -> bool {
         self.selection().is_some_and(|(s, e)| (line, col) >= s && (line, col) <= e)
+    }
+
+    /// The selected cells that are on screen, as (row, first column, one past the last
+    /// column) in the pane's text area. A selected line also covers the blank cell past its
+    /// text, like the renderer draws it.
+    pub fn selected_spans(&self) -> Vec<(u16, u16, u16)> {
+        let mut out = Vec::new();
+        if self.anchor.is_none() {
+            return out;
+        }
+        for row in 0..self.height {
+            let li = self.top + row;
+            let Some(line) = self.lines.get(li) else { break };
+            let mut span: Option<(u16, u16)> = None;
+            let mut x = 0u16;
+            let mut n = 0;
+            for (ci, ch) in line.chars().enumerate() {
+                n = ci + 1;
+                let w = ch.width().unwrap_or(0) as u16;
+                if w == 0 {
+                    continue;
+                }
+                if x as usize + w as usize > self.width {
+                    break;
+                }
+                if self.selected(li, ci) {
+                    span = Some((span.map_or(x, |s| s.0), x + w));
+                } else if let Some((a, b)) = span.take() {
+                    out.push((row as u16, a, b));
+                }
+                x += w;
+            }
+            if (x as usize) < self.width && self.selected(li, n) {
+                span = Some((span.map_or(x, |s| s.0), x + 1));
+            }
+            if let Some((a, b)) = span {
+                out.push((row as u16, a, b));
+            }
+        }
+        out
     }
 
     pub fn selected_text(&self) -> String {
@@ -411,6 +485,17 @@ mod tests {
     fn captures_history_beyond_screen() {
         let c = copy_of("one\ntwo\nthree\nfour\nfive\nsix");
         assert_eq!(&c.lines[..6], &["one", "two", "three", "four", "five", "six"]);
+    }
+
+    #[test]
+    fn selected_spans_are_the_cells_on_screen() {
+        let mut c = copy_of("alpha beta\ngamma\ndelta");
+        assert!(c.selected_spans().is_empty(), "nothing is selected before an anchor");
+        let first = c.lines.iter().position(|l| l == "alpha beta").unwrap();
+        c.anchor = Some((first, 6));
+        c.cur = (first + 1, 2);
+        let rows = (first - c.top) as u16;
+        assert_eq!(c.selected_spans(), vec![(rows, 6, 10 + 1), (rows + 1, 0, 3)], "the first line from the anchor (and the blank cell past it), the last up to the cursor");
     }
 
     #[test]

@@ -109,6 +109,7 @@ fn term(id: TermId, label: &str, agent: &str, status: Status, cwd: &Path, since:
         subagent_activity: Vec::new(),
         session: None,
         started_by: None,
+            helper_ask: Vec::new(),
         queued: Vec::new(),
         root: None,
         top: None,
@@ -283,9 +284,131 @@ pub(super) fn cells(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str)
 /// `app` drawn in `layout` at `w`×`h` with the `glyphs` set (`unicode`, `ascii`, `nerd`), as
 /// text: one line per row, trailing spaces trimmed. `SESHI_SHOW=1` prints it under a heading
 /// like the handoff's reference frames.
+/// Row 0 as the handoff draws it: its frames have no `+` chip after the tabs (Seshi keeps
+/// one, so a tab opens with a click), so the chip reads as the title's own fill.
+fn without_new_tab_chip(row: &str) -> String {
+    const CHIP: &str = " + ";
+    let Some(at) = row.find(CHIP) else { return row.to_string() };
+    let rest = &row[at + CHIP.len()..];
+    let fill = rest.chars().next().unwrap_or(' ');
+    format!("{}{}{rest}", &row[..at], fill.to_string().repeat(CHIP.len()))
+}
+
+/// The sidebar as the handoff's v7 frames draw it, from what v8 draws (ADR 0014). `rows` is the
+/// whole screen; the sidebar's rectangle and its rows' places come from `app`. What v8 changes
+/// on purpose, put back:
+/// - the foot sits a row higher in Flat and has a divider above it; its `new` and `menu` chips
+///   read `+ new` and `a actions`, the handoff's words at the same edges;
+/// - a finished row says `done` and `done · not seen` where the handoff says `finished`;
+/// - below 140 columns a working row and a not-seen row keep their second line, which the
+///   handoff drops (only a finished, seen row collapses in v8).
+fn as_the_handoff_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffer, app: &App, flat: bool, width: u16) {
+    let side = app.screen.side_rect;
+    if side.width < 4 || side.height < 6 {
+        return;
+    }
+    let (left, right) = (side.x as usize + 1, side.right() as usize - 1);
+    let foot_y = side.bottom() as usize - 2;
+    // A modal may cover part of a row: the sidebar's own part ends at the first box line.
+    let span = |row: &[char]| row[left..right].iter().position(|c| "│└┌┐┘─╭╮╰╯".contains(*c)).map_or(right, |p| left + p);
+    let end = foot_y - 1;
+    let mut seconds: Vec<(usize, bool)> = Vec::new();
+    for (term, y) in &app.screen.row_y {
+        let Some(info) = app.snap.terms.get(term) else { continue };
+        if info.reported_check().is_some() || info.asleep {
+            continue;
+        }
+        let y = *y as usize + 1;
+        match info.status {
+            crate::protocol::Status::Working | crate::protocol::Status::Done => seconds.push((y, width < 140)),
+            crate::protocol::Status::Idle if info.agent.is_some() && width >= 140 => seconds.push((y, false)),
+            _ => {}
+        }
+    }
+    // Lowest first, so a removed line doesn't move the ones still to do.
+    seconds.sort_by_key(|s| std::cmp::Reverse(s.0));
+    for (y, drop) in seconds {
+        if y >= end {
+            continue;
+        }
+        if drop {
+            for k in y..end - 1 {
+                let (to, from) = (span(&rows[k]), span(&rows[k + 1]));
+                let below: Vec<char> = rows[k + 1][left..from].to_vec();
+                for (i, c) in (left..to).zip(below.into_iter().chain(std::iter::repeat(' '))) {
+                    rows[k][i] = c;
+                }
+            }
+            let to = span(&rows[end - 1]);
+            rows[end - 1][left..to].fill(' ');
+            continue;
+        }
+        let line: String = rows[y][left..right].iter().collect();
+        for (from, to) in [("done · not seen", "finished · not seen"), ("done", "finished")] {
+            if let Some(at) = line.find(from).filter(|_| line.trim_start_matches(['▎', '|', ' ']).starts_with(from)) {
+                let at = line[..at].chars().count();
+                let cells: Vec<char> = to.chars().chain(std::iter::repeat(' ')).take(from.chars().count().max(to.chars().count())).collect();
+                rows[y][left + at..left + at + cells.len()].copy_from_slice(&cells);
+                break;
+            }
+        }
+    }
+    // The foot: the divider over it goes (only its own run of `─`, a modal may cross that row).
+    let divider_from = left + usize::from(!flat);
+    for x in divider_from..right {
+        // A modal's bottom border can lie on this row: it is on the modal's ground, not the sidebar's.
+        let modal = [app.theme.card, app.theme.card2].contains(&buf[(x as u16, (foot_y - 1) as u16)].bg);
+        if rows[foot_y - 1][x] != '─' || modal {
+            break;
+        }
+        rows[foot_y - 1][x] = ' ';
+    }
+    let mut foot: Vec<char> = rows[foot_y][left..right].to_vec();
+    let chars = |s: &str| s.chars().collect::<Vec<char>>();
+    let find = |row: &[char], needle: &str| row.windows(needle.chars().count()).position(|w| w == chars(needle).as_slice());
+    // A chip is its word with a cell either side (a space, or a cap with `ui.pill_caps`).
+    if let Some(at) = find(&foot, "new").filter(|at| *at > 0) {
+        foot.splice(at - 1..at + 4, chars("+ new"));
+    }
+    if let Some(at) = find(&foot, "menu").filter(|at| *at > 0) {
+        let end = at + 5;
+        foot.splice(at - 1..end, vec![' '; 6]);
+        let start = (end + 1).saturating_sub(9).min(foot.len() - 9);
+        foot.splice(start..start + 9, chars("a actions"));
+    }
+    // Lifted a row, the foot can sit under a modal that ends where the handoff's foot is.
+    if flat && find(&foot, "+ new").is_none() {
+        let (nx, mend) = (side.x as usize + 2 - left, right - left);
+        let mut text = vec![' '; mend];
+        text[nx..nx + 5].copy_from_slice(&chars("+ new"));
+        text[mend - 9..].copy_from_slice(&chars("a actions"));
+        foot = text;
+    }
+    foot.truncate(right - left);
+    rows[foot_y][left..right].fill(' ');
+    let to = if flat { foot_y + 1 } else { foot_y };
+    rows[to][left..right].copy_from_slice(&foot);
+}
+
+/// `app` drawn as `frame` does but as the app draws it: no handoff normalisation, rows in full.
+pub(super) fn raw_text(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str) -> String {
+    let buf = &cells(app, layout, w, h, glyphs);
+    (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol()).collect::<String>().trim_end().to_string() + "\n").collect()
+}
+
 pub(super) fn frame(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str) -> String {
     let buf = &cells(app, layout, w, h, glyphs);
-    let text: String = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol()).collect::<String>().trim_end().to_string() + "\n").collect();
+    let mut rows: Vec<Vec<char>> = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().chars().next().unwrap_or(' ')).collect()).collect();
+    as_the_handoff_sidebar(&mut rows, buf, app, layout == Layout::Flat, w);
+    let text: String = rows
+        .iter()
+        .enumerate()
+        .map(|(y, row)| {
+            let row: String = row.iter().collect();
+            let row = if y == 0 { without_new_tab_chip(&row) } else { row };
+            row.trim_end().to_string() + "\n"
+        })
+        .collect();
     if std::env::var("SESHI_SHOW").is_ok() {
         println!("===== {layout:?} | {w}x{h} | {glyphs}\n{text}");
     }

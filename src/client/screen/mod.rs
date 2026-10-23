@@ -9,7 +9,7 @@
 //! that `cd`s into another repo moves to that project by itself.
 
 use super::design::{
-    BtnKind, SRow, Seg, SettingsView, button, cap_hints, fill, glyph, key_text, keycaps, path_key, put,
+    BtnKind, SRow, Seg, SettingsView, button, cap_hints, cap_hints_fit, cap_hints_gap, fill, glyph, key_text, keycaps, path_key, put,
     question, seg, segs_width, state_label, tilde,
 };
 use super::render::{blend, render_screen, truncate};
@@ -56,10 +56,14 @@ pub(super) struct Saved {
     pub split: Option<f32>,
     /// A task typed into + New and not started yet.
     pub draft: String,
+    /// The agent last started from Seshi (what `sessions.agent = last used` starts).
+    pub last_agent: String,
     /// Projects you renamed: key -> name.
     pub names: HashMap<String, String>,
     /// Files marked reviewed in Changes: folder key -> file -> what it was like then.
     pub reviewed: HashMap<String, HashMap<String, u64>>,
+    /// Commands run from the key overlay, latest first (config spelling), for its RECENT.
+    pub recent: Vec<String>,
 }
 
 #[derive(Debug, Default)]
@@ -77,8 +81,6 @@ pub(super) struct Screen {
     pub tabs: Vec<ScreenTab>,
     /// Panes whose program gets right-clicks (no seshi menu there; Shift+right-click for it).
     pub right_clicks: HashSet<TermId>,
-    /// Sessions whose subagents are folded away.
-    pub subs_closed: HashSet<TermId>,
     /// Which way the next "split" goes.
     pub split_dir: Option<crate::layout::Dir>,
     /// Where the bottom bar's "where you are" starts (lined up with the panes).
@@ -142,6 +144,10 @@ pub(super) struct Screen {
     pub bar: Option<(TermId, Rect, usize)>,
     /// Where each agent row was drawn in the sidebar (for the follow-up box beside it).
     pub row_y: std::collections::HashMap<TermId, u16>,
+    /// What was just sent or queued to each session, shown on its row for a few seconds.
+    pub receipts: std::collections::HashMap<TermId, popover::Receipt>,
+    /// A follow-up left unsent with Esc, kept per session until it is sent or cleared.
+    pub drafts: std::collections::HashMap<TermId, String>,
     /// What you changed on Settings › Check and have not saved.
     pub check_page: Option<check_settings::CheckDraft>,
 }
@@ -181,15 +187,22 @@ pub(super) enum Step {
     Worktrees,
 }
 
-/// The key map: every leader key by what it acts on, filtered as you type.
+/// The one key overlay: the key map, the search over every command, or All keys.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct KeyMap {
+    pub view: KeyView,
     pub query: String,
-    /// Typing searches (Tab); otherwise a key runs what it's bound to.
-    pub searching: bool,
     pub step: Option<Step>,
-    /// The selected match while searching.
+    /// The selected row (in a step, or while searching).
     pub sel: usize,
+    /// How far All keys is scrolled, in rows.
+    pub scroll: usize,
+}
+
+impl KeyMap {
+    pub(super) fn new(view: KeyView, step: Option<Step>) -> KeyMap {
+        KeyMap { view, query: String::new(), step, sel: 0, scroll: 0 }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -272,20 +285,17 @@ pub(super) struct NewPaneHy {
     pub task: String,
     /// The model (0: the agent's default).
     pub model: usize,
-    /// Starting a fleet: the task is its goal, and what runs is its commander.
-    pub fleet: bool,
 }
 
 pub(super) const NP_ROWS: u8 = 6;
 
 impl NewPaneHy {
     pub fn new(p: usize, beside: bool) -> NewPaneHy {
-        NewPaneHy { p, a: 0, row: 0, beside, place: None, task: String::new(), model: 0, fleet: false }
+        NewPaneHy { p, a: 0, row: 0, beside, place: None, task: String::new(), model: 0 }
     }
 
     pub fn place_for(&self, agent: &str, per_agent: bool) -> u8 {
-        // A commander coordinates from the project's own folder; its helpers get the worktrees.
-        self.place.unwrap_or(if agent != "shell" && per_agent && !self.fleet { 0 } else { 2 })
+        self.place.unwrap_or(if agent != "shell" && per_agent { 0 } else { 2 })
     }
 }
 
@@ -309,8 +319,10 @@ pub(super) struct Session {
     pub subagent_activity: Vec<SubagentActivity>,
     /// Stopped by a plan limit: seshi says "continue" then (unix seconds).
     pub resume_at: Option<u64>,
-    /// The session whose agent started this one (its commander), if one did.
+    /// The session whose agent started this one, if one did.
     pub started_by: Option<TermId>,
+    /// Helpers it wants to start and is waiting on you for (0: not asking).
+    pub helpers_wanted: usize,
     /// Follow-ups waiting for its turn to end, next first.
     pub queued: Vec<String>,
     /// The latest check Seshi ran after its turn: the headline of `checks`.
@@ -395,7 +407,7 @@ pub(super) fn rank(s: Status) -> u8 {
 /// The sidebar has the keys, or the why popover opened from one of its rows does (it
 /// gives them back to the sidebar when it closes).
 pub(super) fn side_focused(app: &App) -> bool {
-    matches!(app.mode, Mode::Side | Mode::Why { side: true, .. })
+    matches!(app.mode, Mode::Side | Mode::Why { side: true, .. } | Mode::Helpers { side: true, .. })
 }
 
 pub(super) fn settled(s: Status) -> bool {
@@ -632,9 +644,13 @@ impl App {
                 };
                 let title = session_title(t, if leaves.len() == 1 { &w.name } else { "" }, &top);
                 // What it asks: its ask-human question, else what its screen asks.
-                let question = (t.status == Status::Blocked)
-                    .then(|| self.snap.questions.iter().find(|q| q.term == *id).map(|q| q.text.clone()).or_else(|| self.parsers.get(id).and_then(question)))
-                    .flatten();
+                let question = if t.helper_ask.is_empty() {
+                    (t.status == Status::Blocked)
+                        .then(|| self.snap.questions.iter().find(|q| q.term == *id).map(|q| q.text.clone()).or_else(|| self.parsers.get(id).and_then(question)))
+                        .flatten()
+                } else {
+                    Some(helpers_line(t.helper_ask.len()))
+                };
                 projs[pi].wts[wi].sessions.push(Session {
                     term: *id,
                     name,
@@ -657,6 +673,7 @@ impl App {
                         .collect(),
                     resume_at: t.resume_at,
                     started_by: t.started_by,
+                    helpers_wanted: t.helper_ask.len(),
                     queued: t.queued.clone(),
                     check: t.check().cloned(),
                     checks: t.checks.clone(),
@@ -896,11 +913,10 @@ fn session_title(t: &TermInfo, name: &str, top: &Path) -> String {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum ScreenHit {
+    /// The toast's ✕.
+    ToastClose,
     /// Fold / unfold a project.
     ToggleProj(usize),
-    /// Fold / unfold a session's subagents.
-    ToggleSubs(TermId),
-    SubagentInfo(TermId, usize),
     /// The sidebar's "+ new": a plain shell in the selected project.
     Session(TermId),
     /// A button on the selected Inbox item: the key it stands for (`\n` Enter, `\x1b` Esc).
@@ -915,6 +931,7 @@ pub(super) enum ScreenHit {
     ConfirmYes,
     ConfirmNo,
     TabPick(usize),
+    NewTab,
     /// Outside an overlay: closes it.
     Close,
     /// Inside an overlay's panel: nothing.
@@ -925,6 +942,9 @@ pub(super) enum ScreenHit {
     NpBeside(usize),
     NpWhere(usize),
     NpGo,
+    /// The new-session dialog: an option on a row (row, option), and Start.
+    NsOpt(u8, usize),
+    NsStart,
     NpTask,
     NpModel(usize),
     SetTab(usize),
@@ -958,11 +978,10 @@ pub(super) enum ScreenHit {
     /// A row of the worktree clean-up list (tick or untick it), and its Remove button.
     TidyRow(usize),
     TidyGo,
-    /// The sidebar's "a actions".
+    /// The sidebar's "menu".
     Actions,
     /// A row of the actions list.
     ActionRow(usize),
-    PickRow(usize),
     /// The leader pill (leader mode is on): the key map.
     Leader,
     /// A key in the key map (its row in the shown list).
@@ -977,6 +996,10 @@ pub(super) enum ScreenHit {
     BranchChoice(usize),
     /// A button of the repo-command approval.
     Approve(check_approve::ApproveHit),
+    /// A row's "wants to start N helpers" line: opens the question.
+    HelperAsk(TermId),
+    /// A choice in that question.
+    HelperAnswer(TermId, crate::protocol::HelperChoice),
     /// A button or row of Settings › Check.
     CheckDraft(check_settings::DraftHit),
 }
@@ -1020,13 +1043,15 @@ mod check_inbox;
 mod check_modals_tests;
 pub(in crate::client) mod check_settings;
 mod check_sheet;
-pub(in crate::client) mod team_settings;
 mod dialogs;
 pub(in crate::client) mod glyphs;
+mod keyoverlay;
+mod newsession;
 mod leader;
 mod popups;
 mod heads;
 mod popover;
+mod helpers_ask;
 mod draw;
 mod side;
 mod sheet;
@@ -1037,4 +1062,4 @@ mod tidy;
 mod v7_frame_tests;
 #[cfg(test)]
 mod v7_ref;
-pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, side::*, splash::*, sheet::*, popover::*, heads::*, tidy::*, check_sheet::*, check_actions::*, check_approve::*};
+pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};

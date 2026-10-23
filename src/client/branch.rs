@@ -2,7 +2,7 @@
 //! name, and say what happens to uncommitted changes.
 
 use super::design::{fill, put, seg, tilde};
-use super::screen::{ScreenHit, dim_all, hints, hit, hovered, panel};
+use super::screen::{ScreenHit, dim_all, hit, hovered, panel, panel_bar};
 use super::render::truncate;
 use super::{App, Bg, Mode, files};
 use crate::theme::Theme;
@@ -355,7 +355,7 @@ pub(super) fn draw_branches(app: &mut App, f: &mut Frame, area: Rect, t: &Theme,
                 }
                 hit(app, rr, ScreenHit::BranchRow(i));
             }
-            put(buf, r.x + 3, r.bottom() - 2, &hints(t, &[("Enter", "switch"), ("↑↓", "choose"), ("Esc", "close")]), r.right() - 1);
+            panel_bar(buf, r, t, &[("Enter", "switch"), ("↑↓", "choose"), ("Esc", "close")]);
         }
         Step::Changes(sel) => {
             let to = v.target.as_ref().map(|t| t.0.clone()).unwrap_or_default();
@@ -373,7 +373,7 @@ pub(super) fn draw_branches(app: &mut App, f: &mut Frame, area: Rect, t: &Theme,
                 put(buf, rr.x + 2, yy, &row, rr.right());
                 hit(app, rr, ScreenHit::BranchChoice(i));
             }
-            put(buf, r.x + 3, r.bottom() - 2, &hints(t, &[("1-4", "choose"), ("Esc", "back")]), r.right() - 1);
+            panel_bar(buf, r, t, &[("1-4", "choose"), ("Esc", "back")]);
         }
         Step::Message(m) => {
             put(buf, r.x + 3, y, &[seg("Commit message:", c.fg(t.text))], r.right() - 2);
@@ -381,11 +381,11 @@ pub(super) fn draw_branches(app: &mut App, f: &mut Frame, area: Rect, t: &Theme,
             super::screen::strip(buf, q, t.card2);
             let s = Style::default().bg(t.card2);
             put(buf, r.x + 3, y + 2, &[seg(m.clone(), s.fg(t.strong)), seg("█", s.fg(t.accent))], r.right() - 2);
-            put(buf, r.x + 3, r.bottom() - 2, &hints(t, &[("Enter", "commit and switch"), ("Esc", "back")]), r.right() - 1);
+            panel_bar(buf, r, t, &[("Enter", "commit and switch"), ("Esc", "back")]);
         }
         Step::ConfirmDiscard => {
             put(buf, r.x + 3, y, &[seg(format!("Throw away the changes in {} file(s)? This can't be undone.", v.dirty), c.fg(t.blocked).add_modifier(Modifier::BOLD))], r.right() - 2);
-            put(buf, r.x + 3, r.bottom() - 2, &hints(t, &[("y", "yes, discard them"), ("any other key", "back")]), r.right() - 1);
+            panel_bar(buf, r, t, &[("y", "yes, discard them"), ("any other key", "back")]);
         }
     }
 }

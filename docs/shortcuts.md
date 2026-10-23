@@ -1,82 +1,109 @@
 # Contextual shortcuts
 
-Open **All keys** with `Ctrl+Space`, release, then `?` (or Actions → All keys).
-The in-app reference lists every configured leader and global binding, including
-aliases and custom commands. Type to filter by key, action or screen name; arrows,
-page keys, Home/End and the mouse wheel scroll. Ctrl+U clears; Esc closes.
-`C-` means Ctrl, `M-` means Alt. The [README](../README.md#use) lists the defaults.
-On Windows, Caps Lock does not change shortcut meaning; hold Shift for uppercase
-bindings such as `N` (What happened).
+The leader is `Ctrl+Space`. Press it, release, then a key. One overlay holds every key
+reference; it is not a second palette:
 
-Mouse entry: **Actions** stays at the top right even with the sidebar hidden.
-It opens agent status setup, Settings and All commands.
-Click a command to run it; the wheel scrolls the palette. Configured custom
-bindings also appear as clickable commands. Close buttons dismiss overlays.
+- **Key map** (`Ctrl+Space`, then a pause): the keys by group, Sessions, Panes, Tabs,
+  Project and Seshi, built from your real bindings. Pressing a key runs it.
+- **Search commands** (`Space` after the leader, `Tab` from the map, or typing a letter
+  that is not a key): every command, including ones with no key. With nothing typed it
+  lists the ones you ran last.
+- **All keys** (`?` after the leader, or Menu → All keys): the map in full, the keys that
+  need no leader, and the commands that only search finds.
 
-These tables are also embedded in the app's All keys reference. Keys below act
-inside the named screen, without the leader. Ordinary typing edits the focused
-text field; Backspace removes a character. Keys sent to Claude, Codex, your shell
+Keys are drawn as keycaps; `Ctrl+Space` is two caps joined by a dim `+`. On Windows,
+Caps Lock does not change shortcut meaning; hold Shift for uppercase bindings such as
+`N` (What happened). The [README](../README.md#use) lists the defaults.
+
+Mouse entry: **Menu** has a chip in the collapsed strip (row 0); with the sessions hidden
+(`Z`), use the leader. Click a row to run it; the wheel moves the selection. Close buttons
+dismiss overlays.
+
+Keys below act inside the named screen, without the leader. Ordinary typing edits the
+focused text field; Backspace removes a character. Keys sent to Claude, Codex, your shell
 or another program follow that program's own help.
 
-## All shortcuts
+## Key overlay
 
 | Keys | Action |
 | --- | --- |
-| Type, Backspace, Ctrl+U | Filter by key, action or screen; clear search |
-| Up, Down, PgUp, PgDn, Home, End, wheel | Scroll reference, page, go to beginning/end |
-| Esc | Close reference; no command runs while reading it |
+| A bound key (key map) | Run its command and close |
+| Tab | Switch between the key map and the search |
+| Any unbound letter (key map or All keys) | Start a search with it |
+| Type, Backspace, Ctrl+U (search) | Edit the words; Backspace on an empty box returns to the map |
+| Up, Down, Ctrl+P, Ctrl+N, PgUp, PgDn (search) | Choose a result |
+| Enter (search) | Run the selected command |
+| Up, Down, PgUp, PgDn, Home, End (All keys) | Scroll the list |
+| Esc | Close; no command runs while reading |
 
-## Leader overview and Actions
+Every key is a leader key: there is no letter that acts by itself in the sidebar.
+Defaults added in this release: `s` Session (an agent at once), `c` Session with options, `S` Stop agent; `n` stays a plain shell where you are. Dropped
+as duplicates (your own `[keys.prefix]` entries still load): `v`, `|`, `b`, `:`,
+`Ctrl+V`.
+
+## Menu
 
 | Keys | Action |
 | --- | --- |
-| Bound leader key | Run its command from the overview; Actions accepts keys for its listed commands |
-| Tab | Toggle overview search; type words to search commands |
-| Up, Down, Enter | Choose and run a search result, worktree step or Actions row |
-| Backspace | Clear the overview query one character at a time, then return from a step |
-| Esc | Cancel the overview or Actions |
+| The letter lit in a row | Run it: `h` Shell here, `s` Session, `w` Session with options…, `p` Pane beside this, `t` Tab, `i` Inbox, `c` Search commands, `k` All keys, `a` Collapse sidebar, `d` Hide sidebar, `e` Settings |
+| Up, Down, Enter | Choose and run a row |
+| Esc | Close the Menu |
+
+"Shell here" starts a plain shell where you are (the same as `n`); "Session" starts an agent
+straight away (leader `s`). You can also type `claude` in the shell yourself: it starts in its own
+worktree in a git project.
 
 ## Worktrees second step
 
 | Keys | Action |
 | --- | --- |
 | n, s, m, d | New worktree, switch via Inbox, open Changes to merge, remove worktree |
-| Backspace, Esc | Return to overview, or close |
+| Backspace, Esc | Return to the key map, or close |
 
 ## Sidebar keyboard focus
+
+The sidebar takes navigation only. No letter acts from it: every action is the leader (`Ctrl+Space`) and its key, such as `n` new shell, `s` new session, `x` close, `m` Menu, `M` message the agent, `i` why, `S` stop the agent. Any other key leaves the sidebar and types into the pane. The row's right-click menu runs its items by letter while it is open.
 
 | Keys | Action |
 | --- | --- |
 | Up / k, Down / j, Home, End | Browse rows, first row, last row; active session stays selected |
 | Right, Left | Expand project or enter session; fold project or go to session's project |
 | Enter | Toggle project or open selected session; opening a sleeping session wakes it. On a session whose check failed, could not run, was overridden, went stale or is never run for its repo, open its evidence sheet instead; on one whose repo command waits for approval, open the approval |
-| Space | Open New for the selected project |
-| m, i, s, a | Follow-up to selected agent, why it reads as it does, inspect its subagent activity, Actions |
-| r, O, u, o | On a session with a check: re-run it (once it has a result), override it (failed only, asked first), undo the override (overridden only), its output. A key the result doesn't take says why |
 | Up, Down in the activity inspector | Inspect the previous or next child record |
-| Delete | Ask to close the selected session or project |
-| Menu letters | Use the letters shown in the selected row's right-click menu; r renames, x closes. A session with a check also lists Check output (o), Re-run check (r), Override check… (O, failed) and Undo override (u, overridden); there Rename takes e |
 | Esc | Return keyboard focus to the active pane |
 
-## Command palette and text prompts
+## Text prompts and worktree picker
 
 | Keys | Action |
 | --- | --- |
-| Type, Backspace | Search or edit text |
-| Up / Shift+Tab / Ctrl+P, Down / Tab / Ctrl+N | Move through palette or worktree-picker results |
+| Type, Backspace | Edit text |
+| Up / Shift+Tab / Ctrl+P, Down / Tab / Ctrl+N | Move through worktree-picker results |
 | Ctrl+U in text prompts | Clear prompt text |
-| Enter, Esc | Run selected result / submit prompt, or cancel |
+| Enter, Esc | Open the selected result / submit prompt, or cancel |
 | y / Y / Enter in close-group or remove-worktree prompt | Confirm; f / F forces worktree removal when offered; other keys cancel |
 
-## New agent or fleet
+## New session (`c`)
+
+`s` starts a session at once with no dialog (Settings › Sessions sets the agent and where); `c`
+opens this dialog. `n` and the `+ new` chip start a plain shell, not a session.
 
 | Keys | Action |
 | --- | --- |
-| Tab / Down, Shift+Tab / Up | Next or previous field |
-| Left, Right | Change the selected option |
-| Ctrl+U | Clear task text |
-| b | Toggle beside when outside the task text field |
+| Down / Tab, Up / Shift+Tab | Next or previous row (Agent, Where, Project) |
+| Left, Right | Pick the row's option; on Project, the previous or next project |
 | Enter, Esc | Start, or cancel |
+
+## A session wants to start helpers
+
+Enter on its sidebar row (or a click on the `wants to start N helpers` line) opens the question.
+No bare key answers from the sidebar.
+
+| Keys | Action |
+| --- | --- |
+| 1 | Allow |
+| 2 | Always in this project |
+| 3 | No, do it alone |
+| Esc | Later: the row keeps asking |
 
 ## Inbox
 
@@ -100,10 +127,11 @@ or another program follow that program's own help.
 
 | Keys | Action |
 | --- | --- |
-| Enter | Send follow-up, or queue while working; empty message means keep going |
+| Enter | Send follow-up, or queue while working; on an empty box it only closes |
 | Ctrl+Enter | Send immediately, including while agent is working |
 | Shift+Enter, Alt+Enter | Insert a newline |
-| Ctrl+U, Esc | Clear message, or cancel |
+| Ctrl+U | Clear the message |
+| Esc | Close the box and keep the draft for that session until it is sent or cleared |
 | i, Esc in evidence | Close status explanation; other keys close it and perform their normal action |
 | Enter, r, O in a check's evidence | Open its evidence sheet, run it again, override it (asks first); only the keys the popover shows act |
 
@@ -238,10 +266,9 @@ or another program follow that program's own help.
 
 ## Terminal scrolling and mouse
 
-Hiding the sidebar retains a compact session rail: click initials to focus,
-hover for the full title, wheel to scroll, and click its chevron to expand.
-Status glyphs/colors and the total blocked count remain visible. The existing
-sidebar toggle switches between the full sidebar and rail.
+Leader `z` collapses the sessions into a strip of chips on the top row (click a chip to
+focus it, `»` or `+n more` to expand); with the strip focused, `←` `→` and `1`-`9` switch
+sessions. Leader `Z` hides the sessions completely; `z` or `Z` brings them back.
 
 | Keys | Action |
 | --- | --- |

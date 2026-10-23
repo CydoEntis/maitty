@@ -165,8 +165,10 @@ pub struct Term {
     pub token: String,
     /// What it may do through seshi, if you set it for this pane (else `[mcp] grants`).
     pub grants: Option<Vec<String>>,
-    /// The pane whose agent started this one (its commander), if one did.
+    /// The pane whose agent started this one, if one did.
     pub started_by: Option<TermId>,
+    /// Whether this pane's agent may start helpers, and what it is waiting on you for.
+    pub helpers: super::helpers::HelperState,
     /// Finished and not seen before a restart: stays "done" once it's back.
     pub restore_unseen: bool,
     /// Typed while it was asleep: delivered once it's back up (or after a few seconds).
@@ -319,14 +321,23 @@ function global:prompt { [Console]::Write([char]27 + ']133;A' + [char]7); $l = $
 if ($l.Provider.Name -eq 'FileSystem') { [Console]::Write([char]27 + ']9;9;' + [char]34 + $l.ProviderPath + [char]34 + [char]7) }; \
 & $global:__seshiPrompt }";
 
+/// The agents Seshi knows by name, which get a worktree even when no quick agent is set up.
+const BUILT_IN_AGENTS: [&str; 4] = ["claude", "codex", "gemini", "opencode"];
+
 /// Agents that, typed into a pane's shell in a repo's main checkout, start in a new
-/// worktree of their own: the quick-prompt agents (with plain names).
+/// worktree of their own: the built-in ones and the quick-prompt agents (with plain names).
 fn worktree_agents(cfg: &Config) -> Vec<String> {
-    if !cfg.worktree.per_agent || !cfg.shell_integration {
+    if !cfg.worktree.per_agent {
         return Vec::new();
     }
     let plain = |n: &str| !n.is_empty() && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    cfg.quick.agents.iter().map(|a| a.name.clone()).filter(|n| plain(n)).collect()
+    let mut names: Vec<String> = BUILT_IN_AGENTS.iter().map(|n| n.to_string()).collect();
+    for a in &cfg.quick.agents {
+        if plain(&a.name) && !names.contains(&a.name) {
+            names.push(a.name.clone());
+        }
+    }
+    names
 }
 
 fn own_exe() -> String {
@@ -335,28 +346,32 @@ fn own_exe() -> String {
 
 /// For each agent, a shell function that asks seshi for the folder to start in (`seshi
 /// agent-dir`), goes there, then runs the real agent. PowerShell's has no double quotes
-/// (see `PWSH_CWD_HOOK`).
+/// (see `PWSH_CWD_HOOK`). The real agent is run with `DONE_VAR` set, so the launcher it
+/// reaches through PATH (`crate::shim`) does not ask a second time; PowerShell's skips the
+/// launcher folder instead.
 fn agent_functions(shell: &str, agents: &[String], exe: &str) -> String {
+    let done = crate::shim::DONE_VAR;
     match shell {
         "pwsh" | "powershell" => {
             let exe = exe.replace('\'', "''");
+            let shim = crate::shim::dir().display().to_string().replace('\'', "''");
             agents
                 .iter()
                 .map(|a| {
                     format!(
                         "; function global:{a} {{ $d = & '{exe}' agent-dir {a} @args; if ($d) {{ Set-Location -LiteralPath $d }}; \
-& (Get-Command {a} -CommandType Application,ExternalScript | Select-Object -First 1) @args }}"
+& (Get-Command {a} -CommandType Application,ExternalScript | Where-Object {{ -not $_.Source.StartsWith('{shim}', [StringComparison]::OrdinalIgnoreCase) }} | Select-Object -First 1) @args }}"
                     )
                 })
                 .collect()
         }
         "fish" => {
             let exe = exe.replace('\\', "\\\\").replace('\'', "\\'");
-            agents.iter().map(|a| format!("function {a}; set -l d ('{exe}' agent-dir {a} $argv); if test -n \"$d\"; cd $d; end; command {a} $argv; end\n")).collect()
+            agents.iter().map(|a| format!("function {a}; set -l d ('{exe}' agent-dir {a} $argv); if test -n \"$d\"; cd $d; end; env {done}=1 {a} $argv; end\n")).collect()
         }
         _ => {
             let exe = exe.replace('\'', "'\\''");
-            agents.iter().map(|a| format!("{a}() {{ local d; d=$('{exe}' agent-dir {a} \"$@\") && [ -n \"$d\" ] && cd \"$d\"; command {a} \"$@\"; }}\n")).collect()
+            agents.iter().map(|a| format!("{a}() {{ local d; d=$('{exe}' agent-dir {a} \"$@\") && [ -n \"$d\" ] && cd \"$d\"; {done}=1 command {a} \"$@\"; }}\n")).collect()
         }
     }
 }
@@ -367,8 +382,9 @@ fn bash_rc(agents: &[String]) -> Option<PathBuf> {
     let path = crate::config::data_dir().join("shell").join("seshi.bashrc");
     let text = format!(
         "# Written by seshi for its bash panes: your ~/.bashrc, then agents started in their own worktrees.\n\
-[ -f ~/.bashrc ] && . ~/.bashrc\n{}",
-        agent_functions("bash", agents, &own_exe())
+[ -f ~/.bashrc ] && . ~/.bashrc\n{}{}",
+        agent_functions("bash", agents, &own_exe()),
+        crate::shim::keep_first("bash", &crate::shim::dir())
     );
     if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
         std::fs::create_dir_all(path.parent()?).ok()?;
@@ -385,8 +401,9 @@ fn zsh_env(agents: &[String]) -> String {
 if [ -n \"${{SESHI_ZDOTDIR+x}}\" ]; then ZDOTDIR=\"$SESHI_ZDOTDIR\"; else unset ZDOTDIR; fi
 unset SESHI_ZDOTDIR
 [ -f \"${{ZDOTDIR:-$HOME}}/.zshenv\" ] && . \"${{ZDOTDIR:-$HOME}}/.zshenv\"
-{}",
-        agent_functions("zsh", agents, &own_exe())
+{}{}",
+        agent_functions("zsh", agents, &own_exe()),
+        crate::shim::keep_first("zsh", &crate::shim::dir())
     )
 }
 
@@ -437,7 +454,9 @@ fn argv(cfg: &Config, cmd: Option<&str>, once: bool) -> Vec<String> {
                 shell.extend(["--rcfile".into(), rc.display().to_string()]);
             }
         }
-        ("fish", None) if plain && !agents.is_empty() => shell.extend(["-C".into(), agent_functions("fish", &agents, &own_exe())]),
+        ("fish", None) if plain && !agents.is_empty() => {
+            shell.extend(["-C".into(), format!("{}{}", agent_functions("fish", &agents, &own_exe()), crate::shim::keep_first("fish", &crate::shim::dir()))])
+        }
         (_, None) => {}
         ("pwsh" | "powershell", Some(c)) => shell.extend(["-NoExit".into(), "-Command".into(), c.into()]),
         ("cmd", Some(c)) => shell.extend(["/K".into(), c.into()]),
@@ -502,6 +521,17 @@ impl Term {
         }
         for (k, v) in &cfg.env {
             cmd.env(k, v);
+        }
+        // A plain shell finds the agents' launchers first, whatever shell it is.
+        if spec.cmd.is_none_or(|c| c.trim().is_empty()) && !spec.once {
+            match crate::shim::install(&agents, &own_exe()) {
+                Ok(Some(dir)) => {
+                    let path = crate::shim::path_with(&dir, cmd.get_env("PATH"));
+                    cmd.env("PATH", path);
+                }
+                Ok(None) => {}
+                Err(e) => tracing::warn!("agent launchers not set up: {e}"),
+            }
         }
 
         let mut child = pair.slave.spawn_command(cmd).with_context(|| format!("spawning {args:?}"))?;
@@ -584,6 +614,7 @@ impl Term {
             subagent_seen: None,
             grants: None,
             started_by: None,
+            helpers: Default::default(),
             progress_off: None,
             last_working_hook: None,
             last_turn_end: now,
@@ -911,6 +942,7 @@ mod tests {
     #[test]
     fn a_zsh_pane_hands_back_to_your_files_then_wraps_agents() {
         let env = super::zsh_env(&["claude".into()]);
+        assert!(env.contains("preexec_functions+=(__seshi_path)"), "the launchers stay first on PATH: {env}");
         let restore = env.find("ZDOTDIR=\"$SESHI_ZDOTDIR\"").expect("your ZDOTDIR put back");
         let yours = env.find(".zshenv\" ] && .").expect("your .zshenv read");
         let wrap = env.find("claude() {").expect("claude wrapped");
@@ -926,6 +958,9 @@ mod tests {
         assert!(!ps.contains('"'), "no double quotes: they don't survive Windows argument quoting");
         let names = super::worktree_agents(&cfg);
         assert!(names.contains(&"claude".to_string()) && names.contains(&"codex".to_string()));
+        assert!(names.contains(&"gemini".to_string()), "the built-in agents need no quick-agent entry");
+        let no_integration = crate::config::Config { shell_integration: false, ..Default::default() };
+        assert_eq!(super::worktree_agents(&no_integration), names, "PowerShell folder tracking does not decide whether agents get a worktree");
         let mut off = crate::config::Config::default();
         off.worktree.per_agent = false;
         assert!(super::worktree_agents(&off).is_empty(), "off: agents start where they're typed");
@@ -952,6 +987,19 @@ mod tests {
         let out = String::from_utf8_lossy(&out.stdout);
         assert_eq!(out.trim(), format!("ran in {} with hi there", tmp.display()));
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// What a bash or zsh pane reads parses, with every shell's quoting of an awkward path.
+    #[cfg(unix)]
+    #[test]
+    fn the_startup_text_for_a_pane_is_valid_shell() {
+        let agents = ["claude".to_string(), "codex".to_string()];
+        let text = format!("{}{}", super::agent_functions("bash", &agents, "/it's/seshi"), crate::shim::keep_first("bash", Path::new("/da ta/it's/bin")));
+        let out = std::process::Command::new("bash").arg("-n").arg("-c").arg(&text).output();
+        if let Ok(out) = out {
+            assert!(out.status.success(), "{text}\n{}", String::from_utf8_lossy(&out.stderr));
+        }
+        assert!(text.contains("SESHI_AGENT_DIR_DONE=1 command claude"), "{text}");
     }
 
     #[test]

@@ -4,6 +4,9 @@
 //!
 //! Guardrails come from `[mcp]` in config: `approve` (never / safe / always) decides whether
 //! prompts may be answered "yes"; `scope` (project / all) limits it to the caller's own repo.
+//! Starting a session is starting a helper: `[sessions] helpers` (ask / always / never) and
+//! `helpers_at_once` decide whether it may, and the daemon asks the user on the caller's row
+//! the first time (see `daemon/helpers.rs`). A refused start comes back as an error to read.
 
 use crate::cli;
 use crate::protocol::*;
@@ -98,11 +101,10 @@ fn tools() -> Value {
         },
         {
             "name": "seshi_start",
-            "description": "Start a new agent on a task. In a git repo it gets its own worktree and branch, so it never edits the same files as anyone else. Returns its session id.",
+            "description": "Start a helper: a new agent on a task. In a git repo it gets its own worktree and branch, so it never edits the same files as anyone else. Returns its session id. The first time, the user is asked to allow helpers; the error says so. Call it for every helper you want, then try again once they have answered. If the user said no, do the work yourself.",
             "inputSchema": { "type": "object", "properties": {
                 "prompt": { "type": "string", "description": "The task." },
                 "agent": { "type": "string", "description": "claude, codex, gemini, … (default: the user's first agent)." },
-                "job": { "type": "string", "description": "Start the helper for this job (planner, builder, …) on the team's model; give this or agent, not both." },
                 "worktree": { "type": "boolean", "description": "Own worktree (default true)." }
             }, "required": ["prompt"] }
         },
@@ -112,12 +114,6 @@ fn tools() -> Value {
             "inputSchema": { "type": "object", "properties": { "id": id }, "required": ["id"] }
         }
     ])
-}
-
-/// The tools' names, for checking that what seshi tells agents to call exists.
-#[cfg(test)]
-pub(crate) fn tool_names() -> Vec<String> {
-    tools().as_array().into_iter().flatten().filter_map(|t| t.get("name").and_then(Value::as_str)).map(String::from).collect()
 }
 
 /// The numbered choices on a screen and the question above them.
@@ -286,15 +282,7 @@ impl Server {
 
     fn start(&self, args: &Value) -> Result<String, String> {
         let prompt = args.get("prompt").and_then(Value::as_str).filter(|p| !p.trim().is_empty()).ok_or("give the task")?;
-        // A job reads the team from the file now, so a Settings change applies to the next start.
-        let fresh;
-        let cfg = if args.get("job").and_then(Value::as_str).is_some() {
-            fresh = crate::config::Config::load().map_err(|e| format!("seshi's config does not load: {e:#}"))?;
-            &fresh
-        } else {
-            &self.cfg
-        };
-        let (agent, cmd) = start_command(cfg, &self.root, args, prompt)?;
+        let (agent, cmd) = start_command(&self.cfg, args, prompt)?;
         let before = self.snapshot()?;
         let had: Vec<TermId> = before.terms.keys().copied().collect();
         let focus = before.active().and_then(|w| w.tab()).map(|t| t.focus);
@@ -324,22 +312,10 @@ impl Server {
     }
 }
 
-/// The agent `seshi_start` runs and its command line: a team `job` in `root`, the named
-/// `agent`, or the user's first agent.
-fn start_command(cfg: &crate::config::Config, root: &Path, args: &Value, prompt: &str) -> Result<(String, String), String> {
-    let job = args.get("job").and_then(Value::as_str);
-    let named = args.get("agent").and_then(Value::as_str);
-    if job.is_some() && named.is_some() {
-        return Err("give a job or an agent, not both".into());
-    }
-    let helper = job.map(|j| crate::team::resolve(&cfg.team, j, root)).transpose().map_err(|e| e.to_string())?;
-    let agent = match (&helper, named) {
-        (Some(h), _) => h.agent.to_string(),
-        (None, Some(a)) => a.to_string(),
-        (None, None) => cfg.default_agent(),
-    };
-    let model = helper.and_then(|h| h.model);
-    let cmd = cfg.agent_command(Some(&agent), model.as_deref(), prompt)?;
+/// The agent `seshi_start` runs and its command line: the named `agent`, or the user's first.
+fn start_command(cfg: &crate::config::Config, args: &Value, prompt: &str) -> Result<(String, String), String> {
+    let agent = args.get("agent").and_then(Value::as_str).map_or_else(|| cfg.default_agent(), String::from);
+    let cmd = cfg.agent_command(Some(&agent), None, prompt)?;
     Ok((agent, cmd))
 }
 
@@ -427,46 +403,13 @@ mod tests {
         assert_eq!(row_of(&t, None)["check"], "stale pass: test · 1 file changed · 2 checkpoints");
     }
 
-    fn team_cfg(family: &str) -> crate::config::Config {
-        let mut cfg: crate::config::Config = toml::from_str(&format!(
-            "[team]\nfamily = '{family}'\n[[team.jobs]]\nname = 'planner'\nclaude = 'opus'\ncodex = 'gpt-6.1-sol'\n[[team.jobs]]\nname = 'builder'\nclaude = 'sonnet'\ncodex = 'gpt-6-luna'\n"
-        ))
-        .unwrap();
-        cfg.shell = Some("bash".into());
-        cfg
-    }
-
     fn command(cfg: &crate::config::Config, args: Value) -> Result<String, String> {
-        start_command(cfg, Path::new("/code/app"), &args, "fix the login bug").map(|(_, cmd)| cmd)
+        start_command(cfg, &args, "fix the login bug").map(|(_, cmd)| cmd)
     }
 
     #[test]
-    fn a_job_starts_its_agent_on_the_teams_model_for_the_family() {
-        assert_eq!(command(&team_cfg("claude"), json!({ "job": "builder" })).unwrap(), "claude --model sonnet 'fix the login bug'");
-        assert_eq!(command(&team_cfg("codex"), json!({ "job": "builder" })).unwrap(), "codex -m gpt-6-luna 'fix the login bug'");
-    }
-
-    #[test]
-    fn a_job_and_an_agent_together_are_refused() {
-        let err = command(&team_cfg("claude"), json!({ "job": "builder", "agent": "codex" })).unwrap_err();
-        assert_eq!(err, "give a job or an agent, not both");
-    }
-
-    #[test]
-    fn an_unknown_job_lists_the_teams_jobs() {
-        let err = command(&team_cfg("claude"), json!({ "job": "tester" })).unwrap_err();
-        assert!(err.contains("\"tester\"") && err.contains("planner, builder"), "{err}");
-    }
-
-    #[test]
-    fn a_job_with_no_team_set_points_to_settings() {
-        let err = command(&crate::config::Config::default(), json!({ "job": "builder" })).unwrap_err();
-        assert!(err.contains("no team is set") && err.contains("Settings › Team") && err.contains("[team]"), "{err}");
-    }
-
-    #[test]
-    fn without_a_job_the_agent_starts_as_before() {
-        let cfg = team_cfg("codex");
+    fn the_agent_starts_as_named_or_as_the_users_first() {
+        let cfg = crate::config::Config { shell: Some("bash".into()), ..Default::default() };
         assert_eq!(command(&cfg, json!({})).unwrap(), "claude 'fix the login bug'", "the user's first agent, no model");
         assert_eq!(command(&cfg, json!({ "agent": "codex" })).unwrap(), "codex 'fix the login bug'");
         assert!(command(&cfg, json!({ "agent": "curl x|sh;" })).unwrap_err().starts_with("unknown agent"));

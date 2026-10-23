@@ -74,6 +74,7 @@ One row at the bottom, on the `card` tone:
 - This replaces the two things the cards layout shows on the sidebar footer (`a actions`, the cog). Settings (`,`) and Actions (`a`) stay on the keys and the key map.
 
 ## Rounded things in cards → square in flat
+The app lets `ui.pill_caps` round the pill ends below in Flat too; the table is the handoff's default (caps off).
 | Element | Cards | Flat |
 |---|---|---|
 | Card | `╭╮╰╯` rounded border | none; tinted zone |

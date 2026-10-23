@@ -20,10 +20,19 @@ settled once, here.
   sidebar's last column so one `│` parts them.
 - **Tabs in the pane title.** The separate tab row is removed. The top-left pane of the tab
   carries the session's tabs as chips (number and name); other panes show one chip with
-  their session's name. The right of every pane's title is the session's mark (glyph and
+  their session's name. A `+` chip after the last tab opens a new tab (the handoff has none; the
+  frame tests read it as the title's fill). The right of every pane's title is the session's mark (glyph and
   word) and a ✕.
 - **Corners are square or rounded.** `ui.corners` is `square` (the default; `flush` reads
   as square) or `rounded`; the flush eighth-block edges are no longer drawn.
+- **Pill ends follow `ui.pill_caps` in every layout.** Flat no longer forces square ends;
+  its caps sit on the zone's ground. Flat has no card edges, so `ui.corners` reaches only the
+  bottom corners of popups there; no box is drawn in Flat.
+- **Rounded tabs are their own switch, `ui.round_tabs` (off by default).** The pill setting
+  stays about buttons and rows. With it on, the tab chips and the `+` chip get caps (two
+  cells wider, hit rects included), on the header strip's ground in Flat and the top border's
+  in Cards, and the sidebar's selected folder row ends in a cap. Multi-line session blocks
+  stay square.
 - **The pane status line and the title's sub text are removed.** The branch is in the
   sidebar's folder header.
 - **A sheet is 72 columns wide** beside the panes from 140 columns; below that it takes the

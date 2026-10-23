@@ -129,15 +129,14 @@ pub(in crate::client) fn draw_settings_modal(app: &mut App, buf: &mut Buffer, ar
     }
 }
 
-/// The sheet's last row: a pill of key hints, and a note at the right when there's room.
+/// The sheet's last row: its key hints in an action bar, and a note at the right when there's room.
 pub(in crate::client) fn status_bar(buf: &mut Buffer, inside: Rect, t: &Theme, keys: &[(&str, &str)], note: &[Seg]) {
     let y = inside.bottom().saturating_sub(1);
-    let bar = Rect { x: inside.x + 1, y, width: inside.width.saturating_sub(2), height: 1 };
-    strip(buf, bar, t.card2);
-    let segs = cap_hints(t, t.card2, keys);
-    let end = put(buf, bar.x + 2, y, &segs, bar.right().saturating_sub(1));
+    let bar = Rect { y, height: 1, ..inside };
+    action_bar(buf, bar, t, t.card2, keys);
     let nw = segs_width(note);
-    if nw > 0 && end + nw + 3 <= bar.right().saturating_sub(2) {
+    let used = segs_width(&cap_hints(t, t.card2, keys)) + 2;
+    if nw > 0 && used + nw + 3 <= bar.width {
         let note: Vec<Seg> = note.iter().map(|(s, st)| (s.clone(), st.bg(t.card2))).collect();
         put(buf, bar.right().saturating_sub(nw + 2), y, &note, bar.right());
     }

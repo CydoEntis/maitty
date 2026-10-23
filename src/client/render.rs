@@ -1,13 +1,14 @@
 //! Drawing: sidebar, tab bar, panes, status bar and overlays.
 
 use super::copy::Copy;
-use super::{App, Mode, PickTarget};
+use super::design::{Seg, keycap, put, seg};
+use super::{App, Mode};
 use crate::protocol::Status;
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
-use ratatui::layout::{Position, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
+use ratatui::text::Span;
 use ratatui::widgets::{Paragraph, Widget};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -22,7 +23,7 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     let area = f.area();
     let t = app.theme.clone();
     set_palette(t.ansi, t.ansi.map(|_| t.card2));
-    super::screen::set_round(app.cfg.ui.pill_caps && app.cfg.ui.layout != "flat");
+    super::screen::set_round(app.cfg.ui.pill_caps);
     // The terminal's own background (its window padding) matches ours while we run.
     let terminal_bg = app.cfg.ui.background != "solid";
     if let Color::Rgb(r, g, b) = t.bg
@@ -108,7 +109,7 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
     match &app.mode {
         Mode::Prefix { since } => {
             if app.keymap_shown(*since) {
-                let km = super::screen::KeyMap { query: String::new(), searching: false, step: None, sel: 0 };
+                let km = super::screen::KeyMap::new(super::screen::KeyView::Map, None);
                 super::screen::draw_keymap(app, f, area, &t, &km);
             }
         }
@@ -116,16 +117,9 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             let km = (**km).clone();
             super::screen::draw_keymap(app, f, area, &t, &km);
         }
-        Mode::Shortcuts { query, scroll } => {
-            let (query, scroll) = (query.clone(), *scroll);
-            super::shortcuts::draw_shortcuts(app, f, area, &t, &query, scroll);
-        }
         Mode::Actions { sel } => {
             let sel = *sel;
             super::screen::draw_actions(app, f, area, &t, sel);
-        }
-        Mode::SubagentInfo { term, index } => {
-            super::screen::draw_subagent_info(app, f, area, &t, *term, *index);
         }
         Mode::Confirm(c) => {
             let c = (**c).clone();
@@ -134,7 +128,7 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
         // The Inbox is a sheet beside the panes (drawn with the screen).
         Mode::GoTo { .. } => {}
         // Popovers beside a sidebar row (drawn with the screen).
-        Mode::Compose(_) | Mode::Why { .. } => {}
+        Mode::Compose(_) | Mode::Why { .. } | Mode::Helpers { .. } => {}
         Mode::History { sel } => {
             let sel = *sel;
             super::screen::draw_history(app, f, area, &t, sel);
@@ -163,6 +157,10 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             let np = np.clone();
             super::screen::draw_new_pane(app, f, area, &t, &np);
         }
+        Mode::NewSession(ns) => {
+            let ns = (**ns).clone();
+            super::screen::draw_new_session(app, f, area, &t, &ns);
+        }
         Mode::ScreenSettings(_) => super::screen::draw_settings_modal(app, f.buffer_mut(), area, &t),
         Mode::Approve(a) => {
             let a = (**a).clone();
@@ -179,10 +177,6 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
         Mode::Spinners(view) => {
             let view = (**view).clone();
             super::spinners::draw(app, f, area, &t, &view);
-        }
-        Mode::Picker { query, sel, commands } => {
-            let (query, sel, commands) = (query.clone(), *sel, *commands);
-            draw_picker(app, f, area, &t, &query, sel, commands)
         }
         Mode::Prompt { kind, input } => {
             let (label, input, confirm) = (kind.label().to_string(), input.clone(), kind.is_confirm());
@@ -219,41 +213,25 @@ pub fn blend(a: Color, b: Color, t: f32) -> Color {
     }
 }
 
-/// Background of the row the keyboard is on: clearly stronger than a hover or the
-/// active-workspace tint.
-pub(super) fn focus_bg(t: &crate::theme::Theme) -> Color {
-    blend(t.selection_bg, t.accent, 0.30)
+/// Which working-spinner frame to show: it turns with motion on and rests on the handoff's
+/// third frame with motion off.
+fn working_step(app: &App, len: usize) -> usize {
+    if app.motion_on() { (app.spinner_frame() % len as u64) as usize } else { REST_FRAME.min(len - 1) }
 }
 
-/// Mark a list row as the selected one: an accent bar at the left edge, the focus band
-/// behind every cell, and bold text. The bar takes the place of the row's leading space so
-/// nothing shifts sideways when the selection moves.
-pub(super) fn focus_row(line: Line<'static>, t: &crate::theme::Theme) -> Line<'static> {
-    let bg = focus_bg(t);
-    let mut spans: Vec<Span<'static>> = line.spans;
-    if let Some(first) = spans.first_mut()
-        && first.content.starts_with(' ')
-    {
-        first.content = first.content[1..].to_string().into();
-    }
-    spans.insert(0, Span::styled("▌", Style::default().fg(t.accent)));
-    Line::from(
-        spans
-            .into_iter()
-            .map(|sp| {
-                let style = sp.style.bg(bg).add_modifier(Modifier::BOLD);
-                Span::styled(sp.content, style)
-            })
-            .collect::<Vec<_>>(),
-    )
-}
+/// The frame the working spinner holds without motion (`checks7.js` `glyph`: `G.work[2]`).
+const REST_FRAME: usize = 2;
 
 pub(super) fn status_icon(app: &App, s: Status) -> String {
     let i = &app.cfg.icons;
     match s {
         Status::Working if !app.cfg.ui.spinner.is_empty() => {
-            let n = app.cfg.ui.spinner.len() as u64;
-            app.cfg.ui.spinner[(app.spinner_frame() % n) as usize].clone()
+            let ascii = super::screen::glyphs::chosen(&app.cfg.ui.glyphs, i) == &super::screen::glyphs::ASCII;
+            if ascii && app.cfg.ui.spinner == crate::config::BARS_FRAMES {
+                crate::config::BARS_ASCII[working_step(app, crate::config::BARS_ASCII.len())].into()
+            } else {
+                app.cfg.ui.spinner[working_step(app, app.cfg.ui.spinner.len())].clone()
+            }
         }
         Status::Working => i.working.clone(),
         Status::Blocked => i.blocked.clone(),
@@ -278,8 +256,21 @@ pub(super) fn truncate(s: &str, max: usize) -> String {
     out
 }
 
+/// How far toward the sky colour a selection's ground is.
+const SELECT_TINT: f32 = 0.38;
+
+/// `y copy · Esc cancel` as keycaps, for the end of a selection.
+fn copy_hints(t: &crate::theme::Theme) -> Vec<Seg> {
+    let label = |s: &str| seg(s.to_string(), Style::default().fg(t.text).bg(t.card));
+    let mut out = keycap(t, "y");
+    out.push(label(" copy · "));
+    out.extend(keycap(t, "Esc"));
+    out.push(label(" cancel"));
+    out
+}
+
 pub(super) fn render_copy(c: &Copy, area: Rect, buf: &mut Buffer, t: &crate::theme::Theme) {
-    let select = Style::default().bg(t.accent).fg(t.bg);
+    let select = Style::default().bg(blend(t.bg, t.sky(), SELECT_TINT)).fg(t.strong);
     let hit = Style::default().bg(t.working).fg(Color::Black);
     for row in 0..area.height {
         let li = c.top + row as usize;
@@ -324,6 +315,12 @@ pub(super) fn render_copy(c: &Copy, area: Rect, buf: &mut Buffer, t: &crate::the
                     px.set_symbol(" ").set_style(select);
                 }
         }
+    }
+    if let Some(&(row, _, end)) = c.selected_spans().last() {
+        // The keys that finish the selection sit just after its end, on the card ground.
+        let mut hints = copy_hints(t);
+        hints.insert(0, seg("  ", Style::default().bg(t.card)));
+        put(buf, area.x + end, area.y + row, &hints, area.right());
     }
     let bar = if let Some(input) = &c.input {
         Some((format!("{}{input}", if c.backward { "?" } else { "/" }), t.accent))
@@ -461,67 +458,6 @@ pub(super) fn render_screen(screen: &vt100::Screen, area: Rect, buf: &mut Buffer
     }
 }
 
-pub(super) fn centered(area: Rect, w: u16, h: u16) -> Rect {
-    let w = w.min(area.width.saturating_sub(2));
-    let h = h.min(area.height.saturating_sub(2));
-    Rect { x: area.x + (area.width - w) / 2, y: area.y + (area.height - h) / 2, width: w, height: h }
-}
-
-fn draw_picker(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::Theme, query: &str, sel: usize, commands: bool) {
-    if commands {
-        let items = app.pick_items(query, true);
-        return super::screen::draw_palette(app, f, area, t, query, sel, &items);
-    }
-    let items = app.pick_items(query, commands);
-    let r = super::screen::panel_at(app, f.buffer_mut(), centered(area, 80, 22), "jump to", &[], t);
-    let inner = Rect { x: r.x + 2, y: r.y + 1, width: r.width.saturating_sub(4), height: r.height.saturating_sub(2) };
-    let input = Line::from(vec![Span::styled("› ", Style::default().fg(t.accent)), Span::raw(query.to_string())]);
-    f.render_widget(Paragraph::new(input), Rect { height: 1, ..inner });
-    f.set_cursor_position(Position::new(inner.x + 2 + query.width() as u16, inner.y));
-    let list_h = inner.height.saturating_sub(2) as usize;
-    let start = sel.saturating_sub(list_h.saturating_sub(1));
-    for (i, item) in items.iter().enumerate().skip(start).take(list_h) {
-        let y = inner.y + 2 + (i - start) as u16;
-        let selected = i == sel;
-        let selected_row = selected;
-        let bg = if selected_row { focus_bg(t) } else { t.sidebar_bg };
-        let (icon, color) = match &item.target {
-            PickTarget::Workspace(id) => {
-                ("■".to_string(), app.snap.workspace(*id).map(|w| app.ws_color(w)).unwrap_or(t.muted))
-            }
-            PickTarget::Pane(_) => (status_icon(app, item.status), t.status(item.status)),
-            PickTarget::Command(_) => ("›".to_string(), t.accent),
-        };
-        let line = if let PickTarget::Command(_) = item.target {
-            let key_w = item.key.width();
-            let label_w = (inner.width as usize).saturating_sub(key_w + 5);
-            let label = truncate(&item.label, label_w);
-            let pad = label_w.saturating_sub(label.width());
-            Line::from(vec![
-                Span::styled(format!(" {icon} "), Style::default().fg(color).bg(bg)),
-                Span::styled(label, Style::default().fg(t.fg).bg(bg)),
-                Span::styled(" ".repeat(pad), Style::default().bg(bg)),
-                Span::styled(format!("{} ", item.key), Style::default().fg(t.muted).bg(bg)),
-            ])
-        } else {
-            Line::from(vec![
-                Span::styled(format!(" {icon} "), Style::default().fg(color).bg(bg)),
-                Span::styled(format!("{:<20} ", truncate(&item.label, 20)), Style::default().fg(t.fg).bg(bg).add_modifier(Modifier::BOLD)),
-                Span::styled(truncate(&item.detail, inner.width.saturating_sub(26) as usize), Style::default().fg(t.muted).bg(bg)),
-            ])
-        };
-        f.render_widget(Paragraph::new(if selected_row { focus_row(line, t) } else { line }).style(Style::default().bg(bg)), Rect { y, height: 1, ..inner });
-    }
-    if items.is_empty() {
-        f.render_widget(
-            Paragraph::new(Span::styled("  no matches", Style::default().fg(t.muted))),
-            Rect { y: inner.y + 2, height: 1, ..inner },
-        );
-    }
-}
-
-
-
 #[allow(clippy::too_many_arguments)]
 fn draw_worktrees(
     app: &mut App,
@@ -564,8 +500,7 @@ fn draw_worktrees(
         };
         put(f.buffer_mut(), rr.x + 3, y, &line, rr.right().saturating_sub(1));
     }
-    let keys = super::screen::hints(t, &[("↑↓", "move"), ("Enter", "open"), ("Esc", "close")]);
-    put(f.buffer_mut(), r.x + 3, r.bottom().saturating_sub(2), &keys, r.right());
+    super::screen::panel_bar(f.buffer_mut(), r, t, &[("↑↓", "move"), ("Enter", "open"), ("Esc", "close")]);
 }
 
 fn draw_prompt(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::Theme, label: &str, input: &str, confirm: bool) {
@@ -577,36 +512,12 @@ fn draw_prompt(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::Theme
     let title: String = chars.next().map(|c| c.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default();
     let r = super::screen::panel(app, buf, area, 64, 7, &title, &[], t);
     if confirm {
-        let keys = super::screen::hints(t, &[("y", "yes"), ("n", "no")]);
-        put(buf, r.x + 3, r.y + 3, &keys, r.right());
+        super::screen::panel_bar(buf, r, t, &[("y", "yes"), ("n", "no")]);
         return;
     }
     let field = Rect { x: r.x + 2, y: r.y + 2, width: r.width.saturating_sub(4), height: 1 };
     super::screen::strip(buf, field, t.card2);
     let s2 = Style::default().bg(t.card2);
     put(buf, field.x + 1, field.y, &[seg("› ", s2.fg(t.accent).add_modifier(Modifier::BOLD)), seg(input.to_string(), s2.fg(t.strong)), seg("█", s2.fg(t.accent))], field.right());
-    let keys = super::screen::hints(t, &[("Enter", "save"), ("Esc", "cancel")]);
-    put(buf, r.x + 3, r.bottom().saturating_sub(2), &keys, r.right());
-}
-
-// ---- panels: files, tasks, inbox, toolbox -------------------------------------------------
-
-
-
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn focus_row_marks_without_shifting() {
-        let t = crate::theme::Theme::named("catppuccin-mocha");
-        let row = Line::from(vec![Span::raw(" fix-totals"), Span::raw("  ready")]);
-        let width = row.width();
-        let marked = focus_row(row, &t);
-        assert_eq!(marked.width(), width, "selection must not move the text");
-        assert_eq!(marked.spans[0].content, "▌");
-        assert!(marked.spans.iter().all(|s| s.style.bg == Some(focus_bg(&t))));
-    }
+    super::screen::panel_bar(buf, r, t, &[("Enter", "save"), ("Esc", "cancel")]);
 }

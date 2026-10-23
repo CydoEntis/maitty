@@ -1,6 +1,8 @@
 //! The marks a session and its checks are drawn with, from the v7 handoff (`checks7.js` `GL`,
-//! `glyph`, `col`, `WORD`). Shape and word carry the meaning; colour only backs them, so a
-//! state reads in plain ASCII and without colour too.
+//! `glyph`, `col`, `WORD`). In the handoff's sets shape and word carry the meaning and colour
+//! only backs them, so a state reads in plain ASCII and without colour too. The `dots` set
+//! (the default) marks a session with a coloured dot and leaves the meaning to the colour and
+//! the word beside it.
 use crate::config::Icons;
 use crate::protocol::{CheckInfo, CheckState, Status, reported_check};
 use crate::theme::Theme;
@@ -27,6 +29,9 @@ pub(in crate::client) struct Glyphs {
     pub fold: &'static str,
     pub warn: &'static str,
     pub arrow: &'static str,
+    /// Mark every session by a dot (`●`, or `○` at rest) rather than by a glyph of its own. A
+    /// check's own marks (`✓ ✕` beside its name) keep their shapes either way.
+    pub dots: bool,
 }
 
 pub(in crate::client) const UNICODE: Glyphs = Glyphs {
@@ -46,7 +51,12 @@ pub(in crate::client) const UNICODE: Glyphs = Glyphs {
     fold: "▾",
     warn: "⚠",
     arrow: "›",
+    dots: false,
 };
+
+/// Unicode, with a session marked by a coloured dot: `●` for every state that wants you or says
+/// something, `○` for idle and asleep; working and checking keep their moving marks.
+pub(in crate::client) const DOTS: Glyphs = Glyphs { dots: true, ..UNICODE };
 
 pub(in crate::client) const ASCII: Glyphs = Glyphs {
     ring: ["-", "\\", "|", "/"],
@@ -65,6 +75,7 @@ pub(in crate::client) const ASCII: Glyphs = Glyphs {
     fold: "v",
     warn: "!",
     arrow: ">",
+    dots: false,
 };
 
 /// Unicode with Nerd Font icons where the handoff has one; each is drawn in one cell.
@@ -82,15 +93,16 @@ pub(in crate::client) const NERD: Glyphs = Glyphs {
     ..UNICODE
 };
 
-/// The set `[ui] glyphs` names. `auto` (or anything unknown) keeps the older rule: ASCII when
-/// the blocked, done and idle icons are all ASCII.
+/// The set `[ui] glyphs` names. `auto` (or anything unknown): ASCII when the blocked, done and
+/// idle icons are all ASCII, else dots.
 pub(in crate::client) fn chosen(setting: &str, icons: &Icons) -> &'static Glyphs {
     match setting {
+        "dots" => &DOTS,
         "unicode" => &UNICODE,
         "ascii" => &ASCII,
         "nerd" => &NERD,
         _ if [&icons.blocked, &icons.done, &icons.idle].iter().all(|icon| icon.is_ascii()) => &ASCII,
-        _ => &UNICODE,
+        _ => &DOTS,
     }
 }
 
@@ -181,6 +193,9 @@ impl Kind {
 
     /// Its glyph. Working shows the user's spinner frame and checking the ring at `ring_step`.
     pub fn glyph<'a>(self, g: &'static Glyphs, ring_step: usize, working: &'a str) -> &'a str {
+        if g.dots && !matches!(self, Kind::Working | Kind::Checking) {
+            return if matches!(self, Kind::Idle | Kind::Asleep) { g.idle } else { g.needs };
+        }
         match self {
             Kind::Working => working,
             Kind::Checking => g.ring[ring_step % g.ring.len()],
@@ -235,6 +250,34 @@ mod tests {
         }
     }
 
+    /// The dots set marks a session by colour and word: one dot for every state that has
+    /// something to say, a ring at rest, and the moving marks left alone.
+    #[test]
+    fn dots_mark_every_session_by_a_coloured_dot_and_its_word() {
+        let t = Theme::named(crate::theme::DEFAULT);
+        let said = [
+            (Kind::Needs, t.blocked, "needs you"),
+            (Kind::Approve, t.blocked, "needs you"),
+            (Kind::Done, t.done, "done"),
+            (Kind::Passed, t.done, "done"),
+            (Kind::Failed, t.err, "failed"),
+            (Kind::Stale, t.text, "done · stale"),
+            (Kind::Over, t.text, "done · overridden"),
+            (Kind::Couldnt, t.violet(), "not checked"),
+            (Kind::Never, t.violet(), "not checked"),
+        ];
+        for (kind, color, word) in said {
+            assert_eq!(kind.mark(&DOTS, &t, 0, "⠹"), Mark { glyph: "●", color, word }, "{kind:?}");
+        }
+        for (kind, word) in [(Kind::Idle, "idle"), (Kind::Asleep, "asleep")] {
+            assert_eq!(kind.mark(&DOTS, &t, 0, "⠹"), Mark { glyph: "○", color: t.muted, word }, "{kind:?}");
+        }
+        assert_eq!(Kind::Working.mark(&DOTS, &t, 0, "⠹").glyph, "⠹", "working keeps your spinner");
+        assert_eq!(Kind::Checking.mark(&DOTS, &t, 1, "").glyph, DOTS.ring[1], "checking keeps its ring");
+        assert_eq!(DOTS.done, UNICODE.done, "a check's own ✓ and ✕ keep their shapes");
+        assert_eq!(DOTS.failed, UNICODE.failed);
+    }
+
     #[test]
     fn a_check_says_nothing_while_the_agent_works_or_asks() {
         let failed = info(CheckState::Failed);
@@ -265,14 +308,15 @@ mod tests {
     }
 
     #[test]
-    fn auto_keeps_the_rule_of_plain_icons_and_a_setting_wins() {
+    fn auto_is_dots_unless_the_icons_are_plain_and_a_setting_wins() {
         let fancy = Icons::default();
         let plain = Icons { blocked: "!".into(), done: "*".into(), idle: "-".into(), ..Icons::default() };
-        assert_eq!(chosen("auto", &fancy), &UNICODE);
+        assert_eq!(chosen("auto", &fancy), &DOTS);
+        assert_eq!(chosen("dots", &plain), &DOTS);
         assert_eq!(chosen("auto", &plain), &ASCII);
         assert_eq!(chosen("unicode", &plain), &UNICODE);
         assert_eq!(chosen("ascii", &fancy), &ASCII);
         assert_eq!(chosen("nerd", &fancy), &NERD);
-        assert_eq!(chosen("nonsense", &fancy), &UNICODE, "unknown reads as auto");
+        assert_eq!(chosen("nonsense", &fancy), &DOTS, "unknown reads as auto");
     }
 }

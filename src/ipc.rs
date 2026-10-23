@@ -30,7 +30,7 @@ impl std::fmt::Display for OtherVersion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "the running server is another seshi version (protocol v{}, this one v{}); `seshi kill-server` stops it, then run seshi again",
+            "the running server is another seshi version (protocol v{}, this one v{}); run seshi in a terminal to restart it, or `seshi kill-server` and run seshi again",
             self.daemon,
             protocol::PROTOCOL_VERSION
         )

@@ -137,12 +137,45 @@ pub fn run(check: bool, force: bool) -> Result<()> {
     let exe = result?;
     println!("Updated seshi {current} -> {} ({}).", tag.trim_start_matches('v'), exe.display());
     if crate::cli::server_running() {
-        println!("Your running sessions still use the old version until the server restarts:");
-        println!("  seshi kill-server, then seshi (agents stop, and resume when it starts)");
+        offer_restart()?;
     } else {
         println!("Run seshi to start it.");
     }
     Ok(())
+}
+
+/// The server still runs the old version: say what a restart costs and offer it. Without a
+/// terminal to answer, running seshi does it.
+fn offer_restart() -> Result<()> {
+    use std::io::{IsTerminal, Write};
+    let busy = crate::restart::read().map_or(0, |a| a.busy());
+    println!("Your running sessions use the old version until the server restarts.");
+    if busy > 0 {
+        println!("{busy} {} working or waiting for you; they stop and resume with their conversation.", if busy == 1 { "session is" } else { "sessions are" });
+    }
+    if !(std::io::stdin().is_terminal() && std::io::stdout().is_terminal()) {
+        println!("Run seshi: it will restart the server itself.");
+        return Ok(());
+    }
+    print!("Restart the server now? [{}] ", if busy == 0 { "Y/n" } else { "y/N" });
+    std::io::stdout().flush()?;
+    let mut answer = String::new();
+    std::io::stdin().read_line(&mut answer)?;
+    if wants_restart(&answer, busy == 0) {
+        crate::cli::kill_server(false)?;
+        println!("Run seshi: your sessions resume where they left off.");
+    } else {
+        println!("Run seshi when you are ready: it will restart the server itself.");
+    }
+    Ok(())
+}
+
+/// `y`/`yes` says yes, `n`/`no` says no, and an empty answer takes the default.
+fn wants_restart(answer: &str, default: bool) -> bool {
+    match answer.trim().to_lowercase().as_str() {
+        "" => default,
+        a => a == "y" || a == "yes",
+    }
 }
 
 /// Install the newest release over this one without printing (from inside the app, whose
@@ -315,6 +348,13 @@ mod tests {
         assert_eq!(tag_from_url("https://github.com/CydoEntis/seshi/releases/tag/v0.3.1\n").as_deref(), Some("v0.3.1"));
         assert_eq!(tag_from_url("https://github.com/CydoEntis/seshi/releases"), None, "no release yet");
         assert_eq!(tag_from_url("https://github.com/CydoEntis/seshi/releases/tag/nightly"), None);
+    }
+
+    #[test]
+    fn the_cli_restart_offer_defaults_to_yes_only_when_nothing_is_working() {
+        assert!(wants_restart("", true) && !wants_restart("", false));
+        assert!(wants_restart("Y", false) && wants_restart(" yes\n", false));
+        assert!(!wants_restart("n", true) && !wants_restart("later", true));
     }
 
     #[test]

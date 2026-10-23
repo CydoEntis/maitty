@@ -1,161 +1,131 @@
-//! The collapsed sidebar keeps agent state and session switching within reach.
+//! The collapsed sidebar: the sessions as chips along row 0 (v8 `drawStrip`,
+//! `docs/design/v8/v8/app8.js`). The panes keep the full width and their tabs sit on row 1.
 use super::*;
 
-pub(super) fn draw(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme) {
-    let pb = pane_bg(t);
-    let mut c = Card::new(t, "");
-    if side_focused(app) {
-        c = c.lit(t.accent);
-    }
-    card(app, buf, r, &c, t);
-    app.screen.side_rect = r;
-    hit(app, r, ScreenHit::SideFocus);
-    let row = |y| Rect {
-        x: r.x + 1,
-        y,
-        width: r.width.saturating_sub(2),
-        height: 1,
-    };
-    let expand = row(r.y + 1);
-    let arrow = if app.cfg.ui.sidebar_position == "right" {
-        "«"
-    } else {
-        "»"
-    };
-    btn(
-        app,
-        buf,
-        expand.x,
-        expand.y,
-        arrow,
-        "",
-        BtnKind::Ghost,
-        ScreenHit::ExpandSidebar,
-        expand.right(),
-    );
-    hit(app, expand, ScreenHit::ExpandSidebar);
+/// The longest a session's name is drawn on its chip.
+const CHIP_NAME_MAX: usize = 16;
 
-    // Folded projects still expose their sessions and attention in the rail.
-    let sessions: Vec<_> = model.iter().flat_map(Proj::sessions).collect();
+/// A session's chip: its mark and name. `on` is the strip's selection, `lit` when the strip has
+/// the keys (ink on the accent), else a raised chip.
+fn chip_segs(app: &App, s: &Session, on: bool, lit: bool, ground: Color, t: &Theme) -> Vec<Seg> {
+    let spinner = glyph(app, Status::Working);
+    let mark = check::mark(app, s, t, &spinner);
+    let state = check::kind(s);
+    let new = super::side::is_new(s);
+    let (bg, ink) = match (on, lit) {
+        (true, true) => (t.accent, Some(t.acc_ink)),
+        (true, false) => (t.btn, None),
+        _ => (ground, None),
+    };
+    let (glyph, mut colour) = if super::side::plain_shell(s) { ("›", t.muted) } else { (mark.glyph, mark.color) };
+    if new {
+        colour = t.accent;
+    }
+    let hot = super::side::is_hot(s, state, new);
+    let st = Style::default().bg(bg);
+    let name_fg = if on || hot { t.strong } else { t.text };
+    let bold = if on || hot { Modifier::BOLD } else { Modifier::empty() };
+    vec![
+        seg(" ", st),
+        seg(glyph, st.fg(ink.unwrap_or(colour)).add_modifier(Modifier::BOLD)),
+        seg(" ", st),
+        seg(format!("{} ", truncate(&s.name, CHIP_NAME_MAX)), st.fg(ink.unwrap_or(name_fg)).add_modifier(bold)),
+    ]
+}
+
+/// Draw the strip on row 0 of `area`. Chips that don't fit give way to a `+n more` chip, and
+/// the selected one is always kept in view.
+pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], t: &Theme) {
+    let look = Look::of(&app.cfg.ui);
+    let ground = if look.flat { t.card } else { t.bg };
+    let chip_bg = if look.flat { t.card2 } else { t.card };
+    let row = Rect { height: 1, ..area };
+    fill(buf, row, ground);
+    app.screen.side_rect = Rect::default();
+    hit(app, row, ScreenHit::SideFocus);
+
+    let lines = super::side::side_lines(app, model, t);
+    let sessions: Vec<&Session> = lines.iter().filter_map(|l| super::side::line_term(model, l)).filter_map(|term| find(model, term).map(|(.., s)| s)).collect();
     app.screen.visible = sessions.iter().map(|s| s.term).collect();
     app.screen.side_items = sessions.iter().map(|s| SideItem::Sess(s.term)).collect();
     app.screen.row_y.clear();
     app.screen.proj_keys = model.iter().map(|p| p.key.clone()).collect();
-    let count = r.height.saturating_sub(5) as usize;
-    let mut scroll = app.screen.side_scroll as usize;
-    let focus = app.focused();
-    if app.screen.follow {
-        if let Some(i) = sessions
-            .iter()
-            .position(|s| Some(s.term) == app.screen.cursor.or(focus))
-        {
-            if i < scroll {
-                scroll = i;
-            } else if i >= scroll + count {
-                scroll = i.saturating_sub(count.saturating_sub(1));
-            }
-        }
-        app.screen.follow = false;
-    }
-    scroll = scroll.min(sessions.len().saturating_sub(count));
-    app.screen.side_scroll = scroll as u16;
-    for (i, s) in sessions.iter().skip(scroll).take(count).enumerate() {
-        let rr = row(r.y + 3 + i as u16);
-        let active = Some(s.term) == focus;
-        let bg = if active {
-            t.hov
-        } else if side_focused(app) && app.screen.cursor == Some(s.term) {
-            t.card2
-        } else {
-            pb
-        };
-        fill(buf, rr, bg);
-        let color = state_color(t, s.status);
-        let label_color = if matches!(s.status, Status::Blocked | Status::Working | Status::Done) {
-            color
-        } else if active {
-            t.strong
-        } else {
-            t.text
-        };
-        let style = Style::default().bg(bg).fg(label_color).add_modifier(
-            if active || s.status == Status::Blocked {
-                Modifier::BOLD
-            } else {
-                Modifier::empty()
-            },
-        );
-        let initials: String = s
-            .name
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .take(2)
-            .collect();
-        // The sidebar row's own mark; a plain shell keeps its prompt arrow.
-        let spinner = glyph(app, Status::Working);
-        let mark = check::mark(app, s, t, &spinner);
-        let (icon, icon_color) = if super::side::plain_shell(s) { ("›", t.muted) } else { (mark.glyph, mark.color) };
-        put(
-            buf,
-            rr.x,
-            rr.y,
-            &[
-                seg(icon, style.fg(icon_color)),
-                seg(format!(" {initials}"), style),
-            ],
-            rr.right(),
-        );
-        hit(app, rr, ScreenHit::Session(s.term));
-        app.screen.row_y.insert(s.term, rr.y);
-    }
-    let foot = row(r.bottom().saturating_sub(2));
-    let blocked = sessions
-        .iter()
-        .filter(|s| s.status == Status::Blocked)
-        .count();
-    let (text, color) = if blocked > 0 {
-        (format!("●{blocked}"), t.blocked)
-    } else {
-        (format!("{}", sessions.len()), t.muted)
-    };
-    put(
-        buf,
-        foot.x,
-        foot.y,
-        &[seg(text, Style::default().fg(color).bg(pb))],
-        foot.right(),
-    );
-    hit(app, foot, ScreenHit::Actions);
-}
 
-pub(super) fn hint(app: &App, buf: &mut Buffer, panes: Rect, model: &[Proj], t: &Theme) {
-    if app.sidebar || !matches!(app.mode, Mode::Normal | Mode::Side) {
-        return;
+    let lit = side_focused(app);
+    let selected = if lit { app.screen.cursor.or(app.focused()) } else { app.focused() };
+    let round = |segs: Vec<Seg>| if look.round_tabs { round_ends(segs, ground) } else { segs };
+
+    // The expand chip.
+    let arrow = if app.cfg.ui.sidebar_position == "right" { "«" } else { "»" };
+    let expand = round(vec![seg(format!(" {arrow} "), Style::default().fg(t.strong).bg(t.btn).add_modifier(Modifier::BOLD))]);
+    let x0 = area.x + 1;
+    let ew = segs_width(&expand);
+    put(buf, x0, area.y, &expand, area.right());
+    hit(app, Rect { x: x0, y: area.y, width: ew, height: 1 }, ScreenHit::ExpandSidebar);
+    let start_x = x0 + ew + 1;
+
+    // The update pill (or the armed leader) keeps the top right.
+    let reserved = super::draw::corner_pill(app, t).map_or(0, |(segs, _)| segs_width(&segs) + 2);
+    // The Menu keeps a chip here, so mouse access to it doesn't need the sidebar open.
+    let menu = super::side::key_chip(app, "menu", &Action::Menu, t, ground);
+    let mw = segs_width(&menu);
+    let menu_x = area.right().saturating_sub(reserved + mw + 1);
+    let limit = menu_x.saturating_sub(1);
+    if menu_x > start_x + 4 {
+        put(buf, menu_x, area.y, &menu, area.right());
+        hit(app, Rect { x: menu_x, y: area.y, width: mw, height: 1 }, ScreenHit::Actions);
     }
-    let Some(pos) = app.hover.filter(|p| app.screen.side_rect.contains(*p)) else {
-        return;
+
+    let chips: Vec<(TermId, Vec<Seg>)> = sessions
+        .iter()
+        .map(|s| (s.term, round(chip_segs(app, s, Some(s.term) == selected, lit, chip_bg, t))))
+        .collect();
+    let needs_mark = check::marks(app).needs;
+    let more_for = |hidden: &[&Session]| -> Vec<Seg> {
+        let needs = hidden.iter().filter(|s| check::needs_you(s)).count();
+        let st = Style::default().bg(chip_bg);
+        let mut segs = vec![seg(format!(" +{} more ", hidden.len()), st.fg(t.muted))];
+        if needs > 0 {
+            segs.push(seg(format!("{}{needs} ", needs_mark), st.fg(t.blocked).add_modifier(Modifier::BOLD)));
+        }
+        round(segs)
     };
-    let Some((&term, _)) = app.screen.row_y.iter().find(|(_, y)| **y == pos.y) else {
-        return;
+    // How many chips fit from `from`, leaving room for the `+n more` chip when some don't.
+    let fit = |from: usize| -> usize {
+        let mut x = start_x;
+        let mut n = 0;
+        for (i, (_, segs)) in chips.iter().enumerate().skip(from) {
+            let w = segs_width(segs);
+            let last = i + 1 == chips.len();
+            let more_w = if last { 0 } else { segs_width(&more_for(&sessions[i + 1..])) + 1 };
+            if x + w + more_w > limit {
+                break;
+            }
+            x += w + 1;
+            n += 1;
+        }
+        n
     };
-    let Some((p, _, s)) = find(model, term) else {
-        return;
-    };
-    let label = format!(" {} · {} ", p.name, s.name);
-    let rr = Rect {
-        x: panes.x,
-        y: panes.y,
-        width: panes
-            .width
-            .min(segs_width(&[seg(&label, Style::default())])),
-        height: 1,
-    };
-    fill(buf, rr, t.card2);
-    put(
-        buf,
-        rr.x,
-        rr.y,
-        &[seg(label, Style::default().fg(t.text).bg(t.card2))],
-        rr.right(),
-    );
+    let at = selected.and_then(|sel| chips.iter().position(|(term, _)| *term == sel));
+    let mut from = 0;
+    while let Some(at) = at && from < at && at >= from + fit(from) {
+        from += 1;
+    }
+    let shown = fit(from);
+    let mut x = start_x;
+    for (term, segs) in chips.iter().skip(from).take(shown) {
+        let w = segs_width(segs);
+        put(buf, x, area.y, segs, limit);
+        hit(app, Rect { x, y: area.y, width: w, height: 1 }, ScreenHit::Session(*term));
+        x += w + 1;
+    }
+    let rest = from + shown;
+    if rest < chips.len() {
+        let more = more_for(&sessions[rest..]);
+        let w = segs_width(&more);
+        if x + w <= limit {
+            put(buf, x, area.y, &more, limit);
+            hit(app, Rect { x, y: area.y, width: w, height: 1 }, ScreenHit::ExpandSidebar);
+        }
+    }
 }

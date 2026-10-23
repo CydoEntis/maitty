@@ -1,7 +1,7 @@
 //! Search and preview built-in palettes before saving a choice.
 
 use super::design::{fill, put, seg, theme_label};
-use super::screen::{ScreenHit, hints, hit, list_row, query_list};
+use super::screen::{ScreenHit, hit, list_row, panel_bar, query_list};
 use super::{App, Bg, KeyCode, KeyEvent, KeyModifiers, Mode, modal};
 use crate::theme::{BUILTIN, DEFAULT, Theme};
 use ratatui::Frame;
@@ -264,21 +264,7 @@ pub(super) fn draw_themes(
             panel.right().saturating_sub(2),
         );
     }
-    put(
-        buf,
-        panel.x + 3,
-        panel.bottom().saturating_sub(2),
-        &hints(
-            theme,
-            &[
-                ("↑↓", "move"),
-                ("PgUp/PgDn", "page"),
-                ("Enter", "apply"),
-                ("Esc", "back"),
-            ],
-        ),
-        panel.right().saturating_sub(2),
-    );
+    panel_bar(buf, panel, theme, &[("↑↓", "move"), ("PgUp/PgDn", "page"), ("Enter", "apply"), ("Esc", "back")]);
 }
 
 fn draw_preview(buf: &mut ratatui::buffer::Buffer, area: Rect, name: &str) {
@@ -395,7 +381,7 @@ mod tests {
         assert_eq!(app.cfg.theme, "dracula");
         assert_eq!(app.theme.bg, Theme::named("dracula").bg);
         assert!(
-            matches!(&app.mode, Mode::ScreenSettings(view) if view.cat == 2 && matches!(super::super::design::settings_rows(modal::Cat::Appearance, &app.cfg).get(view.sel), Some(super::super::design::SRow::Setting(s)) if s.path == "theme"))
+            matches!(&app.mode, Mode::ScreenSettings(view) if view.cat == 2 && matches!(super::super::design::settings_rows(modal::Cat::Appearance).get(view.sel), Some(super::super::design::SRow::Setting(s)) if s.path == "theme"))
         );
     }
 

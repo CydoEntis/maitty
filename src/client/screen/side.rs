@@ -11,22 +11,15 @@ pub(in crate::client) enum Line {
     /// The heading over the other machines' sessions (with how many).
     Section(Kind, usize),
     Proj(usize),
-    /// An agent or shell (pi, wi, si), and how deep it sits in a fleet (0: not under anyone).
+    /// An agent or shell (pi, wi, si), and how deep it sits under the session that started it (0: not under anyone).
     Sess(usize, usize, usize, u8),
     /// A session's second line: its check result, its question, or what it is doing.
     Detail(TermId),
     /// A session's third line, from `NARROW` columns: a failed check's first failing line, or
     /// its checkpoints by name.
     Third(TermId),
-    /// A dim line under an agent: a queued follow-up, how many more subagents. Shares the
-    /// agent's highlight.
+    /// A dim line under an agent: a queued follow-up. Shares the agent's highlight.
     Note(String, Color, TermId),
-    /// A legacy live helper label.
-    Subagent(String, TermId),
-    /// A runtime-reported child with a stable identity and retained lifecycle.
-    SubagentRecord(Box<crate::protocol::SubagentActivity>, TermId, usize),
-    /// The heading over a session's subagents: how many, and whether they're listed.
-    Subs(TermId, usize, bool),
     /// Nothing running in a folder project.
     Empty(usize),
     Gap,
@@ -61,15 +54,35 @@ fn has_detail(s: &Session) -> bool {
 
 /// Its second line stays below `NARROW` columns: a check result, a question, or a wait for a
 /// plan limit.
-fn keeps_detail(s: &Session) -> bool {
-    check::shown(s).is_some() || s.question.is_some() || s.resume_at.is_some()
+/// A finished agent with nothing to say: below `NARROW` its row is one line. Anything that
+/// needs a look (working, asking, new, a check result, a wait for a plan limit) keeps its second.
+fn quiet_done(s: &Session) -> bool {
+    !is_new(s) && check::shown(s).is_none() && s.question.is_none() && s.resume_at.is_none() && matches!(s.status, Status::Idle | Status::None)
+}
+
+/// An agent that has started and been told nothing yet.
+pub(super) fn is_new(s: &Session) -> bool {
+    s.is_agent && !s.asleep && s.status == Status::Idle && s.title == WAITING && check::shown(s).is_none()
+}
+
+/// A row that wants a look: its name is strong and bold. Finished-and-seen and asleep rows are calm.
+pub(super) fn is_hot(s: &Session, state: State, new: bool) -> bool {
+    new || s.status == Status::Done || !matches!(state, State::Idle | State::Asleep | State::Passed)
+}
+
+/// How many helpers the agent reports running: the recorded ones, and the older name-only ones
+/// no record stands for. Zero when it reports none (Codex doesn't).
+fn agent_count(s: &Session) -> usize {
+    let active = s.subagent_activity.iter().filter(|a| a.state.active());
+    let named = |name: &str| s.subagent_activity.iter().any(|a| a.state.active() && a.name.eq_ignore_ascii_case(name));
+    active.count() + s.subagents.iter().filter(|n| !named(n)).count()
 }
 
 fn has_third(s: &Session) -> bool {
     check::reported(s).len() > 1 || check::shown(s).is_some_and(|c| check::failed(c) && !c.first_failing_line.is_empty())
 }
 
-pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme, out: &mut Vec<Line>) {
+pub(in crate::client) fn session_lines(s: &Session, t: &Theme, out: &mut Vec<Line>) {
     let notes_c = t.muted;
     if has_detail(s) {
         out.push(Line::Detail(s.term));
@@ -82,98 +95,12 @@ pub(in crate::client) fn session_lines(s: &Session, subs_closed: bool, t: &Theme
         let more = if s.queued.len() > 1 { format!(" (+{})", s.queued.len() - 1) } else { String::new() };
         out.push(Line::Note(format!("⏵ next: {next}{more}"), notes_c, s.term));
     }
-    // Its subagents, each on a line, under a heading that folds them away.
-    if !s.subagents.is_empty()
-        || s.subagent_activity
-            .iter()
-            .any(|activity| activity.state.active())
-    {
-        let has_record_for_live_name = |name: &str| {
-            s.subagent_activity.iter().any(|activity| {
-                activity.state.active() && activity.name.eq_ignore_ascii_case(name)
-            })
-        };
-        let legacy: Vec<_> = s.subagents.iter().filter(|name| !has_record_for_live_name(name)).collect();
-        let total = s.subagent_activity.iter().filter(|activity| activity.state.active()).count() + legacy.len();
-        out.push(Line::Subs(s.term, total, !subs_closed));
-        if !subs_closed {
-            let mut shown = 0;
-            for (index, activity) in s.subagent_activity.iter().enumerate().filter(|(_, activity)| activity.state.active()) {
-                if shown == SUBS_LISTED { break; }
-                out.push(Line::SubagentRecord(Box::new(activity.clone()), s.term, index));
-                shown += 1;
-            }
-            for sub in &legacy {
-                if shown == SUBS_LISTED { break; }
-                let stage = subagent_stage(sub, None);
-                out.push(Line::Subagent(stage.to_string(), s.term));
-                shown += 1;
-            }
-            if total > shown {
-                out.push(Line::Note(format!("  +{} more", total - shown), notes_c, s.term));
-            }
-        }
-    }
 }
-
-/// Infer a short stage only when the task or role provides recognizable evidence.
-pub(super) fn subagent_stage(name: &str, task: Option<&str>) -> &'static str {
-    let task = task.unwrap_or_default().to_ascii_lowercase();
-    let role: Vec<_> = name
-        .split(|ch: char| !ch.is_ascii_alphanumeric())
-        .filter(|part| !part.is_empty())
-        .map(str::to_ascii_lowercase)
-        .collect();
-    let has_role = |words: &[&str]| words.iter().any(|word| role.iter().any(|part| part == word));
-    if ["review", "audit", "verif"].iter().any(|word| task.contains(word)) || has_role(&["review", "reviewer", "audit", "auditor", "verify", "verifier"]) {
-        "Reviewing"
-    } else if ["plan", "architect", "design"].iter().any(|word| task.contains(word)) || has_role(&["plan", "planner", "architect", "design", "designer"]) {
-        "Planning"
-    } else if ["research", "explore", "search", "investigat"].iter().any(|word| task.contains(word)) || has_role(&["research", "researcher", "explore", "explorer", "search", "investigator"]) {
-        "Researching"
-    } else if ["build", "implement", "code"].iter().any(|word| task.contains(word)) || has_role(&["build", "builder", "implementer", "coder"]) {
-        "Building"
-    } else {
-        "Working"
-    }
-}
-
-fn subagent_label(name: &str, task: Option<&str>, latest_activity: Option<&str>) -> String {
-    if let Some(task) = task.map(str::trim).filter(|task| !task.is_empty()) {
-        return task.to_owned();
-    }
-    if let Some(activity) = latest_activity.map(str::trim).filter(|activity| {
-        !activity.is_empty() && !activity.starts_with("Runtime reported")
-    }) {
-        if let Some(tool) = activity.strip_prefix("PreToolUse: ") {
-            return format!("Using {tool}");
-        }
-        if let Some(tool) = activity.strip_prefix("PostToolUse: ") {
-            return format!("Used {tool}");
-        }
-        if !activity.starts_with("SubagentStart") && !activity.starts_with("SubagentStop") {
-            return activity.to_owned();
-        }
-    }
-    let role = name.trim();
-    let generic = ["", "agent", "subagent", "worker", "delegate", "general-purpose", "general purpose", "default", "unknown"];
-    if !generic.iter().any(|name| role.eq_ignore_ascii_case(name)) {
-        let stage = subagent_stage(role, None);
-        if stage != "Working" {
-            return stage.to_owned();
-        }
-        return role.to_owned();
-    }
-    "Working".to_owned()
-}
-
-/// This many of a session's native helper agents are named before they are counted.
-const SUBS_LISTED: usize = 8;
 
 /// A helper's row steps in this far under the session that started it, per level.
-const FLEET_INDENT: u16 = 2;
+const HELPER_INDENT: u16 = 2;
 /// Deeper helpers stay at this level: the names need the width more than the tree does.
-const FLEET_DEPTH: u8 = 2;
+const HELPER_DEPTH: u8 = 2;
 
 /// Sessions of a project, each by (worktree, session) index.
 type Rows = Vec<(usize, usize)>;
@@ -203,20 +130,20 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
             let mine = at(s.term);
             (sort && settled(s.status), if mine == usize::MAX { !p.wts[wi].main } else { false }, mine, s.term)
         });
-        // A fleet: the sessions a session started sit under it, in the order above. One that
+        // Helpers: the sessions a session started sit under it, in the order above. One that
         // needs you has sorted to the top and stays there, on its own.
         let term_of = |r: &(usize, usize)| p.wts[r.0].sessions[r.1].term;
-        let commander = |r: &(usize, usize)| {
+        let starter = |r: &(usize, usize)| {
             let s = &p.wts[r.0].sessions[r.1];
             let floats = sort && !settled(s.status);
             s.started_by.filter(|by| !floats && *by != s.term && rows.iter().any(|x| term_of(x) == *by))
         };
         let mut placed: Vec<((usize, usize), u8)> = Vec::with_capacity(rows.len());
-        let mut next: Vec<((usize, usize), u8)> = rows.iter().rev().filter(|r| commander(r).is_none()).map(|r| (*r, 0)).collect();
+        let mut next: Vec<((usize, usize), u8)> = rows.iter().rev().filter(|r| starter(r).is_none()).map(|r| (*r, 0)).collect();
         while let Some((r, depth)) = next.pop() {
             placed.push((r, depth));
-            let below = (depth + 1).min(FLEET_DEPTH);
-            next.extend(rows.iter().rev().filter(|k| commander(k) == Some(term_of(&r)) && !placed.iter().any(|(x, _)| x == *k)).map(|k| (*k, below)));
+            let below = (depth + 1).min(HELPER_DEPTH);
+            next.extend(rows.iter().rev().filter(|k| starter(k) == Some(term_of(&r)) && !placed.iter().any(|(x, _)| x == *k)).map(|k| (*k, below)));
         }
         // Sessions that started each other can't come from the daemon; if they did, they're
         // still listed.
@@ -227,7 +154,7 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
             any = true;
             out.push(Line::Sess(pi, wi, si, depth));
             let s = &p.wts[wi].sessions[si];
-            session_lines(s, app.screen.subs_closed.contains(&s.term), t, &mut out);
+            session_lines(s, t, &mut out);
         }
         if !any {
             out.push(Line::Empty(pi));
@@ -237,14 +164,14 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
     out
 }
 
-/// The lines drawn at `screen_w` columns. Below `NARROW` a row is one line unless its second
-/// line is a check result or a question, and the third line goes.
+/// The lines drawn at `screen_w` columns. Below `NARROW` a finished, seen row is one line and
+/// the third line goes; a row that needs a look keeps its second.
 fn fitted_lines(app: &App, model: &[Proj], t: &Theme, screen_w: u16) -> Vec<Line> {
     let mut lines = side_lines(app, model, t);
     if screen_w < NARROW {
         lines.retain(|l| match l {
             Line::Third(_) => false,
-            Line::Detail(term) => find(model, *term).is_some_and(|(.., s)| keeps_detail(s)),
+            Line::Detail(term) => find(model, *term).is_some_and(|(.., s)| !quiet_done(s)) || app.screen.receipts.contains_key(term),
             _ => true,
         });
     }
@@ -334,8 +261,9 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     // In a split, the split's row (its first pane's) is the open one, whichever side you're on.
     let focus = app.focused().map(|f| if shown.len() > 1 && shown.contains(&f) { shown[0] } else { f });
     let top = r.y + 2;
-    let foot_y = r.bottom().saturating_sub(if look.flat { 1 } else { 2 });
-    let list_h = foot_y.saturating_sub(top) as usize;
+    // The foot is lifted a row off the bottom (Cards: it sits above the border), a divider over it.
+    let foot_y = r.bottom().saturating_sub(2);
+    let list_h = foot_y.saturating_sub(1).saturating_sub(top) as usize;
     let scroll = side_scroll(app, model, &lines, focus, list_h);
 
     app.screen.visible = lines.iter().filter_map(|l| line_term(model, l)).collect();
@@ -352,13 +280,13 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
 
     let on = app.motion_on();
     let mut gliding: Option<u16> = None;
-    // The lines under a session (what it asks, its subagents) step in as far as it does.
+    // The lines under a session (what it asks) step in as far as it does.
     let mut indents: Vec<u16> = Vec::with_capacity(lines.len());
     for l in &lines {
         let last = indents.last().copied().unwrap_or(0);
         indents.push(match l {
-            Line::Sess(.., depth) => u16::from(*depth) * FLEET_INDENT,
-            Line::Note(..) | Line::Detail(..) | Line::Third(..) | Line::Subagent(..) | Line::SubagentRecord(..) | Line::Subs(..) => last,
+            Line::Sess(.., depth) => u16::from(*depth) * HELPER_INDENT,
+            Line::Note(..) | Line::Detail(..) | Line::Third(..) => last,
             _ => 0,
         });
     }
@@ -405,6 +333,10 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 }
                 Line::Detail(_) => {
                     put(buf, x, y, &detail(app, s, rl, t, cols.end().saturating_sub(x) as usize), cols.end());
+                    // Its question is this line: a click answers it, not just opens the session.
+                    if s.helpers_wanted > 0 {
+                        hit(app, row, ScreenHit::HelperAsk(term));
+                    }
                 }
                 _ => {
                     put(buf, x, y, &rl.on(third(app, s, t), t), cols.end());
@@ -421,7 +353,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     if scroll + list_h < lines.len() {
         put(buf, cols.rx + 1, top + list_h as u16 - 1, &[seg("▼", plain.fg(t.muted))], cols.end());
     }
-    draw_foot(app, buf, r, cols, pb, t, look.flat);
+    draw_foot(app, buf, r, cols, pb, t);
     if let Some(gy) = gliding.filter(|gy| (top..top + list_h as u16).contains(gy))
         && app.screen.row_y.get(&focus.unwrap_or_default()) != Some(&gy)
     {
@@ -507,25 +439,30 @@ fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, cols: Cols, y: u16
     let spinner = glyph(app, Status::Working);
     let mark = check::mark(app, s, t, &spinner);
     let state = check::kind(s);
-    let failed = state == State::Failed;
     let st = Style::default().bg(rl.bg);
-    let (g, gc) = if plain_shell(s) { ("›", t.muted) } else { (mark.glyph, rl.paint(t, mark.color)) };
+    let new = is_new(s);
+    let hot = is_hot(s, state, new);
+    let mark_colour = if new { t.accent } else { mark.color };
+    let (g, gc) = if plain_shell(s) { ("›", t.muted) } else { (mark.glyph, rl.paint(t, mark_colour)) };
     let mut gs = st.fg(gc);
-    if matches!(state, State::Failed | State::Needs | State::Approve) {
+    if matches!(state, State::Failed | State::Needs | State::Approve | State::Working) || new {
         gs = gs.add_modifier(Modifier::BOLD);
     }
     let gx = cols.x + 2 + indent;
-    put(buf, gx, y, &[seg(g, gs)], gx + 1);
-    hit(app, Rect { x: gx, y, width: 2, height: 1 }, ScreenHit::Why(s.term));
+    // The 3-bar spinner is two cells wide; the name steps right to make room, as the handoff's does.
+    let gw = (g.width() as u16).max(1);
+    put(buf, gx, y, &[seg(g, gs)], gx + gw);
+    hit(app, Rect { x: gx, y, width: gw + 1, height: 1 }, ScreenHit::Why(s.term));
     let menu = hovered(app, cols.row(y)) && !rl.picked;
     let when = if ages && s.is_agent && !menu { age(s.since) } else { String::new() };
-    let nx = gx + 2;
+    let nx = gx + gw + 1;
     let room = cols.rx.saturating_sub(nx).saturating_sub(when.width() as u16) as usize;
     let name = truncate(&s.name, room);
-    let ns = st.fg(if rl.picked || failed { t.strong } else { t.text }).add_modifier(Modifier::BOLD);
+    // Name: strong and bold when the row wants a look, plain `text` once it is done and seen.
+    let ns = st.fg(if rl.picked || hot { t.strong } else { t.text });
+    let ns = if hot && !plain_shell(s) { ns.add_modifier(Modifier::BOLD) } else { ns };
     let left = if state == State::Working {
-        let working = rl.paint(t, t.working);
-        shimmer(&name, app.spinner_frame(), working, blend(working, t.strong, 0.6), ns)
+        working_text(app, &name, rl.paint(t, t.accent), t, ns)
     } else {
         vec![seg(name, ns)]
     };
@@ -538,9 +475,25 @@ fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, cols: Cols, y: u16
     }
 }
 
+/// A working agent's name or word: the working colour, with a bright band sweeping across it
+/// while motion is on and standing still without.
+fn working_text(app: &App, text: &str, base: Color, t: &Theme, st: Style) -> Vec<Seg> {
+    if app.motion_on() {
+        shimmer(text, app.spinner_frame(), base, blend(base, t.strong, 0.6), st)
+    } else {
+        vec![seg(text.to_string(), st.fg(base))]
+    }
+}
+
 /// A session's second line, in `room` columns. With several checkpoints it is the headline
 /// word, then a glyph per checkpoint; the glyphs give way, never the word.
 fn detail(app: &App, s: &Session, rl: RowLook, t: &Theme, room: usize) -> Vec<Seg> {
+    if let Some(receipt) = popover::receipt_segs(app, s.term, t) {
+        return rl.on(receipt, t);
+    }
+    if s.helpers_wanted > 0 {
+        return rl.on(vec![seg(truncate(&helpers_line_in(s.helpers_wanted, room), room), Style::default().fg(t.blocked))], t);
+    }
     let checks = check::reported(s);
     let segs = if checks.len() > 1 {
         let (word, st) = check::headline_word(checks, t);
@@ -550,17 +503,17 @@ fn detail(app: &App, s: &Session, rl: RowLook, t: &Theme, room: usize) -> Vec<Se
     } else if let Some(info) = check::shown(s) {
         check::result_words(info, t)
     } else if s.resume_at.is_some() {
-        status_words(s, t)
+        status_words(app, s, t)
     } else if let Some(q) = &s.question {
         vec![seg(format!("asks: {q}"), Style::default().fg(t.blocked))]
     } else {
-        status_words(s, t)
+        status_words(app, s, t)
     };
     rl.on(segs, t)
 }
 
 /// What a session without a check result or a question is doing, in words.
-fn status_words(s: &Session, t: &Theme) -> Vec<Seg> {
+fn status_words(app: &App, s: &Session, t: &Theme) -> Vec<Seg> {
     let muted = |text: &str| vec![seg(text.to_string(), Style::default().fg(t.muted))];
     if s.asleep {
         return muted("asleep zzZ");
@@ -569,11 +522,21 @@ fn status_words(s: &Session, t: &Theme) -> Vec<Seg> {
         return muted(&format!("⏸ resumes in {}", until(at)));
     }
     match s.status {
-        Status::Working => vec![seg(format!("{} · ", s.agent), Style::default().fg(t.muted)), seg("working", Style::default().fg(t.accent))],
+        Status::Working => {
+            let mut words = vec![seg(format!("{} · ", s.agent), Style::default().fg(t.muted))];
+            words.extend(working_text(app, "working", t.accent, t, Style::default()));
+            // Only an agent that reports helpers has a count (Codex reports none).
+            match agent_count(s) {
+                0 => {}
+                _ if !app.cfg.ui.subagent_count => {}
+                n => words.push(seg(format!(" · {n} agent{}", if n == 1 { "" } else { "s" }), Style::default().fg(t.text))),
+            }
+            words
+        }
         Status::Blocked => vec![seg("needs you", Style::default().fg(t.blocked))],
-        Status::Done => muted("finished · not seen"),
-        Status::Idle if s.is_agent && s.title == WAITING => muted(WAITING),
-        Status::Idle if s.is_agent => muted("finished"),
+        Status::Done => vec![seg("done · not seen", Style::default().fg(t.done).add_modifier(Modifier::BOLD))],
+        Status::Idle if is_new(s) => vec![seg(format!("{} · ", s.agent), Style::default().fg(t.muted)), seg("new · type to begin", Style::default().fg(t.accent))],
+        Status::Idle if s.is_agent => muted("done"),
         _ => Vec::new(),
     }
 }
@@ -602,31 +565,12 @@ fn draw_line(app: &mut App, buf: &mut Buffer, model: &[Proj], line: &Line, cols:
             put(buf, x, y, &[seg(truncate(text, room), Style::default().bg(pb).fg(*c).add_modifier(Modifier::ITALIC))], cols.end());
             hit(app, row, ScreenHit::Session(*term));
         }
-        Line::Subagent(name, term) => {
-            let base = Style::default().bg(pb).fg(t.muted).add_modifier(Modifier::DIM);
-            put(buf, x, y, &[seg("  ↳ ", base), seg(truncate(name, room.saturating_sub(4)), base)], cols.end());
-            hit(app, row, ScreenHit::Session(*term));
-        }
-        Line::SubagentRecord(activity, term, index) => {
-            put(buf, x, y, &subagent_segs(activity, pb, t, room), cols.end());
-            hit(app, row, ScreenHit::SubagentInfo(*term, *index));
-        }
         // Nothing running: one click starts a shell there.
         Line::Empty(pi) => {
             let st = Style::default().bg(pb);
             let nk = k(app, &Action::ShellHere);
-            put(buf, cols.x + 2, y, &[seg("empty  ", st.fg(t.muted).add_modifier(Modifier::ITALIC)), seg(nk, st.fg(t.accent).add_modifier(Modifier::BOLD)), seg(" new pane", st.fg(t.muted))], cols.end());
+            put(buf, cols.x + 2, y, &[seg("empty  ", st.fg(t.muted).add_modifier(Modifier::ITALIC)), seg(nk, st.fg(t.accent).add_modifier(Modifier::BOLD)), seg(" new shell", st.fg(t.muted))], cols.end());
             hit(app, row, ScreenHit::ShellIn(*pi));
-        }
-        // A session's subagents: the heading folds and unfolds them.
-        Line::Subs(term, n, open) => {
-            if small {
-                return;
-            }
-            let st = Style::default().bg(pb).fg(if hovered(app, row) { t.text } else { t.muted });
-            let label = format!("{} {n} subagent{}", if *open { "▾" } else { "▸" }, if *n == 1 { "" } else { "s" });
-            put(buf, x, y, &[seg(label, st)], cols.end());
-            hit(app, row, ScreenHit::ToggleSubs(*term));
         }
         // A quiet heading: "SSH 2 ────".
         Line::Section(kind, n) => {
@@ -637,40 +581,6 @@ fn draw_line(app: &mut App, buf: &mut Buffer, model: &[Proj], line: &Line, cols:
         }
         Line::Sess(..) | Line::Detail(_) | Line::Third(_) | Line::Gap => {}
     }
-}
-
-/// A runtime-reported helper: its state's marker and what it is doing, in its state's colour.
-fn subagent_segs(activity: &crate::protocol::SubagentActivity, pb: Color, t: &Theme, room: usize) -> Vec<Seg> {
-    use crate::protocol::SubagentState as S;
-    let state_color = match activity.state {
-        S::Working | S::Cancelled => t.muted,
-        S::WaitingForInput | S::AwaitingApproval => t.blocked,
-        S::Completed => t.done,
-        S::Failed | S::ConnectionLost => t.err,
-        S::Starting => t.accent,
-    };
-    let state_marker = match activity.state {
-        S::Working => None,
-        S::WaitingForInput | S::ConnectionLost => Some("?"),
-        S::AwaitingApproval => Some("!"),
-        S::Completed => Some("✓"),
-        S::Failed => Some("×"),
-        S::Cancelled => Some("–"),
-        S::Starting => Some("◷"),
-    };
-    let detail = subagent_label(&activity.name, activity.task.as_deref(), activity.latest_activity.as_deref());
-    let st = Style::default().bg(pb).add_modifier(Modifier::DIM);
-    let mut label_style = st.fg(state_color);
-    if activity.state != S::Working {
-        label_style = label_style.add_modifier(Modifier::BOLD);
-    }
-    let mut segs = vec![seg("  ↳ ", st.fg(t.muted))];
-    if let Some(marker) = state_marker {
-        segs.push(seg(format!("{marker} "), st.fg(state_color)));
-    }
-    let label_room = room.saturating_sub(segs_width(&segs) as usize);
-    segs.push(seg(truncate(&detail, label_room), label_style));
-    segs
 }
 
 /// A folder's header: its fold arrow and name, and right-aligned what it is (branch, its
@@ -689,6 +599,13 @@ fn draw_proj(app: &mut App, buf: &mut Buffer, model: &[Proj], pi: usize, cols: C
     if on {
         check::edge(app, buf, cols.x, y, t.accent, bg);
     }
+    // A selected folder row is one line, so it can end in a half-circle; the multi-line session
+    // blocks would scallop, so they keep square ends. Text stops a cell short of the cap.
+    let round = on && Look::of(&app.cfg.ui).round_tabs;
+    let text_end = if round { row.right() - 1 } else { cols.rx + 1 };
+    if round {
+        buf[(text_end, y)].set_symbol(CAP_R).set_fg(bg).set_bg(pb);
+    }
     let st = Style::default().bg(bg);
     let marks = check::marks(app);
     let fold = if open { marks.fold } else { marks.arrow };
@@ -699,17 +616,17 @@ fn draw_proj(app: &mut App, buf: &mut Buffer, model: &[Proj], pi: usize, cols: C
         left.extend(chip("NEW", Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD)));
     }
     let lx = cols.x + 1;
-    put(buf, lx, y, &left, cols.rx + 1);
+    put(buf, lx, y, &left, text_end);
     hit(app, row, ScreenHit::ToggleProj(pi));
     if hov && !small {
         row_glyph(app, buf, Rect { x: cols.rx.saturating_sub(2), y, width: 1, height: 1 }, "+", bg, t.accent, t, ScreenHit::ShellIn(pi));
         row_menu_button(app, buf, Rect { x: cols.rx, y, width: 1, height: 1 }, bg, t, ScreenHit::RowMenuProj(pi));
         return;
     }
-    let room = cols.rx.saturating_sub(lx + segs_width(&left));
+    let room = text_end.saturating_sub(1).saturating_sub(lx + segs_width(&left));
     if room >= META_MIN_COLS {
         let meta = truncate(&proj_meta(app, p, open), room as usize);
-        put(buf, (cols.rx + 1).saturating_sub(meta.width() as u16), y, &[seg(meta, st.fg(t.muted))], cols.rx + 1);
+        put(buf, text_end.saturating_sub(meta.width() as u16), y, &[seg(meta, st.fg(t.muted))], text_end);
     }
 }
 
@@ -747,23 +664,47 @@ fn checkpoint_names(app: &App, p: &Proj) -> Vec<String> {
     names
 }
 
-/// The foot on the last row inside: + new on the left, the Actions key on the right.
-fn draw_foot(app: &mut App, buf: &mut Buffer, r: Rect, cols: Cols, pb: Color, t: &Theme, flat: bool) {
-    if r.height < 5 {
+/// A `btn` chip for an action: its word with the letter of its leader key lit in the accent, bold,
+/// or the key then the word when the key is not a letter of it. Its ends follow `ui.pill_caps`.
+pub(super) fn key_chip(app: &App, word: &str, action: &Action, t: &Theme, outer: Color) -> Vec<Seg> {
+    // A cap needs a raised ground to sit on: on the plain `bg` (which a transparent terminal
+    // background hands back to the terminal) it would have none, so the chip stays square.
+    let look = Look { caps: Look::of(&app.cfg.ui).caps && outer != Color::Reset && outer != t.bg, ..Look::of(&app.cfg.ui) };
+    let key = k(app, action);
+    let plain = Style::default().fg(t.text).bg(t.btn);
+    let lit = Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD);
+    let first = word.chars().next();
+    let body = if first.is_some_and(|c| key.eq_ignore_ascii_case(&c.to_string())) {
+        lit_letter(word, first, plain, lit)
+    } else {
+        vec![seg(key, lit), seg(format!(" {word}"), plain)]
+    };
+    pill(look, body, t.btn, outer)
+}
+
+/// The foot, lifted a row off the bottom under a `line` divider, with no band behind it: a
+/// `new` chip a column in and a `menu` chip at the right. Each lights its key's letter (the
+/// leader key that does it); they drop from the end when the sidebar is too narrow.
+fn draw_foot(app: &mut App, buf: &mut Buffer, r: Rect, cols: Cols, pb: Color, t: &Theme) {
+    if r.height < 6 {
         return;
     }
-    let y = r.bottom().saturating_sub(if flat { 1 } else { 2 });
-    let st = Style::default().bg(pb);
-    let key = st.fg(t.accent).add_modifier(Modifier::BOLD);
-    let new = [seg("+", key), seg(" new", st.fg(t.text))];
+    let y = r.bottom().saturating_sub(2);
+    hline(buf, cols.x, y - 1, (cols.rx + 1).saturating_sub(cols.x), t, pb);
+    let new = key_chip(app, "new", &Action::ShellHere, t, pb);
+    let menu = key_chip(app, "menu", &Action::Menu, t, pb);
+    let (nw, mw) = (segs_width(&new), segs_width(&menu));
     let nx = cols.x + 1;
+    if nx + nw > cols.rx + 1 {
+        return;
+    }
     put(buf, nx, y, &new, cols.rx + 1);
-    hit(app, Rect { x: nx, y, width: segs_width(&new), height: 1 }, ScreenHit::NewShell);
-    let actions = [seg(k(app, &Action::Actions), key), seg(" actions", st.fg(t.text))];
-    let w = segs_width(&actions);
-    let ax = (cols.rx + 1).saturating_sub(w);
-    put(buf, ax, y, &actions, cols.rx + 1);
-    hit(app, Rect { x: ax, y, width: w, height: 1 }, ScreenHit::Actions);
+    hit(app, Rect { x: nx, y, width: nw, height: 1 }, ScreenHit::NewShell);
+    let mx = cols.rx.saturating_sub(mw);
+    if mx > nx + nw {
+        put(buf, mx, y, &menu, cols.rx);
+        hit(app, Rect { x: mx, y, width: mw, height: 1 }, ScreenHit::Actions);
+    }
 }
 
 /// The ⋯ that opens a sidebar row's menu (for terminals that keep right-clicks).
@@ -781,24 +722,6 @@ fn row_glyph(app: &mut App, buf: &mut Buffer, r: Rect, glyph: &str, bg: Color, f
     }
     put(buf, r.x, r.y, &[seg(glyph, st)], r.right());
     hit(app, r, h);
-}
-
-#[cfg(test)]
-mod subagent_tests {
-    use super::{subagent_label, subagent_stage};
-
-    #[test]
-    fn helpers_show_reported_tasks_and_use_roles_only_as_a_fallback() {
-        assert_eq!(subagent_stage("planner", None), "Planning");
-        assert_eq!(subagent_stage("general-purpose", Some("Review the test changes")), "Reviewing");
-        assert_eq!(subagent_stage("general-purpose", Some("Implement the fix")), "Building");
-        assert_eq!(subagent_stage("Explore", None), "Researching");
-        assert_eq!(subagent_label("general-purpose", Some(" Review the test changes "), None), "Review the test changes");
-        assert_eq!(subagent_label("general-purpose", None, Some("PreToolUse: Bash")), "Using Bash");
-        assert_eq!(subagent_label("planner", None, None), "Planning");
-        assert_eq!(subagent_label("Tools Redesign", None, None), "Tools Redesign");
-        assert_eq!(subagent_label("general-purpose", None, Some("Runtime reported child start")), "Working");
-    }
 }
 
 #[cfg(test)]
@@ -923,6 +846,48 @@ mod frame_tests {
         assert_eq!(row_for("integration-suite").trim_start_matches(['▎', ' ']), "failed: integration…", "a word that can't fit is cut, not dropped");
     }
 
+    /// The working row's first line and its second, with the Appearance spinner `frames` in
+    /// glyph set `glyphs`.
+    fn working_rows(frames: &[&str], glyphs: &str, layout: Layout) -> (String, String) {
+        let mut app = world(Stage::None);
+        app.cfg.ui.spinner = frames.iter().map(|f| f.to_string()).collect();
+        let text = frame(&mut app, layout, 160, 45, glyphs);
+        let rows = inner(&text, app.screen.side_rect, layout == Layout::Flat);
+        let at = rows.iter().position(|r| r.contains("add-payments")).expect("the working row");
+        (rows[at].trim().trim_start_matches('▎').trim().to_string(), rows[at + 1].trim().to_string())
+    }
+
+    #[test]
+    fn the_bars_spinner_marks_a_working_row_and_the_name_steps_right_for_it() {
+        let (first, second) = working_rows(crate::config::BARS_FRAMES, "unicode", Layout::Floating);
+        assert!(first.starts_with("⣶⡆ add-payments"), "motion off holds the third frame: {first:?}");
+        assert_eq!(second, "claude · working");
+        let (one_cell, _) = working_rows(&["|"], "unicode", Layout::Floating);
+        assert!(one_cell.starts_with("| add-payments"), "a one-column choice keeps the name where it was: {one_cell:?}");
+        let (flat, _) = working_rows(crate::config::BARS_FRAMES, "unicode", Layout::Flat);
+        assert!(flat.starts_with("⣶⡆ add-payments"), "{flat:?}");
+    }
+
+    #[test]
+    fn the_ascii_glyph_set_draws_the_bars_in_ascii_and_leaves_other_choices_alone() {
+        let (bars, _) = working_rows(crate::config::BARS_FRAMES, "ascii", Layout::Floating);
+        assert!(bars.is_ascii() && bars.starts_with("O  add-payments"), "{bars:?}");
+        let (custom, _) = working_rows(&["a", "b", "c"], "ascii", Layout::Floating);
+        assert!(custom.starts_with("c add-payments"), "a custom choice is the user's: {custom:?}");
+    }
+
+    #[test]
+    fn the_working_mark_is_bold_and_its_name_holds_one_colour_without_motion() {
+        use ratatui::style::Modifier;
+        let mut app = world(Stage::None);
+        app.cfg.ui.spinner = crate::config::BARS_FRAMES.iter().map(|f| f.to_string()).collect();
+        let buf = crate::client::v7_fixture::cells(&mut app, Layout::Floating, 160, 45, "unicode");
+        let (gx, gy) = (0..45u16).flat_map(|y| (0..160u16).map(move |x| (x, y))).find(|&(x, y)| buf[(x, y)].symbol() == "⣶").expect("the mark");
+        assert!(buf[(gx, gy)].modifier.contains(Modifier::BOLD), "the mark is bold");
+        let name: Vec<_> = (gx + 3..gx + 3 + "add-payments".len() as u16).map(|x| buf[(x, gy)].fg).collect();
+        assert!(name.windows(2).all(|w| w[0] == w[1]), "no shimmer band without motion: {name:?}");
+    }
+
     #[test]
     fn the_sidebar_rows_match_the_v7_reference_in_every_layout_and_size() {
         for stage in STAGES {
@@ -933,5 +898,195 @@ mod frame_tests {
             }
             check(stage, Layout::Flat, (80, 24), "ascii");
         }
+    }
+}
+
+#[cfg(test)]
+mod v8_tests {
+    use super::*;
+    use crate::client::v7_fixture::{LAYOUTS, Layout, Stage, cells, raw_text, world};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::style::Modifier;
+
+    fn side_rows(app: &mut App, layout: Layout, w: u16, h: u16) -> Vec<String> {
+        let text = raw_text(app, layout, w, h, "unicode");
+        let r = app.screen.side_rect;
+        text.lines().map(|l| l.chars().skip(r.x as usize).take(r.width as usize).collect::<String>()).collect()
+    }
+
+    fn has(rows: &[String], needle: &str) -> bool {
+        rows.iter().any(|r| r.contains(needle))
+    }
+
+    /// A sidebar row's words, without its border, bar and padding.
+    fn said(row: &str) -> &str {
+        row.trim_matches(|c| "│▎ ".contains(c))
+    }
+
+    /// The cell where `needle` starts on the first row that has it, among the sidebar's rows.
+    fn find(buf: &ratatui::buffer::Buffer, app: &App, needle: &str) -> (u16, u16) {
+        let r = app.screen.side_rect;
+        (r.y..r.bottom())
+            .find_map(|y| {
+                let row: String = (r.x..r.right()).map(|x| buf[(x, y)].symbol()).collect();
+                row.find(needle).map(|at| (r.x + row[..at].chars().count() as u16, y))
+            })
+            .unwrap_or_else(|| panic!("{needle:?} is not in the sidebar"))
+    }
+
+    #[test]
+    fn line_two_says_what_each_state_is_doing() {
+        let mut app = world(Stage::None);
+        app.snap.terms.get_mut(&2).unwrap().subagents = vec!["a".into(), "b".into()];
+        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
+        assert!(has(&rows, "claude · working · 2 agents"), "a count when the agent reports helpers: {rows:#?}");
+        app.cfg.ui.subagent_count = false;
+        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
+        assert!(has(&rows, "claude · working") && !has(&rows, "· 2 agents"), "Settings > Agents can turn the count off: {rows:#?}");
+        app.cfg.ui.subagent_count = true;
+        assert!(has(&rows, "done · not seen"), "{rows:#?}");
+        assert!(has(&rows, "asks: use pnpm or npm?"), "{rows:#?}");
+        app.snap.terms.get_mut(&2).unwrap().subagents.clear();
+        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
+        assert!(has(&rows, "claude · working") && !has(&rows, "agents"), "no count when none is reported: {rows:#?}");
+        // Seen and finished reads `done`; one that has been told nothing is new.
+        app.snap.terms.get_mut(&4).unwrap().status = Status::Idle;
+        let new = app.snap.terms.get_mut(&5).unwrap();
+        (new.asleep, new.status, new.label) = (false, Status::Idle, String::new());
+        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
+        assert!(rows.iter().any(|r| said(r) == "done"), "{rows:#?}");
+        assert!(has(&rows, "codex · new · type to begin"), "{rows:#?}");
+    }
+
+    #[test]
+    fn only_a_finished_seen_row_collapses_below_140_columns() {
+        let mut app = world(Stage::None);
+        app.snap.terms.get_mut(&4).unwrap().status = Status::Idle;
+        for layout in LAYOUTS {
+            let rows = side_rows(&mut app, layout, 100, 30);
+            assert!(has(&rows, "claude · working"), "{layout:?}: a working row keeps its line: {rows:#?}");
+            assert!(has(&rows, "asks: use pnpm"), "{layout:?}: {rows:#?}");
+            assert!(!rows.iter().any(|r| said(r) == "done"), "{layout:?}: a plain done row is one line: {rows:#?}");
+            let rows = side_rows(&mut app, layout, 160, 45);
+            assert!(rows.iter().any(|r| said(r) == "done"), "{layout:?}: from 140 columns it has its line: {rows:#?}");
+        }
+    }
+
+    #[test]
+    fn a_row_that_wants_a_look_is_bold_and_a_done_one_is_plain() {
+        let mut app = world(Stage::None);
+        app.snap.terms.get_mut(&5).unwrap().asleep = false;
+        app.snap.terms.get_mut(&5).unwrap().status = Status::Idle;
+        let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
+        let t = app.theme.clone();
+        let style = |name: &str| {
+            let (x, y) = find(&buf, &app, name);
+            (buf[(x, y)].modifier.contains(Modifier::BOLD), buf[(x, y)].fg)
+        };
+        assert_eq!(style("warm-finch"), (true, t.strong), "needs you: strong and bold");
+        assert_eq!(style("quick-fox"), (true, t.strong), "done, not seen: strong and bold");
+        assert_eq!(style("old-moth"), (false, t.text), "done: text, not bold");
+        let (x, y) = find(&buf, &app, "done · not seen");
+        assert_eq!((buf[(x, y)].fg, buf[(x, y)].modifier.contains(Modifier::BOLD)), (t.done, true), "line two of an unseen row is bold green");
+        let (x, y) = find(&buf, &app, "asks:");
+        assert_eq!(buf[(x, y)].fg, t.blocked, "the question is amber");
+    }
+
+    #[test]
+    fn the_foot_is_two_chips_lifted_off_the_bottom_under_a_divider_with_no_band() {
+        for layout in LAYOUTS {
+            let mut app = world(Stage::None);
+            let buf = cells(&mut app, layout, 160, 45, "unicode");
+            let (r, t) = (app.screen.side_rect, app.theme.clone());
+            let foot_y = r.bottom() - 2;
+            let row = |y: u16| -> String { (r.x..r.right()).map(|x| buf[(x, y)].symbol()).collect() };
+            assert!(row(foot_y).contains("new") && row(foot_y).contains("menu"), "{layout:?}: {:?}", row(foot_y));
+            assert!(row(foot_y - 1).contains("────"), "{layout:?}: a divider above: {:?}", row(foot_y - 1));
+            let line_fg = (r.x..r.right()).find(|x| buf[(*x, foot_y - 1)].symbol() == "─").map(|x| buf[(x, foot_y - 1)].fg);
+            assert_eq!(line_fg, Some(t.line), "{layout:?}: the divider is `line`");
+            // No band: the cells between the chips are the sidebar's own ground.
+            let (n, _) = find(&buf, &app, "new");
+            let (m, _) = find(&buf, &app, "menu");
+            assert_eq!(buf[(n + 8, foot_y)].bg, buf[(n + 8, foot_y - 2)].bg, "{layout:?}: no band behind the foot");
+            assert!(m > n + 8, "{layout:?}: menu is at the right");
+            // Key letters lit in the accent, bold; the rest in text; chips raised.
+            for (word, x) in [("new", n), ("menu", m)] {
+                let lit = &buf[(x, foot_y)];
+                assert_eq!((lit.fg, lit.bg, lit.modifier.contains(Modifier::BOLD)), (t.accent, t.btn, true), "{layout:?}: the {word} chip's key letter");
+                assert_eq!(buf[(x + 1, foot_y)].fg, t.text, "{layout:?}: the rest of {word}");
+            }
+            let hits = |h: ScreenHit| app.hits.iter().any(|(rect, hit)| *hit == crate::client::Hit::Screen(h) && rect.y == foot_y);
+            assert!(hits(ScreenHit::NewShell) && hits(ScreenHit::Actions), "{layout:?}: both chips are clickable");
+        }
+    }
+
+    #[test]
+    fn z_collapses_into_the_strip_and_capital_z_hides_and_each_restores() {
+        let mut app = world(Stage::None);
+        let area = ratatui::layout::Rect::new(0, 0, 120, 30);
+        assert!(app.sidebar && !app.side_hidden);
+        app.act(Action::ToggleSidebar);
+        app.side_frac = 0.0;
+        assert!(!app.sidebar && !app.side_hidden && super::super::draw::strip_on(&app), "z: the strip");
+        assert_eq!(super::super::draw::grid(&app, area).panes.y, 1, "the panes start under the strip");
+        app.act(Action::HideSidebar);
+        app.side_frac = 0.0;
+        assert!(app.side_hidden && !super::super::draw::strip_on(&app), "Z: hidden");
+        let g = super::super::draw::grid(&app, area);
+        assert_eq!((g.panes.x, g.panes.y, g.panes.width), (0, 0, 120), "hidden gives the panes everything");
+        app.act(Action::ToggleSidebar);
+        assert!(app.sidebar && !app.side_hidden, "z restores the sidebar");
+        app.act(Action::HideSidebar);
+        app.act(Action::HideSidebar);
+        assert!(app.sidebar && !app.side_hidden, "Z again restores it");
+    }
+
+    #[test]
+    fn the_strip_switches_with_arrows_and_digits_only_while_it_has_the_keys() {
+        let mut app = world(Stage::None);
+        let (w, h) = (160, 45);
+        app.sidebar = false;
+        let _ = raw_text(&mut app, Layout::Floating, w, h, "unicode");
+        let strip: String = raw_text(&mut app, Layout::Floating, w, h, "unicode").lines().next().unwrap().into();
+        for name in ["fix-footer", "add-payments", "warm-finch", "quick-fox", "old-moth"] {
+            assert!(strip.contains(name), "{name} is a chip: {strip}");
+        }
+        assert!(strip.trim_start().starts_with('»'), "the expand chip comes first: {strip}");
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        // The pane has the keys: a digit is typed into it, nothing switches.
+        app.mode = Mode::Normal;
+        app.on_key(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
+        assert!(!std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, crate::protocol::ClientMsg::Command(crate::protocol::Command::FocusPane { .. }))));
+        // The strip has them: 1–9 jump, ← → step.
+        app.act(Action::BrowseTree);
+        let _ = raw_text(&mut app, Layout::Floating, w, h, "unicode");
+        app.on_key(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
+        assert_eq!(app.screen.cursor, app.screen.side_items.iter().filter_map(|i| if let SideItem::Sess(t) = i { Some(*t) } else { None }).nth(2));
+        assert_eq!(app.mode, Mode::Side, "the keys stay on the strip");
+        let third = app.screen.cursor;
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        assert_ne!(app.screen.cursor, third);
+        app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+        assert_eq!(app.screen.cursor, third);
+        assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, crate::protocol::ClientMsg::Command(crate::protocol::Command::FocusPane { .. }))), "the session opens in the pane");
+    }
+
+    #[test]
+    fn the_selected_chip_is_accent_with_ink_when_the_strip_has_the_keys_else_raised() {
+        let mut app = world(Stage::None);
+        app.sidebar = false;
+        let t = app.theme.clone();
+        let chip = |app: &mut App| {
+            let buf = cells(app, Layout::Floating, 160, 45, "unicode");
+            let x = (0..160u16).find(|x| (0..3).map(|i| buf[(x + i, 0)].symbol()).collect::<String>() == "fix").expect("the chip");
+            (buf[(x, 0)].bg, buf[(x, 0)].fg)
+        };
+        chip(&mut app);
+        app.act(Action::BrowseTree);
+        assert_eq!(chip(&mut app), (t.accent, t.acc_ink), "the strip has the keys");
+        app.mode = Mode::Normal;
+        app.screen.cursor = None;
+        assert_eq!(chip(&mut app).0, t.btn, "else raised");
     }
 }

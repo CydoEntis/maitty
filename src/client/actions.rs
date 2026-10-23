@@ -19,14 +19,14 @@ impl App {
         match a {
             Action::PasteImage => self.paste_image(),
             Action::Find(tab) => self.open_find(tab),
-            Action::AgentStatusSetup => self.menu("Agent status · choose app, any model".into(), vec![
-                ("Set up Codex status hooks".into(), menu::Act::InstallStatus("codex".into())),
-                ("Set up Pi status hooks".into(), menu::Act::InstallStatus("pi".into())),
-                ("Set up OpenCode status hooks".into(), menu::Act::InstallStatus("opencode".into())),
-                ("Set up OMP status hooks".into(), menu::Act::InstallStatus("omp".into())),
-                ("Set up Mastracode status hooks".into(), menu::Act::InstallStatus("mastracode".into())),
-                ("Set up Kilo status hooks".into(), menu::Act::InstallStatus("kilo".into())),
-                ("Set up Kimi status hooks".into(), menu::Act::InstallStatus("kimi".into())),
+            Action::AgentStatusSetup => self.menu("Connect an agent · it then reports working, needs you and done itself".into(), vec![
+                ("Connect Codex".into(), menu::Act::InstallStatus("codex".into())),
+                ("Connect Pi".into(), menu::Act::InstallStatus("pi".into())),
+                ("Connect OpenCode".into(), menu::Act::InstallStatus("opencode".into())),
+                ("Connect OMP".into(), menu::Act::InstallStatus("omp".into())),
+                ("Connect Mastracode".into(), menu::Act::InstallStatus("mastracode".into())),
+                ("Connect Kilo".into(), menu::Act::InstallStatus("kilo".into())),
+                ("Connect Kimi".into(), menu::Act::InstallStatus("kimi".into())),
             ], (3, 3)),
             Action::Branches => self.open_branches(None),
             Action::History => self.mode = Mode::History { sel: 0 },
@@ -54,7 +54,6 @@ impl App {
                     self.mode = Mode::Prompt { kind: PromptKind::ConfirmCloseWorkspace(ws), input: String::new() };
                 }
             }
-            Action::Palette => self.mode = Mode::Picker { query: String::new(), sel: 0, commands: true },
             Action::StopAgent => {
                 if let Some(term) = self.target_term() {
                     self.send(ClientMsg::Input { term, data: vec![3] });
@@ -103,7 +102,6 @@ impl App {
                 self.mode = Mode::Prompt { kind: PromptKind::ConfirmRemoveWorktree(w.id), input: String::new() };
             }
             Action::Detach => self.quit = Some("detached".into()),
-            Action::Help => self.open_shortcuts(),
             Action::ReloadConfig => self.reload_config(),
             Action::PaneInfo => {
                 if let Some(msg) = self.focused().and_then(|t| self.pane_info(t)) {
@@ -121,6 +119,7 @@ impl App {
             }
             Action::Update => self.ask_update(),
             Action::CheckUpdate => self.check_for_update(true),
+            Action::Restart => self.restart_from_menu(),
             Action::TidyWorktrees => self.tidy_open_here(),
             Action::None => {}
             // The rest are handled by screen_act above.
@@ -165,22 +164,14 @@ impl App {
         }
     }
 
-    /// "C-b %" for an action bound after the leader, "M-h" for a global one.
-    pub(super) fn key_for(&self, a: &Action) -> String {
-        if let Some(k) = self.keymap.prefixed_order.iter().find(|k| self.keymap.prefixed.get(k) == Some(a)) {
-            return format!("{} {k}", self.keymap.prefix);
-        }
-        self.keymap.global.iter().find(|(_, x)| *x == a).map(|(k, _)| k.to_string()).unwrap_or_default()
-    }
-
     /// Every command worth offering in the palette, plus your own spawn bindings.
     pub(super) fn palette_commands(&self) -> Vec<Action> {
         use crate::layout::Dir;
         let mut actions = vec![
             Action::Jump,
             Action::BrowseTree,
+            Action::StartSession,
             Action::NewPane,
-            Action::StartFleet,
             Action::ShellHere,
             Action::SplitRight,
             Action::SplitDown,
@@ -197,6 +188,7 @@ impl App {
             Action::Focus(Dir::Up),
             Action::Focus(Dir::Down),
             Action::ToggleSidebar,
+            Action::HideSidebar,
             Action::ClosePane,
             Action::NewTab,
             Action::NextTab,
@@ -234,13 +226,14 @@ impl App {
             Action::PaneInfo,
             Action::Update,
             Action::CheckUpdate,
+            Action::Restart,
             Action::TidyWorktrees,
             Action::Detach,
         ];
         let mut bound: Vec<_> = self.keymap.prefixed.iter().chain(self.keymap.global.iter()).collect();
         bound.sort_by_key(|(key, _)| key.to_config());
         for (_, action) in bound {
-            if !matches!(action, Action::None | Action::Palette | Action::Actions | Action::SendPrefix | Action::SideMove(_)) && !actions.contains(action) {
+            if !matches!(action, Action::None | Action::Palette | Action::Menu | Action::SendPrefix | Action::SideMove(_)) && !actions.contains(action) {
                 actions.push(action.clone());
             }
         }
@@ -450,66 +443,5 @@ impl App {
             Ok(()) => self.reload_config(),
             Err(e) => self.notify(format!("{e:#}"), true),
         }
-    }
-
-    pub(super) fn pick_items(&self, query: &str, commands: bool) -> Vec<PickItem> {
-        let q = query.to_lowercase();
-        let command_items: Vec<PickItem> = if commands {
-            self.palette_commands()
-                .into_iter()
-                .map(|a| PickItem {
-                    label: a.describe(),
-                    detail: String::new(),
-                    status: Status::None,
-                    key: self.key_for(&a),
-                    target: PickTarget::Command(a),
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
-        // In this layout the palette is commands only; Go to finds sessions.
-        if commands {
-            let words: Vec<&str> = q.split_whitespace().collect();
-            return command_items.into_iter().filter(|i| words.iter().all(|w| i.label.to_lowercase().contains(w))).collect();
-        }
-        let mut agents: Vec<PickItem> = self
-            .snap
-            .terms
-            .values()
-            .filter(|t| t.agent.is_some())
-            .map(|t| PickItem {
-                label: t.display_name().to_string(),
-                detail: self.describe_term(t.id),
-                status: t.status,
-                key: String::new(),
-                target: PickTarget::Pane(t.id),
-            })
-            .collect();
-        agents.sort_by_key(|i| i.status.urgency());
-        let workspaces = self.snap.workspaces.iter().map(|w| PickItem {
-            label: w.name.clone(),
-            detail: match &w.git {
-                Some(g) => format!("workspace · {} · {}", g.branch, w.cwd.display()),
-                None => format!("workspace · {}", w.cwd.display()),
-            },
-            status: Status::None,
-            key: String::new(),
-            target: PickTarget::Workspace(w.id),
-        });
-        let shells = self.snap.terms.values().filter(|t| t.agent.is_none()).map(|t| PickItem {
-            label: t.display_name().to_string(),
-            detail: self.describe_term(t.id),
-            status: Status::None,
-            key: String::new(),
-            target: PickTarget::Pane(t.id),
-        });
-        command_items
-            .into_iter()
-            .chain(agents)
-            .chain(workspaces)
-            .chain(shells)
-            .filter(|i| q.is_empty() || i.label.to_lowercase().contains(&q) || i.detail.to_lowercase().contains(&q))
-            .collect()
     }
 }

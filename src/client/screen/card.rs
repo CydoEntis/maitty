@@ -65,14 +65,6 @@ pub(in crate::client) fn pane_bg(t: &Theme) -> Color {
     t.bg
 }
 
-/// A state's colour on a card or tab: working reads as plain text, the rest as their state.
-pub(in crate::client) fn state_color(t: &Theme, st: Status) -> Color {
-    match st {
-        Status::None => t.muted,
-        s => t.status(s),
-    }
-}
-
 /// How the cards are laid out and drawn, from the settings.
 #[derive(Clone, Copy)]
 pub(in crate::client) struct Look {
@@ -82,6 +74,8 @@ pub(in crate::client) struct Look {
     pub gap: u16,
     pub dim: f32,
     pub caps: bool,
+    /// Round the ends of the tab chips and the sidebar's selected folder row (`ui.round_tabs`).
+    pub round_tabs: bool,
 }
 
 impl Look {
@@ -98,7 +92,8 @@ impl Look {
                 "60%" => DIM_STRONG,
                 _ => DIM_DEFAULT,
             } },
-            caps: ui.pill_caps && !flat,
+            caps: ui.pill_caps,
+            round_tabs: ui.round_tabs,
         }
     }
 }
@@ -111,6 +106,27 @@ pub(in crate::client) fn pill(look: Look, segs: Vec<Seg>, bg: Color, outer: Colo
     out.extend(segs.into_iter().map(|(x, st)| (x, st.bg(bg))));
     out.push(end(r));
     out
+}
+
+/// `segs` with a half-circle cap each end, in the first and last segment's background, over
+/// `outer`. Unlike `pill` it keeps each segment's own colours, so a number chip and a name
+/// chip stay two colours inside one rounded shape.
+pub(in crate::client) fn round_ends(segs: Vec<Seg>, outer: Color) -> Vec<Seg> {
+    let cap = |glyph: &str, st: Option<&Seg>| {
+        let bg = st.and_then(|(_, s)| s.bg).unwrap_or(outer);
+        seg(glyph, Style::default().fg(bg).bg(outer))
+    };
+    let (l, r) = (cap(CAP_L, segs.first()), cap(CAP_R, segs.last()));
+    let mut out = vec![l];
+    out.extend(segs);
+    out.push(r);
+    out
+}
+
+/// What lies behind a pane's title chips: the header strip in Flat, the desk the top border
+/// is drawn on in Cards (no ground of its own).
+pub(in crate::client) fn title_ground(look: Look, t: &Theme) -> Color {
+    if look.flat { t.card } else { Color::Reset }
 }
 
 /// A pill as wide as `w`: the selected row of a list, an input, the answer bar.
@@ -142,12 +158,6 @@ pub(in crate::client) fn tint_row(look: Look, buf: &mut Buffer, x: u16, y: u16, 
         buf[(x, y)].set_symbol(CAP_L).set_fg(bg).set_bg(outer);
         buf[(right - 1, y)].set_symbol(CAP_R).set_fg(bg).set_bg(outer);
     }
-}
-
-/// A key as a little pill: the accent on a button, or ink on the accent when it's the one.
-pub(in crate::client) fn keycap_pill(look: Look, t: &Theme, key: &str, on: bool, outer: Color) -> Vec<Seg> {
-    let (bg, fg) = if on { (t.accent, t.acc_ink) } else { (t.btn, t.accent) };
-    pill(look, vec![seg(key, Style::default().fg(fg).add_modifier(Modifier::BOLD))], bg, outer)
 }
 
 /// A button as a pill: the primary one in the accent, the others raised with their key lit.
@@ -328,5 +338,34 @@ mod tests {
         set_round(true);
         std::thread::spawn(|| set_round(false)).join().unwrap();
         assert_eq!(ends(Color::Red).0.0, CAP_L, "another thread's setting leaked into this one");
+    }
+
+    fn look(layout: &str, caps: bool) -> Look {
+        let ui = crate::config::Ui { layout: layout.into(), pill_caps: caps, ..Default::default() };
+        Look::of(&ui)
+    }
+
+    #[test]
+    fn pill_caps_apply_in_every_layout() {
+        for layout in ["cards", "flat"] {
+            assert!(look(layout, true).caps, "{layout}: caps on");
+            assert!(!look(layout, false).caps, "{layout}: caps off");
+        }
+    }
+
+    #[test]
+    fn a_flat_pill_end_sits_on_the_zones_ground() {
+        let (pill_bg, ground) = (Color::Rgb(40, 40, 40), Color::Rgb(10, 20, 30));
+        let mut buf = Buffer::empty(Rect::new(0, 0, 8, 1));
+        row_pill(look("flat", true), &mut buf, 1, 0, 6, pill_bg, ground);
+        for (x, cap) in [(1, CAP_L), (6, CAP_R)] {
+            let c = &buf[(x, 0)];
+            assert_eq!((c.symbol(), c.fg, c.bg), (cap, pill_bg, ground), "end at {x}");
+        }
+        assert_eq!(buf[(3, 0)].bg, pill_bg);
+
+        let mut square = Buffer::empty(Rect::new(0, 0, 8, 1));
+        row_pill(look("flat", false), &mut square, 1, 0, 6, pill_bg, ground);
+        assert_eq!((square[(1, 0)].symbol(), square[(1, 0)].bg), (" ", pill_bg), "off: a plain cell of the pill's colour");
     }
 }

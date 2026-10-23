@@ -125,6 +125,9 @@ impl App {
                 }
             }
             ServerMsg::Raise => crate::reveal::raise_window(),
+            // The server stopped for the update: an older window can't speak to the new one, so
+            // the installed seshi takes its place; a current window just connects again.
+            ServerMsg::Bye if self.daemon_restart_requested && self.window_stale() => self.relaunch_window(),
             ServerMsg::Bye if self.daemon_restart_requested => self.daemon_restart_reconnect = true,
             ServerMsg::Bye => self.quit = Some("server exited".into()),
             ServerMsg::Reply(Reply::Worktrees(list)) => {

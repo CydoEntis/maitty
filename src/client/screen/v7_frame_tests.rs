@@ -240,3 +240,76 @@ fn the_pointer_tints_exactly_the_region_under_it_once() {
         }
     }
 }
+
+/// The cells of every tab chip (number and name) and the + chip in the pane title, left to right.
+fn tab_rects(app: &App) -> Vec<Rect> {
+    use super::super::Hit;
+    let mut v: Vec<Rect> = app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(ScreenHit::TabPick(_) | ScreenHit::NewTab))).map(|(r, _)| *r).collect();
+    v.sort_by_key(|r| r.x);
+    v
+}
+
+#[test]
+fn square_tabs_draw_no_caps_and_keep_their_widths_by_default() {
+    for layout in LAYOUTS {
+        let mut app = world(Stage::None);
+        assert!(!app.cfg.ui.round_tabs, "off by default");
+        let buf = buffer(&mut app, layout, 160, 45);
+        let rects = tab_rects(&app);
+        assert_eq!(rects.len(), 3, "two tabs and the + chip: {layout:?}");
+        assert!(rects.iter().all(|r| (r.x..r.right()).all(|x| ![CAP_L, CAP_R].contains(&buf[(x, r.y)].symbol()))), "no caps: {layout:?}");
+        // " 1 " + " fix-footer " is 14 wide, " + " is 3.
+        assert_eq!(rects.last().map(|r| r.width), Some(3), "{layout:?}");
+    }
+}
+
+#[test]
+fn round_tabs_cap_every_chip_on_the_ground_behind_the_title() {
+    for layout in LAYOUTS {
+        let mut off = world(Stage::None);
+        buffer(&mut off, layout, 160, 45);
+        let square = tab_rects(&off);
+
+        let mut app = world(Stage::None);
+        app.cfg.ui.round_tabs = true;
+        let buf = buffer(&mut app, layout, 160, 45);
+        let t = app.theme.clone();
+        let rects = tab_rects(&app);
+        assert_eq!(rects.len(), 3, "{layout:?}");
+        let ground = if layout == Layout::Flat { t.card } else { Color::Reset };
+        for (r, was) in rects.iter().zip(&square) {
+            assert_eq!(r.width, was.width + 2, "the hit rect holds both caps: {layout:?}");
+            let (l, rt) = (&buf[(r.x, r.y)], &buf[(r.right() - 1, r.y)]);
+            assert_eq!((l.symbol(), l.bg), (CAP_L, ground), "left cap: {layout:?}");
+            assert_eq!((rt.symbol(), rt.bg), (CAP_R, ground), "right cap: {layout:?}");
+            assert_eq!(l.fg, buf[(r.x + 1, r.y)].bg, "the left cap is the chip's colour: {layout:?}");
+            assert_eq!(rt.fg, buf[(r.right() - 2, r.y)].bg, "the right cap is the chip's colour: {layout:?}");
+        }
+        assert_eq!(buf[(rects[0].x + 1, rects[0].y)].symbol(), " ", "{layout:?}");
+        let current = &buf[(rects[0].x, rects[0].y)];
+        assert_eq!(current.fg, t.accent, "the current tab's number chip is the accent: {layout:?}");
+    }
+}
+
+#[test]
+fn round_tabs_end_the_selected_folder_row_in_a_cap_and_off_leaves_it_square() {
+    for layout in LAYOUTS {
+        for on in [false, true] {
+            let mut app = world(Stage::None);
+            app.cfg.ui.round_tabs = on;
+            app.mode = Mode::Side;
+            app.screen.cursor = None;
+            app.screen.cursor_proj = Some(app.screen_model()[0].key.clone());
+            buffer(&mut app, layout, 160, 45);
+            let row = app.hits.iter().find_map(|(r, h)| matches!(h, super::super::Hit::Screen(ScreenHit::ToggleProj(0))).then_some(*r)).expect("a folder row");
+            let buf = buffer(&mut app, layout, 160, 45);
+            let t = app.theme.clone();
+            let last = &buf[(row.right() - 1, row.y)];
+            if on {
+                assert_eq!((last.symbol(), last.fg, last.bg), (CAP_R, t.sel_bg(), buf[(row.right() - 1, row.y + 1)].bg), "cap on the selection's colour over the pane: {layout:?}");
+            } else {
+                assert_ne!(last.symbol(), CAP_R, "{layout:?}");
+            }
+        }
+    }
+}

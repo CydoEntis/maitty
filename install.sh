@@ -93,4 +93,4 @@ esac
 
 say ""
 say "Next: run 'seshi doctor' to check your setup, then 'seshi'."
-say "If seshi was already running, restart it: seshi kill-server, then seshi."
+say "If seshi was already running, just run seshi: it restarts itself onto the new version (agents resume)."

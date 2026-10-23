@@ -42,8 +42,8 @@ impl Kept {
 }
 
 impl Daemon {
-    /// `new` took `old`'s place: the sessions `old` started are still its fleet.
-    fn takes_over_fleet(&mut self, old: TermId, new: TermId) {
+    /// `new` took `old`'s place: the helpers `old` started are still its.
+    fn takes_over_helpers(&mut self, old: TermId, new: TermId) {
         for t in self.terms.values_mut().filter(|t| t.started_by == Some(old)) {
             t.started_by = Some(new);
         }
@@ -305,7 +305,7 @@ impl Daemon {
             });
         }
         for (term, by) in started {
-            // Its commander didn't come back: it's on its own.
+            // The session that started it didn't come back: it's on its own.
             self.started(term, ids.get(&by).copied());
         }
         self.active_ws = self.workspaces.get(saved.active).or(self.workspaces.first()).map(|w| w.id);
@@ -352,7 +352,7 @@ impl Daemon {
                 }
             }
         }
-        self.takes_over_fleet(old, new);
+        self.takes_over_helpers(old, new);
         // Closing a terminal can block on Windows until its programs let go; never here.
         if let Some(t) = self.terms.remove(&old) {
             std::thread::spawn(move || drop(t));
@@ -412,7 +412,7 @@ impl Daemon {
                 w.cwd = dest.to_path_buf();
             }
         }
-        self.takes_over_fleet(old, new);
+        self.takes_over_helpers(old, new);
         self.remove_term(old);
         self.poll_git_soon();
         self.dirty = true;

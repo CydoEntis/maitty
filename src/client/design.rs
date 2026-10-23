@@ -151,9 +151,20 @@ pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind) -> Vec<Se
     v
 }
 
-/// A key drawn as a little keycap: the key on a raised ground.
+/// A key drawn as a keycap: ` key ` raised on `btn`, strong and bold. A combo (`Ctrl+Space`) is
+/// one cap per part with a dim `+` between. The one place keys are drawn as caps; its ends
+/// follow `ui.pill_caps`.
 pub(super) fn keycap(t: &Theme, key: &str) -> Vec<Seg> {
-    super::screen::chip(key, Style::default().bg(t.btn).fg(t.strong).add_modifier(Modifier::BOLD))
+    let cap = Style::default().bg(t.btn).fg(t.strong).add_modifier(Modifier::BOLD);
+    let parts: Vec<&str> = if key.chars().count() > 1 && key.contains('+') { key.split('+').filter(|p| !p.is_empty()).collect() } else { vec![key] };
+    let mut out = Vec::new();
+    for (i, part) in parts.into_iter().enumerate() {
+        if i > 0 {
+            out.push(seg("+", Style::default().fg(t.muted)));
+        }
+        out.extend(super::screen::chip(part, cap));
+    }
+    out
 }
 
 /// Keys as keycaps. Keys separated by two spaces are different sets; a set of four or more
@@ -177,17 +188,37 @@ pub(super) fn keycaps(t: &Theme, keys: &str, gap_bg: Color) -> Vec<Seg> {
     out
 }
 
-/// "Enter open   Tab switch" style hints, with keycaps.
-pub(super) fn cap_hints(t: &Theme, bg: Color, pairs: &[(&str, &str)]) -> Vec<Seg> {
+/// "Enter open   Tab switch" style hints, with keycaps, `gap` between the pairs.
+pub(super) fn cap_hints_gap(t: &Theme, bg: Color, gap: &str, pairs: &[(&str, &str)]) -> Vec<Seg> {
     let mut out = Vec::new();
     for (i, (k, what)) in pairs.iter().enumerate() {
         if i > 0 {
-            out.push(seg("   ", Style::default().bg(bg)));
+            out.push(seg(gap, Style::default().bg(bg)));
         }
         out.extend(keycap(t, k));
-        out.push(seg(format!(" {what}"), Style::default().bg(bg).fg(t.muted)));
+        out.push(seg(format!(" {what}"), Style::default().bg(bg).fg(t.text)));
     }
     out
+}
+
+pub(super) fn cap_hints(t: &Theme, bg: Color, pairs: &[(&str, &str)]) -> Vec<Seg> {
+    cap_hints_gap(t, bg, "   ", pairs)
+}
+
+/// The hints that fit in `width` columns: first with the gap between them closed up, then
+/// without the one before the last (the last is `Esc close`, which must stay), and the one
+/// before that next.
+pub(super) fn cap_hints_fit(t: &Theme, bg: Color, pairs: &[(&str, &str)], width: u16) -> Vec<Seg> {
+    let mut keep = pairs.to_vec();
+    loop {
+        for gap in ["   ", "  ", " "] {
+            let segs = cap_hints_gap(t, bg, gap, &keep);
+            if segs_width(&segs) <= width || keep.len() == 1 && gap == " " {
+                return segs;
+            }
+        }
+        keep.remove(keep.len() - 2);
+    }
 }
 
 /// The key bound to an action after the leader, for button labels.
@@ -534,7 +565,7 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
             Some(ed) => {
                 header = vec![
                     seg(ed.path.strip_prefix(&v.root).map(|p| p.display().to_string()).unwrap_or_default(), Style::default().fg(t.strong).add_modifier(Modifier::BOLD)),
-                    seg(if ed.dirty { "  ● unsaved" } else { "  editing" }, Style::default().fg(if ed.dirty { t.blocked } else { t.accent })),
+                    seg(if ed.dirty { "  ● unsaved" } else { "  editing" }, Style::default().fg(t.accent)),
                     seg("   Ctrl+S save · Esc done", Style::default().fg(t.muted)),
                 ];
                 put(buf, px, body.y + 1, &header, body.right());
@@ -601,76 +632,48 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
 
 // ---- modals: talk, + Pane -----------------------------------------------------------------
 
-/// The shortcut rows by category: (category, [(what it does, the actions it covers)]).
-#[allow(clippy::type_complexity)]
-pub(super) fn key_rows() -> Vec<(&'static str, Vec<(&'static str, Vec<crate::keys::Action>)>)> {
+/// What one key of a set does, for the Keys page where each is changed on its own.
+fn single_label(a: &crate::keys::Action) -> &'static str {
     use crate::keys::Action as A;
     use crate::layout::Dir::*;
-    vec![
-        (
-            "GET AROUND",
-            vec![
-                ("Command palette", vec![A::Palette]),
-                ("Focus the sidebar", vec![A::BrowseTree]),
-                ("Focus the pane left", vec![A::Focus(Left)]),
-                ("Focus the pane below", vec![A::Focus(Down)]),
-                ("Focus the pane above", vec![A::Focus(Up)]),
-                ("Focus the pane right", vec![A::Focus(Right)]),
-                ("Inbox: what needs you", vec![A::Jump]),
-            ],
-        ),
-        (
-            "PANES",
-            vec![
-                ("Split right", vec![A::SplitRight]),
-                ("Split down", vec![A::SplitDown]),
-                ("Close pane", vec![A::ClosePane]),
-                ("Show / hide the sidebar", vec![A::ToggleSidebar]),
-                ("Resize left", vec![A::Resize(Left)]),
-                ("Resize down", vec![A::Resize(Down)]),
-                ("Resize up", vec![A::Resize(Up)]),
-                ("Resize right", vec![A::Resize(Right)]),
-                ("Select text with the keyboard", vec![A::CopyMode]),
-            ],
-        ),
-        (
-            "TABS",
-            vec![
-                ("New tab", vec![A::NewTab]),
-                ("Previous tab", vec![A::PrevTab]),
-                ("Next tab", vec![A::NextTab]),
-                ("Close tab", vec![A::CloseTab]),
-            ],
-        ),
-        (
-            "START",
-            vec![
-                ("New session (a shell here)", vec![A::ShellHere]),
-                ("Start a fleet (a commander and its helpers)", vec![A::StartFleet]),
-                ("Rename session", vec![A::RenameWorkspace]),
-            ],
-        ),
-        (
-            "CODE",
-            vec![
-                ("Files", vec![A::Files]),
-                ("Find a file", vec![A::Find(0)]),
-                ("Search the code", vec![A::Find(1)]),
-                ("Changes", vec![A::Changes]),
-                ("Switch branch", vec![A::Branches]),
-            ],
-        ),
-        (
-            "APP",
-            vec![
-                ("Settings", vec![A::Settings]),
-                ("All keys", vec![A::Help]),
-                ("History", vec![A::History]),
-                ("Detach", vec![A::Detach]),
-                ("Reload config", vec![A::ReloadConfig]),
-            ],
-        ),
-    ]
+    match a {
+        A::Focus(Left) => "Focus the pane left",
+        A::Focus(Up) => "Focus the pane above",
+        A::Focus(Down) => "Focus the pane below",
+        A::Focus(Right) => "Focus the pane right",
+        A::Resize(Left) => "Resize left",
+        A::Resize(Down) => "Resize down",
+        A::Resize(Up) => "Resize up",
+        A::Resize(Right) => "Resize right",
+        A::ScrollUp => "Scroll up",
+        A::ScrollDown => "Scroll down",
+        A::PrevPrompt => "Previous command",
+        A::NextPrompt => "Next command",
+        _ => "",
+    }
+}
+
+/// The shortcut rows by group: (group, [(what it does, the actions it covers)]). The key map's
+/// own list, with a row that covers a set of keys (the arrows) split into one per key so each
+/// can be changed on its own.
+#[allow(clippy::type_complexity)]
+pub(super) fn key_rows() -> Vec<(&'static str, Vec<(&'static str, Vec<crate::keys::Action>)>)> {
+    super::screen::key_groups()
+        .into_iter()
+        .map(|(group, rows)| {
+            let rows = rows
+                .into_iter()
+                .flat_map(|r| {
+                    if r.acts.len() > 1 {
+                        r.acts.into_iter().map(|a| (single_label(&a), vec![a])).collect::<Vec<_>>()
+                    } else {
+                        vec![(r.label, r.acts)]
+                    }
+                })
+                .collect();
+            (group, rows)
+        })
+        .collect()
 }
 
 // ---- settings view -------------------------------------------------------------------------
@@ -680,25 +683,57 @@ pub(super) fn key_rows() -> Vec<(&'static str, Vec<(&'static str, Vec<crate::key
 pub(super) enum SRow {
     Setting(&'static super::modal::Setting),
     Bind { label: &'static str, acts: Vec<crate::keys::Action> },
-    /// The project's family or a job of `[team]`, which are lists, not setting paths.
-    Team(super::screen::team_settings::TeamRow),
+    /// A line of the Agents page that is not a setting: what seshi can tell about an agent.
+    Agent(AgentRow),
+}
+
+/// The AGENT STATUS rows of Settings > Agents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum AgentRow {
+    Claude,
+    Codex,
+    /// Opens the Connect agents popup.
+    SetUp,
+}
+
+pub(super) const AGENT_STATUS_GROUP: &str = "AGENT STATUS";
+
+impl AgentRow {
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            AgentRow::Claude => "Claude",
+            AgentRow::Codex => "Codex",
+            AgentRow::SetUp => "Set up another agent…",
+        }
+    }
+
+    pub(super) fn help(self) -> &'static str {
+        match self {
+            AgentRow::Claude => "Seshi reads working, needs you and done from Claude's hooks. Missing? Run seshi integrate claude.",
+            AgentRow::Codex => "No hooks needed: seshi watches the Codex process.",
+            AgentRow::SetUp => "Connect another agent so it reports working, needs you and done itself. Enter opens the list.",
+        }
+    }
 }
 
 /// The small caps heading a settings row sits under.
 pub(super) fn settings_group(row: &SRow) -> &'static str {
     match row {
         SRow::Bind { label, .. } => key_rows().into_iter().find(|(_, items)| items.iter().any(|(l, _)| l == label)).map(|(g, _)| g).unwrap_or("KEYS"),
-        SRow::Team(row) => super::screen::team_settings::group(*row),
+        SRow::Agent(_) => AGENT_STATUS_GROUP,
         SRow::Setting(s) => match s.path {
-            "team.family" => super::screen::team_settings::FAMILY_GROUP,
+            "sessions.agent" | "sessions.where" => "NEW SESSIONS",
+            "sessions.helpers" | "sessions.helpers_at_once" => "HELPERS",
+            "ui.subagent_count" => "SUBAGENTS",
             "theme" => "THEME",
             "ui.spinner" | "ui.glyphs" => "STATUS INDICATORS",
             "prefix" | "ui.mouse" | "ui.which_key" | "ui.alt_arrows" => "INPUT",
-            "ui.layout" | "ui.background" | "ui.sidebar_position" | "ui.splash" | "ui.motion" => "LAYOUT",
+            "ui.layout" | "ui.background" | "ui.sidebar_position" | "ui.motion" => "LAYOUT",
+            "ui.splash" => "STARTUP",
             "ui.update_check" => "UPDATES",
             "shell" | "editor" | "shell_integration" | "ui.start_dir" => "SHELL",
             "ui.attention_sort" => "SIDEBAR",
-            "ui.panes" | "ui.corners" | "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pill_caps" => "PANES",
+            "ui.panes" | "ui.corners" | "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pill_caps" | "ui.round_tabs" => "PANES",
             p if p.starts_with("notify.") => "ALERTS",
             "worktree.delete_with_last" | "worktree.per_agent" | "worktree.command" => "WORKTREES",
             p if p.starts_with("restore.") => "RESTARTS",
@@ -722,11 +757,12 @@ pub(super) fn theme_label(name: &str) -> String {
 }
 
 /// The rows of one settings page.
-pub(super) fn settings_rows(cat: super::modal::Cat, cfg: &crate::config::Config) -> Vec<SRow> {
-    let mut rows: Vec<SRow> = super::modal::in_cat(cat)
-        .into_iter()
-        .map(SRow::Setting)
-        .collect();
+pub(super) fn settings_rows(cat: super::modal::Cat) -> Vec<SRow> {
+    let mut rows: Vec<SRow> = Vec::new();
+    if cat == super::modal::Cat::Agents {
+        rows.extend([AgentRow::Claude, AgentRow::Codex, AgentRow::SetUp].map(SRow::Agent));
+    }
+    rows.extend(super::modal::in_cat(cat).into_iter().map(SRow::Setting));
     // Grouped under their headings, in the order the headings first come.
     let order: Vec<&str> = rows.iter().map(settings_group).fold(Vec::new(), |mut v, g| {
         if !v.contains(&g) {
@@ -734,11 +770,9 @@ pub(super) fn settings_rows(cat: super::modal::Cat, cfg: &crate::config::Config)
         }
         v
     });
-    let order: Vec<&str> = ["INPUT", "LAYOUT", "SHELL"].into_iter().filter(|g| order.contains(g)).chain(order.iter().copied().filter(|g| !["INPUT", "LAYOUT", "SHELL"].contains(g))).collect();
+    const FIRST: [&str; 8] = ["INPUT", "STARTUP", "LAYOUT", "SHELL", "NEW SESSIONS", "HELPERS", AGENT_STATUS_GROUP, "SUBAGENTS"];
+    let order: Vec<&str> = FIRST.into_iter().filter(|g| order.contains(g)).chain(order.iter().copied().filter(|g| !FIRST.contains(g))).collect();
     rows.sort_by_key(|r| order.iter().position(|g| *g == settings_group(r)).unwrap_or(99));
-    if cat == super::modal::Cat::Team {
-        rows.extend(super::screen::team_settings::rows(cfg).into_iter().map(SRow::Team));
-    }
     if cat == super::modal::Cat::Keys {
         for (_, items) in key_rows() {
             for (label, acts) in items {
@@ -757,8 +791,6 @@ pub(crate) struct SettingsView {
     /// Waiting for a key: the leader, or a new key for this row's action.
     pub capturing: bool,
     pub scroll: u16,
-    /// A team job being added or edited, one field at a time in `editing`.
-    pub job: Option<super::screen::team_settings::JobDraft>,
 }
 
 pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, selected: bool) -> Vec<Seg> {
@@ -776,7 +808,7 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
                 keycaps(t, &keys, t.bg)
             }
         }
-        SRow::Team(_) => Vec::new(),
+        SRow::Agent(row) => agent_control(app, t, *row),
         SRow::Setting(s) => {
             if s.path == "theme" {
                 let name = if cfg.theme.is_empty() { crate::theme::DEFAULT } else { &cfg.theme };
@@ -805,15 +837,7 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
                     ]
                 }
                 Kind::Key => {
-                    let k = super::modal::display(cfg, s).replace("C-", "Ctrl+");
-                    let mut caps: Vec<Seg> = Vec::new();
-                    for (i, p) in k.split('+').enumerate() {
-                        if i > 0 {
-                            caps.push(seg("+", Style::default().fg(t.muted)));
-                        }
-                        caps.extend(keycap(t, p));
-                    }
-                    caps
+                    keycap(t, &super::modal::display(cfg, s).replace("C-", "Ctrl+"))
                 }
                 Kind::Text | Kind::Folder | Kind::Program(_) => {
                     if selected && let Some(e) = &v.editing {
@@ -830,6 +854,20 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
                 }
             }
         }
+    }
+}
+
+/// What seshi can tell about an agent, as the value of its AGENT STATUS row.
+fn agent_control(app: &App, t: &Theme, row: AgentRow) -> Vec<Seg> {
+    let ok = Style::default().fg(t.done);
+    match row {
+        AgentRow::Claude => match app.claude_hooks {
+            Some(true) => vec![seg("✓ hooks installed", ok)],
+            Some(false) => vec![seg("hooks not installed", Style::default().fg(t.muted))],
+            None => vec![seg("checking…", Style::default().fg(t.muted))],
+        },
+        AgentRow::Codex => vec![seg("✓ read from the process", ok)],
+        AgentRow::SetUp => vec![seg("Enter", Style::default().fg(t.accent))],
     }
 }
 
@@ -861,3 +899,22 @@ pub(super) fn pretty_key(k: &crate::keys::KeySpec) -> String {
     }
 }
 
+/// A key with its modifiers spelled out: `Alt+1`, `Ctrl+Space`.
+pub(super) fn long_key(k: &crate::keys::KeySpec) -> String {
+    use crossterm::event::KeyModifiers as M;
+    let mut out = String::new();
+    for (m, name) in [(M::CONTROL, "Ctrl+"), (M::ALT, "Alt+"), (M::SHIFT, "Shift+")] {
+        if k.mods.contains(m) {
+            out.push_str(name);
+        }
+    }
+    let code = match k.code {
+        crossterm::event::KeyCode::Char(' ') => "Space".to_string(),
+        crossterm::event::KeyCode::Char(c) => c.to_string(),
+        _ => {
+            let bare = crate::keys::KeySpec { mods: M::NONE, ..*k };
+            pretty_key(&bare)
+        }
+    };
+    out + &code
+}

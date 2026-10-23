@@ -406,7 +406,7 @@ impl Daemon {
             .filter_map(|t| t.alert_due.filter(|(_, at)| *at <= now).map(|(status, _)| (t.id, status)))
             .collect();
         for (term, status) in due {
-            let still = self.terms.get_mut(&term).is_some_and(|t| t.alert_due.take().is_some() && t.status == status);
+            let still = self.terms.get_mut(&term).is_some_and(|t| t.alert_due.take().is_some() && (t.status == status || (status == Status::Blocked && !t.helpers.asked.is_empty())));
             if still {
                 self.alert(term, status, if status == Status::Blocked { "needs you" } else { "finished" });
             }

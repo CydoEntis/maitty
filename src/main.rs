@@ -1,5 +1,4 @@
 mod alert;
-mod brief;
 mod cli;
 mod clock;
 mod client;
@@ -15,11 +14,12 @@ mod keys;
 mod layout;
 mod proc;
 mod protocol;
+mod shim;
 mod sync;
-mod team;
 mod theme;
 mod tidy;
 mod update;
+mod restart;
 mod reveal;
 mod snapshot;
 
@@ -205,9 +205,6 @@ enum Cmd {
         #[arg(last = true)]
         command: Vec<String>,
     },
-    /// Print a commander's instructions: how an agent runs a fleet of helpers. For agents to
-    /// read ("run seshi brief and follow it").
-    Brief,
     /// Install the newest release over this one.
     Update {
         /// Only say whether a newer version is out.
@@ -233,6 +230,12 @@ enum Cmd {
     /// a new worktree when it's started in a repo's main checkout, else nothing.
     #[command(hide = true)]
     AgentDir {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        cmd: Vec<String>,
+    },
+    /// (Run by the launchers on Windows) start an agent in the folder `agent-dir` names.
+    #[command(hide = true)]
+    AgentLaunch {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         cmd: Vec<String>,
     },
@@ -298,6 +301,7 @@ fn main() {
             cli::agent_dir(&cmd);
             Ok(())
         }
+        Some(Cmd::AgentLaunch { cmd }) => std::process::exit(cli::agent_launch(&cmd)),
         Some(Cmd::AskHuman { question, options }) => cli::ask_human(question, options),
         Some(Cmd::Grant { pane, grants }) => cli::grant(pane, &grants),
         Some(Cmd::Popup { cmd }) => cli::popup(cmd),
@@ -326,10 +330,6 @@ fn main() {
         Some(Cmd::Mcp) => mcp::run(),
         Some(Cmd::Doctor) => cli::doctor(),
         Some(Cmd::Account { name, command }) => cli::account(&name, &command),
-        Some(Cmd::Brief) => {
-            brief::print();
-            Ok(())
-        }
         Some(Cmd::Update { check, force }) => update::run(check, force),
         Some(Cmd::Allow { dir }) => cli::allow(dir),
         Some(Cmd::Proxy) => cli::block_on(ipc::proxy()),
@@ -372,23 +372,49 @@ fn main() {
     }
 }
 
-/// A server of another version keeps running until it can be replaced safely, so the
-/// mismatch is the person's call: on a terminal they get a prompt to restart it.
+/// Open the window. A server of another version is replaced on the way in: without asking
+/// when nothing is mid-turn (it says `Updating seshi…`), after one Enter when something is.
+/// When this window was told to give way to a newly installed seshi, that one opens here.
 fn open_client(open: Option<std::path::PathBuf>) -> anyhow::Result<()> {
+    run_client(open)?;
+    if restart::relaunch_requested() {
+        // The old server is stopping; the installed seshi starts the new one.
+        let _ = restart::wait_until_server_gone();
+        eprintln!("Restarting seshi…");
+        restart::relaunch()?;
+    }
+    Ok(())
+}
+
+fn run_client(open: Option<std::path::PathBuf>) -> anyhow::Result<()> {
     use std::io::IsTerminal;
+    let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    let local = ipc::remote().is_none();
+    // An older server of a protocol this seshi speaks is replaced at once when it is idle.
+    if terminal && local && restart::replace_older_idle_server(restart::read().as_ref(), env!("CARGO_PKG_VERSION")) {
+        replace_server()?;
+    }
     let err = match client::run(client::Options { open: open.clone() }) {
         Err(e) => e,
         done => return done,
     };
-    let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
-    let Some(daemon) = client::restart_prompt::wanted(&err, terminal, ipc::remote().is_some()) else {
+    let Some(daemon) = client::restart_prompt::wanted(&err, terminal, !local) else {
         return Err(err);
     };
-    match client::restart_prompt::offer(daemon)? {
-        client::restart_prompt::Choice::Quit => Err(err),
-        client::restart_prompt::Choice::Restart => {
-            cli::kill_server(false)?;
-            client::run(client::Options { open })
-        }
+    match restart::plan_for_mismatch(daemon, restart::read().as_ref(), restart::saved_agents()) {
+        restart::Plan::Replace => replace_server()?,
+        restart::Plan::Ask { resume, busy } => match client::restart_prompt::offer(daemon, resume, busy)? {
+            client::restart_prompt::Choice::Quit => return Err(err),
+            client::restart_prompt::Choice::Restart => cli::kill_server(false)?,
+        },
     }
+    client::run(client::Options { open })
+}
+
+/// Stop this socket's server (saving its sessions first when it can be asked; one it can't
+/// talk to is stopped by its process, as `seshi kill-server` does) so the next start is
+/// this version, with the sessions restored.
+fn replace_server() -> anyhow::Result<()> {
+    eprintln!("Updating seshi…");
+    cli::kill_server(false)
 }

@@ -24,7 +24,6 @@ mod input;
 mod view_keys;
 mod themes;
 mod spinners;
-mod shortcuts;
 pub mod restart_prompt;
 
 use crate::config::{Config, Keymap};
@@ -45,13 +44,15 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 /// "3 sessions stop and resume, 1 is working": what a daemon restart costs.
-fn restart_summary(sessions: usize, working: usize) -> String {
+fn restart_summary(sessions: usize, working: usize, waiting: usize) -> String {
     let stops = if sessions == 1 { "1 session stops and resumes".to_string() } else { format!("{sessions} sessions stop and resume") };
-    match working {
-        0 => stops,
-        1 => format!("{stops}, 1 is working"),
-        n => format!("{stops}, {n} are working"),
-    }
+    let working = match working {
+        0 => None,
+        1 => Some("1 is working".to_string()),
+        n => Some(format!("{n} are working")),
+    };
+    let waiting = (waiting > 0).then(|| format!("{waiting} waiting for you"));
+    [Some(stops), working, waiting].into_iter().flatten().collect::<Vec<_>>().join(", ")
 }
 
 /// How often the client looks at its timers (spinners, toasts, pending focus).
@@ -65,7 +66,16 @@ const PASTE_GAP: Duration = Duration::from_millis(8);
 /// The longest a paste is waited on before what has come is handed over.
 const PASTE_MAX_WAIT: Duration = Duration::from_secs(1);
 /// How long a note stays in the bottom bar.
+/// The most characters of the copied text a toast previews.
+const COPY_PREVIEW_CHARS: usize = 72;
 const NOTICE_FOR: Duration = Duration::from_secs(5);
+/// What a toast says beyond its title: a detail row and an optional preview row.
+#[derive(Debug, Clone, PartialEq)]
+struct NoticeCard {
+    detail: String,
+    preview: Option<String>,
+}
+
 /// Server messages taken in one go before the next frame.
 const SERVER_BURST: usize = 512;
 /// Losing the server twice within this long is the server going, not a hiccup: stop.
@@ -84,8 +94,6 @@ pub struct Options {
 enum Mode {
     Normal,
     Prefix { since: Instant },
-    /// Jump list (`commands: false`) or command palette (`commands: true`).
-    Picker { query: String, sel: usize, commands: bool },
     Prompt { kind: PromptKind, input: String },
     Copy(Box<copy::Copy>),
     /// Pick an existing worktree of the repo, or type a branch to create one.
@@ -94,6 +102,8 @@ enum Mode {
     Finder(Box<screen::Finder>),
     /// Seshi layout: new pane (project, worktree, what to run).
     ScreenPane(screen::NewPaneHy),
+    /// Seshi layout: the new-session dialog (`c`).
+    NewSession(Box<screen::NewSess>),
     /// Seshi layout: the settings overlay.
     ScreenSettings(Box<design::SettingsView>),
     Themes { query: String, sel: usize, saving: bool },
@@ -122,12 +132,11 @@ enum Mode {
     Compose(Box<screen::Compose>),
     /// Why a session has its status (beside its row); `side`: back to the sidebar after.
     Why { term: TermId, side: bool },
-      /// Runtime-reported subagent activity, retained while its parent remains available.
-      SubagentInfo { term: TermId, index: usize },
+    /// A session asks to start helpers (beside its row); `side`: back to the sidebar after.
+    Helpers { term: TermId, side: bool },
     /// The leader's key map (or its second step), typed to search.
     KeyMap(Box<screen::KeyMap>),
-    Shortcuts { query: String, scroll: usize },
-    /// Every command with its key (the sidebar's "a actions").
+    /// Every command with its key (the sidebar's "menu").
     Actions { sel: usize },
     /// A tab being renamed in its pill.
     RenameTab(Box<screen::TabName>),
@@ -279,28 +288,13 @@ enum Hit {
     Screen(screen::ScreenHit),
 }
 
-/// A row in the jump picker.
-#[derive(Debug, Clone)]
-struct PickItem {
-    label: String,
-    detail: String,
-    status: Status,
-    /// Shortcut shown on the right (commands only).
-    key: String,
-    target: PickTarget,
-}
-
-#[derive(Debug, Clone)]
-enum PickTarget {
-    Workspace(WsId),
-    Pane(TermId),
-    Command(Action),
-}
-
 pub struct App {
     /// A newer release, found when seshi opened or since (the Update button shows).
     update_available: Option<String>,
     installed_version: Option<Result<String, String>>,
+    /// Whether Claude's hooks are installed, read in the background when Settings > Agents first shows (None until then).
+    claude_hooks: Option<bool>,
+    claude_hooks_asked: bool,
     /// What changed in it (and any releases between), for the update dialog.
     update_notes: Vec<String>,
     /// When seshi last asked whether a newer release is out.
@@ -311,6 +305,9 @@ pub struct App {
     update_installed_this_run: bool,
     daemon_restart_requested: bool,
     daemon_restart_reconnect: bool,
+    /// This window is on an older seshi than the one installed: it closes and the installed
+    /// one opens in its place (`restart::relaunch`).
+    relaunch: bool,
     /// Asking, because you said to, whether a newer seshi is out.
     update_checking: bool,
     /// When this window last had to attach to the server again.
@@ -323,6 +320,10 @@ pub struct App {
     notice_term: Option<TermId>,
     /// The toast offers Restart now (the update just installed, the daemon still old).
     notice_restart: bool,
+    /// The toast's second and third rows, when the notice has them.
+    notice_card: Option<NoticeCard>,
+    /// The selection just copied, glowing for a moment after copy mode closed.
+    copy_flash: Option<copy::Flash>,
     /// What happened lately, newest last: (unix secs, pane, kind, text). Kinds: '!' needs
     /// you, '✓' finished, 'i' a message, 'x' an error.
     pub(super) history: std::collections::VecDeque<(u64, Option<TermId>, char, String)>,
@@ -343,6 +344,8 @@ pub struct App {
     sizes: HashMap<TermId, (u16, u16)>,
     mode: Mode,
     sidebar: bool,
+    /// With the full sidebar off: the sessions are hidden completely, not shown as the top strip.
+    side_hidden: bool,
     /// The last alert per agent (its status, when) and for any agent: the same news again
     /// soon doesn't ring twice.
     alerted: HashMap<TermId, (Status, Instant)>,
@@ -448,7 +451,9 @@ async fn run_async(opts: Options) -> Result<()> {
 
     restore_terminal();
     result?;
-    if let Some(reason) = app.quit {
+    if app.relaunch {
+        crate::restart::request_relaunch();
+    } else if let Some(reason) = app.quit {
         println!("[{reason}]");
     }
     Ok(())
@@ -501,16 +506,20 @@ impl App {
         let mut app = App {
             update_available: None,
             installed_version: None,
+            claude_hooks: None,
+            claude_hooks_asked: false,
             update_notes: Vec::new(),
             update_checked: None,
             updating: false,
             update_installed_this_run: false,
             daemon_restart_requested: false,
             daemon_restart_reconnect: false,
+            relaunch: false,
             update_checking: false,
             reattached: None,
             theme: cfg.theme(),
             sidebar: cfg.ui.sidebar,
+            side_hidden: false,
             alerted: HashMap::new(),
             last_alert: None,
             settling: HashMap::new(),
@@ -522,6 +531,8 @@ impl App {
             notice: None,
             notice_term: None,
             notice_restart: false,
+            notice_card: None,
+            copy_flash: None,
             history: Default::default(),
             right_down: None,
             snap: Snapshot::default(),
@@ -671,7 +682,7 @@ impl App {
                     }
                     let frame = self.spinner_frame();
                     self.settle_alerts();
-                    if frame != last_frame && (self.any_working() || self.any_checking() || matches!(self.mode, Mode::Spinners(_))) {
+                    if frame != last_frame && ((self.motion_on() && (self.any_working() || self.any_checking())) || matches!(self.mode, Mode::Spinners(_))) {
                         last_frame = frame;
                         self.dirty = true;
                     }
@@ -680,6 +691,10 @@ impl App {
                     }
                     if self.notice.as_ref().is_some_and(|(_, at, _)| at.elapsed() > NOTICE_FOR) {
                         self.notice = None;
+                        self.dirty = true;
+                    }
+                    if self.copy_flash.as_ref().is_some_and(|f| !f.live()) {
+                        self.copy_flash = None;
                         self.dirty = true;
                     }
                 }
@@ -772,7 +787,7 @@ impl App {
             format!("Installed seshi {version}. The daemon will restart automatically when no sessions are open.")
         };
         self.notify(message, false);
-        self.notice_restart = self.daemon_restartable();
+        self.notice_restart = self.restart_needed();
         self.maybe_restart_daemon(false);
     }
 
@@ -801,7 +816,23 @@ impl App {
         self.notice = Some((msg, Instant::now(), error));
         self.notice_term = None;
         self.notice_restart = false;
+        self.notice_card = None;
         self.dirty = true;
+    }
+
+    /// A toast with a detail row and, optionally, a preview row under its title.
+    fn notify_card(&mut self, title: String, detail: String, preview: Option<String>, error: bool) {
+        self.notify(format!("{title}: {detail}"), error);
+        self.notice = self.notice.take().map(|(_, at, e)| (title, at, e));
+        self.notice_card = Some(NoticeCard { detail, preview });
+    }
+
+    /// Esc dismisses the toast; the key still goes on to the pane.
+    fn dismiss_notice(&mut self) {
+        if self.notice.take().is_some() {
+            self.notice_card = None;
+            self.dirty = true;
+        }
     }
 
     /// Add to the notification history (Ctrl+Space N).
@@ -869,36 +900,75 @@ impl App {
 
     /// The toast offers Restart now: it stays long enough to be read and clicked.
     fn toast_restart(&self) -> bool {
-        self.notice_restart && self.daemon_restartable()
+        self.notice_restart && self.restart_needed()
     }
 
-    /// Restart the daemon onto the installed version. Agents stop and resume, so it asks
-    /// first unless nothing is open.
+    /// This window runs an older seshi than the one installed here (a remote server's
+    /// version is its own business).
+    fn window_stale(&self) -> bool {
+        crate::ipc::remote().is_none()
+            && self.installed_version.as_ref().and_then(|r| r.as_ref().ok()).is_some_and(|v| crate::update::newer_than(v, env!("CARGO_PKG_VERSION")))
+    }
+
+    /// There is something Restart would replace: the server, or this window.
+    fn restart_needed(&self) -> bool {
+        !self.daemon_restart_requested && !self.daemon_restart_reconnect && !self.relaunch && (self.daemon_restartable() || self.window_stale())
+    }
+
+    /// Restart onto the installed version: the server (sessions stop and resume) and this
+    /// window, in one step. It asks only when a session is working or waiting for you, or
+    /// when sessions would be closed for good because restoring is off.
     fn ask_restart(&mut self) {
-        if !self.daemon_restartable() {
+        if !self.restart_needed() {
             return;
         }
+        if !self.daemon_restartable() {
+            // The server is already the installed one: only this window is replaced.
+            return self.relaunch_window();
+        }
         let sessions = self.snap.terms.len();
-        if sessions == 0 {
+        let working = self.snap.terms.values().filter(|t| t.status == Status::Working).count();
+        let waiting = self.snap.terms.values().filter(|t| t.status == Status::Blocked).count();
+        let keeps = self.cfg.restore.enabled;
+        if sessions == 0 || (working + waiting == 0 && keeps) {
             return self.restart_daemon_now();
         }
-        let working = self.snap.terms.values().filter(|t| t.status == Status::Working).count();
         self.mode = Mode::Confirm(Box::new(menu::Confirm {
-            title: "Restart daemon".into(),
+            title: "Restart seshi".into(),
             sub: String::new(),
-            what: restart_summary(sessions, working),
+            what: restart_summary(sessions, working, waiting),
             detail: String::new(),
-            note: "They come back where they left off once the new daemon is up.".into(),
+            note: if keeps {
+                "They come back where they left off, with their conversation.".into()
+            } else {
+                "Restoring sessions is off (restore.enabled), so they close for good.".into()
+            },
             list: Vec::new(),
             yes: "Restart".into(),
             key: '\n',
-            danger: working > 0,
+            danger: working + waiting > 0 || !keeps,
             act: menu::Act::RestartDaemon,
         }));
     }
 
+    /// The palette's Restart: say so when there is nothing to replace.
+    fn restart_from_menu(&mut self) {
+        if self.restart_needed() {
+            self.ask_restart();
+        } else {
+            self.notify("Seshi is already running the installed version".into(), false);
+        }
+    }
+
+    /// Close this window and open the installed seshi in its place; the server keeps every
+    /// session meanwhile.
+    fn relaunch_window(&mut self) {
+        self.relaunch = true;
+        self.quit = Some("restarting seshi".into());
+    }
+
     fn restart_daemon_now(&mut self) {
-        if self.daemon_restartable() {
+        if self.restart_needed() && self.daemon_restartable() {
             self.request_daemon_restart("Restarting the daemon…");
         }
     }
@@ -955,7 +1025,7 @@ impl App {
             note: if crate::ipc::remote().is_some() {
                 "Open sessions keep running. Update the remote daemon on its host after they are closed.".into()
             } else {
-                "Open sessions keep running. The daemon restarts automatically when all sessions are closed.".into()
+                "Open sessions keep running. Restart now (offered afterwards) switches to the new version in one step; agents resume.".into()
             },
             list: self.update_notes.clone(),
             yes: "Update now".into(),
@@ -1094,16 +1164,17 @@ impl App {
 
     // ---- input ---------------------------------------------------------------------
 
-    /// The colour of a workspace, from the configured palette.
-    fn ws_color(&self, w: &WorkspaceInfo) -> ratatui::style::Color {
-        let pal = &self.cfg.ui.workspace_colors;
-        if pal.is_empty() {
-            return self.theme.accent;
-        }
-        crate::theme::parse_color(&pal[w.color as usize % pal.len()]).unwrap_or(self.theme.accent)
-    }
-
     fn yank(&mut self, text: String) {
+        let src = match &self.mode {
+            Mode::Copy(c) => Some(c.term),
+            _ => self.copy_term,
+        };
+        if let Mode::Copy(c) = &self.mode {
+            let spans = c.selected_spans();
+            if !spans.is_empty() {
+                self.copy_flash = Some(copy::Flash { term: c.term, spans, at: Instant::now() });
+            }
+        }
         self.mode = Mode::Normal;
         // Copying across panes: each one's piece under its name, in the order taken.
         let text = if self.copy_set.is_empty() {
@@ -1119,17 +1190,26 @@ impl App {
             let named: Vec<(String, String)> =
                 parts.into_iter().map(|(t, s)| (self.snap.terms.get(&t).map(|i| i.display_name()).unwrap_or_else(|| format!("pane {t}")), s)).collect();
             let _ = copy::to_clipboard(&copy::join_pieces(&named));
-            self.notify(format!("Copied from {n} panes"), false);
+            self.notify_card("Copied to clipboard".into(), format!("{n} panes, each under its name"), None, false);
             return;
         };
         if text.is_empty() {
             return;
         }
+        let chars = text.chars().count();
         let lines = text.lines().count().max(1);
         let native = copy::to_clipboard(&text);
-        let how = if native { "" } else { " (via terminal)" };
-        let _ = lines;
-        self.notify(format!("Copied{how}"), false);
+        let from = src.map(|t| self.session_name(t)).filter(|n| !n.is_empty());
+        let mut detail = format!("{chars} character{} · {lines} line{}", if chars == 1 { "" } else { "s" }, if lines == 1 { "" } else { "s" });
+        if let Some(n) = from {
+            detail.push_str(&format!(" from {n}"));
+        }
+        if !native {
+            detail.push_str(" (via terminal)");
+        }
+        let first = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+        let preview = (!first.is_empty()).then(|| format!("\"{}\"", render::truncate(first, COPY_PREVIEW_CHARS)));
+        self.notify_card("Copied to clipboard".into(), detail, preview, false);
     }
 
     fn enter_copy(&mut self, term: TermId) -> bool {

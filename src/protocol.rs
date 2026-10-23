@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Bump whenever a message shape changes; client and daemon refuse to talk across versions.
-pub const PROTOCOL_VERSION: u32 = 44;
+pub const PROTOCOL_VERSION: u32 = 45;
 
 pub type TermId = u32;
 pub type WsId = u32;
@@ -181,6 +181,9 @@ pub enum Command {
     ApproveCheck { term: TermId, name: String, choice: ApprovalChoice, command_sha256: String },
     /// Drop a remembered Always or Never for a repo's checkpoint. Only you can.
     ForgetCheckApproval { project: PathBuf, name: String },
+    /// Your answer to a session that asked to start helpers (`TermInfo::helper_ask`). Only you
+    /// can (not from inside a pane), and only while the request is pending.
+    AnswerHelpers { term: TermId, choice: HelperChoice },
     /// `forget`: also discard the saved session, so the next start is a clean slate.
     KillServer { forget: bool },
 }
@@ -195,6 +198,17 @@ pub enum Query {
     /// The tail of a pane's last output for checkpoint `name` (None: the headline one); the
     /// snapshot carries only a summary.
     CheckOutput { term: TermId, name: Option<String> },
+}
+
+/// What you chose when a session asked to start helpers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HelperChoice {
+    /// This session may start helpers from now on.
+    Allow,
+    /// Every session in this session's project may; remembered across restarts.
+    Always,
+    /// Do it alone: this session's start requests are refused.
+    No,
 }
 
 /// What you chose for a repo-supplied check command.
@@ -482,6 +496,10 @@ pub struct TermInfo {
     /// The pane whose agent started this one, if one did.
     #[serde(default)]
     pub started_by: Option<TermId>,
+    /// The helpers this session asked to start and is waiting on you for, one task each. Not
+    /// empty means the row needs you ("wants to start N helpers"); `AnswerHelpers` answers it.
+    #[serde(default)]
+    pub helper_ask: Vec<String>,
     /// Follow-ups waiting for its turn to end, next first.
     #[serde(default)]
     pub queued: Vec<String>,
@@ -794,6 +812,9 @@ mod tests {
             ClientMsg::Command(Command::ApproveCheck { term: 3, name: "test".into(), choice: ApprovalChoice::Always, command_sha256: command_hash("npm test") }),
             ClientMsg::Command(Command::ApproveCheck { term: 3, name: "test".into(), choice: ApprovalChoice::Never, command_sha256: command_hash("npm test") }),
             ClientMsg::Command(Command::ForgetCheckApproval { project: PathBuf::from("/code/api"), name: "test".into() }),
+            ClientMsg::Command(Command::AnswerHelpers { term: 3, choice: HelperChoice::Allow }),
+            ClientMsg::Command(Command::AnswerHelpers { term: 3, choice: HelperChoice::Always }),
+            ClientMsg::Command(Command::AnswerHelpers { term: 3, choice: HelperChoice::No }),
             ClientMsg::Command(Command::TidyWorktrees { items: vec![(PathBuf::from("/code/.wt/rate"), false)] }),
             ClientMsg::Command(Command::RenamePane { term: 3, name: "x".into() }),
             ClientMsg::Command(Command::MoveToWorktree { term: 3, branch: Some("feat/x".into()) }),
@@ -844,6 +865,14 @@ mod tests {
             override_reason: "flaky".into(),
             ..Default::default()
         }];
+        round_trips(&ServerMsg::State(Snapshot { terms: [(3, term)].into(), ..Default::default() }));
+    }
+
+    #[test]
+    fn a_pane_asking_for_helpers_round_trips_and_one_not_asking_has_none() {
+        let mut term = pane_from(serde_json::json!({}));
+        assert!(term.helper_ask.is_empty(), "a peer that knows no helper requests");
+        term.helper_ask = vec!["fix the login test".into(), "port the footer".into()];
         round_trips(&ServerMsg::State(Snapshot { terms: [(3, term)].into(), ..Default::default() }));
     }
 

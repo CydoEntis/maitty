@@ -46,7 +46,7 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
     let model = app.screen_model();
     let buf = f.buffer_mut();
     dim_all(buf, area, t);
-    let r = panel(app, buf, area, 86, 21, if np.fleet { "Start a fleet" } else { "New" }, &[], t);
+    let r = panel(app, buf, area, 86, 21, "New", &[], t);
     let lab = |buf: &mut Buffer, y: u16, text: &str, row: u8| {
         put(buf, r.x + 3, y, &[seg(text, Style::default().fg(if np.row == row { t.accent } else { t.muted }).bg(t.card).add_modifier(Modifier::BOLD))], r.right());
     };
@@ -87,7 +87,7 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
     let agent = agents.get(np.a).cloned().unwrap_or_default();
     let muted = Style::default().fg(t.muted).bg(t.card);
     // The task: typed straight away, it's the agent's first prompt.
-    lab(buf, r.y + 2, if np.fleet { "GOAL" } else { "TASK" }, 0);
+    lab(buf, r.y + 2, "TASK", 0);
     let tb = Rect { x: r.x + 14, y: r.y + 2, width: r.right().saturating_sub(r.x + 17), height: 1 };
     strip(buf, tb, t.card2);
     let s2 = Style::default().bg(t.card2);
@@ -102,7 +102,6 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
     }
     if np.task.is_empty() {
         let ph = match preset_of(app, &agent) {
-            _ if np.fleet => " what should the fleet get done?".to_string(),
             Some(p) if !p.asks() => format!(" (the preset says: {})", truncate(&p.prompt, 50)),
             Some(_) => " what should it do?".to_string(),
             None if agent == "shell" || agent.starts_with('⚙') => " (not used for this)".to_string(),
@@ -169,16 +168,14 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
     };
     let c = Style::default().bg(t.card);
     let what = match if agent.starts_with('◇') { None } else { np_command(app, &agent, np.model, &np.task) } {
-        _ if np.fleet && (agent == "shell" || agent.starts_with('⚙')) => "A fleet needs an agent to command it.".to_string(),
-        _ if np.fleet => format!("{agent} is the commander: it splits the goal up and starts helpers in their own worktrees. {what}"),
         Some(cmd) if !np.task.trim().is_empty() || np.model > 0 => format!("{what}  Runs: {cmd}"),
         _ => what,
     };
     for (i, l) in crate::client::views::wrap(&what, (r.width - 6) as usize).into_iter().take(3).enumerate() {
         put(buf, r.x + 3, r.y + 14 + i as u16, &[seg(l, c.fg(t.text))], r.right() - 2);
     }
-    let gx = btn(app, buf, r.x + 3, r.y + 18, if np.task.trim().is_empty() && !np.fleet { "Open" } else { "Start" }, "Enter", BtnKind::Primary, ScreenHit::NpGo, r.right());
-    put(buf, gx + 2, r.y + 18, &hints(t, &[("↑↓", "rows"), ("←→", "choose"), ("Esc", if np.fleet { "close" } else { "close, keeps the task" })]), r.right());
+    let gx = btn(app, buf, r.x + 3, r.y + 18, if np.task.trim().is_empty() { "Open" } else { "Start" }, "Enter", BtnKind::Primary, ScreenHit::NpGo, r.right());
+    put(buf, gx + 2, r.y + 18, &hints(t, &[("↑↓", "rows"), ("←→", "choose"), ("Esc", "close, keeps the task")]), r.right());
 }
 
 // Talk ----------------------------------------------------------------------------------------
@@ -234,6 +231,9 @@ pub(in crate::client) fn set_chip(app: &mut App, row: &SRow, vi: usize) {
     app.save_setting(s.path, v);
 }
 
+/// Columns the label column of a settings page holds; no setting label is longer.
+pub(in crate::client) const SETTINGS_LABEL_COLS: u16 = 33;
+
 /// Widths the settings tab row needs: padded full names, then unpadded ones, then short names.
 const TABS_FULL_COLS: u16 = 86;
 const TABS_SHORT_BELOW_COLS: u16 = 66;
@@ -257,7 +257,6 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                 Cat::Appearance => "Look",
                 Cat::Agents => "Agent",
                 Cat::Check => "Check",
-                Cat::Team => "Team",
                 Cat::Keys => "Keys",
             }
         } else if compact_tabs && *cat == Cat::Appearance {
@@ -371,15 +370,22 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     if cat == Cat::Check {
         return crate::client::screen::check_settings::draw_page(app, buf, r, r.y + 6 + lines_used, t);
     }
-    let rows = crate::client::design::settings_rows(cat, &app.cfg);
+    if cat == Cat::Agents && !app.claude_hooks_asked {
+        app.claude_hooks_asked = true;
+        app.spawn_bg(|| {
+            let installed = crate::cli::claude_status_hooks_installed();
+            crate::client::Bg::Then(Box::new(move |app: &mut App| app.claude_hooks = Some(installed)))
+        });
+    }
+    let rows = crate::client::design::settings_rows(cat);
     let lx = r.x + 6;
-    let vx = r.x + if r.width >= 68 { 34 } else { (r.width * 54 / 100).max(19) };
+    let vx = if r.width >= 68 { lx + SETTINGS_LABEL_COLS + 1 } else { r.x + (r.width * 54 / 100).max(19) };
     // What the selected row does (shown under it).
     let help = match rows.get(v.sel) {
         Some(SRow::Setting(s)) => s.help.to_string(),
         Some(SRow::Bind { acts, .. }) if acts.len() > 1 => "Several keys; change them in the config file (o).".into(),
         Some(SRow::Bind { .. }) => "Enter, then press the new key.".into(),
-        Some(SRow::Team(row)) => team_settings::help(app, *row, v),
+        Some(SRow::Agent(row)) => row.help().to_string(),
         None => String::new(),
     };
     // Lines: headings, rows with a blank between them, a wider gap between groups. The
@@ -388,10 +394,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         Head(&'static str),
         Row(usize),
         Blank,
-        Note(String),
     }
-    // The Team page has a handful of rows that must all fit a 24-row window.
-    let compact = cat == Cat::Team;
     let mut lines: Vec<L> = Vec::new();
     let mut last = "";
     for (i, row) in rows.iter().enumerate() {
@@ -401,24 +404,16 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                 lines.push(L::Blank);
             }
             lines.push(L::Head(g));
-            if !compact {
-                lines.push(L::Blank);
-            }
+            lines.push(L::Blank);
             last = g;
         }
-        if matches!(row, SRow::Team(team_settings::TeamRow::Add)) && app.cfg.team.jobs.is_empty() {
-            lines.extend(wrap_two(team_settings::EMPTY, r.right().saturating_sub(lx + 3) as usize).into_iter().map(L::Note));
-        }
         lines.push(L::Row(i));
-        if !compact {
-            lines.push(L::Blank);
-        }
+        lines.push(L::Blank);
     }
     let top = r.y + 6 + lines_used;
     // Appearance keeps room at the foot for its preview.
     let preview = cat == Cat::Appearance && r.height >= 30 && r.width >= 46;
-    // Team's job list grows, so it uses every row down to the help's rule.
-    let h = r.height.saturating_sub(if preview { 19 } else if compact { 11 + lines_used } else { 14 }) as usize;
+    let h = r.height.saturating_sub(if preview { 19 } else { 14 }) as usize;
     let at = lines.iter().position(|l| matches!(l, L::Row(i) if *i == v.sel)).unwrap_or(0);
     // A line under the selection stays in view, unless the selection is the last line.
     let start = (at + 2).min(lines.len()).saturating_sub(h);
@@ -426,9 +421,6 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         let y = top + (k - start) as u16;
         match line {
             L::Blank => {}
-            L::Note(text) => {
-                put(buf, lx, y, &[seg(text.clone(), c.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right() - 3);
-            }
             L::Head(g) => {
                 // A dim caps heading and a rule out to the edge.
                 let end = put(buf, r.x + 4, y, &[seg(*g, c.fg(t.muted).add_modifier(Modifier::BOLD)), seg(" ", c)], r.right());
@@ -454,28 +446,28 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                 let label = match row {
                     SRow::Setting(s) => s.label.to_string(),
                     SRow::Bind { label, .. } => label.to_string(),
-                    SRow::Team(row) => team_settings::label(&app.cfg, *row),
+                    SRow::Agent(row) => row.label().to_string(),
                 };
-                put(buf, lx, y, &[seg(truncate(&label, (vx - lx - 2) as usize), ls)], vx - 1);
-                if let Some((opts, cur)) = chips_for(app, row).filter(|_| !(sel && v.editing.is_some())) {
+                put(buf, lx, y, &[seg(truncate(&label, (vx - lx - 1) as usize), ls)], vx - 1);
+                // Every option as a chip, unless they would not fit beside the label: then the
+                // current one between arrows.
+                let chips = chips_for(app, row).filter(|(opts, _)| {
+                    let need: usize = opts.iter().map(|o| o.width() + 3).sum();
+                    vx as usize + need < r.right() as usize - 3
+                });
+                if let Some((opts, cur)) = chips.filter(|_| !(sel && v.editing.is_some())) {
                     let mut cx = vx;
                     for (vi, o) in opts.iter().enumerate() {
                         let on = Some(vi) == cur;
                         // The chosen one a pill; the others plain, the same width.
                         let segs = if on { pill(look, vec![seg(o.clone(), Style::default().fg(t.acc_ink).add_modifier(Modifier::BOLD))], t.accent, bg) } else { vec![seg(format!(" {o} "), st.fg(t.muted))] };
                         let w = segs_width(&segs);
-                        if cx + w >= r.right() - 3 {
-                            break;
-                        }
                         put(buf, cx, y, &segs, r.right() - 3);
                         hit(app, Rect { x: cx, y, width: w, height: 1 }, ScreenHit::SetVal(*i, vi));
                         cx += w + 1;
                     }
                 } else {
-                    let shown = match row {
-                        SRow::Team(row) => team_settings::control(app, t, *row, v, sel, r.right().saturating_sub(vx + 1) as usize),
-                        _ => crate::client::design::control(app, t, row, v, sel),
-                    };
+                    let shown = crate::client::design::control(app, t, row, v, sel);
                     let ctrl: Vec<Seg> = shown.into_iter().map(|(x, s)| (x, if s.bg.is_none() { s.bg(bg) } else { s })).collect();
                     put(buf, vx, y, &ctrl, r.right() - 1);
                     hit(app, Rect { x: vx, y, width: segs_width(&ctrl).max(1), height: 1 }, ScreenHit::SetVal(*i, usize::MAX));
@@ -515,27 +507,15 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     }
     // The selected row's help, always in the same place.
     hline(buf, r.x + 3, r.bottom() - 5, r.width.saturating_sub(6), t, t.card);
-    // Team help is longer than one line, so it wraps onto two.
-    let help_lines = if compact { wrap_two(&help, (r.width - 6) as usize) } else { vec![truncate(&help, (r.width - 6) as usize)] };
-    for (k, line) in help_lines.iter().enumerate().filter(|(_, l)| !l.is_empty()) {
+    for (k, line) in wrap_two(&help, (r.width - 6) as usize).iter().enumerate().filter(|(_, l)| !l.is_empty()) {
         put(buf, r.x + 3, r.bottom() - 4 + k as u16, &[seg(line.clone(), c.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right() - 2);
     }
-    let file = vec![seg("config.toml  ", c.fg(t.muted)), seg("o", c.fg(t.accent).add_modifier(Modifier::BOLD)), seg(" open", c.fg(t.muted))];
-    let fw = segs_width(&file);
-    let mut keys = hints(t, &[("↑↓", "move"), ("←→", "change"), ("Tab", "section")]);
-    if cat == Cat::Team {
-        // The Team page's own keys, when they fit beside the file link.
-        let more = hints(t, &[("↑↓", "move"), ("Enter", "edit"), ("a", "add"), ("Del", "remove"), ("←→", "change"), ("Tab", "section")]);
-        if segs_width(&more) + fw + 8 <= r.width {
-            keys = more;
-        }
-    }
-    put(buf, r.x + 3, r.bottom() - 2, &keys, r.right());
-    put(buf, r.right().saturating_sub(fw + 3), r.bottom() - 2, &file, r.right());
+    let bar = Rect { y: r.bottom().saturating_sub(1), height: 1, ..r };
+    action_bar(buf, bar, t, t.card2, &[("↑↓", "move"), ("←→", "change"), ("Tab", "section"), ("o", "open config.toml"), ("Esc", "close")]);
 }
 
 /// `text` on up to two lines of `width` columns, broken at spaces; the second ends in `…` if cut.
-fn wrap_two(text: &str, width: usize) -> Vec<String> {
+pub(in crate::client) fn wrap_two(text: &str, width: usize) -> Vec<String> {
     let mut lines = vec![String::new()];
     for word in text.split_whitespace() {
         let Some(line) = lines.last_mut() else { break };

@@ -174,7 +174,7 @@ fn named_by(command: &str, name: &str) -> bool {
     command.split_whitespace().last().is_some_and(|w| w.eq_ignore_ascii_case(name))
 }
 
-/// Whether a `[[check]]` or `[[team.projects]]` table names `project`.
+/// Whether a `[[check]]` table names `project`.
 pub(super) fn is_project(table: &Table, project: &Path) -> bool {
     table.get("project").and_then(Item::as_str).is_some_and(|p| same_path(Path::new(p), project))
 }

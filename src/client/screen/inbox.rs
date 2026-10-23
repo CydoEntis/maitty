@@ -85,7 +85,7 @@ fn head_color(name: &str, t: &Theme) -> Color {
         FAILED_HEAD => t.err,
         NOT_RUN_HEAD => t.violet(),
         FINISHED_HEAD => t.done,
-        HEADS_HEAD => blend(t.blocked, t.text, 0.45),
+        HEADS_HEAD => blend(t.sky(), t.text, 0.3),
         _ => t.btn,
     }
 }
@@ -185,7 +185,7 @@ fn draw_heads(buf: &mut Buffer, (x, y, right): (u16, u16, u16), o: &crate::clien
     let c = Style::default().bg(ground);
     put(buf, x + 2, y + 1, &[seg("Different branches, same file: it may conflict when they merge.", c.fg(t.muted))], right);
     let tell = format!("tell {}", o.checkouts.first().cloned().unwrap_or_default());
-    put(buf, x + 2, y + 2, &hint_segs(t, ground, &[("d", "both diffs"), ("m", &tell), ("k", "dismiss")]), right);
+    put(buf, x + 2, y + 2, &cap_hints(t, ground, &[("d", "both diffs"), ("m", &tell), ("k", "dismiss")]), right);
 }
 
 /// A session found by typing: glyph, name, what runs and where.
@@ -310,7 +310,7 @@ pub(super) fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, ground: 
     } else {
         &[("↑↓", "select"), ("⏎", "go to it"), ("Esc", "close")]
     };
-    put(buf, x, bottom, &hint_segs(t, ground, keys), right);
+    action_bar(buf, Rect { y: bottom, height: 1, ..inside }, t, t.card, keys);
 }
 
 #[cfg(test)]

@@ -11,6 +11,7 @@ pub use check::first_failing_line;
 mod check_source;
 mod check_stale;
 mod git;
+mod helpers;
 mod persist;
 mod scan;
 mod term;
@@ -181,6 +182,8 @@ struct Daemon {
     last_save: Instant,
     last_output_save: Instant,
     last_saved: String,
+    /// What was last noted for whoever replaces this server (see `restart`).
+    last_activity: Option<crate::restart::Activity>,
     /// Where check output tails are kept.
     check_dir: PathBuf,
     /// Which checkpoints a project has and whether each may run (tests put in their own).
@@ -189,6 +192,9 @@ struct Daemon {
     /// file counts only after a restart.
     approvals: approvals::Approvals,
     approvals_file: PathBuf,
+    /// The projects where you said sessions may always start helpers, read once at start.
+    helper_projects: helpers::Projects,
+    helper_projects_file: PathBuf,
     /// Worktrees seshi created; closing the last thing in one removes it.
     made_worktrees: Vec<PathBuf>,
     /// Plan limits by agent, as last reported.
@@ -266,6 +272,10 @@ pub fn run() -> Result<()> {
         match approvals::Approvals::load(&d.approvals_file) {
             Ok(a) => d.approvals = a,
             Err(e) => tracing::warn!("check approvals: {e:#}; every repo check asks again"),
+        }
+        match helpers::Projects::load(&d.helper_projects_file) {
+            Ok(p) => d.helper_projects = p,
+            Err(e) => tracing::warn!("helper projects: {e:#}; every project asks again"),
         }
         if d.cfg.restore.enabled
             && let Some(saved) = persist::load()
@@ -447,6 +457,10 @@ impl Daemon {
             {
                 anyhow::bail!("check approvals are yours to give, not a pane's")
             }
+            // A session may not let itself (or another) start helpers.
+            Command::AnswerHelpers { .. } if self.clients.get(&client).is_some_and(|c| c.from.is_some()) => {
+                anyhow::bail!("starting helpers is yours to allow, not a pane's")
+            }
             _ => Ok(()),
         }
     }
@@ -455,6 +469,11 @@ impl Daemon {
 /// Discard the saved session (for `kill-server --forget` when the server couldn't be asked).
 pub fn forget_session() {
     persist::forget();
+}
+
+/// Agents in the saved session: what a restart of a server that can't be asked would resume.
+pub fn saved_agent_count() -> usize {
+    persist::load().map_or(0, |s| s.workspaces.iter().flat_map(|w| &w.tabs).flat_map(|t| t.panes.values()).filter(|p| p.agent.is_some()).count())
 }
 
 impl Daemon {
@@ -498,10 +517,13 @@ impl Daemon {
             last_save: Instant::now(),
             last_output_save: Instant::now(),
             last_saved: String::new(),
+            last_activity: None,
             check_dir: persist::check_output_dir(),
             resolver: check_source::resolve,
             approvals: approvals::Approvals::default(),
             approvals_file: approvals::path(),
+            helper_projects: helpers::Projects::default(),
+            helper_projects_file: helpers::path(),
             made_worktrees: Vec::new(),
             limits: BTreeMap::new(),
             spent: Vec::new(),
@@ -542,6 +564,7 @@ impl Daemon {
                         self.last_worktree_sweep = Instant::now();
                         self.sweep_worktrees();
                     }
+                    self.publish_activity();
                     if self.last_save.elapsed() > SAVE_EVERY {
                         self.last_save = Instant::now();
                         self.persist(false);
@@ -568,8 +591,30 @@ impl Daemon {
                 self.broadcast(|_| true, ServerMsg::Bye);
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 let _ = std::fs::remove_file(ipc::pid_file());
+                crate::restart::clear();
                 std::process::exit(0);
             }
+        }
+    }
+
+    fn activity(&self) -> crate::restart::Activity {
+        let live = || self.terms.values().filter(|t| !t.spare);
+        crate::restart::Activity {
+            pid: std::process::id(),
+            version: env!("CARGO_PKG_VERSION").into(),
+            sessions: live().count(),
+            working: live().filter(|t| t.status == Status::Working).count(),
+            waiting: live().filter(|t| t.status == Status::Blocked).count(),
+        }
+    }
+
+    /// Note how many sessions are mid-turn, so a newer seshi can decide whether replacing
+    /// this server needs asking (it may speak a protocol this one doesn't).
+    fn publish_activity(&mut self) {
+        let activity = self.activity();
+        if self.last_activity.as_ref() != Some(&activity) && !cfg!(test) {
+            crate::restart::publish(&activity);
+            self.last_activity = Some(activity);
         }
     }
 
@@ -1141,7 +1186,8 @@ impl Daemon {
                     remote: t.remote.clone(),
                     popup: t.popup,
                     agent: t.agent.clone(),
-                    status: t.status,
+                    // Asking for helpers needs you, whatever the agent's own hooks say meanwhile.
+                    status: if t.helpers.asked.is_empty() { t.status } else { Status::Blocked },
                     cwd: t.cwd.clone(),
                     summary: t.summary.clone(),
                     name: if t.name.is_empty() { t.first_prompt.clone() } else { t.name.clone() },
@@ -1170,6 +1216,7 @@ impl Daemon {
                     checks: t.checks.infos(),
                     subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
                     started_by: t.started_by,
+                    helper_ask: t.helpers.asked.clone(),
                     queued: t.queue.iter().cloned().collect(),
                     subagent_activity: t.subagent_activity.clone(),
                     session: t.session.clone(),
@@ -1225,19 +1272,23 @@ impl Daemon {
         self.next_starter.take().or_else(|| self.clients.get(&client).and_then(|c| c.from)).filter(|t| self.terms.contains_key(t))
     }
 
-    /// The pane a start comes from, once there's room for what it starts. A session another
-    /// agent starts is a helper, and each helper runs builds and tests of its own: a
-    /// commander that starts ten takes the whole machine. Past the limit the start is
-    /// refused, with what to do instead.
-    fn starting(&mut self, client: ClientId) -> Result<Option<TermId>> {
+    /// The pane a start comes from, once it may start `task` and there's room for it. A
+    /// session another agent starts is a helper (see `helpers.rs` for who may), and each helper
+    /// runs builds and tests of its own: an agent that starts ten takes the whole machine. Past
+    /// `sessions.helpers_at_once` of its own working at once the start is refused, with what to
+    /// do instead.
+    fn starting(&mut self, client: ClientId, task: &str) -> Result<Option<TermId>> {
         // A worktree asked for earlier was let through then: don't strand it now.
         let let_through = self.next_starter.is_some();
         let by = self.starter(client);
-        let most = self.cfg.mcp.helpers_at_once;
-        if by.is_some() && most > 0 && !let_through {
-            let busy = self.terms.values().filter(|t| t.started_by.is_some() && (t.status == Status::Working || t.born.elapsed() < HELPER_SETTLES)).count();
+        if let Some(by) = by
+            && !let_through
+        {
+            self.may_start_helper(by, task)?;
+            let most = self.cfg.helpers_at_once();
+            let busy = self.terms.values().filter(|t| t.started_by == Some(by) && (t.status == Status::Working || t.born.elapsed() < HELPER_SETTLES)).count();
             if busy >= most {
-                anyhow::bail!("{busy} helpers are already working, and {most} at once is the limit (Settings, Agents). Wait for one to finish, then start this one.");
+                anyhow::bail!("{busy} helpers are already working, and {most} at once is the limit (Settings, Sessions). Wait for one to finish, then start this one.");
             }
         }
         Ok(by)

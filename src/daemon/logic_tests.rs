@@ -3,7 +3,19 @@
 use super::*;
 use std::time::Duration;
 
+/// Shell panes write their startup files and agent launchers to the data folder: point it at a
+/// scratch folder (Linux honours this) so tests leave the real one alone.
+fn own_data_folder() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let dir = std::env::temp_dir().join(format!("seshi-test-data-{}", std::process::id()));
+        // SAFETY: first thing a daemon test does, before the panes it starts read the environment.
+        unsafe { std::env::set_var("XDG_DATA_HOME", dir) };
+    });
+}
+
 fn daemon() -> (Daemon, mpsc::Receiver<Ev>) {
+    own_data_folder();
     let (tx, rx) = mpsc::channel(4096);
     let mut d = Daemon::new(Config::default(), tx);
     // Its own folder (made only if something is written to it), so tests never share check tails.
@@ -354,12 +366,12 @@ fn an_agent_is_working_while_one_of_its_own_runs_in_the_background() {
 #[test]
 fn only_so_many_helpers_work_at_once() {
     let (mut d, _rx) = daemon();
-    d.cfg.mcp.helpers_at_once = 2;
+    d.cfg.sessions.helpers_at_once = "2".into();
     let here = Some(std::env::temp_dir());
     d.command(0, Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None }).unwrap();
-    let commander = d.workspaces[0].tabs[0].focus;
-    let token = d.terms[&commander].token.clone();
-    let mut c = from_pane(&mut d, 1, commander, &token);
+    let starter = d.workspaces[0].tabs[0].focus;
+    let token = d.terms[&starter].token.clone();
+    let mut c = from_pane(&mut d, 1, starter, &token);
     let start = |d: &mut Daemon| d.handle(Ev::Msg(1, ClientMsg::Command(Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None })));
     let refused = |c: &mut mpsc::Receiver<ServerMsg>| std::iter::from_fn(|| c.try_recv().ok()).find_map(|m| if let ServerMsg::Error(e) = m { Some(e) } else { None });
     // Two helpers, just started: both count as working until their agents report.
@@ -372,7 +384,7 @@ fn only_so_many_helpers_work_at_once() {
     let why = refused(&mut c).expect("the third is refused");
     assert!(d.terms.len() == 3 && why.contains("2 helpers are already working") && why.contains("Wait for one to finish"), "{why}");
     // One finishes (and has been up a while): there's room again.
-    let helpers: Vec<TermId> = d.terms.keys().copied().filter(|t| *t != commander).collect();
+    let helpers: Vec<TermId> = d.terms.keys().copied().filter(|t| *t != starter).collect();
     let done = d.terms.get_mut(&helpers[0]).unwrap();
     (done.status, done.born) = (Status::Done, Instant::now() - super::HELPER_SETTLES - Duration::from_secs(1));
     start(&mut d);
@@ -380,10 +392,6 @@ fn only_so_many_helpers_work_at_once() {
     // What you start yourself never counts, and never waits.
     d.command(0, Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None }).unwrap();
     assert_eq!(d.terms.len(), 5);
-    // No limit: as many as asked for.
-    d.cfg.mcp.helpers_at_once = 0;
-    start(&mut d);
-    assert_eq!(d.terms.len(), 6);
     let all: Vec<TermId> = d.terms.keys().copied().collect();
     close(&mut d, &all);
 }
@@ -416,28 +424,28 @@ fn with_no_window_a_transient_question_cannot_ring_after_work_resumes() {
 #[test]
 fn with_no_window_open_finished_waits_and_a_helper_stays_quiet() {
     let (mut d, _rx) = daemon();
-    let (commander, helper) = (pane(&mut d), pane(&mut d));
-    for t in [commander, helper] {
+    let (starter, helper) = (pane(&mut d), pane(&mut d));
+    for t in [starter, helper] {
         d.terms.get_mut(&t).unwrap().agent = Some("claude".into());
     }
     let rang = |d: &Daemon, t: TermId| d.terms[&t].alerted.map(|(s, _)| s);
     let overdue = |d: &mut Daemon, t: TermId| d.terms.get_mut(&t).unwrap().alert_due.as_mut().unwrap().1 = Instant::now() - Duration::from_millis(1);
     // Finished: not said yet.
-    d.set_status(commander, Status::Working, "test");
-    d.set_status(commander, Status::Done, "test");
-    assert!(rang(&d, commander).is_none() && d.terms[&commander].alert_due.is_some(), "it waits");
+    d.set_status(starter, Status::Working, "test");
+    d.set_status(starter, Status::Done, "test");
+    assert!(rang(&d, starter).is_none() && d.terms[&starter].alert_due.is_some(), "it waits");
     // Back to work before the wait is over: never said.
-    d.set_status(commander, Status::Working, "test");
-    assert!(d.terms[&commander].alert_due.is_none());
+    d.set_status(starter, Status::Working, "test");
+    assert!(d.terms[&starter].alert_due.is_none());
     d.settled_alerts();
-    assert!(rang(&d, commander).is_none());
+    assert!(rang(&d, starter).is_none());
     // Finished and still finished: said.
-    d.set_status(commander, Status::Done, "test");
-    overdue(&mut d, commander);
+    d.set_status(starter, Status::Done, "test");
+    overdue(&mut d, starter);
     d.settled_alerts();
-    assert_eq!(rang(&d, commander), Some(Status::Done));
-    // A helper's finish is its commander's news.
-    d.terms.get_mut(&helper).unwrap().started_by = Some(commander);
+    assert_eq!(rang(&d, starter), Some(Status::Done));
+    // A helper's finish is its starter's news.
+    d.terms.get_mut(&helper).unwrap().started_by = Some(starter);
     d.set_status(helper, Status::Working, "test");
     d.set_status(helper, Status::Done, "test");
     assert!(d.terms[&helper].alert_due.is_none() && rang(&d, helper).is_none());
@@ -447,7 +455,7 @@ fn with_no_window_open_finished_waits_and_a_helper_stays_quiet() {
     overdue(&mut d, helper);
     d.settled_alerts();
     assert_eq!(rang(&d, helper), Some(Status::Blocked));
-    close(&mut d, &[commander, helper]);
+    close(&mut d, &[starter, helper]);
 }
 
 #[test]
@@ -639,23 +647,23 @@ fn a_session_knows_which_pane_started_it() {
     let (mut d, _rx) = daemon();
     let here = Some(std::env::temp_dir());
     d.command(0, Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None }).unwrap();
-    let commander = d.workspaces[0].tabs[0].focus;
-    assert_eq!(d.terms[&commander].started_by, None, "you started it");
-    let token = d.terms[&commander].token.clone();
-    let _c = from_pane(&mut d, 1, commander, &token);
-    let mut made = vec![commander];
+    let starter = d.workspaces[0].tabs[0].focus;
+    assert_eq!(d.terms[&starter].started_by, None, "you started it");
+    let token = d.terms[&starter].token.clone();
+    let _c = from_pane(&mut d, 1, starter, &token);
+    let mut made = vec![starter];
     d.handle(Ev::Msg(1, ClientMsg::Command(Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None })));
     made.push(newest(&d));
     let ws = d.workspaces[0].id;
     d.handle(Ev::Msg(1, ClientMsg::Command(Command::NewTab { ws, name: None, cmd: None })));
     made.push(newest(&d));
-    d.handle(Ev::Msg(1, ClientMsg::Command(Command::Split { term: commander, dir: crate::layout::Dir::Right, cmd: None, cwd: None })));
+    d.handle(Ev::Msg(1, ClientMsg::Command(Command::Split { term: starter, dir: crate::layout::Dir::Right, cmd: None, cwd: None })));
     made.push(newest(&d));
     assert_eq!(made.len(), 4, "a workspace, a tab and a split");
     for t in &made[1..] {
-        assert_eq!(d.terms[t].started_by, Some(commander), "started from the commander's pane");
+        assert_eq!(d.terms[t].started_by, Some(starter), "started from the starter's pane");
     }
-    assert_eq!(d.snapshot().terms[&made[1]].started_by, Some(commander), "and clients are told");
+    assert_eq!(d.snapshot().terms[&made[1]].started_by, Some(starter), "and clients are told");
     close(&mut d, &made);
 }
 
@@ -674,37 +682,37 @@ fn only_the_pane_itself_can_be_named_as_the_starter() {
 #[test]
 fn a_worktree_start_keeps_its_starter_after_the_caller_has_gone() {
     let (mut d, _rx) = daemon();
-    let commander = pane(&mut d);
+    let starter = pane(&mut d);
     let dir = std::env::temp_dir().join(format!("seshi-started-by-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    // The worktree was asked for from the commander's pane; that connection closed while git ran.
+    // The worktree was asked for from the starter's pane; that connection closed while git ran.
     d.pending_ops += 1;
-    d.handle(Ev::WorktreeCreated { client: 9, branch: "helper".into(), cmd: None, split: None, by: Some(commander), set_up: false, result: Ok((dir.clone(), String::new())) });
+    d.handle(Ev::WorktreeCreated { client: 9, branch: "helper".into(), cmd: None, split: None, by: Some(starter), set_up: false, result: Ok((dir.clone(), String::new())) });
     let helper = newest(&d);
-    assert_eq!(d.terms[&helper].started_by, Some(commander));
-    // The next session you start yourself isn't the commander's.
+    assert_eq!(d.terms[&helper].started_by, Some(starter));
+    // The next session you start yourself isn't the starter's.
     d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();
     let yours = newest(&d);
     assert_eq!(d.terms[&yours].started_by, None);
-    close(&mut d, &[commander, helper, yours]);
+    close(&mut d, &[starter, helper, yours]);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
-fn a_replaced_session_keeps_its_place_in_a_fleet() {
+fn a_replaced_session_keeps_its_place_among_its_helpers() {
     let (mut d, _rx) = daemon();
     let here = Some(std::env::temp_dir());
     for _ in 0..3 {
         d.command(0, Command::NewWorkspace { cwd: here.clone(), name: None, cmd: None }).unwrap();
     }
-    let [lead, commander, helper] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
-    d.terms.get_mut(&commander).unwrap().started_by = Some(lead);
-    d.terms.get_mut(&helper).unwrap().started_by = Some(commander);
+    let [lead, starter, helper] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
+    d.terms.get_mut(&starter).unwrap().started_by = Some(lead);
+    d.terms.get_mut(&helper).unwrap().started_by = Some(starter);
     // Woken from sleep: a new process, the same session.
-    let t = d.terms.get_mut(&commander).unwrap();
+    let t = d.terms.get_mut(&starter).unwrap();
     t.asleep = true;
     t.kill_tree();
-    let woken = d.wake(commander).expect("it wakes");
+    let woken = d.wake(starter).expect("it wakes");
     assert_eq!(d.terms[&woken].started_by, Some(lead), "still under the one that started it");
     assert_eq!(d.terms[&helper].started_by, Some(woken), "and its helper is still its own");
     // Moved into a worktree: the same again.
@@ -759,7 +767,7 @@ fn a_spare_fits_only_its_repo_and_its_agent() {
 }
 
 #[test]
-fn a_fleet_comes_back_from_a_restart() {
+fn helpers_come_back_from_a_restart_under_their_starter() {
     let (mut d, _rx) = daemon();
     let dir = std::env::temp_dir();
     let child_activity = SubagentActivity {
@@ -788,8 +796,8 @@ fn a_fleet_comes_back_from_a_restart() {
         latest_activity: Some("working".into()),
         result: None,
     };
-    // Saved ids: 70 is the commander, 71 its helper, 72 a helper whose commander (99) is gone.
-    // The helpers are saved ahead of the commander, so they come back before it does.
+    // Saved ids: 70 is the starter, 71 its helper, 72 a helper whose starter (99) is gone.
+    // The helpers are saved ahead of the starter, so they come back before it does.
     let ws = |id: TermId, by: Option<TermId>| persist::SavedWs {
         name: String::new(),
         cwd: dir.clone(),
@@ -805,23 +813,28 @@ fn a_fleet_comes_back_from_a_restart() {
         active_tab: 0,
     };
     d.restore(persist::Saved { workspaces: vec![ws(71, Some(70)), ws(72, Some(99)), ws(70, None)], active: 0, made_worktrees: Vec::new() });
-    let [helper, orphan, commander] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
-    assert!(commander != 70, "the commander has this run's id");
-    assert_eq!(d.terms[&helper].started_by, Some(commander), "its helper found it again");
+    let [helper, orphan, starter] = [0, 1, 2].map(|i| d.workspaces[i].tabs[0].focus);
+    assert!(starter != 70, "the starter has this run's id");
+    assert_eq!(d.terms[&helper].started_by, Some(starter), "its helper found it again");
     assert_eq!(d.terms[&helper].subagent_activity[0], child_activity, "completed child and result survive restoration");
     assert_eq!(d.terms[&helper].subagent_activity[1].id, active_activity.id);
     assert_eq!(d.terms[&helper].subagent_activity[1].state, SubagentState::ConnectionLost, "active child is unconfirmed after a daemon restart");
-    assert_eq!(d.terms[&orphan].started_by, None, "a helper whose commander didn't come back is on its own");
-    assert_eq!(d.terms[&commander].started_by, None);
+    assert_eq!(d.terms[&orphan].started_by, None, "a helper whose starter didn't come back is on its own");
+    assert_eq!(d.terms[&starter].started_by, None);
     // And it's saved that way again.
     let saved = d.saved();
-    assert_eq!(saved.workspaces[0].tabs[0].panes[&helper].started_by, Some(commander));
+    assert_eq!(saved.workspaces[0].tabs[0].panes[&helper].started_by, Some(starter));
     assert_eq!(saved.workspaces[0].tabs[0].panes[&helper].subagent_activity.len(), 2);
-    // A session saved before fleets existed still loads.
+    // A session saved before helpers were tracked still loads.
     let old: persist::SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":null,"session":null}"#).expect("an older pane");
     assert_eq!(old.started_by, None);
     assert!(old.subagent_activity.is_empty(), "panes saved before child activity still load");
-    close(&mut d, &[helper, orphan, commander]);
+    // Fleet and commander state an older version saved is read and ignored.
+    let fleet: persist::SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":"claude","session":null,"commander":true,"fleet":{"goal":"ship it","size":3},"started_by":4}"#).expect("a pane from a fleet");
+    assert_eq!((fleet.agent.as_deref(), fleet.started_by), (Some("claude"), Some(4)));
+    let old_save = r#"{"workspaces":[],"active":0,"made_worktrees":[],"fleets":[{"commander":1}]}"#;
+    assert!(serde_json::from_str::<persist::Saved>(old_save).is_ok(), "a save with fleet tables still loads");
+    close(&mut d, &[helper, orphan, starter]);
 }
 
 #[test]
@@ -918,6 +931,13 @@ fn only_a_pane_shell_asks_for_an_agent_worktree() {
     d.handle(Ev::From(2, t, token));
     d.handle(Ev::Msg(2, ClientMsg::Command(Command::AgentWorktree { dir: std::env::current_dir().unwrap() })));
     assert!(matches!(crx.try_recv(), Ok(ServerMsg::Reply(Reply::Text(p))) if p.is_empty()), "an agent's own agents work where it does");
+    // Another pane's id with the wrong secret is not that pane: nothing is made for it.
+    d.terms.get_mut(&t).unwrap().agent = None;
+    let (tx, mut crx) = mpsc::channel(64);
+    d.handle(Ev::Connected(3, tx, false));
+    d.handle(Ev::From(3, t, "not-the-secret".into()));
+    d.handle(Ev::Msg(3, ClientMsg::Command(Command::AgentWorktree { dir: std::env::current_dir().unwrap() })));
+    assert!(matches!(crx.try_recv(), Ok(ServerMsg::Reply(Reply::Text(p))) if p.is_empty()), "a forged pane id gets no worktree");
     close(&mut d, &[t]);
 }
 
@@ -2791,4 +2811,169 @@ fn approving_one_checkpoint_while_another_runs_runs_it_after_in_the_same_turn() 
     assert_eq!((test.turn, test.rerun_queued), (1, false), "in the same turn");
     assert_eq!(d.check_output(t, Some("test")).map(str::trim), Some("tested"));
     close(&mut d, &[t]);
+}
+
+
+/// A claude pane in its own workspace, and a connection that proved it is that pane.
+fn agent_pane_in(d: &mut Daemon, client: ClientId, dir: &std::path::Path) -> (TermId, mpsc::Receiver<ServerMsg>) {
+    d.command(0, Command::NewWorkspace { cwd: Some(dir.to_path_buf()), name: None, cmd: None }).unwrap();
+    let term = d.workspaces.last().unwrap().tabs[0].focus;
+    d.terms.get_mut(&term).unwrap().agent = Some("claude".into());
+    let token = d.terms[&term].token.clone();
+    (term, from_pane(d, client, term, &token))
+}
+
+/// The pane's connection asks to start a session running `cmd`; what the daemon answered.
+fn helper_start(d: &mut Daemon, client: ClientId, c: &mut mpsc::Receiver<ServerMsg>, cmd: Option<&str>) -> Option<String> {
+    let cwd = Some(std::env::temp_dir());
+    d.handle(Ev::Msg(client, ClientMsg::Command(Command::NewWorkspace { cwd, name: None, cmd: cmd.map(String::from) })));
+    std::iter::from_fn(|| c.try_recv().ok()).find_map(|m| if let ServerMsg::Error(e) = m { Some(e) } else { None })
+}
+
+fn answer_helpers(term: TermId, choice: HelperChoice) -> Command {
+    Command::AnswerHelpers { term, choice }
+}
+
+#[test]
+fn the_first_helper_start_asks_and_the_row_needs_you_until_you_answer() {
+    let (mut d, _rx) = daemon();
+    let (a, mut c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    let panes = d.terms.len();
+    // Nothing starts; the agent is told you were asked, and every task it names is listed once.
+    let why = helper_start(&mut d, 1, &mut c, Some("claude 'fix the login test'")).expect("refused for now");
+    assert!(why.contains("needs the user's OK") && why.contains("1 helper"), "{why}");
+    helper_start(&mut d, 1, &mut c, Some("claude 'port the footer'"));
+    helper_start(&mut d, 1, &mut c, Some("claude 'port the footer'"));
+    assert_eq!(d.terms.len(), panes, "no session started");
+    assert_eq!(d.terms[&a].helpers.asked, ["fix the login test", "port the footer"]);
+    let row = &d.snapshot().terms[&a];
+    assert_eq!((row.status, row.helper_ask.len()), (Status::Blocked, 2), "needs you, whatever its hooks say");
+    assert_ne!(d.terms[&a].status, Status::Blocked, "an overlay: the agent's own status is untouched");
+    // The pane cannot answer for you, and the ask stays.
+    d.handle(Ev::Msg(1, ClientMsg::Command(answer_helpers(a, HelperChoice::Allow))));
+    let refused = std::iter::from_fn(|| c.try_recv().ok()).find_map(|m| if let ServerMsg::Error(e) = m { Some(e) } else { None });
+    assert!(refused.is_some_and(|e| e.contains("yours to allow")));
+    assert_eq!(d.terms[&a].helpers.asked.len(), 2);
+    // You allow: it may start them, now and for the rest of its run.
+    d.command(0, answer_helpers(a, HelperChoice::Allow)).unwrap();
+    assert!(d.snapshot().terms[&a].helper_ask.is_empty() && !d.terms[&a].helpers.refused);
+    assert!(helper_start(&mut d, 1, &mut c, None).is_none(), "allowed");
+    assert_eq!((d.terms.len(), d.terms[&newest(&d)].started_by), (panes + 1, Some(a)));
+    // An answer to nothing is an error, not a grant.
+    assert!(d.command(0, answer_helpers(a, HelperChoice::No)).is_err());
+    assert!(d.command(0, answer_helpers(999, HelperChoice::Allow)).is_err(), "no such pane");
+    let all: Vec<TermId> = d.terms.keys().copied().collect();
+    close(&mut d, &all);
+}
+
+#[test]
+fn no_means_it_does_the_work_alone() {
+    let (mut d, _rx) = daemon();
+    let (a, mut c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    let panes = d.terms.len();
+    helper_start(&mut d, 1, &mut c, Some("claude 'one'"));
+    d.command(0, answer_helpers(a, HelperChoice::No)).unwrap();
+    assert_eq!(d.snapshot().terms[&a].status, d.terms[&a].status, "the row is back to what the agent says");
+    let why = helper_start(&mut d, 1, &mut c, None).expect("refused");
+    assert!(why.contains("said no helpers") && why.contains("Do the work yourself"), "{why}");
+    assert!(d.terms[&a].helpers.asked.is_empty(), "it is not asked about again");
+    assert_eq!(d.terms.len(), panes);
+    close(&mut d, &[a]);
+}
+
+#[test]
+fn always_in_this_project_is_remembered_for_its_sessions_and_across_restarts() {
+    let rt = runtime();
+    let _in_rt = rt.enter();
+    let (mut d, _rx) = daemon();
+    let scratch = persist::scratch_dir();
+    d.helper_projects_file = scratch.path().join("helper-projects.json");
+    let other = scratch.path().join("elsewhere");
+    std::fs::create_dir_all(&other).unwrap();
+    let (a, mut ca) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    let (b, mut cb) = agent_pane_in(&mut d, 2, &std::env::temp_dir());
+    let (e, mut ce) = agent_pane_in(&mut d, 3, &other);
+    helper_start(&mut d, 1, &mut ca, Some("claude 'one'"));
+    d.command(0, answer_helpers(a, HelperChoice::Always)).unwrap();
+    assert!(helper_start(&mut d, 1, &mut ca, None).is_none());
+    assert!(helper_start(&mut d, 2, &mut cb, None).is_none(), "another session in the same project doesn't ask");
+    assert!(d.terms[&b].helpers.asked.is_empty());
+    assert!(helper_start(&mut d, 3, &mut ce, Some("claude 'two'")).is_some(), "another project still asks");
+    assert_eq!(d.terms[&e].helpers.asked, ["two"]);
+    // It is on disk, off the loop, by place not by spelling; a new daemon starts knowing it.
+    let until = Instant::now() + Duration::from_secs(10);
+    let saved = loop {
+        let on_disk = helpers::Projects::load(&d.helper_projects_file).unwrap();
+        if on_disk.allows(&std::env::temp_dir()) || Instant::now() > until {
+            break on_disk;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    assert!(saved.allows(&std::env::temp_dir()) && !saved.allows(&other), "{saved:?}");
+    let (mut again, _rx2) = daemon();
+    again.helper_projects = saved;
+    let (_, mut c2) = agent_pane_in(&mut again, 1, &std::env::temp_dir());
+    assert!(helper_start(&mut again, 1, &mut c2, None).is_none(), "remembered after a restart");
+    let all: Vec<TermId> = again.terms.keys().copied().collect();
+    close(&mut again, &all);
+    let all: Vec<TermId> = d.terms.keys().copied().collect();
+    close(&mut d, &all);
+}
+
+#[test]
+fn the_setting_decides_always_lets_it_through_never_refuses_and_nothing_is_asked() {
+    let (mut d, _rx) = daemon();
+    let (a, mut c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    let panes = d.terms.len();
+    d.cfg.sessions.helpers = "never".into();
+    let why = helper_start(&mut d, 1, &mut c, Some("claude 'one'")).expect("refused");
+    assert!(why.contains("turned helpers off") && why.contains("Do the work yourself"), "{why}");
+    assert!(d.terms[&a].helpers.asked.is_empty() && d.terms.len() == panes);
+    d.cfg.sessions.helpers = "always".into();
+    assert!(helper_start(&mut d, 1, &mut c, None).is_none());
+    assert_eq!(d.terms.len(), panes + 1);
+    // A person's shell is not an agent asking for help: it starts what it likes.
+    d.cfg.sessions.helpers = "never".into();
+    d.terms.get_mut(&a).unwrap().agent = None;
+    assert!(helper_start(&mut d, 1, &mut c, None).is_none());
+    let all: Vec<TermId> = d.terms.keys().copied().collect();
+    close(&mut d, &all);
+}
+
+#[test]
+fn an_asking_session_alerts_you_once_even_though_its_own_status_is_not_blocked() {
+    let (mut d, _rx) = daemon();
+    let (a, mut c) = agent_pane_in(&mut d, 1, &std::env::temp_dir());
+    d.set_status(a, Status::Working, "test");
+    helper_start(&mut d, 1, &mut c, Some("claude 'one'"));
+    assert_eq!(d.terms[&a].alert_due.map(|(s, _)| s), Some(Status::Blocked), "the desktop alert is queued");
+    helper_start(&mut d, 1, &mut c, Some("claude 'two'"));
+    let first = d.terms[&a].alert_due;
+    helper_start(&mut d, 1, &mut c, Some("claude 'three'"));
+    assert_eq!(d.terms[&a].alert_due, first, "asking again doesn't ring again");
+    close(&mut d, &[a]);
+}
+
+#[test]
+fn the_activity_a_newer_seshi_reads_counts_working_and_waiting_sessions() {
+    let (mut d, _rx) = daemon();
+    let (a, b, c) = (pane(&mut d), pane(&mut d), pane(&mut d));
+    d.terms.get_mut(&a).unwrap().status = Status::Working;
+    d.terms.get_mut(&b).unwrap().status = Status::Blocked;
+    d.terms.get_mut(&c).unwrap().status = Status::Idle;
+    let seen = d.activity();
+    assert_eq!((seen.sessions, seen.working, seen.waiting, seen.busy()), (3, 1, 1, 2));
+    assert_eq!((seen.pid, seen.version.as_str()), (std::process::id(), env!("CARGO_PKG_VERSION")));
+    close(&mut d, &[a, b, c]);
+}
+
+#[test]
+fn an_agent_saved_mid_turn_comes_back_as_a_resume_of_its_conversation() {
+    let (d, _rx) = daemon();
+    // What the file holds when the server stops for an update: the agent and its session,
+    // whatever it was doing (status is not saved, so a turn in flight resumes, not repeats).
+    let text = serde_json::to_string(&persist::SavedPane { agent: Some("claude".into()), session: Some("abc123".into()), cmd: Some("claude \"do the thing\"".into()), ..Default::default() }).unwrap();
+    let pane: persist::SavedPane = serde_json::from_str(&text).unwrap();
+    let resume = d.restore_cmd(&pane).expect("claude resumes");
+    assert!(resume.contains("abc123") && !resume.contains("do the thing"), "{resume}");
 }

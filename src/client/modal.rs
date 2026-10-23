@@ -66,12 +66,11 @@ pub enum Cat {
     Appearance,
     Agents,
     Check,
-    Team,
     Keys,
 }
 
 impl Cat {
-    pub const ALL: [Cat; 7] = [Cat::General, Cat::Sessions, Cat::Appearance, Cat::Agents, Cat::Check, Cat::Team, Cat::Keys];
+    pub const ALL: [Cat; 6] = [Cat::General, Cat::Sessions, Cat::Appearance, Cat::Agents, Cat::Check, Cat::Keys];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -80,7 +79,6 @@ impl Cat {
             Cat::Appearance => "Appearance",
             Cat::Agents => "Agents",
             Cat::Check => "Check",
-            Cat::Team => "Team",
             Cat::Keys => "Keys",
         }
     }
@@ -90,49 +88,53 @@ impl Cat {
 pub const SETTINGS: &[Setting] = &[
     // General
     Setting { path: "prefix", label: "Leader key", kind: Kind::Key, cat: Cat::General, help: "Press it, let go, then a key. Enter, then press the new leader." },
-    Setting { path: "ui.layout", label: "Layout", kind: Kind::Choice(&["cards", "flat"]), cat: Cat::General, help: "Cards keeps floating or tiled panes. Flat uses full-bleed square zones." },
-    Setting { path: "ui.background", label: "Background", kind: Kind::Choice(&["terminal", "solid"]), cat: Cat::General, help: "Terminal keeps your terminal's own background, so transparency and images look the same everywhere. Solid paints every cell." },
-    Setting { path: "ui.sidebar_position", label: "Sidebar side", kind: Kind::Choice(&["left", "right"]), cat: Cat::General, help: "Which edge the sidebar sits on." },
     Setting { path: "ui.splash", label: "Splash screen", kind: Kind::Bool, cat: Cat::General, help: "Show the seshi and what happened while you were away when you start." },
-    Setting { path: "ui.update_check", label: "Check for updates", kind: Kind::Bool, cat: Cat::General, help: "When seshi opens (and every few hours while it's open), see whether a newer one is out; the Update button installs it." },
+    Setting { path: "ui.update_check", label: "Check for updates", kind: Kind::Bool, cat: Cat::General, help: "On start, and every few hours while open, look for a newer seshi. The Update button installs it." },
     Setting { path: "ui.mouse", label: "Mouse", kind: Kind::Bool, cat: Cat::General, help: "Click, hover, scroll and drag. Hold Shift to select text with your terminal instead." },
     Setting { path: "ui.alt_arrows", label: "Alt+arrows move between panes", kind: Kind::Bool, cat: Cat::General, help: "Without the leader. Turn it off if your shell jumps words with Alt+arrows." },
-    Setting { path: "ui.motion", label: "Motion", kind: Kind::Bool, cat: Cat::General, help: "The sidebar and the sheet slide in, the highlight glides, toasts slide and fade (under 150 ms). Always off over SSH." },
-    Setting { path: "ui.which_key", label: "Keys after a pause", kind: Kind::Bool, cat: Cat::General, help: "After the leader key, show every shortcut if you pause." },
-    Setting { path: "ui.start_dir", label: "Start folder", kind: Kind::Folder, cat: Cat::General, help: "Where plain `seshi` opens (and the shell after you close everything). Empty: wherever you run it. ~ is home." },
-    Setting { path: "editor", label: "Editor", kind: Kind::Program(EDITORS), cat: Cat::General, help: "For open in editor (e). Empty: $VISUAL, $EDITOR, then code. nvim, hx, … open inside seshi." },
+    Setting { path: "ui.which_key", label: "Leader waits for next key", kind: Kind::Bool, cat: Cat::General, help: "After the leader, list every key if you pause. Off: the Menu and ? list them." },
+    Setting { path: "ui.start_dir", label: "Start folder", kind: Kind::Folder, cat: Cat::General, help: "Where plain `seshi` opens, and the shell after you close everything. Empty: where you run it. ~ is home." },
+    Setting { path: "editor", label: "Editor", kind: Kind::Program(EDITORS), cat: Cat::General, help: "Opens files from seshi. Empty: $VISUAL, $EDITOR, then code. nvim, hx, … open inside seshi." },
     Setting { path: "shell", label: "Shell", kind: Kind::Program(SHELLS), cat: Cat::General, help: "The shell new sessions run. Empty: pwsh / powershell on Windows, $SHELL elsewhere." },
     Setting { path: "shell_integration", label: "PowerShell folder tracking", kind: Kind::Bool, cat: Cat::General, help: "Lets seshi see where PowerShell sessions cd to." },
+    // Sessions
+    Setting { path: "sessions.agent", label: "Agent", kind: Kind::Choice(crate::config::NEW_AGENTS), cat: Cat::Sessions, help: "Which agent leader s starts. last used is the last one you started from Seshi." },
+    Setting { path: "sessions.where", label: "Where", kind: Kind::Choice(crate::config::NEW_WHERE), cat: Cat::Sessions, help: "new worktree: its own branch, so sessions side by side don't collide." },
+    Setting { path: "sessions.helpers", label: "Sessions may start helpers", kind: Kind::Choice(crate::config::HELPERS_MAY), cat: Cat::Sessions, help: "ask: the first time, the row asks you once (1 allow · 2 always in this project · 3 no). always and never answer for you." },
+    Setting { path: "sessions.helpers_at_once", label: "Helpers at once", kind: Kind::Choice(crate::config::HELPERS_AT_ONCE), cat: Cat::Sessions, help: "Per session. Extra helpers wait their turn." },
     Setting { path: "auto_continue", label: "Continue after a limit", kind: Kind::Bool, cat: Cat::Sessions, help: "An agent stopped by its plan limit is told \"continue\" once the limit resets." },
     Setting { path: "ui.attention_sort", label: "Sort sidebar by attention", kind: Kind::Bool, cat: Cat::Sessions, help: "Sessions that need you float to the top of their group. The rest keep their place." },
-    Setting { path: "notify.sound", label: "Alert sounds", kind: Kind::Bool, cat: Cat::Sessions, help: "Play two rising notes when an agent needs you and one soft note when a background session finishes. Sessions you're viewing stay quiet." },
-    Setting { path: "notify.phone_topic", label: "Phone alerts (ntfy topic)", kind: Kind::Text, cat: Cat::Sessions, help: "Install the free ntfy app, subscribe to a hard-to-guess topic name, and put it here. Empty is off. seshi test-alert sends a test." },
-    Setting { path: "notify.phone_after", label: "Phone: after waiting (s)", kind: Kind::Int { step: 30, min: 0, max: 3600 }, cat: Cat::Sessions, help: "Only once an agent has waited this long with nobody answering, so it stays quiet while you're at your desk." },
+    Setting { path: "notify.sound", label: "Alert sounds", kind: Kind::Bool, cat: Cat::Sessions, help: "Two rising notes when an agent needs you, one soft note when a background session finishes." },
+    Setting { path: "notify.phone_topic", label: "Phone alerts (ntfy topic)", kind: Kind::Text, cat: Cat::Sessions, help: "Subscribe to a hard-to-guess topic in the free ntfy app and put it here. Empty is off. seshi test-alert tries it." },
+    Setting { path: "notify.phone_after", label: "Phone: after waiting (s)", kind: Kind::Int { step: 30, min: 0, max: 3600 }, cat: Cat::Sessions, help: "Only once an agent has waited this long unanswered, so it stays quiet while you're at your desk." },
     Setting { path: "notify.phone_done", label: "Phone: when one finishes too", kind: Kind::Bool, cat: Cat::Sessions, help: "Also when an agent finishes and nobody has looked (after the same wait)." },
-    Setting { path: "notify.phone_text", label: "Phone: say what it's doing", kind: Kind::Bool, cat: Cat::Sessions, help: "Put the agent's task in the alert. Off: just which agent and where. On the public server the topic name is all that keeps it private." },
-    Setting { path: "worktree.delete_with_last", label: "Remove a worktree with its last agent", kind: Kind::Bool, cat: Cat::Sessions, help: "Closing the last thing in a worktree seshi made removes its folder; the branch is kept. Never with uncommitted changes." },
-    Setting { path: "restore.enabled", label: "Bring sessions back after a restart", kind: Kind::Bool, cat: Cat::Sessions, help: "Agents keep going in the background; after a reboot seshi rebuilds your sessions." },
+    Setting { path: "notify.phone_text", label: "Phone: say what it's doing", kind: Kind::Bool, cat: Cat::Sessions, help: "Put the agent's task in the alert. Off: just which agent and where. On ntfy.sh the topic is the only secret." },
+    Setting { path: "worktree.delete_with_last", label: "Remove worktree with last agent", kind: Kind::Bool, cat: Cat::Sessions, help: "Closing the last thing in a worktree seshi made removes its folder; the branch stays. Never with changes." },
+    Setting { path: "restore.enabled", label: "Bring sessions back after restart", kind: Kind::Bool, cat: Cat::Sessions, help: "Agents keep going in the background; after a reboot seshi rebuilds your sessions." },
     Setting { path: "restore.agents", label: "Resume agents", kind: Kind::Bool, cat: Cat::Sessions, help: "Restart agents in their last conversation (claude --resume, codex resume)." },
     Setting { path: "restore.commands", label: "Re-run commands", kind: Kind::Bool, cat: Cat::Sessions, help: "Run again the commands sessions were started with (lazygit, a dev server, ...)." },
     Setting { path: "scrollback", label: "Scrollback lines", kind: Kind::Int { step: 1000, min: 1000, max: 100_000 }, cat: Cat::Sessions, help: "How much history each session keeps for scrolling and search." },
     // Appearance
-    Setting { path: "ui.layout", label: "Layout", kind: Kind::Choice(&["cards", "flat"]), cat: Cat::Appearance, help: "Cards keeps floating or tiled panes. Flat uses full-bleed square zones." },
+    Setting { path: "ui.layout", label: "Layout", kind: Kind::Choice(&["cards", "flat"]), cat: Cat::Appearance, help: "cards: a border around each panel. flat: one header strip and thin rules." },
+    Setting { path: "ui.background", label: "Background", kind: Kind::Choice(&["terminal", "solid"]), cat: Cat::Appearance, help: "terminal: your terminal's background shows through. solid: seshi paints every cell." },
+    Setting { path: "ui.sidebar_position", label: "Sidebar side", kind: Kind::Choice(&["left", "right"]), cat: Cat::Appearance, help: "Which edge the sidebar sits on." },
+    Setting { path: "ui.motion", label: "Motion", kind: Kind::Bool, cat: Cat::Appearance, help: "Slides, glides and fades (under 150 ms). Always off over SSH." },
     Setting { path: "ui.panes", label: "Cards spacing", kind: Kind::Choice(&["floating", "tiled"]), cat: Cat::Appearance, help: "Gaps and rounded borders between panes in Cards layout. Tiled packs them edge to edge." },
-    Setting { path: "ui.corners", label: "Card edges", kind: Kind::Choice(&["square", "rounded"]), cat: Cat::Appearance, help: "Square: the line sits on the card's edge, its colour right up to it. Rounded: a centred line with round corners (a thin strip of background shows inside it)." },
+    Setting { path: "ui.corners", label: "Card edges", kind: Kind::Choice(&["square", "rounded"]), cat: Cat::Appearance, help: "square: the line sits on the card's edge. rounded: a centred line with round corners. Flat rounds only popups." },
     Setting { path: "ui.gap", label: "Gap", kind: Kind::Choice(&["0", "1", "2"]), cat: Cat::Appearance, help: "Space between floating panes, in rows stacked and columns side by side." },
     Setting { path: "ui.dim", label: "Dim unfocused", kind: Kind::Choice(&["off", "subtle", "30%", "60%"]), cat: Cat::Appearance, help: "How far the panes you're not in fade. Their colours stay recognisable." },
     Setting { path: "ui.focus_border", label: "Focus border", kind: Kind::Choice(&["accent", "bright", "none"]), cat: Cat::Appearance, help: "How the pane you're in is outlined." },
-    Setting { path: "ui.pill_caps", label: "Round pill ends", kind: Kind::Bool, cat: Cat::Appearance, help: "Tabs and buttons get round ends. Needs a Nerd Font; turn off for square ends." },
+    Setting { path: "ui.pill_caps", label: "Round pill ends", kind: Kind::Bool, cat: Cat::Appearance, help: "Round ends on buttons, selected rows and menu rows. Needs a Nerd Font; off gives square ends." },
+    Setting { path: "ui.round_tabs", label: "Round tabs", kind: Kind::Bool, cat: Cat::Appearance, help: "Round ends on tab chips, the + chip and the selected folder row. Needs a Nerd Font; off gives square blocks." },
     Setting { path: "theme", label: "Theme", kind: Kind::Choice(crate::theme::BUILTIN), cat: Cat::Appearance, help: "Enter to search and preview themes. Enter in the browser applies your choice." },
-    Setting { path: "ui.glyphs", label: "Status glyphs", kind: Kind::Choice(&["auto", "unicode", "ascii", "nerd"]), cat: Cat::Appearance, help: "The marks for sessions and checks. Auto: plain ASCII when your status icons are ASCII, else Unicode. Nerd needs a Nerd Font." },
-    Setting { path: "ui.spinner", label: "Working spinner", kind: Kind::Spinner, cat: Cat::Appearance, help: "Choose an animated working indicator, use a static icon, or enter custom frames. Other status icons keep their meaning." },
+    Setting { path: "ui.glyphs", label: "Status glyphs", kind: Kind::Choice(&["auto", "dots", "unicode", "ascii", "nerd"]), cat: Cat::Appearance, help: "dots: a coloured dot and a word per session. unicode, ascii, nerd: a shape per state. auto: dots, or ascii if your icons are." },
+    Setting { path: "ui.spinner", label: "Working spinner", kind: Kind::Spinner, cat: Cat::Appearance, help: "An animated working indicator, a static icon, or custom frames. Other status icons keep their meaning." },
     // Agents
-    Setting { path: "worktree.per_agent", label: "Own worktree per agent", kind: Kind::Bool, cat: Cat::Agents, help: "Agents started in a repo's main folder (+ New, the quick prompt, or claude/codex typed in a shell) get their own branch and folder." },
+    Setting { path: "ui.subagent_count", label: "Count on the session row", kind: Kind::Bool, cat: Cat::Agents, help: "Shows \"· 4 agents\" on a working row only when the agent reports helpers. Claude does; Codex doesn't." },
+    Setting { path: "worktree.per_agent", label: "Own worktree per agent", kind: Kind::Bool, cat: Cat::Agents, help: "An agent started in a repo's main folder gets its own branch and folder." },
     Setting { path: "worktree.command", label: "Start in new worktrees", kind: Kind::Text, cat: Cat::Agents, help: "A command to run in every new worktree (e.g. claude). Empty: a shell." },
-    Setting { path: "mcp.approve", label: "Agents may approve prompts", kind: Kind::Choice(&["never", "safe", "always"]), cat: Cat::Agents, help: "Through seshi mcp. safe: only prompts for commands on [mcp] safe (tests, lint, git status…). Saying no is always allowed." },
-    Setting { path: "mcp.helpers_at_once", label: "Helpers working at once", kind: Kind::Int { step: 1, min: 0, max: 16 }, cat: Cat::Agents, help: "How many sessions started by other agents may be working at the same time. A commander that asks for more is told to wait for one to finish. 0: no limit." },
+    Setting { path: "mcp.approve", label: "Agents may approve prompts", kind: Kind::Choice(&["never", "safe", "always"]), cat: Cat::Agents, help: "Through seshi mcp. safe: only commands on [mcp] safe (tests, lint, git status…). Saying no is always allowed." },
     Setting { path: "mcp.scope", label: "Agents can reach", kind: Kind::Choice(&["project", "all"]), cat: Cat::Agents, help: "project: only sessions in the calling agent's own repo. Set up with: seshi integrate mcp" },
-    Setting { path: "team.family", label: "Family", kind: Kind::Choice(&["claude", "codex"]), cat: Cat::Team, help: "Picks which model each job runs on: its Claude one or its Codex one. A project can choose its own below." },
     Setting { path: "detection.working_window_ms", label: "Working window (ms)", kind: Kind::Int { step: 250, min: 250, max: 10_000 }, cat: Cat::Agents, help: "For agents without hooks: output this recent counts as working." },
 ];
 

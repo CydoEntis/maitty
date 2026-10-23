@@ -61,15 +61,15 @@ impl App {
                 }
             }
             Mode::ScreenPane(np) => np.task.push_str(&s.replace("\r\n", "\n")),
-            Mode::Prompt { input, .. } | Mode::Picker { query: input, .. } | Mode::Worktrees { query: input, .. } => {
+            Mode::Prompt { input, .. } | Mode::Worktrees { query: input, .. } => {
                 input.push_str(s.lines().next().unwrap_or(""));
             }
             // Seshi's own text boxes take the paste, not the pane behind them.
             Mode::Find(v) => v.query.push_str(s.lines().next().unwrap_or("")),
             Mode::GoTo { query, .. } => query.push_str(s.lines().next().unwrap_or("").trim()),
-            Mode::Shortcuts { query, scroll } => {
-                shortcuts::append_query(query, s.lines().next().unwrap_or(""));
-                *scroll = 0;
+            Mode::KeyMap(km) if km.view == screen::KeyView::Search && km.step.is_none() => {
+                themes::append_query(&mut km.query, s.lines().next().unwrap_or(""));
+                km.sel = 0;
             }
             Mode::Compose(c) => c.text.push_str(&s.replace("\r\n", "\n")),
             Mode::Confirm(c) if matches!(c.act, menu::Act::OverrideCheck(..)) => {
@@ -119,6 +119,9 @@ impl App {
     pub(super) fn on_key(&mut self, k: KeyEvent) {
         self.screen_fresh();
         let spec = KeySpec::from_event(&k);
+        if k.code == KeyCode::Esc && !matches!(self.mode, Mode::Copy(_)) {
+            self.dismiss_notice();
+        }
         if self.splash {
             self.on_hy_splash_key(&k);
             return;
@@ -163,14 +166,7 @@ impl App {
         }
         match self.mode.clone() {
             Mode::Normal => {
-                // Esc and Tab belong to the evidence sheet while it is open: it closes, or moves
-                // to the next checkpoint.
-                let closes_sheet = matches!(k.code, KeyCode::Esc | KeyCode::Tab | KeyCode::BackTab) && matches!(self.view, Some(View::Check(_)));
-                if screen::Look::of(&self.cfg.ui).flat && matches!(k.code, KeyCode::Tab | KeyCode::BackTab | KeyCode::Esc) && !closes_sheet {
-                    self.mode = Mode::Side;
-                    self.screen.cursor = self.focused();
-                    self.screen.cursor_proj = None;
-                } else if spec == self.keymap.prefix {
+                if spec == self.keymap.prefix {
                     self.mode = Mode::Prefix { since: Instant::now() };
                 } else if let Some(a) = self.keymap.global.get(&spec).cloned() {
                     self.act(a);
@@ -183,6 +179,7 @@ impl App {
             }
             Mode::Finder(fd) => self.on_finder_key(*fd, &k),
             Mode::ScreenPane(np) => self.on_hy_pane_key(np, &k),
+            Mode::NewSession(ns) => self.on_new_session_key(*ns, &k),
             Mode::ScreenSettings(_) => self.screen_settings_key(&k),
             Mode::Themes { query, sel, saving } => self.on_theme_key(query, sel, saving, &k),
             Mode::Spinners(_) => self.on_spinner_key(&k),
@@ -195,7 +192,7 @@ impl App {
             Mode::GoTo { query, sel } => self.on_goto_key(query, sel, &k),
             Mode::Compose(c) => self.on_compose_key(*c, &k),
             Mode::Why { term, side } => self.on_why_key(term, side, &k),
-            Mode::SubagentInfo { term, index } => self.on_subagent_info_key(term, index, &k),
+            Mode::Helpers { term, side } => self.on_helpers_key(term, side, &k),
             Mode::Confirm(c) if matches!(c.act, crate::client::menu::Act::OverrideCheck(..)) => self.on_override_key(*c, &k),
             Mode::Approve(a) => self.on_approve_key(*a, &k),
             Mode::ProjectCheck(d) => self.on_project_check_key(*d, &k),
@@ -234,48 +231,12 @@ impl App {
                     && let KeyCode::Char(c) = k.code
                 {
                     // The key map is up and this key does nothing: it starts a search.
-                    self.mode = Mode::KeyMap(Box::new(screen::KeyMap { query: c.to_string(), searching: true, step: None, sel: 0 }));
+                    self.mode = Mode::KeyMap(Box::new(screen::KeyMap { query: c.to_string(), ..screen::KeyMap::new(screen::KeyView::Search, None) }));
                 }
             }
             Mode::KeyMap(km) => self.on_keymap_key(*km, &k),
-            Mode::Shortcuts { query, scroll } => self.on_shortcuts_key(query, scroll, &k),
             Mode::Actions { sel } => self.on_actions_key(sel, &k),
             Mode::RenameTab(nt) => self.on_rename_tab_key(*nt, &k),
-            Mode::Picker { mut query, mut sel, commands } => {
-                let n = self.pick_items(&query, commands).len();
-                let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
-                match k.code {
-                    KeyCode::Esc => {
-                        self.mode = Mode::Normal;
-                        return;
-                    }
-                    KeyCode::Enter => {
-                        self.mode = Mode::Normal;
-                        if let Some(item) = self.pick_items(&query, commands).get(sel) {
-                            match item.target.clone() {
-                                PickTarget::Workspace(ws) => self.cmd(Command::SelectWorkspace { ws }),
-                                PickTarget::Pane(term) => self.cmd(Command::FocusPane { term }),
-                                PickTarget::Command(a) => self.act(a),
-                            }
-                        }
-                        return;
-                    }
-                    KeyCode::Down | KeyCode::Tab => sel = (sel + 1).min(n.saturating_sub(1)),
-                    KeyCode::Char('n') if ctrl => sel = (sel + 1).min(n.saturating_sub(1)),
-                    KeyCode::Up | KeyCode::BackTab => sel = sel.saturating_sub(1),
-                    KeyCode::Char('p') if ctrl => sel = sel.saturating_sub(1),
-                    KeyCode::Backspace => {
-                        query.pop();
-                        sel = 0;
-                    }
-                    KeyCode::Char(c) if !ctrl => {
-                        query.push(c);
-                        sel = 0;
-                    }
-                    _ => {}
-                }
-                self.mode = Mode::Picker { query, sel, commands };
-            }
             Mode::Worktrees { ws, cmd, items, mut query, mut sel } => {
                 let rows = self.worktree_rows(items.as_deref(), &query);
                 let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
@@ -726,7 +687,7 @@ impl App {
             }
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
                 let up = m.kind == MouseEventKind::ScrollUp;
-                if matches!(self.mode, Mode::Picker { .. } | Mode::Actions { .. }) {
+                if matches!(self.mode, Mode::KeyMap(_) | Mode::Actions { .. }) {
                     self.on_key(KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
                     self.dirty = true;
                     return;
@@ -737,10 +698,6 @@ impl App {
                 {
                     self.screen_settings_key(&KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
                     self.dirty = true;
-                    return;
-                }
-                if let Mode::Shortcuts { query, scroll } = self.mode.clone() {
-                    self.on_shortcuts_key(query, scroll, &KeyEvent::new(if up { KeyCode::Up } else { KeyCode::Down }, KeyModifiers::NONE));
                     return;
                 }
                 if let Mode::Themes { query, sel, saving } = self.mode.clone() {

@@ -216,7 +216,7 @@ opened a plain shell and Settings from Actions.
 
 Active phase: **15 — checks Seshi runs itself** (chosen 2026-10-22)
 Next: three follow-ups the user approved on 2026-10-23: `a` on a sidebar row opens the row menu, an
-amber for needs-you in seshi-dark, and `seshi wait` reporting a check waiting for approval or that could
+amber for needs-you in every theme (built), and `seshi wait` reporting a check waiting for approval or that could
 not run. Then the Phase 17 live trial and the Phase 18 live checks.
 
 Current user-requested work: expand the built-in themes to cover the 25 requested
@@ -281,6 +281,8 @@ design deferred to v5 in [Later](#later). Phase 8 is historical and does not gat
 new work; any remaining item must be re-approved and planned as a new scope.
 
 ### 9 — One agent runs a fleet for you · complete 2026-10-16 at `63b1a72`
+
+*Removed by the user in [Phase 19](#19--the-v8-cleanup--the-cuts-built-on-the-working-tree-not-yet-released); the record below is history.*
 
 [A commander that runs a fleet of agents](features/fleet/intent.md): you give one agent a goal; it starts
 helpers, briefs them, checks on them and reports back.
@@ -446,6 +448,8 @@ capture back off; the offer-then-restart glue in `open_client` has no test of it
 
 ### 17 — Team roles for the commander · shipped in v0.40.0, live trial open
 
+*Removed by the user in [Phase 19](#19--the-v8-cleanup--the-cuts-built-on-the-working-tree-not-yet-released); the record below is history.*
+
 [A team list for the commander](features/team-roles/intent.md): a Settings › Team list of jobs
 (planner, builder, reviewer, or the user's own), each with a model per agent family (Claude, Codex),
 one global family switch and a per-project override. A commander reads the list and starts each helper
@@ -468,7 +472,7 @@ asked for all of it: a new layout for the app, not a pass over the old one. Cove
 layouts (Cards floating, Cards tiled, Flat) at 160×45, 100×30 and 80×24 with the drop order below 140 and
 100 columns, every check screen, approving a repo's `.seshi/checks.toml` command (Enter, y and Space never
 approve; Always needs pressing twice; a changed command asks again), stale passes, and several named check
-commands per project. Not built: the working shimmer and 3-bar spinner (user's choice), and checkpoint kinds
+commands per project. The working state is built too: the "Bars" 3-bar spinner preset (ASCII under the ASCII glyph set) and the name and word shimmer, both frozen when motion is off. Not built: checkpoint kinds
 other than a command (commits, plan approval, review), which the design only shapes. Tickets are labelled
 `phase-18`. One protocol bump for the whole phase.
 
@@ -482,10 +486,29 @@ approval modal's keys, a missing command reading could-not-run); Always and Neve
 because Windows has no way to point the approvals file away from the user's own. Also in this phase: the
 unix pane kill signals only the pane's own process group (it could reach every process the user owns).
 Open decisions: whether `a` on a sidebar row opens the row menu (handoff) or global Actions (today, ADR
-0009); a distinct amber for needs-you in seshi-dark, which shares `#ff6678` with failed; `seshi wait`
+0009); `seshi wait`
 exits 0 for a check waiting for approval or that could not run; ADR 0013 is still Proposed. Not built:
 `· 1 of 59 tests failed` in the why popover (needs output parsing) and when you chose Never (needs a
 protocol change). Not checked live: 80×24, 100×30 and 160×45, ASCII and Nerd glyphs, macOS.
+
+### 19 — The v8 cleanup · the cuts built on the working tree, not yet released
+
+The user supplied the v8 handoff ([`design/v8/`](design/v8/); `app8.js` is the spec) and asked for it with
+the rulings in [ADR-0014](adr/0014-v8-cleanup.md) where the two differ. One protocol bump for the whole of
+v8: 44 to 45. This phase covers the cuts the user asked for by name: the fleet commander (`Start a fleet`,
+`Fleet commander` in the row menu, `seshi brief`, `[team]` jobs and their validation, the `job` argument of
+`seshi_start`), the sidebar's subagent tree and inspector (the daemon still tracks subagents and a working
+row still says `· N agents`), and the helper mode, which becomes a question on the row (`wants to start N
+helpers`, Enter or a click opens it; `1` Allow, `2` Always in this project, `3` No, Esc later). Settings ›
+Sessions `Sessions may start helpers` and `Helpers at once` now act: `[mcp] helpers_at_once` is folded into
+`[sessions] helpers_at_once` and no longer a setting. The collapsed strip, key overlay, Menu, Settings, toasts
+and the message popover are the other waves of this phase (see the ADR).
+
+Status 2026-10-23: the cuts and the helpers question are built on the working tree with tests (daemon: ask,
+always, never, per-project memory, per-session limit; client: the row, the popover at three sizes, keys and
+mouse; config and saved-session load tests for old files). Not released; not checked live; the Inbox does not
+open the question yet (Enter on its row focuses the session; use the sidebar row). Open: the live check of the
+whole flow with a real agent over `seshi mcp`.
 
 ## In scope
 
@@ -529,7 +552,7 @@ Everything below is shipped on `main` unless marked.
 - Changes (diff, review marks, commit, open a PR, git init offer), branch switcher — shipped — `src/client/branch.rs`, `src/client/views.rs`
 - Worktree hooks (`.seshi.toml` `on_create` / `on_remove`, run once allowed; `on_create` finishes before anything starts in the worktree) — shipped — `src/project.rs`, `Ev::WorktreeCreated` in `src/daemon/mod.rs`
 - Tasks (a worktree's review: commit, merge, PR, throw away) — shipped — `src/client/tasks.rs`
-- Own worktree for `claude`/`codex` typed into a shell in a repo's main folder — shipped 0.9.12 — `seshi agent-dir`, `daemon/term.rs` `agent_functions`
+- Own worktree for `claude`/`codex` typed into a shell in a repo's main folder — shipped 0.9.12; a launcher per agent first on a shell pane's PATH (any shell) built on the working tree — `seshi agent-dir`, `src/shim.rs`, `daemon/term.rs` `agent_functions`
 - Usage and limits meter, context per agent, continue after a limit — shipped 0.10.0 — `seshi statusline`, `src/daemon/usage.rs`
 - Automatic idle sleeping and its sleep/wake screen and animation: removed; legacy recovery remains only for sessions saved by older versions.
 - A session's share of the machine (CPU and memory) in its pane's title when it's large — shipped 0.25.0, moved off the sidebar row 0.26.2 — `src/daemon/scan.rs`, `load_note` in `src/client/screen/draw.rs`
@@ -575,6 +598,7 @@ Everything below is shipped on `main` unless marked.
 - [ADR-0009](adr/0009-leader-keys-after-the-cut.md) — Leader keys: a shell is one key, and only kept features have keys (supersedes ADR-0006). Rules out: keys for features that don't exist; defaults that differ from the key map shown in the app.
 - [ADR-0008](adr/0008-rename-to-seshi.md) — The app is called Seshi; an old hydra install is brought over once. Rules out: new code or paths under the old name.
 - [ADR-0012](adr/0012-flat-rendering-style.md) — Add a flat rendering style over the shared session layout; Cards stays default.
+- [ADR-0014](adr/0014-v8-cleanup.md) — Bring over the v8 cleanup, keeping what the user already decided. Rules out: bare letters acting in the sidebar; per-state glyphs on session rows; the fleet, the Team tab, the subagent tree and a helper mode.
 - [ADR-0011](adr/0011-keep-seshi-terminal-first.md) — Keep Seshi terminal-first. Rules out: adding a separate desktop GUI client to this project.
 
 ## Rules

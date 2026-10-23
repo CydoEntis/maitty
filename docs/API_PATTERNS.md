@@ -122,8 +122,24 @@ the pane's process tree or `SESHI_PANE_TOKEN`.
 ## Project-specific: feature/module structure
 
 Saved role profiles and sequenced planner/worker/reviewer workflows are not part
-of Seshi's interface. Sessions, ordinary agent launches, fleet helpers, and
-MCP session controls remain supported. The wire protocol is version 44.
+of Seshi's interface, and neither is a fleet commander (`seshi brief`, `[team]`): old
+config keys for them are read and ignored. Sessions, ordinary agent launches, helpers, and
+MCP session controls remain supported. The wire protocol is version 45.
+
+**Helpers.** A start that comes from an agent's pane (`NewWorkspace`, `NewTab`, `Split`,
+`NewWorktree` over a connection that proved it is that pane by its secret) is a helper
+start. Under `[sessions] helpers = "ask"` the first one is refused with an error telling the
+agent the user was asked, and the daemon records the task on the pane. `TermInfo.helper_ask`
+lists the recorded tasks (not empty: the pane needs you, and `TermInfo.status` reads Blocked
+whatever its hooks report), and the request is announced like any needs-you. Only you answer
+it, with `Command::AnswerHelpers { term, choice }`: `Allow` (this session may from now on),
+`Always` (and every session in its project; kept in `helper-projects.json` in Seshi's data
+folder), or `No` (its starts are refused for the rest of its run). A pane may not send it, and
+it is an error unless the pane is asking. `always` and `never` skip the question; `never`
+refuses with an error the agent can read. `sessions.helpers_at_once` (2, 3 or 4) bounds the
+helpers one session has working at once; a start past it is refused with what to do. A
+person's shell (no agent in the pane) is never asked. Sessions saved before a restart keep
+`started_by`; any fleet or commander field in a saved file is ignored on load.
 
 A pane's check results travel as `CheckInfo` summaries on `TermInfo.checks`, one per
 checkpoint in project order; `TermInfo::check()` is the headline one (the worst state wins:
@@ -239,7 +255,7 @@ phone), and the waiter returns with the result: `Waited::Turn` carries the check
 `CheckInfo`, MCP replies end with its one-line result, and `seshi wait` prints that line
 to stderr and exits 4 (2 is timed out, 3 needs you). A check that could not run gives a
 notice and then the normal finished alert. Queued follow-ups still send when the turn
-ends, and `helpers_at_once` still counts only working sessions. A session with no check
+ends, and `sessions.helpers_at_once` still counts only working sessions. A session with no check
 alerts and waits exactly as before.
 
 A project with several checkpoints runs them in order, each whatever the one before it

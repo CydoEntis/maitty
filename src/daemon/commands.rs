@@ -9,7 +9,7 @@ impl Daemon {
             Command::NewWorkspace { cwd, name, cmd } => {
                 let cwd = cwd.map(clean_path).filter(|p| p.is_dir()).unwrap_or_else(home);
                 let (cols, rows) = self.guess_size();
-                let by = self.starting(client)?;
+                let by = self.starting(client, &helpers::task_label(cmd.as_deref(), None))?;
                 let term = self.spawn(cmd.as_deref(), &cwd, cols, rows)?;
                 self.started(term, by);
                 let id = self.next();
@@ -55,7 +55,7 @@ impl Daemon {
             Command::NewTab { ws, name, cmd } => {
                 let cwd = self.ws_mut(ws)?.cwd.clone();
                 let (cols, rows) = self.guess_size();
-                let by = self.starting(client)?;
+                let by = self.starting(client, &helpers::task_label(cmd.as_deref(), None))?;
                 let term = self.spawn(cmd.as_deref(), &cwd, cols, rows)?;
                 self.started(term, by);
                 let id = self.next();
@@ -99,7 +99,7 @@ impl Daemon {
                     .unwrap_or(ws_cwd);
                 let (cols, rows) = self.terms.get(&term).map(|t| (t.cols, t.rows)).unwrap_or((80, 24));
                 let (cols, rows) = if dir.horizontal() { (cols / 2, rows) } else { (cols, rows / 2) };
-                let by = self.starting(client)?;
+                let by = self.starting(client, &helpers::task_label(cmd.as_deref(), None))?;
                 let new = self.spawn(cmd.as_deref(), &cwd, cols, rows)?;
                 self.started(new, by);
                 let w = self.ws_mut(ws)?;
@@ -212,7 +212,7 @@ impl Daemon {
                 }
             }
             Command::NewWorktree { ws, branch, base, cmd, split, from } => {
-                let by = self.starting(client)?;
+                let by = self.starting(client, &helpers::task_label(cmd.as_deref(), Some(&branch)))?;
                 let ws_dir = self.ws_mut(ws)?.cwd.clone();
                 let dir = from.map(clean_path).filter(|d| d.is_dir()).unwrap_or(ws_dir);
                 let template = self.cfg.worktree.dir.clone();
@@ -471,6 +471,7 @@ impl Daemon {
             Command::UndoOverride { term, name } => self.undo_override(term, name.as_deref())?,
             Command::ApproveCheck { term, name, choice, command_sha256 } => self.approve_check(term, &name, choice, &command_sha256)?,
             Command::ForgetCheckApproval { project, name } => self.forget_check_approval(&project, &name)?,
+            Command::AnswerHelpers { term, choice } => self.answer_helpers(term, choice)?,
             Command::Grant { term, grants } => {
                 let known = ["read", "write", "start", "respond", "admin"];
                 if let Some(bad) = grants.iter().flatten().find(|g| !known.contains(&g.as_str())) {
@@ -506,6 +507,10 @@ impl Daemon {
                 self.broadcast(|_| true, ServerMsg::Bye);
                 tokio::spawn(async {
                     tokio::time::sleep(Duration::from_millis(150)).await;
+                    // Removed while this still answers, so a server started next can't
+                    // have its own files taken.
+                    let _ = std::fs::remove_file(ipc::pid_file());
+                    crate::restart::clear();
                     std::process::exit(0);
                 });
             }

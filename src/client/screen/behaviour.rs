@@ -277,20 +277,10 @@ impl App {
         self.screen_new(p, beside);
     }
 
-    /// Start a fleet: the + New chooser asking for a goal, for the agent that will command it.
-    pub(in crate::client) fn screen_start_fleet(&mut self) {
-        self.screen_open_new_pane(false);
-        if let Mode::ScreenPane(np) = &mut self.mode {
-            // The draft is a task for one agent, not a fleet's goal.
-            np.task.clear();
-            np.fleet = true;
-        }
-    }
-
     pub(in crate::client) fn screen_settings(&mut self) {
         self.refresh_installed_version();
         self.screen.check_page = None;
-        self.mode = Mode::ScreenSettings(Box::new(SView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0, job: None }));
+        self.mode = Mode::ScreenSettings(Box::new(SView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
     }
 
     /// Move the sidebar cursor; bare keys then work on the sidebar until Esc or Enter.
@@ -396,8 +386,8 @@ impl App {
         let focused = self.focused();
         match a {
             Action::Settings => self.screen_settings(),
-            Action::NewPane => self.screen_open_new_pane(false),
-            Action::StartFleet => self.screen_start_fleet(),
+            Action::NewPane => self.screen_open_new_session(None),
+            Action::StartSession => self.screen_start_session(None),
             // A plain shell in the project's own folder (the repo itself, not a worktree).
             Action::ShellHere => {
                 let dir = self
@@ -431,7 +421,7 @@ impl App {
             Action::Focus(d) => match focused.and_then(|f| crate::layout::neighbor(&self.screen.leaf_rects, f, *d)) {
                 Some(to) => self.cmd(Command::FocusPane { term: to }),
                 // Past the left edge: the sidebar.
-                None if *d == crate::layout::Dir::Left && self.sidebar => self.screen_side_move(0),
+                None if *d == crate::layout::Dir::Left && !self.side_hidden => self.screen_side_move(0),
                 None => {}
             },
             Action::FocusNext | Action::FocusPrev => {
@@ -448,8 +438,9 @@ impl App {
             // A new tab in this session: a shell where you are, straight away.
             Action::NewTab => self.new_tab_start(),
             Action::RenameTab => self.rename_tab_start(),
-            Action::Actions => self.mode = Mode::Actions { sel: 0 },
-            Action::Help => self.open_shortcuts(),
+            Action::Menu => self.mode = Mode::Actions { sel: 0 },
+            Action::Help => self.open_key_view(KeyView::All),
+            Action::Palette => self.open_key_view(KeyView::Search),
             Action::Worktrees => self.open_keymap(Some(Step::Worktrees)),
             Action::NextTab | Action::PrevTab => {
                 // This session's tabs, in order.
@@ -478,9 +469,20 @@ impl App {
                 }
             }
             Action::CloseTab => self.close_tab(self.screen.tab),
+            // z: the sessions move into the top strip, or back into the sidebar.
             Action::ToggleSidebar => {
                 self.sidebar = !self.sidebar;
+                self.side_hidden = false;
                 self.screen.follow = true;
+            }
+            // Z: no sessions at all; the same key brings the sidebar back.
+            Action::HideSidebar => {
+                self.side_hidden = self.sidebar || !self.side_hidden;
+                self.sidebar = !self.side_hidden;
+                self.screen.follow = true;
+                if self.side_hidden && self.mode == Mode::Side {
+                    self.screen_side_leave();
+                }
             }
             Action::RenameWorkspace => {
                 if let Some(t) = self.screen.cursor.or(focused) {
@@ -553,13 +555,16 @@ impl App {
             return;
         }
         let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        if k.code == KeyCode::Enter && proj.is_none() && let Some(c) = self.screen.cursor && self.helpers_asked(c) {
+            self.open_helpers(c, true);
+            return;
+        }
         if k.code == KeyCode::Enter && proj.is_none() && let Some(c) = self.screen.cursor && self.approval_waits(c) {
             self.screen_side_leave();
             self.open_approval(c);
             return;
         }
         match spec.code {
-            KeyCode::Tab | KeyCode::BackTab if crate::client::screen::Look::of(&self.cfg.ui).flat => self.screen_side_leave(),
             KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => self.screen_side_move(-1),
             KeyCode::Down | KeyCode::Char('j') if !k.modifiers.contains(KeyModifiers::CONTROL) => self.screen_side_move(1),
             KeyCode::Home => {
@@ -572,6 +577,8 @@ impl App {
                     self.screen_side_set(last);
                 }
             }
+            // The collapsed strip: ← → and 1–9 (only while it has the keys) switch sessions.
+            KeyCode::Left | KeyCode::Right | KeyCode::Char('1'..='9') if super::draw::strip_on(self) && plain => self.strip_switch(spec.code),
             KeyCode::Right => match &proj {
                 Some(key) => self.screen_fold(key, Some(true)),
                 None => {
@@ -591,12 +598,6 @@ impl App {
                 }
                 _ => {}
             },
-            KeyCode::Char(' ') if plain => {
-                if let Some(pi) = proj.as_ref().and_then(|key| model.iter().position(|p| p.key == *key)) {
-                    self.screen_side_leave();
-                    self.screen_new(pi, false);
-                }
-            }
             KeyCode::Enter => match (&proj, self.screen.cursor) {
                 (Some(key), _) => self.screen_fold(key, None),
                 (None, Some(c)) if self.check_wants_a_look(c) => {
@@ -612,43 +613,7 @@ impl App {
             },
             KeyCode::Esc => self.screen_side_leave(),
             _ if spec == self.keymap.prefix => self.mode = Mode::Prefix { since: Instant::now() },
-            // Delete closes the row, like x.
-            KeyCode::Delete => {
-                if let Some((_, act)) = self.cursor_items().into_iter().find(|(_, a)| matches!(a, crate::client::menu::Act::End(_) | crate::client::menu::Act::CloseProject(_))) {
-                    self.menu_act(act);
-                }
-            }
-            // m: a follow-up to this row's agent; i: why it has its status.
-            KeyCode::Char('m') if plain && self.screen.cursor.is_some() => self.act(Action::Message),
-            KeyCode::Char('i') if plain && self.screen.cursor.is_some() => self.act(Action::Why),
-            KeyCode::Char('s') if plain && self.screen.cursor.is_some() => {
-                if let Some(term) = self.screen.cursor
-                    && self.screen_model().iter().any(|project| project.sessions().any(|session| session.term == term && !session.subagent_activity.is_empty()))
-                {
-                    self.mode = Mode::SubagentInfo { term, index: 0 };
-                }
-            }
-            // What the foot teaches everywhere else: a is actions, here too.
-            KeyCode::Char('a') if plain => self.act(Action::Actions),
-            // A letter from the row's menu does that (x close, r rename, …).
-            KeyCode::Char(c) if plain && crate::client::menu::menu_keys(&self.cursor_items()).contains(&Some(c)) => {
-                let items = self.cursor_items();
-                if let Some(i) = crate::client::menu::menu_keys(&items).iter().position(|k| *k == Some(c))
-                    && let Some((_, act)) = items.get(i).cloned()
-                {
-                    self.menu_act(act);
-                }
-            }
-            // A check's key its result doesn't take (o, r, O, u act through the row's menu
-            // above): say why rather than type the letter into the pane.
-            KeyCode::Char(c @ ('r' | 'O' | 'u')) if plain && self.screen.cursor.is_some_and(|t| self.snap.terms.get(&t).is_some_and(|x| x.check().is_some())) => {
-                let why = match c {
-                    'r' => "its check is still running",
-                    'O' => "only a failed check can be overridden",
-                    _ => "there is no override to undo",
-                };
-                self.notify(why.into(), false);
-            }
+            // Nothing else acts from the sidebar: an action is the leader and its key (ADR 0014).
             // Anything else is typing: leave the sidebar and hand the key over.
             _ => {
                 self.screen_side_leave();
@@ -659,6 +624,23 @@ impl App {
                     }
                 }
             }
+        }
+    }
+
+    /// A key on the collapsed strip: ← → step to the neighbouring session, 1–9 jump to that one.
+    /// The session opens in the pane, and the keys stay on the strip.
+    fn strip_switch(&mut self, code: KeyCode) {
+        let sessions: Vec<TermId> = self.screen.side_items.iter().filter_map(|i| if let SideItem::Sess(t) = i { Some(*t) } else { None }).collect();
+        let here = sessions.iter().position(|t| Some(*t) == self.screen.cursor.or(self.focused()));
+        let to = match code {
+            KeyCode::Left => here.map_or(0, |i| i.saturating_sub(1)),
+            KeyCode::Right => here.map_or(0, |i| (i + 1).min(sessions.len().saturating_sub(1))),
+            KeyCode::Char(c) => c.to_digit(10).map_or(0, |d| d as usize - 1),
+            _ => return,
+        };
+        if let Some(&term) = sessions.get(to) {
+            self.screen_side_set(SideItem::Sess(term));
+            self.cmd(Command::FocusPane { term });
         }
     }
 
@@ -724,13 +706,13 @@ impl App {
             .iter()
             .enumerate()
             .find_map(|(ci, c)| {
-                crate::client::design::settings_rows(*c, &self.cfg)
+                crate::client::design::settings_rows(*c)
                     .iter()
                     .position(|r| matches!(r, crate::client::design::SRow::Setting(s) if s.path == path))
                     .map(|i| (ci, i))
             })
             .unwrap_or((0, 0));
-        self.mode = Mode::ScreenSettings(Box::new(SView { cat, sel, editing: None, capturing: false, scroll: 0, job: None }));
+        self.mode = Mode::ScreenSettings(Box::new(SView { cat, sel, editing: None, capturing: false, scroll: 0 }));
     }
 
     pub(in crate::client) fn finder_enter(&mut self, mut fd: Finder) {
@@ -811,24 +793,8 @@ impl App {
         let agents = np_agents(self, np.p);
         let agent = agents.get(np.a).cloned().unwrap_or_else(|| "shell".into());
         let main = p.wts.iter().find(|w| w.main).map(|w| w.path.clone()).unwrap_or_else(|| p.path.clone());
-        if np.fleet {
-            // A fleet needs a goal, and an agent to command it.
-            let missing = if np.task.trim().is_empty() {
-                Some("say what the fleet should get done")
-            } else if agent == "shell" || agent.starts_with('⚙') {
-                Some("pick an agent to command the fleet")
-            } else {
-                None
-            };
-            if let Some(why) = missing {
-                self.mode = Mode::ScreenPane(np.clone());
-                self.notify(why.into(), true);
-                return;
-            }
-        }
-        let task = if np.fleet { crate::brief::commander_prompt(&np.task) } else { np.task.clone() };
-        let cmd = np_command(self, &agent, np.model, &task);
-        if !np.fleet && !self.screen.saved.draft.is_empty() {
+        let cmd = np_command(self, &agent, np.model, &np.task);
+        if !self.screen.saved.draft.is_empty() {
             self.screen.saved.draft.clear();
             self.screen.save();
         }
@@ -1097,8 +1063,8 @@ impl App {
         };
         match k.code {
             KeyCode::Esc => {
-                // The task stays for next time (a fleet's goal isn't one).
-                if !np.fleet && self.screen.saved.draft != np.task {
+                // The task stays for next time.
+                if self.screen.saved.draft != np.task {
                     self.screen.saved.draft = np.task.clone();
                     self.screen.save();
                 }
@@ -1179,8 +1145,6 @@ impl App {
     /// Clicks on this layout's chips, rows and buttons.
     pub(in crate::client) fn on_hy_hit(&mut self, h: ScreenHit, double: bool) {
         match h {
-            ScreenHit::ToggleSubs(term) => self.toggle_subs(term),
-            ScreenHit::SubagentInfo(term, index) => self.mode = Mode::SubagentInfo { term, index },
             ScreenHit::ToggleProj(i) => {
                 if let Some(key) = self.screen.proj_keys.get(i).cloned() {
                     self.screen_fold(&key, None);
@@ -1234,6 +1198,8 @@ impl App {
                 self.confirm_done(None);
             }
             ScreenHit::Approve(h) => self.on_approve_hit(h),
+            ScreenHit::HelperAsk(term) => self.open_helpers(term, matches!(self.mode, Mode::Side)),
+            ScreenHit::HelperAnswer(term, choice) => self.answer_helpers(term, choice),
             ScreenHit::CheckDraft(h) => self.on_check_draft_hit(h),
             ScreenHit::TabPick(i) => {
                 if let Some(tab) = self.screen.tabs.get(i) {
@@ -1246,24 +1212,21 @@ impl App {
                     }
                 }
             }
+            ScreenHit::NewTab => self.act(Action::NewTab),
             ScreenHit::SideFocus => self.act(Action::BrowseTree),
             ScreenHit::ExpandSidebar => self.act(Action::ToggleSidebar),
             ScreenHit::NewShell => self.act(Action::ShellHere),
-            ScreenHit::Actions => self.act(Action::Actions),
+            ScreenHit::NsOpt(row, i) => self.ns_pick(row, i),
+            ScreenHit::NsStart => self.ns_start(),
+            ScreenHit::Actions => self.act(Action::Menu),
             ScreenHit::ActionRow(i) => self.actions_run(i),
-            ScreenHit::PickRow(i) => {
-                if let Mode::Picker { query, commands, .. } = self.mode.clone() {
-                    self.mode = Mode::Picker { query, sel: i, commands };
-                    self.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-                }
-            }
             ScreenHit::Leader => self.open_keymap(None),
             ScreenHit::KeyRow(i) => {
                 if let Mode::KeyMap(km) = &self.mode {
                     let km = (**km).clone();
                     self.keymap_run(&km, i);
                 } else if matches!(self.mode, Mode::Prefix { .. }) {
-                    let km = KeyMap { query: String::new(), searching: false, step: None, sel: 0 };
+                    let km = KeyMap::new(KeyView::Map, None);
                     self.keymap_run(&km, i);
                 }
             }
@@ -1279,6 +1242,7 @@ impl App {
             }
             ScreenHit::ViewClose => self.view = None,
             ScreenHit::Noop => {}
+            ScreenHit::ToastClose => self.dismiss_notice(),
             ScreenHit::SettingsBody => {}
             ScreenHit::FinderPick(i) => {
                 if let Mode::Finder(fd) = &self.mode {
@@ -1363,7 +1327,7 @@ impl App {
                 let again = v.sel == i;
                 v.sel = i;
                 let cat = crate::client::modal::Cat::ALL[v.cat.min(crate::client::modal::Cat::ALL.len() - 1)];
-                let row = crate::client::design::settings_rows(cat, &self.cfg).get(i).cloned();
+                let row = crate::client::design::settings_rows(cat).get(i).cloned();
                 let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
                 match (h, row) {
                     (ScreenHit::SetVal(_, vi), Some(row @ SRow::Setting(_))) if vi != usize::MAX && chips_for(self, &row).is_some() => set_chip(self, &row, vi),
@@ -1441,20 +1405,6 @@ impl App {
                     self.scroll_to(term, (from_bottom * total / r.height.max(1) as usize).min(total));
                 }
             }
-        }
-    }
-
-    pub(in crate::client) fn on_subagent_info_key(&mut self, term: TermId, index: usize, key: &KeyEvent) {
-        let count = self.screen_model().iter().find_map(|project| project.sessions().find(|session| session.term == term).map(|session| session.subagent_activity.len()));
-        let Some(count) = count else {
-            self.mode = Mode::Normal;
-            return;
-        };
-        match key.code {
-            KeyCode::Up => self.mode = Mode::SubagentInfo { term, index: index.saturating_sub(1) },
-            KeyCode::Down => self.mode = Mode::SubagentInfo { term, index: (index + 1).min(count.saturating_sub(1)) },
-            KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => self.mode = Mode::Normal,
-            _ => {}
         }
     }
 

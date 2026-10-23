@@ -14,9 +14,9 @@ sessions and core navigation.
 
 Keep one shared terminal session layout and offer two render styles through
 `ui.layout`: `cards` (the default) and `flat`. Flat removes card spacing and
-rounded corners, uses the theme surface for default terminal cells, exposes a
-bottom status line, and uses Tab / Shift+Tab to move between sidebar and pane
-focus zones. Esc returns focus to the sidebar. Suppress splits below 150
+card borders (pill ends follow `ui.pill_caps`, as in Cards; see ADR 0013), uses the theme surface for default terminal cells, exposes a
+bottom status line. Tab, Shift+Tab and Esc go to the program in the pane, as in
+Cards; the leader's "Focus the sidebar" moves focus to the sidebar. Suppress splits below 150
 columns. Existing sessions, tabs, sheets, agent state and mouse access remain
 shared. Applications' explicit terminal colors remain visible.
 

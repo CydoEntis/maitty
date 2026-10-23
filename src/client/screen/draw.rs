@@ -20,7 +20,6 @@ pub(in crate::client) fn side_w(width: u16) -> u16 {
 
 /// The narrowest the sidebar (sliding) or the sheet is drawn; below it, it's only space.
 const SIDE_DRAWN_FROM: u16 = 12;
-pub(super) const RAIL_WIDTH: u16 = 7;
 pub(in crate::client) const SHEET_DRAWN_FROM: u16 = 24;
 /// The narrowest a pane is drawn while it grows in.
 const PANE_DRAWN_FROM: u16 = 8;
@@ -48,8 +47,7 @@ pub(in crate::client) struct Grid {
 pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
     let look = Look::of(&app.cfg.ui);
     let full = app.screen.saved.side_w.unwrap_or_else(|| side_w(area.width)).clamp(SIDE_MIN, SIDE_MAX).min(area.width / 2);
-    let rail = RAIL_WIDTH.min(full);
-    let sw = rail + ((full - rail) as f32 * app.side_frac).round() as u16;
+    let sw = (full as f32 * app.side_frac).round() as u16;
     let gap = if sw == 0 { 0 } else { look.gap };
     let (side, col) = if app.cfg.ui.sidebar_position == "right" {
         let side = Rect { x: area.right().saturating_sub(sw), width: sw, ..area };
@@ -59,14 +57,22 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
         let x = area.x + sw + gap - overlap;
         (Rect { width: sw, ..area }, Rect { x, width: area.right().saturating_sub(x), ..area })
     };
+    // Collapsed, the sessions are chips on row 0 and the panes (with their tabs) start below it.
+    let col = if strip_on(app) { Rect { y: col.y + 1, height: col.height.saturating_sub(1), ..col } } else { col };
     let edge = if side.x > col.x { Rect { x: col.right(), width: gap.max(1), ..area } } else { Rect { x: col.x.saturating_sub(gap), width: gap.max(1), ..area } };
     let (sheet, panes) = if open_sheet(app).is_some() { split_for_sheet(area.width, col, look, app.sheet_frac) } else { (Rect::default(), col) };
     Grid { side, panes, edge, sheet }
 }
 
+/// The sessions are collapsed into the strip on row 0 (`z`), not hidden (`Z`).
+pub(in crate::client) fn strip_on(app: &App) -> bool {
+    !app.sidebar && !app.side_hidden
+}
+
 /// Draw the main screen; returns the pane area.
 pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Theme) -> Rect {
     // How far the sidebar and the sheet are in this frame (they slide when they change).
+    popover::refresh_receipts(app);
     let on = app.motion_on();
     app.side_frac = app.motion.side(app.sidebar, on);
     app.sheet_frac = app.motion.sheet(open_sheet(app).is_some(), on);
@@ -76,9 +82,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     fill(f.buffer_mut(), area, t.bg);
     let g = grid(app, area);
     // Too narrow mid-slide to draw anything sensible: just the room it takes.
-    if !app.sidebar {
-        rail::draw(app, f.buffer_mut(), g.side, &model, t);
-    } else if g.side.width >= SIDE_DRAWN_FROM {
+    if g.side.width >= SIDE_DRAWN_FROM {
         draw_side(app, f.buffer_mut(), g.side, &model, t);
         // The edge beside the sidebar: drag it. It lights up while you point at it.
         if app.screen.drag == Some(Drag::Side) || hovered(app, g.edge) {
@@ -90,11 +94,18 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
             }
         }
         hit(app, g.edge, ScreenHit::SideEdge);
+    } else if strip_on(app) {
+        rail::draw(app, f.buffer_mut(), area, &model, t);
+    } else {
+        // Hidden: nothing to point at, nothing to move a cursor over.
+        app.screen.side_rect = Rect::default();
+        app.screen.visible.clear();
+        app.screen.side_items.clear();
+        app.screen.row_y.clear();
     }
     if g.panes.width > 0 {
         draw_main(app, f, g.panes, &model, t);
     }
-    rail::hint(app, f.buffer_mut(), g.panes, &model, t);
     if let Some(kind) = open_sheet(app).filter(|_| g.sheet.width >= SHEET_DRAWN_FROM) {
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
     }
@@ -104,6 +115,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     match app.mode.clone() {
         Mode::Compose(c) if c.inbox.is_none() => draw_compose_pop(app, f.buffer_mut(), area, g.side, &c, t),
         Mode::Why { term, .. } => draw_why_pop(app, f.buffer_mut(), area, g.side, term, t),
+        Mode::Helpers { term, .. } => draw_helpers_pop(app, f.buffer_mut(), area, g.side, term, t),
         _ => {}
     }
     if let Some(term) = app.popup() {
@@ -136,14 +148,17 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
 }
 
 /// The pill at the top right of row 0: the leader while it's armed, else Update when a newer
-/// release is out.
-fn corner_pill(app: &App, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
+/// release is out, else Restart once a newer one is installed but not running.
+pub(super) fn corner_pill(app: &App, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
     if armed(app) {
         let lead = app.keymap.prefix.to_string().replace("C-", "Ctrl+");
         return Some((vec![seg(format!(" {lead} "), Style::default().fg(t.bg).bg(t.sky()).add_modifier(Modifier::BOLD))], ScreenHit::Leader));
     }
-    let version = app.update_available.as_ref()?;
-    Some((vec![seg(format!(" Update {version} "), Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD))], ScreenHit::Update))
+    if let Some(version) = app.update_available.as_ref() {
+        return Some((vec![seg(format!(" ↑ Update {version} "), Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD))], ScreenHit::Update));
+    }
+    // Installed (here or from outside seshi), not running yet: one click finishes it.
+    app.restart_needed().then(|| (vec![seg(" ↻ Restart ", Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD))], ScreenHit::Restart))
 }
 
 fn draw_corner_pill(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
@@ -171,7 +186,7 @@ pub(in crate::client) fn draw_main(app: &mut App, f: &mut Frame, area: Rect, mod
     let flat_splits_allowed = !Look::of(&app.cfg.ui).flat || area.width >= 150;
     let Some(focus) = app.focused() else {
         let nk = k(app, &Action::ShellHere);
-        put(f.buffer_mut(), area.x + 4, area.y + 3, &[seg(format!("Nothing open. Press {} {nk} for a new session.", app.keymap.prefix.to_string().replace("C-", "Ctrl+")), Style::default().fg(t.muted))], area.right());
+        put(f.buffer_mut(), area.x + 4, area.y + 3, &[seg(format!("Nothing open. Press {} {nk} for a new shell.", app.keymap.prefix.to_string().replace("C-", "Ctrl+")), Style::default().fg(t.muted))], area.right());
         return;
     };
     // Which tab was on screen last, per session.
@@ -291,8 +306,11 @@ fn name_chip(name: &str, lit: bool, t: &Theme) -> Seg {
 
 /// The tabs of the session on screen, as the top-left pane's title from `x` up to `max_x`:
 /// a number chip and a name chip each (the tab's name, else its focused session's), the
-/// current one in the accent. Tabs that don't fit drop from the right; a click on one picks it.
+/// current one in the accent, then a + chip that opens a tab. Tabs that don't fit drop from
+/// the right; a click on one picks it.
 fn tab_strip(app: &mut App, model: &[Proj], x: u16, y: u16, max_x: u16, lit: bool, t: &Theme) -> Vec<Seg> {
+    let look = Look::of(&app.cfg.ui);
+    let ground = title_ground(look, t);
     let mut out = Vec::new();
     let mut at = x;
     for (n, i) in app.session_tabs().into_iter().enumerate() {
@@ -301,7 +319,10 @@ fn tab_strip(app: &mut App, model: &[Proj], x: u16, y: u16, max_x: u16, lit: boo
         let on = i == app.screen.tab;
         let number = if on { Style::default().fg(t.acc_ink).bg(t.accent).add_modifier(Modifier::BOLD) } else { Style::default().fg(t.text).bg(t.btn) };
         let label = if on { name_chip(&name, lit, t) } else { seg(format!(" {name} "), Style::default().fg(t.text).bg(t.card)) };
-        let pair = [seg(format!(" {} ", n + 1), number), label];
+        let mut pair = vec![seg(format!(" {} ", n + 1), number), label];
+        if look.round_tabs {
+            pair = round_ends(pair, ground);
+        }
         let w = segs_width(&pair);
         if at + w > max_x {
             break;
@@ -309,6 +330,16 @@ fn tab_strip(app: &mut App, model: &[Proj], x: u16, y: u16, max_x: u16, lit: boo
         hit(app, Rect { x: at, y, width: w, height: 1 }, ScreenHit::TabPick(i));
         out.extend(pair);
         at += w;
+    }
+    // The chip that opens a tab: it drops like a tab when the title has no room.
+    let mut plus = vec![seg(" + ", Style::default().fg(t.accent).bg(t.card).add_modifier(Modifier::BOLD))];
+    if look.round_tabs {
+        plus = round_ends(plus, ground);
+    }
+    let w = segs_width(&plus);
+    if at + w <= max_x {
+        hit(app, Rect { x: at, y, width: w, height: 1 }, ScreenHit::NewTab);
+        out.extend(plus);
     }
     out
 }
@@ -394,8 +425,10 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     c.chips = if top_left {
         tab_strip(app, model, title_x(look, r), r.y, title_end, focused, t)
     } else {
-        let name = truncate(&session_name(app, model, term), title_end.saturating_sub(title_x(look, r) + 2) as usize);
-        vec![name_chip(&name, focused, t)]
+        let caps = if look.round_tabs { 2 } else { 0 };
+        let name = truncate(&session_name(app, model, term), title_end.saturating_sub(title_x(look, r) + 2 + caps) as usize);
+        let chip = vec![name_chip(&name, focused, t)];
+        if look.round_tabs { round_ends(chip, title_ground(look, t)) } else { chip }
     };
     let buf = f.buffer_mut();
     let inside = card(app, buf, r, &c, t);
@@ -500,30 +533,40 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     }
 }
 
-/// How long a toast stays: an error longer, one about a session (a click goes there) longer
-/// still, one with a button longest.
+/// How long a plain toast stays.
+const TOAST_CLEAR: std::time::Duration = std::time::Duration::from_millis(2400);
+
+/// How long a toast stays: a plain one `TOAST_CLEAR`; an error longer, one about a session
+/// (a click goes there) longer still, one with a button longest.
 pub(in crate::client) fn toast_hold(err: bool, about: bool, action: bool) -> std::time::Duration {
-    std::time::Duration::from_millis(if action {
-        12000
+    if action {
+        std::time::Duration::from_millis(12000)
     } else if err {
-        4500
+        std::time::Duration::from_millis(4500)
     } else if about {
-        6000
+        std::time::Duration::from_millis(6000)
     } else {
-        2500
-    })
+        TOAST_CLEAR
+    }
 }
 
-/// How far a toast's hint ("click to open") sinks into its fill: readable, second to the news.
-const TOAST_HINT_FADE: f32 = 0.3;
-/// How far toward its mark's colour a toast is when it arrives.
-const TOAST_FLASH_BRIGHT: f32 = 0.35;
+/// The toast's narrowest card, in columns, and the room its text keeps beside the bar and ✕.
+const TOAST_MIN_W: usize = 40;
+const TOAST_TEXT_PAD: usize = 8;
+/// Rows between the card's bottom edge and the screen's: the agent's input area sits there.
+const TOAST_ABOVE_INPUT: u16 = 5;
 
-/// A note (copied, saved, couldn't …) at the bottom right, on the second row from the bottom
-/// and three columns from the edge, raised (`btn`) in `strong`; its mark says what kind. It
-/// goes after a few seconds (errors stay a little longer).
+/// One toast for every notice, bottom right above the agent's input area: a `card` with a
+/// `line` border and a full-height bar in the notice's colour. Row 1 is the mark and bold
+/// title with a ✕; row 2 the detail; an optional row 3 a preview in dim italics. It clears
+/// after `toast_hold` (errors a little longer), or with the ✕ / Esc.
 pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
-    let Some((msg, at, err)) = app.notice.clone() else { return };
+    if let Some(flash) = app.copy_flash.as_ref().filter(|f| f.live())
+        && let Some((_, pane)) = app.panes.iter().find(|(term, _)| *term == flash.term)
+    {
+        flash.tint(buf, *pane, t);
+    }
+    let Some((title, at, err)) = app.notice.clone() else { return };
     let about = app.notice_term.filter(|t| app.snap.terms.contains_key(t));
     let restart = app.toast_restart();
     let hold = toast_hold(err, about.is_some(), restart);
@@ -536,55 +579,88 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     let slide = if on { 1.0 - crate::client::motion::ease_out(shown.as_secs_f32() / crate::client::motion::TOAST_IN.as_secs_f32()) } else { 0.0 };
     let left = hold.saturating_sub(shown);
     let fade = if on && left < crate::client::motion::TOAST_FADE { 1.0 - left.as_secs_f32() / crate::client::motion::TOAST_FADE.as_secs_f32() } else { 0.0 };
-    let hint = if about.is_some() { "   click to open" } else { "" };
     // The update's own sentence is long; with the button the toast keeps to the news.
-    let msg = match (restart, &app.installed_version) {
+    let title = match (restart, &app.installed_version) {
         (true, Some(Ok(v))) => format!("seshi {v} installed"),
-        _ => msg,
+        _ => title,
     };
-    let text = truncate(&msg, (area.width.saturating_sub(16) as usize).saturating_sub(hint.width()));
+    let card = app.notice_card.clone();
+    let detail = match (&card, about.is_some()) {
+        (Some(c), _) => Some(c.detail.clone()),
+        (None, true) => Some("click to open".to_string()),
+        _ => None,
+    };
+    let preview = card.and_then(|c| c.preview);
     let needs = about.and_then(|term| app.snap.terms.get(&term)).is_some_and(|x| x.status == Status::Blocked);
     let (colour, mark) = match (err, needs, about) {
-        (true, ..) => (t.err, "✕ "),
-        (_, true, _) => (t.blocked, "● "),
-        (_, _, Some(_)) => (t.done, "✓ "),
-        _ => (t.accent, "✓ "),
+        (true, ..) => (t.err, "✕"),
+        (_, true, _) => (t.blocked, "●"),
+        (_, _, Some(_)) => (t.done, "✓"),
+        _ => (t.accent, "✓"),
     };
-    // It arrives tinted with its mark's colour and settles into the raised grey.
-    let flash = if on { (1.0 - shown.as_secs_f32() / crate::client::motion::TOAST_FLASH.as_secs_f32()).max(0.0) } else { 0.0 };
-    let fill_c = blend(t.btn, colour, flash * TOAST_FLASH_BRIGHT);
     let look = Look::of(&app.cfg.ui);
-    let mut body = vec![seg(mark, Style::default().fg(colour).add_modifier(Modifier::BOLD)), seg(text, Style::default().fg(t.strong)), seg(hint, Style::default().fg(blend(t.strong, fill_c, TOAST_HINT_FADE)))];
-    if restart {
-        body.push(seg("  ", Style::default()));
-        body.extend(button_pill(look, t, "Restart now", "", false, fill_c));
-    }
-    let segs = pill(look, body, fill_c, t.bg);
-    let w = segs_width(&segs);
-    if area.height < 4 || area.width < w + 6 {
+    let button = restart.then(|| button_pill(look, t, "Restart now", "", false, t.card));
+    let body_w = |s: &str| s.width() + TOAST_TEXT_PAD;
+    let want = [Some(body_w(&title)), detail.as_deref().map(body_w), preview.as_deref().map(body_w), button.as_ref().map(|b| segs_width(b) as usize + TOAST_TEXT_PAD)];
+    let w = want.into_iter().flatten().max().unwrap_or(0).max(TOAST_MIN_W).min((area.width as usize).saturating_sub(4)) as u16;
+    let h = 2 + 1 + u16::from(detail.is_some() || button.is_some()) + u16::from(preview.is_some());
+    if area.height < h + TOAST_ABOVE_INPUT || w < 12 {
         return;
     }
     let fx = area.right().saturating_sub(w + 2);
     let x = fx + ((area.right().saturating_sub(fx)) as f32 * slide).round() as u16;
-    let segs: Vec<Seg> = if fade > 0.0 {
-        segs.into_iter()
-            .map(|(s, st)| {
-                let st = match (st.fg, st.bg) {
-                    (Some(fg), Some(bg)) => st.fg(blend(fg, bg, fade)).bg(blend(bg, t.bg, fade)),
-                    (Some(fg), None) => st.fg(blend(fg, t.bg, fade)),
-                    _ => st,
-                };
-                (s, st)
-            })
-            .collect()
-    } else {
-        segs
-    };
-    let r = Rect { x, y: area.bottom().saturating_sub(2), width: area.right().saturating_sub(x).min(w), height: 1 };
-    put(buf, r.x, r.y, &segs, area.right());
+    let y = area.bottom().saturating_sub(h + TOAST_ABOVE_INPUT);
+    let r = Rect { x, y, width: area.right().saturating_sub(x).min(w), height: h };
+    let ink = |c: Color, bg: Color| if fade > 0.0 { blend(c, bg, fade) } else { c };
+    let bg = t.card;
+    let edge = Style::default().fg(ink(t.line, bg)).bg(bg);
+    for yy in r.y..r.bottom() {
+        for xx in r.x..r.right() {
+            if let Some(px) = buf.cell_mut((xx, yy)) {
+                px.set_symbol(" ").set_style(Style::default().bg(bg));
+            }
+        }
+    }
+    let rule = "─".repeat(r.width.saturating_sub(2) as usize);
+    put(buf, r.x + 1, r.y, &[seg(rule.clone(), edge)], r.right());
+    put(buf, r.x + 1, r.bottom() - 1, &[seg(rule, edge)], r.right());
+    for (cx, cy, ch) in [(r.right() - 1, r.y, "┐"), (r.right() - 1, r.bottom() - 1, "┘")] {
+        put(buf, cx, cy, &[seg(ch, edge)], r.right());
+    }
+    for yy in r.y + 1..r.bottom() - 1 {
+        put(buf, r.right() - 1, yy, &[seg("│", edge)], r.right());
+    }
+    for yy in r.y..r.bottom() {
+        put(buf, r.x, yy, &[seg("▌", Style::default().fg(ink(colour, bg)).bg(bg))], r.x + 1);
+    }
+    // Rows 2 and 3 start under the title, one column in from the border; the title also
+    // leaves the mark's column and the ✕'s.
+    let text_w = r.width.saturating_sub(6) as usize;
+    let title_w = r.width.saturating_sub(TOAST_TEXT_PAD as u16 + 1) as usize;
+    let head = [
+        seg(format!("{mark} "), Style::default().fg(ink(colour, bg)).bg(bg).add_modifier(Modifier::BOLD)),
+        seg(truncate(&title, title_w), Style::default().fg(ink(t.strong, bg)).bg(bg).add_modifier(Modifier::BOLD)),
+    ];
+    put(buf, r.x + 2, r.y + 1, &head, r.right() - 1);
+    let close = Rect { x: r.right().saturating_sub(4), y: r.y + 1, width: 2, height: 1 };
+    put(buf, close.x, close.y, &[seg("✕", Style::default().fg(ink(t.muted, bg)).bg(bg))], r.right() - 1);
+    let mut row = r.y + 2;
+    if let Some(b) = &button {
+        put(buf, r.x + 4, row, b, r.right() - 1);
+        row += 1;
+    } else if let Some(d) = &detail {
+        put(buf, r.x + 4, row, &[seg(truncate(d, text_w), Style::default().fg(ink(t.text, bg)).bg(bg))], r.right() - 1);
+        row += 1;
+    }
+    if let Some(p) = &preview {
+        put(buf, r.x + 4, row, &[seg(truncate(p, text_w), Style::default().fg(ink(t.muted, bg)).bg(bg).add_modifier(Modifier::ITALIC))], r.right() - 1);
+    }
     if let Some(term) = about {
         hit(app, r, ScreenHit::Session(term));
     } else if restart {
         hit(app, r, ScreenHit::Restart);
+    } else {
+        hit(app, r, ScreenHit::Noop);
     }
+    hit(app, close, ScreenHit::ToastClose);
 }

@@ -73,15 +73,7 @@ impl Approvals {
     /// Write them whole and synced before the rename, so a crash leaves the old file or the
     /// new one, never half of one. Blocks: call it off the loop.
     pub fn save(&self, path: &Path) -> Result<()> {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).with_context(|| format!("making {}", dir.display()))?;
-        }
-        let tmp = path.with_extension("json.tmp");
-        let mut f = std::fs::File::create(&tmp).with_context(|| format!("writing {}", tmp.display()))?;
-        f.write_all(&serde_json::to_vec_pretty(self)?)?;
-        f.sync_all()?;
-        drop(f);
-        std::fs::rename(&tmp, path).with_context(|| format!("replacing {}", path.display()))
+        write_atomic(path, &serde_json::to_vec_pretty(self)?)
     }
 
     /// What you decided for `repo`'s checkpoint `name` running `command`. Never holds whatever
@@ -141,6 +133,20 @@ impl Approvals {
         let hash = command_hash(command);
         self.once.iter().any(|g| g.name.eq_ignore_ascii_case(name) && g.command_sha256 == hash)
     }
+}
+
+/// Write `bytes` to `path` whole and synced before the rename, so a crash leaves the old file
+/// or the new one, never half of one. Blocks: call it off the loop.
+pub(super) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).with_context(|| format!("making {}", dir.display()))?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    let mut f = std::fs::File::create(&tmp).with_context(|| format!("writing {}", tmp.display()))?;
+    f.write_all(bytes)?;
+    f.sync_all()?;
+    drop(f);
+    std::fs::rename(&tmp, path).with_context(|| format!("replacing {}", path.display()))
 }
 
 /// One answer to write into the file.

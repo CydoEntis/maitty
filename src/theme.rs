@@ -3,7 +3,7 @@
 //!
 //! The roles follow the design handoff: `surf` for chrome, `card`/`card2` for panels and
 //! action rows, `btn`/`hov` for buttons and the hovered row, `acc` (teal in Seshi Dark
-//! theme) for focus, `needs` (red) only for "needs you".
+//! theme) for focus, `needs` (amber) only for "needs you".
 
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
@@ -197,6 +197,17 @@ pub const DESIGN: &[(&str, &str)] = &[
     ("zenbones-dark", "Zenbones Dark"),
     ("zenbones-light", "Zenbones Light"),
 ];
+
+/// Needs-you ambers: gold-orange on dark grounds, a deeper brown-orange on light ones, and a
+/// redder fallback of each for when the first sits next to another status.
+const AMBER_ON_DARK: Color = Color::Rgb(0xf4, 0xb0, 0x3c);
+const DEEP_AMBER_ON_DARK: Color = Color::Rgb(0xe8, 0x8a, 0x1e);
+const AMBER_ON_LIGHT: Color = Color::Rgb(0xa8, 0x62, 0x00);
+const GOLD: Color = Color::Rgb(0xf0, 0xc8, 0x2c);
+const RED_ORANGE: Color = Color::Rgb(0xf0, 0x78, 0x28);
+const MID_ORANGE: Color = Color::Rgb(0xff, 0x9f, 0x2e);
+const PALE_AMBER: Color = Color::Rgb(0xff, 0xd0, 0x70);
+const DEEP_AMBER_ON_LIGHT: Color = Color::Rgb(0x8f, 0x4a, 0x00);
 
 fn hex(s: &str) -> Color {
     parse_color(s).unwrap_or(Color::Reset)
@@ -451,16 +462,25 @@ impl Theme {
     }
 
     pub fn named(name: &str) -> Theme {
+        let theme = Theme::base(name);
+        if name == "seshi-dark" || name == "mono" {
+            return theme;
+        }
+        theme.with_distinct_needs()
+    }
+
+    fn base(name: &str) -> Theme {
         match name {
             "seshi-dark" => Theme::design(
                 [
                     "#10141b", "#dce4ee", "#141a23", "#1a222d", "#202a37", "#344252", "#8695a8", "#c1ccda",
                     "#f4f7fb", "#43c7c4", "#0c2022", "#f1ad4f", "#92d477", "#ff6678", "#273443", "#314456",
                 ],
-                ["#8e9cf5", "#65b6e8", "#e581b5", "#4dc8c1"],
+                ["#b393f5", "#5aa9ff", "#e581b5", "#4dc8c1"],
                 ["#ff6678", "#92d477", "#f1ad4f", "#65b6e8", "#bb93f5", "#4dc8c1", "#8695a8"],
             )
-            .with_err("#ff6678"),
+            .with_err("#ff6678")
+            .with_amber_needs("#f4c24d"),
             "seshi-light" => Theme::design(
                 [
                     "#f5f7fa", "#243244", "#e9eef4", "#ffffff", "#edf2f7", "#c8d2de", "#68788b", "#43546a",
@@ -841,8 +861,9 @@ impl Theme {
                 selection_bg: Color::DarkGray,
                 tab_active_bg: Color::White,
                 tab_active_fg: Color::Black,
-                working: Color::Yellow,
-                blocked: Color::Red,
+                // Named colours only: working white (the accent), needs you yellow, failed red.
+                working: Color::White,
+                blocked: Color::Yellow,
                 done: Color::Green,
                 idle: Color::DarkGray,
                 card: Color::Black,
@@ -857,7 +878,7 @@ impl Theme {
                 ws: None,
                 ansi: None,
             },
-            _ => Theme::named(DEFAULT),
+            _ => Theme::base(DEFAULT),
         }
     }
 
@@ -865,6 +886,72 @@ impl Theme {
     fn with_err(mut self, c: &str) -> Theme {
         self.err = hex(c);
         self
+    }
+
+    /// Needs you in amber, apart from failed red (the handoff's `needs` and `err` roles; most
+    /// themes share one red for both), and working as the accent so amber is only needs you.
+    fn with_amber_needs(mut self, needs: &str) -> Theme {
+        self.blocked = hex(needs);
+        self.working = self.accent;
+        self
+    }
+
+    /// Needs you in an amber of its own, so it never reads as failed. A theme that already has
+    /// one apart from every other status keeps it; otherwise the amber comes from the theme's
+    /// own yellow nudged toward orange, else a tuned amber, moved toward the text colour just
+    /// far enough to read on every surface it is drawn on. Working falls back to the accent
+    /// when it would sit next to the amber, as in `with_amber_needs`.
+    fn with_distinct_needs(mut self) -> Theme {
+        let ink = if contrast(self.bg, Color::Rgb(0, 0, 0)) > contrast(self.bg, Color::Rgb(255, 255, 255)) {
+            Color::Rgb(0, 0, 0)
+        } else {
+            Color::Rgb(255, 255, 255)
+        };
+        let light = ink == Color::Rgb(0, 0, 0);
+        let tuned = if light { AMBER_ON_LIGHT } else { AMBER_ON_DARK };
+        let deep = if light { DEEP_AMBER_ON_LIGHT } else { DEEP_AMBER_ON_DARK };
+        let flat_terminal = mix(self.bg, Color::Rgb(0, 0, 0), 0.4);
+        let surfaces = [self.bg, self.sidebar_bg, self.card, self.card2, self.hov, self.sel_bg(), flat_terminal];
+        let others = [self.err, self.done, self.accent, self.sky(), self.violet()];
+        let kept = surfaces.iter().all(|s| contrast(self.blocked, *s) >= LIT_READS);
+        let working_ok = |t: &Theme| !colors_alike(t.working, t.blocked) && !colors_alike(t.on_lit(t.working), t.on_lit(t.blocked));
+        let clear = |t: &Theme| {
+            others.iter().all(|o| !colors_alike(t.blocked, *o))
+                && !colors_alike(t.on_lit(t.blocked), t.on_lit(t.err))
+                && !colors_alike(t.on_lit(t.blocked), t.on_lit(t.done))
+        };
+        if kept && clear(&self) && working_ok(&self) {
+            return self;
+        }
+        let mut candidates = vec![tuned, deep, GOLD, RED_ORANGE, MID_ORANGE, PALE_AMBER];
+        if let Some(a) = &self.ansi {
+            candidates.insert(0, mix(a[2], tuned, 0.5));
+        }
+        let original_working = self.working;
+        let mut chosen = None;
+        for c in candidates {
+            let mut t = self.clone();
+            t.blocked = readable_on(c, ink, &surfaces, LIT_READS);
+            if !clear(&t) {
+                continue;
+            }
+            if !working_ok(&t) {
+                t.working = readable_on(t.accent, ink, &[t.sidebar_bg, t.hov, flat_terminal], 4.5);
+                if !working_ok(&t) || colors_alike(t.working, t.done) {
+                    t.working = original_working;
+                    continue;
+                }
+            }
+            chosen = Some(t);
+            break;
+        }
+        match chosen {
+            Some(t) => t,
+            None => {
+                self.blocked = readable_on(tuned, ink, &surfaces, LIT_READS);
+                self
+            }
+        }
     }
 
     pub fn apply(&mut self, o: &ThemeOverrides) {
@@ -974,6 +1061,27 @@ mod audit {
         super::mix(a, b, t)
     }
 
+    /// Every theme gives each status its own colour, as the handoff's roles do: working,
+    /// needs you (amber), failed, done, checking and could not run.
+    #[test]
+    fn every_theme_gives_each_status_its_own_colour() {
+        let mut bad = Vec::new();
+        for &n in super::BUILTIN {
+            let t = Theme::named(n);
+            let roles = [("working", t.accent), ("needs you", t.blocked), ("failed", t.err), ("done", t.done), ("checking", t.sky()), ("could not run", t.violet())];
+            for (i, (a, ca)) in roles.iter().enumerate() {
+                for (b, cb) in &roles[i + 1..] {
+                    // Needs you must differ from every status; the older pairs among the
+                    // rest are held by the other audit or belong to the theme's own palette.
+                    if (*a == "needs you" || *b == "needs you") && super::colors_alike(*ca, *cb) {
+                        bad.push(format!("{n}: {a} and {b} look alike"));
+                    }
+                }
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
     /// Every theme: text readable on every surface it's drawn on, and the colours that mean
     /// different things look different.
     #[test]
@@ -1027,12 +1135,14 @@ mod audit {
             // Different meanings, different colours.
             for (what, a, b) in [
                 ("accent vs blocked", t.accent, t.blocked),
+                ("blocked vs err", t.blocked, t.err),
                 ("done vs blocked", t.done, t.blocked),
-                // Needs you is red like errors on purpose; working and done must differ.
+                // Needs you is amber, apart from failed red; working and done must differ.
                 ("working vs done", t.working, t.done),
                 ("working vs blocked", t.working, t.blocked),
                 // And still on the lit row, where each may have moved toward white.
                 ("lit done vs lit blocked", t.on_lit(t.done), t.on_lit(t.blocked)),
+                ("lit err vs lit blocked", t.on_lit(t.err), t.on_lit(t.blocked)),
                 ("lit working vs lit done", t.on_lit(t.working), t.on_lit(t.done)),
                 ("lit working vs lit blocked", t.on_lit(t.working), t.on_lit(t.blocked)),
             ] {

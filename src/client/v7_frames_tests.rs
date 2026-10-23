@@ -415,6 +415,15 @@ fn app_sidebar(id: &str, stage: Stage, rows: Vec<Vec<char>>, inner_w: usize, asc
     out
 }
 
+/// A row of key hints (`Esc close`) is drawn as keycaps in an action bar, which spaces its words
+/// out (and, in the Why popover, adds the Enter key); its words are tested on their own.
+fn mask_key_bar(row: &mut [char], x0: usize, x1: usize) {
+    let inside: String = row[x0..x1].iter().collect();
+    if inside.contains("Esc ") && ["select", "re-run", "evidence", "back", "close"].iter().any(|w| inside.contains(w)) {
+        row[x0..x1].fill(ANY);
+    }
+}
+
 /// The reference frame as the app should draw it on the fixture: masks and sample swaps.
 fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
     let (stage, _) = preset(id);
@@ -478,6 +487,7 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
             if full.chars().count() <= room { full } else { format!("{word} {ok}{last}") }
         };
         for row in want.iter_mut().take(s.bottom() as usize).skip(s.y as usize) {
+            mask_key_bar(row, x0, x1);
             swap(row, QUESTION, "use pnpm or npm?", x0, x1);
             // The sample's approval item is a minute younger than its row; the app reads one age.
             if stage == Stage::Approve && find(&row[x0..x1], "fix-footer").is_some() && let Some(i) = find(&row[x0..x1], "1m") {
@@ -499,6 +509,11 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
     }
     // The sample's "1 of 59 tests failed" is read from vitest's output; the app does not parse
     // a command's output.
+    for pop in &g.overlays {
+        for row in want.iter_mut().take(pop.bottom() as usize).skip(pop.y as usize) {
+            mask_key_bar(row, pop.x as usize, pop.right() as usize - 1);
+        }
+    }
     if let Some(pop) = g.overlays.first().filter(|_| preset(id).1 == Over::Why) {
         // Its text stops a column before its right edge.
         let (x0, x1) = (pop.x as usize, pop.right() as usize - 1);
@@ -787,6 +802,59 @@ fn pill_caps_only_round_the_buttons_ends() {
     }
 }
 
+/// Flat honours `ui.pill_caps` as Cards does: off, no cap is drawn; on, caps appear and each
+/// one sits on the ground of the cell beside it (the zone's, not the theme's `bg`), so an
+/// end shows no notch of another colour.
+#[test]
+fn flat_rounds_its_pill_ends_on_the_ground_around_them() {
+    let caps = [CAP_L, CAP_R];
+    let mut total = 0;
+    for id in ["01", "04", "11", "12", "A2", "C1"] {
+        let mut square = open(id);
+        let plain = cells(&mut square, Layout::Flat, 160, 45, "unicode");
+        assert!(!plain.content().iter().any(|c| caps.contains(&c.symbol())), "{id}: pill_caps off draws no cap");
+
+        let mut round = open(id);
+        round.cfg.ui.pill_caps = true;
+        let buf = cells(&mut round, Layout::Flat, 160, 45, "unicode");
+        let area = buf.area;
+        let mut seen = 0;
+        for y in area.top()..area.bottom() {
+            for x in area.left()..area.right() {
+                let cell = &buf[(x, y)];
+                let outside = match cell.symbol() {
+                    s if s == CAP_L => x.checked_sub(1),
+                    s if s == CAP_R => Some(x + 1).filter(|n| *n < area.right()),
+                    _ => continue,
+                };
+                seen += 1;
+                assert_ne!(cell.bg, ratatui::style::Color::Reset, "{id}: the cap at {x},{y} has a ground");
+                assert_ne!(cell.bg, cell.fg, "{id}: the cap at {x},{y} is invisible");
+                if let Some(o) = outside {
+                    let beside = &buf[(o, y)];
+                    if !caps.contains(&beside.symbol()) && beside.symbol() == " " {
+                        assert_eq!(cell.bg, beside.bg, "{id}: the cap at {x},{y} sits on another colour than the cell beside it");
+                    }
+                }
+            }
+        }
+        total += seen;
+    }
+    assert!(total > 0, "Flat's buttons have round ends with pill_caps on");
+}
+
+/// Flat has no card edges, so `ui.corners` reaches only a modal's bottom corners there.
+#[test]
+fn flat_corners_round_only_a_modals_bottom() {
+    let mut app = open("12");
+    let square = frame(&mut app, Layout::Flat, 160, 45, "unicode");
+    assert!(!square.contains(['╭', '╮', '╰', '╯']), "square is the default\n{square}");
+    app.cfg.ui.corners = "rounded".into();
+    let rounded = frame(&mut app, Layout::Flat, 160, 45, "unicode");
+    assert_eq!(rounded.matches(['╰', '╯']).count(), 2, "the modal's bottom corners\n{rounded}");
+    assert!(!rounded.contains(['╭', '╮']), "nothing else is a box\n{rounded}");
+}
+
 fn press(app: &mut App, code: crossterm::event::KeyCode) {
     app.on_key(crossterm::event::KeyEvent::new(code, crossterm::event::KeyModifiers::NONE));
 }
@@ -854,4 +922,53 @@ fn overriding_from_the_inbox_opens_the_evidence() {
     press(&mut app, KeyCode::Enter);
     assert!(matches!(&app.view, Some(View::Check(v)) if v.term == 1), "the evidence sheet");
     assert!(frame(&mut app, Layout::Floating, 160, 45, "unicode").contains("CHECK · fix-footer › test"));
+}
+
+/// The working glyph, its word and its name are the one working colour in every theme.
+#[test]
+fn a_working_row_is_the_working_colour_throughout() {
+    for &name in crate::theme::BUILTIN {
+        let mut app = open("01");
+        app.theme = crate::theme::Theme::named(name);
+        let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
+        let work = app.theme.accent;
+        let (x, y) = at(&buf, "add-payments");
+        assert_eq!(buf[(x - 2, y)].fg, work, "{name}: the spinner");
+        if name != "mono" {
+            assert_eq!(buf[(x + 11, y)].fg, work, "{name}: the name's unlit end");
+        }
+        let (x, y) = at(&buf, "claude · working");
+        assert_eq!(buf[(x + 9, y)].fg, work, "{name}: the word");
+    }
+}
+
+/// Needs you and failed are two colours in seshi-dark, as in the handoff (`needs`, `err`):
+/// the Inbox's group chips, the row's glyph and question, and the failed result.
+#[test]
+fn needs_you_is_amber_and_failed_red_in_seshi_dark() {
+    let mut app = open("11");
+    app.theme = crate::theme::Theme::named("seshi-dark");
+    let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
+    let t = &app.theme;
+    assert_ne!(t.blocked, t.err);
+    let (x, y) = at(&buf, "NEEDS YOU");
+    assert_eq!(buf[(x, y)].bg, t.blocked, "the Inbox's needs-you chip");
+    let (x, y) = at(&buf, "FAILED CHECKS");
+    assert_eq!(buf[(x, y)].bg, t.err, "the Inbox's failed chip");
+    let (x, y) = at(&buf, "warm-finch");
+    assert_eq!(buf[(x - 2, y)].fg, t.blocked, "the asking row's glyph");
+    let (x, y) = at(&buf, "asks:");
+    assert_eq!(buf[(x, y)].fg, t.blocked, "the question");
+}
+
+/// A result that could not run is violet, apart from failed red, needs-you amber and working.
+#[test]
+fn a_check_that_could_not_run_is_violet_not_red_or_amber() {
+    let mut app = open("06");
+    app.theme = crate::theme::Theme::named("seshi-dark");
+    let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
+    let t = &app.theme;
+    let (x, y) = at(&buf, "test could not run");
+    assert_eq!(buf[(x, y)].fg, t.violet());
+    assert!(![t.err, t.blocked, t.accent].contains(&t.violet()));
 }

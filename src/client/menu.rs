@@ -26,12 +26,8 @@ pub enum Act {
     End(Vec<TermId>),
     Changes(PathBuf),
     RenamePane(TermId),
-    /// Tell this agent to run a fleet from now on (`seshi brief`).
-    Commander(TermId),
     /// Drop the follow-ups waiting for this agent's turn to end.
     ClearQueue(TermId),
-    /// Fold / unfold a session's subagents in the sidebar.
-    ToggleSubs(TermId),
     /// List a checkout's snapshots (its folder, and whose row asked).
     Snapshots(PathBuf, TermId),
     /// Put a checkout's files back as a snapshot has them: (folder, commit, when, whose row).
@@ -62,8 +58,6 @@ pub enum Act {
     OverrideCheck(TermId, String, Option<String>),
     /// Take an override back: the check reads as failed again.
     UndoOverride(TermId),
-    /// Remove this job from the team.
-    RemoveTeamJob(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -207,15 +201,6 @@ impl App {
                 items.push(("Snapshots…".to_string(), Act::Snapshots(d, term)));
             }
         }
-        // Its key comes from its label: f, not a (the foot teaches a for actions) or m
-        // (a row's follow-up key).
-        if s.is_agent && !s.asleep {
-            items.push(("Fleet commander".to_string(), Act::Commander(term)));
-        }
-        if !s.subagents.is_empty() {
-            let label = if self.screen.subs_closed.contains(&term) { "Show subagents" } else { "Hide subagents" };
-            items.push((label.to_string(), Act::ToggleSubs(term)));
-        }
         if !s.queued.is_empty() {
             items.push((format!("Drop queued follow-ups ({})", s.queued.len()), Act::ClearQueue(term)));
         }
@@ -247,13 +232,6 @@ impl App {
         self.menu(format!("snapshots · {}", super::screen::folder_name(&dir)), items, at);
     }
 
-    /// Fold / unfold a session's subagents.
-    pub(super) fn toggle_subs(&mut self, term: TermId) {
-        if !self.screen.subs_closed.remove(&term) {
-            self.screen.subs_closed.insert(term);
-        }
-    }
-
     /// Right-click on a project row.
     pub(super) fn menu_for_project(&mut self, pi: usize, at: (u16, u16)) {
         if let Some((title, items)) = self.project_items(pi) {
@@ -273,20 +251,6 @@ impl App {
             items.push(("Make it a git repo…".to_string(), Act::GitInit(p.path.clone())));
         }
         Some((p.name.clone(), items))
-    }
-
-    /// The menu items for the sidebar cursor's row (what its letter keys do), in the
-    /// menu's order.
-    pub(super) fn cursor_items(&self) -> Vec<(String, Act)> {
-        let mut items = match (&self.screen.cursor_proj, self.screen.cursor) {
-            (Some(key), _) => self.screen_model().iter().position(|p| p.key == *key).and_then(|pi| self.project_items(pi)),
-            (None, Some(t)) => self.session_items(t),
-            _ => None,
-        }
-        .map(|(_, i)| i)
-        .unwrap_or_default();
-        items.sort_by_key(|(_, a)| matches!(a, Act::End(_) | Act::CloseProject(_)));
-        items
     }
 
     pub(super) fn on_hy_menu_key(&mut self, mut m: ScreenMenu, k: &KeyEvent) {
@@ -407,20 +371,6 @@ impl App {
                 danger: false,
                 act: a.clone(),
             }),
-            // It types into the agent, so never on a slip of a key. (One that's on a prompt is
-            // told to answer first, with nothing to confirm.)
-            Act::Commander(t) if self.snap.terms.get(t).is_some_and(|x| x.status != crate::protocol::Status::Blocked) => find(&model, *t).map(|(_, _, s)| Confirm {
-                title: "Fleet commander".into(),
-                sub: String::new(),
-                what: s.name.clone(),
-                detail: s.agent.clone(),
-                note: "It's told to run seshi brief and ask you for the goal; from then on it starts helpers.".into(),
-                list: Vec::new(),
-                yes: "Make it commander".into(),
-                key: '\n',
-                danger: false,
-                act: a.clone(),
-            }),
             Act::OverrideCheck(t, _, name) => match self.override_confirm(*t, name.clone()) {
                 Some(c) => Some(c),
                 None => return,
@@ -451,7 +401,7 @@ impl App {
                 let from_side = self.mode == Mode::Side || self.screen.cursor.is_some() || self.screen.cursor_proj.is_some();
                 self.screen.side_return = match &c.act {
                     _ if !from_side => None,
-                    Act::Commander(t) | Act::Restore(_, _, _, t) | Act::OverrideCheck(t, ..) => Some(super::screen::SideItem::Sess(*t)),
+                    Act::Restore(_, _, _, t) | Act::OverrideCheck(t, ..) => Some(super::screen::SideItem::Sess(*t)),
                     _ => self.side_after_close(),
                 };
                 self.mode = Mode::Confirm(Box::new(c));
@@ -477,7 +427,6 @@ impl App {
             }
             Act::Update => self.start_update(),
             Act::RestartDaemon => self.restart_daemon_now(),
-            Act::RemoveTeamJob(name) => self.remove_team_job(name),
             Act::InstallStatus(agent) => {
                 self.notify(format!("setting up {agent} status…"), false);
                 self.spawn_bg(move || {
@@ -504,7 +453,6 @@ impl App {
             Act::TeachAgent(term) => self.cmd(Command::TeachAgent { term }),
             Act::TidyOpen(pi) => self.tidy_open(pi),
             Act::ClearQueue(term) => self.cmd(Command::ClearQueue { term }),
-            Act::ToggleSubs(term) => self.toggle_subs(term),
             Act::Snapshots(dir, term) => {
                 let at = self.screen.row_y.get(&term).map(|y| (self.screen.saved.side_w.unwrap_or(0), *y)).unwrap_or((0, 0));
                 self.spawn_bg(move || {
@@ -530,11 +478,6 @@ impl App {
                 self.notify("Cleaning up worktrees…".into(), false);
                 self.cmd(Command::TidyWorktrees { items });
             }
-            // Typed into a prompt it would be taken as that prompt's answer.
-            Act::Commander(term) if self.snap.terms.get(&term).is_some_and(|t| t.status == crate::protocol::Status::Blocked) => {
-                self.notify("it's waiting on you: answer it first".into(), true);
-            }
-            Act::Commander(term) => self.send_follow_up(term, &crate::brief::commander_prompt("")),
             Act::RightClicks(t) => {
                 if !self.screen.right_clicks.remove(&t) {
                     self.screen.right_clicks.insert(t);
@@ -674,7 +617,7 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
     let h = m.items.len() as u16 + 3 + gap as u16;
     let x = m.at.0.min(area.right().saturating_sub(w + 1)).max(area.x);
     let y = if m.at.1 + h < area.bottom() { m.at.1 + 1 } else { m.at.1.saturating_sub(h) }.max(area.y);
-    let r = Rect { x, y, width: w, height: h + 1 };
+    let r = Rect { x, y, width: w, height: h };
     // Clicking anywhere else closes it.
     hit(app, area, ScreenHit::Close);
     // A popover, as the why one: a raised title row over a card, with a hard shadow.

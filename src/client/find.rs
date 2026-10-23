@@ -2,7 +2,7 @@
 //! or open it in your editor at the line.
 
 use super::design::{fill, put, seg, tilde};
-use super::screen::{ScreenHit, chip, dim_all, hints, hit, hovered, panel};
+use super::screen::{ScreenHit, chip, dim_all, hit, hovered, panel, panel_bar};
 use super::render::truncate;
 use super::{App, Bg, Mode, files};
 use crate::protocol::ClientMsg;
@@ -315,14 +315,8 @@ pub(super) fn draw_find(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, v: 
         put(buf, prev.x, prev.y + i as u16, &[seg(truncate(l, prev.width as usize), st)], prev.right());
     }
     let n = targets.len();
-    put(
-        buf,
-        r.x + 3,
-        r.bottom() - 2,
-        &hints(t, &[("Enter", "into the prompt"), ("Ctrl+E", "editor"), ("Ctrl+Y", "copy path"), ("Tab", "files / search"), ("Esc", "close")]),
-        r.right() - 12,
-    );
-    put(buf, r.right().saturating_sub(12), r.bottom() - 2, &[seg(format!("{n} found"), c.fg(t.muted))], r.right() - 1);
+    panel_bar(buf, r, t, &[("Enter", "into the prompt"), ("Ctrl+E", "editor"), ("Ctrl+Y", "copy path"), ("Tab", "files / search"), ("Esc", "close")]);
+    put(buf, r.right().saturating_sub(12), r.bottom() - 2, &[seg(format!("{n} found"), Style::default().bg(t.card2).fg(t.muted))], r.right() - 1);
 }
 
 #[cfg(test)]
