@@ -145,7 +145,7 @@ Rules for keys and their labels: one key per action (no alias keys; a user's own
 
 **Action bars.** A panel's key hints sit in their own one-row bar (`action_bar`, `panel_bar` in `popups.rs`) on a ground one step above the panel's: `card` for a sheet on the app background (Inbox, check evidence) and `card2` inside a modal (Settings, the key overlay, confirms, pickers). It spans the panel's width with one column of padding, shows keycaps and labels, and is always the panel's last row. When the hints do not fit they close their gaps, then give up the ones before `Esc`.
 
-**Menu.** Four groups a blank row apart, no headers, every label lowercase so the lit letter is the only capital-looking cue: shell here, session, session with options…, pane beside this, tab; inbox, search commands, all keys; collapse sidebar, hide sidebar; settings. Each row is run by the letter lit in its name (unique in the menu); there is no key column. Footer: "`Ctrl+Space` then a key works anywhere". "shell here" is leader `n` (a plain shell where you are) and "session" an instant agent session (leader `s`).
+**Menu.** Four groups a blank row apart, no headers, every label lowercase so the lit letter is the only capital-looking cue: shell here, session, session with options…, pane beside this, tab; inbox, search commands, all keys; collapse sidebar, hide sidebar; settings. Each row is run by the letter lit in its name (unique in the menu); each row shows at the right the leader key that does the same (the lit letter works only inside the Menu). Footer: "`Ctrl+Space` then a key works anywhere". "shell here" is leader `n` (a plain shell where you are) and "session" an instant agent session (leader `s`).
 
 **Agent launchers.** Typing an agent (`claude`, `codex`, `gemini`, `opencode`, a quick agent) in a Seshi shell in a git repo's main checkout starts it in a new worktree (`worktree.per_agent`); anywhere else, or in a folder that is not a git repo, it starts where you are, silently. It works from any shell because `<data>/shell/bin/` is first on the pane's `PATH`; see ARCHITECTURE › Agent launchers. No toast or warning is shown for main folders.
 
@@ -217,7 +217,7 @@ tested cell for cell against the reference frames (`client/screen/side_frames.tx
 - **Title:** `SESSIONS` bold and the count, then right-aligned `●n` (`blocked`, bold:
   asking or waiting for check approval) and `✕n` (`err`, bold: failed checks), each only
   above zero.
-- **Folder:** fold glyph (`accent`), name (`strong`, bold, never cut before the meta),
+- **Folder:** a one-cell `−` (open) or `+` (closed) button on a colour picked at random each time the folder opens, bold ink on it, name (`strong`, bold, never cut before the meta),
   meta right-aligned in `muted`: `⎇ main` plus ` · check: <name>` or ` · N checkpoints`,
   or `no git`. The meta shows only with 6 or more columns free, cut with `…`. A blank row
   follows each folder.
@@ -226,11 +226,11 @@ tested cell for cell against the reference frames (`client/screen/side_frames.tx
   right-aligned in `muted`. A row that wants a look (working, needs you, failed, done and
   not seen, new, any check result other than a plain pass) has a `strong` bold name; a done,
   seen or asleep row has a `text` name, not bold, `strong` only while selected. Working keeps
-  its shimmer. A failed row's `▎` edge bar is `err` on every line of the row.
+  its shimmer. Every agent's row carries a `▎` edge bar on each line in its state's colour (`err` for a failed check, else the status colour), selected or not; a plain shell has none.
 - **Row line 2:** the headline check's result (`TermInfo::check()`) by checkpoint name, or
   the question, or what the session is doing. While the agent works or asks, its last
   result is about an older turn and is not shown.
-- **Below 140 columns** only a plain `done` row (seen, no check result, no question) is one line; working, needs-you, not-seen, new and checked rows keep line 2. Line 3 goes.
+- **Below 140 columns** only a plain `idle` row (seen, no check result, no question) is one line; working, needs-you, not-seen, new and checked rows keep line 2. Line 3 goes.
 - **Row line 3** (140 columns and up): a failed check's first failing line (`muted`), or
   every checkpoint by name: `build ✓ · test ✕` (a failed name in `err`).
 
@@ -243,7 +243,7 @@ Settings › Appearance › Status glyphs picks how a session is marked. **Dots*
 | --- | --- | --- | --- |
 | working | the spinner you chose (Bars is 3-bar), bold | `accent`: glyph, word and name shimmer alike | `claude · working` (shimmers), then `text` ` · 4 agents` only when the agent reports helpers |
 | needs you | `●` / `!` | `blocked` | `asks: <question>` |
-| done, not seen / seen | `✓` / `+`; `○` / `o` | `done`; `muted` | `done · not seen` (bold `done`) / `done` (`muted`) |
+| done, not seen / seen | `✓` / `+`; `○` / `o` | `done`; `muted` | `done · not seen` (bold `done`) / `idle` (`muted`) |
 | new (an agent told nothing yet) | `○` / `o`, bold | `accent` | `claude · new · type to begin` (`muted`, then `accent`) |
 | asleep | `z` | `muted` | `asleep zzZ` |
 | checking | `◜◝◞◟` / `- \ \| /` | `sky()` | `checking test · 6s` |
