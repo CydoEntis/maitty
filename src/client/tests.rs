@@ -5527,7 +5527,7 @@ mod check_wiring_tests {
         pick(&mut app, "Re-run check");
         assert_eq!(rerun_of(&commands(&mut rx)), 1);
         let (msg, error) = toast(&app);
-        assert!(msg.contains("re-running") && msg.contains(COMMAND) && !error, "{msg}");
+        assert!(msg.contains("Re-running") && msg.contains(COMMAND) && msg.contains("'s worktree…") && !error, "{msg}");
         assert_eq!(app.mode, Mode::Normal);
     }
 
@@ -5727,7 +5727,7 @@ mod check_wiring_tests {
         app.open_check_sheet(TERM);
         press(&mut app, KeyCode::Char('r'));
         assert_eq!(rerun_of(&commands(&mut rx)), 1);
-        assert!(words(&draw(&mut app, 160, 45)).contains("re-running npm test"), "the toast shows");
+        assert!(words(&draw(&mut app, 160, 45)).contains("Re-running npm test in"), "the toast shows");
         let mut running = info(CheckState::Checking);
         running.exit_code = None;
         app.snap.terms.get_mut(&TERM).unwrap().checks = vec![running];

@@ -844,3 +844,14 @@ fn a_click_anywhere_inside_a_panes_card_is_the_pane() {
         }
     }
 }
+
+/// checks7.js's doOverride shows the evidence the override stands on.
+#[test]
+fn overriding_from_the_inbox_opens_the_evidence() {
+    use crossterm::event::KeyCode;
+    let mut app = open("11");
+    press(&mut app, KeyCode::Char('O'));
+    press(&mut app, KeyCode::Enter);
+    assert!(matches!(&app.view, Some(View::Check(v)) if v.term == 1), "the evidence sheet");
+    assert!(frame(&mut app, Layout::Floating, 160, 45, "unicode").contains("CHECK · fix-footer › test"));
+}

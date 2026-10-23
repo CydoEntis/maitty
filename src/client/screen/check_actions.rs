@@ -30,14 +30,15 @@ pub(in crate::client) fn check_menu_items(term: TermId, info: &CheckInfo) -> Vec
     items
 }
 
-/// What a re-run of `check` (None: the session has no result yet) says, or why it is not sent.
-fn rerun_words(t: &TermInfo, check: Option<&CheckInfo>) -> Result<Option<String>, &'static str> {
+/// What a re-run of `check` (None: the session has no result yet) in session `who` says, or
+/// why it is not sent.
+fn rerun_words(t: &TermInfo, who: &str, check: Option<&CheckInfo>) -> Result<Option<String>, &'static str> {
     let working = t.status == Status::Working;
     match check {
         Some(c) if c.state == CheckState::Checking => Err("its check is already running"),
         Some(c) if c.rerun_queued => Err("a re-run is already queued: it runs when this turn ends"),
         Some(_) if working => Ok(Some("re-run queued: it runs when this turn ends".into())),
-        Some(c) => Ok(Some(format!("re-running {}…", c.command))),
+        Some(c) => Ok(Some(format!("Re-running {} in {who}'s worktree…", c.command))),
         // The daemon says why a working agent with no result cannot be re-run.
         None if working => Ok(None),
         None => Ok(Some("running the check…".into())),
@@ -62,8 +63,9 @@ impl App {
 
     /// Run `term`'s checkpoint `name` again (None: all of them).
     pub(in crate::client) fn rerun_checkpoint(&mut self, term: TermId, name: Option<String>) {
+        let who = self.session_name(term);
         let Some(t) = self.snap.terms.get(&term) else { return };
-        match rerun_words(t, checkpoint(t, name.as_deref())) {
+        match rerun_words(t, &who, checkpoint(t, name.as_deref())) {
             Err(why) => self.notify(why.into(), false),
             Ok(said) => {
                 self.cmd(Command::RerunCheck { term, name });
@@ -76,6 +78,10 @@ impl App {
 
     pub(in crate::client) fn override_check(&mut self, term: TermId, name: Option<String>, reason: String) {
         self.cmd(Command::OverrideCheck { term, name, reason });
+        // As checks7.js's doOverride: the evidence it now stands on is shown.
+        if !matches!(&self.view, Some(crate::client::View::Check(v)) if v.term == term) {
+            self.open_check_sheet(term);
+        }
         let name = self.session_name(term);
         self.notify(format!("Overridden. {name} reads done (overridden); the failure stays in its evidence."), false);
     }
