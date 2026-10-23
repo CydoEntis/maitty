@@ -159,16 +159,17 @@ impl App {
         self.screen_act(&Action::ShellHere);
     }
 
-    /// Rename the tab you're on, in its pill.
+    /// Rename the session you're on, in its pill: its name is the one the sidebar, the pill and
+    /// every notice use, so a name kept on the tab alone would leave them all saying the old one.
     pub(in crate::client) fn rename_tab_start(&mut self) {
         let i = self.screen.tab;
         if let Some(tab) = self.screen.tabs.get(i) {
-            let name = tab.name.clone();
+            let name = self.snap.terms.get(&tab.focus).map(|t| t.label.trim().to_string()).unwrap_or_default();
             self.mode = Mode::RenameTab(Box::new(TabName { tab: i, name }));
         }
     }
 
-    /// Typing a tab's name: Enter keeps it (empty: named after what runs in it), Esc doesn't.
+    /// Typing a session's name: Enter keeps it (empty: named after its worktree), Esc doesn't.
     pub(in crate::client) fn on_rename_tab_key(&mut self, mut nt: TabName, k: &KeyEvent) {
         match k.code {
             KeyCode::Enter => {
@@ -177,10 +178,12 @@ impl App {
                     let focus = tab.focus;
                     // The daemon owns the name: it outlives this view's tab being rebuilt, and
                     // `screen_sync` reads it back from the snapshot.
+                    // A name an older version left on the tab would hide the session's.
                     match self.snap.workspaces.iter().find_map(|w| w.tabs.iter().find(|t| t.layout.contains(focus)).map(|t| (w.id, t.id))) {
-                        Some((ws, tab)) => self.cmd(Command::RenameTab { ws, tab, name }),
-                        None => tab.name = name,
+                        Some((ws, tab)) => self.cmd(Command::RenameTab { ws, tab, name: String::new() }),
+                        None => tab.name = String::new(),
                     }
+                    self.cmd(Command::RenamePane { term: focus, name });
                 }
                 self.last_click = None;
                 self.mode = Mode::Normal;
