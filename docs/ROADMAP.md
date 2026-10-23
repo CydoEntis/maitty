@@ -11,7 +11,14 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The latest published release on `main` is v0.40.0 (2026-10-23): the v7 layout
+The latest published release on `main` is v0.41.0 (2026-10-23): the v8 cleanup
+([Phase 19](#19--the-v8-cleanup--shipped-in-v0410-live-checks-open)). Every action goes through the
+leader, one key overlay and a grouped Menu replace the palette and the shortcut screens, sessions are
+coloured dots, and a collapsed sidebar becomes a top strip. A new shell is `n`, and an agent typed in a
+shell pane always starts in a new worktree. The fleet commander, the Team tab and the sidebar subagent
+tree are gone, and helpers ask first. Updating restarts the daemon in one step. It moves the wire protocol
+to 45, so a new `seshi` replaces an older daemon by itself (it asks once when agents are working). v0.40.0
+(2026-10-23) was the v7 layout
 ([Phase 18](#18--the-v7-layout-and-checkpoints--shipped-in-v0400-live-checks-open)), with several
 named checks per project, stale passes and repo checks you approve; `seshi handoff`
 ([Phase 13](#13--borrowed-from-t3-code-round-two--shipped-in-v0400)); and team roles for the commander ([Phase 17](#17--team-roles-for-the-commander--shipped-in-v0400-live-trial-open)).
@@ -282,7 +289,7 @@ new work; any remaining item must be re-approved and planned as a new scope.
 
 ### 9 — One agent runs a fleet for you · complete 2026-10-16 at `63b1a72`
 
-*Removed by the user in [Phase 19](#19--the-v8-cleanup--the-cuts-built-on-the-working-tree-not-yet-released); the record below is history.*
+*Removed by the user in [Phase 19](#19--the-v8-cleanup--shipped-in-v0410-live-checks-open); the record below is history.*
 
 [A commander that runs a fleet of agents](features/fleet/intent.md): you give one agent a goal; it starts
 helpers, briefs them, checks on them and reports back.
@@ -448,7 +455,7 @@ capture back off; the offer-then-restart glue in `open_client` has no test of it
 
 ### 17 — Team roles for the commander · shipped in v0.40.0, live trial open
 
-*Removed by the user in [Phase 19](#19--the-v8-cleanup--the-cuts-built-on-the-working-tree-not-yet-released); the record below is history.*
+*Removed by the user in [Phase 19](#19--the-v8-cleanup--shipped-in-v0410-live-checks-open); the record below is history.*
 
 [A team list for the commander](features/team-roles/intent.md): a Settings › Team list of jobs
 (planner, builder, reviewer, or the user's own), each with a model per agent family (Claude, Codex),
@@ -491,7 +498,7 @@ exits 0 for a check waiting for approval or that could not run; ADR 0013 is stil
 `· 1 of 59 tests failed` in the why popover (needs output parsing) and when you chose Never (needs a
 protocol change). Not checked live: 80×24, 100×30 and 160×45, ASCII and Nerd glyphs, macOS.
 
-### 19 — The v8 cleanup · the cuts built on the working tree, not yet released
+### 19 — The v8 cleanup · shipped in v0.41.0, live checks open
 
 The user supplied the v8 handoff ([`design/v8/`](design/v8/); `app8.js` is the spec) and asked for it with
 the rulings in [ADR-0014](adr/0014-v8-cleanup.md) where the two differ. One protocol bump for the whole of
@@ -504,11 +511,15 @@ Sessions `Sessions may start helpers` and `Helpers at once` now act: `[mcp] help
 `[sessions] helpers_at_once` and no longer a setting. The collapsed strip, key overlay, Menu, Settings, toasts
 and the message popover are the other waves of this phase (see the ADR).
 
-Status 2026-10-23: the cuts and the helpers question are built on the working tree with tests (daemon: ask,
-always, never, per-project memory, per-session limit; client: the row, the popover at three sizes, keys and
-mouse; config and saved-session load tests for old files). Not released; not checked live; the Inbox does not
-open the question yet (Enter on its row focuses the session; use the sidebar row). Open: the live check of the
-whole flow with a real agent over `seshi mcp`.
+Status 2026-10-23: all of v8 is built and released in v0.41.0 (protocol 44 to 45): the key overlay, Menu,
+Settings, toasts, collapsed strip, message popover, instant sessions, the cuts and the helper question
+(which now also opens from the Inbox), the PATH launchers that put an agent typed in a shell pane in a new
+worktree, one-step update and restart, and the Round session rows setting. The gate passed on the merged
+tree (794 tests, including one daemon test, `a_pass_goes_stale_when_the_files_change_and_a_failure_does_not`,
+that failed about one full run in four and passes alone). Not checked live: any of it in a real session,
+Windows (never built), zsh, fish and PowerShell launchers, and the old-binary to new-binary restart end to
+end. Open: the live check of the helper flow with a real agent over `seshi mcp`; whether check re-run and
+override want leader keys (they work from the check sheet).
 
 ## In scope
 
