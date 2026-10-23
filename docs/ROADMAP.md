@@ -11,7 +11,12 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The latest published release on `main` is v0.37.1 (2026-10-22): a restart button for
+The latest published release on `main` is v0.40.0 (2026-10-23): the v7 layout
+([Phase 18](#18--the-v7-layout-and-checkpoints--shipped-in-v0400-live-checks-open)), with several
+named checks per project, stale passes and repo checks you approve; `seshi handoff`
+([Phase 13](#13--borrowed-from-t3-code-round-two--shipped-in-v0400)); and team roles for the commander ([Phase 17](#17--team-roles-for-the-commander--shipped-in-v0400-live-trial-open)).
+It moves the wire protocol to 44, so restart the daemon after installing it, and update
+remote daemons too. v0.37.1 (2026-10-22) added a restart button for
 the daemon after an update, and a prompt instead of an error when a new `seshi` meets an
 older daemon ([Phase 16](#16--restart-the-daemon-from-the-update-flow--complete-2026-10-22)).
 v0.37.0 brought checks that Seshi
@@ -210,8 +215,9 @@ ignored; lint, both cross-checks and dependency audit passed). Live mouse clicks
 opened a plain shell and Settings from Actions.
 
 Active phase: **15 — checks Seshi runs itself** (chosen 2026-10-22)
-Next: phases 13, 17 and 18 are on local `dev`, not pushed. Then the Phase 17 live trial, the Phase 18
-open decisions and live checks, and a release.
+Next: three follow-ups the user approved on 2026-10-23: `a` on a sidebar row opens the row menu, an
+amber for needs-you in seshi-dark, and `seshi wait` reporting a check waiting for approval or that could
+not run. Then the Phase 17 live trial and the Phase 18 live checks.
 
 Current user-requested work: expand the built-in themes to cover the 25 requested
 families and add a searchable preview browser in Appearance. Acceptance: all
@@ -312,7 +318,7 @@ have square edges and no gaps, keyboard focus zones,
 working mouse targets and sensible narrow-screen behavior; docs and tests cover
 the option; the verification gate passes before the phase ships.
 
-### 13 — Borrowed from T3 Code, round two · built on `dev` 2026-10-22
+### 13 — Borrowed from T3 Code, round two · shipped in v0.40.0
 
 Approved by the user 2026-10-19 after a second read of `pingdotgg/t3code`. [Intent](features/handoff/intent.md).
 Tickets: #116 one function builds an agent's start command, #117 the handoff brief, #118 `seshi handoff`.
@@ -325,7 +331,7 @@ Tickets: #116 one function builds an agent's start command, #117 the handoff bri
   draft of this phase listed them by mistake.
 - Acceptance: a ticket, tests, docs and a passing verification gate before it is marked shipped.
 
-Status 2026-10-22: built and merged to local `dev`, not released. The gate passed on the merged tree
+Status 2026-10-22: built and released in v0.40.0. The gate passed on the merged tree
 (575 tests). A live run on an isolated daemon with stub agents checked the brief, the refusals (no pane, no
 agent, unknown agent) and the grants. The brief goes in as the new agent's first prompt on its command line,
 not through `seshi send` (avoids racing the agent's start screen); four choices made while planning are
@@ -438,7 +444,7 @@ faked snapshot), and Windows beyond CI. Known gaps: the prompt shows protocol nu
 numbers (an older daemon reports only its protocol); it installs no panic hook to switch mouse
 capture back off; the offer-then-restart glue in `open_client` has no test of its own.
 
-### 17 — Team roles for the commander · built on `dev` 2026-10-22, live trial open
+### 17 — Team roles for the commander · shipped in v0.40.0, live trial open
 
 [A team list for the commander](features/team-roles/intent.md): a Settings › Team list of jobs
 (planner, builder, reviewer, or the user's own), each with a model per agent family (Claude, Codex),
@@ -450,12 +456,12 @@ The user asked on 2026-10-22 to build it now. Tickets: #113 config, #114 start a
 #115 the team in the brief, #119 hand on only after a passing check, #120 Settings › Team with the family
 switch, #121 add/edit/remove jobs, #122 docs, #123 live trial on the user's models (manual).
 
-Status 2026-10-22: #113–#115 and #119–#122 built and merged to local `dev`, not released; the gate passed on
+Status 2026-10-22: #113–#115 and #119–#122 built and released in v0.40.0; the gate passed on
 the merged tree. Not done, so the phase is not complete: #123, a commander running a small ticket set on the
 user's models. Known gaps: no key-driven test that saving a job writes the file (covered below that level);
 one click on the Family row while a job is being edited leaves the edit open.
 
-### 18 — The v7 layout and checkpoints · built on `dev` 2026-10-22, live checks open
+### 18 — The v7 layout and checkpoints · shipped in v0.40.0, live checks open
 
 The user supplied the v7 handoff on 2026-10-22 ([`design/v7/`](design/v7/), `checks7.js` is the spec) and
 asked for all of it: a new layout for the app, not a pass over the old one. Covers the frame in all three
@@ -466,7 +472,7 @@ commands per project. Not built: the working shimmer and 3-bar spinner (user's c
 other than a command (commits, plan approval, review), which the design only shapes. Tickets are labelled
 `phase-18`. One protocol bump for the whole phase.
 
-Status 2026-10-22: #124–#131 built and merged to local `dev` (protocol 43→44), not released. The gate
+Status 2026-10-22: #124–#131 built and released in v0.40.0 (protocol 43→44). The gate
 passed on the merged tree (754 + 1 tests). All 26 presets match the handoff's frames in every layout and
 size, plus ASCII at Flat 80×24 (`src/client/v7_frames_tests.rs`); colour roles were compared by a reviewer.
 Two blind reviews (code and security, design fidelity) ran with two fix rounds; their blocking findings
