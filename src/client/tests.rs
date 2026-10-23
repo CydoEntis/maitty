@@ -925,7 +925,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn flat_terminal_background_matches_its_theme_surface_and_keeps_ansi_colors() {
+    fn flat_terminal_ground_is_the_zone_body_under_a_card_strip_and_keeps_ansi_colors() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.cfg.ui.layout = "flat".into();
         let mut parser = vt100::Parser::new(20, 80, 0);
@@ -944,14 +944,15 @@ mod screen_tests {
         );
         assert_eq!(
             buffer[(inner.x + 1, inner.y)].bg,
-            app.theme.card,
-            "the default terminal ground matches the flat pane surface"
+            app.theme.bg,
+            "the default terminal ground is the zone's body, as checks7.js's panel draws it"
         );
         assert_eq!(
             buffer[(inner.x + 2, inner.y)].bg,
-            app.theme.card,
-            "empty terminal cells keep the same surface"
+            app.theme.bg,
+            "empty terminal cells keep the same ground"
         );
+        assert_eq!(buffer[(inner.x + inner.width / 2, 0)].bg, app.theme.card, "only row 0 is the card strip");
         show(&draw(&mut app, 160, 45));
     }
 

@@ -317,10 +317,9 @@ impl RowLook {
 /// actions at the foot.
 pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme) {
     let look = Look::of(&app.cfg.ui);
-    let pb = if look.flat { t.card } else { pane_bg(t) };
+    let pb = pane_bg(t);
     let focused_side = side_focused(app);
     let mut c = Card::new(t, "");
-    if look.flat { c.bg = t.card; }
     if focused_side {
         c = c.lit(t.accent);
     }

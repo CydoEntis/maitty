@@ -383,10 +383,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     if let Some(parser) = app.parsers.get(&term) {
         c.bg = crate::client::render::terminal_surface_bg(parser.screen(), c.bg);
     }
-    if look.flat {
-        c.bg = t.card;
-    }
-    let terminal_bg = if look.flat { flat_pane_bg(t) } else { c.bg };
+    let terminal_bg = c.bg;
     if focused {
         c = c.lit(border);
     }

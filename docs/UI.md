@@ -346,6 +346,6 @@ must not delay switching to another session.
 Keep pane padding and the card interior on the same surface as a terminal app
 when at least three screen corners use one explicit background color. Preserve
 the pane insets; isolated colored panels keep their existing theme treatment.
-In Flat layout, use the theme surface for default terminal cells so the pane
-canvas does not become a separate black block. Preserve colors applications
-paint explicitly.
+In Flat layout, a zone's body (the sidebar's, a pane's padding and its default
+terminal cells) is the theme's `bg`, as in Cards; only row 0 is the `card` header
+strip. Preserve colors applications paint explicitly.
