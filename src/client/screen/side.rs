@@ -396,16 +396,14 @@ fn side_scroll(app: &mut App, model: &[Proj], lines: &[Line], focus: Option<Term
 }
 
 /// The selected row (the keyboard's while the sidebar has the keys, else the open session) is
-/// tinted and carries the bar, accent while the sidebar has the keys. While the keyboard browses,
-/// the open row keeps a muted bar. A failed row carries a red bar whether selected or not.
-fn row_look(s: &Session, picked: bool, open: bool, focused_side: bool, ground: Color, t: &Theme) -> RowLook {
+/// tinted. Every agent's row carries a bar in its state's colour, selected or not: red for a failed
+/// check, else the colour of what it is doing. A plain shell has none.
+fn row_look(s: &Session, picked: bool, _open: bool, _focused_side: bool, ground: Color, t: &Theme) -> RowLook {
     let bg = if picked { t.sel_bg() } else { ground };
     let bar = if check::shown(s).is_some_and(check::failed) {
         Some(t.err)
-    } else if picked && focused_side {
-        Some(t.accent)
-    } else if picked || open {
-        Some(t.muted)
+    } else if s.is_agent {
+        Some(t.status(s.status))
     } else {
         None
     };
@@ -550,7 +548,7 @@ fn status_words(app: &App, s: &Session, t: &Theme) -> Vec<Seg> {
         Status::Blocked => vec![seg("needs you", Style::default().fg(t.blocked))],
         Status::Done => vec![seg("done · not seen", Style::default().fg(t.done).add_modifier(Modifier::BOLD))],
         Status::Idle if is_new(s) => vec![seg(format!("{} · ", s.agent), Style::default().fg(t.muted)), seg("new · type to begin", Style::default().fg(t.accent))],
-        Status::Idle if s.is_agent => muted("done"),
+        Status::Idle if s.is_agent => muted("idle"),
         _ => Vec::new(),
     }
 }
@@ -621,10 +619,14 @@ fn draw_proj(app: &mut App, buf: &mut Buffer, model: &[Proj], pi: usize, cols: C
         buf[(text_end, y)].set_symbol(CAP_R).set_fg(bg).set_bg(pb);
     }
     let st = Style::default().bg(bg);
-    let marks = check::marks(app);
-    let fold = if open { marks.fold } else { marks.arrow };
+    if !app.screen.fold_colors.contains_key(&p.key) {
+        app.pick_fold_color(&p.key);
+    }
+    // A − (open) or + (closed) on a colour of its own: a caret is too small to read as a button.
+    let button = app.screen.fold_colors.get(&p.key).copied().unwrap_or(t.accent);
+    let fold = seg(if open { "−" } else { "+" }, Style::default().bg(button).fg(t.ink_on(button)).add_modifier(Modifier::BOLD));
     let name = truncate(&p.name, cols.rx.saturating_sub(cols.x + 2) as usize);
-    let mut left = vec![seg(format!("{fold} "), st.fg(t.accent)), seg(name, st.fg(t.strong).add_modifier(Modifier::BOLD))];
+    let mut left = vec![fold, seg(" ", st), seg(name, st.fg(t.strong).add_modifier(Modifier::BOLD))];
     if p.fresh {
         left.push(seg(" ", st));
         left.extend(chip("NEW", Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD)));
@@ -968,7 +970,7 @@ mod v8_tests {
         let new = app.snap.terms.get_mut(&5).unwrap();
         (new.asleep, new.status, new.label) = (false, Status::Idle, String::new());
         let rows = side_rows(&mut app, Layout::Floating, 160, 45);
-        assert!(rows.iter().any(|r| said(r) == "done"), "{rows:#?}");
+        assert!(rows.iter().any(|r| said(r) == "idle"), "{rows:#?}");
         assert!(has(&rows, "codex · new · type to begin"), "{rows:#?}");
     }
 
@@ -980,9 +982,9 @@ mod v8_tests {
             let rows = side_rows(&mut app, layout, 100, 30);
             assert!(has(&rows, "claude · working"), "{layout:?}: a working row keeps its line: {rows:#?}");
             assert!(has(&rows, "asks: use pnpm"), "{layout:?}: {rows:#?}");
-            assert!(!rows.iter().any(|r| said(r) == "done"), "{layout:?}: a plain done row is one line: {rows:#?}");
+            assert!(!rows.iter().any(|r| said(r) == "idle"), "{layout:?}: a plain idle row is one line: {rows:#?}");
             let rows = side_rows(&mut app, layout, 160, 45);
-            assert!(rows.iter().any(|r| said(r) == "done"), "{layout:?}: from 140 columns it has its line: {rows:#?}");
+            assert!(rows.iter().any(|r| said(r) == "idle"), "{layout:?}: from 140 columns it has its line: {rows:#?}");
         }
     }
 

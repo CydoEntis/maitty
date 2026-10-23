@@ -140,6 +140,8 @@ pub(super) struct Screen {
     pub drag_key: Option<String>,
     /// The splash's selected button.
     pub splash_sel: usize,
+    /// The colour of each project's +/− button, picked at random when it opens (key -> colour).
+    pub fold_colors: HashMap<String, Color>,
     /// The scrollbar being dragged: (pane, track, lines of history).
     pub bar: Option<(TermId, Rect, usize)>,
     /// Where each agent row was drawn in the sidebar (for the follow-up box beside it).

@@ -872,7 +872,7 @@ fn agent_control(app: &App, t: &Theme, row: AgentRow) -> Vec<Seg> {
 }
 
 /// The current keys for a shortcut row (sets separated by two spaces, as keycaps expects).
-pub(super) fn key_text(app: &App, acts: &[crate::keys::Action]) -> String {
+pub(in crate::client) fn key_text(app: &App, acts: &[crate::keys::Action]) -> String {
     let per: Vec<Vec<String>> = acts
         .iter()
         .map(|a| app.keymap.prefixed_order.iter().filter(|k| app.keymap.prefixed.get(k) == Some(a)).map(pretty_key).collect())

@@ -416,7 +416,7 @@ mod screen_tests {
         let buf = terminal.backend().buffer();
         assert_eq!(buf[(x + 2, active_y)].symbol(), "▎", "the open row keeps a bar");
         assert_eq!(buf[(x + 2, hover_y)].symbol(), "▎", "and so does the one under the keyboard");
-        assert_eq!((buf[(x + 2, hover_y)].fg, buf[(x + 2, active_y)].fg), (app.theme.accent, app.theme.muted), "lime for the cursor, dim for the open one");
+        assert_eq!((buf[(x + 2, hover_y)].fg, buf[(x + 2, active_y)].fg), (app.theme.status(app.snap.terms[&2].status), app.theme.status(app.snap.terms[&1].status)), "each row's bar is its state's colour, whichever is selected");
         app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
         app.on_mouse(MouseEvent { kind: MouseEventKind::Up(MouseButton::Left), column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
         assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 }))));
@@ -629,7 +629,7 @@ mod screen_tests {
         assert!(text.contains("new") && text.contains("menu"), "New and Actions stay in the sidebar foot");
         assert!(lines[0].contains("─ 1  ") && lines[0].contains("  + ") && !lines[0].contains('▯'), "the tab's number and name in the pane's title, then the + chip; no layout switch: {}", lines[0]);
         // Projects and their sessions, nothing in between.
-        assert!(text.contains("▾ shop-api") && text.contains("SESSIONS") && text.contains("●1"), "a project: its fold arrow and name; what needs you in the sidebar's title");
+        assert!(text.contains("− shop-api") && text.contains("SESSIONS") && text.contains("●1"), "a project: its fold arrow and name; what needs you in the sidebar's title");
         assert!(!text.contains("AGENTS") && !text.contains("TERMINALS") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "no heading per kind of session");
         assert!(!text.contains("main folder"), "no 'main folder' wording");
         assert!(!text.contains("+ open a project"), "opening a project is in the header now");
@@ -2491,8 +2491,8 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         let at = |s: &str| o.find(s).unwrap_or_else(|| panic!("{s} in the sidebar"));
-        assert!(at("▾ shop-api") < at("▾ notes") && at("▾ notes") < at("▾ build-box"), "folders here, then other machines");
-        assert!(!o.contains("AGENTS") && !o.contains("TERMINALS") && at("SSH 1") > at("▾ notes"), "only the other machines get a heading");
+        assert!(at("− shop-api") < at("− notes") && at("− notes") < at("− build-box"), "folders here, then other machines");
+        assert!(!o.contains("AGENTS") && !o.contains("TERMINALS") && at("SSH 1") > at("− notes"), "only the other machines get a heading");
     }
 
     #[test]
@@ -5500,7 +5500,7 @@ mod check_settings_tests {
             };
             let (plain, with) = (frames(false), frames(true));
             // The folder's meta names its checkpoint; nothing else changes.
-            let rest = |s: &str| s.lines().filter(|l| !l.contains("▾ shop-api")).collect::<Vec<_>>().join("\n");
+            let rest = |s: &str| s.lines().filter(|l| !l.contains("− shop-api")).collect::<Vec<_>>().join("\n");
             assert_eq!(rest(&plain.0), rest(&with.0), "{name}: the sidebar ignores a project's check but in its folder's meta");
             // Flat draws keycaps with or without edge glyphs depending on what other tests set, so
             // compare the page's words and not its padding.

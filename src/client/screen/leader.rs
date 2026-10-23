@@ -88,7 +88,15 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
                 ls = ls.add_modifier(Modifier::BOLD);
             }
             let label = menu_label(app, a, label);
-            let end = put(buf, r.x + 4, yy, &lit_letter(label, Some(*letter), ls, st.fg(t.accent).add_modifier(Modifier::BOLD)), r.right().saturating_sub(6));
+            // The leader key that does the same, at the right: the lit letter only works in here.
+            let bound = crate::client::design::key_text(app, std::slice::from_ref(a));
+            let keys = bound.split("  ").next().filter(|k| !k.is_empty()).map(|k| crate::client::design::keycap(t, &k.replace(' ', ""))).unwrap_or_default();
+            let kw = segs_width(&keys);
+            if kw > 0 {
+                put(buf, rr.right().saturating_sub(kw + 1), yy, &keys, rr.right());
+            }
+            let room = r.right().saturating_sub(6 + if kw > 0 { kw + 1 } else { 0 });
+            let end = put(buf, r.x + 4, yy, &lit_letter(label, Some(*letter), ls, st.fg(t.accent).add_modifier(Modifier::BOLD)), room);
             if *a == Action::Jump && needs > 0 {
                 put(buf, end + 1, yy, &[seg(format!("● {needs}"), st.fg(t.blocked).add_modifier(Modifier::BOLD))], r.right().saturating_sub(6));
             } else if *a == Action::Settings && app.restart_pending() {

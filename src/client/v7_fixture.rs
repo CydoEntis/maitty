@@ -415,6 +415,44 @@ fn as_the_handoff_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffer,
     rows[to][left..right].copy_from_slice(&foot);
 }
 
+/// A project row's `−` / `+` button (a coloured cell) read as the caret the handoff draws there.
+fn with_the_handoff_carets(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffer, app: &App, glyphs: &str) {
+    let side = app.screen.side_rect;
+    let (open, closed) = if glyphs == "ascii" { ('v', '>') } else { ('▾', '›') };
+    for (y, row) in rows.iter_mut().enumerate().take((side.bottom() as usize).saturating_sub(2)) {
+        for x in (side.x as usize + 1)..(side.x as usize + 6).min(row.len().saturating_sub(1)) {
+            // The button is a bold cell on a ground of its own; a session's `+` mark is not.
+            let own_ground = buf[(x as u16, y as u16)].bg != buf[(x as u16 - 1, y as u16)].bg && buf[(x as u16, y as u16)].modifier.contains(ratatui::style::Modifier::BOLD);
+            if own_ground && row[x + 1] == ' ' && (row[x] == '−' || row[x] == '+') {
+                row[x] = if row[x] == '−' { open } else { closed };
+            }
+        }
+    }
+}
+
+/// v8 gives every agent's row a bar in its state's colour; the handoff has one only on the
+/// selected row and a red one on a failed check. The others read as the sidebar's own ground.
+fn without_state_bars(rows: &mut [Vec<char>], app: &App) {
+    let side = app.screen.side_rect;
+    let sidebar_has_keys = matches!(app.mode, crate::client::Mode::Side);
+    let picked = |term: crate::protocol::TermId| if sidebar_has_keys { app.screen.cursor == Some(term) } else { app.focused() == Some(term) };
+    let mut owners: Vec<(usize, crate::protocol::TermId)> = app.screen.row_y.iter().map(|(t, y)| (*y as usize, *t)).collect();
+    owners.sort();
+    for (y, row) in rows.iter_mut().enumerate().take((side.bottom() as usize).saturating_sub(2)) {
+        // A line belongs to the session row that began at most two lines above it.
+        let owner = owners.iter().rev().find(|(oy, _)| *oy <= y && y - oy <= 2).map(|(_, t)| *t);
+        let keeps = owner.is_some_and(|t| picked(t) || app.snap.terms.get(&t).is_some_and(|i| i.reported_check().is_some_and(|c| c.state == crate::protocol::CheckState::Failed)));
+        if keeps {
+            continue;
+        }
+        for x in (side.x as usize + 1)..(side.x as usize + 4).min(row.len()) {
+            if row[x] == '▎' || (row[x] == '|' && x > side.x as usize) {
+                row[x] = ' ';
+            }
+        }
+    }
+}
+
 /// `app` drawn as `frame` does but as the app draws it: no handoff normalisation, rows in full.
 pub(super) fn raw_text(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str) -> String {
     let buf = &cells(app, layout, w, h, glyphs);
@@ -424,6 +462,8 @@ pub(super) fn raw_text(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &s
 pub(super) fn frame(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str) -> String {
     let buf = &cells(app, layout, w, h, glyphs);
     let mut rows: Vec<Vec<char>> = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().chars().next().unwrap_or(' ')).collect()).collect();
+    with_the_handoff_carets(&mut rows, buf, app, glyphs);
+    without_state_bars(&mut rows, app);
     as_the_handoff_sidebar(&mut rows, buf, app, layout == Layout::Flat, w);
     let text: String = rows
         .iter()
