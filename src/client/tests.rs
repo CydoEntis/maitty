@@ -4779,7 +4779,7 @@ mod check_inbox_tests {
         assert_eq!(section("NEEDS YOU"), [Ask(1)]);
         assert_eq!(section(FAILED), [Failed(20), Failed(25)], "a failure stays listed once it has been looked at");
         assert_eq!(section(NOT_RUN), [NotRun(21)], "unchecked work is listed until it is looked at");
-        assert_eq!(section(FINISHED), [Done(22), Done(23), Done(24)], "passed, no check and overridden still just finished");
+        assert_eq!(section(FINISHED), [Done(22), Done(24), Done(23)], "passed and overridden (checked first), then no check, still just finished");
     }
 
     /// One row per check state of a Done session: whether it counts as finished, in the Inbox
