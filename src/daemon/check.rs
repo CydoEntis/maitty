@@ -339,6 +339,9 @@ pub struct Checks {
     pub dirty: bool,
     /// The turn whose waiting-for-approval was already said, so it is said once.
     approval_told: Option<u32>,
+    /// Whether its worktree had a repo checks file when last looked, off the loop
+    /// (`Daemon::probe_repo_checks`).
+    pub(super) repo_file: bool,
 }
 
 impl Checks {
@@ -552,14 +555,40 @@ impl Daemon {
         self.dirty = true;
     }
 
+    /// Look, off the loop, whether each of `terms`' worktrees has a repo checks file; the
+    /// answer comes back as `Ev::RepoChecksFound` (`repo_checks_found`).
+    pub(super) fn probe_repo_checks(&self, terms: impl IntoIterator<Item = TermId>) {
+        let dirs: Vec<(TermId, std::path::PathBuf)> = terms.into_iter().filter_map(|id| self.terms.get(&id).map(|t| (id, t.worktree()))).collect();
+        if dirs.is_empty() {
+            return;
+        }
+        let tx = self.tx.clone();
+        tokio::task::spawn_blocking(move || {
+            let found = dirs.into_iter().map(|(id, dir)| {
+                let has = dir.join(crate::config::REPO_CHECKS_FILE).is_file();
+                (id, dir, has)
+            });
+            let _ = tx.blocking_send(Ev::RepoChecksFound(found.collect()));
+        });
+    }
+
+    /// Record what `probe_repo_checks` saw, for panes still in the worktree it looked in.
+    pub(super) fn repo_checks_found(&mut self, found: Vec<(TermId, std::path::PathBuf, bool)>) {
+        for (id, dir, has) in found {
+            if let Some(t) = self.terms.get_mut(&id).filter(|t| t.worktree() == dir) {
+                t.checks.repo_file = has;
+            }
+        }
+    }
+
     /// The checks a run starts by showing, in order: yours for the pane's project; without
     /// any, when its worktree has a repo checks file, the checkpoints it showed last (or one
     /// standing for the file). Resolving off the loop settles what the file really names.
     fn check_defs(&self, term: TermId) -> Vec<crate::config::CheckDef> {
         let Some(t) = self.terms.get(&term) else { return Vec::new() };
-        let (project, dir) = t.head.as_ref().map_or((&t.cwd, &t.cwd), |h| (&h.main_root, &h.top));
+        let project = t.head.as_ref().map_or(&t.cwd, |h| &h.main_root);
         let yours: Vec<_> = self.cfg.check.iter().filter(|c| super::same_path(&c.project, project)).cloned().collect();
-        if !yours.is_empty() || !dir.join(crate::config::REPO_CHECKS_FILE).is_file() {
+        if !yours.is_empty() || !t.checks.repo_file {
             return yours;
         }
         let def = |name: &str, command: &str| crate::config::CheckDef { project: project.clone(), name: Some(name.into()), command: command.into(), ..Default::default() };

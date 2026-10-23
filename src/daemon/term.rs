@@ -762,6 +762,11 @@ impl Term {
         self.parser.screen_mut().set_size(rows, cols);
     }
 
+    /// The top of its git worktree, or its folder outside git.
+    pub fn worktree(&self) -> PathBuf {
+        self.head.as_ref().map_or_else(|| self.cwd.clone(), |h| h.top.clone())
+    }
+
     /// Re-read the git branch for the current folder. Returns true if it changed.
     pub fn refresh_head(&mut self) -> bool {
         let head = crate::gitfs::head(&self.cwd);

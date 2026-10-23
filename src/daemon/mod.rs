@@ -120,6 +120,8 @@ pub enum Ev {
     CheckRan { term: TermId, run: u64, name: String, result: check::CheckRun },
     /// Passes the git poll found the files changed under.
     ChecksStale(Vec<check_stale::Found>),
+    /// Which panes' worktrees have a repo checks file: (pane, the worktree looked in, found).
+    RepoChecksFound(Vec<(TermId, PathBuf, bool)>),
     /// Check output tails a background save could not write.
     CheckOutputsUnsaved(Vec<TermId>),
 }
@@ -630,6 +632,7 @@ impl Daemon {
         }
         self.git_busy = true;
         self.last_git = Instant::now();
+        self.probe_repo_checks(self.terms.keys().copied().collect::<Vec<_>>());
         let dirs: Vec<(WsId, PathBuf)> = self.workspaces.iter().map(|w| (w.id, w.cwd.clone())).collect();
         let dir_of: HashMap<WsId, PathBuf> = dirs.iter().cloned().collect();
         let tx = self.tx.clone();
@@ -921,6 +924,7 @@ impl Daemon {
             Ev::ChecksResolved { term, run, resolved, tree } => self.checks_resolved(term, run, resolved, tree),
             Ev::CheckRan { term, run, name, result } => self.check_ran(term, run, &name, result),
             Ev::ChecksStale(found) => self.checks_went_stale(found),
+            Ev::RepoChecksFound(found) => self.repo_checks_found(found),
             Ev::CheckOutputsUnsaved(terms) => self.check_outputs_unsaved(&terms),
             Ev::SpareMade(repo, result) => {
                 self.spare_making = false;
@@ -1270,6 +1274,8 @@ impl Daemon {
         t.account = account;
         self.terms.insert(id, t);
         self.had_terms = true;
+        // Its worktree is looked at for a repo checks file with the git poll.
+        self.poll_git_soon();
         Ok(id)
     }
 

@@ -1915,6 +1915,31 @@ fn a_tail_kept_before_checkpoints_had_names_is_restored_only_into_a_lone_checkpo
     close(&mut d, &[t]);
 }
 
+#[test]
+fn a_repo_checks_file_is_only_noticed_once_the_worktree_was_looked_at() {
+    let (rt, (mut d, mut rx, _file)) = (runtime(), approving_daemon());
+    let _in_rt = rt.enter();
+    let repo = temp_repo();
+    std::fs::create_dir_all(repo.path().join(".seshi")).unwrap();
+    std::fs::write(repo.path().join(crate::config::REPO_CHECKS_FILE), "[[check]]
+name = \"test\"
+command = \"echo tested\"
+").unwrap();
+    let t = agent_with_checkpoints(&mut d, repo.path(), &[]);
+    let err = d.command(0, Command::RerunCheck { term: t, name: None }).expect_err("not looked at yet");
+    assert!(err.to_string().contains("no check"), "{err}");
+    look_for_repo_checks(&mut d, &mut rx, t);
+    std::fs::remove_file(repo.path().join(crate::config::REPO_CHECKS_FILE)).unwrap();
+    let p = d.terms.get_mut(&t).unwrap();
+    p.status = Status::Done;
+    assert!(d.command(0, Command::RerunCheck { term: t, name: None }).is_ok(), "the last look is what counts; the run settles what the file names");
+    finish_run(&mut d, &mut rx, t);
+    look_for_repo_checks(&mut d, &mut rx, t);
+    let err = d.command(0, Command::RerunCheck { term: t, name: None }).expect_err("gone at the next look");
+    assert!(err.to_string().contains("no check"), "{err}");
+    close(&mut d, &[t]);
+}
+
 fn with_check(d: &mut Daemon, t: TermId, state: CheckState, output: &str) {
     let record = failed_check(output);
     // Named as the project's checkpoint is, so a run finds it.
@@ -2287,6 +2312,20 @@ fn finish_run(d: &mut Daemon, rx: &mut mpsc::Receiver<Ev>, t: TermId) {
         assert!(Instant::now() < until, "the run did not finish");
         match rx.try_recv() {
             Ok(ev @ (Ev::ChecksResolved { .. } | Ev::CheckRan { .. })) => d.handle(ev),
+            Ok(_) => {}
+            Err(_) => std::thread::sleep(Duration::from_millis(10)),
+        }
+    }
+}
+
+/// Look for `t`'s repo checks file and apply the answer, as the git poll would.
+fn look_for_repo_checks(d: &mut Daemon, rx: &mut mpsc::Receiver<Ev>, t: TermId) {
+    d.probe_repo_checks([t]);
+    let until = Instant::now() + SLOW_CHECK_WAIT;
+    loop {
+        assert!(Instant::now() < until, "the worktree was not looked at");
+        match rx.try_recv() {
+            Ok(ev @ Ev::RepoChecksFound(_)) => break d.handle(ev),
             Ok(_) => {}
             Err(_) => std::thread::sleep(Duration::from_millis(10)),
         }
@@ -2704,6 +2743,7 @@ fn a_repo_checkpoint_waits_at_the_turn_end_and_once_runs_it_one_time() {
     std::fs::create_dir_all(repo.path().join(".seshi")).unwrap();
     std::fs::write(repo.path().join(crate::config::REPO_CHECKS_FILE), "[[check]]\nname = \"test\"\ncommand = \"echo tested\"\n").unwrap();
     let t = agent_with_checkpoints(&mut d, repo.path(), &[]);
+    look_for_repo_checks(&mut d, &mut rx, t);
     let mut seen = viewer(&mut d);
     end_turn(&mut d, t);
     assert!(d.terms[&t].check_running(), "the file is read off the loop; done waits for it");
@@ -2729,6 +2769,7 @@ fn approving_one_checkpoint_while_another_runs_runs_it_after_in_the_same_turn() 
     let file = "[[check]]\nname = \"build\"\ncommand = \"echo built\"\n\n[[check]]\nname = \"test\"\ncommand = \"echo tested\"\n";
     std::fs::write(repo.path().join(crate::config::REPO_CHECKS_FILE), file).unwrap();
     let t = agent_with_checkpoints(&mut d, repo.path(), &[]);
+    look_for_repo_checks(&mut d, &mut rx, t);
     let project = d.terms[&t].head.as_ref().expect("in the repo").main_root.clone();
     d.approvals.decide(&project, "build", "echo built", approvals::Decision::Always, 1);
     end_turn(&mut d, t);
