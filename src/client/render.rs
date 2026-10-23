@@ -184,7 +184,7 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
         }
         Mode::RenameTab(tab) => {
             let name = tab.name.clone();
-            draw_prompt(app, f, area, &t, "Rename tab (empty: automatic)", &name, false);
+            draw_prompt(app, f, area, &t, "Rename session (empty: automatic)", &name, false);
         }
         Mode::Worktrees { items, query, sel, .. } => {
             let rows = app.worktree_rows(items.as_deref(), query);

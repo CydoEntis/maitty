@@ -1278,18 +1278,21 @@ mod screen_tests {
         }
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("Rename tab") && o.contains("tests█"), "the dialog shows the draft: {o}");
+        assert!(o.contains("Rename session") && o.contains("tests█"), "the dialog shows the draft: {o}");
         key(&mut app, KeyCode::Enter);
         // The daemon owns the name: play its part by applying the command to the snapshot.
-        let (rws, rtab, rname) = std::iter::from_fn(|| rx.try_recv().ok())
+        let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        let focus = app.screen.tabs[app.screen.tab].focus;
+        let label = sent
+            .iter()
             .find_map(|m| match m {
-                crate::protocol::ClientMsg::Command(crate::protocol::Command::RenameTab { ws, tab, name }) => Some((ws, tab, name)),
+                crate::protocol::ClientMsg::Command(crate::protocol::Command::RenamePane { term, name }) if *term == focus => Some(name.clone()),
                 _ => None,
             })
-            .expect("the rename is sent to the daemon");
-        for t in app.snap.workspaces.iter_mut().filter(|w| w.id == rws).flat_map(|w| w.tabs.iter_mut()).filter(|t| t.id == rtab) {
-            t.name = rname.clone();
-        }
+            .expect("the session is renamed, so the sidebar and every notice use the name");
+        assert_eq!(label, "tests");
+        app.snap.terms.get_mut(&focus).unwrap().label = label;
+        assert_eq!(app.session_name(focus), "tests", "notices say the name you gave");
         app.screen_sync();
         let o = draw(&mut app, 160, 45);
         assert!(o.contains(" tests ") && !o.contains("2 tests"), "renamed: the pill is its name");
