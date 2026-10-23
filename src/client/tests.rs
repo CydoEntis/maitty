@@ -942,16 +942,11 @@ mod screen_tests {
             ratatui::style::Color::Indexed(0),
             "explicit ANSI black remains the program's choice"
         );
-        assert_eq!(
-            buffer[(inner.x + 1, inner.y)].bg,
-            app.theme.bg,
-            "the default terminal ground is the zone's body, as checks7.js's panel draws it"
-        );
-        assert_eq!(
-            buffer[(inner.x + 2, inner.y)].bg,
-            app.theme.bg,
-            "empty terminal cells keep the same ground"
-        );
+        // The theme's ground, handed back to the terminal's own background (SGR 49) when
+        // seshi draws on it.
+        let ground = |bg| bg == app.theme.bg || bg == ratatui::style::Color::Reset;
+        assert!(ground(buffer[(inner.x + 1, inner.y)].bg), "the default terminal ground is the zone's body, as checks7.js's panel draws it");
+        assert!(ground(buffer[(inner.x + 2, inner.y)].bg), "empty terminal cells keep the same ground");
         assert_eq!(buffer[(inner.x + inner.width / 2, 0)].bg, app.theme.card, "only row 0 is the card strip");
         show(&draw(&mut app, 160, 45));
     }
