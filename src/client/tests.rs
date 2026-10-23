@@ -667,11 +667,11 @@ mod screen_tests {
         app.splash = true;
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("███████ ███████ ███████ ██   ██ ██") && o.contains("every session, one calm place") && !o.contains("⣿"), "the block wordmark, no art");
-        assert!(o.contains("while you were away") && o.contains("1 need you") && o.contains("Resume where you left off") && o.contains("New shell here"));
+        assert!(o.contains("every session, one calm place") && !o.contains("⣿"), "the tagline, no art");
+        assert!(o.contains("while you were away") && o.contains("1 need you") && o.contains("Resume where you left off") && o.contains("New session") && o.contains("Open a project…"));
         // Small windows keep it all.
         let o = draw(&mut app, 100, 30);
-        assert!(!o.contains("⣿") && o.contains("New shell here"));
+        assert!(!o.contains("⣿") && o.contains("New session"));
     }
 
     #[test]
@@ -788,9 +788,9 @@ mod screen_tests {
         app.on_key(key(KeyCode::Down));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("↑↓ choose   Enter open"));
+        assert!(o.contains("↑↓  choose") && o.contains("Enter  open"));
         app.on_key(key(KeyCode::Enter));
-        assert!(!app.splash && matches!(app.mode, Mode::Normal), "Enter picks the selected one (New: a shell, straight away)");
+        assert!(!app.splash && matches!(app.mode, Mode::Normal), "Enter picks the selected one (New session: an agent, straight away)");
         app.mode = Mode::Normal;
 
         // Right-click menus.
@@ -3810,8 +3810,8 @@ mod settings_splash_tests {
         if std::env::var("SESHI_SHOW").is_ok() {
             println!("{splash}\n{settings}\n{keys}");
         }
-        assert!(splash.contains("███████") && splash.contains("every session, one calm place"));
-        assert!(splash.contains("Resume where you left off") && splash.contains("New shell here") && !splash.contains("Open a folder"));
+        assert!(splash.contains("every session, one calm place"));
+        assert!(splash.contains("Resume where you left off") && splash.contains("New session") && splash.contains("Open a project…"));
         for page in ["General", "Sessions", "Appearance", "Agents", "Keys"] {
             assert!(settings.contains(page), "page {page}");
         }
@@ -4197,7 +4197,8 @@ mod check_row_tests {
         for layout in LAYOUTS {
             for (w, h) in SIZES {
                 let line = splash_line(w, h, layout, &[("t-plain", Status::Done, None)]);
-                assert_eq!(line, "while you were away   ● 1 need you   ⣻ 1 still working   ● 1 finished", "{}", label(layout, w, h));
+                let lead = if w >= 100 { "while you were away   " } else { "" };
+                assert_eq!(line, format!("{lead}● 1 need you   ⣻ 1 still working   ● 1 finished"), "{}", label(layout, w, h));
             }
         }
     }

@@ -111,7 +111,7 @@ The leader is `Ctrl+Space` by default. Inbox (`j`) uses the right-hand sheet. Se
 
 The high-fidelity flat-layout reference and its interaction spec are preserved in [`docs/design/flat/README.md`](design/flat/README.md); update it when the implementation changes the design contract.
 
-The sidebar's **+ new** chip, a project row's **+**, the empty project row's new action, the splash's `n` and leader + `n` are one action (`Action::ShellHere`): a plain shell where you are, whose tab opens with focus. You type your agent in it (see *Agent launchers* below). Leader + `s` starts an agent session straight away with the defaults in Settings › Sessions (`Action::StartSession`, Menu › Session). **Menu** is in the sidebar footer. Every row of the key overlay and the Menu is clickable and wheel-scrollable. Include configured commands and retain existing confirmations.
+The sidebar's **+ new** chip, a project row's **+**, the empty project row's new action and leader + `n` are one action (`Action::ShellHere`): a plain shell where you are, whose tab opens with focus. You type your agent in it (see *Agent launchers* below). Leader + `s` starts an agent session straight away with the defaults in Settings › Sessions (`Action::StartSession`, Menu › Session). **Menu** is in the sidebar footer. Every row of the key overlay and the Menu is clickable and wheel-scrollable. Include configured commands and retain existing confirmations.
 
 When an update is available, show **Update <version>** at the top right of row 0 and open the existing confirmation flow when clicked. Do not show the control when Seshi is current. Keep status icons and pane status tags clickable to open the evidence explanation. Terminal bells do not add sidebar indicators or history entries.
 
@@ -363,7 +363,27 @@ The home screen's "while you were away" line counts a session as finished by the
 finished), and a check waiting for approval as needing you.
 A `✕ N check failed` (`N checks failed`) count follows, in `err`, only when N is above zero.
 When the line does not fit the width, the lead-in "while you were away" is dropped so no count
-is cut. A project with no check draws the line it always did. Code lives in `client/screen/splash.rs`.
+is cut; below 100 columns the lead-in goes too. A project with no check draws the line it always did.
+Code lives in `client/screen/splash.rs`.
+
+## Project-specific: splash
+
+Centred, no bottom bar. The SESHI wordmark is 7 rows of filled cell backgrounds (never `█`, which
+leaves seams), two columns per pixel from 120 columns and one below, shaded from the accent to the
+sea. Under it: the tagline (short below 100 columns and on a first run), the "while you were away"
+line (or the first-run sentence), choice cards, keycap hints and a faint version. Cards: **Resume
+where you left off** `r` (only while sessions run: project › session › task, then "N sessions still
+running"), **New session** `n` (an instant session, leader `s`) and **Open a project…** `o` (the
+folder finder). The chosen card is lifted with an accent `▌` bar and an accent keycap; a click chooses
+and a second opens. The roomiest spacing that fits wins: gaps 2 → 1, then no second detail lines or
+version, then no spacer between cards. An available update or a pending restart is named under the
+version.
+
+The intro plays on the wordmark only, about a second at 50 ms a frame: blocks fall from the top
+column by column, overshoot a row, flash on landing, under a faint glow line; later a light band
+crosses every 5.5 s. Everything else is drawn from the first frame and keys act at once.
+`ui.splash_animation` (Settings › Appearance): `cold start` (default: the first start of a version, or
+nothing left running), `always`, `never`. Motion off, or a remote session, never plays it.
 
 ## Project-specific: collapsed sidebar
 

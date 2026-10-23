@@ -287,7 +287,7 @@ sessions. Leader `Z` hides the sessions completely; `z` or `Z` brings them back.
 | 1–9 in numbered menu | Choose numbered option, such as an agent or snapshot |
 | Up, Down, Enter, c, Esc in history | Choose event, go to its session, clear events, close history |
 | Up / Left / k / Shift+Tab, Down / Right / j / Tab in splash | Choose splash action |
-| r, n, comma, ? in splash | Resume if available, new shell, Settings, All keys |
+| r, n, o, comma, ? in splash | Resume if available, new session, open a project, Settings, All keys |
 | Enter / y / shown confirm key | Confirm action; closing panes also accepts x or Delete |
 | Esc / n / q in standard confirmation | Cancel action |
 | Tab in folder picker | Complete current directory; arrows choose; Enter opens; Esc goes back |

@@ -154,7 +154,7 @@ pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind) -> Vec<Se
 /// A key drawn as a keycap: ` key ` raised on `btn`, strong and bold. A combo (`Ctrl+Space`) is
 /// one cap per part with a dim `+` between. The one place keys are drawn as caps; its ends
 /// follow `ui.rounded`.
-pub(super) fn keycap(t: &Theme, key: &str) -> Vec<Seg> {
+pub(in crate::client) fn keycap(t: &Theme, key: &str) -> Vec<Seg> {
     let cap = Style::default().bg(t.btn).fg(t.strong).add_modifier(Modifier::BOLD);
     let parts: Vec<&str> = if key.chars().count() > 1 && key.contains('+') { key.split('+').filter(|p| !p.is_empty()).collect() } else { vec![key] };
     let mut out = Vec::new();
@@ -729,7 +729,7 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "ui.spinner" | "ui.glyphs" => "STATUS INDICATORS",
             "prefix" | "ui.mouse" | "ui.which_key" | "ui.alt_arrows" => "INPUT",
             "ui.layout" | "ui.background" | "ui.sidebar_position" | "ui.motion" => "LAYOUT",
-            "ui.splash" => "STARTUP",
+            "ui.splash" | "ui.splash_animation" => "STARTUP",
             "ui.update_check" => "UPDATES",
             "shell" | "editor" | "shell_integration" | "ui.start_dir" => "SHELL",
             "ui.attention_sort" => "SIDEBAR",
