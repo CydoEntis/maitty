@@ -2920,6 +2920,17 @@ mod screen_tests {
     }
 
     #[test]
+    fn the_settings_tabs_carry_no_update_dot() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.update_available = Some("9.9.9".into());
+        app.act(Action::Settings);
+        let o = draw(&mut app, 160, 45);
+        let tabs = o.lines().find(|l| l.contains("General") && l.contains("Sessions")).expect("the tab strip");
+        assert!(!tabs.contains('●'), "the pill and the splash say so; the tabs do not: {tabs}");
+        assert!(o.contains("Update now"), "the Update now button is still on the General page");
+    }
+
+    #[test]
     fn the_inbox_opens_the_helper_question_and_goes_back_to_it() {
         let (mut app, mut rx) = asking_for_helpers();
         app.act(Action::Jump);
@@ -3793,7 +3804,7 @@ mod settings_splash_tests {
         app.splash = false;
         app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 1, editing: None, capturing: false, scroll: 0 }));
         let settings = draw(&mut app);
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 2, sel: 11, editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 2, sel: design::settings_rows(modal::Cat::Appearance).iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme")).unwrap(), editing: None, capturing: false, scroll: 0 }));
         let keys = draw(&mut app);
         if std::env::var("SESHI_SHOW").is_ok() {
             println!("{splash}\n{settings}\n{keys}");

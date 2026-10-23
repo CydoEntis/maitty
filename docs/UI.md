@@ -376,7 +376,7 @@ restore it. There are no bare-letter keys for this in the sidebar.
   session in the sidebar's order: its mark (same glyph and colour as the row) and its full name, at most 16
   characters, on `card` (`card2` in Flat). The selected chip is `accent` with `acc_ink` text while the strip has the keys,
   else `btn`. Chips that don't fit give way to a `+n more` chip (with an amber `●n` when hidden ones need you) that opens the sidebar; the selected chip is kept in view. A `menu` chip keeps mouse access to the Menu at the right, before the Update pill, which keeps the top right.
-  The panes take the full width and start on row 1, so their tabs stay visible. `ui.round_tabs` caps the chips.
+  The panes take the full width and start on row 1, so their tabs stay visible. `ui.round_tabs` caps the chips. `ui.round_rows` (Settings › Appearance › Round session rows, off by default) puts a cap on both ends of every line of a selected or failed session row, in place of the edge bar, in both layouts; what is right-aligned stops a cell short of the cap. The Settings tab strip carries no update dot: the top-right pill and the splash announce updates, and Update now is on the General page.
 - **Strip focus** is the sidebar focus with the sidebar collapsed (leader Focus the sidebar). `←` `→` and `1`–`9` switch
   sessions, opening each in the pane while the keys stay on the strip; `1`–`9` mean nothing elsewhere. Enter focuses the pane, Esc leaves.
 - **Hidden**: no sessions and no strip; the panes take everything. Reach them again with leader `z` or `Z`.

@@ -31,8 +31,9 @@ settled once, here.
 - **Rounded tabs are their own switch, `ui.round_tabs` (off by default).** The pill setting
   stays about buttons and rows. With it on, the tab chips and the `+` chip get caps (two
   cells wider, hit rects included), on the header strip's ground in Flat and the top border's
-  in Cards, and the sidebar's selected folder row ends in a cap. Multi-line session blocks
-  stay square.
+  in Cards, and the sidebar's selected folder row ends in a cap. Session blocks are square
+  unless `ui.round_rows` is on (also off by default): then every line of a selected or failed
+  session row ends in caps, a stack of pills, in place of the edge bar.
 - **The pane status line and the title's sub text are removed.** The branch is in the
   sidebar's folder header.
 - **A sheet is 72 columns wide** beside the panes from 140 columns; below that it takes the

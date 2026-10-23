@@ -76,6 +76,8 @@ pub(in crate::client) struct Look {
     pub caps: bool,
     /// Round the ends of the tab chips and the sidebar's selected folder row (`ui.round_tabs`).
     pub round_tabs: bool,
+    /// Round the ends of the sidebar's session rows (`ui.round_rows`).
+    pub round_rows: bool,
 }
 
 impl Look {
@@ -94,6 +96,7 @@ impl Look {
             } },
             caps: ui.pill_caps,
             round_tabs: ui.round_tabs,
+            round_rows: ui.round_rows,
         }
     }
 }

@@ -244,12 +244,11 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     let look = Look::of(&app.cfg.ui);
     hit(app, r, ScreenHit::SettingsBody);
     let c = Style::default().bg(t.card);
-    // Tabs: the current one a pill; General carries a dot when an update is ready.
+    // Tabs: the current one a pill.
     let compact_tabs = r.width < TABS_FULL_COLS;
     let mut x = r.x + 3;
     for (i, cat) in Cat::ALL.iter().enumerate() {
         let on = i == v.cat;
-        let dot = *cat == Cat::General && (app.update_available.is_some() || app.restart_pending());
         let label = if r.width < TABS_SHORT_BELOW_COLS {
             match cat {
                 Cat::General => "Gen",
@@ -265,10 +264,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
             cat.label()
         };
         let tab_label = if compact_tabs { label.to_string() } else { format!(" {label} ") };
-        let mut segs = vec![seg(tab_label, Style::default().fg(if on { t.acc_ink } else { t.text }).add_modifier(if on { Modifier::BOLD } else { Modifier::empty() }))];
-        if dot {
-            segs.push(seg("● ", Style::default().fg(if on { t.acc_ink } else { t.accent }).add_modifier(Modifier::BOLD)));
-        }
+        let segs = vec![seg(tab_label, Style::default().fg(if on { t.acc_ink } else { t.text }).add_modifier(if on { Modifier::BOLD } else { Modifier::empty() }))];
         let w = segs_width(&segs) + 2;
         let tr = Rect { x, y: r.y + 2, width: w, height: 1 };
         let segs = if on {

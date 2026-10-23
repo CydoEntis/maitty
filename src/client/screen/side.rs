@@ -201,22 +201,32 @@ struct Cols {
     x: u16,
     rx: u16,
     flat: bool,
+    /// Rounded rows end in a cap on the last cell of their tint, so nothing else is drawn there.
+    cap: bool,
 }
 
 impl Cols {
-    fn of(r: Rect, flat: bool) -> Cols {
+    fn of(r: Rect, flat: bool, cap: bool) -> Cols {
         let (left, right) = if flat { (1, 2) } else { (2, 3) };
-        Cols { x: r.x + left, rx: r.right().saturating_sub(right), flat }
+        // In Flat the tint ends on RX itself, so right-aligned text steps back a cell for the cap.
+        let rx = r.right().saturating_sub(right + u16::from(cap && flat));
+        Cols { x: r.x + left, rx, flat, cap }
     }
 
-    /// The end (exclusive) of anything drawn on a row: a column past RX inside a card; in Flat
-    /// that column is the pane's divider, so a cut line's `…` stays in sight.
+    /// The end (exclusive) of a row's tint: a column past RX inside a card; in Flat that
+    /// column is the pane's divider.
+    fn tint_end(self) -> u16 {
+        self.rx + if self.flat { 1 + u16::from(self.cap) } else { 2 }
+    }
+
+    /// The end (exclusive) of anything drawn on a row, so a cut line's `…` stays in sight. A cap
+    /// takes the last cell of the tint.
     fn end(self) -> u16 {
-        self.rx + if self.flat { 1 } else { 2 }
+        self.tint_end() - u16::from(self.cap)
     }
 
     fn row(self, y: u16) -> Rect {
-        Rect { x: self.x, y, width: self.end().saturating_sub(self.x), height: 1 }
+        Rect { x: self.x, y, width: self.tint_end().saturating_sub(self.x), height: 1 }
     }
 }
 
@@ -254,7 +264,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     app.screen.side_rect = r;
     hit(app, r, ScreenHit::SideFocus);
     draw_head(app, buf, r, model, t, focused_side, look.flat);
-    let cols = Cols::of(r, look.flat);
+    let cols = Cols::of(r, look.flat, look.round_rows);
     let screen_w = buf.area.width;
     let lines = fitted_lines(app, model, t, screen_w);
     let shown: Vec<TermId> = app.screen.tabs.get(app.screen.tab).map(|t| t.layout.leaves()).unwrap_or_default();
@@ -315,7 +325,11 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
             if rl.bg != pb {
                 fill(buf, row, rl.bg);
             }
-            if let Some(c) = rl.bar {
+            if look.round_rows && rl.bg != pb && row.width > 2 {
+                // Each line is a pill; the cap stands where the edge bar would.
+                buf[(row.x, y)].set_symbol(CAP_L).set_fg(rl.bg).set_bg(pb);
+                buf[(row.right() - 1, y)].set_symbol(CAP_R).set_fg(rl.bg).set_bg(pb);
+            } else if let Some(c) = rl.bar {
                 check::edge(app, buf, cols.x, y, c, rl.bg);
             }
             if matches!(line, Line::Sess(..)) || i == scroll {
@@ -357,7 +371,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     if let Some(gy) = gliding.filter(|gy| (top..top + list_h as u16).contains(gy))
         && app.screen.row_y.get(&focus.unwrap_or_default()) != Some(&gy)
     {
-        tint_row(look, buf, cols.x, gy, cols.end() - cols.x, t.sel_bg(), pb);
+        tint_row(look, buf, cols.x, gy, cols.tint_end() - cols.x, t.sel_bg(), pb);
     }
 }
 

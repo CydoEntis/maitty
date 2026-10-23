@@ -24,7 +24,7 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
 - **One screen for everything.** Choose **Cards** or **Flat** in Settings → General → Layout.
   Cards (the default) shows a full-height sidebar and pane cards, with a pane's tabs as chips in
   its title. Flat draws those
-  same sessions and panes edge to edge, with square edges (pill ends follow Settings → Round pill ends, and Settings → Round tabs gives the tab chips round ends in either layout); Tab, Shift+Tab
+  same sessions and panes edge to edge, with square edges (pill ends follow Settings → Round pill ends, Settings → Round tabs gives the tab chips round ends and Settings → Round session rows does the same for the sidebar's selected rows, in either layout); Tab, Shift+Tab
   and Esc go to the program in the pane in both layouts. The leader is
   `Ctrl+Space`: a sky-blue pill says it's armed, a pause shows the key map,
   and `?` opens **All keys**.

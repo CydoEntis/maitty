@@ -292,6 +292,35 @@ fn round_tabs_cap_every_chip_on_the_ground_behind_the_title() {
 }
 
 #[test]
+fn round_rows_end_every_line_of_the_selected_session_in_a_cap_and_off_leaves_it_square() {
+    for layout in LAYOUTS {
+        for on in [false, true] {
+            let mut app = world(Stage::None);
+            app.cfg.ui.round_rows = on;
+            app.mode = Mode::Side;
+            let term = app.screen_model().iter().flat_map(|p| p.sessions().map(|s| s.term).collect::<Vec<_>>()).next().expect("a session");
+            app.screen.cursor_proj = None;
+            app.screen.cursor = Some(term);
+            buffer(&mut app, layout, 160, 45);
+            let row = app.hits.iter().find_map(|(r, h)| matches!(h, super::super::Hit::Screen(ScreenHit::Session(t)) if *t == term).then_some(*r)).expect("the session's row");
+            assert!(row.height >= 2, "a session is a block of lines: {layout:?}");
+            let buf = buffer(&mut app, layout, 160, 45);
+            let t = app.theme.clone();
+            for y in row.y..row.bottom() {
+                let (left, right) = (&buf[(row.x, y)], &buf[(row.right() - 1, y)]);
+                if on {
+                    assert_eq!((left.symbol(), right.symbol()), (CAP_L, CAP_R), "caps on line {y}: {layout:?}");
+                    assert_eq!((left.fg, right.fg), (t.sel_bg(), t.sel_bg()), "on the selection's colour: {layout:?}");
+                    assert_ne!(left.bg, t.sel_bg(), "over what is behind it, not the selection: {layout:?}");
+                } else {
+                    assert!(left.symbol() != CAP_L && right.symbol() != CAP_R, "square when off: {layout:?}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn round_tabs_end_the_selected_folder_row_in_a_cap_and_off_leaves_it_square() {
     for layout in LAYOUTS {
         for on in [false, true] {

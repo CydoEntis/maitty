@@ -119,6 +119,8 @@ pub struct Ui {
     pub pill_caps: bool,
     /// Round the ends of the tab chips in a pane's title and of the sidebar's selected folder row, with Nerd Font half-circles; off: square blocks.
     pub round_tabs: bool,
+    /// Round the ends of the sidebar's session rows (the selected one, and a failed one), each line ending in Nerd Font half-circles; off: square blocks.
+    pub round_rows: bool,
     /// Show `· N agents` on a working session's row when the agent reports helpers.
     pub subagent_count: bool,
 }
@@ -695,6 +697,7 @@ impl Default for Ui {
             focus_border: "accent".into(),
             pill_caps: true,
             round_tabs: false,
+            round_rows: false,
             subagent_count: true,
         }
     }
@@ -1524,6 +1527,13 @@ mod tests {
         assert!(!super::Ui::default().round_tabs);
         let c: super::Config = toml::from_str("[ui]\nround_tabs = true\n").unwrap();
         assert!(c.ui.round_tabs);
+    }
+
+    #[test]
+    fn round_rows_default_off_and_read_from_the_file() {
+        assert!(!super::Ui::default().round_rows);
+        let c: super::Config = toml::from_str("[ui]\nround_rows = true\n").unwrap();
+        assert!(c.ui.round_rows);
     }
 
     #[test]
