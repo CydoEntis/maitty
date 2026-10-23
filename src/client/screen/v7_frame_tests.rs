@@ -253,7 +253,7 @@ fn tab_rects(app: &App) -> Vec<Rect> {
 fn square_tabs_draw_no_caps_and_keep_their_widths_by_default() {
     for layout in LAYOUTS {
         let mut app = world(Stage::None);
-        assert!(!app.cfg.ui.round_tabs, "off by default");
+        assert!(!app.cfg.ui.rounded, "off by default");
         let buf = buffer(&mut app, layout, 160, 45);
         let rects = tab_rects(&app);
         assert_eq!(rects.len(), 3, "two tabs and the + chip: {layout:?}");
@@ -271,7 +271,7 @@ fn round_tabs_cap_every_chip_on_the_ground_behind_the_title() {
         let square = tab_rects(&off);
 
         let mut app = world(Stage::None);
-        app.cfg.ui.round_tabs = true;
+        app.cfg.ui.rounded = true;
         let buf = buffer(&mut app, layout, 160, 45);
         let t = app.theme.clone();
         let rects = tab_rects(&app);
@@ -296,7 +296,7 @@ fn round_rows_end_every_line_of_the_selected_session_in_a_cap_and_off_leaves_it_
     for layout in LAYOUTS {
         for on in [false, true] {
             let mut app = world(Stage::None);
-            app.cfg.ui.round_rows = on;
+            app.cfg.ui.rounded = on;
             app.mode = Mode::Side;
             let term = app.screen_model().iter().flat_map(|p| p.sessions().map(|s| s.term).collect::<Vec<_>>()).next().expect("a session");
             app.screen.cursor_proj = None;
@@ -325,7 +325,7 @@ fn round_tabs_end_the_selected_folder_row_in_a_cap_and_off_leaves_it_square() {
     for layout in LAYOUTS {
         for on in [false, true] {
             let mut app = world(Stage::None);
-            app.cfg.ui.round_tabs = on;
+            app.cfg.ui.rounded = on;
             app.mode = Mode::Side;
             app.screen.cursor = None;
             app.screen.cursor_proj = Some(app.screen_model()[0].key.clone());

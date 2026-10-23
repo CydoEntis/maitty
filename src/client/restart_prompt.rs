@@ -33,7 +33,7 @@ pub struct Prompt {
 
 impl Prompt {
     pub fn new(daemon: u32, cfg: &Config) -> Prompt {
-        Prompt { daemon, resume: None, theme: cfg.theme(), round: cfg.ui.pill_caps, hover: None, hits: Vec::new() }
+        Prompt { daemon, resume: None, theme: cfg.theme(), round: cfg.ui.rounded, hover: None, hits: Vec::new() }
     }
 
     pub fn resuming(mut self, sessions: usize, busy: Option<usize>) -> Prompt {

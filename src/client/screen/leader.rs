@@ -10,38 +10,39 @@ const NAME_MAX: usize = 40;
 /// name's own letters and no two rows share one) and what it does.
 pub(in crate::client) type MenuItem = (&'static str, char, Action);
 
-/// The Menu's groups with their headers, in the handoff's order. "Shell here" starts a plain shell
-/// (what `n` does); "Session" starts an agent straight away (`s`).
-pub(in crate::client) fn menu_groups() -> Vec<(&'static str, Vec<MenuItem>)> {
+/// The Menu's groups, a blank row apart, in the handoff's order. Labels are lowercase so the one
+/// capital you might read as a key never competes with the lit letter. "shell here" starts a plain
+/// shell (what `n` does); "session" starts an agent straight away (`s`).
+pub(in crate::client) fn menu_groups() -> Vec<Vec<MenuItem>> {
     vec![
-        ("NEW", vec![
-            ("Shell here", 'h', Action::ShellHere),
-            ("Session", 's', Action::StartSession),
-            ("Session with options…", 'w', Action::NewPane),
-            ("Pane beside this", 'p', Action::SplitRight),
-            ("Tab", 't', Action::NewTab),
-        ]),
-        ("GO TO", vec![("Inbox", 'i', Action::Jump), ("Search commands", 'c', Action::Palette), ("All keys", 'k', Action::Help)]),
-        ("VIEW", vec![("Collapse sidebar", 'a', Action::ToggleSidebar), ("Hide sidebar", 'd', Action::HideSidebar)]),
-        ("SET UP", vec![("Settings", 'e', Action::Settings)]),
+        vec![
+            ("shell here", 'h', Action::ShellHere),
+            ("session", 's', Action::StartSession),
+            ("session with options…", 'w', Action::NewPane),
+            ("pane beside this", 'p', Action::SplitRight),
+            ("tab", 't', Action::NewTab),
+        ],
+        vec![("inbox", 'i', Action::Jump), ("search commands", 'c', Action::Palette), ("all keys", 'k', Action::Help)],
+        vec![("collapse sidebar", 'a', Action::ToggleSidebar), ("hide sidebar", 'd', Action::HideSidebar)],
+        vec![("settings", 'e', Action::Settings)],
     ]
 }
 
-/// The Menu's rows without their headers, in the order they are numbered.
+/// The Menu's rows in the order they are numbered.
 pub(in crate::client) fn action_items() -> Vec<MenuItem> {
-    menu_groups().into_iter().flat_map(|(_, items)| items).collect()
+    menu_groups().into_iter().flatten().collect()
 }
 
 /// The label a Menu row shows now: the sidebar's rows say what the next press does.
 fn menu_label(app: &App, a: &Action, label: &'static str) -> &'static str {
     match a {
-        Action::ToggleSidebar if !app.sidebar => "Expand sidebar",
-        Action::HideSidebar if app.side_hidden => "Show sidebar",
+        Action::ToggleSidebar if !app.sidebar => "expand sidebar",
+        Action::HideSidebar if app.side_hidden => "show sidebar",
         _ => label,
     }
 }
 
-/// The Menu: a card at the bottom left, over the sidebar's foot. Groups under dim headers;
+/// The Menu: a card at the bottom left, over the sidebar's foot. Groups a blank row apart;
 /// each row is run by the letter lit in its name.
 pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, sel: usize) {
     let look = Look::of(&app.cfg.ui);
@@ -49,7 +50,7 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
     dim_all(buf, area, t);
     hit(app, area, ScreenHit::Close);
     let groups = menu_groups();
-    let lines: u16 = groups.iter().map(|(_, items)| items.len() as u16 + 1).sum();
+    let lines: u16 = groups.iter().map(|items| items.len() as u16 + 1).sum();
     let w = 46.min(area.width.saturating_sub(4));
     let h = (lines + 5).min(area.height.saturating_sub(2));
     let side = grid(app, area).side;
@@ -63,12 +64,13 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
     let needs = app.screen_model().iter().flat_map(|p| p.sessions()).filter(|s| s.status == Status::Blocked).count();
     let mut yy = r.y + 2;
     let mut i = 0usize;
-    for (header, items) in &groups {
+    for (g, items) in groups.iter().enumerate() {
         if yy >= inside.bottom().saturating_sub(2) {
             break;
         }
-        put(buf, r.x + 3, yy, &[seg(*header, Style::default().bg(t.card).fg(t.muted).add_modifier(Modifier::BOLD))], r.right().saturating_sub(3));
-        yy += 1;
+        if g > 0 {
+            yy += 1;
+        }
         for (label, letter, a) in items {
             if yy >= inside.bottom().saturating_sub(2) {
                 i += 1;

@@ -153,7 +153,7 @@ pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind) -> Vec<Se
 
 /// A key drawn as a keycap: ` key ` raised on `btn`, strong and bold. A combo (`Ctrl+Space`) is
 /// one cap per part with a dim `+` between. The one place keys are drawn as caps; its ends
-/// follow `ui.pill_caps`.
+/// follow `ui.rounded`.
 pub(super) fn keycap(t: &Theme, key: &str) -> Vec<Seg> {
     let cap = Style::default().bg(t.btn).fg(t.strong).add_modifier(Modifier::BOLD);
     let parts: Vec<&str> = if key.chars().count() > 1 && key.contains('+') { key.split('+').filter(|p| !p.is_empty()).collect() } else { vec![key] };
@@ -733,7 +733,7 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "ui.update_check" => "UPDATES",
             "shell" | "editor" | "shell_integration" | "ui.start_dir" => "SHELL",
             "ui.attention_sort" => "SIDEBAR",
-            "ui.panes" | "ui.corners" | "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pill_caps" | "ui.round_tabs" | "ui.round_rows" => "PANES",
+            "ui.panes" | "ui.corners" | "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.rounded" => "PANES",
             p if p.starts_with("notify.") => "ALERTS",
             "worktree.delete_with_last" | "worktree.per_agent" | "worktree.command" => "WORKTREES",
             p if p.starts_with("restore.") => "RESTARTS",

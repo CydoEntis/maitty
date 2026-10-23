@@ -931,6 +931,7 @@ pub(super) enum ScreenHit {
     ConfirmYes,
     ConfirmNo,
     TabPick(usize),
+    CloseTab(usize),
     NewTab,
     /// Outside an overlay: closes it.
     Close,

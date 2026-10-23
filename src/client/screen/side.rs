@@ -679,7 +679,7 @@ fn checkpoint_names(app: &App, p: &Proj) -> Vec<String> {
 }
 
 /// A `btn` chip for an action: its word with the letter of its leader key lit in the accent, bold,
-/// or the key then the word when the key is not a letter of it. Its ends follow `ui.pill_caps`.
+/// or the key then the word when the key is not a letter of it. Its ends follow `ui.rounded`.
 pub(super) fn key_chip(app: &App, word: &str, action: &Action, t: &Theme, outer: Color) -> Vec<Seg> {
     // A cap needs a raised ground to sit on: on the plain `bg` (which a transparent terminal
     // background hands back to the terminal) it would have none, so the chip stays square.
