@@ -266,11 +266,21 @@ pub fn save_check_outputs(dir: &Path, ticket: u64, outputs: &[CheckTail], live: 
     failed
 }
 
-/// A pane's kept output for checkpoint `name`, else the one kept before checkpoints had names.
-/// Left in place: the pane it is restored into writes its own under its new id, and the next
-/// save drops this one, so a crash in between loses nothing.
+/// A pane's kept output for checkpoint `name`. Left in place: the pane it is restored into
+/// writes its own under its new id, and the next save drops this one, so a crash in between
+/// loses nothing.
 pub fn read_check_output(dir: &Path, term: TermId, name: &str, slot: CheckSlot) -> Option<String> {
-    let bytes = std::fs::read(check_output_file(dir, term, name, slot)).or_else(|_| std::fs::read(legacy_check_output_file(dir, term, slot))).ok()?;
+    read_tail(&check_output_file(dir, term, name, slot))
+}
+
+/// The output kept before checkpoints had names: the pane's one check's. Left in place like
+/// `read_check_output`'s.
+pub fn read_legacy_check_output(dir: &Path, term: TermId, slot: CheckSlot) -> Option<String> {
+    read_tail(&legacy_check_output_file(dir, term, slot))
+}
+
+fn read_tail(path: &Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
     Some(check::cap_output(&String::from_utf8_lossy(&bytes)))
 }
 
@@ -454,7 +464,8 @@ mod tests {
         let dir = scratch_dir();
         std::fs::create_dir_all(dir.path()).unwrap();
         std::fs::write(dir.path().join("7-latest.txt"), "old tail").unwrap();
-        assert_eq!(read_check_output(dir.path(), 7, "test", CheckSlot::Latest).as_deref(), Some("old tail"));
+        assert_eq!(read_legacy_check_output(dir.path(), 7, CheckSlot::Latest).as_deref(), Some("old tail"));
+        assert_eq!(read_check_output(dir.path(), 7, "test", CheckSlot::Latest), None, "not a named checkpoint's");
         assert!(save_check_outputs(dir.path(), save_ticket(), &[tail(7, "test", CheckSlot::Latest, "new tail")], &[7]).is_empty());
         assert_eq!(files_in(dir.path()), ["7-test-latest.txt"], "the next save drops the old file");
         assert_eq!(read_check_output(dir.path(), 7, "test", CheckSlot::Latest).as_deref(), Some("new tail"));

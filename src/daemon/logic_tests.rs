@@ -1895,6 +1895,26 @@ fn a_restored_tail_stays_on_disk_until_the_new_one_is_saved() {
     close(&mut d, &[t]);
 }
 
+#[test]
+fn a_tail_kept_before_checkpoints_had_names_is_restored_only_into_a_lone_checkpoint() {
+    let (mut d, _rx) = daemon();
+    let tails = persist::scratch_dir();
+    std::fs::create_dir_all(tails.path()).unwrap();
+    let old: TermId = 9_302;
+    std::fs::write(tails.path().join(format!("{old}-latest.txt")), "old single check").unwrap();
+    let dir = tails.path().to_path_buf();
+    let info = |name: &str| CheckInfo { name: name.into(), state: CheckState::Failed, ..Default::default() };
+    let t = pane(&mut d);
+    let two = persist::SavedPane { checks: vec![info("build"), info("test")], ..Default::default() };
+    d.terms.get_mut(&t).unwrap().restore_checks(&dir, old, &two);
+    let outputs: Vec<&str> = d.terms[&t].checks.points.iter().map(|p| p.latest.output.as_str()).collect();
+    assert_eq!(outputs, ["", ""], "neither of two checkpoints is the old single check");
+    let one = persist::SavedPane { checks: vec![info("test")], ..Default::default() };
+    d.terms.get_mut(&t).unwrap().restore_checks(&dir, old, &one);
+    assert_eq!(d.terms[&t].checks.points[0].latest.output, "old single check", "a lone checkpoint is the migrated one");
+    close(&mut d, &[t]);
+}
+
 fn with_check(d: &mut Daemon, t: TermId, state: CheckState, output: &str) {
     let record = failed_check(output);
     // Named as the project's checkpoint is, so a run finds it.

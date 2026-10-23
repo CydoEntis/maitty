@@ -782,8 +782,10 @@ impl Term {
 
     /// Take back the checkpoints a pane had before the server restarted, tails read from
     /// `dir`. A run that was going died with the server, so its checkpoints read as not run
-    /// rather than checking forever.
+    /// rather than checking forever. Only a pane with one checkpoint can be the single check
+    /// kept before checkpoints had names, so only it falls back to that tail.
     pub fn restore_checks(&mut self, dir: &Path, old: TermId, saved: &SavedPane) {
+        let migrated = saved.checks.len() == 1;
         let record = |info: &CheckInfo, slot| {
             let mut info = info.clone();
             if matches!(info.state, CheckState::Checking | CheckState::Pending) {
@@ -791,7 +793,9 @@ impl Term {
             }
             // Nothing is queued after a restart.
             info.rerun_queued = false;
-            let output = persist::read_check_output(dir, old, &info.name, slot).unwrap_or_default();
+            let output = persist::read_check_output(dir, old, &info.name, slot)
+                .or_else(|| migrated.then(|| persist::read_legacy_check_output(dir, old, slot)).flatten())
+                .unwrap_or_default();
             CheckRecord::new(info, &output)
         };
         self.checks.points = saved
