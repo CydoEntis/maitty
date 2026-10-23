@@ -210,8 +210,8 @@ ignored; lint, both cross-checks and dependency audit passed). Live mouse clicks
 opened a plain shell and Settings from Actions.
 
 Active phase: **15 — checks Seshi runs itself** (chosen 2026-10-22)
-Next: Phase 18 (the v7 layout) is being built; phases 13 and 17 are on local `dev`. Then the Phase 17 live
-trial, the open Phase 15 items, and a release.
+Next: phases 13, 17 and 18 are on local `dev`, not pushed. Then the Phase 17 live trial, the Phase 18
+open decisions and live checks, and a release.
 
 Current user-requested work: expand the built-in themes to cover the 25 requested
 families and add a searchable preview browser in Appearance. Acceptance: all
@@ -371,7 +371,7 @@ Tickets, in order (each carries its own tests and docs):
 10. #103 UI: re-run and override from the menu, sheet and Inbox (after #97, #100, #101, #102)
 11. #107 CLI and home screen: show a failed check in `ls`, `seshi_list` and the counters (found by the live check)
 
-Later, not ticketed: stale detection; a command supplied by the repo with its approval.
+Later: stale detection and a command supplied by the repo with its approval, both built in Phase 18.
 
 Status 2026-10-22: released in v0.37.0 (tag `v0.37.0` at `97d6d19`). CI passed on Windows, Ubuntu
 and macOS (it caught four check tests with `sh`-only commands, fixed before release), so the Windows
@@ -387,8 +387,8 @@ screen in Cards and Flat. Validation on Windows, 2026-10-22 (isolated daemons, P
 pass, fail with `seshi wait` exiting 4, timeout as could-not-run, #107 in `ls` and `ls --json` on a live
 daemon, 80×24 frames in all three layouts, and Enter on a row opening the sheet all checked. The ASCII glyph
 fallback was broken on the sheet banner, why popover and override (Unicode marks); fixed with a regression
-test. Found, not fixed (a decision): under PowerShell a missing check command exits 1, so it reads
-**failed**, not could-not-run. Still not verified: desktop and phone alerts, and a check run by hand on
+test. Under PowerShell a missing check command exited 1 and read **failed**; Phase 18 starts each
+PowerShell check with a not-found trap that exits 127, so it reads could-not-run (other exit codes unchanged). Still not verified: desktop and phone alerts, and a check run by hand on
 macOS. On Linux a check's grandchild process can outlive the daemon
 (documented in `docs/SECURITY.md`).
 
@@ -455,7 +455,7 @@ the merged tree. Not done, so the phase is not complete: #123, a commander runni
 user's models. Known gaps: no key-driven test that saving a job writes the file (covered below that level);
 one click on the Family row while a job is being edited leaves the edit open.
 
-### 18 — The v7 layout and checkpoints · in progress 2026-10-22
+### 18 — The v7 layout and checkpoints · built on `dev` 2026-10-22, live checks open
 
 The user supplied the v7 handoff on 2026-10-22 ([`design/v7/`](design/v7/), `checks7.js` is the spec) and
 asked for all of it: a new layout for the app, not a pass over the old one. Covers the frame in all three
@@ -465,6 +465,21 @@ approve; Always needs pressing twice; a changed command asks again), stale passe
 commands per project. Not built: the working shimmer and 3-bar spinner (user's choice), and checkpoint kinds
 other than a command (commits, plan approval, review), which the design only shapes. Tickets are labelled
 `phase-18`. One protocol bump for the whole phase.
+
+Status 2026-10-22: #124–#131 built and merged to local `dev` (protocol 43→44), not released. The gate
+passed on the merged tree (754 + 1 tests). All 26 presets match the handoff's frames in every layout and
+size, plus ASCII at Flat 80×24 (`src/client/v7_frames_tests.rs`); colour roles were compared by a reviewer.
+Two blind reviews (code and security, design fidelity) ran with two fix rounds; their blocking findings
+(the approval modal clipping a long command, approving while another checkpoint runs, the Flat ground)
+are fixed. Live checks: Windows at 120×32 on an isolated daemon (fail, pass, stale, two checkpoints, the
+approval modal's keys, a missing command reading could-not-run); Always and Never only on Linux in Docker,
+because Windows has no way to point the approvals file away from the user's own. Also in this phase: the
+unix pane kill signals only the pane's own process group (it could reach every process the user owns).
+Open decisions: whether `a` on a sidebar row opens the row menu (handoff) or global Actions (today, ADR
+0009); a distinct amber for needs-you in seshi-dark, which shares `#ff6678` with failed; `seshi wait`
+exits 0 for a check waiting for approval or that could not run; ADR 0013 is still Proposed. Not built:
+`· 1 of 59 tests failed` in the why popover (needs output parsing) and when you chose Never (needs a
+protocol change). Not checked live: 80×24, 100×30 and 160×45, ASCII and Nerd glyphs, macOS.
 
 ## In scope
 
