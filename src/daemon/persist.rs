@@ -179,11 +179,22 @@ pub struct CheckTail {
 }
 
 /// `<term>-<name>-<slot>.txt`. A name comes from config or a repo's file, so anything that
-/// could leave the folder or clash with the separators is replaced.
+/// could leave the folder or clash with the separators is replaced; a name that had to be
+/// changed also gets a short hash of itself, so `a-b` and `a.b` keep files of their own.
 fn check_output_file(dir: &Path, term: TermId, name: &str, slot: CheckSlot) -> PathBuf {
+    dir.join(format!("{term}-{}-{}.txt", check_file_key(name), slot.file_suffix()))
+}
+
+/// Hex digits of a changed name's hash in its file name.
+const NAME_HASH_DIGITS: usize = 8;
+
+fn check_file_key(name: &str) -> String {
     let safe: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' }).collect();
-    let name = if safe.is_empty() { UNNAMED_CHECKPOINT } else { &safe };
-    dir.join(format!("{term}-{name}-{}.txt", slot.file_suffix()))
+    if !safe.is_empty() && safe == name {
+        return safe;
+    }
+    let base = if safe.is_empty() { UNNAMED_CHECKPOINT } else { &safe };
+    format!("{base}-{}", &crate::protocol::command_hash(name)[..NAME_HASH_DIGITS])
 }
 
 /// Where a tail was kept before checkpoints had names: one per pane and slot.
@@ -424,7 +435,18 @@ mod tests {
         let dir = scratch_dir();
         let outputs = [tail(7, "../x/y", CheckSlot::Latest, "t"), tail(7, "", CheckSlot::Latest, "u")];
         assert!(save_check_outputs(dir.path(), save_ticket(), &outputs, &[7]).is_empty());
-        assert_eq!(files_in(dir.path()), ["7-___x_y-latest.txt", "7-check-latest.txt"]);
+        assert_eq!(files_in(dir.path()), [format!("7-{}-latest.txt", check_file_key("../x/y")), format!("7-{}-latest.txt", check_file_key(""))]);
+        assert!(check_file_key("../x/y").starts_with("___x_y-") && check_file_key("").starts_with("check-"));
+    }
+
+    #[test]
+    fn names_that_read_alike_keep_tails_of_their_own() {
+        let dir = scratch_dir();
+        let outputs = [tail(7, "a-b", CheckSlot::Latest, "dash"), tail(7, "a.b", CheckSlot::Latest, "dot"), tail(7, "a_b", CheckSlot::Latest, "underscore"), tail(7, "check", CheckSlot::Latest, "named"), tail(7, "", CheckSlot::Latest, "unnamed")];
+        assert!(save_check_outputs(dir.path(), save_ticket(), &outputs, &[7]).is_empty());
+        for (name, text) in [("a-b", "dash"), ("a.b", "dot"), ("a_b", "underscore"), ("check", "named"), ("", "unnamed")] {
+            assert_eq!(read_check_output(dir.path(), 7, name, CheckSlot::Latest).as_deref(), Some(text), "{name:?}");
+        }
     }
 
     #[test]
