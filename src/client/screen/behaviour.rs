@@ -367,6 +367,17 @@ impl App {
     }
 
     /// Fold or unfold a project (true: open it).
+    /// A new colour for a project's +/− button, never the one it had.
+    pub(in crate::client) fn pick_fold_color(&mut self, key: &str) {
+        let mut palette: Vec<Color> = self.cfg.ui.workspace_colors.iter().filter_map(|c| crate::theme::parse_color(c)).collect();
+        let had = self.screen.fold_colors.get(key).copied();
+        palette.retain(|c| Some(*c) != had);
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_nanos() as usize);
+        if let Some(c) = palette.get(nanos % palette.len().max(1)) {
+            self.screen.fold_colors.insert(key.to_string(), *c);
+        }
+    }
+
     pub(in crate::client) fn screen_fold(&mut self, key: &str, open: Option<bool>) {
         let k = format!("p:{key}");
         let is_open = !self.screen.saved.closed.contains(&k);
@@ -374,6 +385,7 @@ impl App {
         if want != is_open {
             if want {
                 self.screen.saved.closed.retain(|c| *c != k);
+                self.pick_fold_color(key);
             } else {
                 self.screen.saved.closed.push(k);
             }
