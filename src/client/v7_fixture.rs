@@ -269,17 +269,22 @@ pub(super) fn world(stage: Stage) -> App {
     app
 }
 
-/// `app` drawn in `layout` at `w`×`h` with the `glyphs` set (`unicode`, `ascii`, `nerd`), as
-/// text: one line per row, trailing spaces trimmed. `SESHI_SHOW=1` prints it under a heading
-/// like the handoff's reference frames.
-pub(super) fn frame(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str) -> String {
+/// The world drawn in `layout` at `w`×`h`, every cell with its colours.
+pub(super) fn cells(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str) -> ratatui::buffer::Buffer {
     FIXED_NOW.with(|n| n.set(Some(now())));
     let (l, p) = layout.config();
     (app.cfg.ui.layout, app.cfg.ui.panes, app.cfg.ui.glyphs) = (l.into(), p.into(), glyphs.into());
     app.screen_fresh();
     let mut term = Terminal::new(TestBackend::new(w, h)).expect("a test terminal");
     term.draw(|f| render::draw(app, f)).expect("a frame");
-    let buf = term.backend().buffer();
+    term.backend().buffer().clone()
+}
+
+/// `app` drawn in `layout` at `w`×`h` with the `glyphs` set (`unicode`, `ascii`, `nerd`), as
+/// text: one line per row, trailing spaces trimmed. `SESHI_SHOW=1` prints it under a heading
+/// like the handoff's reference frames.
+pub(super) fn frame(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str) -> String {
+    let buf = &cells(app, layout, w, h, glyphs);
     let text: String = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol()).collect::<String>().trim_end().to_string() + "\n").collect();
     if std::env::var("SESHI_SHOW").is_ok() {
         println!("===== {layout:?} | {w}x{h} | {glyphs}\n{text}");

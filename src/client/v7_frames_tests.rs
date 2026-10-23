@@ -28,8 +28,8 @@
 //! - the C2 Inbox's footnote is an annotation, not a screen line;
 //! - pill caps (a Nerd Font option, on by default) are off, so buttons have square ends.
 
-use super::screen::{GoRow, goto_rows};
-use super::v7_fixture::{Layout, Stage, frame, world};
+use super::screen::{CAP_L, CAP_R, GoRow, goto_rows};
+use super::v7_fixture::{Layout, Stage, cells, frame, world};
 use super::*;
 use crate::protocol::{CheckSource, CheckState};
 
@@ -705,4 +705,84 @@ fn the_sidebar_keeps_its_focus_while_its_why_popover_is_open() {
     assert_eq!(why, border(&mut app), "lit as when the sidebar has the keys");
     app.mode = Mode::Normal;
     assert_ne!(why, border(&mut app), "and not as when the pane has them");
+}
+
+// ---- colour roles: the cells that carry a meaning, and the Flat ground ----------------------
+
+/// Where `needle` starts on screen, read cell by cell.
+fn at(buf: &ratatui::buffer::Buffer, needle: &str) -> (u16, u16) {
+    let want: Vec<String> = needle.chars().map(String::from).collect();
+    let a = buf.area;
+    for y in a.top()..a.bottom() {
+        let row: Vec<&str> = (a.left()..a.right()).map(|x| buf[(x, y)].symbol()).collect();
+        if let Some(x) = (0..row.len().saturating_sub(want.len() - 1)).find(|&x| row[x..x + want.len()].iter().zip(&want).all(|(g, w)| *g == w)) {
+            return (x as u16, y);
+        }
+    }
+    panic!("{needle:?} is not on screen");
+}
+
+#[test]
+fn flat_draws_its_zones_on_the_ground_under_a_card_strip() {
+    for id in ["01", "04", "C1"] {
+        let mut app = open(id);
+        let buf = cells(&mut app, Layout::Flat, 160, 45, "unicode");
+        let t = &app.theme;
+        let side = app.screen.side_rect;
+        let mid = side.x + side.width / 2;
+        assert_eq!(buf[(mid, 0)].bg, t.card, "{id}: row 0 is the header strip");
+        for y in [1, side.bottom() - 2] {
+            // The ground, or the terminal's own background standing for it.
+            let bg = buf[(mid, y)].bg;
+            assert!(bg == t.bg || bg == ratatui::style::Color::Reset, "{id}: the sidebar's body at row {y} is the ground, not {bg:?}");
+        }
+    }
+}
+
+#[test]
+fn a_failed_check_reads_in_err_on_its_row_its_sheet_and_its_pane() {
+    let mut app = open("07");
+    let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
+    let t = &app.theme;
+    let (x, y) = at(&buf, "✕ fix-footer");
+    assert_eq!(buf[(x, y)].fg, t.err, "the row's glyph");
+    assert_eq!(buf[(x - 2, y)].fg, t.err, "its edge bar");
+    let (x, y) = at(&buf, "✕ failed   exit 1");
+    assert_eq!(buf[(x, y)].bg, t.err, "the sheet's result chip");
+    let (x, y) = at(&buf, "✕ failed  ✕");
+    assert_eq!(buf[(x, y)].fg, t.err, "the pane's mark");
+}
+
+#[test]
+fn a_modal_title_is_on_the_accent() {
+    for id in ["12", "A2"] {
+        let mut app = open(id);
+        let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
+        let title = if id == "12" { "OVERRIDE A FAILED CHECK" } else { "A REPO WANTS TO RUN A COMMAND" };
+        let (x, y) = at(&buf, title);
+        assert_eq!(buf[(x, y)].bg, app.theme.accent, "{id}");
+    }
+}
+
+/// The app's default buttons have round ends (a Nerd Font's); the handoff draws them square.
+/// Turned on, they only put a cap where a square end had a blank of the button's colour.
+#[test]
+fn pill_caps_only_round_the_buttons_ends() {
+    for id in ["12", "A2"] {
+        let mut square = open(id);
+        let flat = cells(&mut square, Layout::Floating, 160, 45, "unicode");
+        let mut round = open(id);
+        round.cfg.ui.pill_caps = crate::config::Config::default().ui.pill_caps;
+        assert!(round.cfg.ui.pill_caps, "caps are on by default");
+        let capped = cells(&mut round, Layout::Floating, 160, 45, "unicode");
+        let caps = [CAP_L, CAP_R];
+        let mut changed = 0;
+        for (a, b) in flat.content().iter().zip(capped.content()) {
+            if a.symbol() != b.symbol() {
+                assert!(a.symbol() == " " && caps.contains(&b.symbol()), "{id}: {:?} became {:?}", a.symbol(), b.symbol());
+                changed += 1;
+            }
+        }
+        assert!(changed > 0, "{id}: the buttons have caps");
+    }
 }
