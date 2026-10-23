@@ -223,7 +223,8 @@ opened a plain shell and Settings from Actions.
 Active phase: **15 — checks Seshi runs itself** (chosen 2026-10-22)
 Next: three follow-ups the user approved on 2026-10-23: `a` on a sidebar row opens the row menu, an
 amber for needs-you in every theme (built), and `seshi wait` reporting a check waiting for approval or that could
-not run. Then the Phase 17 live trial and the Phase 18 live checks.
+not run. Then the Phase 17 live trial and the Phase 18 live checks. Then
+[Phase 20](#20--borrowed-from-tuios--queued-2026-10-23), borrowed from TUIOS (approved 2026-10-23).
 
 Current user-requested work: expand the built-in themes to cover the 25 requested
 families and add a searchable preview browser in Appearance. Acceptance: all
@@ -520,6 +521,25 @@ Windows (never built), zsh, fish and PowerShell launchers, and the old-binary to
 end. Open: the live check of the helper flow with a real agent over `seshi mcp`; whether check re-run and
 override want leader keys (they work from the check sheet).
 
+### 20 — Borrowed from TUIOS · queued 2026-10-23
+
+The user asked on 2026-10-23 for the parts of TUIOS (tuios.dev) that Seshi lacks, after a
+check showed ranked status sources, evidence times, box-only screen rules, saved scrollback,
+per-turn checkpoints and hook setup already exist. [Intent](features/borrowed-from-tuios/intent.md).
+One protocol bump for the phase: 45 to 46. Tickets are labelled `phase-20`.
+
+1. #142 daemon: mark a hooked agent quiet after 10 minutes with no output
+2. #143 UI: a quiet agent on its row and in the why popover (after #142)
+3. #144 UI: quiet agents in the Inbox's NEEDS YOU, no sound (after #142)
+4. #145 CLI and MCP: quiet in `ls`, `ls --json`, `seshi_list` and `seshi wait` (after #142)
+5. #146 MCP: `seshi_answer` answers only the prompt the caller saw
+6. #147 refuse text with hidden characters sent to an agent
+7. #148 daemon: a setting to stop saving pane output
+8. #149 daemon: saved output files readable only by you
+9. #150 UI: refuse to restore a checkpoint while its agent works
+
+Declined while planning: a fifth "unknown" status (a quiet agent stays working).
+
 ## In scope
 
 Everything below is shipped on `main` unless marked.
@@ -622,6 +642,8 @@ Everything below is shipped on `main` unless marked.
 - Both platform sides compile — `cargo check --target x86_64-unknown-linux-gnu` / `aarch64-apple-darwin` — AGENTS.md non-negotiable 3
 - clippy is clean — `cargo clippy --all-targets -- -D warnings` — CODE-STANDARDS
 - A session's "started by" is only set by the daemon, from a pane whose secret checked out — `src/daemon/mod.rs` `starter`, tests in `src/daemon/logic_tests.rs` — AGENTS.md non-negotiable 5
+- `seshi_answer` sends a key only for the prompt id the caller passed — `src/mcp.rs` `answer`, test in `src/mcp.rs` — not yet: #146
+- Text with invisible characters never reaches an agent through `seshi send`, `seshi_send` or `seshi_start` — `src/hidden.rs`, tests there — not yet: #147
 
 ## Records
 
