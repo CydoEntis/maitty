@@ -367,6 +367,10 @@ pub struct App {
     quit: Option<String>,
     dirty: bool,
     started: Instant,
+    /// The first start of this version: its splash plays the intro.
+    splash_cold: bool,
+    /// Whether this run's splash plays the intro, decided when it is first drawn.
+    splash_play: Option<bool>,
     open: Option<PathBuf>,
     /// Where a left-button press started, for drag-to-select.
     drag: Option<(TermId, Position)>,
@@ -552,6 +556,8 @@ impl App {
             quit: None,
             dirty: true,
             started: Instant::now(),
+            splash_cold: false,
+            splash_play: None,
             open,
             drag: None,
             bg: bg_tx,
@@ -573,6 +579,7 @@ impl App {
             cursor_sent: 0,
         };
         app.splash = app.cfg.ui.splash;
+        app.splash_cold = !cfg!(test) && app.splash && screen::first_start_of_this_version();
         if !crate::theme::BUILTIN.contains(&app.cfg.theme.as_str()) {
             app.keymap.warnings.push(format!(
                 "unknown theme `{}` (have: {})",
@@ -686,7 +693,7 @@ impl App {
                         last_frame = frame;
                         self.dirty = true;
                     }
-                    if matches!(self.mode, Mode::Prefix { .. }) {
+                    if matches!(self.mode, Mode::Prefix { .. }) || screen::splash_animating(self) {
                         self.dirty = true;
                     }
                     if self.notice.as_ref().is_some_and(|(_, at, _)| at.elapsed() > NOTICE_FOR) {

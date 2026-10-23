@@ -11,7 +11,7 @@ const ROW_PROJECT: u8 = 2;
 const NS_ROWS: u8 = 3;
 
 /// The two places a session can open; the same words as `sessions.where`.
-const WHERE_WORKTREE: usize = 0;
+pub(in crate::client) const WHERE_WORKTREE: usize = 0;
 const WHERE_FOLDER: usize = 1;
 
 const AGENT_LAST_USED: &str = "last used";
@@ -54,13 +54,13 @@ impl App {
     }
 
     /// Where `s` opens: the project the sidebar cursor is on, else the one you are in.
-    fn ns_default_project(&self) -> usize {
+    pub(in crate::client) fn ns_default_project(&self) -> usize {
         let model = self.screen_model();
         let key = self.screen.cursor.and_then(|c| model.iter().find(|p| p.sessions().any(|s| s.term == c)).map(|p| p.key.clone())).or(self.screen.proj.clone());
         model.iter().position(|p| Some(&p.key) == key.as_ref()).unwrap_or(0)
     }
 
-    fn ns_default_place(&self) -> usize {
+    pub(in crate::client) fn ns_default_place(&self) -> usize {
         if self.cfg.sessions.place == crate::config::NEW_WHERE[WHERE_FOLDER] { WHERE_FOLDER } else { WHERE_WORKTREE }
     }
 

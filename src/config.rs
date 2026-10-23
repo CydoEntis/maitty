@@ -81,6 +81,9 @@ pub struct Ui {
     pub workspace_colors: Vec<String>,
     /// The welcome screen when seshi starts.
     pub splash: bool,
+    /// When the splash's wordmark falls into place: "cold start" (a first start of a version, or
+    /// nothing left running), "always" or "never".
+    pub splash_animation: String,
     /// Look for a newer seshi when the window opens (and every few hours) and say so.
     pub update_check: bool,
     /// Short slides and glides (the sidebar, the sheet, the highlight, toasts). Always off
@@ -678,6 +681,7 @@ impl Default for Ui {
                 .map(String::from)
                 .to_vec(),
             splash: true,
+            splash_animation: "cold start".into(),
             update_check: true,
             motion: true,
             alt_arrows: true,
