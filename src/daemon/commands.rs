@@ -469,7 +469,7 @@ impl Daemon {
             Command::RerunCheck { term, name } => self.rerun_check(term, name.as_deref())?,
             Command::OverrideCheck { term, name, reason } => self.override_check(term, name.as_deref(), &reason, self.overrider(client))?,
             Command::UndoOverride { term, name } => self.undo_override(term, name.as_deref())?,
-            Command::ApproveCheck { term, name, choice } => self.approve_check(term, &name, choice)?,
+            Command::ApproveCheck { term, name, choice, command_sha256 } => self.approve_check(term, &name, choice, &command_sha256)?,
             Command::ForgetCheckApproval { project, name } => self.forget_check_approval(&project, &name)?,
             Command::Grant { term, grants } => {
                 let known = ["read", "write", "start", "respond", "admin"];

@@ -176,8 +176,9 @@ pub enum Command {
     /// Take an override back (None: the headline checkpoint): it reads as failed again.
     UndoOverride { term: TermId, name: Option<String> },
     /// Your answer to a repo-supplied check command waiting for approval. Only you can (not
-    /// from inside a pane).
-    ApproveCheck { term: TermId, name: String, choice: ApprovalChoice },
+    /// from inside a pane). `command_sha256` (`command_hash`) is of the command you were
+    /// shown: the answer is refused if a different one waits by then.
+    ApproveCheck { term: TermId, name: String, choice: ApprovalChoice, command_sha256: String },
     /// Drop a remembered Always or Never for a repo's checkpoint. Only you can.
     ForgetCheckApproval { project: PathBuf, name: String },
     /// `forget`: also discard the saved session, so the next start is a clean slate.
@@ -541,6 +542,12 @@ pub(crate) fn one_or_many_checks<'de, D: serde::Deserializer<'de>>(d: D) -> Resu
 /// The longest reason an override may carry, in characters.
 pub const OVERRIDE_REASON_MAX_CHARS: usize = 280;
 
+/// What an approval of a repo's check command is tied to: its SHA-256, in lowercase hex.
+pub fn command_hash(command: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(command.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+}
+
 /// Where a check stands. `CouldNotRun` is not a failure: the work was never checked.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CheckState {
@@ -783,9 +790,9 @@ mod tests {
             ClientMsg::Command(Command::RerunCheck { term: 3, name: Some("test".into()) }),
             ClientMsg::Command(Command::OverrideCheck { term: 3, name: Some("test".into()), reason: "flaky on CI".into() }),
             ClientMsg::Command(Command::UndoOverride { term: 3, name: None }),
-            ClientMsg::Command(Command::ApproveCheck { term: 3, name: "test".into(), choice: ApprovalChoice::Once }),
-            ClientMsg::Command(Command::ApproveCheck { term: 3, name: "test".into(), choice: ApprovalChoice::Always }),
-            ClientMsg::Command(Command::ApproveCheck { term: 3, name: "test".into(), choice: ApprovalChoice::Never }),
+            ClientMsg::Command(Command::ApproveCheck { term: 3, name: "test".into(), choice: ApprovalChoice::Once, command_sha256: command_hash("npm test") }),
+            ClientMsg::Command(Command::ApproveCheck { term: 3, name: "test".into(), choice: ApprovalChoice::Always, command_sha256: command_hash("npm test") }),
+            ClientMsg::Command(Command::ApproveCheck { term: 3, name: "test".into(), choice: ApprovalChoice::Never, command_sha256: command_hash("npm test") }),
             ClientMsg::Command(Command::ForgetCheckApproval { project: PathBuf::from("/code/api"), name: "test".into() }),
             ClientMsg::Command(Command::TidyWorktrees { items: vec![(PathBuf::from("/code/.wt/rate"), false)] }),
             ClientMsg::Command(Command::RenamePane { term: 3, name: "x".into() }),

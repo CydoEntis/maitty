@@ -165,10 +165,6 @@ fn frames(id: &str) -> &'static str {
 
 // ---- the app's side: the fixture's world with the preset open --------------------------------
 
-fn key(app: &mut App, c: char) {
-    app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
-}
-
 fn with_check(app: &mut App, command: &str) {
     let site = app.snap.terms[&1].root.clone().expect("fix-footer is in a repo");
     app.cfg.check = vec![crate::config::CheckDef { project: site, name: None, command: command.into(), ..Default::default() }];
@@ -235,8 +231,11 @@ fn open(id: &str) -> App {
         Over::Settings => app.open_project_check(1),
         Over::Approve => {
             app.open_approval(1);
-            if id == "A3" {
-                key(&mut app, '2');
+            // The first 2, pressed once the command was on screen.
+            if id == "A3"
+                && let Mode::Approve(a) = &mut app.mode
+            {
+                a.armed = true;
             }
         }
     }

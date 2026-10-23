@@ -57,10 +57,7 @@ pub fn path() -> PathBuf {
     crate::config::data_dir().join(FILE_NAME)
 }
 
-pub fn command_hash(command: &str) -> String {
-    use sha2::{Digest, Sha256};
-    Sha256::digest(command.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
-}
+pub use crate::protocol::command_hash;
 
 impl Approvals {
     /// The saved decisions; none when nothing was saved yet. Blocks: call it off the loop.
@@ -199,11 +196,14 @@ fn write_change(change: Change, path: &Path, ticket: u64) -> Result<()> {
 
 impl Daemon {
     /// Your answer to a repo's command waiting for approval: only while it waits, and for the
-    /// command it waits with (Always and Never are kept by that command's hash). Then the
-    /// checkpoint runs again and its gate says what that means. Panes are refused before
-    /// this (`may_command`).
-    pub(super) fn approve_check(&mut self, term: TermId, name: &str, choice: ApprovalChoice) -> Result<()> {
+    /// command it waits with, which must be the one you were shown (`shown_sha256`). Always
+    /// and Never are kept by that command's hash. Then the checkpoint runs again and its gate
+    /// says what that means. Panes are refused before this (`may_command`).
+    pub(super) fn approve_check(&mut self, term: TermId, name: &str, choice: ApprovalChoice, shown_sha256: &str) -> Result<()> {
         let (repo, name, command) = self.waiting_for_approval(term, name)?;
+        if command_hash(&command) != shown_sha256 {
+            anyhow::bail!("{name}'s command changed since it was shown; look at it again");
+        }
         let decision = match choice {
             ApprovalChoice::Once => None,
             ApprovalChoice::Always => Some(Decision::Always),
