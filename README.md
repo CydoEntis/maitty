@@ -5,8 +5,6 @@ Run agents side by side, see which ones need you, and return to them later.</p>
 
 <p align="center"><a href="#install">Install</a> · <a href="#start-in-five-minutes">Quick start</a> · <a href="#why-seshi">Features</a> · <a href="#configure">Configuration</a> · <a href="https://github.com/CydoEntis/seshi/releases">Releases</a></p>
 
-<p align="center"><img src="docs/media/demo.gif" alt="Seshi showing agent sessions, status, panes and settings" width="900"></p>
-
 
 <p align="center"><sub>Demo screens use synthetic project names, prompts, paths and agent output; no real session data is shown.</sub></p>
 
@@ -577,7 +575,7 @@ starts and remove it when it stops.
 Hook authority ends when a recognized agent's process exits. Seshi recognizes
 Herdr's 24 agent identities plus its five additional existing agents; OMP,
 Mastracode, Kilo and Kimi native status setup is also available through the Menu.
-See the [pinned source audit and compatibility limits](docs/herdr-status-audit.md).
+See [status setup and its limits](docs/agent-status.md).
 Terminal bells do not replace the status icon or add musical-note history entries.
 Click a status icon/tag (or `<leader> i`) for a plain-language explanation and the ages of
 hook, screen and process evidence; a status without confirmation is shown as uncertain.

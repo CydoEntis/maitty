@@ -118,7 +118,7 @@ audit records remaining differences instead of claiming identical behavior.
 New dependency: pinned jsonc-parser 0.33.1 for comment-preserving OpenCode config.
 Apache source notices ship with release archives. No wire shape, migration or
 permission changes; no documentation decision markers were filled.
-See [audit and verification limits](herdr-status-audit.md).
+See [status setup and its limits](agent-status.md).
 
 User-requested mouse access and provider-independent status correction: expose
 Status setup and all commands through Actions, retain
@@ -170,8 +170,7 @@ search, contextual search, scrolling and Actions entry without running commands.
 Live terminal/clipboard verification remains outstanding as described below.
 Release target: v0.30.0.
 
-User-authorized work: [clear session state and workflow controls](features/session-clarity/intent.md)
-([spec](features/session-clarity/spec.md)), shipped in v0.30.0. Keep sidebar
+User-authorized work: clear session state and workflow controls, shipped in v0.30.0. Keep sidebar
 selection independent of hover; distinguish update versions; expose status
 evidence; prepare workflow instructions; show stages and Inbox approvals; measure
 switching, scrolling and resizing under output. Extends existing status/workflow
@@ -291,7 +290,7 @@ new work; any remaining item must be re-approved and planned as a new scope.
 
 *Removed by the user in [Phase 19](#19--the-v8-cleanup--shipped-in-v0410-live-checks-open); the record below is history.*
 
-[A commander that runs a fleet of agents](features/fleet/intent.md): you give one agent a goal; it starts
+A commander that runs a fleet of agents: you give one agent a goal; it starts
 helpers, briefs them, checks on them and reports back.
 
 Tickets #32–#38 are closed, their changes are on `dev`, and the feature shipped
@@ -329,7 +328,7 @@ the option; the verification gate passes before the phase ships.
 
 ### 13 — Borrowed from T3 Code, round two · shipped in v0.40.0
 
-Approved by the user 2026-10-19 after a second read of `pingdotgg/t3code`. [Intent](features/handoff/intent.md).
+Approved by the user 2026-10-19 after a second read of `pingdotgg/t3code`.
 Tickets: #116 one function builds an agent's start command, #117 the handoff brief, #118 `seshi handoff`.
 
 - **Handoff:** `seshi handoff <pane> --to <agent>` starts another agent in the same worktree with a
@@ -353,7 +352,7 @@ newest wins, fsynced) and restored history starts at a clean line.
 
 ### 14 — Design v5 cleanup pass · complete 2026-10-22 at `865998b`
 
-The user supplied the v5 cleanup handoff ([`design/v5/README.md`](design/v5/README.md); `seshi-app.js`
+The user supplied the v5 cleanup handoff (`seshi-app.js`
 is the spec) on 2026-10-19 and approved following it where it differs from older UI rules, including
 dropping model, context and cost from Seshi's own chrome. One commit per step, each with the full gate:
 
@@ -424,7 +423,7 @@ macOS. On Linux a check's grandchild process can outlive the daemon
 - **Open decisions (ask before building):** where the command is configured (user config or the
   repo); the timeout; whether a re-run happens on every turn end or only when the files changed;
   what the Inbox says for a check that cannot run.
-- **Design:** [design brief v6](design-brief-v6.md) and its handoff [`design/v6/`](design/v6/)
+- **Design:** design brief v6 and its handoff, since replaced by [`design/v7/`](design/v7/)
   (`seshi-checks/checks.js` is the spec; drawn in the Flat style only). Checkpoints must work in
   all three layouts (Cards floating, Cards tiled, Flat) at 80×24, 100×30 and 160×45. Flat is built
   first; floating and tiled follow the designer's versions. Decisions taken from the handoff:
@@ -457,7 +456,7 @@ capture back off; the offer-then-restart glue in `open_client` has no test of it
 
 *Removed by the user in [Phase 19](#19--the-v8-cleanup--shipped-in-v0410-live-checks-open); the record below is history.*
 
-[A team list for the commander](features/team-roles/intent.md): a Settings › Team list of jobs
+A team list for the commander: a Settings › Team list of jobs
 (planner, builder, reviewer, or the user's own), each with a model per agent family (Claude, Codex),
 one global family switch and a per-project override. A commander reads the list and starts each helper
 on its job's model. Handoffs are gated by Phase 15 checks, which the commander is told to wait on.
@@ -542,7 +541,7 @@ Everything below is shipped on `main` unless marked.
 - Agents talk to agents (MCP server `seshi mcp`) — shipped — `src/mcp.rs`
 - `seshi send --wait`, `seshi wait`, `seshi read` — shipped — `src/cli.rs`
 - At most a set number of helpers working at once (`[mcp] helpers_at_once`) — shipped 0.25.0 — `Daemon::starting` in `src/daemon/mod.rs`
-- A commander runs a fleet: one agent starts, briefs and checks helpers, which sit under it in the sidebar — shipped in v0.20.0 — [intent](features/fleet/intent.md), #32–#38
+- A commander runs a fleet: one agent starts, briefs and checks helpers, which sit under it in the sidebar — shipped in v0.20.0 — #32–#38
 
 **The TUI (one shared session layout; ADR-0007, superseded by ADR-0012)**
 - Flat rendering style: square, full-bleed sidebar, tabs, panes and sheets; sidebar/pane focus zones, no global footer; shipped in v0.36.0; `src/client/screen/draw.rs`, ADR-0012
@@ -599,7 +598,7 @@ Everything below is shipped on `main` unless marked.
 
 - Personas are dropped, not deferred: saved role profiles were removed 2026-10-18 (see [Out](#out)). Phase 15 replaces the idea with checkpoints that Seshi checks itself.
 - Checkpoint kinds beyond the first (`commits`, `approval`, `review`) and a project-defined checkpoint list — deferred 2026-10-22 until Phase 15's verify check has been used in real work. `approval` and `review` sit close to the workflow runner cut on 2026-10-18; each needs the user's explicit re-approval before any ticket. Phase 17's handoffs use the verify check only.
-- The designed team view, threads between agents, take over and hand back, pause the fleet, stop all, cost per fleet — deferred 2026-10-11: waiting on the design from [design brief v5](design-brief-v5.md), which [design brief v6](design-brief-v6.md) narrows. Comes back when the prototype is in.
+- The designed team view, threads between agents, take over and hand back, pause the fleet, stop all, cost per fleet — deferred 2026-10-11: waiting on a design for it. Comes back when the prototype is in.
 
 ## Decisions
 
@@ -627,15 +626,9 @@ Everything below is shipped on `main` unless marked.
 ## Records
 
 Docs: `AGENTS.md`, `docs/` (architecture, standards, testing, security, UI, API patterns), `docs/stack/rust.md`.
-Design references: [design brief](design-brief.md), [design brief v3](design-brief-v3.md),
-[design brief v4](design-brief-v4.md) and its handoff [`design/v4/`](design/v4/),
-[design brief v5](design-brief-v5.md) (the lead and personas; narrowed by [v6](design-brief-v6.md)),
-the v5 cleanup handoff [`design/v5/`](design/v5/), the checkpoints handoff [`design/v6/`](design/v6/) and its follow-up [design brief v7](design-brief-v7.md) (checks in all three layouts), the Flat handoff [`design/flat/`](design/flat/)
-and the wake-up transition handoff [`design/wake/`](design/wake/).
+Design references: the v8 handoff [`design/v8/`](design/v8/README.md) (current) and the v7 handoff [`design/v7/`](design/v7/README.md) (layout and checkpoints; its frames back the tests). Older briefs and handoffs (v1–v6, Flat, wake-up) are in git history.
 Glossary: none yet.
-Feature docs: `docs/features/`. Each live intent is linked from In scope or a phase.
-Session clarity: [intent](features/session-clarity/intent.md),
-[spec](features/session-clarity/spec.md).
+Feature docs: `docs/features/`. Each live intent is linked from its phase; shipped or removed intents are in git history.
 
 ## Rework
 

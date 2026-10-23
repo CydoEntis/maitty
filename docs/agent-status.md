@@ -89,7 +89,21 @@ Seshi recognizes all 24 identities in the pinned Herdr registry plus Aider, Goos
 Crush, Auggie and the separate DeepSeek harness. The 22 bundled Herdr manifests
 use prioritized live-screen/OSC evidence; OMP and Mastracode rely on their native
 integrations. A known executable alone does not guarantee native lifecycle support.
-The [source audit](herdr-status-audit.md) records scope and remaining differences.
+The pin is Herdr commit `143bf5fd4781d164260c63fe28e7dc08054ad32f`; its license and
+notices are in `vendor/herdr-detection/`.
+
+Not yet verified, so Seshi does not claim exact Herdr parity:
+
+- every identity against real process entry points, including npm and native
+  wrappers, Windows paths, aliases and helpers that must not match;
+- every bundled manifest against current working, idle, blocked, narrow and
+  stale screens;
+- each native adapter's ordering, reload, retries, nested helpers, cancellation,
+  process exit and transport failure;
+- OpenCode session switching with two clients attached to one server;
+- notifications when focused, in the background, unfocused and detached,
+  including stale and duplicate completions;
+- live runs against every paid provider and CLI version.
 
 Needs-you uses the configured blocked dot and blocked text color (red in the
 standard themes); working keeps its working indicator. Terminal bells never
