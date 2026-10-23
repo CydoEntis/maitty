@@ -421,7 +421,7 @@ fn draw_buttons(app: &mut App, buf: &mut Buffer, x: u16, y: u16, right: u16, p: 
     if let Some(p) = p {
         bx = btn(app, buf, bx, y, "Run now", "r", BtnKind::Normal, ScreenHit::CheckDraft(DraftHit::RunNow), right) + 1;
         let remove = if p.repos_own() { "Forget choice" } else { "Remove" };
-        bx = btn(app, buf, bx, y, remove, "Del", BtnKind::Danger, ScreenHit::CheckDraft(DraftHit::Remove), right) + 1;
+        bx = btn(app, buf, bx, y, remove, "Del", BtnKind::Risky, ScreenHit::CheckDraft(DraftHit::Remove), right) + 1;
     }
     btn(app, buf, bx, y, "Cancel", "Esc", BtnKind::Normal, ScreenHit::CheckDraft(DraftHit::Cancel), right);
 }

@@ -409,7 +409,7 @@ fn output_block(buf: &mut Buffer, r: Rect, v: &CheckView, info: &CheckInfo, grou
 pub(super) fn sheet_button(buf: &mut Buffer, x: u16, y: u16, max: u16, (label, key): (&str, &str), kind: BtnKind, t: &Theme) -> Option<Rect> {
     let (bg, fg, kf) = match kind {
         BtnKind::Primary => (t.accent, t.acc_ink, t.acc_ink),
-        BtnKind::Danger => (t.btn, t.err, t.accent),
+        BtnKind::Danger | BtnKind::Risky => (t.btn, t.err, t.accent),
         _ => (t.btn, t.strong, t.accent),
     };
     let b = Style::default().bg(bg).add_modifier(Modifier::BOLD);

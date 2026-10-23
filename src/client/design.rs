@@ -118,8 +118,11 @@ pub(super) fn fill(buf: &mut Buffer, r: Rect, bg: Color) {
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum BtnKind {
     Primary,
-    /// The one that ends or removes something.
+    /// The one that ends or removes something, in a confirmation that is about nothing else.
     Danger,
+    /// A choice in a check's modal or sheet that cannot be taken back (Override, Never,
+    /// Remove): the plain ground, its words in the failure colour.
+    Risky,
     Normal,
     Ghost,
 }
@@ -131,6 +134,7 @@ pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind) -> Vec<Se
         BtnKind::Primary => (t.accent, t.acc_ink, t.acc_ink),
         BtnKind::Danger => (t.danger_fill(), t.ink_on(t.danger_fill()), t.ink_on(t.danger_fill())),
         BtnKind::Normal => (t.btn, t.strong, t.accent),
+        BtnKind::Risky => (t.btn, t.err, t.accent),
         BtnKind::Ghost => (t.sidebar_bg, t.text, t.accent),
     };
     let bold = if kind == BtnKind::Ghost { Modifier::empty() } else { Modifier::BOLD };

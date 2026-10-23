@@ -316,7 +316,7 @@ pub(in crate::client) fn draw_approve(app: &mut App, buf: &mut Buffer, area: Rec
     let mut bx = btn(app, buf, x, by, "Run once", "1", BtnKind::Normal, ScreenHit::Approve(ApproveHit::Once), right) + 1;
     let (always, always_key, always_kind) = (if short { "Always" } else { "Always for this repo" }, if a.armed { "2 again" } else { "2" }, if a.armed { BtnKind::Primary } else { BtnKind::Normal });
     bx = btn(app, buf, bx, by, always, always_key, always_kind, ScreenHit::Approve(ApproveHit::Always), right) + 1;
-    bx = btn(app, buf, bx, by, if short { "Never" } else { "Never for this repo" }, "3", BtnKind::Danger, ScreenHit::Approve(ApproveHit::Never), right) + 1;
+    bx = btn(app, buf, bx, by, if short { "Never" } else { "Never for this repo" }, "3", BtnKind::Risky, ScreenHit::Approve(ApproveHit::Never), right) + 1;
     btn(app, buf, bx, by, "Not now", "Esc", BtnKind::Normal, ScreenHit::Approve(ApproveHit::NotNow), right);
     app.mark_shown(a, shown_hash(&info), whole);
 }
