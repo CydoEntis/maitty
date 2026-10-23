@@ -344,7 +344,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     let st = info.status;
     // While the sidebar has the keys, no pane shows as focused.
     // Exactly one lit edge: an open sheet has the keys, so the pane gives up its lit border.
-    let focused = focused && app.mode != Mode::Side && open_sheet(app).is_none();
+    let focused = focused && !side_focused(app) && open_sheet(app).is_none();
     let scrolled = app.parsers.get(&term).map(|p| p.screen().scrollback()).filter(|n| *n > 0);
     let border = if !focused {
         t.line

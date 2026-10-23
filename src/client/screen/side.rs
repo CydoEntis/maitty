@@ -318,7 +318,7 @@ impl RowLook {
 pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme) {
     let look = Look::of(&app.cfg.ui);
     let pb = if look.flat { t.card } else { pane_bg(t) };
-    let focused_side = app.mode == Mode::Side;
+    let focused_side = side_focused(app);
     let mut c = Card::new(t, "");
     if look.flat { c.bg = t.card; }
     if focused_side {
@@ -681,7 +681,7 @@ fn draw_proj(app: &mut App, buf: &mut Buffer, model: &[Proj], pi: usize, cols: C
     let p = &model[pi];
     let row = cols.row(y);
     let open = !app.screen.saved.closed.contains(&format!("p:{}", p.key));
-    let on = app.mode == Mode::Side && app.screen.cursor_proj.as_ref() == Some(&p.key);
+    let on = side_focused(app) && app.screen.cursor_proj.as_ref() == Some(&p.key);
     let hov = hovered(app, row);
     let bg = if on { t.sel_bg() } else { pb };
     if bg != pb {

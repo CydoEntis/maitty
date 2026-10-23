@@ -4,7 +4,7 @@ use super::*;
 pub(super) fn draw(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme) {
     let pb = pane_bg(t);
     let mut c = Card::new(t, "");
-    if app.mode == Mode::Side {
+    if side_focused(app) {
         c = c.lit(t.accent);
     }
     card(app, buf, r, &c, t);
@@ -64,7 +64,7 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: 
         let active = Some(s.term) == focus;
         let bg = if active {
             t.hov
-        } else if app.mode == Mode::Side && app.screen.cursor == Some(s.term) {
+        } else if side_focused(app) && app.screen.cursor == Some(s.term) {
             t.card2
         } else {
             pb

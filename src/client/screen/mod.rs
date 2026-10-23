@@ -387,6 +387,12 @@ pub(super) fn rank(s: Status) -> u8 {
 
 /// Sorts a session after the ones that need you. Nothing else about its state moves its row:
 /// a row that shifted each time its agent started or finished is hard to find again.
+/// The sidebar has the keys, or the why popover opened from one of its rows does (it
+/// gives them back to the sidebar when it closes).
+pub(super) fn side_focused(app: &App) -> bool {
+    matches!(app.mode, Mode::Side | Mode::Why { side: true, .. })
+}
+
 pub(super) fn settled(s: Status) -> bool {
     s != Status::Blocked
 }

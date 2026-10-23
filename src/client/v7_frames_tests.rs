@@ -686,3 +686,23 @@ fn preset_c1_several_checkpoints_rows() {
 fn preset_c2_several_checkpoints_inbox() {
     conforms("C2");
 }
+
+#[test]
+fn the_sidebar_keeps_its_focus_while_its_why_popover_is_open() {
+    let border = |app: &mut App| {
+        (app.cfg.ui.layout, app.cfg.ui.panes) = ("cards".into(), "floating".into());
+        app.screen_fresh();
+        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(160, 45)).expect("a test terminal");
+        term.draw(|f| render::draw(app, f)).expect("a frame");
+        let r = app.screen.side_rect;
+        let buf = term.backend().buffer();
+        (r.y..r.bottom()).map(|y| buf[(r.x, y)].fg).collect::<Vec<_>>()
+    };
+    let mut app = open("13");
+    assert!(matches!(app.mode, Mode::Why { side: true, .. }));
+    let why = border(&mut app);
+    app.mode = Mode::Side;
+    assert_eq!(why, border(&mut app), "lit as when the sidebar has the keys");
+    app.mode = Mode::Normal;
+    assert_ne!(why, border(&mut app), "and not as when the pane has them");
+}
