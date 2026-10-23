@@ -231,7 +231,7 @@ families and documented variants are selectable; search, keyboard paging, mouse
 selection, preview, cancel, and saving work; every built-in passes the contrast
 audit. Verification: the full AGENTS.md gate and a nested-server UI check.
 Status: integrated for 0.28.0 with 63 built-in choices; verified in the release
-worktree. Sources: [theme research](theme-sources.md).
+worktree. Sources: [theme research](theme-credits.md).
 
 Also requested: fix Claude reporting working after its turn ends with a dev
 server still running. User decision: working tracks the agent's turn; background

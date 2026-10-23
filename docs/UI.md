@@ -188,7 +188,7 @@ move the selection. Click a row to preview; click it again or press Enter to
 save. Esc or the close button returns to Appearance without changing the theme.
 Saving runs in a background task; failure keeps the selection and shows a toast.
 The preview shows built-in defaults; configured overrides still apply after saving.
-See [theme sources](theme-sources.md) for upstream palettes and local UI adaptations.
+See [theme sources](theme-credits.md) for upstream palettes and local UI adaptations.
 
 ## Project-specific: working spinner picker
 

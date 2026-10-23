@@ -380,7 +380,7 @@ Kanagawa Wave/Dragon/Lotus, Ayu Dark/Mirage/Light, Night Owl, Nightfly, Moonfly,
 Everforest Dark/Light, Rosé Pine/Moon/Dawn, Cobalt2, Jellybeans, Iceberg, Sonokai,
 Shades of Purple, Panda, Lucario, Gotham, Apprentice, and Zenbones Dark/Light, alongside
 Seshi Dark (the default) and Seshi Light, Seshi Walnut/Night/Day, Harbor/Day, Moss/Day, Ember/Ash,
-Ink/Paper, Arcade, Hydra, Tinkery/Light, Aurora, Moonlit, and the existing themes. [Palette sources and variant notes](docs/theme-sources.md).
+Ink/Paper, Arcade, Hydra, Tinkery/Light, Aurora, Moonlit, and the existing themes. [Palette sources and variant notes](docs/theme-credits.md).
 New palettes theme ANSI agent output; explicit RGB output keeps the program's colors.
 UI text and status colors are adapted for contrast. Existing theme overrides remain active.
 On Keys, Enter then press a new key to rebind a shortcut. Changes save to `config.toml`

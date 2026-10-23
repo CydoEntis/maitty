@@ -4,7 +4,7 @@
 A cleanup pass on Seshi's TUI. It makes states readable at a glance, puts the hidden menus in plain sight, drops the "fleet" concept and merges three key-reference overlays into one. It also redesigns the copy feedback and toasts, and the message-agent popover.
 
 Two prototypes:
-- `v8/Seshi v8 Cleanup.dc.html` — 18 steps, the main cleanup
+- `cleanup/Seshi v8 Cleanup.dc.html` — 18 steps, the main cleanup
 - `message-popover/Seshi Message Popover.dc.html` — 8 states × 3 sizes × 3 layouts × 2 glyph sets, with written rules on the page
 
 ## About the design files
@@ -152,6 +152,6 @@ Full rules are on the prototype page under "Rules". In short:
 - The Sessions, Appearance, Check and Keys tabs in Settings are placeholders in the mock.
 
 ## Files
-- `v8/Seshi v8 Cleanup.dc.html`, `v8/app8.js`, `v8/seshi-grid.js`
+- `cleanup/Seshi v8 Cleanup.dc.html`, `cleanup/app8.js`, `cleanup/seshi-grid.js`
 - `message-popover/Seshi Message Popover.dc.html`, `message-popover/msg.js`, `message-popover/checks7.js`, `message-popover/seshi-grid.js`
 - `support.js` in each folder is the prototype runtime only

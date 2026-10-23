@@ -61,7 +61,7 @@ jobs:
           name=seshi-${{ matrix.target }}
           mkdir -p dist/$name
           cp README.md LICENSE dist/$name/
-          cp docs/theme-sources.md dist/$name/THEME-NOTICES.md
+          cp docs/theme-credits.md dist/$name/THEME-NOTICES.md
           cp vendor/herdr-detection/LICENSE dist/$name/HERDR-LICENSE.txt
           cp vendor/herdr-detection/NOTICE.md dist/$name/HERDR-NOTICES.md
           if [ "${{ matrix.archive }}" = "zip" ]; then
