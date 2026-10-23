@@ -124,7 +124,7 @@ the pane's process tree or `SESHI_PANE_TOKEN`.
 Saved role profiles and sequenced planner/worker/reviewer workflows are not part
 of Seshi's interface, and neither is a fleet commander (`seshi brief`, `[team]`): old
 config keys for them are read and ignored. Sessions, ordinary agent launches, helpers, and
-MCP session controls remain supported. The wire protocol is version 45.
+MCP session controls remain supported. The wire protocol is version 46.
 
 **Helpers.** A start that comes from an agent's pane (`NewWorkspace`, `NewTab`, `Split`,
 `NewWorktree` over a connection that proved it is that pane by its secret) is a helper

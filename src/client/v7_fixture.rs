@@ -120,6 +120,7 @@ fn term(id: TermId, label: &str, agent: &str, status: Status, cwd: &Path, since:
         why_screen: String::new(),
         why_screen_at: 0,
         why_process_at: 0,
+        quiet_since: None,
         pid: 0,
         asleep: false,
         win32_input: false,

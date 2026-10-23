@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Bump whenever a message shape changes; client and daemon refuse to talk across versions.
-pub const PROTOCOL_VERSION: u32 = 45;
+pub const PROTOCOL_VERSION: u32 = 46;
 
 pub type TermId = u32;
 pub type WsId = u32;
@@ -524,6 +524,10 @@ pub struct TermInfo {
     /// Last completed process observation (unix seconds; 0: not observed).
     #[serde(default)]
     pub why_process_at: u64,
+    /// Working, but no output and no hook report since then (unix seconds) for long enough
+    /// that it may be stuck. Its status stays working.
+    #[serde(default)]
+    pub quiet_since: Option<u64>,
     /// The process running in it (0: not known).
     #[serde(default)]
     pub pid: u32,

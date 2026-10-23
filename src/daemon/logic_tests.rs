@@ -2977,3 +2977,60 @@ fn an_agent_saved_mid_turn_comes_back_as_a_resume_of_its_conversation() {
     let resume = d.restore_cmd(&pane).expect("claude resumes");
     assert!(resume.contains("abc123") && !resume.contains("do the thing"), "{resume}");
 }
+
+/// A hooked agent left working, its last output and hook report `secs` ago.
+fn silent_working_agent(d: &mut Daemon, secs: u64) -> TermId {
+    let id = pane(d);
+    d.hook(id, "claude".into(), HookStatus::Working, "PreToolUse");
+    let ago = Instant::now().checked_sub(Duration::from_secs(secs)).expect("the clock reaches back that far");
+    let t = d.terms.get_mut(&id).unwrap();
+    t.last_output = ago;
+    t.last_hook_at = Some(ago);
+    id
+}
+
+#[test]
+fn a_working_agent_silent_for_ten_minutes_is_quiet() {
+    let (mut d, _rx) = daemon();
+    let early = silent_working_agent(&mut d, 9 * 60);
+    let late = silent_working_agent(&mut d, 11 * 60);
+    d.update_statuses();
+    let (early_quiet, late_quiet, late_status) = (d.terms[&early].quiet_since, d.terms[&late].quiet_since, d.terms[&late].status);
+    let wire = d.snapshot().terms[&late].quiet_since;
+    close(&mut d, &[early, late]);
+    assert_eq!(early_quiet, None, "nine minutes is not yet quiet");
+    let since = late_quiet.expect("eleven silent minutes is quiet");
+    assert!(term::unix_now().saturating_sub(since) >= 11 * 60, "quiet since its last sign of life");
+    assert_eq!(late_status, Status::Working, "quiet never changes the status");
+    assert_eq!(wire, late_quiet, "clients see it");
+}
+
+#[test]
+fn quiet_clears_on_output_or_a_hook() {
+    let (mut d, _rx) = daemon();
+    let printed = silent_working_agent(&mut d, 11 * 60);
+    let reported = silent_working_agent(&mut d, 11 * 60);
+    d.update_statuses();
+    assert!(d.terms[&printed].quiet_since.is_some() && d.terms[&reported].quiet_since.is_some());
+    d.terms.get_mut(&printed).unwrap().last_output = Instant::now();
+    d.hook(reported, "claude".into(), HookStatus::Working, "PostToolUse");
+    d.update_statuses();
+    let after = (d.terms[&printed].quiet_since, d.terms[&reported].quiet_since);
+    close(&mut d, &[printed, reported]);
+    assert_eq!(after, (None, None));
+}
+
+#[test]
+fn helpers_running_or_a_finished_turn_is_never_quiet() {
+    let (mut d, _rx) = daemon();
+    let waiting = silent_working_agent(&mut d, 11 * 60);
+    let t = d.terms.get_mut(&waiting).unwrap();
+    t.subagents.push(("h1".into(), "reviewer".into()));
+    t.subagent_seen = Some(Instant::now());
+    let finished = silent_working_agent(&mut d, 11 * 60);
+    d.terms.get_mut(&finished).unwrap().status = Status::Done;
+    d.update_statuses();
+    let quiet = (d.terms[&waiting].quiet_since, d.terms[&finished].quiet_since);
+    close(&mut d, &[waiting, finished]);
+    assert_eq!(quiet, (None, None));
+}

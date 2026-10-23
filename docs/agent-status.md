@@ -118,6 +118,11 @@ active child rows as unconfirmed while retaining their lifecycle records; it doe
 not infer completion from silence alone. Hosts without an explicit idle screen
 signal rely on their lifecycle completion events.
 
+A working agent with no output and no hook report for 10 minutes is marked quiet
+(`quiet_since` on the wire): it may be stuck. Quiet never changes its status, which
+stays working. An agent waiting on helpers it reported, or asking to start helpers,
+is never quiet. Any output or hook report clears it.
+
 Questions ring even in the focused pane after remaining blocked for 300 ms;
 the red indicator appears immediately. Completions are quiet and remain visible
 as status/notice changes. A queued needs-you sound rechecks the exact current

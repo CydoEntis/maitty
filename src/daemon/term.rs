@@ -157,6 +157,8 @@ pub struct Term {
     /// Activity present at turn end must not reopen that turn unless its live footer changes.
     pub ended_activity: Option<String>,
     pub screen_blocked_from: Option<Status>,
+    /// Working with no output and no hook report since then (unix seconds): may be stuck.
+    pub quiet_since: Option<u64>,
     /// When it last started needing you (cleared when it stops).
     pub blocked_at: Option<Instant>,
     /// Processes known to run inside this pane (trusted to report its status).
@@ -632,6 +634,7 @@ impl Term {
             turn_end_handled: false,
             ended_activity: None,
             screen_blocked_from: None,
+            quiet_since: None,
             blocked_at: None,
             trusted: std::collections::HashSet::new(),
             token,

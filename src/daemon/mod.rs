@@ -1208,6 +1208,7 @@ impl Daemon {
                     why_screen: t.last_screen.as_ref().map(|h| h.0.clone()).unwrap_or_default(),
                     why_screen_at: t.last_screen.as_ref().map(|h| h.1).unwrap_or(0),
                     why_process_at: t.last_process,
+                    quiet_since: t.quiet_since,
                     pid: t.pid.unwrap_or(0),
                     asleep: t.asleep,
                     win32_input: t.win32_input,
