@@ -275,7 +275,7 @@ fn geometry(id: &str, b: &Block) -> Geometry {
             Rect { x: px + 1, y: 1, width: right - px - 1, height: h - 1 }
         }
     });
-    // A modal or popover, and its hard shadow a cell right and down.
+    // A modal or popover, and the handoff's hard shadow a cell right and down.
     let with_shadow = |r: Rect| vec![r, Rect { x: r.x + 1, y: r.y + 1, ..r }];
     let modal = |mw: u16, mh: u16| with_shadow(Rect { x: (w - mw) / 2, y: (h - mh) / 2, width: mw, height: mh });
     let overlays = match over {
@@ -519,6 +519,16 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
         let (x0, x1) = (pop.x as usize, pop.right() as usize - 1);
         for row in want.iter_mut().take(pop.bottom() as usize).skip(pop.y as usize) {
             swap_tail(row, " · 1 of 59", "", x0, x1);
+        }
+    }
+    // The handoff casts a hard shadow; the app casts none, so what shows there is the app's.
+    if let [frame, shadow] = g.overlays[..] {
+        for y in shadow.y..shadow.bottom().min(b.h) {
+            for x in shadow.x..shadow.right().min(b.w) {
+                if !frame.contains(ratatui::layout::Position { x, y }) {
+                    want[y as usize][x as usize] = ANY;
+                }
+            }
         }
     }
     want

@@ -32,21 +32,7 @@ pub(in crate::client) fn tool_rect(area: Rect) -> Rect {
     Rect { x: area.x + (area.width - w) / 2, y: area.y + (area.height - h) / 2, width: w, height: h }
 }
 
-/// How far toward black a modal's and a popover's hard shadow takes the ground: the design's
-/// black, kept in the theme's own hue.
-const SHADOW_DARK: f32 = 0.85;
 const ESC_CLOSE: &str = "Esc close";
-
-/// The hard shadow a modal or popover casts: `r` moved a cell right and down.
-fn shadow(buf: &mut Buffer, r: Rect, t: &Theme) {
-    let dark = blend(t.bg, Color::Rgb(0, 0, 0), SHADOW_DARK);
-    let s = Rect { x: r.x + 1, y: r.y + 1, ..r }.intersection(buf.area);
-    for y in s.top()..s.bottom() {
-        for x in s.left()..s.right() {
-            buf[(x, y)].set_symbol(" ").set_style(Style::default().bg(dark));
-        }
-    }
-}
 
 /// A centred modal over the dimmed screen: `panel_at` in the middle of `area`, at most
 /// `w`×`h`. A click outside it closes it.
@@ -59,7 +45,7 @@ pub(in crate::client) fn panel(app: &mut App, buf: &mut Buffer, area: Rect, w: u
     panel_at(app, buf, r, title, right, t)
 }
 
-/// A modal's frame at `r`: a hard shadow, a body of `card`, a title row filled with the accent
+/// A modal's frame at `r`: a body of `card`, a title row filled with the accent
 /// (the title two in, bold, and `Esc close` at the right), `│` sides and a `─` bottom in
 /// `line` with corners by the setting. `right` sits in the title row before `Esc close`.
 /// Returns `r`; its contents start two in and two down.
@@ -68,7 +54,6 @@ pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, titl
     if r.width < 4 || r.height < 2 {
         return r;
     }
-    shadow(buf, r, t);
     fill(buf, r, t.card);
     let edge = Style::default().fg(t.line).bg(t.card);
     let (right_x, bottom) = (r.right() - 1, r.bottom() - 1);
@@ -110,11 +95,10 @@ pub(in crate::client) fn popover_rect(screen: Rect, side: Rect, w: u16, h: u16) 
     Rect { x, y, width: w, height: h }
 }
 
-/// A popover's frame at `r`: a hard shadow, a body of `card` and a title row of `btn` with
+/// A popover's frame at `r`: a body of `card` and a title row of `btn` with
 /// ` TITLE ` in `strong` bold, a column in; no border.
 pub(in crate::client) fn popover_at(app: &mut App, buf: &mut Buffer, r: Rect, title: &str, t: &Theme) -> Rect {
     let r = r.intersection(buf.area);
-    shadow(buf, r, t);
     fill(buf, r, t.card);
     fill(buf, Rect { height: 1, ..r }, t.btn);
     put(buf, r.x + 1, r.y, &[seg(format!(" {title} "), Style::default().fg(t.strong).bg(t.btn).add_modifier(Modifier::BOLD))], r.right());

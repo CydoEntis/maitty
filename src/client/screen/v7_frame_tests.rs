@@ -139,8 +139,13 @@ fn a_sheet_docks_72_wide_at_160_and_takes_the_pane_column_below_140() {
     }
 }
 
+/// The cells a column right of `r` and a row under it, where a shadow would fall.
+fn beside_and_under(r: Rect, w: u16, h: u16) -> impl Iterator<Item = (u16, u16)> {
+    (r.y + 1..=r.bottom()).map(move |y| (r.right(), y)).chain((r.x + 1..=r.right()).map(move |x| (x, r.bottom()))).filter(move |&(x, y)| x < w && y < h)
+}
+
 #[test]
-fn a_modal_is_centred_with_an_accent_title_a_hard_shadow_and_a_bottom_border() {
+fn a_modal_is_centred_with_an_accent_title_a_bottom_border_and_no_shadow() {
     for layout in LAYOUTS {
         for (w, h) in SIZES {
             for (preset, mw, mh) in modal_sizes(w, h) {
@@ -148,6 +153,7 @@ fn a_modal_is_centred_with_an_accent_title_a_hard_shadow_and_a_bottom_border() {
                 let mut buf = buffer(&mut app, layout, w, h);
                 let t = app.theme.clone();
                 let area = Rect::new(0, 0, w, h);
+                let before = buf.clone();
                 let r = panel(&mut app, &mut buf, area, mw, mh, "OVERRIDE A FAILED CHECK", &[], &t);
                 let at = format!("{preset} {layout:?} {w}x{h}");
                 assert_eq!(r, Rect::new((w - mw) / 2, (h - mh) / 2, mw, mh), "{at}");
@@ -157,17 +163,14 @@ fn a_modal_is_centred_with_an_accent_title_a_hard_shadow_and_a_bottom_border() {
                 assert_eq!(line(r.y, r.right() - 11, r.right() - 2), "Esc close", "{at}");
                 assert_eq!(line(r.bottom() - 1, r.x, r.right()), format!("└{}┘", "─".repeat(mw as usize - 2)), "{at}");
                 assert!((r.y + 1..r.bottom() - 1).all(|y| buf[(r.x, y)].symbol() == "│" && buf[(r.right() - 1, y)].symbol() == "│"), "{at}");
-                let shadow = buf[(r.right(), r.y + 1)].bg;
-                let cast: Vec<(u16, u16)> = (r.y + 1..=r.bottom()).map(|y| (r.right(), y)).chain((r.x + 1..=r.right()).map(|x| (x, r.bottom()))).filter(|&(x, y)| x < w && y < h).collect();
-                assert!(cast.iter().all(|&p| buf[p].bg == shadow && buf[p].symbol() == " "), "one cell right and down: {at}");
-                assert!(shadow != t.card && shadow != t.bg, "darker than the ground: {at}");
+                assert!(beside_and_under(r, w, h).all(|p| buf[p] == before[p]), "no shadow: {at}");
             }
         }
     }
 }
 
 #[test]
-fn a_popover_sits_beside_the_sidebar_with_a_raised_title_and_a_shadow() {
+fn a_popover_sits_beside_the_sidebar_with_a_raised_title_and_no_shadow() {
     for layout in LAYOUTS {
         for (w, h) in SIZES {
             let mut app = world(Stage::Failed);
@@ -175,6 +178,7 @@ fn a_popover_sits_beside_the_sidebar_with_a_raised_title_and_a_shadow() {
             let t = app.theme.clone();
             let area = Rect::new(0, 0, w, h);
             let side = grid(&app, area).side;
+            let before = buf.clone();
             let r = popover_at(&mut app, &mut buf, popover_rect(area, side, 60, 8), "WHY · fix-footer reads failed", &t);
             let at = format!("{layout:?} {w}x{h}");
             let x = (side_w(w) + 2).min(w - 40);
@@ -183,8 +187,7 @@ fn a_popover_sits_beside_the_sidebar_with_a_raised_title_and_a_shadow() {
             let title: String = (r.x..r.x + 8).map(|x| buf[(x, r.y)].symbol().to_string()).collect();
             assert_eq!(title, "  WHY · ", "{at}");
             assert!((r.y + 1..r.bottom()).all(|y| buf[(r.x, y)].bg == t.card && buf[(r.x, y)].symbol() == " "), "no border: {at}");
-            let shadow = buf[(r.right(), r.y + 1)].bg;
-            assert!((r.y + 1..=r.bottom()).all(|y| buf[(r.right(), y)].bg == shadow) && (r.x + 1..=r.right()).all(|x| buf[(x, r.bottom())].bg == shadow), "{at}");
+            assert!(beside_and_under(r, w, h).all(|p| buf[p] == before[p]), "no shadow: {at}");
         }
     }
 }
