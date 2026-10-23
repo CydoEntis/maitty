@@ -2664,6 +2664,24 @@ mod screen_tests {
     }
 
     #[test]
+    fn a_mouse_selection_shows_no_copy_keys_since_release_copies_it() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let mut p = vt100::Parser::new(20, 80, 100);
+        p.process(b"alpha beta gamma
+second line
+");
+        app.parsers.insert(1, p);
+        draw(&mut app, 160, 45);
+        assert!(app.enter_copy(1));
+        let r = app.panes.iter().find(|(t, _)| *t == 1).map(|(_, r)| *r).unwrap();
+        if let Mode::Copy(c) = &mut app.mode {
+            (c.mouse, c.cur, c.anchor) = (true, (0, 6), Some((0, 0)));
+        }
+        let line = row_text(&frame(&mut app, 160, 45), r.y);
+        assert!(line.contains("alpha b") && !line.contains(" copy · ") && !line.contains(" cancel"), "{line}");
+    }
+
+    #[test]
     fn selecting_tints_sky_with_hints_and_copying_glows_accent_with_a_toast() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let mut p = vt100::Parser::new(20, 80, 100);

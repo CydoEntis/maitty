@@ -316,7 +316,8 @@ pub(super) fn render_copy(c: &Copy, area: Rect, buf: &mut Buffer, t: &crate::the
                 }
         }
     }
-    if let Some(&(row, _, end)) = c.selected_spans().last() {
+    // A mouse selection is copied when the button is released, so it needs no keys.
+    if let Some(&(row, _, end)) = c.selected_spans().last().filter(|_| !c.mouse) {
         // The keys that finish the selection sit just after its end, on the card ground.
         let mut hints = copy_hints(t);
         hints.insert(0, seg("  ", Style::default().bg(t.card)));
