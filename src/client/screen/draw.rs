@@ -412,6 +412,8 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     let below = 1 + if ask { 2 } else { 0 };
     let inner = Rect { x: r.x + 3, y: r.y + 2, width: r.width.saturating_sub(6), height: r.height.saturating_sub(2 + below) };
     app.panes.push((term, inner));
+    // The whole inside of the card focuses the pane, as checks7.js's focus region does.
+    app.hits.push((inside, Hit::Pane(term)));
     app.hits.push((inner, Hit::Pane(term)));
     let copying = matches!(&app.mode, Mode::Copy(c) if c.term == term);
     if copying {

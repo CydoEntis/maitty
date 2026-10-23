@@ -827,3 +827,20 @@ fn not_now_keeps_its_last_cell_beside_an_armed_always() {
     assert_eq!(x + 11, 120, "where checks7.js puts its end");
     assert_eq!(buf[(120, y)].bg, app.theme.btn, "the button's trailing space is drawn");
 }
+
+/// checks7.js makes the whole inside of a pane's card its focus region, padding and all; the
+/// terminal inside it still gets its own clicks.
+#[test]
+fn a_click_anywhere_inside_a_panes_card_is_the_pane() {
+    for (id, layout) in [("01", Layout::Floating), ("07", Layout::Floating), ("07", Layout::Tiled), ("01", Layout::Flat)] {
+        let mut app = open(id);
+        app.mode = Mode::Normal;
+        let _ = cells(&mut app, layout, 160, 45, "unicode");
+        let (_, card) = app.pane_frames[0];
+        let (_, term) = app.panes[0];
+        let top = |x: u16, y: u16| app.hits.iter().rev().find(|(r, _)| r.contains(ratatui::layout::Position { x, y })).map(|(_, h)| *h);
+        for (x, y) in [(card.x + 1, card.y + 1), (term.x - 1, term.y), (card.right() - 2, card.bottom() - 2), (term.x, term.y)] {
+            assert_eq!(top(x, y), Some(Hit::Pane(1)), "{id} {layout:?}: ({x},{y})");
+        }
+    }
+}
