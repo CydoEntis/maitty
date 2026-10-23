@@ -466,9 +466,11 @@ impl Daemon {
                     self.dirty = true;
                 }
             }
-            Command::RerunCheck { term } => self.rerun_check(term)?,
-            Command::OverrideCheck { term, reason } => self.override_check(term, &reason)?,
-            Command::UndoOverride { term } => self.undo_override(term)?,
+            Command::RerunCheck { term, name } => self.rerun_check(term, name.as_deref())?,
+            Command::OverrideCheck { term, name, reason } => self.override_check(term, name.as_deref(), &reason, self.overrider(client))?,
+            Command::UndoOverride { term, name } => self.undo_override(term, name.as_deref())?,
+            Command::ApproveCheck { term, name, choice, command_sha256 } => self.approve_check(term, &name, choice, &command_sha256)?,
+            Command::ForgetCheckApproval { project, name } => self.forget_check_approval(&project, &name)?,
             Command::Grant { term, grants } => {
                 let known = ["read", "write", "start", "respond", "admin"];
                 if let Some(bad) = grants.iter().flatten().find(|g| !known.contains(&g.as_str())) {

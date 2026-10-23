@@ -118,21 +118,25 @@ pub(super) fn fill(buf: &mut Buffer, r: Rect, bg: Color) {
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum BtnKind {
     Primary,
-    /// The one that ends or removes something.
+    /// The one that ends or removes something, in a confirmation that is about nothing else.
     Danger,
+    /// A choice in a check's modal or sheet that cannot be taken back (Override, Never,
+    /// Remove): the plain ground, its words in the failure colour.
+    Risky,
     Normal,
     Ghost,
 }
 
-/// The design's button: " Label " + "key " on a filled ground. Hovered buttons use `hov`.
-pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind, hovered: bool) -> Vec<Seg> {
+/// The design's button: " Label " + "key " on a filled ground. The pointer's tint is laid
+/// over every clickable region after drawing (`render`).
+pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind) -> Vec<Seg> {
     let (bg, fg, kfg) = match kind {
         BtnKind::Primary => (t.accent, t.acc_ink, t.acc_ink),
         BtnKind::Danger => (t.danger_fill(), t.ink_on(t.danger_fill()), t.ink_on(t.danger_fill())),
         BtnKind::Normal => (t.btn, t.strong, t.accent),
+        BtnKind::Risky => (t.btn, t.err, t.accent),
         BtnKind::Ghost => (t.sidebar_bg, t.text, t.accent),
     };
-    let bg = if hovered && matches!(kind, BtnKind::Normal | BtnKind::Ghost) { t.hov } else { bg };
     let bold = if kind == BtnKind::Ghost { Modifier::empty() } else { Modifier::BOLD };
     // A pill: the same width as " Label key " was.
     let (l, r) = super::screen::ends(bg);
@@ -237,13 +241,12 @@ fn action_row(app: &mut App, buf: &mut Buffer, r: Rect, t: &Theme, buttons: &[(&
         let text = format!(" {label} ");
         let w = (cap.width() + text.width()) as u16;
         let br = Rect { x, y, width: w.min(r.right().saturating_sub(x)), height: 1 };
-        let hov = app.hover.is_some_and(|p| br.contains(p));
         let cap_st = if *kind == BtnKind::Primary {
             Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD)
         } else {
             Style::default().bg(t.btn).fg(t.accent).add_modifier(Modifier::BOLD)
         };
-        let text_st = Style::default().bg(if hov { t.hov } else { t.card2 }).fg(t.strong);
+        let text_st = Style::default().bg(t.card2).fg(t.strong);
         let mut segs = super::screen::chip(key, cap_st);
         segs.push(seg(text, text_st));
         x = put(buf, x, y, &segs, r.right()) + 2;
@@ -471,9 +474,8 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
         let y = body.y + 1 + (k as u16);
         let sel = *i == v.sel;
         let rr = Rect { x: body.x + 1, y, width: fw - 1, height: 1 };
-        let hovered = app.hover.is_some_and(|p| rr.contains(p));
-        let bg = if sel { t.sel_on(t.bg) } else if hovered { t.hover_on(t.bg) } else { t.bg };
-        if sel || hovered {
+        let bg = if sel { t.sel_on(t.bg) } else { t.bg };
+        if sel {
             fill(buf, rr, bg);
         }
         if sel {
@@ -678,8 +680,6 @@ pub(super) fn key_rows() -> Vec<(&'static str, Vec<(&'static str, Vec<crate::key
 pub(super) enum SRow {
     Setting(&'static super::modal::Setting),
     Bind { label: &'static str, acts: Vec<crate::keys::Action> },
-    /// A field of the current project's `[[check]]`, which no global setting path can address.
-    Check(super::screen::check_settings::CheckField),
     /// The project's family or a job of `[team]`, which are lists, not setting paths.
     Team(super::screen::team_settings::TeamRow),
 }
@@ -688,12 +688,11 @@ pub(super) enum SRow {
 pub(super) fn settings_group(row: &SRow) -> &'static str {
     match row {
         SRow::Bind { label, .. } => key_rows().into_iter().find(|(_, items)| items.iter().any(|(l, _)| l == label)).map(|(g, _)| g).unwrap_or("KEYS"),
-        SRow::Check(_) => "CHECK",
         SRow::Team(row) => super::screen::team_settings::group(*row),
         SRow::Setting(s) => match s.path {
             "team.family" => super::screen::team_settings::FAMILY_GROUP,
             "theme" => "THEME",
-            "ui.spinner" => "STATUS INDICATORS",
+            "ui.spinner" | "ui.glyphs" => "STATUS INDICATORS",
             "prefix" | "ui.mouse" | "ui.which_key" | "ui.alt_arrows" => "INPUT",
             "ui.layout" | "ui.background" | "ui.sidebar_position" | "ui.splash" | "ui.motion" => "LAYOUT",
             "ui.update_check" => "UPDATES",
@@ -737,9 +736,6 @@ pub(super) fn settings_rows(cat: super::modal::Cat, cfg: &crate::config::Config)
     });
     let order: Vec<&str> = ["INPUT", "LAYOUT", "SHELL"].into_iter().filter(|g| order.contains(g)).chain(order.iter().copied().filter(|g| !["INPUT", "LAYOUT", "SHELL"].contains(g))).collect();
     rows.sort_by_key(|r| order.iter().position(|g| *g == settings_group(r)).unwrap_or(99));
-    if cat == super::modal::Cat::Check {
-        rows.extend(super::screen::check_settings::CheckField::ALL.map(SRow::Check));
-    }
     if cat == super::modal::Cat::Team {
         rows.extend(super::screen::team_settings::rows(cfg).into_iter().map(SRow::Team));
     }
@@ -780,7 +776,7 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
                 keycaps(t, &keys, t.bg)
             }
         }
-        SRow::Check(_) | SRow::Team(_) => Vec::new(),
+        SRow::Team(_) => Vec::new(),
         SRow::Setting(s) => {
             if s.path == "theme" {
                 let name = if cfg.theme.is_empty() { crate::theme::DEFAULT } else { &cfg.theme };

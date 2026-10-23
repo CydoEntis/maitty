@@ -243,7 +243,7 @@ pub fn short_model(m: &str) -> String {
 pub enum Waited {
     /// The turn ended: its status then, its last message (if hooks said) and, when the
     /// project has a check, how that came out.
-    Turn(Status, String, Option<CheckInfo>),
+    Turn(Status, String, Option<Box<CheckInfo>>),
     /// The regex matched this line.
     Matched(String),
     TimedOut,
@@ -257,19 +257,29 @@ const EXIT_CHECK_FAILED: i32 = 4;
 const QUIET_TURN_AFTER: Duration = Duration::from_secs(8);
 
 /// Whether a turn is over given what the pane shows: it was working (`seen_working`), or
-/// the wait has run past `QUIET_TURN_AFTER` (`quiet`). A turn with a check is not over until
-/// the check answers.
-fn turn_over(status: Status, said: &str, check: Option<&CheckInfo>, seen_working: bool, quiet: bool) -> Option<Waited> {
+/// the wait has run past `QUIET_TURN_AFTER` (`quiet`). A turn with checkpoints is not over
+/// until none is running or waiting its turn; it ends on the headline one.
+fn turn_over(status: Status, said: &str, checks: &[CheckInfo], seen_working: bool, quiet: bool) -> Option<Waited> {
     let ended = match status {
         Status::Blocked | Status::Done | Status::Idle => seen_working || quiet,
         Status::None => quiet,
         Status::Working => false,
     };
-    if !ended || check.is_some_and(|c| c.state == CheckState::Checking) {
+    if !ended || checks.iter().any(|c| matches!(c.state, CheckState::Checking | CheckState::Pending)) {
         return None;
     }
     let said = if status == Status::None { String::new() } else { said.to_string() };
-    Some(Waited::Turn(status, said, check.cloned()))
+    Some(Waited::Turn(status, said, headline(checks).cloned().map(Box::new)))
+}
+
+/// How `seshi wait` exits once the turn is over, when not 0: 3 when the agent needs you, 4
+/// when a checkpoint failed (`headline` is the worst). Every other result, a stale pass or a
+/// check that did not run included, says nothing against the work.
+fn turn_exit(status: Status, headline: Option<&CheckInfo>) -> Option<i32> {
+    if status == Status::Blocked {
+        return Some(3);
+    }
+    headline.is_some_and(|c| c.state == CheckState::Failed).then_some(EXIT_CHECK_FAILED)
 }
 
 /// The check's result in one line, for a waiter to read beside the reply.
@@ -282,6 +292,8 @@ pub fn check_line(c: &CheckInfo) -> String {
         CheckState::Failed => format!("check failed: {}{exit}{line}", c.command),
         CheckState::Overridden => format!("check failed, accepted: {}{exit}{line}", c.command),
         CheckState::CouldNotRun => format!("check could not run: {}", c.command),
+        CheckState::Pending => format!("pending: {}", c.command),
+        CheckState::NeedsApproval | CheckState::Stale | CheckState::Never => check_note(c),
     }
 }
 
@@ -294,13 +306,33 @@ pub fn check_note(c: &CheckInfo) -> String {
         (CheckState::Failed, None) => "check failed".into(),
         (CheckState::Overridden, _) => "check overridden".into(),
         (CheckState::CouldNotRun, _) => "check could not run".into(),
+        (CheckState::Pending, _) => "pending".into(),
+        (CheckState::NeedsApproval, _) => format!("approve check: {}", c.command),
+        (CheckState::Stale, _) => format!("stale pass: {} · {}", checkpoint_name(c), files_changed(c.changed_files.len())),
+        (CheckState::Never, _) => "not checked: never for this repo".into(),
     }
+}
+
+/// A checkpoint's name, or `check` for one that has none.
+fn checkpoint_name(c: &CheckInfo) -> &str {
+    if c.name.is_empty() { "check" } else { &c.name }
+}
+
+fn files_changed(n: usize) -> String {
+    if n == 1 { "1 file changed".into() } else { format!("{n} files changed") }
+}
+
+/// The headline checkpoint's note, and how many there are when there are several:
+/// `check failed (exit 1) · 2 checkpoints`.
+pub fn checks_note(p: &TermInfo) -> Option<String> {
+    let note = check_note(p.reported_check()?);
+    Some(if p.checks.len() > 1 { format!("{note} · {} checkpoints", p.checks.len()) } else { note })
 }
 
 /// `claude: done · check failed (exit 1)`, for an agent pane.
 fn agent_tag(p: &TermInfo) -> Option<String> {
     let agent = p.agent.as_deref()?;
-    let note = p.reported_check().map(|c| format!(" · {}", check_note(c))).unwrap_or_default();
+    let note = checks_note(p).map(|n| format!(" · {n}")).unwrap_or_default();
     Some(format!("{agent}: {}{note}", p.status.label()))
 }
 
@@ -315,8 +347,19 @@ fn pane_json(p: &TermInfo) -> Value {
             "state": c.state.label(), "command": c.command, "exit_code": c.exit_code, "duration_ms": c.duration_ms,
             "first_failing_line": c.first_failing_line, "rerun_queued": c.rerun_queued, "overridden_at": c.overridden_at,
         });
+        v["checks"] = p.checks.iter().map(checkpoint_json).collect();
     }
     v
+}
+
+/// One checkpoint in `seshi ls --json`'s `checks`.
+fn checkpoint_json(c: &CheckInfo) -> Value {
+    json!({
+        "name": c.name, "state": c.state.label(), "command": c.command, "exit_code": c.exit_code, "duration_ms": c.duration_ms,
+        "first_failing_line": c.first_failing_line, "line_count": c.line_count, "turn": c.turn, "rerun_queued": c.rerun_queued,
+        "overridden_at": c.overridden_at, "overridden_by": c.overridden_by, "stale_since": c.stale_since,
+        "changed_files": c.changed_files.iter().map(|f| json!({ "kind": f.kind.to_string(), "path": f.path })).collect::<Vec<_>>(),
+    })
 }
 
 /// Wait on pane `term`: for its turn to end (it was working, now it isn't; a prompt that
@@ -338,7 +381,7 @@ pub fn wait_on(term: TermId, regex: Option<&str>, timeout: Duration, just_sent: 
             let snap = snapshot()?;
             let t = snap.terms.get(&term).ok_or_else(|| anyhow!("pane {term} is gone"))?;
             seen_working |= t.status == Status::Working;
-            if let Some(done) = turn_over(t.status, &t.said, t.check.as_ref(), seen_working, start.elapsed() > QUIET_TURN_AFTER) {
+            if let Some(done) = turn_over(t.status, &t.said, &t.checks, seen_working, start.elapsed() > QUIET_TURN_AFTER) {
                 return Ok(done);
             }
         }
@@ -378,11 +421,8 @@ fn wait_print(term: TermId, regex: Option<String>, timeout: u64, just_sent: bool
             } else {
                 println!("{}", said.trim_end());
             }
-            if s == Status::Blocked {
-                std::process::exit(3);
-            }
-            if check.is_some_and(|c| c.state == CheckState::Failed) {
-                std::process::exit(EXIT_CHECK_FAILED);
+            if let Some(code) = turn_exit(s, check.as_deref()) {
+                std::process::exit(code);
             }
         }
         Waited::TimedOut => {
@@ -1766,25 +1806,83 @@ mod tests {
     #[test]
     fn a_waiter_stays_blocked_while_the_check_runs() {
         let running = check(CheckState::Checking);
-        assert_eq!(turn_over(Status::Done, "all done", Some(&running), true, false), None);
-        assert_eq!(turn_over(Status::Idle, "", Some(&running), false, true), None, "not even after the quiet-turn grace");
-        assert_eq!(turn_over(Status::Done, "", None, true, false), Some(Waited::Turn(Status::Done, String::new(), None)));
+        assert_eq!(turn_over(Status::Done, "all done", std::slice::from_ref(&running), true, false), None);
+        assert_eq!(turn_over(Status::Idle, "", std::slice::from_ref(&running), false, true), None, "not even after the quiet-turn grace");
+        assert_eq!(turn_over(Status::Done, "", &[], true, false), Some(Waited::Turn(Status::Done, String::new(), None)));
     }
 
     #[test]
     fn a_waiter_gets_the_check_result_with_the_reply() {
         for state in [CheckState::Passed, CheckState::Failed, CheckState::CouldNotRun, CheckState::Overridden] {
             let info = check(state);
-            assert_eq!(turn_over(Status::Done, "done", Some(&info), true, false), Some(Waited::Turn(Status::Done, "done".into(), Some(info))));
+            assert_eq!(turn_over(Status::Done, "done", std::slice::from_ref(&info), true, false), Some(Waited::Turn(Status::Done, "done".into(), Some(Box::new(info)))));
         }
     }
 
     #[test]
     fn a_session_with_no_check_waits_as_before() {
-        assert_eq!(turn_over(Status::Working, "", None, false, true), None);
-        assert_eq!(turn_over(Status::Done, "x", None, false, false), None, "the turn never started");
-        assert_eq!(turn_over(Status::Blocked, "q", None, true, false), Some(Waited::Turn(Status::Blocked, "q".into(), None)));
-        assert_eq!(turn_over(Status::None, "", None, false, true), Some(Waited::Turn(Status::None, String::new(), None)));
+        assert_eq!(turn_over(Status::Working, "", &[], false, true), None);
+        assert_eq!(turn_over(Status::Done, "x", &[], false, false), None, "the turn never started");
+        assert_eq!(turn_over(Status::Blocked, "q", &[], true, false), Some(Waited::Turn(Status::Blocked, "q".into(), None)));
+        assert_eq!(turn_over(Status::None, "", &[], false, true), Some(Waited::Turn(Status::None, String::new(), None)));
+    }
+
+    fn named(name: &str, state: CheckState) -> CheckInfo {
+        CheckInfo { name: name.into(), ..check(state) }
+    }
+
+    #[test]
+    fn a_waiter_waits_until_no_checkpoint_is_running_or_waiting_its_turn() {
+        let failed_first = [named("build", CheckState::Failed), named("test", CheckState::Checking)];
+        assert_eq!(turn_over(Status::Done, "", &failed_first, true, false), None, "a failure does not end the wait while another runs");
+        let pending = [named("build", CheckState::Passed), named("test", CheckState::Pending)];
+        assert_eq!(turn_over(Status::Done, "", &pending, true, false), None);
+        let settled = [named("build", CheckState::Failed), named("test", CheckState::Passed)];
+        let Some(Waited::Turn(_, _, Some(headline))) = turn_over(Status::Done, "", &settled, true, false) else { panic!("the turn is over") };
+        assert_eq!(headline.name, "build", "it ends on the worst checkpoint");
+    }
+
+    #[test]
+    fn wait_exits_four_on_any_failed_checkpoint_and_zero_on_the_rest() {
+        let exit = |states: &[CheckState]| {
+            let checks: Vec<_> = states.iter().enumerate().map(|(i, &s)| named(&format!("c{i}"), s)).collect();
+            let Some(Waited::Turn(s, _, headline)) = turn_over(Status::Done, "", &checks, true, false) else { panic!("over") };
+            turn_exit(s, headline.as_deref())
+        };
+        assert_eq!(exit(&[CheckState::Passed, CheckState::Failed]), Some(EXIT_CHECK_FAILED));
+        assert_eq!(exit(&[CheckState::Failed, CheckState::NeedsApproval]), Some(EXIT_CHECK_FAILED));
+        for state in [CheckState::NeedsApproval, CheckState::Never, CheckState::CouldNotRun, CheckState::Stale, CheckState::Overridden, CheckState::Passed] {
+            assert_eq!(exit(&[CheckState::Passed, state]), None, "{state:?}");
+        }
+        assert_eq!(turn_exit(Status::Blocked, None), Some(3));
+    }
+
+    #[test]
+    fn the_new_states_read_in_the_v7_words() {
+        let stale = CheckInfo {
+            name: "test".into(),
+            state: CheckState::Stale,
+            changed_files: ["a", "b", "c"].map(|p| ChangedFile { kind: 'M', path: p.into() }).to_vec(),
+            ..check(CheckState::Stale)
+        };
+        let words = |c: &CheckInfo| (check_note(c), check_line(c));
+        assert_eq!(words(&stale), ("stale pass: test · 3 files changed".into(), "stale pass: test · 3 files changed".into()));
+        let one = CheckInfo { changed_files: vec![ChangedFile { kind: 'A', path: "x".into() }], ..stale.clone() };
+        assert_eq!(check_note(&one), "stale pass: test · 1 file changed");
+        assert_eq!(words(&check(CheckState::Never)), ("not checked: never for this repo".into(), "not checked: never for this repo".into()));
+        assert_eq!(words(&check(CheckState::NeedsApproval)), ("approve check: npm test".into(), "approve check: npm test".into()));
+        assert_eq!(words(&check(CheckState::Pending)), ("pending".into(), "pending: npm test".into()));
+    }
+
+    #[test]
+    fn ls_shows_the_headline_and_how_many_checkpoints() {
+        let mut p = pane("Done", Some("claude"), None);
+        p.checks = vec![named("build", CheckState::Passed), named("test", CheckState::Failed)];
+        assert_eq!(agent_tag(&p).as_deref(), Some("claude: done · check failed (exit 1) · 2 checkpoints"));
+        let v = pane_json(&p);
+        assert_eq!(v["check"]["state"], "failed", "check stays the headline for scripts");
+        let listed: Vec<_> = v["checks"].as_array().unwrap().iter().map(|c| (c["name"].as_str().unwrap(), c["state"].as_str().unwrap())).collect();
+        assert_eq!(listed, [("build", "passed"), ("test", "failed")]);
     }
 
     #[test]
@@ -1803,7 +1901,7 @@ mod tests {
             "since": 0, "asleep": false, "win32_input": false,
         }))
         .unwrap();
-        p.check = check;
+        p.checks = check.into_iter().collect();
         p
     }
 

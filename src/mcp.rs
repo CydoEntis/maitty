@@ -35,8 +35,8 @@ fn row_of(t: &TermInfo, me: Option<TermId>) -> Value {
     if Some(t.id) == me {
         row["you"] = json!(true);
     }
-    if let Some(c) = t.reported_check() {
-        row["check"] = json!(cli::check_note(c));
+    if let Some(note) = cli::checks_note(t) {
+        row["check"] = json!(note);
     }
     row
 }
@@ -416,11 +416,15 @@ mod tests {
         .unwrap();
         let plain = row_of(&t, None);
         assert!(plain.get("check").is_none(), "no check, no key");
-        t.check = Some(CheckInfo { command: "npm test".into(), state: CheckState::Failed, exit_code: Some(1), ..Default::default() });
+        t.checks = vec![CheckInfo { command: "npm test".into(), state: CheckState::Failed, exit_code: Some(1), ..Default::default() }];
         assert_eq!(row_of(&t, None)["check"], "check failed (exit 1)");
         assert_eq!(row_of(&t, None)["status"], "done");
         t.status = Status::Working;
         assert!(row_of(&t, None).get("check").is_none(), "an older turn's result is not reported");
+        t.status = Status::Done;
+        let stale = CheckInfo { name: "test".into(), state: CheckState::Stale, changed_files: vec![crate::protocol::ChangedFile { kind: 'M', path: "a".into() }], ..Default::default() };
+        t.checks = vec![CheckInfo { name: "build".into(), state: CheckState::Passed, ..Default::default() }, stale];
+        assert_eq!(row_of(&t, None)["check"], "stale pass: test · 1 file changed · 2 checkpoints");
     }
 
     fn team_cfg(family: &str) -> crate::config::Config {

@@ -123,17 +123,28 @@ the pane's process tree or `SESHI_PANE_TOKEN`.
 
 Saved role profiles and sequenced planner/worker/reviewer workflows are not part
 of Seshi's interface. Sessions, ordinary agent launches, fleet helpers, and
-MCP session controls remain supported. The wire protocol is version 43.
+MCP session controls remain supported. The wire protocol is version 44.
 
-A pane's check result travels as a `CheckInfo` summary on `TermInfo.check` (command, state,
-exit code, start, duration, the turn-end it followed, the first failing line (set by the server when it fails: the first failure-looking line of the output, else its last line, cut to `FIRST_FAILING_LINE_MAX_CHARS`; empty otherwise), whether a re-run
-is queued, and the override time and reason). The output tail is never in the snapshot:
-`Query::CheckOutput { term }` returns it as `Reply::Text`, under the read grant. Each result's
+A pane's check results travel as `CheckInfo` summaries on `TermInfo.checks`, one per
+checkpoint in project order; `TermInfo::check()` is the headline one (the worst state wins:
+Failed > CouldNotRun > NeedsApproval > Checking > Pending > Stale > Never > Overridden >
+Passed, the first in order on ties), and `reported_check` applies to it. A summary holds the
+command, state, exit code, start, duration, the turn-end it followed, the first failing line (set by the server when it fails: the first failure-looking line of the output, else its last line, cut to `FIRST_FAILING_LINE_MAX_CHARS`; empty otherwise), whether a re-run
+is queued, the override time and reason, the checkpoint `name`, the folder it ran in, the turn
+it checked, the full output's line count, `stale_since` and `changed_files`, who overrode it,
+its `source` (`User`, or `Repo` with the file and commit) and, on `NeedsApproval`, the
+`previous_command`. The output tail is never in the snapshot:
+`Query::CheckOutput { term, name }` returns it as `Reply::Text`, under the read grant (`name`
+None: the headline checkpoint). Each result's
 tail is capped at `CHECK_OUTPUT_MAX_BYTES` (1 MiB), cut on a character boundary. The latest
-result and the overridden one are saved in `SavedPane` (`check`, `check_overridden`, both
-optional); their tails are saved beside the pane's output files.
+result and the overridden one of each checkpoint are saved in `SavedPane` (`checks`,
+`checks_overridden`; a pane saved with the single `check` / `check_overridden` loads them as
+one checkpoint); their tails are saved beside the pane's output files as
+`<term>-<name>-<slot>.txt`, and a tail under the old `<term>-<slot>.txt` name is read once at
+restore and dropped by the next save.
 
-Three commands act on a check, each needing `Grant::Write` on the target pane. `RerunCheck`
+Three commands act on a check, each needing `Grant::Write` on the target pane and each naming
+a checkpoint (`name` None: all of them for a re-run, the headline for the others). `RerunCheck`
 runs it again at once, or, while the agent is working, sets `rerun_queued` on the result on
 show; the turn end then runs it (a pane never checked has nothing to queue, since its turn end
 checks it). `OverrideCheck { reason }` works only on a `Failed` result: it records the time and
@@ -141,6 +152,14 @@ the trimmed reason (at most `OVERRIDE_REASON_MAX_CHARS`), sets `Overridden`, and
 output. `UndoOverride` works only on `Overridden` and restores `Failed`. Any other state
 answers `ServerMsg::Error`. The next run replaces the result on show; `check_overridden` keeps
 the overridden one with its output. A pane may not override or undo its own check.
+
+`ApproveCheck { term, name, choice, command_sha256 }` (`Once`, `Always`, `Never`) answers a
+repo-supplied check command and `ForgetCheckApproval { project, name }` drops a remembered
+answer. No pane may send either, whatever its grants. `command_sha256` (`protocol::command_hash`)
+is of the command the client showed; an answer for a checkpoint that isn't waiting, or whose
+waiting command has another hash, is a `ServerMsg::Error`. The answered checkpoint then runs
+again; while another checkpoint of the pane runs, it is queued (`rerun_queued`) and runs when
+that run settles, in the same turn.
 
 Subagent lifecycle is carried as structured `SubagentActivity` records in each
 pane snapshot and persisted with its saved pane. Hook reports use the owning
@@ -223,6 +242,13 @@ notice and then the normal finished alert. Queued follow-ups still send when the
 ends, and `helpers_at_once` still counts only working sessions. A session with no check
 alerts and waits exactly as before.
 
+A project with several checkpoints runs them in order, each whatever the one before it
+returned. The session is reported by its headline checkpoint (`protocol::headline`, the
+worst). A waiter stays blocked while any checkpoint is checking or pending and exits 4 when
+any failed. A checkpoint waiting for approval, one you said never to, one that could not
+run and a stale pass all exit 0. Waiting for approval raises a blocked attention alert and
+the notice `<place>: approve check: <command>` once a turn; it is never a finish.
+
 `seshi ls`, `seshi ls --json` and MCP `seshi_list` report a check next to the status, never in
 place of it: `status` keeps its value (`done`) and `TermInfo::reported_check` decides whether a
 result is shown (not while the agent is working or asking, as in the sidebar). `cli::check_note`
@@ -232,3 +258,9 @@ is the one wording for both text surfaces: `check failed (exit 1)`, `checking`, 
 adds a `check` object (`state` as `checking`, `passed`, `failed`, `overridden` or
 `could_not_run`; `command`; `exit_code`; `duration_ms`; `first_failing_line`; `rerun_queued`;
 `overridden_at`). A pane with no check has no `check` key and its output is unchanged.
+The newer states read `pending`, `approve check: npm test`, `stale pass: test · 3 files
+changed` and `not checked: never for this repo`. With several checkpoints the note ends in
+`· n checkpoints`, and `ls --json` also lists every one under `checks` (`name`, `state`,
+`command`, `exit_code`, `duration_ms`, `first_failing_line`, `line_count`, `turn`,
+`rerun_queued`, `overridden_at`, `overridden_by`, `stale_since`, `changed_files` as
+`{kind, path}`); `check` stays the headline.

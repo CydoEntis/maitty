@@ -387,7 +387,6 @@ impl App {
                 KeyCode::Enter => {
                     match row {
                         Some(design::SRow::Setting(s)) => self.save_setting(s.path, text.trim().into()),
-                        Some(design::SRow::Check(_)) => self.submit_check_command(text),
                         Some(design::SRow::Team(_)) => self.submit_job_field(v, text),
                         _ => {}
                     }
@@ -402,11 +401,6 @@ impl App {
                 }
                 _ => v.editing = Some(text),
             }
-            return true;
-        }
-        if let Some(design::SRow::Check(field)) = row
-            && self.on_check_row_key(v, field, k)
-        {
             return true;
         }
         let team_row = match row {
@@ -473,7 +467,7 @@ impl App {
                 },
                 Some(design::SRow::Bind { acts, .. }) if acts.len() == 1 => v.capturing = true,
                 Some(design::SRow::Bind { .. }) => self.notify("that row has several keys: change them in the config file (o)".into(), false),
-                Some(design::SRow::Check(_) | design::SRow::Team(_)) | None => {}
+                Some(design::SRow::Team(_)) | None => {}
             },
             _ => {}
         }

@@ -4,6 +4,7 @@
 
 use super::persist::{self, CheckSlot, SavedPane};
 use super::term::{self, Term};
+use super::check_source::{Gate, Resolved};
 use super::{Daemon, Ev};
 use crate::output_line::{classify, clean, LineKind};
 use crate::protocol::{CheckInfo, CheckState, ServerMsg, Status, TermId};
@@ -21,11 +22,17 @@ pub use crate::protocol::OVERRIDE_REASON_MAX_CHARS;
 
 /// What the desktop alert says when a check fails.
 const CHECK_FAILED_WHAT: &str = "check failed";
+/// What it says when a repo's check command waits for your approval.
+const NEEDS_APPROVAL_WHAT: &str = "needs you";
 
 /// The shell's exit code for a command it could not find (cmd.exe's is 9009). PowerShell
-/// reports a missing command as 1, which cannot be told from a failing one.
+/// reports a missing command as 1, which cannot be told from a failing one, so a check line
+/// it runs starts with `POWERSHELL_NOT_FOUND_TRAP`.
 const EXIT_COMMAND_NOT_FOUND: i32 = 127;
 const EXIT_COMMAND_NOT_FOUND_CMD: i32 = 9009;
+/// Makes PowerShell say why and exit 127 at a command it cannot find. Other errors and exit
+/// codes are left as they were.
+const POWERSHELL_NOT_FOUND_TRAP: &str = "trap [System.Management.Automation.CommandNotFoundException] { [Console]::Error.WriteLine($_); exit 127 }; ";
 
 /// How often a running check is looked at for its end or its deadline.
 const CHECK_POLL: Duration = Duration::from_millis(25);
@@ -95,6 +102,8 @@ pub struct CheckRun {
     pub outcome: CheckOutcome,
     /// The tail of what the command printed (both streams), capped.
     pub output: String,
+    /// Lines it printed in all, before the tail was capped.
+    pub lines: u64,
     pub duration: Duration,
 }
 
@@ -106,12 +115,16 @@ pub fn run_check(shell: &[String], dir: &Path, line: &str, timeout: Duration) ->
 
 fn run_scrubbed(shell: &[String], dir: &Path, line: &str, timeout: Duration, scrub: &[&str]) -> CheckRun {
     let started = Instant::now();
-    let done = |outcome, output: &str| CheckRun { outcome, output: cap_output(output), duration: started.elapsed() };
+    let done = |outcome, output: &Output| {
+        let text = output.text();
+        let unended = u64::from(!text.is_empty() && !text.ends_with('\n'));
+        CheckRun { outcome, output: cap_output(&text), lines: output.newlines() + unended, duration: started.elapsed() }
+    };
     let mut child = match check_command(shell, dir, line, scrub).spawn() {
         Ok(child) => child,
         Err(e) => {
             tracing::warn!("couldn't start the check: {e}");
-            return done(CheckOutcome::SpawnFailed, "");
+            return done(CheckOutcome::SpawnFailed, &Output::default());
         }
     };
     let tree = Tree::of(&child);
@@ -124,11 +137,12 @@ fn run_scrubbed(shell: &[String], dir: &Path, line: &str, timeout: Duration, scr
             std::thread::sleep(CHECK_POLL);
         }
     }
-    done(outcome, &output.text())
+    done(outcome, &output)
 }
 
 fn check_command(shell: &[String], dir: &Path, line: &str, scrub: &[&str]) -> std::process::Command {
-    let mut c = crate::proc::shell(shell, line, false);
+    let line = if crate::proc::is_powershell(shell) { format!("{POWERSHELL_NOT_FOUND_TRAP}{}", crate::proc::powershell_line(line)) } else { line.to_string() };
+    let mut c = crate::proc::shell(shell, &line, false);
     c.current_dir(dir).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     for var in scrub {
         c.env_remove(var);
@@ -192,18 +206,21 @@ fn wait_for(child: &mut Child, tree: &Tree, timeout: Duration, started: Instant)
 
 /// What both of a check's streams printed, kept to its last `CHECK_OUTPUT_MAX_BYTES * 2`
 /// so a chatty command cannot fill memory.
+/// Its line breaks are counted in full, so a capped tail can say how much it leaves out.
 #[derive(Clone, Default)]
-struct Output(Arc<Mutex<Vec<u8>>>);
+struct Output(Arc<Mutex<Vec<u8>>>, Arc<std::sync::atomic::AtomicU64>);
 
 impl Output {
     fn fill_from<R: std::io::Read + Send + 'static>(&self, mut pipe: R) -> std::thread::JoinHandle<()> {
-        let sink = self.0.clone();
+        let (sink, newlines) = (self.0.clone(), self.1.clone());
         std::thread::spawn(move || {
             let mut chunk = [0u8; READ_CHUNK_BYTES];
             while let Ok(n) = pipe.read(&mut chunk) {
                 if n == 0 {
                     break;
                 }
+                let breaks = chunk[..n].iter().filter(|&&b| b == b'\n').count() as u64;
+                newlines.fetch_add(breaks, std::sync::atomic::Ordering::Relaxed);
                 let mut kept = sink.lock().unwrap_or_else(|e| e.into_inner());
                 kept.extend_from_slice(&chunk[..n]);
                 if let Some(excess) = kept.len().checked_sub(CHECK_OUTPUT_MAX_BYTES * 2) {
@@ -215,6 +232,10 @@ impl Output {
 
     fn text(&self) -> String {
         String::from_utf8_lossy(&self.0.lock().unwrap_or_else(|e| e.into_inner())).into_owned()
+    }
+
+    fn newlines(&self) -> u64 {
+        self.1.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 
@@ -288,161 +309,449 @@ impl Drop for Tree {
     }
 }
 
+/// One checkpoint of a session: its latest result, the failed one you overrode (kept until
+/// you undo it), and the worktree its run saw.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Checkpoint {
+    pub latest: CheckRecord,
+    pub overridden: Option<CheckRecord>,
+    /// The worktree's tree id when its run started (see `check_stale`); None outside git.
+    pub tree: Option<String>,
+}
+
+impl From<CheckRecord> for Checkpoint {
+    fn from(latest: CheckRecord) -> Self {
+        Self { latest, overridden: None, tree: None }
+    }
+}
+
+/// A session's checkpoints, in project order, and the run that is filling them.
+#[derive(Debug, Default)]
+pub struct Checks {
+    pub points: Vec<Checkpoint>,
+    /// How many of its turns have ended: the `turn` its results are about.
+    pub turn: u32,
+    /// The latest run started; results of an older one are dropped.
+    pub(super) run: u64,
+    /// The checkpoint the latest run is for, or all of them.
+    run_only: Option<String>,
+    /// A result changed since its output was last written to disk.
+    pub dirty: bool,
+    /// The turn whose waiting-for-approval was already said, so it is said once.
+    approval_told: Option<u32>,
+    /// Whether its worktree had a repo checks file when last looked, off the loop
+    /// (`Daemon::probe_repo_checks`).
+    pub(super) repo_file: bool,
+}
+
+impl Checks {
+    pub fn infos(&self) -> Vec<CheckInfo> {
+        self.points.iter().map(|p| p.latest.info.clone()).collect()
+    }
+
+    /// The checkpoint the session is reported by (see `protocol::headline`).
+    pub fn headline(&self) -> Option<&CheckRecord> {
+        self.headline_index().map(|i| &self.points[i].latest)
+    }
+
+    fn headline_index(&self) -> Option<usize> {
+        let infos = self.infos();
+        let top = crate::protocol::headline(&infos)?;
+        infos.iter().position(|i| std::ptr::eq(i, top))
+    }
+
+    pub fn named(&self, name: &str) -> Option<&Checkpoint> {
+        self.points.iter().find(|p| p.latest.info.name == name)
+    }
+
+    fn named_mut(&mut self, name: &str) -> Option<&mut Checkpoint> {
+        self.points.iter_mut().find(|p| p.latest.info.name == name)
+    }
+
+    fn any(&self, states: &[CheckState]) -> bool {
+        self.points.iter().any(|p| states.contains(&p.latest.info.state))
+    }
+
+    /// A run has not answered for every checkpoint yet.
+    pub fn running(&self) -> bool {
+        self.any(&[CheckState::Checking, CheckState::Pending])
+    }
+
+    /// The work is not known to be good: a checkpoint is running, waiting, failed or waiting
+    /// for your approval.
+    pub fn holds_done(&self) -> bool {
+        self.any(&[CheckState::Checking, CheckState::Pending, CheckState::Failed, CheckState::NeedsApproval])
+    }
+
+    /// The first checkpoint waiting its turn starts now.
+    fn start_next(&mut self) {
+        if self.any(&[CheckState::Checking]) {
+            return;
+        }
+        if let Some(next) = self.points.iter_mut().find(|p| p.latest.info.state == CheckState::Pending) {
+            next.latest.info.state = CheckState::Checking;
+            next.latest.info.started_at = term::unix_now();
+        }
+    }
+}
+
+/// What a run of a session's checkpoints knows before it starts.
+struct RunPlan {
+    dir: std::path::PathBuf,
+    turn: u32,
+    after_turn_ended_at: u64,
+}
+
+impl RunPlan {
+    fn info(&self, def: &crate::config::CheckDef, state: CheckState) -> CheckInfo {
+        CheckInfo {
+            name: def.name().to_string(),
+            command: def.command.clone(),
+            state,
+            started_at: if state == CheckState::Checking { term::unix_now() } else { 0 },
+            after_turn_ended_at: self.after_turn_ended_at,
+            turn: self.turn,
+            cwd: self.dir.clone(),
+            ..Default::default()
+        }
+    }
+}
+
 impl Daemon {
-    /// An agent's turn ended: run the project's check in its worktree, off the loop. Nothing
-    /// happens for a shell, for a project with no check, or while a check is already running
-    /// (the new turn's code is checked by the next turn end). A re-run queued during the turn
-    /// is this run.
+    /// An agent's turn ended: run the project's checkpoints in its worktree, off the loop.
+    /// Nothing happens for a shell, for a project with no check, or while a run is still
+    /// going (the new turn's code is checked by the next turn end). A re-run queued during
+    /// the turn is this run.
     pub(super) fn turn_ended(&mut self, term: TermId) {
         let Some(t) = self.terms.get_mut(&term) else { return };
         if std::mem::replace(&mut t.turn_end_handled, true) {
             return;
         }
-        let running = t.check.as_ref().is_some_and(|c| c.info.state == CheckState::Checking);
-        if t.agent.is_none() || t.spare || running {
+        if t.agent.is_none() || t.spare {
             return;
         }
-        self.start_check(term, term::unix_now());
+        t.checks.turn += 1;
+        if t.checks.running() {
+            return;
+        }
+        self.start_checks(term, None, term::unix_now());
     }
 
-    /// Run the check again. While the agent works, the run waits for its turn to end; the
-    /// result on show stands until then.
-    pub(super) fn rerun_check(&mut self, term: TermId) -> anyhow::Result<()> {
-        let t = self.terms.get(&term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
+    /// Run checkpoint `name` again, or all of them. While the agent works, the run waits for
+    /// its turn to end; the results on show stand until then.
+    pub(super) fn rerun_check(&mut self, term: TermId, name: Option<&str>) -> anyhow::Result<()> {
+        let defs = self.check_defs(term);
+        let t = self.terms.get_mut(&term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
         if t.agent.is_none() || t.spare {
             anyhow::bail!("only an agent's work is checked");
         }
-        if self.check_def(term).is_none() {
+        if defs.is_empty() {
             anyhow::bail!("this project has no check to run");
         }
-        let latest = t.check.as_ref().map(|c| c.info.clone());
-        if latest.as_ref().is_some_and(|c| c.state == CheckState::Checking) {
+        if let Some(name) = name
+            && !defs.iter().any(|d| d.name() == name)
+            && t.checks.named(name).is_none()
+        {
+            anyhow::bail!("this project has no checkpoint {name}");
+        }
+        if t.checks.running() {
             anyhow::bail!("its check is already running");
         }
         if t.status == Status::Working {
-            let Some(record) = self.terms.get_mut(&term).and_then(|t| t.check.as_mut()) else {
+            let mut queued = false;
+            for p in t.checks.points.iter_mut().filter(|p| name.is_none_or(|n| p.latest.info.name == n)) {
+                p.latest.info.rerun_queued = true;
+                queued = true;
+            }
+            if !queued {
                 anyhow::bail!("its turn hasn't ended yet; it is checked when it does");
-            };
-            record.info.rerun_queued = true;
+            }
             self.mark_check_changed(term);
             return Ok(());
         }
-        let turn_ended_at = latest.map_or_else(term::unix_now, |c| c.after_turn_ended_at);
-        self.start_check(term, turn_ended_at);
+        let turn_ended_at = t.checks.headline().map_or_else(term::unix_now, |c| c.info.after_turn_ended_at);
+        self.start_checks(term, name.map(str::to_string), turn_ended_at);
         Ok(())
     }
 
-    /// Accept a failed result as it is. The result keeps what failed and its output.
-    pub(super) fn override_check(&mut self, term: TermId, reason: &str) -> anyhow::Result<()> {
+    /// While a run of pane `term`'s checks is going, mark checkpoint `name` to run once that
+    /// run settles (`check_settled`), in the same turn. False when nothing is running.
+    pub(super) fn queue_after_run(&mut self, term: TermId, name: &str) -> bool {
+        let Some(t) = self.terms.get_mut(&term).filter(|t| t.checks.running()) else { return false };
+        let Some(point) = t.checks.named_mut(name) else { return false };
+        point.latest.info.rerun_queued = true;
+        self.mark_check_changed(term);
+        true
+    }
+
+    /// Accept a failed result as it is (checkpoint `name`, else the headline one). The result
+    /// keeps what failed and its output.
+    pub(super) fn override_check(&mut self, term: TermId, name: Option<&str>, reason: &str, by: String) -> anyhow::Result<()> {
         let reason = reason.trim();
         if reason.chars().count() > OVERRIDE_REASON_MAX_CHARS {
             anyhow::bail!("give a reason of at most {OVERRIDE_REASON_MAX_CHARS} characters");
         }
         let t = self.terms.get_mut(&term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
-        let Some(record) = t.check.as_mut().filter(|c| c.info.state == CheckState::Failed) else {
+        let at = match name {
+            Some(name) => t.checks.points.iter().position(|p| p.latest.info.name == name),
+            None => t.checks.headline_index(),
+        };
+        let Some(point) = at.map(|i| &mut t.checks.points[i]).filter(|p| p.latest.info.state == CheckState::Failed) else {
             anyhow::bail!("only a failed check can be overridden");
         };
-        record.info.state = CheckState::Overridden;
-        record.info.overridden_at = Some(term::unix_now());
-        record.info.override_reason = reason.to_string();
-        t.check_overridden = Some(record.clone());
+        let info = &mut point.latest.info;
+        info.state = CheckState::Overridden;
+        info.overridden_at = Some(term::unix_now());
+        info.override_reason = reason.to_string();
+        info.overridden_by = by;
+        point.overridden = Some(point.latest.clone());
         self.mark_check_changed(term);
         Ok(())
     }
 
-    /// Take an override back: the result reads as failed again.
-    pub(super) fn undo_override(&mut self, term: TermId) -> anyhow::Result<()> {
+    /// Take an override back (checkpoint `name`, else the first overridden one): the result
+    /// reads as failed again.
+    pub(super) fn undo_override(&mut self, term: TermId, name: Option<&str>) -> anyhow::Result<()> {
         let t = self.terms.get_mut(&term).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
-        let Some(record) = t.check.as_mut().filter(|c| c.info.state == CheckState::Overridden) else {
+        let Some(point) = t
+            .checks
+            .points
+            .iter_mut()
+            .filter(|p| name.is_none_or(|n| p.latest.info.name == n))
+            .find(|p| p.latest.info.state == CheckState::Overridden)
+        else {
             anyhow::bail!("this check isn't overridden");
         };
-        record.info.state = CheckState::Failed;
-        record.info.overridden_at = None;
-        record.info.override_reason.clear();
-        t.check_overridden = None;
+        let info = &mut point.latest.info;
+        info.state = CheckState::Failed;
+        info.overridden_at = None;
+        info.override_reason.clear();
+        info.overridden_by.clear();
+        point.overridden = None;
         self.mark_check_changed(term);
         Ok(())
     }
 
-    fn mark_check_changed(&mut self, term: TermId) {
+    /// Who an override is from: you, or the pane a client acts from, by its name.
+    pub(super) fn overrider(&self, client: super::ClientId) -> String {
+        let from = self.clients.get(&client).and_then(|c| c.from).and_then(|p| self.terms.get(&p));
+        from.map_or_else(|| "you".to_string(), Term::who)
+    }
+
+    /// The output tail of checkpoint `name`, else of the headline one.
+    pub(super) fn check_output(&self, term: TermId, name: Option<&str>) -> Option<&str> {
+        let checks = &self.terms.get(&term)?.checks;
+        let record = match name {
+            Some(name) => checks.named(name).map(|p| &p.latest),
+            None => checks.headline(),
+        };
+        record.map(|r| r.output.as_str())
+    }
+
+    pub(super) fn mark_check_changed(&mut self, term: TermId) {
         if let Some(t) = self.terms.get_mut(&term) {
-            t.check_dirty = true;
+            t.checks.dirty = true;
         }
         self.dirty = true;
     }
 
-    /// The check configured for the pane's project, if any.
-    fn check_def(&self, term: TermId) -> Option<crate::config::CheckDef> {
-        let t = self.terms.get(&term)?;
-        let project = t.head.as_ref().map_or(&t.cwd, |h| &h.main_root);
-        self.cfg.check.iter().find(|c| super::same_path(&c.project, project)).cloned()
-    }
-
-    /// Start the pane's check, off the loop, replacing its result. A project that no longer
-    /// has a check leaves the result alone and drops any queued re-run, which has nothing to run.
-    fn start_check(&mut self, term: TermId, after_turn_ended_at: u64) {
-        let Some(def) = self.check_def(term) else {
-            if let Some(info) = self.terms.get_mut(&term).and_then(|t| t.check.as_mut()).map(|c| &mut c.info) {
-                info.rerun_queued = false;
-            }
+    /// Look, off the loop, whether each of `terms`' worktrees has a repo checks file; the
+    /// answer comes back as `Ev::RepoChecksFound` (`repo_checks_found`).
+    pub(super) fn probe_repo_checks(&self, terms: impl IntoIterator<Item = TermId>) {
+        let dirs: Vec<(TermId, std::path::PathBuf)> = terms.into_iter().filter_map(|id| self.terms.get(&id).map(|t| (id, t.worktree()))).collect();
+        if dirs.is_empty() {
             return;
-        };
-        let Some(t) = self.terms.get_mut(&term) else { return };
-        let dir = t.head.as_ref().map_or_else(|| t.cwd.clone(), |h| h.top.clone());
-        let info = CheckInfo {
-            command: def.command.clone(),
-            state: CheckState::Checking,
-            started_at: term::unix_now(),
-            after_turn_ended_at,
-            ..Default::default()
-        };
-        t.check = Some(CheckRecord::new(info, ""));
-        self.mark_check_changed(term);
-        let (shell, tx, timeout) = (self.cfg.shell_command(), self.tx.clone(), def.timeout());
+        }
+        let tx = self.tx.clone();
         tokio::task::spawn_blocking(move || {
-            let run = run_check(&shell, &dir, &def.command, timeout);
-            let _ = tx.blocking_send(Ev::CheckRan { term, run });
+            let found = dirs.into_iter().map(|(id, dir)| {
+                let has = dir.join(crate::config::REPO_CHECKS_FILE).is_file();
+                (id, dir, has)
+            });
+            let _ = tx.blocking_send(Ev::RepoChecksFound(found.collect()));
         });
     }
 
-    /// A check ended: record how, unless the pane went away or was given a different result
-    /// meanwhile.
-    pub(super) fn check_ran(&mut self, term: TermId, run: CheckRun) {
+    /// Record what `probe_repo_checks` saw, for panes still in the worktree it looked in.
+    pub(super) fn repo_checks_found(&mut self, found: Vec<(TermId, std::path::PathBuf, bool)>) {
+        for (id, dir, has) in found {
+            if let Some(t) = self.terms.get_mut(&id).filter(|t| t.worktree() == dir) {
+                t.checks.repo_file = has;
+            }
+        }
+    }
+
+    /// The checks a run starts by showing, in order: yours for the pane's project; without
+    /// any, when its worktree has a repo checks file, the checkpoints it showed last (or one
+    /// standing for the file). Resolving off the loop settles what the file really names.
+    fn check_defs(&self, term: TermId) -> Vec<crate::config::CheckDef> {
+        let Some(t) = self.terms.get(&term) else { return Vec::new() };
+        let project = t.head.as_ref().map_or(&t.cwd, |h| &h.main_root);
+        let yours: Vec<_> = self.cfg.check.iter().filter(|c| super::same_path(&c.project, project)).cloned().collect();
+        if !yours.is_empty() || !t.checks.repo_file {
+            return yours;
+        }
+        let def = |name: &str, command: &str| crate::config::CheckDef { project: project.clone(), name: Some(name.into()), command: command.into(), ..Default::default() };
+        let shown: Vec<_> = t.checks.points.iter().map(|p| def(&p.latest.info.name, &p.latest.info.command)).collect();
+        if shown.is_empty() { vec![def(crate::config::REPO_CHECKS_FILE, "")] } else { shown }
+    }
+
+    /// Start a run of checkpoint `only` (or all of them), replacing their results. They read
+    /// as checking at once; which ones really run is settled off the loop, where the
+    /// project's checks are resolved and gated. A project that no longer has a check leaves
+    /// the results alone and drops any queued re-run, which has nothing to run.
+    fn start_checks(&mut self, term: TermId, only: Option<String>, after_turn_ended_at: u64) {
+        let defs: Vec<_> = self.check_defs(term).into_iter().filter(|d| only.as_deref().is_none_or(|n| d.name() == n)).collect();
+        let (user, resolver, shell, tx) = (self.cfg.check.clone(), self.resolver, self.cfg.shell_command(), self.tx.clone());
         let Some(t) = self.terms.get_mut(&term) else { return };
-        let Some(record) = t.check.as_mut().filter(|c| c.info.state == CheckState::Checking) else { return };
-        let info = &mut record.info;
-        info.state = state_for(run.outcome);
-        info.exit_code = match run.outcome {
-            CheckOutcome::Exited(code) => Some(code),
-            CheckOutcome::TimedOut | CheckOutcome::SpawnFailed => None,
+        if defs.is_empty() && only.as_deref().is_none_or(|n| t.checks.named(n).is_none()) {
+            for p in &mut t.checks.points {
+                p.latest.info.rerun_queued = false;
+            }
+            return;
+        }
+        let approvals = self.approvals_for_run(term);
+        let Some(t) = self.terms.get_mut(&term) else { return };
+        let (dir, project) = match &t.head {
+            Some(h) => (h.top.clone(), h.main_root.clone()),
+            None => (t.cwd.clone(), t.cwd.clone()),
         };
-        info.duration_ms = u64::try_from(run.duration.as_millis()).unwrap_or(u64::MAX);
-        record.output = cap_output(&run.output);
-        info.first_failing_line = if info.state == CheckState::Failed { first_failing_line(&record.output) } else { String::new() };
-        t.check_dirty = true;
-        self.dirty = true;
+        let plan = RunPlan { dir: dir.clone(), turn: t.checks.turn, after_turn_ended_at };
+        let checks = &mut t.checks;
+        checks.run += 1;
+        checks.run_only = only.clone();
+        let run = checks.run;
+        match &only {
+            None => {
+                let mut old = std::mem::take(&mut checks.points);
+                checks.points = defs
+                    .iter()
+                    .enumerate()
+                    .map(|(i, def)| {
+                        let state = if i == 0 { CheckState::Checking } else { CheckState::Pending };
+                        let overridden = old.iter_mut().find(|p| p.latest.info.name == def.name()).and_then(|p| p.overridden.take());
+                        Checkpoint { latest: CheckRecord::new(plan.info(def, state), ""), overridden, tree: None }
+                    })
+                    .collect();
+            }
+            Some(name) => {
+                let fresh = defs.first().map(|def| plan.info(def, CheckState::Checking));
+                if let Some(point) = checks.named_mut(name) {
+                    let info = fresh.unwrap_or_else(|| CheckInfo { state: CheckState::Checking, started_at: term::unix_now(), cwd: plan.dir.clone(), ..point.latest.info.clone() });
+                    point.latest = CheckRecord::new(CheckInfo { after_turn_ended_at, turn: plan.turn, rerun_queued: false, ..info }, "");
+                } else if let Some(info) = fresh {
+                    checks.points.push(CheckRecord::new(info, "").into());
+                }
+            }
+        }
+        self.mark_check_changed(term);
+        tokio::task::spawn_blocking(move || {
+            let resolved: Vec<_> = resolver(&user, &project, &dir, &approvals).into_iter().filter(|r| only.as_deref().is_none_or(|n| r.def.name() == n)).collect();
+            let tree = super::check_stale::fingerprint(&dir);
+            let to_run: Vec<_> = resolved.iter().filter(|r| r.gate == Gate::Run).map(|r| r.def.clone()).collect();
+            let _ = tx.blocking_send(Ev::ChecksResolved { term, run, resolved, tree });
+            for def in to_run {
+                let result = run_check(&shell, &dir, &def.command, def.timeout());
+                let _ = tx.blocking_send(Ev::CheckRan { term, run, name: def.name().to_string(), result });
+            }
+        });
+    }
+
+    /// The run's checkpoints are known and gated: put them in place, in order. The ones that
+    /// may run wait their turn; the rest are settled already.
+    pub(super) fn checks_resolved(&mut self, term: TermId, run: u64, resolved: Vec<Resolved>, tree: Option<String>) {
+        let Some(t) = self.terms.get_mut(&term).filter(|t| t.checks.run == run) else { return };
+        let checks = &mut t.checks;
+        match checks.run_only.clone() {
+            // A single checkpoint's run leaves the others where they were.
+            Some(only) => {
+                if let Some(point) = checks.named_mut(&only) {
+                    match resolved.first() {
+                        Some(r) => point.gate(r, &tree),
+                        None => point.latest.info.state = CheckState::CouldNotRun,
+                    }
+                }
+            }
+            None => {
+                let mut old = std::mem::take(&mut checks.points);
+                checks.points = resolved
+                    .iter()
+                    .map(|r| {
+                        let name = r.def.name();
+                        let mut point = match old.iter().position(|p| p.latest.info.name == name) {
+                            Some(i) => old.remove(i),
+                            None => CheckRecord::new(CheckInfo { name: name.to_string(), state: CheckState::Pending, ..Default::default() }, "").into(),
+                        };
+                        point.gate(r, &tree);
+                        point
+                    })
+                    .collect();
+            }
+        }
+        checks.start_next();
+        self.mark_check_changed(term);
         self.check_settled(term);
     }
 
-    /// Say what the turn's end held back, now the check has an answer. A pass (or a check
-    /// that never ran) is the finish; a failure is news of its own, never a finish.
+    /// A checkpoint's run ended: record how, unless the pane went away or a newer run
+    /// replaced it meanwhile, and start the next one.
+    pub(super) fn check_ran(&mut self, term: TermId, run: u64, name: &str, result: CheckRun) {
+        let Some(t) = self.terms.get_mut(&term).filter(|t| t.checks.run == run) else { return };
+        let Some(point) = t.checks.named_mut(name).filter(|p| p.latest.info.state == CheckState::Checking) else { return };
+        let record = &mut point.latest;
+        let info = &mut record.info;
+        info.state = state_for(result.outcome);
+        info.exit_code = match result.outcome {
+            CheckOutcome::Exited(code) => Some(code),
+            CheckOutcome::TimedOut | CheckOutcome::SpawnFailed => None,
+        };
+        info.duration_ms = u64::try_from(result.duration.as_millis()).unwrap_or(u64::MAX);
+        info.line_count = result.lines;
+        record.output = cap_output(&result.output);
+        info.first_failing_line = if info.state == CheckState::Failed { first_failing_line(&record.output) } else { String::new() };
+        t.checks.start_next();
+        self.mark_check_changed(term);
+        self.check_settled(term);
+    }
+
+    /// Say what the turn's end held back, once every checkpoint has an answer. A failure is
+    /// news of its own, never a finish; so is a command waiting for your approval, said once
+    /// a turn. Otherwise the turn is finished. A checkpoint queued to run after this run
+    /// (`queue_after_run`) starts first, and the news waits for it; while the agent works,
+    /// its turn end runs everything anyway.
     fn check_settled(&mut self, term: TermId) {
-        let Some(t) = self.terms.get(&term) else { return };
-        let Some(state) = t.check.as_ref().map(|c| c.info.state) else { return };
-        let (status, place) = (t.status, t.place());
-        match state {
-            CheckState::Failed if matches!(status, Status::Done | Status::Idle) => {
+        let Some(t) = self.terms.get_mut(&term).filter(|t| !t.checks.running()) else { return };
+        if t.status != Status::Working
+            && let Some(queued) = t.checks.points.iter().find(|p| p.latest.info.rerun_queued).map(|p| p.latest.info.name.clone())
+        {
+            let turn_ended_at = t.checks.headline().map_or_else(term::unix_now, |c| c.info.after_turn_ended_at);
+            self.start_checks(term, Some(queued), turn_ended_at);
+            return;
+        }
+        let (status, place, turn) = (t.status, t.place(), t.checks.turn);
+        let first = |state| t.checks.points.iter().map(|p| &p.latest.info).find(|i| i.state == state).map(|i| i.command.clone());
+        let (failed, approve) = (first(CheckState::Failed), first(CheckState::NeedsApproval));
+        let (could_not_run, never) = (first(CheckState::CouldNotRun), first(CheckState::Never));
+        let ended = matches!(status, Status::Done | Status::Idle);
+        if failed.is_some() {
+            if ended {
                 self.broadcast(|c| c.attach, ServerMsg::Attention { term, status: Status::Blocked });
                 self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{place}: check failed")));
                 self.alert(term, Status::Blocked, CHECK_FAILED_WHAT);
             }
-            CheckState::CouldNotRun | CheckState::Passed if status == Status::Done => {
-                if state == CheckState::CouldNotRun {
-                    self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{place}: check could not run")));
-                }
-                self.announce(term, Status::Done);
+        } else if let Some(command) = approve {
+            if ended && t.checks.approval_told.replace(turn) != Some(turn) {
+                self.broadcast(|c| c.attach, ServerMsg::Attention { term, status: Status::Blocked });
+                self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{place}: approve check: {command}")));
+                self.alert(term, Status::Blocked, NEEDS_APPROVAL_WHAT);
             }
-            _ => {}
+        } else if status == Status::Done {
+            if could_not_run.is_some() {
+                self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{place}: check could not run")));
+            } else if never.is_some() {
+                self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{place}: not checked: never for this repo")));
+            }
+            self.announce(term, Status::Done);
         }
     }
 
@@ -450,40 +759,88 @@ impl Daemon {
     pub(super) fn check_outputs_unsaved(&mut self, terms: &[TermId]) {
         for id in terms {
             if let Some(t) = self.terms.get_mut(id) {
-                t.check_dirty = true;
+                t.checks.dirty = true;
             }
         }
     }
 }
 
+impl Checkpoint {
+    /// Take on what resolving said of it: its command and source, and whether it runs.
+    fn gate(&mut self, r: &Resolved, tree: &Option<String>) {
+        let info = &mut self.latest.info;
+        info.command = r.def.command.clone();
+        info.source = r.source.clone();
+        info.previous_command = None;
+        info.state = match &r.gate {
+            Gate::Run if info.state == CheckState::Checking => CheckState::Checking,
+            Gate::Run => CheckState::Pending,
+            Gate::NeedsApproval { previous } => {
+                info.previous_command = previous.clone();
+                CheckState::NeedsApproval
+            }
+            Gate::Never => CheckState::Never,
+            Gate::CouldNotRun { why } => {
+                self.latest.output = cap_output(why);
+                info.line_count = why.lines().count() as u64;
+                CheckState::CouldNotRun
+            }
+        };
+        if r.gate != Gate::Run {
+            info.started_at = 0;
+        }
+        self.tree = tree.clone().filter(|_| r.gate == Gate::Run);
+    }
+}
+
 impl Term {
-    /// A turn ended and its check has not answered yet.
+    /// A turn ended and its checkpoints have not all answered yet.
     pub fn check_running(&self) -> bool {
-        self.check.as_ref().is_some_and(|c| c.info.state == CheckState::Checking)
+        self.checks.running()
     }
 
-    /// The work is not known to be good: a check is running or has failed.
+    /// The work is not known to be good (see `Checks::holds_done`).
     pub fn check_holds_done(&self) -> bool {
-        self.check.as_ref().is_some_and(|c| matches!(c.info.state, CheckState::Checking | CheckState::Failed))
+        self.checks.holds_done()
     }
 
-    /// Take back the check results a pane had before the server restarted, tails read from `dir`. A check that was
-    /// running died with the server, so it reads as not run rather than checking forever.
+    /// What an override from this pane is signed with: its name, else its folder's.
+    fn who(&self) -> String {
+        [&self.label, &self.name, &self.first_prompt].into_iter().find(|n| !n.trim().is_empty()).cloned().unwrap_or_else(|| self.place())
+    }
+
+    /// Take back the checkpoints a pane had before the server restarted, tails read from
+    /// `dir`. A run that was going died with the server, so its checkpoints read as not run
+    /// rather than checking forever. Only a pane with one checkpoint can be the single check
+    /// kept before checkpoints had names, so only it falls back to that tail.
     pub fn restore_checks(&mut self, dir: &Path, old: TermId, saved: &SavedPane) {
-        let record = |info: &Option<CheckInfo>, slot| {
-            let mut info = info.clone()?;
-            if info.state == CheckState::Checking {
+        let migrated = saved.checks.len() == 1;
+        let record = |info: &CheckInfo, slot| {
+            let mut info = info.clone();
+            if matches!(info.state, CheckState::Checking | CheckState::Pending) {
                 info.state = CheckState::CouldNotRun;
             }
             // Nothing is queued after a restart.
             info.rerun_queued = false;
-            Some(CheckRecord::new(info, &persist::read_check_output(dir, old, slot).unwrap_or_default()))
+            let output = persist::read_check_output(dir, old, &info.name, slot)
+                .or_else(|| migrated.then(|| persist::read_legacy_check_output(dir, old, slot)).flatten())
+                .unwrap_or_default();
+            CheckRecord::new(info, &output)
         };
-        self.check = record(&saved.check, CheckSlot::Latest);
-        self.check_overridden = record(&saved.check_overridden, CheckSlot::Overridden);
-        self.check_dirty = self.check.is_some() || self.check_overridden.is_some();
+        self.checks.points = saved
+            .checks
+            .iter()
+            .map(|info| Checkpoint {
+                latest: record(info, CheckSlot::Latest),
+                overridden: saved.checks_overridden.iter().find(|o| o.name == info.name).map(|o| record(o, CheckSlot::Overridden)),
+                tree: saved.check_trees.get(&info.name).cloned(),
+            })
+            .collect();
+        self.checks.turn = saved.checks.iter().map(|c| c.turn).max().unwrap_or(0);
+        self.checks.dirty = !self.checks.points.is_empty();
     }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -556,12 +913,27 @@ mod tests {
         assert_eq!(state_for(run.outcome), CheckState::CouldNotRun);
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_missing_command_reads_as_not_run_not_failed() {
         let run = run("seshi-no-such-command-xyz", LONG);
         assert_eq!(run.outcome, CheckOutcome::Exited(EXIT_COMMAND_NOT_FOUND));
         assert_eq!(state_for(run.outcome), CheckState::CouldNotRun);
+        assert!(run.output.contains("seshi-no-such-command-xyz"), "it says what was missing: {}", run.output);
+    }
+
+    #[test]
+    fn a_failing_command_still_reads_as_failed() {
+        let run = run("echo before; exit 3", LONG);
+        assert!(matches!(run.outcome, CheckOutcome::Exited(c) if c != 0 && c != EXIT_COMMAND_NOT_FOUND), "{:?}", run.outcome);
+        assert_eq!(state_for(run.outcome), CheckState::Failed);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_quoted_path_still_runs_under_powershell() {
+        let exe = std::env::var("ComSpec").unwrap_or_else(|_| r"C:\Windows\System32\cmd.exe".into());
+        let run = run_check(&["powershell.exe".into()], &std::env::temp_dir(), &format!("\"{exe}\" /c exit 0"), LONG);
+        assert_eq!(run.outcome, CheckOutcome::Exited(0), "{}", run.output);
     }
 
     #[test]
@@ -610,9 +982,12 @@ mod tests {
             "$p = Start-Process -PassThru -WindowStyle Hidden powershell -ArgumentList '-NoProfile','-Command','Start-Sleep 60'; $p.Id | Set-Content '{}'; Start-Sleep 60",
             pidfile.display()
         );
-        let run = run_check(&crate::config::Config::default().shell_command(), dir.path(), &line, Duration::from_secs(5));
+        // Under a loaded full test run PowerShell can take seconds to start the child, so the
+        // timeout leaves it room to write the pid before the check is stopped.
+        let run = run_check(&crate::config::Config::default().shell_command(), dir.path(), &line, Duration::from_secs(20));
         assert_eq!(run.outcome, CheckOutcome::TimedOut);
         let pid = std::fs::read_to_string(&pidfile).expect("the shell started its child").trim().to_string();
+        assert!(!pid.is_empty(), "the shell wrote its child's pid");
         let gone_by = Instant::now() + Duration::from_secs(10);
         let alive = || std::process::Command::new("tasklist").args(["/FI", &format!("PID eq {pid}"), "/NH"]).output().is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains(&pid));
         while alive() && Instant::now() < gone_by {

@@ -40,7 +40,10 @@ fn top_of(dir: &Path) -> Option<PathBuf> {
 /// Everything in the checkout right now (tracked or not, never what's ignored) as a tree.
 fn tree_of_now(top: &Path) -> Result<String, String> {
     let real = PathBuf::from(git(top, &["rev-parse", "--absolute-git-dir"])?).join("index");
-    let index = real.with_file_name(format!("seshi-snapshot-index-{}", std::process::id()));
+    // Numbered too: a check's fingerprint and a snapshot may be taken of one checkout at once.
+    static TAKEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = TAKEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let index = real.with_file_name(format!("seshi-snapshot-index-{}-{n}", std::process::id()));
     // Started from the real index, git only reads the files that changed since.
     if real.exists() {
         std::fs::copy(&real, &index).map_err(|e| format!("couldn't copy the index: {e}"))?;
@@ -55,6 +58,12 @@ fn tree_of_now(top: &Path) -> Result<String, String> {
         }
     }
     tree
+}
+
+/// The tree of everything in `dir`'s checkout right now, as a snapshot would keep it.
+/// `None` outside git.
+pub fn tree_now(dir: &Path) -> Option<Result<String, String>> {
+    top_of(dir).map(|top| tree_of_now(&top))
 }
 
 /// A checkout's snapshots, newest first.

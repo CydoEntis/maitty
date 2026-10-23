@@ -1,7 +1,7 @@
 //! Settings > Team: the family a commander's jobs run on, for everyone and for the project you
 //! are in, and the jobs themselves. `[[team.projects]]` and `[[team.jobs]]` are lists, so these
 //! rows have their own editor and are not in `modal::SETTINGS`.
-use super::check_settings::{is_for, project_of};
+use super::check_settings::{is_project, project_of};
 use super::*;
 use crate::client::{Bg, modal};
 use crate::config::{Config, Family, Team, TeamJob, same_path, validate_team};
@@ -182,7 +182,7 @@ fn set_project_family(doc: &mut toml_edit::DocumentMut, project: &Path, family: 
     }
     let team = team_table(doc)?;
     let list = team.entry("projects").or_insert(Item::ArrayOfTables(ArrayOfTables::new())).as_array_of_tables_mut().context(NOT_A_LIST)?;
-    let at = list.iter().position(|t| is_for(t, project));
+    let at = list.iter().position(|t| is_project(t, project));
     match (family, at.and_then(|i| list.get_mut(i))) {
         (Some(f), Some(table)) => super::check_settings::set_keeping_decor(table, "family", f.agent().into()),
         (Some(f), None) => {
@@ -278,7 +278,7 @@ pub(in crate::client) fn control(app: &App, t: &Theme, row: TeamRow, v: &Setting
     if let (true, Some(draft), Some(text)) = (selected, &v.job, &v.editing) {
         let label = format!("{} ", draft.field.label());
         let mut out = vec![seg(label.clone(), muted)];
-        out.extend(super::check_settings::draft_segs(t, text, room.saturating_sub(label.width())));
+        out.extend(draft_segs(t, text, room.saturating_sub(label.width())));
         return out;
     }
     match row {
@@ -442,4 +442,15 @@ impl App {
             }
         }
     }
+}
+
+/// Columns the edit field spends besides the text: a leading space, the cursor and its space.
+const EDIT_CHROME_COLS: usize = 3;
+
+/// Text being typed in a field, its end kept in view, with the cursor after it.
+fn draft_segs(t: &Theme, draft: &str, room: usize) -> Vec<Seg> {
+    let keep = room.saturating_sub(EDIT_CHROME_COLS);
+    let skip = draft.chars().count().saturating_sub(keep);
+    let tail: String = draft.chars().skip(skip).collect();
+    vec![seg(format!(" {tail}"), Style::default().bg(t.card2).fg(t.strong)), seg("█ ", Style::default().bg(t.card2).fg(t.accent))]
 }

@@ -81,7 +81,28 @@ ratatui's `TestBackend` and assert on the text and cell styles;
 
 Tests live next to the code they test. Client UI tests build a fake snapshot
 with `design_tests::render_with(w, h)` (projects, worktrees, agents in
-each state) and drive it with `app.on_key` / `app.act`. Live checks use a nested
+each state) and drive it with `app.on_key` / `app.act`. v7 layout tests use
+`client/v7_fixture.rs`: `world(stage)` is the handoff's sample world (affiliate-site,
+pixls, seshi) with fix-footer's check at one of `checks7.js`'s stages, on a pinned clock
+(`screen::FIXED_NOW`), and `frame(app, layout, w, h, glyphs)` draws it as text in Cards
+floating, Cards tiled or Flat, to compare with the handoff's frames
+(`docs/design/v7/render-frames.mjs`).
+
+`client/v7_frames_tests.rs` holds one test per v7 preset (01–17, A1–A5, B1–B2, C1–C2). Each
+draws the whole screen in every layout at 160×45, 100×30 and 80×24 (and ASCII at Flat 80×24)
+and compares it cell for cell with the reference in `client/v7_frames/<preset>.txt`. Its
+header lists the masks (the pane's terminal text, the working spinner and ages the fixture
+can't pin, the sample's checkpoint kinds) and every deliberate difference from the sample. A
+failure prints each differing row as got/want. The reference files are generated, never
+edited by hand; regenerate them from the repo root (Git Bash) with:
+
+```sh
+T=$(mktemp -d) && cp docs/design/v7/*.js "$T" && echo '{"type":"module"}' > "$T/package.json"
+node docs/design/v7/render-frames.mjs "$T" "$T/frames.txt"
+node src/client/v7_frames/split-frames.mjs "$T/frames.txt"
+```
+
+Live checks use a nested
 server: `SESHI_SOCKET=test seshi`, then `seshi send` / `seshi read` against it.
 Tests never touch the user's real config (`SESHI_CONFIG` or in-memory configs).
 
@@ -95,6 +116,9 @@ Tests never touch the user's real config (`SESHI_CONFIG` or in-memory configs).
   check fields still loads.
   The runner (`run_check`) is tested with real shells: pass, fail, timeout (and no child left
   running), missing command, a scrubbed environment; the daemon hook-in in `daemon/logic_tests.rs`.
+  Several checkpoints run there too, with a stand-in resolver (`Daemon::resolver`) for the
+  approval and never gates. Stale passes use a real temporary git repo and call the git
+  poll's probe directly (`stale_probes` then `check_stale::probe`), with no sleeps.
 - Key handling: every default binding resolves to an action, and new keys don't
   collide.
 - Every popup: a render test that it opens, fits at 100×30, and closes on Esc.

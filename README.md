@@ -22,7 +22,8 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
   Each pane's recent output is kept on disk too, so its history is still there to scroll
   back through, above a line marking the restart.
 - **One screen for everything.** Choose **Cards** or **Flat** in Settings → General → Layout.
-  Cards (the default) shows a full-height sidebar, pill tabs and pane cards. Flat draws those
+  Cards (the default) shows a full-height sidebar and pane cards, with a pane's tabs as chips in
+  its title. Flat draws those
   same sessions and panes edge to edge, with square surfaces; Tab and
   Shift+Tab move focus between the sidebar and panes, and Esc returns to the sidebar. The leader is
   `Ctrl+Space`: a sky-blue pill says it's armed, a pause shows the compact overview,
@@ -135,24 +136,31 @@ Seshi without administrator access. See [all releases](https://github.com/CydoEn
 for manual installation, or run `seshi update` to update an existing install.
 
 ```
-╭──────────────────────────────╮
-│                              │
-│  ● shop-api              ● 1 │
-│   ● claude              3m   │
-│     Allow running npm test?  │
-│   ⠹ calm-heron          2m   │
-│   › shell                    │
-│                              │
-│  ● web-shop                  │
-│   ✓ quick-fox          40s   │
-│                              │
-╰──────────────────────────────╯
+┌─ SESSIONS 5 ──────────── ●1 ✕1 ┐
+│                                │
+│  ▾ affiliate-site ⎇ main · ch… │
+│ ▎ ✕ fix-footer              2m │
+│ ▎   failed: test · exit 1      │
+│ ▎   footer shows current year  │
+│   ⣶ add-payments           now │
+│     claude · working           │
+│                                │
+│  ▾ pixls                no git │
+│   ● warm-finch              3m │
+│     asks: use pnpm or npm?     │
+│                                │
+│  ▾ seshi                 ⎇ dev │
+│   ✓ quick-fox               9h │
+│     finished                   │
+└────────────────────────────────┘
 ```
 
-- A project is its dot (in its colour) and name; `● 1` on the right when something there needs
-  you, `no git` outside a repo.
-- Under it, its sessions: state, name, `agent · age` on the right (just the age when the name is the agent). A session that needs you has
-  its question under it. Every new claude / codex gets its own worktree (named for you), so agents
+- The title counts the sessions, then `●` what needs you and `✕` the checks that failed.
+- A project is its name, with its branch and check on the right (`⎇ main · check: test`), or
+  `no git` outside a repo.
+- Under it, its sessions: state mark, name and age, then a line saying what it is doing or
+  what its check found (`failed: test · exit 1`, `asks: …`, `finished`). A failed check adds
+  its first failing line on wide screens. A session that needs you has its question under it. Every new claude / codex gets its own worktree (named for you), so agents
   never edit the same files.
 - One row is selected: a neutral tint with a **▎** bar at its left edge (lime while the sidebar has
   the keys, dim when a pane does). The open session keeps a dim bar while you browse with the
@@ -175,7 +183,7 @@ for manual installation, or run `seshi update` to update an existing install.
   (`Ctrl+Space e`), a row's menu letters work directly (a row's menu lists them): `x` (or
   Delete) asks to close, `r` renames. Settings distinguishes installed, window and daemon versions.
 
-The leader key is `Ctrl+Space`. Press it and a sky-blue pill appears at the end of the tab row
+The leader key is `Ctrl+Space`. Press it and a sky-blue pill appears at the top right
 (the pane you're in turns sky too); press a key, or wait a moment for the compact key map.
 In that overview a key runs its command, Tab searches leader commands, and keys marked `›` open a
 second step (`w` worktrees: new, switch, merge, delete; Backspace goes back).
@@ -302,6 +310,23 @@ picking one puts the files back as they were then. What's there now is kept as a
 first, so a restore can be taken back the same way. Snapshots are commits under the
 worktree's own refs (`refs/worktree/seshi/snapshots`): no branch, nothing in your history,
 your staging untouched, the newest 30 kept. `[snapshots] enabled = false` turns them off.
+
+## Checks
+
+A check is a command Seshi runs after each agent turn, such as your tests: a session whose
+check fails reads **failed**, not done, until the check passes or you override it. Name one
+or more per project as `[[check]]` tables in config.toml (`build`, `test`, …; each is a
+checkpoint), or let a repo ship its own in `.seshi/checks.toml`.
+
+- A repo's command never runs until you approve it: Enter on its row opens the approval.
+  Enter, `y` and Space do nothing there; `1` runs it once, `2` twice always runs this exact
+  command, `3` never runs it (the session reads **not checked**). A changed command asks again.
+  Your answers live in Seshi's data folder, never in the repo.
+- Enter on a failed row opens its evidence: the command, where and when it ran, and its output.
+  `r` re-runs, `O` overrides with a reason (the failure stays visible), `u` undoes that, Tab
+  moves between checkpoints.
+- A pass goes **stale** when the files change afterwards; `r` runs it again.
+- `<leader> j` (Inbox) lists failed checks and approvals with what needs you.
 
 ## Merging
 

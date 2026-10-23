@@ -7,11 +7,10 @@ use crate::client::menu::{Act, Confirm};
 use crate::protocol::{CheckState, OVERRIDE_REASON_MAX_CHARS};
 use ratatui::Frame;
 
-const OVERRIDE_TITLE: &str = "Override a failed check";
-const OVERRIDE_WIDTH: u16 = 72;
-/// Columns the field's padding and cursor take.
-const FIELD_CHROME_COLS: usize = 4;
-const REASON_PLACEHOLDER: &str = "e.g. flaky on CI";
+const OVERRIDE_TITLE: &str = "OVERRIDE A FAILED CHECK";
+const OVERRIDE_WIDTH: u16 = 70;
+const OVERRIDE_HEIGHT: u16 = 15;
+const REASON_PLACEHOLDER: &str = "why is this OK?";
 const HIDES: &str = "This hides a failure. It stays visible:";
 const STAYS: &str = "on the row, in the Inbox history and in the evidence";
 const SCOPE: &str = "for this result only; the next run replaces it";
@@ -23,23 +22,32 @@ pub(in crate::client) fn check_menu_items(term: TermId, info: &CheckInfo) -> Vec
         items.push(("Re-run check".into(), Act::RerunCheck(term)));
     }
     if check::failed(info) {
-        items.push(("Override check…".into(), Act::OverrideCheck(term, String::new())));
+        items.push(("Override check…".into(), Act::OverrideCheck(term, String::new(), None)));
+    }
+    if info.state == CheckState::Overridden {
+        items.push(("Undo override".into(), Act::UndoOverride(term)));
     }
     items
 }
 
-/// What a re-run says, or why it is not sent.
-fn rerun_words(t: &TermInfo) -> Result<Option<String>, &'static str> {
+/// What a re-run of `check` (None: the session has no result yet) in session `who` says, or
+/// why it is not sent.
+fn rerun_words(t: &TermInfo, who: &str, check: Option<&CheckInfo>) -> Result<Option<String>, &'static str> {
     let working = t.status == Status::Working;
-    match &t.check {
+    match check {
         Some(c) if c.state == CheckState::Checking => Err("its check is already running"),
         Some(c) if c.rerun_queued => Err("a re-run is already queued: it runs when this turn ends"),
         Some(_) if working => Ok(Some("re-run queued: it runs when this turn ends".into())),
-        Some(c) => Ok(Some(format!("re-running {}…", c.command))),
+        Some(c) => Ok(Some(format!("Re-running {} in {who}'s worktree…", c.command))),
         // The daemon says why a working agent with no result cannot be re-run.
         None if working => Ok(None),
         None => Ok(Some("running the check…".into())),
     }
+}
+
+/// `t`'s checkpoint `name`, or its headline for None or a name it no longer has.
+fn checkpoint<'a>(t: &'a TermInfo, name: Option<&str>) -> Option<&'a CheckInfo> {
+    name.and_then(|n| t.checks.iter().find(|c| c.name == n)).or_else(|| t.check())
 }
 
 /// `text`'s first line added to `reason`, as far as the daemon will take it.
@@ -50,11 +58,17 @@ pub(in crate::client) fn append_reason(reason: &mut String, text: &str) {
 
 impl App {
     pub(in crate::client) fn rerun_check(&mut self, term: TermId) {
+        self.rerun_checkpoint(term, None);
+    }
+
+    /// Run `term`'s checkpoint `name` again (None: all of them).
+    pub(in crate::client) fn rerun_checkpoint(&mut self, term: TermId, name: Option<String>) {
+        let who = self.session_name(term);
         let Some(t) = self.snap.terms.get(&term) else { return };
-        match rerun_words(t) {
+        match rerun_words(t, &who, checkpoint(t, name.as_deref())) {
             Err(why) => self.notify(why.into(), false),
             Ok(said) => {
-                self.cmd(Command::RerunCheck { term });
+                self.cmd(Command::RerunCheck { term, name });
                 if let Some(said) = said {
                     self.notify(said, false);
                 }
@@ -62,19 +76,25 @@ impl App {
         }
     }
 
-    pub(in crate::client) fn override_check(&mut self, term: TermId, reason: String) {
-        self.cmd(Command::OverrideCheck { term, reason });
-        self.notify(format!("overridden: {} stays on the row until the next run replaces it", check::marks(self).overridden), false);
+    pub(in crate::client) fn override_check(&mut self, term: TermId, name: Option<String>, reason: String) {
+        self.cmd(Command::OverrideCheck { term, name, reason });
+        // As checks7.js's doOverride: the evidence it now stands on is shown.
+        if !matches!(&self.view, Some(crate::client::View::Check(v)) if v.term == term) {
+            self.open_check_sheet(term);
+        }
+        let name = self.session_name(term);
+        self.notify(format!("Overridden. {name} reads done (overridden); the failure stays in its evidence."), false);
     }
 
-    pub(in crate::client) fn undo_override(&mut self, term: TermId) {
-        self.cmd(Command::UndoOverride { term });
+    pub(in crate::client) fn undo_override(&mut self, term: TermId, name: Option<String>) {
+        self.cmd(Command::UndoOverride { term, name });
         self.notify("override undone: the check reads as failed again".into(), false);
     }
 
-    /// The confirm for overriding `term`'s check, or None (with a toast) when it is not failed.
-    pub(in crate::client) fn override_confirm(&mut self, term: TermId) -> Option<Confirm> {
-        let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check.clone()).filter(check::failed) else {
+    /// The confirm for overriding `term`'s checkpoint `name` (None: its headline), or None (with
+    /// a toast) when it is not failed.
+    pub(in crate::client) fn override_confirm(&mut self, term: TermId, name: Option<String>) -> Option<Confirm> {
+        let Some(info) = self.snap.terms.get(&term).and_then(|t| checkpoint(t, name.as_deref()).cloned()).filter(check::failed) else {
             self.notify("that check isn't failed any more".into(), true);
             return None;
         };
@@ -88,33 +108,42 @@ impl App {
             yes: "Override".into(),
             key: '\n',
             danger: true,
-            act: Act::OverrideCheck(term, String::new()),
+            act: Act::OverrideCheck(term, String::new(), name),
         })
     }
 
-    pub(in crate::client) fn ask_override(&mut self, term: TermId) {
-        if let Some(c) = self.override_confirm(term) {
+    pub(in crate::client) fn ask_override(&mut self, term: TermId, name: Option<String>) {
+        self.screen.inbox_return = None;
+        if let Some(c) = self.override_confirm(term, name) {
             self.mode = Mode::Confirm(Box::new(c));
         }
     }
 
-    /// One of a check's keys for `term`: `o` output, `r` re-run, `O` override, `u` undo. Does
-    /// nothing, and says so with false, when the result does not allow it.
-    pub(in crate::client) fn do_check_key(&mut self, term: TermId, key: char) -> bool {
-        let Some(info) = self.snap.terms.get(&term).and_then(|t| t.check.clone()) else { return false };
+    /// One of a check's keys for `term`'s checkpoint `name` (None: its headline): `o` output,
+    /// `r` re-run, `O` override, `u` undo, `,` its project's check settings. Does nothing, and
+    /// says so with false, when the result does not allow it.
+    pub(in crate::client) fn do_check_key(&mut self, term: TermId, name: Option<String>, key: char) -> bool {
+        let Some(info) = self.snap.terms.get(&term).and_then(|t| checkpoint(t, name.as_deref()).cloned()) else { return false };
         match key {
             'o' => self.open_check_sheet(term),
-            'r' if check::settled(&info) => self.rerun_check(term),
-            'O' if check::failed(&info) => self.ask_override(term),
-            'u' if info.state == CheckState::Overridden => self.undo_override(term),
+            'r' if check::settled(&info) => self.rerun_checkpoint(term, name),
+            'O' if check::failed(&info) => self.ask_override(term, name),
+            'u' if info.state == CheckState::Overridden => self.undo_override(term, name),
+            ',' => self.open_project_check(term),
             _ => return false,
         }
         true
     }
 
-    /// Keys in the override confirm: the reason is typed into it; Enter overrides, Esc doesn't.
+    /// Keys in the override confirm: the reason is typed into it; Enter overrides, and so does O
+    /// while no reason is typed (after that O is a letter of it); Esc doesn't.
     pub(in crate::client) fn on_override_key(&mut self, mut c: Confirm, k: &KeyEvent) {
+        let no_reason = matches!(&c.act, Act::OverrideCheck(_, reason, _) if reason.is_empty());
         match k.code {
+            KeyCode::Char('O') if no_reason => {
+                self.mode = Mode::Normal;
+                return self.confirm_done(Some(c.act));
+            }
             KeyCode::Enter => {
                 self.mode = Mode::Normal;
                 return self.confirm_done(Some(c.act));
@@ -125,7 +154,7 @@ impl App {
             }
             _ => {}
         }
-        if let Act::OverrideCheck(_, reason) = &mut c.act {
+        if let Act::OverrideCheck(_, reason, _) = &mut c.act {
             let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
             match k.code {
                 KeyCode::Backspace => {
@@ -140,57 +169,49 @@ impl App {
     }
 }
 
-/// The override confirm: what it will do, what it hides, what stays visible, and the reason.
+/// The override confirm: what it will do, what it hides, where the failure stays visible, and
+/// the reason.
 pub(in crate::client) fn draw_override(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, c: &Confirm) {
-    let Act::OverrideCheck(term, reason) = &c.act else { return };
+    let Act::OverrideCheck(term, reason, name) = &c.act else { return };
+    let info = app.snap.terms.get(term).and_then(|x| checkpoint(x, name.as_deref()).cloned()).unwrap_or_default();
+    let mark = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).over;
     let buf = f.buffer_mut();
     dim_all(buf, area, t);
-    let info = app.snap.terms.get(term).and_then(|x| x.check.clone()).unwrap_or_default();
-    let w = OVERRIDE_WIDTH.min(area.width.saturating_sub(2));
-    let text_w = w.saturating_sub(6) as usize;
-    let result = match info.exit_code {
-        Some(code) => format!("exit {code}, {} ago", age(info.started_at + info.duration_ms / 1000)),
-        None => format!("{} ago", age(info.started_at)),
-    };
-    let headline = super::popover::wrap(&format!("{} will read done (overridden) though {} failed ({result}).", c.what, c.detail), text_w);
-    // Rows: the headline, a gap, the warning, its two lines, a gap, the field's label and the
-    // field, a gap, the buttons.
-    let rows = headline.len() as u16 + 9;
-    let r = panel(app, buf, area, w, rows + 4, OVERRIDE_TITLE, &[], t);
+    let r = panel(app, buf, area, OVERRIDE_WIDTH, OVERRIDE_HEIGHT, OVERRIDE_TITLE, &[], t);
     let card = Style::default().bg(t.card);
-    let (x, right) = (r.x + 3, r.right() - 2);
-    let mut y = r.y + 2;
-    for line in &headline {
-        put(buf, x, y, &[seg(line.clone(), card.fg(t.strong).add_modifier(Modifier::BOLD))], right);
-        y += 1;
+    let bold = |c: Color| card.fg(c).add_modifier(Modifier::BOLD);
+    let (x, right) = (r.x + 2, r.right().saturating_sub(2));
+    let exit = info.exit_code.map(|code| format!("exit {code} at ")).unwrap_or_default();
+    let name = if info.name.is_empty() { &info.command } else { &info.name };
+    let lines: [(u16, Vec<Seg>); 6] = [
+        (2, vec![seg(format!("{} will read ", c.what), card.fg(t.text)), seg("done (overridden)", bold(t.strong)), seg(" though ", card.fg(t.text)), seg(format!("{name} failed"), bold(t.err))]),
+        (3, vec![seg(format!("({exit}{}).", crate::clock::local_hm(info.started_at)), card.fg(t.text))]),
+        (5, vec![seg(HIDES, bold(t.strong))]),
+        (6, vec![seg(format!("  {mark} {STAYS}"), card.fg(t.text))]),
+        (7, vec![seg(format!("  {SCOPE}"), card.fg(t.text))]),
+        (9, vec![seg("Reason (optional)", card.fg(t.muted))]),
+    ];
+    for (dy, segs) in &lines {
+        put(buf, x, r.y + dy, segs, right);
     }
-    y += 1;
-    put(buf, x, y, &[seg(HIDES, card.fg(t.text))], right);
-    put(buf, x + 2, y + 1, &[seg(format!("{} {STAYS}", check::marks(app).overridden), card.fg(t.muted))], right);
-    put(buf, x + 2, y + 2, &[seg(SCOPE, card.fg(t.muted))], right);
-    y += 4;
-    put(buf, x, y, &[seg("Reason (optional)", card.fg(t.muted).add_modifier(Modifier::BOLD))], right);
-    y += 1;
+    let fy = r.y + 10;
+    fill(buf, Rect { x, y: fy, width: right.saturating_sub(x), height: 1 }, t.card2);
     let field = Style::default().bg(t.card2);
-    let inner = (right.saturating_sub(x)) as usize;
-    for xx in x..right {
-        buf[(xx, y)].set_style(field);
-    }
-    let keep = inner.saturating_sub(FIELD_CHROME_COLS);
-    let tail: String = reason.chars().skip(reason.chars().count().saturating_sub(keep)).collect();
-    let mut shown = vec![seg(format!(" {tail}"), field.fg(t.strong)), seg("█", field.fg(t.accent))];
-    if reason.is_empty() {
-        shown.push(seg(format!(" {REASON_PLACEHOLDER}"), field.fg(t.muted).add_modifier(Modifier::ITALIC)));
-    }
-    put(buf, x, y, &shown, right);
-    y += 2;
-    let yes = button(t, &c.yes, "Enter", BtnKind::Danger, false);
-    let yr = Rect { x, y, width: segs_width(&yes), height: 1 };
-    put(buf, yr.x, yr.y, &yes, r.right());
-    let nr = Rect { x: yr.right() + 2, y, width: 12, height: 1 };
-    put(buf, nr.x, nr.y, &button(t, "Cancel", "Esc", BtnKind::Normal, hovered(app, nr)), r.right());
+    let room = right.saturating_sub(x + 2) as usize;
+    let tail: String = reason.chars().skip(reason.chars().count().saturating_sub(room)).collect();
+    let shown = if reason.is_empty() { seg(REASON_PLACEHOLDER, field.fg(t.muted).add_modifier(Modifier::ITALIC)) } else { seg(tail.clone(), field.fg(t.strong).add_modifier(Modifier::BOLD)) };
+    put(buf, x + 1, fy, &[shown], right);
+    let by = r.bottom().saturating_sub(2);
+    let yes = button(t, "Override", "O", BtnKind::Risky);
+    let no = button(t, "Cancel", "Esc", BtnKind::Normal);
+    let yr = Rect { x, y: by, width: segs_width(&yes), height: 1 };
+    let nr = Rect { x: yr.right() + 1, y: by, width: segs_width(&no), height: 1 };
+    put(buf, yr.x, by, &yes, right);
+    put(buf, nr.x, by, &no, right);
     hit(app, area, ScreenHit::ConfirmNo);
     hit(app, r, ScreenHit::Noop);
     hit(app, yr, ScreenHit::ConfirmYes);
     hit(app, nr, ScreenHit::ConfirmNo);
+    f.set_cursor_position(Position::new(x + 1 + tail.width() as u16, fy));
 }
+

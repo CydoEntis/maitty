@@ -65,7 +65,7 @@ src/
   keys.rs        actions, default bindings, key parsing
   layout.rs      split trees and neighbour finding
   theme.rs       built-in themes and contrast audit
-  clock.rs       time helpers
+  clock.rs       time helpers, local clock times
   proc.rs        running other programs: no console window, output or error as text,
                  git, shell command lines
   daemon/        the server
@@ -75,6 +75,9 @@ src/
     worktrees.rs making and trusting worktrees, spares, hooks, cleanup
     restore.rs   saving sessions and recovering agents left asleep by older versions
     check.rs     a pane's check result, and the runner: the project's check command run in the session's worktree when a turn ends
+    check_source.rs which checks a project has (yours, else the repo's .seshi/checks.toml), where each comes from, whether it may run
+    check_stale.rs  a pass gone stale: the worktree's tree when a run starts, compared on the git poll
+    approvals.rs your Always / Never / Once for repo-supplied check commands (kept in Seshi's data folder, read at start), and the ApproveCheck / ForgetCheckApproval commands
     term.rs      one pane: PTY, input thread, vt100 emulator
     scan.rs, git.rs, persist.rs
   client/        the UI
@@ -83,12 +86,12 @@ src/
     actions.rs   what each action does
     background.rs server messages and background results
     view_keys.rs keys inside full-pane views and the remaining popups
-    screen/      the layout: mod.rs (state, model, click targets), draw.rs (grid, sidebar
-                 card, tab row, pane cards), card.rs (cards, pills, fading; the Look from
+    screen/      the layout: mod.rs (state, model, click targets), draw.rs (grid, pane cards
+                 with the tabs in their title), side.rs (the sidebar card and its rows), card.rs (cards, pills, fading; the Look from
                  settings), leader.rs (key map, actions list, new tab), popups.rs,
-                 dialogs.rs, splash.rs, popover.rs (follow-up and why, beside a row), heads.rs (same-file heads-ups,
+                 dialogs.rs, glyphs.rs (session and check marks), splash.rs, popover.rs (follow-up and why, beside a row), heads.rs (same-file heads-ups,
                  both diffs), sheet.rs (the card docked right of the panes:
-                 Inbox, Changes), behaviour.rs (its keys and clicks)
+                 Inbox, Changes), inbox.rs (the Inbox in it), behaviour.rs (its keys and clicks)
     render.rs, design.rs  drawing entry point and shared helpers
     themes.rs    searchable theme browser, previews, background save
     menu.rs, views.rs, files.rs, find.rs, branch.rs, recipes.rs, overlap.rs,

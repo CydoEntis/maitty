@@ -185,11 +185,8 @@ pub struct Term {
     pub usage: crate::protocol::Usage,
     /// Stopped by a plan limit: "continue" goes at this time (unix seconds).
     pub resume_at: Option<u64>,
-    /// The latest check result, and the failed one the user overrode.
-    pub check: Option<super::check::CheckRecord>,
-    pub check_overridden: Option<super::check::CheckRecord>,
-    /// A check result changed since its output was last written to disk.
-    pub check_dirty: bool,
+    /// Its project's checkpoints: their latest results and the failures the user overrode.
+    pub checks: super::check::Checks,
     /// When seshi last said "continue" to it.
     pub continued: Option<Instant>,
     /// A worktree this agent moves into when its turn ends.
@@ -604,9 +601,7 @@ impl Term {
             transcript: None,
             usage: Default::default(),
             resume_at: None,
-            check: None,
-            check_overridden: None,
-            check_dirty: false,
+            checks: Default::default(),
             continued: None,
             pending_move: None,
             spare: false,
@@ -767,6 +762,11 @@ impl Term {
         self.parser.screen_mut().set_size(rows, cols);
     }
 
+    /// The top of its git worktree, or its folder outside git.
+    pub fn worktree(&self) -> PathBuf {
+        self.head.as_ref().map_or_else(|| self.cwd.clone(), |h| h.top.clone())
+    }
+
     /// Re-read the git branch for the current folder. Returns true if it changed.
     pub fn refresh_head(&mut self) -> bool {
         let head = crate::gitfs::head(&self.cwd);
@@ -795,12 +795,15 @@ impl Term {
                 }
                 #[cfg(not(windows))]
                 {
-                    // The pane's shell leads its own process group.
-                    let _ = std::process::Command::new("kill")
-                        .args(["-KILL", &format!("-{pid}")])
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .status();
+                    // The pane's shell leads its own process group. Not `kill -KILL -<pid>`:
+                    // util-linux's kill reads the bare negative pid as an option and signals
+                    // every process the user owns (pid -1).
+                    if let Ok(group) = libc::pid_t::try_from(pid)
+                        && group > 1
+                    {
+                        // SAFETY: signals only the process group the pane's shell leads.
+                        unsafe { libc::kill(-group, libc::SIGKILL) };
+                    }
                 }
             }
             let _ = killer.kill();

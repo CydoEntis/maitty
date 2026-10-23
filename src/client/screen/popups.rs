@@ -35,7 +35,7 @@ pub(in crate::client) fn draw_subagent_info(app: &mut App, f: &mut Frame, area: 
         Some(started) => duration_label(activity.updated_at.saturating_sub(started)),
         _ => "Not reported".into(),
     };
-    let stage = super::draw::subagent_stage(&activity.name, activity.task.as_deref());
+    let stage = super::side::subagent_stage(&activity.name, activity.task.as_deref());
     let rows = [
         ("Stage", stage, t.text),
         ("Task", activity.task.as_deref().unwrap_or("Not reported"), t.text),
@@ -103,35 +103,102 @@ pub(in crate::client) fn tool_rect(area: Rect) -> Rect {
     Rect { x: area.x + (area.width - w) / 2, y: area.y + (area.height - h) / 2, width: w, height: h }
 }
 
-/// A centred popup: a rounded card on `card`, its title lit in the top border and a ✕ that
-/// closes it; anything in `right` sits in the border before the ✕.
+/// How far toward black a modal's and a popover's hard shadow takes the ground: the design's
+/// black, kept in the theme's own hue.
+const SHADOW_DARK: f32 = 0.85;
+const ESC_CLOSE: &str = "Esc close";
+
+/// The hard shadow a modal or popover casts: `r` moved a cell right and down.
+fn shadow(buf: &mut Buffer, r: Rect, t: &Theme) {
+    let dark = blend(t.bg, Color::Rgb(0, 0, 0), SHADOW_DARK);
+    let s = Rect { x: r.x + 1, y: r.y + 1, ..r }.intersection(buf.area);
+    for y in s.top()..s.bottom() {
+        for x in s.left()..s.right() {
+            buf[(x, y)].set_symbol(" ").set_style(Style::default().bg(dark));
+        }
+    }
+}
+
+/// A centred modal over the dimmed screen: `panel_at` in the middle of `area`, at most
+/// `w`×`h`. A click outside it closes it.
 #[allow(clippy::too_many_arguments)]
 pub(in crate::client) fn panel(app: &mut App, buf: &mut Buffer, area: Rect, w: u16, h: u16, title: &str, right: &[Seg], t: &Theme) -> Rect {
     let w = w.min(area.width.saturating_sub(2));
     let h = h.min(area.height.saturating_sub(2));
     let r = Rect { x: area.x + (area.width - w) / 2, y: area.y + (area.height - h) / 2, width: w, height: h };
     hit(app, area, ScreenHit::Close);
-    hit(app, r, ScreenHit::Noop);
-    let mut c = Card::new(t, title).lit(t.accent);
-    c.bg = t.card;
-    c.close = Some(ScreenHit::Close);
-    card(app, buf, r, &c, t);
-    if !right.is_empty() {
-        let segs: Vec<Seg> = right.iter().map(|(s, st)| (s.clone(), st.bg(t.bg))).collect();
-        let rw = segs_width(&segs);
-        put(buf, r.right().saturating_sub(rw + 9), r.y, &segs, r.right().saturating_sub(8));
+    panel_at(app, buf, r, title, right, t)
+}
+
+/// A modal's frame at `r`: a hard shadow, a body of `card`, a title row filled with the accent
+/// (the title two in, bold, and `Esc close` at the right), `│` sides and a `─` bottom in
+/// `line` with corners by the setting. `right` sits in the title row before `Esc close`.
+/// Returns `r`; its contents start two in and two down.
+pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, title: &str, right: &[Seg], t: &Theme) -> Rect {
+    let r = r.intersection(buf.area);
+    if r.width < 4 || r.height < 2 {
+        return r;
     }
+    shadow(buf, r, t);
+    fill(buf, r, t.card);
+    let edge = Style::default().fg(t.line).bg(t.card);
+    let (right_x, bottom) = (r.right() - 1, r.bottom() - 1);
+    for y in r.y + 1..bottom {
+        buf[(r.x, y)].set_symbol("│").set_style(edge);
+        buf[(right_x, y)].set_symbol("│").set_style(edge);
+    }
+    for x in r.x..r.right() {
+        buf[(x, bottom)].set_symbol("─").set_style(edge);
+    }
+    let [_, _, bl, br] = corners(Look::of(&app.cfg.ui));
+    buf[(r.x, bottom)].set_symbol(bl).set_style(edge);
+    buf[(right_x, bottom)].set_symbol(br).set_style(edge);
+    fill(buf, Rect { height: 1, ..r }, t.accent);
+    let ink = Style::default().fg(t.acc_ink).bg(t.accent);
+    let esc_x = r.right().saturating_sub(ESC_CLOSE.len() as u16 + 2);
+    put(buf, esc_x, r.y, &[seg(ESC_CLOSE, ink)], r.right());
+    let segs: Vec<Seg> = right.iter().map(|(s, st)| (s.clone(), st.bg(t.accent))).collect();
+    let rx = esc_x.saturating_sub(segs_width(&segs) + 2);
+    put(buf, rx, r.y, &segs, esc_x.saturating_sub(2));
+    put(buf, r.x + 2, r.y, &[seg(title, ink.add_modifier(Modifier::BOLD))], rx.saturating_sub(1));
+    hit(app, r, ScreenHit::Noop);
+    hit(app, Rect { x: esc_x, y: r.y, width: ESC_CLOSE.len() as u16, height: 1 }, ScreenHit::Close);
+    r
+}
+
+/// A popover keeps at least this many columns from its left edge to the screen's.
+const POPOVER_ROOM: u16 = 40;
+/// Below this many rows a popover sits higher.
+const POPOVER_SHORT: u16 = 30;
+
+/// Where a popover goes: beside the sidebar's rows (two right of it, five down, three on a
+/// short screen), narrower rather than over the sidebar when the screen is small.
+pub(in crate::client) fn popover_rect(screen: Rect, side: Rect, w: u16, h: u16) -> Rect {
+    let x = (side.right() + 2).min(screen.right().saturating_sub(POPOVER_ROOM)).max(screen.x);
+    let w = w.min(screen.right().saturating_sub(x + 2));
+    let h = h.min(screen.height.saturating_sub(1));
+    let y = (screen.y + if screen.height < POPOVER_SHORT { 3 } else { 5 }).min(screen.bottom().saturating_sub(h + 1));
+    Rect { x, y, width: w, height: h }
+}
+
+/// A popover's frame at `r`: a hard shadow, a body of `card` and a title row of `btn` with
+/// ` TITLE ` in `strong` bold, a column in; no border.
+pub(in crate::client) fn popover_at(app: &mut App, buf: &mut Buffer, r: Rect, title: &str, t: &Theme) -> Rect {
+    let r = r.intersection(buf.area);
+    shadow(buf, r, t);
+    fill(buf, r, t.card);
+    fill(buf, Rect { height: 1, ..r }, t.btn);
+    put(buf, r.x + 1, r.y, &[seg(format!(" {title} "), Style::default().fg(t.strong).bg(t.btn).add_modifier(Modifier::BOLD))], r.right());
+    hit(app, r, ScreenHit::Noop);
     r
 }
 
 pub(in crate::client) fn sel_row(app: &App, buf: &mut Buffer, r: Rect, y: u16, sel: bool, t: &Theme) -> Color {
     let row = Rect { x: r.x + 1, y, width: r.width.saturating_sub(2), height: 1 };
-    if sel || hovered(app, row) {
-        let bg = if sel { t.sel_on(t.card) } else { t.hover_on(t.card) };
+    if sel {
+        let bg = t.sel_on(t.card);
         row_pill(Look::of(&app.cfg.ui), buf, row.x, y, row.width, bg, t.card);
-        if sel {
-            put(buf, r.x + 2, y, &[seg("▎", Style::default().fg(t.accent).bg(bg).add_modifier(Modifier::BOLD))], r.right());
-        }
+        put(buf, r.x + 2, y, &[seg("▎", Style::default().fg(t.accent).bg(bg).add_modifier(Modifier::BOLD))], r.right());
         bg
     } else {
         t.card
@@ -396,10 +463,10 @@ pub(in crate::client) fn query_list(app: &mut App, buf: &mut Buffer, area: Rect,
     (r, list, start)
 }
 
-/// One row of a `query_list`: its background (highlighted when selected or under the
-/// mouse) and the selection marker. Returns the style to draw its text with.
+/// One row of a `query_list`: its background (highlighted when selected) and the selection
+/// marker. Returns the style to draw its text with.
 pub(in crate::client) fn list_row(app: &App, buf: &mut Buffer, rr: Rect, on: bool, t: &Theme) -> Style {
-    let bg = if on { t.sel_on(t.card) } else if hovered(app, rr) { t.hover_on(t.card) } else { t.card };
+    let bg = if on { t.sel_on(t.card) } else { t.card };
     if bg == t.card {
         fill(buf, rr, bg);
     } else {
@@ -475,13 +542,15 @@ pub(in crate::client) enum GoRow {
     Failed(TermId),
     /// One whose check could not run: the work was never checked.
     NotRun(TermId),
+    /// One whose repo-supplied check command waits for you to allow it.
+    Approve(TermId),
     Sess(usize, TermId),
 }
 
 impl GoRow {
     pub fn term(&self) -> Option<TermId> {
         match self {
-            GoRow::Ask(t) | GoRow::Done(t) | GoRow::Failed(t) | GoRow::NotRun(t) | GoRow::Sess(_, t) => Some(*t),
+            GoRow::Ask(t) | GoRow::Done(t) | GoRow::Failed(t) | GoRow::NotRun(t) | GoRow::Approve(t) | GoRow::Sess(_, t) => Some(*t),
             GoRow::Head(_) | GoRow::Heads(_) => None,
         }
     }
@@ -495,29 +564,7 @@ pub(in crate::client) fn goto_rows(model: &[Proj], q: &str, heads: usize) -> Vec
     let q = q.trim();
     let mut out = Vec::new();
     if q.is_empty() {
-        let waiting = jump_list(model);
-        let of = |st: Status| waiting.iter().filter(|(s, ..)| s.status == st).map(|(s, ..)| s.term).collect::<Vec<_>>();
-        out.push(GoRow::Head("NEEDS YOU"));
-        out.extend(of(Status::Blocked).into_iter().map(GoRow::Ask));
-        for (head, rows) in [
-            (check_inbox::FAILED_HEAD, check_inbox::rows(model, |r| matches!(r, GoRow::Failed(_)))),
-            (check_inbox::NOT_RUN_HEAD, check_inbox::rows(model, |r| matches!(r, GoRow::NotRun(_)))),
-        ] {
-            if !rows.is_empty() {
-                out.push(GoRow::Head(head));
-                out.extend(rows);
-            }
-        }
-        out.push(GoRow::Head("JUST FINISHED"));
-        let finished = waiting.iter().filter(|(s, ..)| check::finished(s));
-        out.extend(finished.map(|(s, ..)| GoRow::Done(s.term)));
-        // Last: there can be dozens (every file two checkouts both changed), and they must
-        // never stand between you and an agent that needs you or has finished.
-        if heads > 0 {
-            out.push(GoRow::Head("HEADS UP"));
-            out.extend((0..heads).map(GoRow::Heads));
-        }
-        return out;
+        return super::inbox::inbox_rows(model, heads);
     }
     // Typed: every session it matches (by name, agent, title or folder), most urgent first.
     let hit = |text: &str| crate::client::files::fuzzy(q, text).is_some();
@@ -550,7 +597,7 @@ pub(in crate::client) fn draw_history(app: &mut App, f: &mut Frame, area: Rect, 
         let y = list.y + (i - start) as u16;
         let row = Rect { y, height: 1, ..list };
         let on = i == sel;
-        let bg = if on { t.sel_on(t.card) } else if hovered(app, row) { t.hover_on(t.card) } else { t.card };
+        let bg = if on { t.sel_on(t.card) } else { t.card };
         fill(buf, row, bg);
         let st = Style::default().bg(bg);
         if on {

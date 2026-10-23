@@ -289,6 +289,7 @@ impl App {
 
     pub(in crate::client) fn screen_settings(&mut self) {
         self.refresh_installed_version();
+        self.screen.check_page = None;
         self.mode = Mode::ScreenSettings(Box::new(SView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0, job: None }));
     }
 
@@ -328,7 +329,12 @@ impl App {
     /// asked from there.
     pub(in crate::client) fn confirm_done(&mut self, act: Option<crate::client::menu::Act>) {
         let back = self.screen.side_return.take();
+        let inbox = self.screen.inbox_return.take();
         let yes = act.is_some();
+        if !yes && let Some((query, sel)) = inbox {
+            self.mode = Mode::GoTo { query, sel };
+            return;
+        }
         if let Some(a) = act {
             self.menu_do(a);
         }
@@ -547,6 +553,11 @@ impl App {
             return;
         }
         let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        if k.code == KeyCode::Enter && proj.is_none() && let Some(c) = self.screen.cursor && self.approval_waits(c) {
+            self.screen_side_leave();
+            self.open_approval(c);
+            return;
+        }
         match spec.code {
             KeyCode::Tab | KeyCode::BackTab if crate::client::screen::Look::of(&self.cfg.ui).flat => self.screen_side_leave(),
             KeyCode::Up | KeyCode::Char('k') if !k.modifiers.contains(KeyModifiers::CONTROL) => self.screen_side_move(-1),
@@ -627,6 +638,16 @@ impl App {
                 {
                     self.menu_act(act);
                 }
+            }
+            // A check's key its result doesn't take (o, r, O, u act through the row's menu
+            // above): say why rather than type the letter into the pane.
+            KeyCode::Char(c @ ('r' | 'O' | 'u')) if plain && self.screen.cursor.is_some_and(|t| self.snap.terms.get(&t).is_some_and(|x| x.check().is_some())) => {
+                let why = match c {
+                    'r' => "its check is still running",
+                    'O' => "only a failed check can be overridden",
+                    _ => "there is no override to undo",
+                };
+                self.notify(why.into(), false);
             }
             // Anything else is typing: leave the sidebar and hand the key over.
             _ => {
@@ -873,6 +894,8 @@ impl App {
             i
         };
         let sel_row = rows.get(land(sel, true)).cloned();
+        let sel_item = sel_row.as_ref().filter(|r| !matches!(r, GoRow::Sess(..))).and_then(GoRow::term);
+        let sel_check = sel_item.and_then(|t| find(&model, t)).and_then(|(.., s)| super::check::shown(s).cloned());
         // A merge or throw-away asked in a finished row: Enter does it, Esc doesn't, the rest wait.
         if let Some((term, merge, false)) = self.screen.inbox_confirm {
             match k.code {
@@ -948,11 +971,22 @@ impl App {
                 }
                 return;
             }
-            // A failed check: its output, run it again, or accept it (asked first).
-            KeyCode::Char(c @ ('o' | 'r' | 'O')) if query.is_empty() && matches!(sel_row, Some(GoRow::Failed(_))) => {
-                let Some(GoRow::Failed(term)) = sel_row else { return };
-                self.do_check_key(term, c);
-                if c == 'r' {
+            // Any item: its session.
+            KeyCode::Char('o') if query.is_empty() && sel_item.is_some() => {
+                self.mode = Mode::Normal;
+                if let Some(term) = sel_item {
+                    self.screen_focus(term);
+                }
+                return;
+            }
+            // An item's check: run it again, accept a failure (asked first), take that back, or
+            // its settings. Where it doesn't act, the key is typed.
+            KeyCode::Char(c @ ('r' | 'O' | 'u' | ',')) if query.is_empty() && sel_check.as_ref().is_some_and(|i| super::check_inbox::check_key_acts(c, i)) => {
+                let Some(term) = sel_item else { return };
+                self.do_check_key(term, None, c);
+                if c == 'O' && matches!(self.mode, Mode::Confirm(_)) {
+                    self.screen.inbox_return = Some((query, sel));
+                } else if c != ',' {
                     self.mode = Mode::GoTo { query, sel };
                 }
                 return;
@@ -962,14 +996,27 @@ impl App {
                     self.cmd(Command::MarkSeen { term });
                 }
             }
+            KeyCode::Enter if let Some(t) = sel_row.as_ref().and_then(GoRow::term) && self.approval_waits(t) => {
+                self.open_approval(t);
+                self.screen.inbox_return = Some((query, sel));
+                return;
+            }
+            // The project's check settings, for a row about a session.
+            KeyCode::Char(',') if query.is_empty() && let Some(t) = sel_row.as_ref().and_then(GoRow::term) => return self.open_project_check(t),
             KeyCode::Enter => {
-                self.mode = Mode::Normal;
-                match sel_row.as_ref() {
-                    Some(GoRow::Ask(t) | GoRow::Done(t) | GoRow::Failed(t) | GoRow::NotRun(t)) => self.screen_focus(*t),
-                    Some(GoRow::Head(_) | GoRow::Heads(_)) => {}
-                    Some(GoRow::Sess(_, t)) => self.screen_focus(*t),
-                    // A project: its most urgent session, or a shell there.
-                    None => {}
+                let stale = sel_check.as_ref().is_some_and(|i| i.state == crate::protocol::CheckState::Stale);
+                match sel_row {
+                    Some(GoRow::Ask(t)) if query.is_empty() => return self.start_compose(t, false, Some((query, sel))),
+                    Some(GoRow::Approve(t) | GoRow::Failed(t) | GoRow::NotRun(t)) => self.open_check_sheet(t),
+                    Some(GoRow::Done(t)) if stale && query.is_empty() => {
+                        self.do_check_key(t, None, 'r');
+                        self.mode = Mode::GoTo { query, sel };
+                    }
+                    Some(GoRow::Ask(t) | GoRow::Done(t) | GoRow::Sess(_, t)) => {
+                        self.mode = Mode::Normal;
+                        self.screen_focus(t);
+                    }
+                    Some(GoRow::Head(_) | GoRow::Heads(_)) | None => self.mode = Mode::Normal,
                 }
                 return;
             }
@@ -1152,6 +1199,7 @@ impl App {
             ScreenHit::Why(term) => {
                 self.mode = Mode::Why { term, side: matches!(self.mode, Mode::Side) };
             }
+            ScreenHit::CheckEvidence(term) => self.open_check_sheet(term),
             ScreenHit::TidyRow(i) => self.tidy_click(i),
             ScreenHit::TidyGo => {
                 if let Mode::Tidy(v) = std::mem::replace(&mut self.mode, Mode::Normal) {
@@ -1185,6 +1233,8 @@ impl App {
                 self.mode = Mode::Normal;
                 self.confirm_done(None);
             }
+            ScreenHit::Approve(h) => self.on_approve_hit(h),
+            ScreenHit::CheckDraft(h) => self.on_check_draft_hit(h),
             ScreenHit::TabPick(i) => {
                 if let Some(tab) = self.screen.tabs.get(i) {
                     let to = tab.focus;
@@ -1196,10 +1246,8 @@ impl App {
                     }
                 }
             }
-            ScreenHit::TabClose(i) => self.close_tab(i),
             ScreenHit::SideFocus => self.act(Action::BrowseTree),
             ScreenHit::ExpandSidebar => self.act(Action::ToggleSidebar),
-            ScreenHit::TabNew => self.act(Action::NewTab),
             ScreenHit::NewShell => self.act(Action::ShellHere),
             ScreenHit::Actions => self.act(Action::Actions),
             ScreenHit::ActionRow(i) => self.actions_run(i),
@@ -1239,12 +1287,15 @@ impl App {
                     self.finder_enter(fd);
                 }
             }
-            ScreenHit::InboxAnswer(term, key) => {
-                let name = self.session_name(term);
-                self.inbox_answer(term, key, &name);
-            }
-            ScreenHit::InboxCheck(term, key) => {
-                self.do_check_key(term, key);
+            ScreenHit::InboxKey(key) => {
+                if let Mode::GoTo { query, sel } = self.mode.clone() {
+                    let code = match key {
+                        '\n' => KeyCode::Enter,
+                        '\x1b' => KeyCode::Esc,
+                        c => KeyCode::Char(c),
+                    };
+                    self.on_goto_key(query, sel, &KeyEvent::new(code, KeyModifiers::NONE));
+                }
             }
             ScreenHit::NpTask => {
                 if let Mode::ScreenPane(np) = &mut self.mode {
@@ -1409,6 +1460,9 @@ impl App {
 
     /// A key for the settings sheet (shared with clicks).
     pub(in crate::client) fn screen_settings_key(&mut self, k: &KeyEvent) {
+        if self.on_check_page_key(k) {
+            return;
+        }
         let Mode::ScreenSettings(v) = self.mode.clone() else { return };
         let mut v = *v;
         let open = self.on_settings_view_key(&mut v, k);

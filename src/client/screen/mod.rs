@@ -124,13 +124,13 @@ pub(super) struct Screen {
     /// Files changed in more than one checkout, per repo folder, and when each repo was
     /// last looked at.
     pub overlaps: HashMap<PathBuf, Vec<crate::client::overlap::Overlap>>,
-    /// What each finished checkout changed ("+42 −7 · 3 files"), by folder, and the status
-    /// time it was worked out for.
-    pub change_sizes: HashMap<PathBuf, (u64, String)>,
     /// Heads-ups you dismissed: (repo, file). One comes back once it clears and recurs.
     pub dismissed: HashSet<(PathBuf, String)>,
     /// A merge (or throw-away) asked inside an Inbox row: (session, merge?, under way?).
     pub inbox_confirm: Option<(TermId, bool, bool)>,
+    /// Where the Inbox was (query, row) when the override or approval open over it came from
+    /// it: Esc goes back there.
+    pub inbox_return: Option<(String, usize)>,
     pub overlap_at: HashMap<PathBuf, Instant>,
     /// Dragging the sidebar edge or the split divider.
     pub drag: Option<Drag>,
@@ -142,6 +142,8 @@ pub(super) struct Screen {
     pub bar: Option<(TermId, Rect, usize)>,
     /// Where each agent row was drawn in the sidebar (for the follow-up box beside it).
     pub row_y: std::collections::HashMap<TermId, u16>,
+    /// What you changed on Settings › Check and have not saved.
+    pub check_page: Option<check_settings::CheckDraft>,
 }
 
 /// A row the sidebar cursor can rest on.
@@ -311,8 +313,10 @@ pub(super) struct Session {
     pub started_by: Option<TermId>,
     /// Follow-ups waiting for its turn to end, next first.
     pub queued: Vec<String>,
-    /// The latest check Seshi ran after its turn.
+    /// The latest check Seshi ran after its turn: the headline of `checks`.
     pub check: Option<CheckInfo>,
+    /// Every checkpoint, in the project's order.
+    pub checks: Vec<CheckInfo>,
 }
 
 #[derive(Debug, Clone)]
@@ -388,6 +392,12 @@ pub(super) fn rank(s: Status) -> u8 {
 
 /// Sorts a session after the ones that need you. Nothing else about its state moves its row:
 /// a row that shifted each time its agent started or finished is hard to find again.
+/// The sidebar has the keys, or the why popover opened from one of its rows does (it
+/// gives them back to the sidebar when it closes).
+pub(super) fn side_focused(app: &App) -> bool {
+    matches!(app.mode, Mode::Side | Mode::Why { side: true, .. })
+}
+
 pub(super) fn settled(s: Status) -> bool {
     s != Status::Blocked
 }
@@ -433,10 +443,24 @@ pub(super) fn folder_name(p: &Path) -> String {
     p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string())
 }
 
+/// Unix seconds now, or the time a test pinned for this thread so its frames read the same
+/// on every run.
+pub(in crate::client) fn now_secs() -> u64 {
+    #[cfg(test)]
+    if let Some(now) = FIXED_NOW.with(std::cell::Cell::get) {
+        return now;
+    }
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+#[cfg(test)]
+thread_local! {
+    pub(in crate::client) static FIXED_NOW: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+}
+
 /// "40s", "3m", "1h", "2d".
 pub(super) fn age(since: u64) -> String {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let s = now.saturating_sub(since);
+    let s = now_secs().saturating_sub(since);
     match s {
         0..=59 => format!("{s}s"),
         60..=3599 => format!("{}m", s / 60),
@@ -447,8 +471,7 @@ pub(super) fn age(since: u64) -> String {
 
 /// How long until `at` (unix seconds): "1h20m", "5m", "now".
 pub(super) fn until(at: u64) -> String {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let s = at.saturating_sub(now);
+    let s = at.saturating_sub(now_secs());
     match s {
         0..=59 => "now".into(),
         60..=3599 => format!("{}m", s / 60),
@@ -635,7 +658,8 @@ impl App {
                     resume_at: t.resume_at,
                     started_by: t.started_by,
                     queued: t.queued.clone(),
-                    check: t.check.clone(),
+                    check: t.check().cloned(),
+                    checks: t.checks.clone(),
                 });
             }
             // The repo's other worktrees, even with nothing running in them.
@@ -879,10 +903,8 @@ pub(super) enum ScreenHit {
     SubagentInfo(TermId, usize),
     /// The sidebar's "+ new": a plain shell in the selected project.
     Session(TermId),
-    /// An answer chip in the Inbox: send this key to that agent.
-    InboxAnswer(TermId, char),
-    /// A button on a failed check's Inbox row: the key it stands for.
-    InboxCheck(TermId, char),
+    /// A button on the selected Inbox item: the key it stands for (`\n` Enter, `\x1b` Esc).
+    InboxKey(char),
     CloseSplit(TermId),
     Divider(usize),
     /// The ⋯ on a hovered sidebar row: its menu.
@@ -893,9 +915,6 @@ pub(super) enum ScreenHit {
     ConfirmYes,
     ConfirmNo,
     TabPick(usize),
-    /// The ✕ on the current tab's pill.
-    TabClose(usize),
-    TabNew,
     /// Outside an overlay: closes it.
     Close,
     /// Inside an overlay's panel: nothing.
@@ -934,6 +953,8 @@ pub(super) enum ScreenHit {
     Restart,
     NewShell,
     Why(TermId),
+    /// The why popover of a session with a check: its evidence sheet.
+    CheckEvidence(TermId),
     /// A row of the worktree clean-up list (tick or untick it), and its Remove button.
     TidyRow(usize),
     TidyGo,
@@ -954,6 +975,10 @@ pub(super) enum ScreenHit {
     GoPick(usize),
     HistRow(usize),
     BranchChoice(usize),
+    /// A button of the repo-command approval.
+    Approve(check_approve::ApproveHit),
+    /// A button or row of Settings › Check.
+    CheckDraft(check_settings::DraftHit),
 }
 
 pub(super) fn hit(app: &mut App, r: Rect, h: ScreenHit) {
@@ -964,13 +989,12 @@ pub(super) fn hovered(app: &App, r: Rect) -> bool {
     app.hover.is_some_and(|p| r.contains(p))
 }
 
-/// A design button (" Label key "), hovered with `hov`; records its hit.
+/// A design button (" Label key "); records its hit.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn btn(app: &mut App, buf: &mut Buffer, x: u16, y: u16, label: &str, key: &str, kind: BtnKind, h: ScreenHit, max_x: u16) -> u16 {
     let t = app.theme.clone();
-    let w = segs_width(&button(&t, label, key, kind, false));
-    let r = Rect { x, y, width: w.min(max_x.saturating_sub(x)), height: 1 };
-    let segs = button(&t, label, key, kind, hovered(app, r));
+    let segs = button(&t, label, key, kind);
+    let r = Rect { x, y, width: segs_width(&segs).min(max_x.saturating_sub(x)), height: 1 };
     let nx = put(buf, x, y, &segs, max_x);
     hit(app, r, h);
     nx
@@ -990,17 +1014,27 @@ mod behaviour;
 mod card;
 mod check;
 mod check_actions;
+mod check_approve;
 mod check_inbox;
+#[cfg(test)]
+mod check_modals_tests;
 pub(in crate::client) mod check_settings;
 mod check_sheet;
 pub(in crate::client) mod team_settings;
 mod dialogs;
+pub(in crate::client) mod glyphs;
 mod leader;
 mod popups;
 mod heads;
 mod popover;
 mod draw;
+mod side;
 mod sheet;
+mod inbox;
 mod splash;
 mod tidy;
-pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, splash::*, sheet::*, popover::*, heads::*, tidy::*, check_sheet::*, check_actions::*};
+#[cfg(test)]
+mod v7_frame_tests;
+#[cfg(test)]
+mod v7_ref;
+pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, side::*, splash::*, sheet::*, popover::*, heads::*, tidy::*, check_sheet::*, check_actions::*, check_approve::*};

@@ -4,7 +4,7 @@ use super::*;
 pub(super) fn draw(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme) {
     let pb = pane_bg(t);
     let mut c = Card::new(t, "");
-    if app.mode == Mode::Side {
+    if side_focused(app) {
         c = c.lit(t.accent);
     }
     card(app, buf, r, &c, t);
@@ -64,10 +64,8 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: 
         let active = Some(s.term) == focus;
         let bg = if active {
             t.hov
-        } else if app.mode == Mode::Side && app.screen.cursor == Some(s.term) {
+        } else if side_focused(app) && app.screen.cursor == Some(s.term) {
             t.card2
-        } else if hovered(app, rr) {
-            blend(pb, t.hov, 0.4)
         } else {
             pb
         };
@@ -93,15 +91,10 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: 
             .filter(|c| !c.is_whitespace())
             .take(2)
             .collect();
-        let chk = check::shown(s);
-        let icon = if let Some(c) = chk {
-            check::glyph(app, c).to_string()
-        } else if s.is_agent {
-            glyph(app, s.status)
-        } else {
-            "›".into()
-        };
-        let icon_color = chk.map_or(color, |c| check::color(t, c));
+        // The sidebar row's own mark; a plain shell keeps its prompt arrow.
+        let spinner = glyph(app, Status::Working);
+        let mark = check::mark(app, s, t, &spinner);
+        let (icon, icon_color) = if super::side::plain_shell(s) { ("›", t.muted) } else { (mark.glyph, mark.color) };
         put(
             buf,
             rr.x,

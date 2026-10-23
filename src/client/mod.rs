@@ -112,6 +112,10 @@ enum Mode {
     Tidy(Box<screen::TidyView>),
     /// "Close …?" with confirm / cancel.
     Confirm(Box<menu::Confirm>),
+    /// Run a repo's check command? Asked only when you open its waiting item.
+    Approve(Box<screen::Approve>),
+    /// A project's checkpoints (`PROJECT · <name>`), being edited.
+    ProjectCheck(Box<screen::check_settings::CheckDraft>),
     /// The switcher: projects and sessions, typed to filter.
     GoTo { query: String, sel: usize },
     /// Writing a quick follow-up to an agent (beside its row, or in its Inbox row).
@@ -163,8 +167,6 @@ pub(super) enum Bg {
     Tidy(PathBuf, Vec<screen::TidyRow>),
     /// Each checkout's diff of a heads-up's file: (repo, [(checkout, diff)]).
     BothDiff(PathBuf, Vec<(String, String)>),
-    /// What a checkout changed: (its folder, the status time it's for, "+42 −7 · 3 files").
-    ChangeSize(PathBuf, u64, String),
     /// Files more than one checkout of a repo changed (by the repo's folder).
     Overlaps(PathBuf, Vec<overlap::Overlap>),
     /// Pulled a shared setup from another machine.
@@ -987,7 +989,7 @@ impl App {
 
     /// A check's ring turns while it runs.
     fn any_checking(&self) -> bool {
-        self.snap.terms.values().any(|term| term.check.as_ref().is_some_and(|c| c.state == crate::protocol::CheckState::Checking))
+        self.snap.terms.values().any(|term| term.check().is_some_and(|c| c.state == crate::protocol::CheckState::Checking))
     }
 
     fn any_working(&self) -> bool {
@@ -1298,3 +1300,7 @@ fn same_dir(a: &std::path::Path, b: &std::path::Path) -> bool {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod v7_fixture;
+#[cfg(test)]
+mod v7_frames_tests;

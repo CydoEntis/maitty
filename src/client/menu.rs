@@ -2,7 +2,7 @@
 //! worktree. Short, hoverable, and every item does something.
 
 use super::design::{BtnKind, button, put, seg, segs_width};
-use super::screen::{ScreenHit, find, hit, hovered};
+use super::screen::{ScreenHit, find, hit};
 use super::render::truncate;
 use super::{App, Mode};
 use crate::protocol::{Command, TermId};
@@ -57,8 +57,11 @@ pub enum Act {
     /// Open a session's check output in the evidence sheet.
     CheckOutput(TermId),
     RerunCheck(TermId),
-    /// Accept a failed check; the string is the reason typed in the confirm, possibly empty.
-    OverrideCheck(TermId, String),
+    /// Accept a failed checkpoint (None: the headline); the string is the reason typed in the
+    /// confirm, possibly empty.
+    OverrideCheck(TermId, String, Option<String>),
+    /// Take an override back: the check reads as failed again.
+    UndoOverride(TermId),
     /// Remove this job from the team.
     RemoveTeamJob(String),
 }
@@ -94,7 +97,7 @@ pub(super) fn draw_confirm(app: &mut App, f: &mut ratatui::Frame, area: ratatui:
         return super::screen::draw_override(app, f, area, t, c);
     }
     use super::design::{put, seg};
-    use super::screen::{ScreenHit, dim_all, hit, hovered, panel};
+    use super::screen::{ScreenHit, dim_all, hit, panel};
     use ratatui::layout::Rect;
     use ratatui::style::{Modifier, Style};
     let buf = f.buffer_mut();
@@ -123,12 +126,12 @@ pub(super) fn draw_confirm(app: &mut App, f: &mut ratatui::Frame, area: ratatui:
     }
     let buttons_y = r.y + 6 + list_h;
     let key = if c.key == '\n' { "Enter".to_string() } else { c.key.to_string() };
-    let yes = button(t, &c.yes, &key, if c.danger { BtnKind::Danger } else { BtnKind::Primary }, false);
+    let yes = button(t, &c.yes, &key, if c.danger { BtnKind::Danger } else { BtnKind::Primary });
     let yw = segs_width(&yes);
     let yr = Rect { x: r.x + 3, y: buttons_y, width: yw, height: 1 };
     put(buf, yr.x, yr.y, &yes, r.right());
     let nr = Rect { x: yr.right() + 2, y: buttons_y, width: 12, height: 1 };
-    put(buf, nr.x, nr.y, &button(t, "Cancel", "Esc", BtnKind::Normal, hovered(app, nr)), r.right());
+    put(buf, nr.x, nr.y, &button(t, "Cancel", "Esc", BtnKind::Normal), r.right());
     hit(app, area, ScreenHit::ConfirmNo);
     hit(app, r, ScreenHit::Noop);
     hit(app, yr, ScreenHit::ConfirmYes);
@@ -216,7 +219,7 @@ impl App {
         if !s.queued.is_empty() {
             items.push((format!("Drop queued follow-ups ({})", s.queued.len()), Act::ClearQueue(term)));
         }
-        if let Some(check) = info.and_then(|t| t.check.as_ref()) {
+        if let Some(check) = info.and_then(|t| t.check()) {
             items.extend(super::screen::check_menu_items(term, check));
         }
         items.push(("Close".to_string(), Act::End(vec![term])));
@@ -310,9 +313,10 @@ impl App {
                     self.menu_act(a);
                 }
             }
-            // An item's key picks it.
-            KeyCode::Char(c) if menu_keys(&m.items).contains(&Some(c.to_ascii_lowercase())) => {
-                let i = menu_keys(&m.items).iter().position(|k| *k == Some(c.to_ascii_lowercase())).unwrap_or(0);
+            // An item's key picks it: as typed (O is not o), else whatever the case.
+            KeyCode::Char(c) if menu_keys(&m.items).iter().any(|k| *k == Some(c) || *k == Some(c.to_ascii_lowercase())) => {
+                let keys = menu_keys(&m.items);
+                let i = keys.iter().position(|k| *k == Some(c)).or_else(|| keys.iter().position(|k| *k == Some(c.to_ascii_lowercase()))).unwrap_or(0);
                 self.mode = Mode::Normal;
                 if let Some((_, a)) = m.items.get(i).cloned() {
                     self.menu_act(a);
@@ -417,7 +421,7 @@ impl App {
                 danger: false,
                 act: a.clone(),
             }),
-            Act::OverrideCheck(t, _) => match self.override_confirm(*t) {
+            Act::OverrideCheck(t, _, name) => match self.override_confirm(*t, name.clone()) {
                 Some(c) => Some(c),
                 None => return,
             },
@@ -447,7 +451,7 @@ impl App {
                 let from_side = self.mode == Mode::Side || self.screen.cursor.is_some() || self.screen.cursor_proj.is_some();
                 self.screen.side_return = match &c.act {
                     _ if !from_side => None,
-                    Act::Commander(t) | Act::Restore(_, _, _, t) | Act::OverrideCheck(t, _) => Some(super::screen::SideItem::Sess(*t)),
+                    Act::Commander(t) | Act::Restore(_, _, _, t) | Act::OverrideCheck(t, ..) => Some(super::screen::SideItem::Sess(*t)),
                     _ => self.side_after_close(),
                 };
                 self.mode = Mode::Confirm(Box::new(c));
@@ -585,7 +589,8 @@ impl App {
             Act::Changes(p) => self.open_changes(p),
             Act::CheckOutput(t) => self.open_check_sheet(t),
             Act::RerunCheck(t) => self.rerun_check(t),
-            Act::OverrideCheck(t, reason) => self.override_check(t, reason),
+            Act::OverrideCheck(t, reason, name) => self.override_check(t, name, reason),
+            Act::UndoOverride(t) => self.undo_override(t, None),
         }
     }
 }
@@ -615,8 +620,20 @@ fn git_init(dir: &std::path::Path) -> Result<(), String> {
     run(&["commit", "-q", "-m", "Initial commit"]).map_err(|e| format!("the first commit failed ({e}); is git set up with your name and email?"))
 }
 
+/// A check's actions keep the keys they have on the row, in the evidence sheet and the Inbox.
+fn check_key(a: &Act) -> Option<char> {
+    match a {
+        Act::CheckOutput(_) => Some('o'),
+        Act::RerunCheck(_) => Some('r'),
+        Act::OverrideCheck(..) => Some('O'),
+        Act::UndoOverride(_) => Some('u'),
+        _ => None,
+    }
+}
+
 /// A key for each item: the first letter of its label not taken yet (j and k move).
-/// Numbered lists (presets) use their numbers.
+/// Numbered lists (presets) use their numbers. On a session with a check, its keys are
+/// reserved whichever of its actions apply, so the other items' letters never move.
 pub(super) fn menu_keys(items: &[(String, Act)]) -> Vec<Option<char>> {
     // Taken already where a row's letters work (the sidebar): moving, actions, follow-up, why.
     let mut used: Vec<char> = vec!['j', 'k', 'a', 'm', 'i'];
@@ -625,11 +642,17 @@ pub(super) fn menu_keys(items: &[(String, Act)]) -> Vec<Option<char>> {
     if items.iter().any(|(_, a)| closes(a)) {
         used.push('x');
     }
+    if items.iter().any(|(_, a)| check_key(a).is_some()) {
+        used.extend(['r', 'o', 'u']);
+    }
     items
         .iter()
         .map(|(l, a)| {
             if closes(a) {
                 return Some('x');
+            }
+            if let Some(key) = check_key(a) {
+                return Some(key);
             }
             if l.chars().next().is_some_and(|c| c.is_ascii_digit()) {
                 return None;
@@ -654,14 +677,10 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
     let r = Rect { x, y, width: w, height: h + 1 };
     // Clicking anywhere else closes it.
     hit(app, area, ScreenHit::Close);
-    // The same card as every popup: its title lit in the border, a ✕ that closes it.
+    // A popover, as the why one: a raised title row over a card, with a hard shadow.
     let bgm = t.card;
-    hit(app, r, ScreenHit::Noop);
     let title = truncate(&m.title, (w - 10) as usize);
-    let mut c = super::screen::Card::new(t, &title).lit(t.accent);
-    c.bg = bgm;
-    c.close = Some(ScreenHit::Close);
-    super::screen::card(app, buf, r, &c, t);
+    super::screen::popover_at(app, buf, r, &title, t);
     let look = super::screen::Look::of(&app.cfg.ui);
     let mut yy = r.y + 2;
     for (i, (label, act)) in m.items.iter().enumerate() {
@@ -669,7 +688,7 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
             yy += 1;
         }
         let row = Rect { x: r.x + 1, y: yy, width: w - 2, height: 1 };
-        let on = i == m.sel || hovered(app, row);
+        let on = i == m.sel;
         let bg = if on { t.hov } else { bgm };
         if on {
             super::screen::row_pill(look, f.buffer_mut(), row.x, yy, row.width, bg, bgm);

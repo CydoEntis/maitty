@@ -1,0 +1,331 @@
+===== floating | 160x45 | unicode
+┌─ SESSIONS 5 ─────────────── ●2 ┐ ┌─ 1  fix-footer  2  add-payments  ● needs you  ✕  ┐ ┌─ INBOX 2 ──────────────────────────────────────────────────────── ✕  ┐
+│                                │ │                                                  │ │                                                                      │
+│  ▾ affiliate-site ⎇ main · ch… │ │                                                  │ │  NEEDS YOU  2                                                        │
+│ ▎ ● fix-footer              2m │ │                                                  │ │ ● warm-finch · pixls                                              3m │
+│ ▎   approve check: npm test    │ │                                                  │ │   Use pnpm or npm for the workspace?                                 │
+│ ▎   footer shows current year  │ │                                                  │ │                                                                      │
+│   ⣶⡆ add-payments          now │ │                                                  │ │▎● fix-footer · affiliate-site                                     1m │
+│     claude · working           │ │                                                  │ │▎  approve check command: npm test                                    │
+│                                │ │                                                  │ │▎   Read the command ⏎                                                │
+│  ▾ pixls                no git │ │                                                  │ │                                                                      │
+│   ● warm-finch              3m │ │                                                  │ │  FINISHED  1                                                         │
+│     asks: use pnpm or npm?     │ │                                                  │ │ ✓ quick-fox · seshi                                               9h │
+│                                │ │                                                  │ │   finished · not seen                                                │
+│  ▾ seshi                 ⎇ dev │ │                                                  │ │                                                                      │
+│   ✓ quick-fox               9h │ │                                                  │ │                                                                      │
+│     finished                   │ │                                                  │ │                                                                      │
+│   z old-moth                2d │ │                                                  │ │                                                                      │
+│     asleep zzZ                 │ │                                                  │ │                                                                      │
+│                                │ │                                                  │ │                                                                      │
+│                                │ │                                                  │ │                                                                      │
+│                                │ │                                                  │ │                                                                      │
+│                                │ │                                                  │ │                                                                      │
+│                                │ │                                                  │ │                                                                      │
+│                                │ │                                                  │ │                                                                      │
+│                                │ │                                                  │ │                                                                      │
+│                                │ │                                                  │ │                                                                      │
+│                                │ │                                                  │ │                                                                      │
+│                                │ │                                                  │ │                                                                      │
+│                                │ │                                                  │ │                                                                      │
+│                                │ │  › rename the footer copyright to 2026           │ │                                                                      │
+│                                │ │                                                  │ │                                                                      │
+│                                │ │  • Edit src/components/Footer.tsx                │ │                                                                      │
+│                                │ │    - © 2025 Affiliate Co.                        │ │                                                                      │
+│                                │ │    + © 2026 Affiliate Co.                        │ │                                                                      │
+│                                │ │                                                  │ │                                                                      │
+│                                │ │  • Ran npm test -- Footer                        │ │                                                                      │
+│                                │ │    └ 3 passed                                    │ │                                                                      │
+│                                │ │                                                  │ │                                                                      │
+│                                │ │  • Done. Footer updated and its tests pass.      │ │                                                                      │
+│                                │ │                                                  │ │                                                                      │
+│                                │ │  Worked for 48s                                  │ │                                                                      │
+│                                │ │                                                  │ │                                                                      │
+│                                │ │  › Ask Codex to do anything                      │ │                                                                      │
+│  + new               a actions │ │                                                  │ │ ↑↓ select   ⏎ open   r re-run   O override   Esc close               │
+└────────────────────────────────┘ └──────────────────────────────────────────────────┘ └──────────────────────────────────────────────────────────────────────┘
+===== floating | 100x30 | unicode
+┌─ SESSIONS 5 ─────── ●2 ┐ ┌─ INBOX 2 ───────────────────────────────────────────────────────── ✕  ┐
+│                        │ │                                                                       │
+│  ▾ affiliate-site      │ │  NEEDS YOU  2                                                         │
+│ ▎ ● fix-footer      2m │ │ ● warm-finch · pixls                                               3m │
+│ ▎   approve check: npm │ │   Use pnpm or npm for the workspace?                                  │
+│   ⣶⡆ add-payments  now │ │                                                                       │
+│                        │ │▎● fix-footer · affiliate-site                                      1m │
+│  ▾ pixls        no git │ │▎  approve check command: npm test                                     │
+│   ● warm-finch      3m │ │▎   Read the command ⏎                                                 │
+│     asks: use pnpm or n│ │                                                                       │
+│                        │ │  FINISHED  1                                                          │
+│  ▾ seshi         ⎇ dev │ │ ✓ quick-fox · seshi                                                9h │
+│   ✓ quick-fox       9h │ │   finished · not seen                                                 │
+│   z old-moth        2d │ │                                                                       │
+│                        │ │                                                                       │
+│                        │ │                                                                       │
+│                        │ │                                                                       │
+│                        │ │                                                                       │
+│                        │ │                                                                       │
+│                        │ │                                                                       │
+│                        │ │                                                                       │
+│                        │ │                                                                       │
+│                        │ │                                                                       │
+│                        │ │                                                                       │
+│                        │ │                                                                       │
+│                        │ │                                                                       │
+│                        │ │                                                                       │
+│                        │ │                                                                       │
+│  + new       a actions │ │ ↑↓ select   ⏎ open   r re-run   O override   Esc close                │
+└────────────────────────┘ └───────────────────────────────────────────────────────────────────────┘
+===== floating | 80x24 | unicode
+┌─ SESSIONS 5 ─────── ●2 ┐ ┌─ INBOX 2 ───────────────────────────────────── ✕  ┐
+│                        │ │                                                   │
+│  ▾ affiliate-site      │ │  NEEDS YOU  2                                     │
+│ ▎ ● fix-footer         │ │ ● warm-finch · pixls                           3m │
+│ ▎   approve check: npm │ │   Use pnpm or npm for the workspace?              │
+│   ⣶⡆ add-payments      │ │                                                   │
+│                        │ │▎● fix-footer · affiliate-site                  1m │
+│  ▾ pixls        no git │ │▎  approve check command: npm test                 │
+│   ● warm-finch         │ │▎   Read the command ⏎                             │
+│     asks: use pnpm or n│ │                                                   │
+│                        │ │  FINISHED  1                                      │
+│  ▾ seshi         ⎇ dev │ │ ✓ quick-fox · seshi                            9h │
+│   ✓ quick-fox          │ │   finished · not seen                             │
+│   z old-moth           │ │                                                   │
+│                        │ │                                                   │
+│                        │ │                                                   │
+│                        │ │                                                   │
+│                        │ │                                                   │
+│                        │ │                                                   │
+│                        │ │                                                   │
+│                        │ │                                                   │
+│                        │ │                                                   │
+│  + new       a actions │ │ ↑↓ select   ⏎ open   r re-run   O override   Esc  │
+└────────────────────────┘ └───────────────────────────────────────────────────┘
+===== tiled | 160x45 | unicode
+┌─ SESSIONS 5 ─────────────── ●2 ┐┌─ 1  fix-footer  2  add-payments ── ● needs you  ✕  ┐┌─ INBOX 2 ──────────────────────────────────────────────────────── ✕  ┐
+│                                ││                                                    ││                                                                      │
+│  ▾ affiliate-site ⎇ main · ch… ││                                                    ││  NEEDS YOU  2                                                        │
+│ ▎ ● fix-footer              2m ││                                                    ││ ● warm-finch · pixls                                              3m │
+│ ▎   approve check: npm test    ││                                                    ││   Use pnpm or npm for the workspace?                                 │
+│ ▎   footer shows current year  ││                                                    ││                                                                      │
+│   ⣶⡆ add-payments          now ││                                                    ││▎● fix-footer · affiliate-site                                     1m │
+│     claude · working           ││                                                    ││▎  approve check command: npm test                                    │
+│                                ││                                                    ││▎   Read the command ⏎                                                │
+│  ▾ pixls                no git ││                                                    ││                                                                      │
+│   ● warm-finch              3m ││                                                    ││  FINISHED  1                                                         │
+│     asks: use pnpm or npm?     ││                                                    ││ ✓ quick-fox · seshi                                               9h │
+│                                ││                                                    ││   finished · not seen                                                │
+│  ▾ seshi                 ⎇ dev ││                                                    ││                                                                      │
+│   ✓ quick-fox               9h ││                                                    ││                                                                      │
+│     finished                   ││                                                    ││                                                                      │
+│   z old-moth                2d ││                                                    ││                                                                      │
+│     asleep zzZ                 ││                                                    ││                                                                      │
+│                                ││                                                    ││                                                                      │
+│                                ││                                                    ││                                                                      │
+│                                ││                                                    ││                                                                      │
+│                                ││                                                    ││                                                                      │
+│                                ││                                                    ││                                                                      │
+│                                ││                                                    ││                                                                      │
+│                                ││                                                    ││                                                                      │
+│                                ││                                                    ││                                                                      │
+│                                ││                                                    ││                                                                      │
+│                                ││                                                    ││                                                                      │
+│                                ││                                                    ││                                                                      │
+│                                ││  › rename the footer copyright to 2026             ││                                                                      │
+│                                ││                                                    ││                                                                      │
+│                                ││  • Edit src/components/Footer.tsx                  ││                                                                      │
+│                                ││    - © 2025 Affiliate Co.                          ││                                                                      │
+│                                ││    + © 2026 Affiliate Co.                          ││                                                                      │
+│                                ││                                                    ││                                                                      │
+│                                ││  • Ran npm test -- Footer                          ││                                                                      │
+│                                ││    └ 3 passed                                      ││                                                                      │
+│                                ││                                                    ││                                                                      │
+│                                ││  • Done. Footer updated and its tests pass.        ││                                                                      │
+│                                ││                                                    ││                                                                      │
+│                                ││  Worked for 48s                                    ││                                                                      │
+│                                ││                                                    ││                                                                      │
+│                                ││  › Ask Codex to do anything                        ││                                                                      │
+│  + new               a actions ││                                                    ││ ↑↓ select   ⏎ open   r re-run   O override   Esc close               │
+└────────────────────────────────┘└────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────┘
+===== tiled | 100x30 | unicode
+┌─ SESSIONS 5 ─────── ●2 ┐┌─ INBOX 2 ────────────────────────────────────────────────────────── ✕  ┐
+│                        ││                                                                        │
+│  ▾ affiliate-site      ││  NEEDS YOU  2                                                          │
+│ ▎ ● fix-footer      2m ││ ● warm-finch · pixls                                                3m │
+│ ▎   approve check: npm ││   Use pnpm or npm for the workspace?                                   │
+│   ⣶⡆ add-payments  now ││                                                                        │
+│                        ││▎● fix-footer · affiliate-site                                       1m │
+│  ▾ pixls        no git ││▎  approve check command: npm test                                      │
+│   ● warm-finch      3m ││▎   Read the command ⏎                                                  │
+│     asks: use pnpm or n││                                                                        │
+│                        ││  FINISHED  1                                                           │
+│  ▾ seshi         ⎇ dev ││ ✓ quick-fox · seshi                                                 9h │
+│   ✓ quick-fox       9h ││   finished · not seen                                                  │
+│   z old-moth        2d ││                                                                        │
+│                        ││                                                                        │
+│                        ││                                                                        │
+│                        ││                                                                        │
+│                        ││                                                                        │
+│                        ││                                                                        │
+│                        ││                                                                        │
+│                        ││                                                                        │
+│                        ││                                                                        │
+│                        ││                                                                        │
+│                        ││                                                                        │
+│                        ││                                                                        │
+│                        ││                                                                        │
+│                        ││                                                                        │
+│                        ││                                                                        │
+│  + new       a actions ││ ↑↓ select   ⏎ open   r re-run   O override   Esc close                 │
+└────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
+===== tiled | 80x24 | unicode
+┌─ SESSIONS 5 ─────── ●2 ┐┌─ INBOX 2 ────────────────────────────────────── ✕  ┐
+│                        ││                                                    │
+│  ▾ affiliate-site      ││  NEEDS YOU  2                                      │
+│ ▎ ● fix-footer         ││ ● warm-finch · pixls                            3m │
+│ ▎   approve check: npm ││   Use pnpm or npm for the workspace?               │
+│   ⣶⡆ add-payments      ││                                                    │
+│                        ││▎● fix-footer · affiliate-site                   1m │
+│  ▾ pixls        no git ││▎  approve check command: npm test                  │
+│   ● warm-finch         ││▎   Read the command ⏎                              │
+│     asks: use pnpm or n││                                                    │
+│                        ││  FINISHED  1                                       │
+│  ▾ seshi         ⎇ dev ││ ✓ quick-fox · seshi                             9h │
+│   ✓ quick-fox          ││   finished · not seen                              │
+│   z old-moth           ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│                        ││                                                    │
+│  + new       a actions ││ ↑↓ select   ⏎ open   r re-run   O override   Esc c │
+└────────────────────────┘└────────────────────────────────────────────────────┘
+===== flat | 160x45 | unicode
+  SESSIONS 5                   ●2│ 1  fix-footer  2  add-payments        ● needs you  ✕ │ INBOX 2                                                            ✕
+                                 │                                                      │
+  ▾ affiliate-site ⎇ main · chec…│                                                      │  NEEDS YOU  2
+ ▎ ● fix-footer                2m│                                                      │ ● warm-finch · pixls                                              3m
+ ▎   approve check: npm test     │                                                      │   Use pnpm or npm for the workspace?
+ ▎   footer shows current year   │                                                      │
+   ⣶⡆ add-payments            now│                                                      │▎● fix-footer · affiliate-site                                     1m
+     claude · working            │                                                      │▎  approve check command: npm test
+                                 │                                                      │▎   Read the command ⏎
+  ▾ pixls                  no git│                                                      │
+   ● warm-finch                3m│                                                      │  FINISHED  1
+     asks: use pnpm or npm?      │                                                      │ ✓ quick-fox · seshi                                               9h
+                                 │                                                      │   finished · not seen
+  ▾ seshi                   ⎇ dev│                                                      │
+   ✓ quick-fox                 9h│                                                      │
+     finished                    │                                                      │
+   z old-moth                  2d│                                                      │
+     asleep zzZ                  │                                                      │
+                                 │                                                      │
+                                 │                                                      │
+                                 │                                                      │
+                                 │                                                      │
+                                 │                                                      │
+                                 │                                                      │
+                                 │                                                      │
+                                 │                                                      │
+                                 │                                                      │
+                                 │                                                      │
+                                 │                                                      │
+                                 │  › rename the footer copyright to 2026               │
+                                 │                                                      │
+                                 │  • Edit src/components/Footer.tsx                    │
+                                 │    - © 2025 Affiliate Co.                            │
+                                 │    + © 2026 Affiliate Co.                            │
+                                 │                                                      │
+                                 │  • Ran npm test -- Footer                            │
+                                 │    └ 3 passed                                        │
+                                 │                                                      │
+                                 │  • Done. Footer updated and its tests pass.          │
+                                 │                                                      │
+                                 │  Worked for 48s                                      │
+                                 │                                                      │
+                                 │  › Ask Codex to do anything                          │
+                                 │                                                      │ ↑↓ select   ⏎ open   r re-run   O override   Esc close
+  + new                 a actions│                                                      │
+===== flat | 100x30 | unicode
+  SESSIONS 5           ●2│ INBOX 2                                                               ✕
+                         │
+  ▾ affiliate-site ⎇ mai…│  NEEDS YOU  2
+ ▎ ● fix-footer        2m│ ● warm-finch · pixls                                                 3m
+ ▎   approve check: npm t│   Use pnpm or npm for the workspace?
+   ⣶⡆ add-payments    now│
+                         │▎● fix-footer · affiliate-site                                        1m
+  ▾ pixls          no git│▎  approve check command: npm test
+   ● warm-finch        3m│▎   Read the command ⏎
+     asks: use pnpm or np│
+                         │  FINISHED  1
+  ▾ seshi           ⎇ dev│ ✓ quick-fox · seshi                                                  9h
+   ✓ quick-fox         9h│   finished · not seen
+   z old-moth          2d│
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │ ↑↓ select   ⏎ open   r re-run   O override   Esc close
+  + new         a actions│
+===== flat | 80x24 | unicode
+  SESSIONS 5           ●2│ INBOX 2                                           ✕
+                         │
+  ▾ affiliate-site ⎇ mai…│  NEEDS YOU  2
+ ▎ ● fix-footer          │ ● warm-finch · pixls                             3m
+ ▎   approve check: npm t│   Use pnpm or npm for the workspace?
+   ⣶⡆ add-payments       │
+                         │▎● fix-footer · affiliate-site                    1m
+  ▾ pixls          no git│▎  approve check command: npm test
+   ● warm-finch          │▎   Read the command ⏎
+     asks: use pnpm or np│
+                         │  FINISHED  1
+  ▾ seshi           ⎇ dev│ ✓ quick-fox · seshi                              9h
+   ✓ quick-fox           │   finished · not seen
+   z old-moth            │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │ ↑↓ select   ⏎ open   r re-run   O override   Esc cl
+  + new         a actions│
+===== flat | 80x24 | ascii
+  SESSIONS 5           !2│ INBOX 2                                           x
+                         │
+  v affiliate-site git: …│  NEEDS YOU  2
+ | ! fix-footer          │ ! warm-finch · pixls                             3m
+ |   approve check: npm t│   Use pnpm or npm for the workspace?
+   O  add-payments       │
+                         │|! fix-footer · affiliate-site                    1m
+  v pixls          no git│|  approve check command: npm test
+   ! warm-finch          │|   Read the command ⏎
+     asks: use pnpm or np│
+                         │  FINISHED  1
+  v seshi        git: dev│ + quick-fox · seshi                              9h
+   + quick-fox           │   finished · not seen
+   z old-moth            │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │
+                         │ ↑↓ select   ⏎ open   r re-run   O override   Esc cl
+  + new         a actions│

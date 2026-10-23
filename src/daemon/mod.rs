@@ -4,9 +4,12 @@
 //! scanner, background git work and client connections talk to it through a single
 //! channel, so there is no locking around the model.
 
+mod approvals;
 mod check;
 #[cfg(test)]
 pub use check::first_failing_line;
+mod check_source;
+mod check_stale;
 mod git;
 mod persist;
 mod scan;
@@ -110,8 +113,15 @@ pub enum Ev {
     MoveReady { client: ClientId, term: TermId, branch: String, result: Result<(PathBuf, String), String> },
     /// A status report, its sender checked (see `HookJob`).
     HookChecked { msg: ClientMsg, verdict: Option<bool>, chain: Vec<u32> },
-    /// A pane's check ended (see `Daemon::turn_ended`).
-    CheckRan { term: TermId, run: check::CheckRun },
+    /// A run's checkpoints, resolved and gated, and the worktree's tree as it started (see
+    /// `Daemon::turn_ended`).
+    ChecksResolved { term: TermId, run: u64, resolved: Vec<check_source::Resolved>, tree: Option<String> },
+    /// One checkpoint of run `run` ended.
+    CheckRan { term: TermId, run: u64, name: String, result: check::CheckRun },
+    /// Passes the git poll found the files changed under.
+    ChecksStale(Vec<check_stale::Found>),
+    /// Which panes' worktrees have a repo checks file: (pane, the worktree looked in, found).
+    RepoChecksFound(Vec<(TermId, PathBuf, bool)>),
     /// Check output tails a background save could not write.
     CheckOutputsUnsaved(Vec<TermId>),
 }
@@ -173,6 +183,12 @@ struct Daemon {
     last_saved: String,
     /// Where check output tails are kept.
     check_dir: PathBuf,
+    /// Which checkpoints a project has and whether each may run (tests put in their own).
+    resolver: check_source::Resolver,
+    /// What you decided about repos' check commands, read once at start: a hand edit of the
+    /// file counts only after a restart.
+    approvals: approvals::Approvals,
+    approvals_file: PathBuf,
     /// Worktrees seshi created; closing the last thing in one removes it.
     made_worktrees: Vec<PathBuf>,
     /// Plan limits by agent, as last reported.
@@ -247,6 +263,10 @@ pub fn run() -> Result<()> {
             tracing::warn!("config: {e}");
         }
         let mut d = Daemon::new(cfg, tx);
+        match approvals::Approvals::load(&d.approvals_file) {
+            Ok(a) => d.approvals = a,
+            Err(e) => tracing::warn!("check approvals: {e:#}; every repo check asks again"),
+        }
         if d.cfg.restore.enabled
             && let Some(saved) = persist::load()
         {
@@ -405,9 +425,9 @@ impl Daemon {
             }
             // Typing into another pane, only later.
             Command::QueueFollowUp { term, .. } | Command::ClearQueue { term } => self.may(client, Grant::Write, Some(*term)),
-            Command::RerunCheck { term } => self.may(client, Grant::Write, Some(*term)),
+            Command::RerunCheck { term, .. } => self.may(client, Grant::Write, Some(*term)),
             // The pane's own claim never counts, so a pane may not accept its own failure.
-            Command::OverrideCheck { term, .. } | Command::UndoOverride { term } => {
+            Command::OverrideCheck { term, .. } | Command::UndoOverride { term, .. } => {
                 if self.clients.get(&client).and_then(|c| c.from) == Some(*term) {
                     anyhow::bail!("a pane may not override its own check; that is yours to decide");
                 }
@@ -420,6 +440,12 @@ impl Daemon {
             // Only you hand out grants.
             Command::Grant { .. } if self.clients.get(&client).is_some_and(|c| c.from.is_some()) => {
                 anyhow::bail!("grants are yours to give: run seshi grant outside seshi's panes, or use the pane's menu")
+            }
+            // Approving a repo's command is approving what it runs: an agent may not.
+            Command::ApproveCheck { .. } | Command::ForgetCheckApproval { .. }
+                if self.clients.get(&client).is_some_and(|c| c.from.is_some()) =>
+            {
+                anyhow::bail!("check approvals are yours to give, not a pane's")
             }
             _ => Ok(()),
         }
@@ -473,6 +499,9 @@ impl Daemon {
             last_output_save: Instant::now(),
             last_saved: String::new(),
             check_dir: persist::check_output_dir(),
+            resolver: check_source::resolve,
+            approvals: approvals::Approvals::default(),
+            approvals_file: approvals::path(),
             made_worktrees: Vec::new(),
             limits: BTreeMap::new(),
             spent: Vec::new(),
@@ -603,10 +632,13 @@ impl Daemon {
         }
         self.git_busy = true;
         self.last_git = Instant::now();
+        self.probe_repo_checks(self.terms.keys().copied().collect::<Vec<_>>());
         let dirs: Vec<(WsId, PathBuf)> = self.workspaces.iter().map(|w| (w.id, w.cwd.clone())).collect();
         let dir_of: HashMap<WsId, PathBuf> = dirs.iter().cloned().collect();
         let tx = self.tx.clone();
+        let stale_probes = self.stale_probes();
         tokio::task::spawn_blocking(move || {
+            check_stale::report(&stale_probes, &tx);
             let mut res: Vec<(WsId, Option<GitInfo>)> = dirs.into_iter().map(|(id, dir)| (id, git::status(&dir))).collect();
             // One worktree listing per repository, shared by its workspaces.
             let mut lists: HashMap<PathBuf, Vec<WorktreeEntry>> = HashMap::new();
@@ -889,7 +921,10 @@ impl Daemon {
             }
             Ev::HookRan(msg) => self.broadcast(|_| true, ServerMsg::Notice(msg)),
             Ev::HookChecked { msg, verdict, chain } => self.apply_hook(msg, verdict, chain),
-            Ev::CheckRan { term, run } => self.check_ran(term, run),
+            Ev::ChecksResolved { term, run, resolved, tree } => self.checks_resolved(term, run, resolved, tree),
+            Ev::CheckRan { term, run, name, result } => self.check_ran(term, run, &name, result),
+            Ev::ChecksStale(found) => self.checks_went_stale(found),
+            Ev::RepoChecksFound(found) => self.repo_checks_found(found),
             Ev::CheckOutputsUnsaved(terms) => self.check_outputs_unsaved(&terms),
             Ev::SpareMade(repo, result) => {
                 self.spare_making = false;
@@ -1055,11 +1090,11 @@ impl Daemon {
                         Some(t) => ServerMsg::Reply(Reply::Text(t.parser.screen().contents())),
                         None => ServerMsg::Error(format!("no pane {term}")),
                     },
-                    Query::CheckOutput { term } if self.may(client, Grant::Read, Some(term)).is_err() => {
+                    Query::CheckOutput { term, .. } if self.may(client, Grant::Read, Some(term)).is_err() => {
                         ServerMsg::Error(format!("{:#}", self.may(client, Grant::Read, Some(term)).unwrap_err()))
                     }
-                    Query::CheckOutput { term } => match self.terms.get(&term).and_then(|t| t.check.as_ref()) {
-                        Some(record) => ServerMsg::Reply(Reply::Text(record.output.clone())),
+                    Query::CheckOutput { term, name } => match self.check_output(term, name.as_deref()) {
+                        Some(output) => ServerMsg::Reply(Reply::Text(output.to_string())),
                         None => ServerMsg::Error(format!("no check output for pane {term}")),
                     },
                     Query::Worktrees { ws } => {
@@ -1132,7 +1167,7 @@ impl Daemon {
                     win32_input: t.win32_input,
                     usage: t.usage.clone(),
                     resume_at: t.resume_at,
-                    check: t.check.as_ref().map(|c| c.info.clone()),
+                    checks: t.checks.infos(),
                     subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
                     started_by: t.started_by,
                     queued: t.queue.iter().cloned().collect(),
@@ -1239,6 +1274,8 @@ impl Daemon {
         t.account = account;
         self.terms.insert(id, t);
         self.had_terms = true;
+        // Its worktree is looked at for a repo checks file with the git poll.
+        self.poll_git_soon();
         Ok(id)
     }
 
