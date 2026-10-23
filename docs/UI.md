@@ -143,7 +143,7 @@ Rules for keys and their labels: one key per action (no alias keys; a user's own
 
 **Action bars.** A panel's key hints sit in their own one-row bar (`action_bar`, `panel_bar` in `popups.rs`) on a ground one step above the panel's: `card` for a sheet on the app background (Inbox, check evidence) and `card2` inside a modal (Settings, the key overlay, confirms, pickers). It spans the panel's width with one column of padding, shows keycaps and labels, and is always the panel's last row. When the hints do not fit they close their gaps, then give up the ones before `Esc`.
 
-**Menu.** Four groups a blank row apart, no headers, every label lowercase so the lit letter is the only capital-looking cue: shell here, session, session with options…, pane beside this, tab; inbox, search commands, all keys; collapse sidebar, hide sidebar; settings. Each row is run by the letter lit in its name (unique in the menu); each row shows at the right the leader key that does the same (the lit letter works only inside the Menu). Footer: "`Ctrl+Space` then a key works anywhere". "shell here" is leader `n` (a plain shell where you are) and "session" an instant agent session (leader `s`).
+**Menu.** Four groups a blank row apart, no headers, labels capitalised, no letter lit: Shell here, Session, Session with options…, Pane beside this, Tab; Inbox, Search commands, All keys; Collapse sidebar, Hide sidebar; Settings. Each row shows at the right the leader key that does the same, and that key runs the row inside the Menu too. Footer: "`Ctrl+Space` then a key works anywhere". "Shell here" is leader `n` (a plain shell where you are) and "Session" an instant agent session (leader `s`).
 
 **Agent launchers.** Typing an agent (`claude`, `codex`, `gemini`, `opencode`, a quick agent) in a Seshi shell in a git repo's main checkout starts it in a new worktree (`worktree.per_agent`); anywhere else, or in a folder that is not a git repo, it starts where you are, silently. It works from any shell because `<data>/shell/bin/` is first on the pane's `PATH`; see ARCHITECTURE › Agent launchers. No toast or warning is shown for main folders.
 
@@ -215,7 +215,7 @@ tested cell for cell against the reference frames (`client/screen/side_frames.tx
 - **Title:** `SESSIONS` bold and the count, then right-aligned `●n` (`blocked`, bold:
   asking or waiting for check approval) and `✕n` (`err`, bold: failed checks), each only
   above zero.
-- **Folder:** a one-cell `−` (open) or `+` (closed) button on a colour picked at random each time the folder opens, bold ink on it, name (`strong`, bold, never cut before the meta),
+- **Folder:** a one-cell `−` (open) or `+` (closed) button in the state bars' column, bold, in a colour picked at random each time the folder opens (no ground of its own), name (`strong`, bold, never cut before the meta),
   meta right-aligned in `muted`: `⎇ main` plus ` · check: <name>` or ` · N checkpoints`,
   or `no git`. The meta shows only with 6 or more columns free, cut with `…`. A blank row
   follows each folder.
@@ -223,8 +223,12 @@ tested cell for cell against the reference frames (`client/screen/side_frames.tx
   needs you and approve; a new session's `○` is `accent`, bold), the name, the age
   right-aligned in `muted`. A row that wants a look (working, needs you, failed, done and
   not seen, new, any check result other than a plain pass) has a `strong` bold name; a done,
-  seen or asleep row has a `text` name, not bold, `strong` only while selected. Working keeps
-  its shimmer. Every agent's row carries a `▎` edge bar on each line in its state's colour (`err` for a failed check, else the status colour), selected or not; a plain shell has none.
+  seen or asleep row has a `text` name, not bold, `strong` only while selected. **Only the
+  marks carry colour**: the session glyph and a checkpoint's own `✓`/`✕`. With motion on, a
+  working, checking or done-and-not-seen name shimmers from `text` up to `strong` and a
+  needs-you name pulses between them (`side.rs` `NameMotion`). Only the selected row carries
+  a `▎` edge bar, in `accent`, on each of its lines.
+- **Row lines 2 and 3** are `muted` and never bold (`side.rs` `quiet`), whatever they say.
 - **Row line 2:** the headline check's result (`TermInfo::check()`) by checkpoint name, or
   the question, or what the session is doing. While the agent works or asks, its last
   result is about an older turn and is not shown.
@@ -232,24 +236,26 @@ tested cell for cell against the reference frames (`client/screen/side_frames.tx
 - **Row line 3** (140 columns and up): a failed check's first failing line (`muted`), or
   every checkpoint by name: `build ✓ · test ✕` (a failed name in `err`).
 
-- **Foot:** one row off the bottom (Cards: the last row inside the border), a `line` divider above it, no band behind it. Two `btn` chips: `new` a column in and `menu` at the right, each with the letter of its leader key in `accent` bold and the rest in `text`, no brackets (`side.rs` `key_chip`; a key that is not a letter of the word shows as the key, then the word). `menu` drops first when the sidebar is too narrow for both. Chips are square on the plain `bg`, since a cap there has no ground of its own; `ui.rounded` rounds them where the ground is raised.
+- **Foot:** one row off the bottom (Cards: the last row inside the border), a `line` divider above it, no band behind it. Two `btn` chips: `+ New` a column in (the `+` in `accent` bold) and `Menu` at the right, the words in `text`, no letter lit (`side.rs` `word_chip`). `Menu` drops first when the sidebar is too narrow for both. Chips are square on the plain `bg`, since a cap there has no ground of its own; `ui.rounded` rounds them where the ground is raised.
 - **Amber is for needs you.** `blocked` colours only what needs you (its mark, question, counts and approvals), never a heading: Inbox "HEADS UP", the both-diffs sheet and the tidy list use `sky()`.
 
 Settings › Appearance › Status glyphs picks how a session is marked. **Dots** (the default, and what `auto` gives unless your status icons are plain ASCII) draws a coloured `●` for every state that wants you or says something (needs you, done, failed, stale, overridden, not checked) and `○` at rest (idle, asleep); the colour and the word beside the mark carry the meaning. Working keeps your spinner and checking its ring. A check's own `✓` and `✕` beside its name (`build ✓ · test ✕`) keep their shapes. **Unicode**, **ASCII** and **Nerd** are the handoff's sets, where every state has a glyph of its own, as the table shows.
 
+The colour slot is the glyph's; line 2 is always `muted` (see above).
+
 | State | Glyph (Unicode / ASCII) | Colour slot | Line 2 |
 | --- | --- | --- | --- |
-| working | the spinner you chose (Bars is 3-bar), bold | `accent`: glyph, word and name shimmer alike | `claude · working` (shimmers), then `text` ` · 4 agents` only when the agent reports helpers |
+| working | the spinner you chose (Bars is 3-bar), bold | `accent` | `working` (the agent is in the pane title and row menu), then ` · 4 agents` only when the agent reports helpers |
 | needs you | `●` / `!` | `blocked` | `asks: <question>` |
-| done, not seen / seen | `✓` / `+`; `○` / `o` | `done`; `muted` | `done · not seen` (bold `done`) / `idle` (`muted`) |
-| new (an agent told nothing yet) | `○` / `o`, bold | `accent` | `claude · new · type to begin` (`muted`, then `accent`) |
+| done, not seen / seen | `✓` / `+`; `○` / `o` | `done`; `muted` | `done · not seen` / `idle` |
+| new (an agent told nothing yet) | `○` / `o`, bold | `accent` | `claude · new · type to begin` |
 | asleep | `z` | `muted` | `asleep zzZ` |
 | checking | `◜◝◞◟` / `- \ \| /` | `sky()` | `checking test · 6s` |
-| passed | `✓` / `+` | `done` | `passed: test` (bold) ` · 14.2s · 14:22` (`muted`, local clock) |
-| failed | `✕` / `x` | `err` | `failed: test · exit 1` (bold) |
-| overridden | `⊘` / `/` | `text`, never green | `failed, overridden: test` (bold) |
+| passed | `✓` / `+` | `done` | `passed: test · 14.2s · 14:22` (local clock) |
+| failed | `✕` / `x` | `err` | `failed: test · exit 1` |
+| overridden | `⊘` / `/` | `text`, never green | `failed, overridden: test` |
 | could not run | `?` / `?` | `violet()`, not a failure | `test could not run · not found` |
-| stale | `◷` / `~` | `text`, never green | `stale pass: test` (bold) ` · 3 files changed` (`muted`) |
+| stale | `◷` / `~` | `text`, never green | `stale pass: test · 3 files changed` |
 | never for this repo | `?` / `?` | `violet()` | `not checked: never for this repo` |
 | waits for approval | `●` / `!` | `blocked` | `approve check: <command>` |
 

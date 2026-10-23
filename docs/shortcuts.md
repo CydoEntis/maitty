@@ -45,7 +45,7 @@ as duplicates (your own `[keys.prefix]` entries still load): `v`, `|`, `b`, `:`,
 
 | Keys | Action |
 | --- | --- |
-| The letter lit in a row | Run it: `h` Shell here, `s` Session, `w` Session with options…, `p` Pane beside this, `t` Tab, `i` Inbox, `c` Search commands, `k` All keys, `a` Collapse sidebar, `d` Hide sidebar, `e` Settings |
+| The key shown beside a row | Run it (the same leader key works anywhere): `n` Shell here, `s` Session, `c` Session with options…, `p` Pane beside this, `t` Tab, `j` Inbox, `Space` Search commands, `?` All keys, `z` Collapse sidebar, `Z` Hide sidebar, `,` Settings |
 | Up, Down, Enter | Choose and run a row |
 | Esc | Close the Menu |
 
