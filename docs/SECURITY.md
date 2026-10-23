@@ -150,7 +150,13 @@ editing `.seshi/checks.toml`, cannot make Seshi run anything. The rules:
   a damaged file is left alone.
 - Only you approve: `ApproveCheck` and `ForgetCheckApproval` are refused from every pane
   connection whatever its grants, and approve only a checkpoint waiting for approval with
-  the command it waits with. No key press approves on its own; the client sends the choice.
+  the command it waits with. `ApproveCheck` carries the sha256 of the command the modal
+  showed, and the daemon refuses it for any other. No key press approves on its own; the
+  client sends the choice.
+- You approve what you read: a repo's `command` or `name` holding a line break, tab or other
+  control character is refused with the file. The modal shows the whole command, wrapped,
+  with invisible characters spelled out and a run of spaces shown by its length; until a
+  frame has shown all of it, Once and Always are refused.
 - A file that cannot be read or parsed runs nothing and reads as could-not-run with the reason.
 
 Residual risk: a process running as the same OS user can edit `check-approvals.json`, which

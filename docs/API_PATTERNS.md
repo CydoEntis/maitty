@@ -153,10 +153,13 @@ output. `UndoOverride` works only on `Overridden` and restores `Failed`. Any oth
 answers `ServerMsg::Error`. The next run replaces the result on show; `check_overridden` keeps
 the overridden one with its output. A pane may not override or undo its own check.
 
-`ApproveCheck { term, name, choice }` (`Once`, `Always`, `Never`) answers a repo-supplied
-check command and `ForgetCheckApproval { project, name }` drops a remembered answer. No pane
-may send either, whatever its grants; until the daemon runs repo commands both answer
-`ServerMsg::Error("not built yet")`.
+`ApproveCheck { term, name, choice, command_sha256 }` (`Once`, `Always`, `Never`) answers a
+repo-supplied check command and `ForgetCheckApproval { project, name }` drops a remembered
+answer. No pane may send either, whatever its grants. `command_sha256` (`protocol::command_hash`)
+is of the command the client showed; an answer for a checkpoint that isn't waiting, or whose
+waiting command has another hash, is a `ServerMsg::Error`. The answered checkpoint then runs
+again; while another checkpoint of the pane runs, it is queued (`rerun_queued`) and runs when
+that run settles, in the same turn.
 
 Subagent lifecycle is carried as structured `SubagentActivity` records in each
 pane snapshot and persisted with its saved pane. Hook reports use the owning
