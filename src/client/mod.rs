@@ -689,7 +689,7 @@ impl App {
                     }
                     let frame = self.spinner_frame();
                     self.settle_alerts();
-                    if frame != last_frame && ((self.motion_on() && (self.any_working() || self.any_checking())) || matches!(self.mode, Mode::Spinners(_))) {
+                    if frame != last_frame && ((self.motion_on() && (self.any_working() || self.any_checking() || self.any_calling())) || matches!(self.mode, Mode::Spinners(_))) {
                         last_frame = frame;
                         self.dirty = true;
                     }
@@ -1067,6 +1067,11 @@ impl App {
     /// A check's ring turns while it runs.
     fn any_checking(&self) -> bool {
         self.snap.terms.values().any(|term| term.check().is_some_and(|c| c.state == crate::protocol::CheckState::Checking))
+    }
+
+    /// A session that needs you or finished unseen: its name pulses or shimmers.
+    fn any_calling(&self) -> bool {
+        self.snap.terms.values().any(|term| matches!(term.status, Status::Blocked | Status::Done))
     }
 
     fn any_working(&self) -> bool {

@@ -1,5 +1,5 @@
 //! The collapsed sidebar: the sessions as chips along row 0 (v8 `drawStrip`,
-//! `docs/design/v8/v8/app8.js`). The panes keep the full width and their tabs sit on row 1.
+//! `docs/design/v8/cleanup/app8.js`). The panes keep the full width and their tabs sit on row 1.
 use super::*;
 
 /// The longest a session's name is drawn on its chip.
@@ -67,7 +67,7 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
     // The update pill (or the armed leader) keeps the top right.
     let reserved = super::draw::corner_pill(app, t).map_or(0, |(segs, _)| segs_width(&segs) + 2);
     // The Menu keeps a chip here, so mouse access to it doesn't need the sidebar open.
-    let menu = super::side::key_chip(app, "menu", &Action::Menu, t, ground);
+    let menu = super::side::word_chip(app, None, "Menu", t, ground);
     let mw = segs_width(&menu);
     let menu_x = area.right().saturating_sub(reserved + mw + 1);
     let limit = menu_x.saturating_sub(1);

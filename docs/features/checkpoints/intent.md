@@ -7,7 +7,7 @@ Date: 2026-10-22 · Plan: [phase 15](../../ROADMAP.md#15--checks-seshi-runs-itse
 ## Problem
 
 "An agent saying 'done' turns its session done, even when the project's tests fail. You find out
-later, or not at all." ([design brief v6](../../design-brief-v6.md))
+later, or not at all." (design brief v6)
 
 ## Proposed outcome
 
@@ -22,7 +22,7 @@ is recorded and shows. A project with no check looks exactly as Seshi does today
 Anyone running agents in a project with tests. The daemon (runs the check, holds the result,
 delays finished alerts and waiters), the protocol and saved session, the sidebar row, the
 why popover, a new evidence sheet, the Inbox, Settings, and the row menu. The design is the
-[v6 handoff](../../design/v6/README.md); `seshi-checks/checks.js` is its spec.
+[v7 handoff](../../design/v7/README.md); `checks7.js` is its spec.
 
 ## Constraints
 

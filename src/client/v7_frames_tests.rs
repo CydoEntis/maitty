@@ -275,7 +275,7 @@ fn geometry(id: &str, b: &Block) -> Geometry {
             Rect { x: px + 1, y: 1, width: right - px - 1, height: h - 1 }
         }
     });
-    // A modal or popover, and its hard shadow a cell right and down.
+    // A modal or popover, and the handoff's hard shadow a cell right and down.
     let with_shadow = |r: Rect| vec![r, Rect { x: r.x + 1, y: r.y + 1, ..r }];
     let modal = |mw: u16, mh: u16| with_shadow(Rect { x: (w - mw) / 2, y: (h - mh) / 2, width: mw, height: mh });
     let overlays = match over {
@@ -350,6 +350,8 @@ fn app_sidebar(id: &str, stage: Stage, rows: Vec<Vec<char>>, inner_w: usize, asc
                 splice(row, i, sp.chars().count() + " add-payments".chars().count(), &to, end);
             }
         }
+        // The app leaves the agent's name off a working line; it is in the pane's title.
+        swap(row, "claude · working", "working", 0, end);
         if find(row, "add-payments").is_some()
             && let Some(i) = find(row, " now")
         {
@@ -519,6 +521,16 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
         let (x0, x1) = (pop.x as usize, pop.right() as usize - 1);
         for row in want.iter_mut().take(pop.bottom() as usize).skip(pop.y as usize) {
             swap_tail(row, " · 1 of 59", "", x0, x1);
+        }
+    }
+    // The handoff casts a hard shadow; the app casts none, so what shows there is the app's.
+    if let [frame, shadow] = g.overlays[..] {
+        for y in shadow.y..shadow.bottom().min(b.h) {
+            for x in shadow.x..shadow.right().min(b.w) {
+                if !frame.contains(ratatui::layout::Position { x, y }) {
+                    want[y as usize][x as usize] = ANY;
+                }
+            }
         }
     }
     want
@@ -761,7 +773,7 @@ fn a_failed_check_reads_in_err_on_its_row_its_sheet_and_its_pane() {
     let t = &app.theme;
     let (x, y) = at(&buf, "✕ fix-footer");
     assert_eq!(buf[(x, y)].fg, t.err, "the row's glyph");
-    assert_eq!(buf[(x - 2, y)].fg, t.err, "its edge bar");
+    assert_eq!(buf[(x - 2, y)].fg, t.accent, "the open row's bar is the accent, as any selected row's");
     let (x, y) = at(&buf, "✕ failed   exit 1");
     assert_eq!(buf[(x, y)].bg, t.err, "the sheet's result chip");
     let (x, y) = at(&buf, "✕ failed  ✕");
@@ -928,9 +940,9 @@ fn overriding_from_the_inbox_opens_the_evidence() {
     assert!(frame(&mut app, Layout::Floating, 160, 45, "unicode").contains("CHECK · fix-footer › test"));
 }
 
-/// The working glyph, its word and its name are the one working colour in every theme.
+/// Only the working glyph carries the working colour; the name is white and the word quiet.
 #[test]
-fn a_working_row_is_the_working_colour_throughout() {
+fn a_working_row_s_mark_is_the_only_working_colour() {
     for &name in crate::theme::BUILTIN {
         let mut app = open("01");
         app.theme = crate::theme::Theme::named(name);
@@ -938,11 +950,8 @@ fn a_working_row_is_the_working_colour_throughout() {
         let work = app.theme.accent;
         let (x, y) = at(&buf, "add-payments");
         assert_eq!(buf[(x - 2, y)].fg, work, "{name}: the spinner");
-        if name != "mono" {
-            assert_eq!(buf[(x + 11, y)].fg, work, "{name}: the name's unlit end");
-        }
-        let (x, y) = at(&buf, "claude · working");
-        assert_eq!(buf[(x + 9, y)].fg, work, "{name}: the word");
+        let (x, y) = at(&buf, "   working");
+        assert_eq!(buf[(x + 3, y)].fg, app.theme.muted, "{name}: the word");
     }
 }
 
@@ -962,7 +971,7 @@ fn needs_you_is_amber_and_failed_red_in_seshi_dark() {
     let (x, y) = at(&buf, "warm-finch");
     assert_eq!(buf[(x - 2, y)].fg, t.blocked, "the asking row's glyph");
     let (x, y) = at(&buf, "asks:");
-    assert_eq!(buf[(x, y)].fg, t.blocked, "the question");
+    assert_eq!(buf[(x, y)].fg, t.muted, "the question is quiet: the glyph says it needs you");
 }
 
 /// A result that could not run is violet, apart from failed red, needs-you amber and working.
@@ -972,7 +981,7 @@ fn a_check_that_could_not_run_is_violet_not_red_or_amber() {
     app.theme = crate::theme::Theme::named("seshi-dark");
     let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
     let t = &app.theme;
-    let (x, y) = at(&buf, "test could not run");
-    assert_eq!(buf[(x, y)].fg, t.violet());
+    let (x, y) = at(&buf, "fix-footer        ");
+    assert_eq!(buf[(x - 2, y)].fg, t.violet(), "the row's glyph");
     assert!(![t.err, t.blocked, t.accent].contains(&t.violet()));
 }

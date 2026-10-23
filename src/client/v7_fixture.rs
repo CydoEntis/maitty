@@ -323,7 +323,7 @@ fn without_new_tab_chip(row: &str) -> String {
 /// whole screen; the sidebar's rectangle and its rows' places come from `app`. What v8 changes
 /// on purpose, put back:
 /// - the foot sits a row higher in Flat and has a divider above it; its `new` and `menu` chips
-///   read `+ new` and `a actions`, the handoff's words at the same edges;
+///   read `+ new` and `a actions` (the app's `+ New` and `Menu`), the handoff's words at the same edges;
 /// - a finished row says `done` and `done · not seen` where the handoff says `finished`;
 /// - below 140 columns a working row and a not-seen row keep their second line, which the
 ///   handoff drops (only a finished, seen row collapses in v8).
@@ -392,10 +392,10 @@ fn as_the_handoff_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffer,
     let chars = |s: &str| s.chars().collect::<Vec<char>>();
     let find = |row: &[char], needle: &str| row.windows(needle.chars().count()).position(|w| w == chars(needle).as_slice());
     // A chip is its word with a cell either side (a space, or a cap with `ui.rounded`).
-    if let Some(at) = find(&foot, "new").filter(|at| *at > 0) {
-        foot.splice(at - 1..at + 4, chars("+ new"));
+    if let Some(at) = find(&foot, "+ New").filter(|at| *at > 0) {
+        foot.splice(at - 1..at + 6, chars("+ new  "));
     }
-    if let Some(at) = find(&foot, "menu").filter(|at| *at > 0) {
+    if let Some(at) = find(&foot, "Menu").filter(|at| *at > 0) {
         let end = at + 5;
         foot.splice(at - 1..end, vec![' '; 6]);
         let start = (end + 1).saturating_sub(9).min(foot.len() - 9);
@@ -415,40 +415,37 @@ fn as_the_handoff_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffer,
     rows[to][left..right].copy_from_slice(&foot);
 }
 
-/// A project row's `−` / `+` button (a coloured cell) read as the caret the handoff draws there.
-fn with_the_handoff_carets(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffer, app: &App, glyphs: &str) {
-    let side = app.screen.side_rect;
+/// A project row's `−` / `+` button, in the state bars' column, read as the caret the handoff
+/// draws a column further in.
+fn with_the_handoff_carets(rows: &mut [Vec<char>], app: &App, glyphs: &str) {
     let (open, closed) = if glyphs == "ascii" { ('v', '>') } else { ('▾', '›') };
-    for (y, row) in rows.iter_mut().enumerate().take((side.bottom() as usize).saturating_sub(2)) {
-        for x in (side.x as usize + 1)..(side.x as usize + 6).min(row.len().saturating_sub(1)) {
-            // The button is a bold cell on a ground of its own; a session's `+` mark is not.
-            let own_ground = buf[(x as u16, y as u16)].bg != buf[(x as u16 - 1, y as u16)].bg && buf[(x as u16, y as u16)].modifier.contains(ratatui::style::Modifier::BOLD);
-            if own_ground && row[x + 1] == ' ' && (row[x] == '−' || row[x] == '+') {
-                row[x] = if row[x] == '−' { open } else { closed };
-            }
+    for (r, h) in &app.hits {
+        if !matches!(h, Hit::Screen(super::screen::ScreenHit::ToggleProj(_))) {
+            continue;
+        }
+        let (x, row) = (r.x as usize, &mut rows[r.y as usize]);
+        if row.get(x + 1) == Some(&' ') && (row[x] == '−' || row[x] == '+') {
+            row[x + 1] = if row[x] == '−' { open } else { closed };
+            row[x] = ' ';
         }
     }
 }
 
-/// v8 gives every agent's row a bar in its state's colour; the handoff has one only on the
-/// selected row and a red one on a failed check. The others read as the sidebar's own ground.
-fn without_state_bars(rows: &mut [Vec<char>], app: &App) {
+/// The app bars only the selected row; the handoff also bars a failed check's row in red.
+fn with_the_handoff_failed_bars(rows: &mut [Vec<char>], app: &App, flat: bool, glyphs: &str) {
     let side = app.screen.side_rect;
-    let sidebar_has_keys = matches!(app.mode, crate::client::Mode::Side);
-    let picked = |term: crate::protocol::TermId| if sidebar_has_keys { app.screen.cursor == Some(term) } else { app.focused() == Some(term) };
+    let bar_x = (side.x + if flat { 1 } else { 2 }) as usize;
+    let bar = if glyphs == "ascii" { '|' } else { '▎' };
+    let folders: Vec<usize> = app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(super::screen::ScreenHit::ToggleProj(_)))).map(|(r, _)| r.y as usize).collect();
+    let failed = |term: &crate::protocol::TermId| app.snap.terms.get(term).is_some_and(|i| i.reported_check().is_some_and(|c| c.state == crate::protocol::CheckState::Failed));
     let mut owners: Vec<(usize, crate::protocol::TermId)> = app.screen.row_y.iter().map(|(t, y)| (*y as usize, *t)).collect();
     owners.sort();
     for (y, row) in rows.iter_mut().enumerate().take((side.bottom() as usize).saturating_sub(2)) {
         // A line belongs to the session row that began at most two lines above it.
-        let owner = owners.iter().rev().find(|(oy, _)| *oy <= y && y - oy <= 2).map(|(_, t)| *t);
-        let keeps = owner.is_some_and(|t| picked(t) || app.snap.terms.get(&t).is_some_and(|i| i.reported_check().is_some_and(|c| c.state == crate::protocol::CheckState::Failed)));
-        if keeps {
-            continue;
-        }
-        for x in (side.x as usize + 1)..(side.x as usize + 4).min(row.len()) {
-            if row[x] == '▎' || (row[x] == '|' && x > side.x as usize) {
-                row[x] = ' ';
-            }
+        let owner = owners.iter().rev().find(|(oy, _)| *oy <= y && y - oy <= 2).map(|(_, t)| t);
+        let has_text = row.iter().skip(bar_x + 1).take(side.width as usize).any(|c| *c != ' ' && *c != '│');
+        if owner.is_some_and(failed) && !folders.contains(&y) && has_text && row.get(bar_x) == Some(&' ') {
+            row[bar_x] = bar;
         }
     }
 }
@@ -462,8 +459,8 @@ pub(super) fn raw_text(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &s
 pub(super) fn frame(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str) -> String {
     let buf = &cells(app, layout, w, h, glyphs);
     let mut rows: Vec<Vec<char>> = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().chars().next().unwrap_or(' ')).collect()).collect();
-    with_the_handoff_carets(&mut rows, buf, app, glyphs);
-    without_state_bars(&mut rows, app);
+    with_the_handoff_carets(&mut rows, app, glyphs);
+    with_the_handoff_failed_bars(&mut rows, app, layout == Layout::Flat, glyphs);
     as_the_handoff_sidebar(&mut rows, buf, app, layout == Layout::Flat, w);
     let text: String = rows
         .iter()

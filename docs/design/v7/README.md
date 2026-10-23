@@ -14,7 +14,7 @@ These are **design references built in HTML**: a browser cell-grid imitating a t
 High fidelity: exact copy, glyphs, colour roles, cell layout and keys.
 
 ## How to view
-Serve this folder (e.g. `npx serve`) and open `Seshi Checkpoints v7.dc.html`. Top bar: ← → or Next steps through 26 states; switch Layout (or "All three"), Corners, Size, Theme, Glyphs (incl. Plain text), Motion. Click the grid to use its keys. `Seshi Checkpoints v7 Notes.dc.html` holds the written answers.
+The browser prototype and the designer's notes are in git history (`de028e9`). To print every state as text, run `render-frames.mjs` as described in `docs/TESTING.md`.
 
 ## The one rule across layouts
 Only the **frame** changes. Row content, line counts, words, sheet content, Inbox order and keys are identical in all three.
@@ -90,11 +90,9 @@ checkState: none | needs_approval | checking | passed | failed | overridden | co
 Type: JetBrains Mono 12px / 16px line in the prototype (the real app uses the terminal font). Bold = weight 700. Glyph sets: Unicode (default), ASCII fallback (`- + x / ? ~`, `!` needs, `|` bar), Nerd Font (beta, opt-in; icons must be clipped to one cell).
 
 ## Files
-- `Seshi Checkpoints v7.dc.html` — walkthrough (open this)
-- `Seshi Checkpoints v7 Notes.dc.html` — written answers to brief v7
 - `checks7.js` — all screens, strings, glyphs, reducer, presets
 - `seshi-grid.js` — cell-grid renderer
-- `support.js` — prototype runtime
+- `render-frames.mjs` — prints every preset as text; the tests' reference frames come from it
 
 ## Open decisions (recommendations)
 - Re-run while the agent works: queue until the turn ends; row says "queued".

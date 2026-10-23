@@ -620,7 +620,7 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
     let r = Rect { x, y, width: w, height: h };
     // Clicking anywhere else closes it.
     hit(app, area, ScreenHit::Close);
-    // A popover, as the why one: a raised title row over a card, with a hard shadow.
+    // A popover, as the why one: a raised title row over a card.
     let bgm = t.card;
     let title = truncate(&m.title, (w - 10) as usize);
     super::screen::popover_at(app, buf, r, &title, t);

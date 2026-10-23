@@ -414,9 +414,8 @@ mod screen_tests {
         app.screen_side_set(screen::SideItem::Sess(2));
         terminal.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = terminal.backend().buffer();
-        assert_eq!(buf[(x + 2, active_y)].symbol(), "▎", "the open row keeps a bar");
-        assert_eq!(buf[(x + 2, hover_y)].symbol(), "▎", "and so does the one under the keyboard");
-        assert_eq!((buf[(x + 2, hover_y)].fg, buf[(x + 2, active_y)].fg), (app.theme.status(app.snap.terms[&2].status), app.theme.status(app.snap.terms[&1].status)), "each row's bar is its state's colour, whichever is selected");
+        assert_ne!(buf[(x + 2, active_y)].symbol(), "▎", "while the keyboard browses, only its row has a bar");
+        assert_eq!((buf[(x + 2, hover_y)].symbol(), buf[(x + 2, hover_y)].fg), ("▎", app.theme.accent), "the one under the keyboard, in the accent");
         app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
         app.on_mouse(MouseEvent { kind: MouseEventKind::Up(MouseButton::Left), column: x + 10, row: hover_y, modifiers: KeyModifiers::NONE });
         assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 }))));
@@ -626,10 +625,10 @@ mod screen_tests {
         // card beside it from row 0 with the tabs in its title.
         assert!(lines[0].starts_with("┌─"), "the sidebar card from the very corner: {}", lines[0]);
         assert!(lines[0].contains("● needs you") && text.contains("claude"), "the active pane keeps its session and state: {}", lines[0]);
-        assert!(text.contains("new") && text.contains("menu"), "New and Actions stay in the sidebar foot");
+        assert!(text.contains("+ New") && text.contains("Menu"), "New and Actions stay in the sidebar foot");
         assert!(lines[0].contains("─ 1  ") && lines[0].contains("  + ") && !lines[0].contains('▯'), "the tab's number and name in the pane's title, then the + chip; no layout switch: {}", lines[0]);
         // Projects and their sessions, nothing in between.
-        assert!(text.contains("− shop-api") && text.contains("SESSIONS") && text.contains("●1"), "a project: its fold arrow and name; what needs you in the sidebar's title");
+        assert!(text.contains("−  shop-api") && text.contains("SESSIONS") && text.contains("●1"), "a project: its fold arrow and name; what needs you in the sidebar's title");
         assert!(!text.contains("AGENTS") && !text.contains("TERMINALS") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "no heading per kind of session");
         assert!(!text.contains("main folder"), "no 'main folder' wording");
         assert!(!text.contains("+ open a project"), "opening a project is in the header now");
@@ -829,7 +828,7 @@ mod screen_tests {
         // The sidebar: sessions right under their project, worktree sessions tagged.
         let o = draw(&mut app, 160, 45);
         assert!(!o.contains("WORKTREES") && !o.contains("BRANCHES"), "no folder headings");
-        assert!(o.contains("rate") && o.contains(" 2m") && o.contains("codex · working"), "a worktree session is named after it, with its age and what its agent is doing");
+        assert!(o.contains("rate") && o.contains(" 2m") && o.contains("working"), "a worktree session is named after it, with its age and what its agent is doing");
 
         // Resizing the sidebar, within its limits.
         let before = app.screen.side_rect.width;
@@ -1670,7 +1669,7 @@ mod screen_tests {
     fn actions_list_every_command_with_its_key() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("menu"));
+        assert!(o.contains("Menu"));
         let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::Actions)).then_some((r.x, r.y))).expect("a actions is clickable");
         app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
         assert!(matches!(app.mode, Mode::Actions { sel: 0 }));
@@ -1679,12 +1678,12 @@ mod screen_tests {
         for header in ["NEW", "GO TO", "VIEW", "SET UP"] {
             assert!(!o.contains(header), "the Menu has no {header} header");
         }
-        assert!(o.contains("─ Menu ") && o.contains("session with options…") && o.contains("pane beside this") && o.contains("inbox ● 1") && o.contains("search commands") && o.contains("then a key works anywhere"), "{o}");
+        assert!(o.contains("─ Menu ") && o.contains("Session with options…") && o.contains("Pane beside this") && o.contains("Inbox ● 1") && o.contains("Search commands") && o.contains("then a key works anywhere"), "{o}");
         assert!(!o.contains("Start a fleet") && !o.contains("All commands"), "the fleet row and the old palette row are gone");
-        // The letter lit in a row runs it: d hides the sidebar.
+        // The leader key shown beside a row runs it here: Z hides the sidebar.
         assert!(app.sidebar);
-        app.on_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
-        assert!(!app.sidebar && app.side_hidden && app.mode == Mode::Normal, "d: the sidebar hides");
+        app.on_key(KeyEvent::new(KeyCode::Char('Z'), KeyModifiers::SHIFT));
+        assert!(!app.sidebar && app.side_hidden && app.mode == Mode::Normal, "Z: the sidebar hides");
     }
 
     #[test]
@@ -1702,8 +1701,8 @@ mod screen_tests {
             assert!(matches!(app.mode, Mode::Actions { .. }));
             let screen = draw(&mut app, w, h);
             show(&screen);
-            assert!(screen.contains("expand sidebar"));
-            let index = screen::action_items().iter().position(|(_, _, a)| *a == Action::Palette).expect("all commands are discoverable");
+            assert!(screen.contains("Expand sidebar"));
+            let index = screen::action_items().iter().position(|(_, a)| *a == Action::Palette).expect("all commands are discoverable");
             assert!(app.hits.iter().any(|(_, target)| *target == Hit::Screen(screen::ScreenHit::ActionRow(index))));
             click(&mut app, screen::ScreenHit::ActionRow(index));
             assert!(matches!(&app.mode, Mode::KeyMap(km) if km.view == screen::KeyView::Search), "Search commands opens the search");
@@ -1760,7 +1759,7 @@ mod screen_tests {
                 let screen = draw(&mut app, 100, 30);
                 show(&screen);
                 if by_mouse {
-                    assert!(screen.contains("new"), "a visible new chip");
+                    assert!(screen.contains("+ New"), "a visible new chip");
                     click_new_chip(&mut app);
                 } else {
                     leader(&mut app, 'n');
@@ -1851,12 +1850,10 @@ mod screen_tests {
     #[test]
     fn the_menu_starts_a_shell_or_a_session_and_n_is_the_shell_key() {
         let rows = screen::action_items();
-        let labels: Vec<&str> = rows.iter().take(5).map(|(l, _, _)| *l).collect();
-        assert_eq!(labels, ["shell here", "session", "session with options…", "pane beside this", "tab"], "Shell first");
-        assert!(rows.iter().any(|(l, _, a)| *l == "session" && *a == Action::StartSession));
-        assert!(rows.iter().any(|(l, _, a)| *l == "shell here" && *a == Action::ShellHere));
-        let letters: Vec<char> = rows.iter().map(|(_, c, _)| *c).collect();
-        assert!(letters.iter().all(|c| letters.iter().filter(|d| *d == c).count() == 1), "one row per letter: {letters:?}");
+        let labels: Vec<&str> = rows.iter().take(5).map(|(l, _)| *l).collect();
+        assert_eq!(labels, ["Shell here", "Session", "Session with options…", "Pane beside this", "Tab"], "Shell first");
+        assert!(rows.iter().any(|(l, a)| *l == "Session" && *a == Action::StartSession));
+        assert!(rows.iter().any(|(l, a)| *l == "Shell here" && *a == Action::ShellHere));
         let key = |c: &str| c.parse::<crate::keys::KeySpec>().unwrap();
         let (_, app) = super::design_tests::render_with(100, 30);
         assert_eq!(app.keymap.prefixed.get(&key("n")), Some(&Action::ShellHere));
@@ -1868,12 +1865,13 @@ mod screen_tests {
         leader(&mut app, 'n');
         let cmds = sent(&mut rx);
         assert!(matches!(cmds.as_slice(), [Command::NewWorkspace { cwd: Some(_), name: None, cmd: None }]), "a plain shell: {cmds:?}");
-        for (letter, plain) in [('h', true), ('s', false)] {
+        // In the Menu, the leader key shown beside a row runs it.
+        for (key, plain) in [('n', true), ('s', false)] {
             app.mode = Mode::Actions { sel: 0 };
-            app.on_key(KeyEvent::new(KeyCode::Char(letter), KeyModifiers::NONE));
+            app.on_key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE));
             let cmds = sent(&mut rx);
             let shell = matches!(cmds.as_slice(), [Command::NewWorkspace { cmd: None, .. }]);
-            assert_eq!(shell, plain, "Menu letter {letter}: {cmds:?}");
+            assert_eq!(shell, plain, "Menu key {key}: {cmds:?}");
         }
     }
 
@@ -1944,8 +1942,8 @@ mod screen_tests {
             app.act(Action::Menu);
             let screen = draw(&mut app, 100, 30);
             show(&screen);
-            assert!(screen.contains("settings"), "Settings is visible in Actions");
-            let index = screen::action_items().iter().position(|(_, _, action)| *action == Action::Settings).unwrap();
+            assert!(screen.contains("Settings"), "Settings is visible in Actions");
+            let index = screen::action_items().iter().position(|(_, action)| *action == Action::Settings).unwrap();
             if by_mouse {
                 let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::ActionRow(index))).then_some((r.x, r.y))).expect("Settings is clickable");
                 app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
@@ -2026,9 +2024,9 @@ mod screen_tests {
         // A 26-column sidebar card, no right-hand meta or question lines.
         assert!(lines[0].starts_with('┌') && lines[0].chars().nth(25) == Some('┐'), "a slim sidebar: {}", lines[0]);
         let side: String = lines.iter().map(|l| l.chars().take(30).collect::<String>() + "\n").collect();
-        assert!(side.contains("codex · working"), "a working row keeps its second line below 140 columns: {side}");
+        assert!(side.contains("working"), "a working row keeps its second line below 140 columns: {side}");
         assert!(side.contains("asks: Run npm"), "a question keeps its line: {side}");
-        assert!(o.contains("new") && o.contains("menu"), "both controls fit at the sidebar foot");
+        assert!(o.contains("+ New") && o.contains("Menu"), "both controls fit at the sidebar foot");
         assert!(!o.contains("? keys") && !o.contains("inbox"), "there is no full-width status footer");
     }
 
@@ -2041,7 +2039,7 @@ mod screen_tests {
         let top = main.lines().next().unwrap();
         assert!(top.starts_with(' ') && top.chars().nth(33) == Some('│'), "flat has no outside margin, and one rule parts the sidebar from the panes: {top}");
         assert!(main.contains("claude") && main.contains("shell"), "the existing sessions remain visible");
-        assert!(main.contains("new") && main.contains("menu"), "the sidebar keeps its two mouse-accessible controls");
+        assert!(main.contains("+ New") && main.contains("Menu"), "the sidebar keeps its two mouse-accessible controls");
         assert!(!main.lines().last().unwrap_or_default().contains("PANE"), "the full-width footer is gone");
         assert!(!main.contains('╭') && !main.contains('╮') && !main.contains('╰') && !main.contains('╯'), "flat uses square zones without card borders");
         assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Screen(screen::ScreenHit::NewShell)), "New is clickable from the sidebar foot");
@@ -2056,7 +2054,7 @@ mod screen_tests {
         app.act(Action::BrowseTree);
         assert_eq!(app.mode, Mode::Side, "the sidebar takes the keys from the key map");
         let sidebar = draw(&mut app, 160, 45);
-        assert!(sidebar.contains("new") && sidebar.contains("menu"), "sidebar navigation stays visible while focused");
+        assert!(sidebar.contains("+ New") && sidebar.contains("Menu"), "sidebar navigation stays visible while focused");
 
         app.act(Action::Settings);
         let settings = draw(&mut app, 160, 45);
@@ -2101,7 +2099,7 @@ mod screen_tests {
         show(&o);
         // A row's keys are in its menu; the status line has the global ones.
         let rows: Vec<&str> = o.lines().collect();
-        assert!(!rows[2].contains("menu") && o.contains("new") && o.contains("menu"), "new and Actions are at the foot");
+        assert!(!rows[2].contains("Menu") && o.contains("+ New") && o.contains("Menu"), "new and Actions are at the foot");
         let actions_y = app.hits.iter().find_map(|(rect, hit)| (*hit == Hit::Screen(screen::ScreenHit::Actions)).then_some(rect.y)).unwrap();
         assert!(actions_y > 35, "Actions stays at the bottom of the sidebar");
         assert!(!o.lines().last().unwrap_or_default().contains("keys"), "no full-width status footer");
@@ -2388,7 +2386,7 @@ mod screen_tests {
     fn an_update_appears_in_the_tab_bar_only_when_available() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let initial = draw(&mut app, 160, 45);
-        assert!(!initial.contains("Update") && initial.contains("menu"), "actions stay in the sidebar, no update when current");
+        assert!(!initial.contains("Update") && initial.contains("Menu"), "actions stay in the sidebar, no update when current");
         assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Screen(screen::ScreenHit::Actions)));
         app.update_available = Some("9.9.9".into());
         app.update_notes = vec!["Fixed: copying".into(), "New: update button".into()];
@@ -2494,8 +2492,8 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         let at = |s: &str| o.find(s).unwrap_or_else(|| panic!("{s} in the sidebar"));
-        assert!(at("− shop-api") < at("− notes") && at("− notes") < at("− build-box"), "folders here, then other machines");
-        assert!(!o.contains("AGENTS") && !o.contains("TERMINALS") && at("SSH 1") > at("− notes"), "only the other machines get a heading");
+        assert!(at("−  shop-api") < at("−  notes") && at("−  notes") < at("−  build-box"), "folders here, then other machines");
+        assert!(!o.contains("AGENTS") && !o.contains("TERMINALS") && at("SSH 1") > at("−  notes"), "only the other machines get a heading");
     }
 
     #[test]
@@ -2661,6 +2659,24 @@ mod screen_tests {
         app.notify("Copied".into(), false);
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert!(app.notice.is_none(), "Esc clears it");
+    }
+
+    #[test]
+    fn a_mouse_selection_shows_no_copy_keys_since_release_copies_it() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let mut p = vt100::Parser::new(20, 80, 100);
+        p.process(b"alpha beta gamma
+second line
+");
+        app.parsers.insert(1, p);
+        draw(&mut app, 160, 45);
+        assert!(app.enter_copy(1));
+        let r = app.panes.iter().find(|(t, _)| *t == 1).map(|(_, r)| *r).unwrap();
+        if let Mode::Copy(c) = &mut app.mode {
+            (c.mouse, c.cur, c.anchor) = (true, (0, 6), Some((0, 0)));
+        }
+        let line = row_text(&frame(&mut app, 160, 45), r.y);
+        assert!(line.contains("alpha b") && !line.contains(" copy · ") && !line.contains(" cancel"), "{line}");
     }
 
     #[test]
@@ -3514,7 +3530,7 @@ mod screen_tests {
         let flat = draw(&mut app, 160, 45);
         assert!(!flat.lines().last().unwrap_or_default().contains("PANE"));
         assert!(!flat.lines().last().unwrap_or_default().contains("settings"));
-        assert!(flat.contains("new") && flat.contains("menu"), "sidebar controls remain in the sidebar");
+        assert!(flat.contains("+ New") && flat.contains("Menu"), "sidebar controls remain in the sidebar");
     }
 
     #[test]
@@ -4255,7 +4271,7 @@ mod check_row_tests {
     }
 
     #[test]
-    fn a_failed_row_has_a_red_edge_bar_on_both_lines_and_no_other_state_does() {
+    fn no_state_gives_an_unselected_row_a_bar() {
         let (w, h) = (160, 45);
         for layout in LAYOUTS {
             for c in &CASES {
@@ -4263,10 +4279,10 @@ mod check_row_tests {
                 let buf = render(&mut app, w, h);
                 let y = row_of(&buf, &app, NAME);
                 let bar_x = bar_column(&app);
+                let picked = app.focused().is_some_and(|f| app.screen.row_y.get(&f) == Some(&y));
                 for line in [y, y + 1] {
                     let cell = &buf[(bar_x, line)];
-                    let red = cell.symbol() == EDGE_BAR && cell.fg == app.theme.err;
-                    assert_eq!(red, c.state == CheckState::Failed, "{} {:?} line {line}: {:?}", label(layout, w, h), c.state, cell.symbol());
+                    assert_eq!(cell.symbol() == EDGE_BAR, picked, "{} {:?} line {line}: {:?}", label(layout, w, h), c.state, cell.symbol());
                 }
             }
         }
@@ -4302,9 +4318,6 @@ mod check_row_tests {
                 assert!(side_text(&buf, &app, far_y).contains('✕'), "{at}: glyph on its own row");
                 assert!(side_text(&buf, &app, far_y + 1).contains("failed:"), "{at}: its line directly under it");
                 let bar_x = bar_column(&app);
-                for line in [far_y, far_y + 1] {
-                    assert_eq!(buf[(bar_x, line)].symbol(), EDGE_BAR, "{at}: edge bar on line {line}");
-                }
                 let all: String = (bare_y..bare_y + 2).map(|y| side_text(&buf, &app, y)).collect();
                 assert!(!all.contains("failed:") && !all.contains(COMMAND), "{at}: a session with no check has no sub-line: {all:?}");
                 assert_ne!(buf[(bar_x, bare_y)].fg, app.theme.err, "{at}: no red bar on a session with no check");
@@ -4795,7 +4808,7 @@ mod check_sheet_tests {
     fn the_sheet_keeps_the_sidebars_foot_and_waits_for_output_it_has_not_got() {
         let mut app = open(160, 45, |_| {}, check(CheckState::Failed, Some(1)), None);
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("new") && o.contains("menu"), "the foot stays");
+        assert!(o.contains("+ New") && o.contains("Menu"), "the foot stays");
         assert!(o.contains("OUTPUT  reading…"), "no output yet:\n{o}");
     }
 
@@ -5503,7 +5516,7 @@ mod check_settings_tests {
             };
             let (plain, with) = (frames(false), frames(true));
             // The folder's meta names its checkpoint; nothing else changes.
-            let rest = |s: &str| s.lines().filter(|l| !l.contains("− shop-api")).collect::<Vec<_>>().join("\n");
+            let rest = |s: &str| s.lines().filter(|l| !l.contains("−  shop-api")).collect::<Vec<_>>().join("\n");
             assert_eq!(rest(&plain.0), rest(&with.0), "{name}: the sidebar ignores a project's check but in its folder's meta");
             // Flat draws keycaps with or without edge glyphs depending on what other tests set, so
             // compare the page's words and not its padding.

@@ -320,7 +320,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
         {
             let rl = *looks.entry(term).or_insert_with(|| {
                 let picked = if focused_side { app.screen.cursor == Some(term) } else { Some(term) == focus };
-                row_look(s, picked, Some(term) == focus, focused_side, pb, t)
+                row_look(picked, pb, t)
             });
             if rl.bg != pb {
                 fill(buf, row, rl.bg);
@@ -346,14 +346,14 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     draw_session(app, buf, s, cols, y, indent, rl, t, screen_w >= AGES_FROM);
                 }
                 Line::Detail(_) => {
-                    put(buf, x, y, &detail(app, s, rl, t, cols.end().saturating_sub(x) as usize), cols.end());
+                    put(buf, x, y, &quiet(app, s, detail(app, s, rl, t, cols.end().saturating_sub(x) as usize), t), cols.end());
                     // Its question is this line: a click answers it, not just opens the session.
                     if s.helpers_wanted > 0 {
                         hit(app, row, ScreenHit::HelperAsk(term));
                     }
                 }
                 _ => {
-                    put(buf, x, y, &rl.on(third(app, s, t), t), cols.end());
+                    put(buf, x, y, &quiet(app, s, rl.on(third(app, s, t), t), t), cols.end());
                 }
             }
             continue;
@@ -396,17 +396,10 @@ fn side_scroll(app: &mut App, model: &[Proj], lines: &[Line], focus: Option<Term
 }
 
 /// The selected row (the keyboard's while the sidebar has the keys, else the open session) is
-/// tinted. Every agent's row carries a bar in its state's colour, selected or not: red for a failed
-/// check, else the colour of what it is doing. A plain shell has none.
-fn row_look(s: &Session, picked: bool, _open: bool, _focused_side: bool, ground: Color, t: &Theme) -> RowLook {
+/// tinted and carries an accent bar; no other row has one.
+fn row_look(picked: bool, ground: Color, t: &Theme) -> RowLook {
     let bg = if picked { t.sel_bg() } else { ground };
-    let bar = if check::shown(s).is_some_and(check::failed) {
-        Some(t.err)
-    } else if s.is_agent {
-        Some(t.status(s.status))
-    } else {
-        None
-    };
+    let bar = picked.then_some(t.accent);
     RowLook { bg, picked, bar }
 }
 
@@ -470,20 +463,59 @@ fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, cols: Cols, y: u16
     let nx = gx + gw + 1;
     let room = cols.rx.saturating_sub(nx).saturating_sub(when.width() as u16) as usize;
     let name = truncate(&s.name, room);
-    // Name: strong and bold when the row wants a look, plain `text` once it is done and seen.
-    let ns = st.fg(if rl.picked || hot { t.strong } else { t.text });
-    let ns = if hot && !plain_shell(s) { ns.add_modifier(Modifier::BOLD) } else { ns };
-    let left = if state == State::Working {
-        working_text(app, &name, rl.paint(t, t.accent), t, ns)
-    } else {
-        vec![seg(name, ns)]
-    };
+    // Name: `strong` and bold when the row wants a look, plain `text` once it is done and seen.
+    // Only the mark carries the state's colour.
+    let colour = if rl.picked || (hot && !plain_shell(s)) { t.strong } else { t.text };
+    let ns = if hot && !plain_shell(s) { st.add_modifier(Modifier::BOLD) } else { st };
+    let anim = if plain_shell(s) || !app.motion_on() { NameMotion::Still } else { NameMotion::of(s, state) };
+    // A moving name runs from `text` up to `strong`, so it stays white rather than coloured.
+    let base = if anim == NameMotion::Still { colour } else { t.text };
+    let left = name_segs(&name, anim, app.spinner_frame(), base, t.strong, ns);
     put(buf, nx, y, &left, cols.rx + 1);
     if !when.is_empty() {
         put(buf, (cols.rx + 1).saturating_sub(when.width() as u16), y, &[seg(when, st.fg(t.muted))], cols.rx + 1);
     }
     if menu {
         row_menu_button(app, buf, Rect { x: cols.rx, y, width: 1, height: 1 }, rl.bg, t, ScreenHit::RowMenuSess(s.term));
+    }
+}
+
+/// How a session's name moves while motion is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NameMotion {
+    Still,
+    /// A bright band sweeps across it: working, checking, or finished and not yet seen.
+    Shimmer,
+    /// It slowly brightens and dims: it needs you.
+    Pulse,
+}
+
+impl NameMotion {
+    fn of(s: &Session, state: State) -> NameMotion {
+        match state {
+            State::Working | State::Checking => NameMotion::Shimmer,
+            State::Done | State::Passed if s.status == Status::Done => NameMotion::Shimmer,
+            State::Needs | State::Approve => NameMotion::Pulse,
+            _ => NameMotion::Still,
+        }
+    }
+}
+
+/// Spinner frames in one pulse, dim to bright and back (about 1.6 s).
+const PULSE_FRAMES: u64 = 18;
+/// How far toward `strong` a pulse brightens a name at its peak.
+const PULSE_PEAK: f32 = 0.5;
+
+/// `text` in `base`, moving as `motion` says at spinner frame `frame`.
+fn name_segs(text: &str, motion: NameMotion, frame: u64, base: Color, bright: Color, st: Style) -> Vec<Seg> {
+    match motion {
+        NameMotion::Still => vec![seg(text.to_string(), st.fg(base))],
+        NameMotion::Shimmer => shimmer(text, frame, base, blend(base, bright, 0.6), st),
+        NameMotion::Pulse => {
+            let half = PULSE_FRAMES / 2;
+            let k = (frame % PULSE_FRAMES).abs_diff(half) as f32 / half as f32;
+            vec![seg(text.to_string(), st.fg(blend(base, bright, (1.0 - k) * PULSE_PEAK)))]
+        }
     }
 }
 
@@ -535,8 +567,8 @@ fn status_words(app: &App, s: &Session, t: &Theme) -> Vec<Seg> {
     }
     match s.status {
         Status::Working => {
-            let mut words = vec![seg(format!("{} · ", s.agent), Style::default().fg(t.muted))];
-            words.extend(working_text(app, "working", t.accent, t, Style::default()));
+            // The agent is in the pane's title and the row's menu; the state leads here.
+            let mut words = working_text(app, "working", t.accent, t, Style::default());
             // Only an agent that reports helpers has a count (Codex reports none).
             match agent_count(s) {
                 0 => {}
@@ -551,6 +583,21 @@ fn status_words(app: &App, s: &Session, t: &Theme) -> Vec<Seg> {
         Status::Idle if s.is_agent => muted("idle"),
         _ => Vec::new(),
     }
+}
+
+/// A row's lines under its name in `muted`, not bold: only its checkpoints' glyphs keep their
+/// colour, so the sidebar's colour is the marks'.
+fn quiet(app: &App, s: &Session, segs: Vec<Seg>, t: &Theme) -> Vec<Seg> {
+    let glyphs: Vec<&str> = s.checks.iter().map(|c| check::glyph(app, c)).collect();
+    segs.into_iter()
+        .map(|(text, st)| {
+            if glyphs.contains(&text.as_str()) {
+                (text, st)
+            } else {
+                (text, st.fg(t.muted).remove_modifier(Modifier::BOLD))
+            }
+        })
+        .collect()
 }
 
 /// A session's third line: its checkpoints by name, or a failed check's first failing line.
@@ -608,9 +655,6 @@ fn draw_proj(app: &mut App, buf: &mut Buffer, model: &[Proj], pi: usize, cols: C
     if bg != pb {
         fill(buf, row, bg);
     }
-    if on {
-        check::edge(app, buf, cols.x, y, t.accent, bg);
-    }
     // A selected folder row is one line, so it can end in a half-circle; the multi-line session
     // blocks would scallop, so they keep square ends. Text stops a cell short of the cap.
     let round = on && Look::of(&app.cfg.ui).round_tabs;
@@ -622,11 +666,12 @@ fn draw_proj(app: &mut App, buf: &mut Buffer, model: &[Proj], pi: usize, cols: C
     if !app.screen.fold_colors.contains_key(&p.key) {
         app.pick_fold_color(&p.key);
     }
-    // A − (open) or + (closed) on a colour of its own: a caret is too small to read as a button.
+    // A − (open) or + (closed) in a colour of its own, in the state bars' column: a caret is
+    // too small to read as a button.
     let button = app.screen.fold_colors.get(&p.key).copied().unwrap_or(t.accent);
-    let fold = seg(if open { "−" } else { "+" }, Style::default().bg(button).fg(t.ink_on(button)).add_modifier(Modifier::BOLD));
+    put(buf, cols.x, y, &[seg(if open { "−" } else { "+" }, st.fg(button).add_modifier(Modifier::BOLD))], text_end);
     let name = truncate(&p.name, cols.rx.saturating_sub(cols.x + 2) as usize);
-    let mut left = vec![fold, seg(" ", st), seg(name, st.fg(t.strong).add_modifier(Modifier::BOLD))];
+    let mut left = vec![seg("  ", st), seg(name, st.fg(t.strong).add_modifier(Modifier::BOLD))];
     if p.fresh {
         left.push(seg(" ", st));
         left.extend(chip("NEW", Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD)));
@@ -680,35 +725,31 @@ fn checkpoint_names(app: &App, p: &Proj) -> Vec<String> {
     names
 }
 
-/// A `btn` chip for an action: its word with the letter of its leader key lit in the accent, bold,
-/// or the key then the word when the key is not a letter of it. Its ends follow `ui.rounded`.
-pub(super) fn key_chip(app: &App, word: &str, action: &Action, t: &Theme, outer: Color) -> Vec<Seg> {
+/// A `btn` chip: `word` in `text`, after an `accent` bold `icon` when it has one. Its ends
+/// follow `ui.rounded`.
+pub(super) fn word_chip(app: &App, icon: Option<&str>, word: &str, t: &Theme, outer: Color) -> Vec<Seg> {
     // A cap needs a raised ground to sit on: on the plain `bg` (which a transparent terminal
     // background hands back to the terminal) it would have none, so the chip stays square.
     let look = Look { caps: Look::of(&app.cfg.ui).caps && outer != Color::Reset && outer != t.bg, ..Look::of(&app.cfg.ui) };
-    let key = k(app, action);
-    let plain = Style::default().fg(t.text).bg(t.btn);
-    let lit = Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD);
-    let first = word.chars().next();
-    let body = if first.is_some_and(|c| key.eq_ignore_ascii_case(&c.to_string())) {
-        lit_letter(word, first, plain, lit)
-    } else {
-        vec![seg(key, lit), seg(format!(" {word}"), plain)]
-    };
+    let mut body = Vec::new();
+    if let Some(icon) = icon {
+        body.push(seg(format!("{icon} "), Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD)));
+    }
+    body.push(seg(word, Style::default().fg(t.text).bg(t.btn)));
     pill(look, body, t.btn, outer)
 }
 
 /// The foot, lifted a row off the bottom under a `line` divider, with no band behind it: a
-/// `new` chip a column in and a `menu` chip at the right. Each lights its key's letter (the
-/// leader key that does it); they drop from the end when the sidebar is too narrow.
+/// `+ New` chip a column in and a `Menu` chip at the right; they drop from the end when the
+/// sidebar is too narrow.
 fn draw_foot(app: &mut App, buf: &mut Buffer, r: Rect, cols: Cols, pb: Color, t: &Theme) {
     if r.height < 6 {
         return;
     }
     let y = r.bottom().saturating_sub(2);
     hline(buf, cols.x, y - 1, (cols.rx + 1).saturating_sub(cols.x), t, pb);
-    let new = key_chip(app, "new", &Action::ShellHere, t, pb);
-    let menu = key_chip(app, "menu", &Action::Menu, t, pb);
+    let new = word_chip(app, Some("+"), "New", t, pb);
+    let menu = word_chip(app, None, "Menu", t, pb);
     let (nw, mw) = (segs_width(&new), segs_width(&menu));
     let nx = cols.x + 1;
     if nx + nw > cols.rx + 1 {
@@ -802,6 +843,11 @@ mod frame_tests {
         out
     }
 
+    /// `claude · working` read as `working`: the line has nothing to its right.
+    fn without_agent_on_working(row: &str) -> String {
+        row.replacen("claude · working", "working", 1)
+    }
+
     fn same(want: &str, got: &str) -> bool {
         let (w, g): (Vec<char>, Vec<char>) = (want.chars().collect(), got.chars().collect());
         w.len() == g.len() && w.iter().zip(&g).all(|(a, b)| a == b || *a == ANY)
@@ -812,7 +858,9 @@ mod frame_tests {
         let mut app = world(stage);
         let text = frame(&mut app, layout, size.0, size.1, glyphs);
         let got = inner(&text, app.screen.side_rect, layout == Layout::Flat);
-        let want = Want { rows: in_app_order(&want.rows, &got), ..want };
+        // The app leaves the agent's name off a working line; it is in the pane's title.
+        let rows: Vec<String> = want.rows.iter().map(|r| without_agent_on_working(r)).collect();
+        let want = Want { rows: in_app_order(&rows, &got), ..want };
         let n = want.rows.len();
         let ok = got.len() > n
             && want.rows.iter().zip(&got).all(|(w, g)| same(w, g))
@@ -835,15 +883,30 @@ mod frame_tests {
     }
 
     #[test]
+    fn a_folder_s_fold_button_is_a_coloured_mark_in_the_state_bars_column() {
+        let mut app = world(Stage::Failed);
+        let buf = crate::client::v7_fixture::cells(&mut app, Layout::Flat, 160, 45, "unicode");
+        let side = app.screen.side_rect;
+        let y = (side.y..side.bottom()).find(|&y| (side.x..side.right()).any(|x| buf[(x, y)].symbol() == "−")).expect("an open folder");
+        let x = (side.x..side.right()).find(|&x| buf[(x, y)].symbol() == "−").unwrap();
+        let bar_x = (side.y..side.bottom()).find_map(|y| (side.x..side.right()).find(|&x| buf[(x, y)].symbol() == "▎")).expect("a row's state bar");
+        assert_eq!(x, bar_x, "in the state bars' column");
+        let (cell, ground) = (&buf[(x, y)], buf[(x + 1, y)].bg);
+        assert_eq!(cell.bg, ground, "no box of its own");
+        let key = app.screen_model().into_iter().find(|p| (x..side.right()).map(|x| buf[(x, y)].symbol()).collect::<String>().contains(&p.name)).expect("the folder").key;
+        assert_eq!(cell.fg, app.screen.fold_colors.get(&key).copied().unwrap_or(app.theme.accent), "the mark is the folder's colour");
+    }
+
+    #[test]
     fn rows_give_way_in_order_meta_age_third_line_then_quiet_second_lines() {
         let at = |w| rows_at(Stage::Failed, Layout::Floating, w, 30);
         let wide = at(160);
-        assert!(has(&wide, "⎇ main · ch…") && has(&wide, "2m") && has(&wide, "✗ src/pages") && has(&wide, "claude · working"), "{wide:#?}");
+        assert!(has(&wide, "⎇ main · ch…") && has(&wide, "2m") && has(&wide, "✗ src/pages") && has(&wide, "working"), "{wide:#?}");
         let narrow = at(140);
-        assert!(has(&narrow, "✗ src/pages") && has(&narrow, "claude · working"), "140 columns are still wide: {narrow:#?}");
+        assert!(has(&narrow, "✗ src/pages") && has(&narrow, "working"), "140 columns are still wide: {narrow:#?}");
         let slim = at(139);
         assert!(!has(&slim, "⎇ main") && has(&slim, "2m"), "the meta goes first, the age stays: {slim:#?}");
-        assert!(!has(&slim, "✗ src/pages") && !has(&slim, "claude · working"), "then line 3 and quiet second lines: {slim:#?}");
+        assert!(!has(&slim, "✗ src/pages") && !has(&slim, "working"), "then line 3 and quiet second lines: {slim:#?}");
         assert!(has(&slim, "failed: test · exit") && has(&slim, "asks: use pnpm"), "a result and a question keep theirs: {slim:#?}");
         assert!(has(&at(100), "2m") && !has(&at(99), "2m"), "the age goes below 100 columns");
     }
@@ -877,7 +940,7 @@ mod frame_tests {
     fn the_bars_spinner_marks_a_working_row_and_the_name_steps_right_for_it() {
         let (first, second) = working_rows(crate::config::BARS_FRAMES, "unicode", Layout::Floating);
         assert!(first.starts_with("⣶⡆ add-payments"), "motion off holds the third frame: {first:?}");
-        assert_eq!(second, "claude · working");
+        assert_eq!(second, "working");
         let (one_cell, _) = working_rows(&["|"], "unicode", Layout::Floating);
         assert!(one_cell.starts_with("| add-payments"), "a one-column choice keeps the name where it was: {one_cell:?}");
         let (flat, _) = working_rows(crate::config::BARS_FRAMES, "unicode", Layout::Flat);
@@ -955,16 +1018,16 @@ mod v8_tests {
         let mut app = world(Stage::None);
         app.snap.terms.get_mut(&2).unwrap().subagents = vec!["a".into(), "b".into()];
         let rows = side_rows(&mut app, Layout::Floating, 160, 45);
-        assert!(has(&rows, "claude · working · 2 agents"), "a count when the agent reports helpers: {rows:#?}");
+        assert!(has(&rows, "working · 2 agents"), "a count when the agent reports helpers: {rows:#?}");
         app.cfg.ui.subagent_count = false;
         let rows = side_rows(&mut app, Layout::Floating, 160, 45);
-        assert!(has(&rows, "claude · working") && !has(&rows, "· 2 agents"), "Settings > Agents can turn the count off: {rows:#?}");
+        assert!(has(&rows, "working") && !has(&rows, "· 2 agents"), "Settings > Agents can turn the count off: {rows:#?}");
         app.cfg.ui.subagent_count = true;
         assert!(has(&rows, "done · not seen"), "{rows:#?}");
         assert!(has(&rows, "asks: use pnpm or npm?"), "{rows:#?}");
         app.snap.terms.get_mut(&2).unwrap().subagents.clear();
         let rows = side_rows(&mut app, Layout::Floating, 160, 45);
-        assert!(has(&rows, "claude · working") && !has(&rows, "agents"), "no count when none is reported: {rows:#?}");
+        assert!(has(&rows, "working") && !has(&rows, "agents"), "no count when none is reported: {rows:#?}");
         // Seen and finished reads `done`; one that has been told nothing is new.
         app.snap.terms.get_mut(&4).unwrap().status = Status::Idle;
         let new = app.snap.terms.get_mut(&5).unwrap();
@@ -980,7 +1043,7 @@ mod v8_tests {
         app.snap.terms.get_mut(&4).unwrap().status = Status::Idle;
         for layout in LAYOUTS {
             let rows = side_rows(&mut app, layout, 100, 30);
-            assert!(has(&rows, "claude · working"), "{layout:?}: a working row keeps its line: {rows:#?}");
+            assert!(has(&rows, "working"), "{layout:?}: a working row keeps its line: {rows:#?}");
             assert!(has(&rows, "asks: use pnpm"), "{layout:?}: {rows:#?}");
             assert!(!rows.iter().any(|r| said(r) == "idle"), "{layout:?}: a plain idle row is one line: {rows:#?}");
             let rows = side_rows(&mut app, layout, 160, 45);
@@ -989,7 +1052,31 @@ mod v8_tests {
     }
 
     #[test]
-    fn a_row_that_wants_a_look_is_bold_and_a_done_one_is_plain() {
+    fn only_the_selected_row_has_a_bar_and_it_is_the_accent() {
+        let mut app = world(Stage::Failed);
+        let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
+        let side = app.screen.side_rect;
+        let bars: Vec<(u16, Color)> = (side.y..side.bottom()).flat_map(|y| (side.x..side.right()).map(move |x| (x, y))).filter(|&p| buf[p].symbol() == "▎").map(|(_, y)| (y, buf[(side.x + 2, y)].fg)).collect();
+        let open = app.screen.row_y[&app.focused().expect("an open session")];
+        assert!(!bars.is_empty() && bars.iter().all(|&(y, c)| (open..open + 3).contains(&y) && c == app.theme.accent), "{bars:?}");
+    }
+
+    #[test]
+    fn names_shimmer_while_working_or_unseen_and_pulse_while_they_need_you() {
+        let (base, bright, st) = (Color::Rgb(0, 0, 0), Color::Rgb(250, 250, 250), Style::default());
+        let colours = |m, f| name_segs("quick-fox", m, f, base, bright, st).iter().map(|(_, s)| s.fg).collect::<Vec<_>>();
+        assert!(colours(NameMotion::Still, 3).iter().all(|c| *c == Some(base)), "still: one colour");
+        let band = colours(NameMotion::Shimmer, 6);
+        assert!(band.contains(&Some(base)) && band.iter().any(|c| *c != Some(base)), "a band crosses the name: {band:?}");
+        assert_ne!(colours(NameMotion::Shimmer, 6), colours(NameMotion::Shimmer, 9), "and moves");
+        let at = |f| colours(NameMotion::Pulse, f)[0];
+        assert_eq!(at(0), Some(base), "a pulse starts dim");
+        assert_ne!(at(PULSE_FRAMES / 2), Some(base), "brightens");
+        assert_eq!(at(PULSE_FRAMES), Some(base), "and dims again");
+    }
+
+    #[test]
+    fn a_row_that_wants_a_look_is_bold_white_and_its_words_quiet() {
         let mut app = world(Stage::None);
         app.snap.terms.get_mut(&5).unwrap().asleep = false;
         app.snap.terms.get_mut(&5).unwrap().status = Status::Idle;
@@ -999,13 +1086,15 @@ mod v8_tests {
             let (x, y) = find(&buf, &app, name);
             (buf[(x, y)].modifier.contains(Modifier::BOLD), buf[(x, y)].fg)
         };
-        assert_eq!(style("warm-finch"), (true, t.strong), "needs you: strong and bold");
-        assert_eq!(style("quick-fox"), (true, t.strong), "done, not seen: strong and bold");
+        assert_eq!(style("warm-finch"), (true, t.strong), "needs you: white and bold");
+        assert_eq!(style("quick-fox"), (true, t.strong), "done, not seen: white and bold");
         assert_eq!(style("old-moth"), (false, t.text), "done: text, not bold");
         let (x, y) = find(&buf, &app, "done · not seen");
-        assert_eq!((buf[(x, y)].fg, buf[(x, y)].modifier.contains(Modifier::BOLD)), (t.done, true), "line two of an unseen row is bold green");
+        assert_eq!((buf[(x, y)].fg, buf[(x, y)].modifier.contains(Modifier::BOLD)), (t.muted, false), "line two is muted, whatever the state");
         let (x, y) = find(&buf, &app, "asks:");
-        assert_eq!(buf[(x, y)].fg, t.blocked, "the question is amber");
+        assert_eq!(buf[(x, y)].fg, t.muted, "the question too: its glyph is the amber");
+        let (x, y) = find(&buf, &app, "warm-finch");
+        assert_eq!(buf[(x - 2, y)].fg, t.blocked, "the glyph keeps the state's colour");
     }
 
     #[test]
@@ -1016,20 +1105,20 @@ mod v8_tests {
             let (r, t) = (app.screen.side_rect, app.theme.clone());
             let foot_y = r.bottom() - 2;
             let row = |y: u16| -> String { (r.x..r.right()).map(|x| buf[(x, y)].symbol()).collect() };
-            assert!(row(foot_y).contains("new") && row(foot_y).contains("menu"), "{layout:?}: {:?}", row(foot_y));
+            assert!(row(foot_y).contains("+ New") && row(foot_y).contains("Menu"), "{layout:?}: {:?}", row(foot_y));
             assert!(row(foot_y - 1).contains("────"), "{layout:?}: a divider above: {:?}", row(foot_y - 1));
             let line_fg = (r.x..r.right()).find(|x| buf[(*x, foot_y - 1)].symbol() == "─").map(|x| buf[(x, foot_y - 1)].fg);
             assert_eq!(line_fg, Some(t.line), "{layout:?}: the divider is `line`");
             // No band: the cells between the chips are the sidebar's own ground.
-            let (n, _) = find(&buf, &app, "new");
-            let (m, _) = find(&buf, &app, "menu");
+            let (n, _) = find(&buf, &app, "+ New");
+            let (m, _) = find(&buf, &app, "Menu");
             assert_eq!(buf[(n + 8, foot_y)].bg, buf[(n + 8, foot_y - 2)].bg, "{layout:?}: no band behind the foot");
             assert!(m > n + 8, "{layout:?}: menu is at the right");
-            // Key letters lit in the accent, bold; the rest in text; chips raised.
-            for (word, x) in [("new", n), ("menu", m)] {
-                let lit = &buf[(x, foot_y)];
-                assert_eq!((lit.fg, lit.bg, lit.modifier.contains(Modifier::BOLD)), (t.accent, t.btn, true), "{layout:?}: the {word} chip's key letter");
-                assert_eq!(buf[(x + 1, foot_y)].fg, t.text, "{layout:?}: the rest of {word}");
+            // New's `+` in the accent, bold; the words in text, no letter lit; chips raised.
+            let plus = &buf[(n, foot_y)];
+            assert_eq!((plus.fg, plus.bg, plus.modifier.contains(Modifier::BOLD)), (t.accent, t.btn, true), "{layout:?}: New's +");
+            for (word, x) in [("New", n + 2), ("Menu", m)] {
+                assert!((x..x + word.len() as u16).all(|x| buf[(x, foot_y)].fg == t.text && buf[(x, foot_y)].bg == t.btn), "{layout:?}: {word} is plain text on a chip");
             }
             let hits = |h: ScreenHit| app.hits.iter().any(|(rect, hit)| *hit == crate::client::Hit::Screen(h) && rect.y == foot_y);
             assert!(hits(ScreenHit::NewShell) && hits(ScreenHit::Actions), "{layout:?}: both chips are clickable");
