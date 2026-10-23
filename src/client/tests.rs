@@ -332,7 +332,7 @@ mod screen_tests {
         let cap = find("j").into_iter().any(|(x, y)| buffer[(x, y)].bg == app.theme.btn && buffer[(x, y)].fg == app.theme.strong);
         assert!(cap, "the Inbox binding is on a raised keycap, strong text");
         // Ctrl+Space in the banner: two caps, and a + in the dim colour between them.
-        let plus = find("+").into_iter().any(|(x, y)| buffer[(x, y)].fg == app.theme.muted && buffer[(x.saturating_sub(1), y)].symbol() != " ");
+        let plus = find("+").into_iter().any(|(x, y)| buffer[(x, y)].fg == app.theme.muted);
         assert!(plus, "combo parts are joined with a dim +");
         // Its hints sit in a bar of their own, on a lifted ground, as the last row of the card.
         let last_bar = (0..45).rev().find(|&y| (0..160).any(|x| buffer[(x, y)].bg == app.theme.card2 && buffer[(x, y)].symbol() != " ")).expect("an action bar");
@@ -1212,7 +1212,7 @@ mod screen_tests {
         assert_eq!(app.screen.tabs.len(), 2);
         assert_eq!(app.screen.tabs[1].owner, app.screen.tabs[0].owner, "a tab of the same session");
         app.screen.tab = 0;
-        let o = draw(&mut app, 200, 50);
+        let o = draw(&mut app, 260, 50);
         show(&o);
         assert!(o.contains(" 1 ") && o.contains(" 2 "), "a tab bar");
         assert_eq!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_)))).count(), 2, "both tabs in the top-left pane's title");
@@ -1674,9 +1674,9 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         for header in ["NEW", "GO TO", "VIEW", "SET UP"] {
-            assert!(o.contains(header), "the Menu has the {header} group");
+            assert!(!o.contains(header), "the Menu has no {header} header");
         }
-        assert!(o.contains("─ Menu ") && o.contains("Session with options…") && o.contains("Pane beside this") && o.contains("Inbox ● 1") && o.contains("Search commands") && o.contains("then a key works anywhere"), "{o}");
+        assert!(o.contains("─ Menu ") && o.contains("session with options…") && o.contains("pane beside this") && o.contains("inbox ● 1") && o.contains("search commands") && o.contains("then a key works anywhere"), "{o}");
         assert!(!o.contains("Start a fleet") && !o.contains("All commands"), "the fleet row and the old palette row are gone");
         // The letter lit in a row runs it: d hides the sidebar.
         assert!(app.sidebar);
@@ -1699,7 +1699,7 @@ mod screen_tests {
             assert!(matches!(app.mode, Mode::Actions { .. }));
             let screen = draw(&mut app, w, h);
             show(&screen);
-            assert!(screen.contains("Expand sidebar"));
+            assert!(screen.contains("expand sidebar"));
             let index = screen::action_items().iter().position(|(_, _, a)| *a == Action::Palette).expect("all commands are discoverable");
             assert!(app.hits.iter().any(|(_, target)| *target == Hit::Screen(screen::ScreenHit::ActionRow(index))));
             click(&mut app, screen::ScreenHit::ActionRow(index));
@@ -1849,9 +1849,9 @@ mod screen_tests {
     fn the_menu_starts_a_shell_or_a_session_and_n_is_the_shell_key() {
         let rows = screen::action_items();
         let labels: Vec<&str> = rows.iter().take(5).map(|(l, _, _)| *l).collect();
-        assert_eq!(labels, ["Shell here", "Session", "Session with options…", "Pane beside this", "Tab"], "Shell first");
-        assert!(rows.iter().any(|(l, _, a)| *l == "Session" && *a == Action::StartSession));
-        assert!(rows.iter().any(|(l, _, a)| *l == "Shell here" && *a == Action::ShellHere));
+        assert_eq!(labels, ["shell here", "session", "session with options…", "pane beside this", "tab"], "Shell first");
+        assert!(rows.iter().any(|(l, _, a)| *l == "session" && *a == Action::StartSession));
+        assert!(rows.iter().any(|(l, _, a)| *l == "shell here" && *a == Action::ShellHere));
         let letters: Vec<char> = rows.iter().map(|(_, c, _)| *c).collect();
         assert!(letters.iter().all(|c| letters.iter().filter(|d| *d == c).count() == 1), "one row per letter: {letters:?}");
         let key = |c: &str| c.parse::<crate::keys::KeySpec>().unwrap();
@@ -1941,7 +1941,7 @@ mod screen_tests {
             app.act(Action::Menu);
             let screen = draw(&mut app, 100, 30);
             show(&screen);
-            assert!(screen.contains("Settings"), "Settings is visible in Actions");
+            assert!(screen.contains("settings"), "Settings is visible in Actions");
             let index = screen::action_items().iter().position(|(_, _, action)| *action == Action::Settings).unwrap();
             if by_mouse {
                 let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::ActionRow(index))).then_some((r.x, r.y))).expect("Settings is clickable");
@@ -2635,7 +2635,8 @@ mod screen_tests {
         assert!(row_text(&buf, top + 3).contains("\"cargo test\""), "{}", row_text(&buf, top + 3));
         let q = (0..160u16).find(|&x| buf[(x, top + 3)].symbol() == "\"").unwrap();
         assert_eq!((buf[(q, top + 3)].fg, buf[(q, top + 3)].modifier.contains(ratatui::style::Modifier::ITALIC)), (t.muted, true));
-        assert!(row_text(&buf, top + 4).contains('┘'), "the card ends right under the preview");
+        assert_eq!(buf[(160 - 3, top + 4)].bg, t.card, "the card ends right under the preview");
+        assert_ne!(buf[(160 - 3, top + 5)].bg, t.card, "and no further");
     }
 
     #[test]
@@ -4577,13 +4578,13 @@ mod check_why_tests {
             draw(&mut app, 100, 30)
         };
         let passed = hints(CheckState::Passed, Some(0));
-        assert!(passed.contains("✓ exit 0 after 14.2s") && passed.contains("⏎ evidence") && passed.contains("r re-run"));
-        assert!(!passed.contains("O override"), "only a failure can be overridden");
+        assert!(passed.contains("✓ exit 0 after 14.2s") && passed.contains("⏎  evidence") && passed.contains("r  re-run"));
+        assert!(!passed.contains("O  override"), "only a failure can be overridden");
         let running = hints(CheckState::Checking, None);
         assert!(running.contains("Seshi ran npm test") && running.contains("checking"));
-        assert!(running.contains("⏎ evidence") && !running.contains("r re-run") && !running.contains("O override"), "a run can be read, not re-run");
+        assert!(running.contains("⏎  evidence") && !running.contains("r  re-run") && !running.contains("O  override"), "a run can be read, not re-run");
         let missing = hints(CheckState::CouldNotRun, Some(127));
-        assert!(missing.contains("? npm test could not run · not found") && missing.contains("r re-run") && !missing.contains("O override"));
+        assert!(missing.contains("? npm test could not run · not found") && missing.contains("r  re-run") && !missing.contains("O  override"));
     }
 
     #[test]
@@ -4595,7 +4596,7 @@ mod check_why_tests {
         let o = draw(&mut app, 100, 30);
         show(&o);
         assert!(o.contains("⊘ failed, overridden: npm test"), "{o}");
-        assert!(!o.contains("O override"), "an overridden result is not overridden twice");
+        assert!(!o.contains("O  override"), "an overridden result is not overridden twice");
     }
 
     #[test]

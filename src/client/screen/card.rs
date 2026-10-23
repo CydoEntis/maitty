@@ -8,7 +8,7 @@ pub(in crate::client) const CAP_L: &str = "\u{e0b6}";
 pub(in crate::client) const CAP_R: &str = "\u{e0b4}";
 
 thread_local! {
-    /// Round pill ends (the `ui.pill_caps` setting), for drawing that has no `Look` at hand.
+    /// Round pill ends (the `ui.rounded` setting), for drawing that has no `Look` at hand.
     /// Per thread because frames are drawn on one thread; a process-wide flag let tests that
     /// draw in parallel overwrite each other's setting mid-frame.
     static ROUND: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
@@ -74,9 +74,9 @@ pub(in crate::client) struct Look {
     pub gap: u16,
     pub dim: f32,
     pub caps: bool,
-    /// Round the ends of the tab chips and the sidebar's selected folder row (`ui.round_tabs`).
+    /// Round the ends of the tab chips and the sidebar's selected folder row (`ui.rounded`).
     pub round_tabs: bool,
-    /// Round the ends of the sidebar's session rows (`ui.round_rows`).
+    /// Round the ends of the sidebar's session rows (`ui.rounded`).
     pub round_rows: bool,
 }
 
@@ -94,9 +94,9 @@ impl Look {
                 "60%" => DIM_STRONG,
                 _ => DIM_DEFAULT,
             } },
-            caps: ui.pill_caps,
-            round_tabs: ui.round_tabs,
-            round_rows: ui.round_rows,
+            caps: ui.rounded,
+            round_tabs: ui.rounded,
+            round_rows: ui.rounded,
         }
     }
 }
@@ -344,7 +344,7 @@ mod tests {
     }
 
     fn look(layout: &str, caps: bool) -> Look {
-        let ui = crate::config::Ui { layout: layout.into(), pill_caps: caps, ..Default::default() };
+        let ui = crate::config::Ui { layout: layout.into(), rounded: caps, ..Default::default() };
         Look::of(&ui)
     }
 
