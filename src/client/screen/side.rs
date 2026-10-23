@@ -52,10 +52,9 @@ fn has_detail(s: &Session) -> bool {
     s.is_agent || s.asleep || check::shown(s).is_some() || s.question.is_some()
 }
 
-/// Its second line stays below `NARROW` columns: a check result, a question, or a wait for a
-/// plan limit.
-/// A finished agent with nothing to say: below `NARROW` its row is one line. Anything that
-/// needs a look (working, asking, new, a check result, a wait for a plan limit) keeps its second.
+/// A finished agent with nothing to say: its row is one line, since its `○` already says idle.
+/// Anything that needs a look (working, asking, new, a check result, a wait for a plan limit)
+/// keeps its second.
 fn quiet_done(s: &Session) -> bool {
     !is_new(s) && check::shown(s).is_none() && s.question.is_none() && s.resume_at.is_none() && matches!(s.status, Status::Idle | Status::None)
 }
@@ -164,17 +163,17 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
     out
 }
 
-/// The lines drawn at `screen_w` columns. Below `NARROW` a finished, seen row is one line and
-/// the third line goes; a row that needs a look keeps its second.
+/// The lines drawn at `screen_w` columns. A finished, seen row is one line (an asleep one only
+/// below `NARROW`, where the third line goes too). A row that needs a look keeps its second.
 fn fitted_lines(app: &App, model: &[Proj], t: &Theme, screen_w: u16) -> Vec<Line> {
     let mut lines = side_lines(app, model, t);
-    if screen_w < NARROW {
-        lines.retain(|l| match l {
-            Line::Third(_) => false,
-            Line::Detail(term) => find(model, *term).is_some_and(|(.., s)| !quiet_done(s)) || app.screen.receipts.contains_key(term),
-            _ => true,
-        });
-    }
+    lines.retain(|l| match l {
+        Line::Third(_) => screen_w >= NARROW,
+        Line::Detail(term) => {
+            find(model, *term).is_some_and(|(.., s)| !quiet_done(s) || (s.asleep && screen_w >= NARROW)) || app.screen.receipts.contains_key(term)
+        }
+        _ => true,
+    });
     lines
 }
 
@@ -1033,12 +1032,12 @@ mod v8_tests {
         let new = app.snap.terms.get_mut(&5).unwrap();
         (new.asleep, new.status, new.label) = (false, Status::Idle, String::new());
         let rows = side_rows(&mut app, Layout::Floating, 160, 45);
-        assert!(rows.iter().any(|r| said(r) == "idle"), "{rows:#?}");
+        assert!(!rows.iter().any(|r| said(r) == "idle"), "{rows:#?}");
         assert!(has(&rows, "codex · new · type to begin"), "{rows:#?}");
     }
 
     #[test]
-    fn only_a_finished_seen_row_collapses_below_140_columns() {
+    fn a_finished_seen_row_is_one_line_at_every_width() {
         let mut app = world(Stage::None);
         app.snap.terms.get_mut(&4).unwrap().status = Status::Idle;
         for layout in LAYOUTS {
@@ -1047,7 +1046,8 @@ mod v8_tests {
             assert!(has(&rows, "asks: use pnpm"), "{layout:?}: {rows:#?}");
             assert!(!rows.iter().any(|r| said(r) == "idle"), "{layout:?}: a plain idle row is one line: {rows:#?}");
             let rows = side_rows(&mut app, layout, 160, 45);
-            assert!(rows.iter().any(|r| said(r) == "idle"), "{layout:?}: from 140 columns it has its line: {rows:#?}");
+            assert!(!rows.iter().any(|r| said(r) == "idle"), "{layout:?}: wide, it is one line too: {rows:#?}");
+            assert!(has(&rows, "working"), "{layout:?}: a working row keeps its line: {rows:#?}");
         }
     }
 

@@ -208,6 +208,7 @@ motion off (`app.motion_on()`) the spinner rests on its third frame and the shim
 still, so nothing depends on motion.
 
 ## Project-specific: sidebar check result
+<!-- local: the user chose on 2026-10-23 to drop the `idle` line on a plain idle row at every width (v7 drew it from 140 columns) -->
 
 The sidebar is the v7 handoff's `drawSide` (`docs/design/v7/checks7.js`); its rows are
 tested cell for cell against the reference frames (`client/screen/side_frames.txt`).
@@ -232,7 +233,8 @@ tested cell for cell against the reference frames (`client/screen/side_frames.tx
 - **Row line 2:** the headline check's result (`TermInfo::check()`) by checkpoint name, or
   the question, or what the session is doing. While the agent works or asks, its last
   result is about an older turn and is not shown.
-- **Below 140 columns** only a plain `idle` row (seen, no check result, no question) is one line; working, needs-you, not-seen, new and checked rows keep line 2. Line 3 goes.
+- **A plain idle row** (seen, no check result, no question) is one line at every width: its `○` already says idle, so it has no `idle` line. Working, needs-you, not-seen, new and checked rows keep line 2. An asleep row keeps `asleep zzZ` from 140 columns.
+- **Below 140 columns** line 3 goes, and an asleep row is one line too.
 - **Row line 3** (140 columns and up): a failed check's first failing line (`muted`), or
   every checkpoint by name: `build ✓ · test ✕` (a failed name in `err`).
 
@@ -247,7 +249,7 @@ The colour slot is the glyph's; line 2 is always `muted` (see above).
 | --- | --- | --- | --- |
 | working | the spinner you chose (Bars is 3-bar), bold | `accent` | `working` (the agent is in the pane title and row menu), then ` · 4 agents` only when the agent reports helpers |
 | needs you | `●` / `!` | `blocked` | `asks: <question>` |
-| done, not seen / seen | `✓` / `+`; `○` / `o` | `done`; `muted` | `done · not seen` / `idle` |
+| done, not seen / seen | `✓` / `+`; `○` / `o` | `done`; `muted` | `done · not seen` / none: the row is one line |
 | new (an agent told nothing yet) | `○` / `o`, bold | `accent` | `claude · new · type to begin` |
 | asleep | `z` | `muted` | `asleep zzZ` |
 | checking | `◜◝◞◟` / `- \ \| /` | `sky()` | `checking test · 6s` |
