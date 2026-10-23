@@ -471,6 +471,16 @@ impl Daemon {
         Ok(())
     }
 
+    /// While a run of pane `term`'s checks is going, mark checkpoint `name` to run once that
+    /// run settles (`check_settled`), in the same turn. False when nothing is running.
+    pub(super) fn queue_after_run(&mut self, term: TermId, name: &str) -> bool {
+        let Some(t) = self.terms.get_mut(&term).filter(|t| t.checks.running()) else { return false };
+        let Some(point) = t.checks.named_mut(name) else { return false };
+        point.latest.info.rerun_queued = true;
+        self.mark_check_changed(term);
+        true
+    }
+
     /// Accept a failed result as it is (checkpoint `name`, else the headline one). The result
     /// keeps what failed and its output.
     pub(super) fn override_check(&mut self, term: TermId, name: Option<&str>, reason: &str, by: String) -> anyhow::Result<()> {
@@ -599,7 +609,7 @@ impl Daemon {
                 let fresh = defs.first().map(|def| plan.info(def, CheckState::Checking));
                 if let Some(point) = checks.named_mut(name) {
                     let info = fresh.unwrap_or_else(|| CheckInfo { state: CheckState::Checking, started_at: term::unix_now(), cwd: plan.dir.clone(), ..point.latest.info.clone() });
-                    point.latest = CheckRecord::new(CheckInfo { after_turn_ended_at, turn: plan.turn, ..info }, "");
+                    point.latest = CheckRecord::new(CheckInfo { after_turn_ended_at, turn: plan.turn, rerun_queued: false, ..info }, "");
                 } else if let Some(info) = fresh {
                     checks.points.push(CheckRecord::new(info, "").into());
                 }
@@ -677,9 +687,18 @@ impl Daemon {
 
     /// Say what the turn's end held back, once every checkpoint has an answer. A failure is
     /// news of its own, never a finish; so is a command waiting for your approval, said once
-    /// a turn. Otherwise the turn is finished.
+    /// a turn. Otherwise the turn is finished. A checkpoint queued to run after this run
+    /// (`queue_after_run`) starts first, and the news waits for it; while the agent works,
+    /// its turn end runs everything anyway.
     fn check_settled(&mut self, term: TermId) {
         let Some(t) = self.terms.get_mut(&term).filter(|t| !t.checks.running()) else { return };
+        if t.status != Status::Working
+            && let Some(queued) = t.checks.points.iter().find(|p| p.latest.info.rerun_queued).map(|p| p.latest.info.name.clone())
+        {
+            let turn_ended_at = t.checks.headline().map_or_else(term::unix_now, |c| c.info.after_turn_ended_at);
+            self.start_checks(term, Some(queued), turn_ended_at);
+            return;
+        }
         let (status, place, turn) = (t.status, t.place(), t.checks.turn);
         let first = |state| t.checks.points.iter().map(|p| &p.latest.info).find(|i| i.state == state).map(|i| i.command.clone());
         let (failed, approve) = (first(CheckState::Failed), first(CheckState::NeedsApproval));

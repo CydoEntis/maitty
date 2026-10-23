@@ -2699,3 +2699,35 @@ fn a_repo_checkpoint_waits_at_the_turn_end_and_once_runs_it_one_time() {
     assert_eq!(states(&d, t), named_states(&[("test", CheckState::NeedsApproval)]), "once was one run");
     close(&mut d, &[t]);
 }
+
+#[test]
+fn approving_one_checkpoint_while_another_runs_runs_it_after_in_the_same_turn() {
+    let (rt, (mut d, mut rx, _file)) = (runtime(), approving_daemon());
+    let _in_rt = rt.enter();
+    let repo = temp_repo();
+    std::fs::create_dir_all(repo.path().join(".seshi")).unwrap();
+    let file = "[[check]]\nname = \"build\"\ncommand = \"echo built\"\n\n[[check]]\nname = \"test\"\ncommand = \"echo tested\"\n";
+    std::fs::write(repo.path().join(crate::config::REPO_CHECKS_FILE), file).unwrap();
+    let t = agent_with_checkpoints(&mut d, repo.path(), &[]);
+    let project = d.terms[&t].head.as_ref().expect("in the repo").main_root.clone();
+    d.approvals.decide(&project, "build", "echo built", approvals::Decision::Always, 1);
+    end_turn(&mut d, t);
+    let until = Instant::now() + SLOW_CHECK_WAIT;
+    loop {
+        assert!(Instant::now() < until, "the checks were not resolved");
+        match rx.try_recv() {
+            Ok(ev @ Ev::ChecksResolved { .. }) => break d.handle(ev),
+            Ok(_) => {}
+            Err(_) => std::thread::sleep(Duration::from_millis(10)),
+        }
+    }
+    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Checking), ("test", CheckState::NeedsApproval)]));
+    d.command(0, approve(t, "test", ApprovalChoice::Once, "echo tested")).expect("approving while build runs");
+    assert!(point(&d, t, "test").rerun_queued, "it runs once build is done");
+    finish_run(&mut d, &mut rx, t);
+    assert_eq!(states(&d, t), named_states(&[("build", CheckState::Passed), ("test", CheckState::Passed)]));
+    let test = point(&d, t, "test");
+    assert_eq!((test.turn, test.rerun_queued), (1, false), "in the same turn");
+    assert_eq!(d.check_output(t, Some("test")).map(str::trim), Some("tested"));
+    close(&mut d, &[t]);
+}

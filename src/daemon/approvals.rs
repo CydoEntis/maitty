@@ -198,7 +198,8 @@ impl Daemon {
     /// Your answer to a repo's command waiting for approval: only while it waits, and for the
     /// command it waits with, which must be the one you were shown (`shown_sha256`). Always
     /// and Never are kept by that command's hash. Then the checkpoint runs again and its gate
-    /// says what that means. Panes are refused before this (`may_command`).
+    /// says what that means; while another checkpoint of the pane runs, it runs after that
+    /// one. Panes are refused before this (`may_command`).
     pub(super) fn approve_check(&mut self, term: TermId, name: &str, choice: ApprovalChoice, shown_sha256: &str) -> Result<()> {
         let (repo, name, command) = self.waiting_for_approval(term, name)?;
         if command_hash(&command) != shown_sha256 {
@@ -217,6 +218,9 @@ impl Daemon {
                     self.save_approval(Change::Decide(a.clone()));
                 }
             }
+        }
+        if self.queue_after_run(term, &name) {
+            return Ok(());
         }
         self.rerun_check(term, Some(&name))
     }
