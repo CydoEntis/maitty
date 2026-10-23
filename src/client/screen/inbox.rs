@@ -21,7 +21,10 @@ pub(super) fn inbox_rows(model: &[Proj], heads: usize) -> Vec<GoRow> {
     let waiting = jump_list(model);
     let asks = waiting.iter().filter(|(s, ..)| s.status == Status::Blocked).map(|(s, ..)| GoRow::Ask(s.term));
     let needs: Vec<GoRow> = asks.chain(check_inbox::rows(model, |r| matches!(r, GoRow::Approve(_)))).collect();
-    let finished = waiting.iter().filter(|(s, ..)| check::finished(s)).map(|(s, ..)| GoRow::Done(s.term)).collect();
+    // Finished: a session with a check result first, then the newest (checks7.js's order).
+    let mut done: Vec<&Session> = waiting.iter().map(|(s, ..)| s).filter(|s| check::finished(s)).collect();
+    done.sort_by_key(|s| (s.checks.is_empty(), std::cmp::Reverse(s.since)));
+    let finished = done.into_iter().map(|s| GoRow::Done(s.term)).collect();
     let mut out = Vec::new();
     for (head, rows) in [
         (NEEDS_HEAD, needs),

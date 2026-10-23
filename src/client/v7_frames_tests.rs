@@ -809,3 +809,12 @@ fn esc_from_a_modal_opened_in_the_inbox_goes_back_to_the_inbox() {
         assert!(!matches!(app.mode, Mode::GoTo { .. }), "{id}: and Esc closes the Inbox after");
     }
 }
+
+#[test]
+fn finished_lists_the_session_with_a_check_result_first_then_the_newest() {
+    for stage in [Stage::Stale, Stage::Over, Stage::Never, Stage::Passed] {
+        let app = world(stage);
+        let done: Vec<TermId> = goto_rows(&app.screen_model(), "", 0).iter().filter_map(|r| if let GoRow::Done(t) = r { Some(*t) } else { None }).collect();
+        assert_eq!(done, [1, 4], "{stage:?}: fix-footer (2m, checked) before quick-fox (9h)");
+    }
+}

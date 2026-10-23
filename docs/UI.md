@@ -277,6 +277,7 @@ with its count. A question is never below a check.
   A project with no check has the groups it always had, FINISHED renamed from JUST FINISHED.
 - NEEDS YOU holds questions, then repo check commands waiting for approval
   (`approve check command: npm test`).
+- FINISHED lists sessions with a check result first, then the newest first.
 - A Done session is finished (`check::finished`) when it has no check, or its check passed, was
   overridden, passed on older code (stale) or you chose never to run it. It is not finished while
   checking, failed, could not run or waiting for approval. The home screen counts finished by the
