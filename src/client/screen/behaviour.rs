@@ -1142,7 +1142,8 @@ impl App {
         self.splash = false;
         self.screen.splash_sel = 0;
         match c {
-            'n' => self.act(Action::ShellHere),
+            'n' => self.act(Action::StartSession),
+            'o' => self.screen_open_finder(),
             ',' => self.screen_settings(),
             '?' => self.open_keymap(None),
             // r: resume, just the app as you left it.
