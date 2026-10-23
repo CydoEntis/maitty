@@ -324,17 +324,28 @@ if ($l.Provider.Name -eq 'FileSystem') { [Console]::Write([char]27 + ']9;9;' + [
 /// The agents Seshi knows by name, which get a worktree even when no quick agent is set up.
 const BUILT_IN_AGENTS: [&str; 4] = ["claude", "codex", "gemini", "opencode"];
 
+/// The program a quick agent's command runs, when it is a plain name looked up on `PATH`
+/// (not a path, not one that starts with `VAR=value`): `claude` for `claude --model {prompt}`.
+/// It, not the agent's own name, is what gets typed into a shell: an agent named `work` that
+/// runs `claude` is started by typing `claude`.
+fn quick_agent_program(command: &str) -> Option<&str> {
+    let program = command.split_whitespace().next()?;
+    let plain = program.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    plain.then_some(program)
+}
+
 /// Agents that, typed into a pane's shell in a repo's main checkout, start in a new
-/// worktree of their own: the built-in ones and the quick-prompt agents (with plain names).
+/// worktree of their own: the built-in ones and the programs the quick-prompt agents run.
 fn worktree_agents(cfg: &Config) -> Vec<String> {
     if !cfg.worktree.per_agent {
         return Vec::new();
     }
-    let plain = |n: &str| !n.is_empty() && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     let mut names: Vec<String> = BUILT_IN_AGENTS.iter().map(|n| n.to_string()).collect();
     for a in &cfg.quick.agents {
-        if plain(&a.name) && !names.contains(&a.name) {
-            names.push(a.name.clone());
+        if let Some(program) = quick_agent_program(&a.command)
+            && !names.iter().any(|n| n == program)
+        {
+            names.push(program.to_string());
         }
     }
     names
@@ -964,6 +975,28 @@ mod tests {
         let mut off = crate::config::Config::default();
         off.worktree.per_agent = false;
         assert!(super::worktree_agents(&off).is_empty(), "off: agents start where they're typed");
+    }
+
+    #[test]
+    fn a_quick_agent_is_started_by_the_program_it_runs_not_by_its_name() {
+        let quick = |name: &str, command: &str| crate::config::QuickAgent { name: name.into(), command: command.into(), ..Default::default() };
+        let mut cfg = crate::config::Config::default();
+        cfg.quick.agents = vec![
+            quick("work", "claude --model sonnet {prompt}"),
+            quick("aider", "aider --yes {prompt}"),
+            quick("pinned", "~/bin/claude {prompt}"),
+            quick("env", "CLAUDE_CONFIG_DIR=~/.claude-work claude {prompt}"),
+            quick("empty", ""),
+        ];
+        let names = super::worktree_agents(&cfg);
+        assert!(names.contains(&"aider".to_string()), "a program that isn't built in is added: {names:?}");
+        assert_eq!(names.iter().filter(|n| *n == "claude").count(), 1, "claude once, however many agents run it: {names:?}");
+        for not in ["work", "pinned", "env", "empty", "~/bin/claude", "CLAUDE_CONFIG_DIR=~/.claude-work"] {
+            assert!(!names.contains(&not.to_string()), "{not} is not something you type: {names:?}");
+        }
+        assert_eq!(super::quick_agent_program("codex exec {prompt}"), Some("codex"));
+        assert_eq!(super::quick_agent_program("  claude "), Some("claude"));
+        assert_eq!(super::quick_agent_program("/usr/bin/claude x"), None, "a path can't be shadowed by PATH");
     }
 
     /// The bash function really goes to the folder seshi names, then runs the real agent.

@@ -63,7 +63,7 @@ pub(super) fn inbox_place(app: &App) -> Option<(String, usize)> {
     match &app.mode {
         Mode::GoTo { query, sel } => Some((query.clone(), *sel)),
         Mode::Compose(c) => c.inbox.clone(),
-        Mode::Confirm(_) | Mode::Approve(_) => app.screen.inbox_return.clone(),
+        Mode::Confirm(_) | Mode::Approve(_) | Mode::Helpers { .. } => app.screen.inbox_return.clone(),
         _ => None,
     }
 }

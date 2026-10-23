@@ -2920,6 +2920,31 @@ mod screen_tests {
     }
 
     #[test]
+    fn the_inbox_opens_the_helper_question_and_goes_back_to_it() {
+        let (mut app, mut rx) = asking_for_helpers();
+        app.act(Action::Jump);
+        let at = |app: &App| screen::goto_rows(&app.screen_model(), "", screen::heads_up(app).len()).iter().position(|r| matches!(r, screen::GoRow::Ask(2))).expect("the asking session is in the Inbox");
+        for key in [KeyCode::Enter, KeyCode::Char('1')] {
+            let sel = at(&app);
+            app.mode = Mode::GoTo { query: String::new(), sel };
+            app.on_key(KeyEvent::new(key, KeyModifiers::NONE));
+            assert_eq!(app.mode, Mode::Helpers { term: 2, side: false }, "{key:?} on the row opens the question, not a message box or a typed number");
+            let o = draw(&mut app, 160, 45);
+            assert!(o.contains("START HELPERS?") && o.contains("INBOX"), "the question over the Inbox:\n{o}");
+            app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+            assert_eq!(app.mode, Mode::GoTo { query: String::new(), sel }, "Esc: back in the Inbox, on the same row");
+        }
+        assert!(helper_answers(&mut rx).is_empty(), "nothing was answered, and no number reached the agent");
+        // Answering from there goes back to the Inbox too.
+        let sel = at(&app);
+        app.mode = Mode::GoTo { query: String::new(), sel };
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        app.on_key(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
+        assert_eq!(helper_answers(&mut rx), [(2, crate::protocol::HelperChoice::No)]);
+        assert!(matches!(app.mode, Mode::GoTo { .. }), "answered: back in the Inbox");
+    }
+
+    #[test]
     fn the_menu_opens_from_the_leader_not_from_a_bare_letter_in_the_sidebar() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.screen_side_set(screen::SideItem::Sess(2));

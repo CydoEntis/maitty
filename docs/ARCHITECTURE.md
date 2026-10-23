@@ -251,8 +251,8 @@ opens the search, `Action::Help` opens All keys). The Menu and tab renaming are 
 agent first on its `PATH` (`shim.rs`, written to `<data>/shell/bin/`; only files seshi wrote are
 replaced or removed): `claude` there runs `seshi agent-dir claude …`, goes to the folder it
 prints, and execs the next `claude` on `PATH` with the launcher folder taken off (a `.cmd`
-calling `seshi agent-launch` on Windows). The agents are the built-in four plus the plain-named
-quick agents, and only when `worktree.per_agent` is on. `daemon/term.rs` also defines a shell
+calling `seshi agent-launch` on Windows). The agents are the built-in four plus the programs the quick
+agents run (the first word of a plain-named `command`, so an agent named `work` that runs `claude` adds nothing), and only when `worktree.per_agent` is on. `daemon/term.rs` also defines a shell
 function per agent (bash `--rcfile`, zsh `ZDOTDIR`, fish `-C`, PowerShell's startup script) and
 keeps the launcher folder first on `PATH` before each prompt or command, since a manager like
 mise puts its own shims in front. The function sets `SESHI_AGENT_DIR_DONE` for the one command

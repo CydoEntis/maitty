@@ -93,12 +93,26 @@ impl App {
     /// Open the question beside `term`'s row; `side`: back to the sidebar after.
     pub(in crate::client) fn open_helpers(&mut self, term: TermId, side: bool) {
         if self.helpers_asked(term) {
+            self.screen.inbox_return = None;
             self.mode = Mode::Helpers { term, side };
         }
     }
 
+    /// Open the question from the Inbox's row `sel` (typed `query`): closing it, or answering,
+    /// goes back to the Inbox on that row.
+    pub(in crate::client) fn open_helpers_from_inbox(&mut self, term: TermId, query: String, sel: usize) {
+        self.open_helpers(term, false);
+        if matches!(self.mode, Mode::Helpers { .. }) {
+            self.screen.inbox_return = Some((query, sel));
+        }
+    }
+
     fn helpers_back(&mut self, side: bool) {
-        self.mode = if side { Mode::Side } else { Mode::Normal };
+        self.mode = match self.screen.inbox_return.take() {
+            Some((query, sel)) => Mode::GoTo { query, sel },
+            None if side => Mode::Side,
+            None => Mode::Normal,
+        };
     }
 
     /// Send your answer, say what it did, and close the question.

@@ -894,6 +894,13 @@ impl App {
             KeyCode::PageDown => sel = land((sel + 10).min(rows.len().saturating_sub(1)), true),
             KeyCode::PageUp => sel = land(sel.saturating_sub(10), false),
             // With nothing typed, a number answers the agent you're on.
+            // A session asking to start helpers has no numbered answer to type: its question
+            // opens (a number there would be typed into the agent).
+            KeyCode::Char('1'..='9') if query.is_empty() && matches!(sel_row, Some(GoRow::Ask(t)) if self.helpers_asked(t)) => {
+                if let Some(GoRow::Ask(term)) = sel_row {
+                    return self.open_helpers_from_inbox(term, query, sel);
+                }
+            }
             KeyCode::Char(c @ '1'..='9') if query.is_empty() && matches!(sel_row, Some(GoRow::Ask(_))) => {
                 if let Some(GoRow::Ask(term)) = sel_row {
                     let name = self.session_name(term);
@@ -972,6 +979,7 @@ impl App {
             KeyCode::Enter => {
                 let stale = sel_check.as_ref().is_some_and(|i| i.state == crate::protocol::CheckState::Stale);
                 match sel_row {
+                    Some(GoRow::Ask(t)) if query.is_empty() && self.helpers_asked(t) => return self.open_helpers_from_inbox(t, query, sel),
                     Some(GoRow::Ask(t)) if query.is_empty() => return self.start_compose(t, false, Some((query, sel))),
                     Some(GoRow::Approve(t) | GoRow::Failed(t) | GoRow::NotRun(t)) => self.open_check_sheet(t),
                     Some(GoRow::Done(t)) if stale && query.is_empty() => {
