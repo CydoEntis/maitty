@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>@font-face{font-family:'JBM';src:url(https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono@2.304/fonts/webfonts/JetBrainsMono-Regular.woff2) format('woff2');font-weight:400}@font-face{font-family:'JBM';src:url(https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono@2.304/fonts/webfonts/JetBrainsMono-Bold.woff2) format('woff2');font-weight:700}
+html,body{margin:0;background:#16171b;color:#c9c9d1;font-family:'JBM','JetBrains Mono',monospace}a{color:#c4a7e7}a:hover{color:#eeecf5}:focus-visible{outline:2px solid #c4a7e7;outline-offset:2px}</style>
+</helmet>
+<div style="display:flex;flex-direction:column;gap:10px;padding:16px 20px 32px;min-height:100vh;box-sizing:border-box">
+  <div style="display:flex;align-items:stretch;flex-wrap:wrap;border:1px solid #4a4656;background:#302d3b">
+    <span style="background:#c4a7e7;color:#1f1b29;font-weight:700;font-size:13px;padding:8px 12px;display:flex;align-items:center">seshi v8 · cleanup</span>
+    <button onClick="{{ prev }}" aria-label="Previous step" style="font:700 14px 'JBM',monospace;border:0;border-left:1px solid #4a4656;padding:0 14px;cursor:pointer;background:transparent;color:#eeecf5" style-hover="background:#3f3b4d">←</button>
+    <span style="display:flex;align-items:center;padding:0 12px;font-size:13px;font-weight:700;color:#c4a7e7;border-left:1px solid #4a4656;white-space:nowrap">{{ stepNum }}</span>
+    <span style="display:flex;flex-direction:column;justify-content:center;gap:2px;padding:6px 12px;flex:1;min-width:240px;border-left:1px solid #4a4656"><b style="color:#eeecf5;font-size:13px">{{ stepTitle }}</b><span style="font-size:12px;color:#b3b1bf;line-height:1.5;text-wrap:pretty">{{ note }}</span></span>
+    <button onClick="{{ next }}" aria-label="Next step" style="font:700 13px 'JBM',monospace;border:0;padding:0 18px;cursor:pointer;background:#c4a7e7;color:#1f1b29" style-hover="background:#d8c2f2">Next →</button>
+  </div>
+  <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px">
+    <span style="color:#868997">Size</span>
+    <sc-for list="{{ sizes }}" as="z" hint-placeholder-count="2"><button onClick="{{ z.pick }}" style="font:700 12px 'JBM',monospace;border:1px solid #4a4656;padding:5px 10px;cursor:pointer;background:{{ z.bg }};color:{{ z.fg }}">{{ z.name }}</button></sc-for>
+    <span style="color:#868997;margin-left:8px">Theme</span>
+    <sc-for list="{{ themes }}" as="z" hint-placeholder-count="2"><button onClick="{{ z.pick }}" style="font:700 12px 'JBM',monospace;border:1px solid #4a4656;padding:5px 10px;cursor:pointer;background:{{ z.bg }};color:{{ z.fg }}">{{ z.name }}</button></sc-for>
+    <button onClick="{{ toggleMotion }}" style="font:700 12px 'JBM',monospace;border:1px solid #4a4656;padding:5px 10px;cursor:pointer;background:transparent;color:#c9c9d1;margin-left:8px">{{ motionLabel }}</button>
+    <span style="color:#868997;margin-left:auto">Click the grid · n new · c new… · m menu · j inbox · r reply · z collapse · Ctrl+Space map · ? keys · Esc</span>
+  </div>
+  <div style="display:flex;gap:2px">
+    <sc-for list="{{ presets }}" as="p" hint-placeholder-count="18"><button onClick="{{ p.pick }}" title="{{ p.name }}" style="flex:1;border:0;padding:4px 6px;cursor:pointer;background:{{ p.bg }};color:{{ p.fg }};font:700 11px 'JBM',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" style-hover="background:#eeecf5;color:#1f1b29">{{ p.name }}</button></sc-for>
+  </div>
+  <div ref="{{ wrapRef }}" style="width:100%;overflow:auto">
+    <div style="width:{{ sw }}px;height:{{ sh }}px;position:relative">
+      <div ref="{{ gridRef }}" tabIndex="0" aria-label="Seshi terminal grid" onClick="{{ onClick }}" onMouseMove="{{ onMove }}" onMouseLeave="{{ onLeave }}" style="position:absolute;left:0;top:0;transform:scale({{ scale }});transform-origin:0 0;display:inline-block;font-family:'JBM','JetBrains Mono',monospace;font-size:12px;line-height:16px;font-variant-ligatures:none;border:1px solid #4a4656;user-select:none;cursor:default;outline:none;background:{{ gbg }}"><sc-for list="{{ rows }}" as="row" hint-placeholder-count="45"><div style="display:flex;height:16px;white-space:pre"><sc-for list="{{ row }}" as="r"><span style="color:{{ r.fg }};background:{{ r.bg }};font-weight:{{ r.fw }};font-style:{{ r.fs }};text-decoration:{{ r.td }};width:{{ r.wd }};flex:none;overflow:{{ r.ov }};font-size:{{ r.fz }};line-height:{{ r.lh }};text-align:{{ r.ta }};display:flex;justify-content:{{ r.ta }}">{{ r.t }}</span></sc-for></div></sc-for></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const NOTES = {
+  '01 Overview': 'Each state has its own glyph, word and colour: working (orange bars + shimmer), needs you (amber ● + the question), failed (red ✕ + edge bar), done · not seen (bright ✓), done (dim ○). Subagents are now just "· 4 agents" on the row; the list stays in Claude\'s own panel at the bottom of the pane. The footer names the four keys you need. CPU/memory are only shown when high.',
+  '02 Actions menu': 'Grouped under New / Go to / View / Set up, with every key on the right. "Start a fleet" is gone and "Set up agent status" moved to Settings › Agents. ↑↓ Enter, a letter, or a click.',
+  '03 Message a session': 'The title names the session and agent once ("tall-crane · claude"). The quoted text is labelled "replying to". Send / New line / Cancel are real buttons.',
+  '04 Inbox': 'One list of what needs you: NEEDS YOU, FAILED CHECKS, NOT SEEN. The selected item shows its actions as buttons.',
+  '05 Settings · General': 'Team tab removed. Labels are no longer cut off. The selected row explains itself at the bottom. "Keys after a pause" is renamed "Leader waits for next key".',
+  '06 Settings · Agents': 'Agent status setup lives here now. Subagents: a count on the row, only when the agent reports them. Claude does; Codex doesn\'t, so Codex rows never show one. Toggle it with ←→ and watch the sidebar.',
+  '07 Key map (Ctrl+Space)': 'One overlay replaces the palette, All shortcuts and the old map. Ctrl+Space shows ~20 keys in five groups, one key per action (no more p / v / | for the same split). Press a key to run it. Try Tab, or just type.',
+  '15 Search (type or Tab)': 'The same box becomes search: every command, including ones with no key, with the match highlighted, its group, and its key on the right. Empty, it shows your recent commands. Enter runs it; Tab goes back to the key map.',
+  '16 All keys (?)': '? shows the map with everything: adds keys that don\'t need the leader (Alt+1–9, Alt+arrows) and the search-only commands. This replaces the 261-line reference.',
+  '09 New session · instant (+)': '+ opens a session right away with your defaults (last agent, this project, new worktree). No form: you type the task in the session itself. It appears in the sidebar as "new · type to begin".',
+  '10 New session with options (c)': 'c is the deliberate version: pick agent, where and project with ↑↓ ←→, Enter starts. Still no goal field; the task is typed in the session.',
+  '11 Session wants helpers': 'No "Start a fleet". Any session can start helpers when the work calls for it. The first time, its row turns needs you ("wants to start 4 helpers") and asks once: 1 allow · 2 always in this project · 3 no. Esc leaves it waiting on the row.',
+  '12 Settings · Sessions': 'Defaults for + (agent, where) and the helpers rule: ask / always / never, plus how many at once.',
+  '13 Sidebar collapsed (z)': 'z moves your sessions into the top strip instead of shrinking the sidebar into a thin column of cut-off names. Each session is a chip with its state glyph and full name, so needs-you and failed still stand out, and the pane gets the whole width. The pane\'s tabs move down one row, so they stay visible and clickable. » or z expands; Z hides sessions completely.',
+  '14 Collapsed · switch sessions': 'With the strip focused, ←→ (or 1–9) moves between sessions and the selected chip lights up. When there are more than fit, a "+n more" chip opens the full sidebar.',
+  '17 Copy · selecting': 'Selecting (mouse drag, or y in keyboard select) uses a clear sky tint with bright text, so you can see exactly what will be copied. The hint sits right where the selection ends: y copy · Esc cancel.',
+  '18 Copy · copied': 'A full toast card at the bottom-right, above the agent\'s input: green ✓ "Copied to clipboard", then "214 characters · 5 lines from swift-lynx" and a one-line preview of what was copied. The selection turns accent for the same moment. Clears after 2.4 s, or ✕ / Esc. Every Seshi notice now uses this same card (try + or a menu item), so there is one place to look.',
+  '08 Narrow 100×30': 'Sidebar 28 cols. Rows that need attention keep their second line; plain "done" rows collapse to one. The footer drops entries from the end when it runs out of room.',
+};
+class Component extends DCLogic {
+  state = { s: null, pick: '01 Overview', fl: { theme: 'seshi', motion: true }, size: [160, 45], ww: 0, hc: null };
+  gridRef = React.createRef(); wrapRef = React.createRef(); timers = [];
+  componentDidMount() {
+    import(new URL('./app8.js', document.baseURI).href).then(m => {
+      this.lib = m; let pick = this.state.pick, fl = this.state.fl, size = this.state.size;
+      try { const sv = JSON.parse(localStorage.getItem('seshi-v8') || 'null'); if (sv && m.PRESETS.find(p => p[0] === sv.p)) { pick = sv.p; fl = { ...fl, ...sv.fl }; size = sv.size || size; } } catch (e) {}
+      this.setState({ s: m.preset(pick, size[0], size[1], fl), pick, fl, size });
+      this.tick = setInterval(() => { const st = this.state.s; if (st && st.motion) this.setState({ s: { ...st, f: st.f + 1 } }); }, 140);
+    }).catch(e => console.error('app8.js failed to load', e));
+    this.onKey = e => {
+      if (!this.lib || !this.state.s) return;
+      if (e.ctrlKey && (e.key === ' ' || e.code === 'Space')) { e.preventDefault(); this.apply(this.lib.act(this.state.s, { t: 'leader' })); return; }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const r = this.lib.act(this.state.s, { t: 'key', key: e.key });
+      if (r) { e.preventDefault(); this.apply(r); }
+    };
+    window.addEventListener('keydown', this.onKey);
+    if (window.ResizeObserver) this.ro = new ResizeObserver(() => this.measure());
+    window.addEventListener('resize', this.mb = () => this.measure());
+  }
+  componentDidUpdate() { this.measure(); }
+  measure() { const el = this.wrapRef.current; if (!el) return; if (this.ro && el !== this._obs) { if (this._obs) this.ro.unobserve(this._obs); this.ro.observe(el); this._obs = el; } const w = el.clientWidth; if (w > 50 && Math.abs(w - this.state.ww) > 1) this.setState({ ww: w }); }
+  componentWillUnmount() { clearInterval(this.tick); window.removeEventListener('keydown', this.onKey); window.removeEventListener('resize', this.mb); if (this.ro) this.ro.disconnect(); this.timers.forEach(clearTimeout); }
+  apply(r) { if (!r) return; this.setState({ s: r.state }); (r.fx || []).forEach(f => this.timers.push(setTimeout(() => this.apply(this.lib.act(this.state.s, f.act)), f.after))); }
+  go(p, o = {}) { const fl = o.fl || this.state.fl, size = o.size || this.state.size; this.timers.forEach(clearTimeout); this.timers = []; this.setState({ fl, size, s: this.lib.preset(p, size[0], size[1], fl), pick: p }, () => { try { localStorage.setItem('seshi-v8', JSON.stringify({ p, fl, size })); } catch (e) {} }); if (this.gridRef.current) this.gridRef.current.focus(); }
+  cell(e, out) { const el = this.gridRef.current; if (!el) return null; const r = el.getBoundingClientRect(); return { x: Math.floor((e.clientX - r.left) / (r.width / out.W)), y: Math.floor((e.clientY - r.top) / (r.height / out.H)) }; }
+  renderVals() {
+    const s = this.state.s, lib = this.lib, fl = this.state.fl, base = { gridRef: this.gridRef, wrapRef: this.wrapRef };
+    if (!s || !lib) return { ...base, rows: [], sizes: [], themes: [], presets: [], sw: 0, sh: 0, scale: 1, gbg: '#272a31', note: '', stepNum: '', stepTitle: '', motionLabel: '', toggleMotion: null, prev: null, next: null, onClick: null, onMove: null, onLeave: null };
+    const hc = this.state.hc, out = lib.render({ ...s, hx: hc ? hc.x : null, hy: hc ? hc.y : null });
+    const gw = out.W * 7.22 + 2, gh = out.H * 16 + 2, ww = this.state.ww, sc = ww > 50 ? Math.min(1, (ww - 4) / gw) : 1;
+    const pill = on => ({ bg: on ? '#c4a7e7' : '#302d3b', fg: on ? '#1f1b29' : '#c9c9d1' });
+    const names = lib.PRESETS.map(p => p[0]), i = names.indexOf(this.state.pick), step = d => this.go(names[(i + d + names.length) % names.length]);
+    return { ...base, rows: out.rows, gbg: lib.THEMES[s.theme].bg, sw: Math.ceil(gw * sc), sh: Math.ceil(gh * sc), scale: sc.toFixed(4),
+      stepNum: (i + 1) + ' / ' + names.length, stepTitle: this.state.pick.replace(/^\d+ /, '') + ' · ' + out.W + '×' + out.H, note: NOTES[this.state.pick] || '',
+      sizes: [[160, 45], [100, 30]].map(z => ({ name: z[0] + '×' + z[1], ...pill(out.W === z[0]), pick: () => this.go(this.state.pick === '08 Narrow 100×30' ? '01 Overview' : this.state.pick, { size: z }) })),
+      themes: [['seshi', 'Seshi'], ['pixls', 'Pixls']].map(([k, n]) => ({ name: n, ...pill(fl.theme === k), pick: () => this.go(this.state.pick, { fl: { ...fl, theme: k } }) })),
+      motionLabel: fl.motion ? 'Motion on' : 'Motion off', toggleMotion: () => this.go(this.state.pick, { fl: { ...fl, motion: !fl.motion } }),
+      presets: names.map(n => ({ name: n, ...pill(n === this.state.pick), pick: () => this.go(n) })),
+      prev: () => step(-1), next: () => step(1),
+      onMove: e => { const c = this.cell(e, out); if (c && (!hc || c.x !== hc.x || c.y !== hc.y)) this.setState({ hc: c }); },
+      onLeave: () => this.setState({ hc: null }),
+      onClick: e => { const el = this.gridRef.current; if (!el) return; el.focus(); const c = this.cell(e, out), R = out.regions || []; for (let k = R.length - 1; k >= 0; k--) { const q = R[k]; if (c.x >= q.x && c.x < q.x + q.w && c.y >= q.y && c.y < q.y + q.h) { this.apply(lib.act(this.state.s, q.act)); return; } } } };
+  }
+}
+</script>
+</body>
+</html>
