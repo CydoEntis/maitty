@@ -818,3 +818,12 @@ fn finished_lists_the_session_with_a_check_result_first_then_the_newest() {
         assert_eq!(done, [1, 4], "{stage:?}: fix-footer (2m, checked) before quick-fox (9h)");
     }
 }
+
+#[test]
+fn not_now_keeps_its_last_cell_beside_an_armed_always() {
+    let mut app = open("A3");
+    let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
+    let (x, y) = at(&buf, "Not now Esc");
+    assert_eq!(x + 11, 120, "where checks7.js puts its end");
+    assert_eq!(buf[(120, y)].bg, app.theme.btn, "the button's trailing space is drawn");
+}

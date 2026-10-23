@@ -324,6 +324,7 @@ pub(in crate::client) fn draw_approve(app: &mut App, buf: &mut Buffer, area: Rec
     let (always, always_key, always_kind) = (if short { "Always" } else { "Always for this repo" }, if a.armed { "2 again" } else { "2" }, if a.armed { BtnKind::Primary } else { BtnKind::Normal });
     bx = btn(app, buf, bx, by, always, always_key, always_kind, ScreenHit::Approve(ApproveHit::Always), right) + 1;
     bx = btn(app, buf, bx, by, if short { "Never" } else { "Never for this repo" }, "3", BtnKind::Risky, ScreenHit::Approve(ApproveHit::Never), right) + 1;
-    btn(app, buf, bx, by, "Not now", "Esc", BtnKind::Normal, ScreenHit::Approve(ApproveHit::NotNow), right);
+    // The last button may take the padding column inside the border, as checks7.js's does.
+    btn(app, buf, bx, by, "Not now", "Esc", BtnKind::Normal, ScreenHit::Approve(ApproveHit::NotNow), r.right().saturating_sub(1));
     app.mark_shown(a, shown_hash(&info), whole);
 }
