@@ -329,7 +329,12 @@ impl App {
     /// asked from there.
     pub(in crate::client) fn confirm_done(&mut self, act: Option<crate::client::menu::Act>) {
         let back = self.screen.side_return.take();
+        let inbox = self.screen.inbox_return.take();
         let yes = act.is_some();
+        if !yes && let Some((query, sel)) = inbox {
+            self.mode = Mode::GoTo { query, sel };
+            return;
+        }
         if let Some(a) = act {
             self.menu_do(a);
         }
@@ -976,7 +981,9 @@ impl App {
             KeyCode::Char(c @ ('r' | 'O' | 'u' | ',')) if query.is_empty() && sel_check.as_ref().is_some_and(|i| super::check_inbox::check_key_acts(c, i)) => {
                 let Some(term) = sel_item else { return };
                 self.do_check_key(term, None, c);
-                if !matches!(c, 'O' | ',') {
+                if c == 'O' && matches!(self.mode, Mode::Confirm(_)) {
+                    self.screen.inbox_return = Some((query, sel));
+                } else if c != ',' {
                     self.mode = Mode::GoTo { query, sel };
                 }
                 return;
@@ -986,7 +993,11 @@ impl App {
                     self.cmd(Command::MarkSeen { term });
                 }
             }
-            KeyCode::Enter if let Some(t) = sel_row.as_ref().and_then(GoRow::term) && self.approval_waits(t) => return self.open_approval(t),
+            KeyCode::Enter if let Some(t) = sel_row.as_ref().and_then(GoRow::term) && self.approval_waits(t) => {
+                self.open_approval(t);
+                self.screen.inbox_return = Some((query, sel));
+                return;
+            }
             // The project's check settings, for a row about a session.
             KeyCode::Char(',') if query.is_empty() && let Some(t) = sel_row.as_ref().and_then(GoRow::term) => return self.open_project_check(t),
             KeyCode::Enter => {

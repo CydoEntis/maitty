@@ -126,6 +126,9 @@ pub(super) struct Screen {
     pub dismissed: HashSet<(PathBuf, String)>,
     /// A merge (or throw-away) asked inside an Inbox row: (session, merge?, under way?).
     pub inbox_confirm: Option<(TermId, bool, bool)>,
+    /// Where the Inbox was (query, row) when the override or approval open over it came from
+    /// it: Esc goes back there.
+    pub inbox_return: Option<(String, usize)>,
     pub overlap_at: HashMap<PathBuf, Instant>,
     /// Dragging the sidebar edge or the split divider.
     pub drag: Option<Drag>,

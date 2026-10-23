@@ -107,6 +107,7 @@ impl App {
     }
 
     pub(in crate::client) fn ask_override(&mut self, term: TermId, name: Option<String>) {
+        self.screen.inbox_return = None;
         if let Some(c) = self.override_confirm(term, name) {
             self.mode = Mode::Confirm(Box::new(c));
         }

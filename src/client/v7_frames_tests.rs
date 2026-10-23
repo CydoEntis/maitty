@@ -786,3 +786,26 @@ fn pill_caps_only_round_the_buttons_ends() {
         assert!(changed > 0, "{id}: the buttons have caps");
     }
 }
+
+fn press(app: &mut App, code: crossterm::event::KeyCode) {
+    app.on_key(crossterm::event::KeyEvent::new(code, crossterm::event::KeyModifiers::NONE));
+}
+
+/// checks7.js's `act('modal')` keeps the Inbox under a modal opened from it; Esc goes back to
+/// it, on the same item.
+#[test]
+fn esc_from_a_modal_opened_in_the_inbox_goes_back_to_the_inbox() {
+    use crossterm::event::KeyCode;
+    for (id, opens) in [("11", KeyCode::Char('O')), ("A1", KeyCode::Enter)] {
+        let mut app = open(id);
+        let Mode::GoTo { sel: before, .. } = app.mode else { panic!("{id}: the Inbox is open") };
+        press(&mut app, opens);
+        assert!(matches!(app.mode, Mode::Confirm(_) | Mode::Approve(_)), "{id}: a modal: {:?}", app.mode);
+        assert!(frame(&mut app, Layout::Floating, 160, 45, "unicode").contains("INBOX"), "{id}: the Inbox stays under it");
+        press(&mut app, KeyCode::Esc);
+        assert!(matches!(app.mode, Mode::GoTo { sel, .. } if sel == before), "{id}: back on its item: {:?}", app.mode);
+        assert!(frame(&mut app, Layout::Floating, 160, 45, "unicode").contains("INBOX"), "{id}");
+        press(&mut app, KeyCode::Esc);
+        assert!(!matches!(app.mode, Mode::GoTo { .. }), "{id}: and Esc closes the Inbox after");
+    }
+}

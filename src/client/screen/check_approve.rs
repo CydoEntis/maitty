@@ -155,6 +155,7 @@ impl App {
     /// Enter on a session's Inbox item or sidebar row: ask about its first checkpoint waiting
     /// for your approval, if one is.
     pub(in crate::client) fn open_approval(&mut self, term: TermId) {
+        self.screen.inbox_return = None;
         if let Some(name) = self.snap.terms.get(&term).and_then(|t| waiting(t).next()).map(|c| c.name.clone()) {
             self.mode = Mode::Approve(Box::new(Approve { term, name, armed: false, answered: Vec::new(), shown_whole: None }));
         }
@@ -173,7 +174,12 @@ impl App {
             return;
         }
         match k.code {
-            KeyCode::Esc => self.mode = Mode::Normal,
+            KeyCode::Esc => {
+                self.mode = match self.screen.inbox_return.take() {
+                    Some((query, sel)) => Mode::GoTo { query, sel },
+                    None => Mode::Normal,
+                };
+            }
             KeyCode::Char('1') if plain => self.approve(a, ApprovalChoice::Once),
             KeyCode::Char('2') if plain && a.armed => self.approve(a, ApprovalChoice::Always),
             KeyCode::Char('2') if plain => {
@@ -213,6 +219,7 @@ impl App {
         let command = term.checks.iter().find(|c| c.name == a.name).map(|c| c.command.clone()).unwrap_or_default();
         self.cmd(Command::ApproveCheck { term: a.term, name: a.name.clone(), choice, command_sha256: command_hash(&command) });
         self.mode = Mode::Normal;
+        self.screen.inbox_return = None;
         let said = match choice {
             ApprovalChoice::Once => "Running once. Asks again next turn.".to_string(),
             ApprovalChoice::Always => format!("Always for {project}. Asks again if the command changes."),
