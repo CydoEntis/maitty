@@ -126,6 +126,11 @@ of Seshi's interface, and neither is a fleet commander (`seshi brief`, `[team]`)
 config keys for them are read and ignored. Sessions, ordinary agent launches, helpers, and
 MCP session controls remain supported. The wire protocol is version 46.
 
+`seshi_answer` takes the `prompt` id that `seshi_list` (`prompt` on a session that needs you) or
+`seshi_wait` (`prompt <id>`) gave. It hashes the question and its choices, whitespace aside. If the
+prompt on screen has a different id, nothing is sent and the error shows the current question,
+choices and id.
+
 **Helpers.** A start that comes from an agent's pane (`NewWorkspace`, `NewTab`, `Split`,
 `NewWorktree` over a connection that proved it is that pane by its secret) is a helper
 start. Under `[sessions] helpers = "ask"` the first one is refused with an error telling the

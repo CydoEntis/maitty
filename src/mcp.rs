@@ -99,8 +99,12 @@ fn tools() -> Value {
         },
         {
             "name": "seshi_answer",
-            "description": "Answer a session's numbered prompt (e.g. 1 = Yes, 3 = No). Saying yes is only allowed if the user has turned that on in seshi's settings; otherwise ask the user.",
-            "inputSchema": { "type": "object", "properties": { "id": id, "choice": { "type": "integer", "minimum": 1, "maximum": 9 } }, "required": ["id", "choice"] }
+            "description": "Answer a session's numbered prompt (e.g. 1 = Yes, 3 = No). Pass the prompt id seshi_list or seshi_wait gave you; if the prompt on screen has changed since, nothing is sent and you get the current one. Saying yes is only allowed if the user has turned that on in seshi's settings; otherwise ask the user.",
+            "inputSchema": { "type": "object", "properties": {
+                "id": id,
+                "choice": { "type": "integer", "minimum": 1, "maximum": 9 },
+                "prompt": { "type": "string", "description": "The prompt id from seshi_list or seshi_wait." }
+            }, "required": ["id", "choice", "prompt"] }
         },
         {
             "name": "seshi_start",
@@ -137,6 +141,28 @@ fn prompt_on(screen: &str) -> (String, Vec<(u32, String)>) {
     opts.reverse();
     let question = lines[first.saturating_sub(6)..first].join(" ");
     (question, opts)
+}
+
+/// A short id for the prompt on a screen: its question and choices, whitespace aside. An
+/// answer names the id it saw, so a prompt that changed meanwhile is never answered.
+fn prompt_id(question: &str, opts: &[(u32, String)]) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::hash::DefaultHasher::new();
+    question.split_whitespace().collect::<Vec<_>>().hash(&mut h);
+    opts.hash(&mut h);
+    format!("{:08x}", h.finish() as u32)
+}
+
+/// The prompt on `screen` if it is the one with id `seen`; else what it reads now.
+fn prompt_seen(screen: &str, seen: &str) -> Result<(String, Vec<(u32, String)>), String> {
+    let (question, opts) = prompt_on(screen);
+    if prompt_id(&question, &opts) == seen { Ok((question, opts)) } else { Err(prompt_lines(&question, &opts)) }
+}
+
+/// The prompt's lines for a reply: the question, its choices and its id.
+fn prompt_lines(question: &str, opts: &[(u32, String)]) -> String {
+    let choices: Vec<String> = opts.iter().map(|(n, l)| format!("{n}. {l}")).collect();
+    format!("{}\n{}\nprompt {}", question.trim(), choices.join("\n"), prompt_id(question, opts))
 }
 
 impl Server {
@@ -202,6 +228,7 @@ impl Server {
                 let (q, opts) = prompt_on(&screen);
                 row["question"] = json!(q.trim());
                 row["choices"] = json!(opts.iter().map(|(n, l)| format!("{n}. {l}")).collect::<Vec<_>>());
+                row["prompt"] = json!(prompt_id(&q, &opts));
             }
             out.push(row);
         }
@@ -256,7 +283,13 @@ impl Server {
                     _ => "finished",
                 };
                 let checked = check.map(|c| format!("\n{}", cli::check_line(&c))).unwrap_or_default();
-                Ok(format!("{term} {state}:\n{reply}{checked}"))
+                let prompt = if s == Status::Blocked {
+                    let (q, opts) = prompt_on(&self.screen(term)?);
+                    format!("\nprompt {}", prompt_id(&q, &opts))
+                } else {
+                    String::new()
+                };
+                Ok(format!("{term} {state}:\n{reply}{checked}{prompt}"))
             }
         }
     }
@@ -264,8 +297,8 @@ impl Server {
     fn answer(&self, args: &Value) -> Result<String, String> {
         let t = self.session(args)?;
         let choice = args.get("choice").and_then(Value::as_u64).filter(|c| (1..=9).contains(c)).ok_or("choice must be 1-9")? as u32;
-        let screen = self.screen(t.id)?;
-        let (question, opts) = prompt_on(&screen);
+        let seen = args.get("prompt").and_then(Value::as_str).ok_or("call seshi_list first and pass its prompt id")?;
+        let (question, opts) = prompt_seen(&self.screen(t.id)?, seen).map_err(|now| format!("the prompt on session {} has changed since you read it; nothing was sent. It now reads:\n{now}", t.id))?;
         let label = opts.iter().find(|(n, _)| *n == choice).map(|(_, l)| l.clone()).unwrap_or_default();
         let saying_no = label.to_lowercase().starts_with("no");
         if !saying_no {
@@ -350,7 +383,7 @@ pub fn run() -> Result<()> {
                 "protocolVersion": params.get("protocolVersion").cloned().unwrap_or(json!("2025-06-18")),
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": "seshi", "version": env!("CARGO_PKG_VERSION") },
-                "instructions": "seshi runs your user's coding agents side by side. Use seshi_list/read/send/start for helpers. Don't answer prompts unless the user allows it."
+                "instructions": "seshi runs your user's coding agents side by side. Use seshi_list/read/send/start for helpers. Don't answer prompts unless the user allows it; when you do, pass seshi_answer the prompt id seshi_list gave you."
             })),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": tools() })),
@@ -405,6 +438,28 @@ mod tests {
         let stale = CheckInfo { name: "test".into(), state: CheckState::Stale, changed_files: vec![crate::protocol::ChangedFile { kind: 'M', path: "a".into() }], ..Default::default() };
         t.checks = vec![CheckInfo { name: "build".into(), state: CheckState::Passed, ..Default::default() }, stale];
         assert_eq!(row_of(&t, None)["check"], "stale pass: test · 1 file changed · 2 checkpoints");
+    }
+
+    const RM_PROMPT: &str = "Bash command\n  rm -rf build\nDo you want to proceed?\n❯ 1. Yes\n  2. No";
+    const LS_PROMPT: &str = "Bash command\n  ls\nDo you want to proceed?\n❯ 1. Yes\n  2. No";
+
+    #[test]
+    fn an_answer_goes_only_to_the_prompt_it_saw() {
+        let (q, opts) = prompt_on(LS_PROMPT);
+        let seen = prompt_id(&q, &opts);
+        assert!(prompt_seen(LS_PROMPT, &seen).is_ok(), "the same prompt is answered");
+        assert!(prompt_seen(&LS_PROMPT.replace("  ls", "ls    "), &seen).is_ok(), "spacing alone is the same prompt");
+        let now = prompt_seen(RM_PROMPT, &seen).expect_err("a different command is a different prompt");
+        let (rq, ropts) = prompt_on(RM_PROMPT);
+        assert!(now.contains("rm -rf build") && now.contains("1. Yes") && now.ends_with(&format!("prompt {}", prompt_id(&rq, &ropts))), "{now}");
+        assert!(prompt_seen("$ ", &seen).is_err(), "no prompt left on screen");
+    }
+
+    #[test]
+    fn seshi_answer_requires_the_prompt_id() {
+        let tools = tools();
+        let answer = tools.as_array().unwrap().iter().find(|t| t["name"] == "seshi_answer").unwrap();
+        assert_eq!(answer["inputSchema"]["required"], json!(["id", "choice", "prompt"]));
     }
 
     #[test]
