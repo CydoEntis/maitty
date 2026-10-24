@@ -1,5 +1,6 @@
-# Builds vibecasso for every platform when a version tag (v1.2.3) is pushed, and attaches the
+# Builds the app for every platform when a version tag (v1.2.3) is pushed, and attaches the
 # archives and their checksums to a GitHub Release. The install scripts download from it.
+# The app's name is read from Cargo.toml (ADR 0019): the package name is the command.
 name: release
 
 on:
@@ -36,6 +37,12 @@ jobs:
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
+      - name: App name
+        shell: bash
+        run: |
+          app=$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          echo "APP=$app" >> "$GITHUB_ENV"
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -58,24 +65,24 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          name=vibecasso-${{ matrix.target }}
+          name=$APP-${{ matrix.target }}
           mkdir -p dist/$name
           cp README.md LICENSE dist/$name/
           cp docs/theme-credits.md dist/$name/THEME-NOTICES.md
           cp vendor/herdr-detection/LICENSE dist/$name/HERDR-LICENSE.txt
           cp vendor/herdr-detection/NOTICE.md dist/$name/HERDR-NOTICES.md
           if [ "${{ matrix.archive }}" = "zip" ]; then
-            cp target/${{ matrix.target }}/release/vibecasso.exe dist/$name/
+            cp target/${{ matrix.target }}/release/$APP.exe dist/$name/
             (cd dist && 7z a -tzip $name.zip $name >/dev/null)
           else
-            cp target/${{ matrix.target }}/release/vibecasso dist/$name/
+            cp target/${{ matrix.target }}/release/$APP dist/$name/
             (cd dist && tar -czf $name.tar.gz $name)
           fi
 
       - uses: actions/upload-artifact@v7
         with:
-          name: vibecasso-${{ matrix.target }}
-          path: dist/vibecasso-${{ matrix.target }}.${{ matrix.archive }}
+          name: ${{ env.APP }}-${{ matrix.target }}
+          path: dist/${{ env.APP }}-${{ matrix.target }}.${{ matrix.archive }}
 
   release:
     needs: build
@@ -86,6 +93,9 @@ jobs:
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
           fetch-depth: 0
+
+      - name: App name
+        run: echo "APP=$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -1)" >> "$GITHUB_ENV"
 
       # What's new since the previous tag: its feat and fix commits, one "- " line each. The
       # app's update dialog shows these lines.
@@ -105,7 +115,7 @@ jobs:
           merge-multiple: true
 
       - name: Checksums
-        run: cd dist && sha256sum vibecasso-* > sha256sums.txt && cat sha256sums.txt
+        run: cd dist && sha256sum "$APP"-* > sha256sums.txt && cat sha256sums.txt
 
       - name: Publish the release
         env:
@@ -115,7 +125,7 @@ jobs:
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber -R "$GITHUB_REPOSITORY"
           else
-            gh release create "$TAG" dist/* --title "vibecasso $TAG" --notes-file notes.md -R "$GITHUB_REPOSITORY"
+            gh release create "$TAG" dist/* --title "$APP $TAG" --notes-file notes.md -R "$GITHUB_REPOSITORY"
           fi
 
   # Install the release just published, the way users do, and run it.
@@ -127,21 +137,30 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-14, windows-latest]
-    env:
-      VIBECASSO_VERSION: ${{ github.event.inputs.tag || github.ref_name }}
     # The installers as users get them: the public one-liners, no GitHub CLI sign-in.
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      # The installers read <APP>_VERSION to pick this release.
+      - name: App name
+        shell: bash
+        run: |
+          app=$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          echo "APP=$app" >> "$GITHUB_ENV"
+          echo "$(echo "$app" | tr 'a-z-' 'A-Z_')_VERSION=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_ENV"
       - name: install.sh
         if: runner.os != 'Windows'
         run: |
           curl -fsSL "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/install.sh" | sh
-          ~/.local/bin/vibecasso --version
-          ~/.local/bin/vibecasso update --check
-          ~/.local/bin/vibecasso doctor || true
+          ~/.local/bin/$APP --version
+          ~/.local/bin/$APP update --check
+          ~/.local/bin/$APP doctor || true
       - name: install.ps1
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           irm "https://raw.githubusercontent.com/$env:GITHUB_REPOSITORY/main/install.ps1" | iex
-          & "$env:LOCALAPPDATA\Programs\vibecasso\vibecasso.exe" --version
-          & "$env:LOCALAPPDATA\Programs\vibecasso\vibecasso.exe" update --check
+          & "$env:LOCALAPPDATA\Programs\$env:APP\$env:APP.exe" --version
+          & "$env:LOCALAPPDATA\Programs\$env:APP\$env:APP.exe" update --check

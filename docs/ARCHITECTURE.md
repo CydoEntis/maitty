@@ -239,8 +239,20 @@ config.example.toml
 
 ## Project-specific: patterns and conventions
 
-`client/text_input.rs` owns cursor editing and input display shared by task and
-spinner settings fields.
+**The app's name** lives in `Cargo.toml` and nowhere else in the code (ADR 0019): the package
+name is the command, `[package.metadata.brand]` holds the name people see and the names it had
+before. `build.rs` hands them to the code as `APP_COMMAND`, `APP_NAME`, `APP_ENV` and
+`APP_PREVIOUS`; `src/brand.rs` wraps them. Write a name-bearing string as
+`concat!(".", env!("APP_COMMAND"), ".toml")`, or name `APP_NAME` in a format string with
+arguments of its own. Adapters in `src/cli/*.js` are templates (`__APP_NAME__`,
+`__APP_COMMAND__`, `__APP_ENV__`, `__APP_EXE__`) filled in when installed. `tests/naming.rs`
+fails on the name written out. To rename the app:
+
+1. In `Cargo.toml`, set the package `name` (the command) and `[package.metadata.brand] name`,
+   and put the old command first in `previous`.
+2. In `install.sh` and `install.ps1`, set `APP` / `$app` and the repository (a test checks them).
+3. Run `sh src/client/v7_frames/regen.sh` (the reference frames show the name).
+4. Replace the name in the docs (not the ADRs), then rename the GitHub repository.
 
 `client/screen/keyoverlay.rs` is the one key overlay: the key map, the search over every
 command and All keys, all built from `key_groups()` and the active keymap (`Action::Palette`

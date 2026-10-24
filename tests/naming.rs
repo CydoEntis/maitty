@@ -59,6 +59,19 @@ fn the_apps_name_is_never_written_out() {
     assert!(hits.is_empty(), "take the name from brand (env!(\"APP_COMMAND\") and friends), not as text:\n{}", hits.join("\n"));
 }
 
+/// The installers run on their own (`curl … | sh`), so each names the app once; it must be
+/// the command Cargo.toml builds.
+#[test]
+fn the_installers_install_the_command_cargo_toml_builds() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let named = |file: &str, prefix: &str| {
+        let text = std::fs::read_to_string(root.join(file)).expect("installer readable");
+        text.lines().find_map(|l| l.strip_prefix(prefix)).map(|v| v.trim().trim_matches(['"', '\'']).to_string())
+    };
+    assert_eq!(named("install.sh", "APP=").as_deref(), Some(env!("APP_COMMAND")), "install.sh's APP");
+    assert_eq!(named("install.ps1", "$app = ").as_deref(), Some(env!("APP_COMMAND")), "install.ps1's $app");
+}
+
 #[test]
 fn names_the_app_had_before_stay_in_carry_over_code() {
     let previous: Vec<String> = env!("APP_PREVIOUS").split(',').filter(|p| !p.is_empty()).map(str::to_lowercase).collect();
