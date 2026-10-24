@@ -4742,6 +4742,7 @@ second line
                     app.cfg.ui.rounded = rounded;
                     let buf = drawn(&mut app, 160, 45);
                     let lit = edge(&app, &buf);
+                    show(&format!("===== padding 0 {layout} {side} {rounded:?} lit\n{}", buf_text(&buf)));
                     app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
                     let buf = drawn(&mut app, 160, 45);
                     let typing = edge(&app, &buf);
@@ -4771,6 +4772,7 @@ second line
                     }
                     let buf = drawn(&mut app, w, h);
                     let at = format!("{w}x{h} {release} {mode}");
+                    show(&format!("===== sidebar right {at}\n{}", buf_text(&buf)));
                     let row: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
                     let side = app.screen.side_rect;
                     let title: String = (side.x..side.right()).map(|x| buf[(x, 0)].symbol()).collect();
