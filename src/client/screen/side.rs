@@ -473,7 +473,8 @@ const NAME_MIN: usize = 8;
 
 /// The right of a session's row, at most `room` wide: its agent's mark, its checkout's
 /// uncommitted lines (`+N −N`) and its age. The lines give way first, then the mark.
-fn row_meta(s: &Session, ascii: bool, changed: Option<(i64, i64)>, when: &str, room: usize, st: Style, t: &Theme) -> Vec<Seg> {
+/// Also where the lines sit in it, as (offset, width), when they are shown.
+fn row_meta(s: &Session, ascii: bool, changed: Option<(i64, i64)>, when: &str, room: usize, st: Style, t: &Theme) -> (Vec<Seg>, Option<(u16, u16)>) {
     let mark = if s.is_agent { agent_mark(&s.agent, ascii) } else { String::new() };
     let lines: Vec<Seg> = match changed {
         Some((a, r)) if a > 0 || r > 0 => vec![seg(format!("+{a}"), st.fg(t.done)), seg(format!(" −{r}"), st.fg(t.err))],
@@ -486,20 +487,22 @@ fn row_meta(s: &Session, ascii: bool, changed: Option<(i64, i64)>, when: &str, r
     };
     let build = |with_mark: bool, with_lines: bool| {
         let mut v: Vec<Seg> = Vec::new();
+        let mut span = None;
         if with_mark && !mark.is_empty() {
             v.push(seg(mark.clone(), st.fg(t.muted)));
         }
         if with_lines && !lines.is_empty() {
             gap(&mut v);
+            span = Some((segs_width(&v), segs_width(&lines)));
             v.extend(lines.iter().cloned());
         }
         if !when.is_empty() {
             gap(&mut v);
             v.push(seg(when.to_string(), st.fg(t.muted)));
         }
-        v
+        (v, span)
     };
-    [(true, true), (true, false), (false, false)].into_iter().map(|(m, l)| build(m, l)).find(|v| segs_width(v) as usize <= room).unwrap_or_default()
+    [(true, true), (true, false), (false, false)].into_iter().map(|(m, l)| build(m, l)).find(|(v, _)| segs_width(v) as usize <= room).unwrap_or_default()
 }
 
 /// A session's first line: its mark, its name in its state's colour, and at the right its
@@ -530,7 +533,7 @@ fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, changed: Option<(i
     let meta_end = if menu { cols.rx.saturating_sub(1) } else { cols.rx + 1 };
     let free = meta_end.saturating_sub(nx) as usize;
     let ascii = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).needs.is_ascii();
-    let meta = row_meta(s, ascii, changed, &when, free.saturating_sub(NAME_MIN + 1), st, t);
+    let (meta, lines_at) = row_meta(s, ascii, changed, &when, free.saturating_sub(NAME_MIN + 1), st, t);
     let mw = segs_width(&meta);
     let room = free.saturating_sub(if mw > 0 { mw as usize + 1 } else { 0 });
     let name = truncate(&s.name, room);
@@ -543,7 +546,11 @@ fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, changed: Option<(i
     let left = name_segs(&name, anim, app.spinner_frame(), colour, t.strong, ns);
     put(buf, nx, y, &left, cols.rx + 1);
     if mw > 0 {
-        put(buf, meta_end.saturating_sub(mw), y, &meta, meta_end);
+        let mx = meta_end.saturating_sub(mw);
+        put(buf, mx, y, &meta, meta_end);
+        if let Some((at, width)) = lines_at {
+            hit(app, Rect { x: mx + at, y, width, height: 1 }, ScreenHit::RowChanges(s.term));
+        }
     }
     if menu {
         row_menu_button(app, buf, Rect { x: cols.rx, y, width: 1, height: 1 }, rl.bg, t, ScreenHit::RowMenuSess(s.term));
@@ -1123,6 +1130,84 @@ mod v8_tests {
         assert!(rows.iter().any(|r| r.contains("warm-finch") && r.contains("◆  3m")), "no lines counted: the mark and the age: {rows:#?}");
         let ascii = raw_text(&mut app, Layout::Floating, 160, 45, "ascii");
         assert!(ascii.lines().any(|l| l.contains("warm-finch") && l.contains("X  3m")), "the ASCII set marks Codex with a letter");
+    }
+
+    /// add-payments (term 2) with 12 lines added and 3 removed, and its checkout.
+    fn payments_with_changes() -> (App, std::path::PathBuf) {
+        let mut app = world(Stage::None);
+        let path = app.screen_model().iter().flat_map(|p| p.wts.iter()).find(|w| w.sessions.iter().any(|s| s.term == 2)).expect("add-payments' checkout").path.clone();
+        app.screen.lines_changed.insert(path.clone(), (12, 3));
+        (app, path)
+    }
+
+    fn mouse(app: &mut App, kind: crossterm::event::MouseEventKind, (column, row): (u16, u16)) {
+        app.on_mouse(crossterm::event::MouseEvent { kind, column, row, modifiers: KeyModifiers::NONE });
+    }
+
+    fn click(app: &mut App, at: (u16, u16)) {
+        use crossterm::event::{MouseButton, MouseEventKind};
+        mouse(app, MouseEventKind::Down(MouseButton::Left), at);
+        mouse(app, MouseEventKind::Up(MouseButton::Left), at);
+    }
+
+    /// The pointer on add-payments' `+12`, drawn as it is with the pointer there (a hovered
+    /// row trades its age for its ⋯, so the counts sit where the hovered frame puts them).
+    fn hover_counts(app: &mut App) -> ratatui::buffer::Buffer {
+        let buf = cells(app, Layout::Floating, 160, 45, "unicode");
+        let name = find(&buf, app, "add-payments");
+        mouse(app, crossterm::event::MouseEventKind::Moved, name);
+        let buf = cells(app, Layout::Floating, 160, 45, "unicode");
+        let counts = find(&buf, app, "+12");
+        mouse(app, crossterm::event::MouseEventKind::Moved, counts);
+        cells(app, Layout::Floating, 160, 45, "unicode")
+    }
+
+    #[test]
+    fn clicking_a_row_s_changed_lines_opens_its_changes_like_d() {
+        let (mut app, path) = payments_with_changes();
+        let buf = hover_counts(&mut app);
+        let counts = find(&buf, &app, "+12");
+        click(&mut app, counts);
+        let Mode::Confirm(c) = &app.mode else { panic!("the checkout's Changes (here: not a repo yet) opens") };
+        assert_eq!(c.act, crate::client::menu::Act::GitInit(path), "for this row's checkout");
+        let clicked = app.mode.clone();
+        let mut by_key = payments_with_changes().0;
+        by_key.screen.cursor = Some(2);
+        by_key.act(Action::Changes);
+        assert_eq!(by_key.mode, clicked, "the same as d on that session");
+    }
+
+    #[test]
+    fn clicking_the_rest_of_a_row_with_changed_lines_still_opens_the_session() {
+        let (mut app, _) = payments_with_changes();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
+        let at = find(&buf, &app, "add-payments");
+        mouse(&mut app, crossterm::event::MouseEventKind::Moved, at);
+        let _ = cells(&mut app, Layout::Floating, 160, 45, "unicode");
+        click(&mut app, at);
+        assert!(!matches!(app.mode, Mode::Confirm(_)) && app.view.is_none(), "no Changes");
+        assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, crate::protocol::ClientMsg::Command(crate::protocol::Command::FocusPane { term: 2 }))), "the session opens");
+    }
+
+    #[test]
+    fn the_hover_tint_shows_on_the_changed_lines_alone() {
+        let (mut app, _) = payments_with_changes();
+        let buf = hover_counts(&mut app);
+        let (x, y) = find(&buf, &app, "+12");
+        let (nx, _) = find(&buf, &app, "add-payments");
+        let counts_bg = buf[(x, y)].bg;
+        assert_eq!(buf[(x + "+12 −3".chars().count() as u16 - 1, y)].bg, counts_bg, "the whole of +12 −3 is lit");
+        assert_ne!(buf[(x - 1, y)].bg, counts_bg, "not the gap before it");
+        assert_ne!(buf[(nx, y)].bg, counts_bg, "not the row's name");
+    }
+
+    #[test]
+    fn a_row_with_no_changed_lines_has_no_changes_target() {
+        let mut app = world(Stage::None);
+        let _ = cells(&mut app, Layout::Floating, 160, 45, "unicode");
+        assert!(!app.hits.iter().any(|(_, h)| matches!(h, crate::client::Hit::Screen(ScreenHit::RowChanges(_)))));
     }
 
     #[test]
