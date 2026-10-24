@@ -225,7 +225,7 @@ Next: three follow-ups the user approved on 2026-10-23: `a` on a sidebar row ope
 amber for needs-you in every theme (built), and `seshi wait` reporting a check waiting for approval or that could
 not run. Then the Phase 17 live trial and the Phase 18 live checks. Then
 [Phase 20](#20--borrowed-from-tuios--built-on-dev-2026-10-23-live-checks-open), borrowed from TUIOS (approved 2026-10-23), and
-[Phase 21](#21--layout-names-and-the-grid-style--active-2026-10-23), layout names and the Grid style.
+[Phase 21](#21--layout-names-and-the-grid-style--built-on-dev-2026-10-23-live-checks-open), layout names and the Grid style.
 
 Current user-requested work: expand the built-in themes to cover the 25 requested
 families and add a searchable preview browser in Appearance. Acceptance: all
@@ -547,7 +547,7 @@ quiet agent rather than `null` on every pane, so other panes' output is unchange
 live: a real agent going quiet, an MCP answer refused for a changed prompt, the output setting
 in Settings, and the unix file modes (tested on Linux in CI only).
 
-### 21 — Layout names and the Grid style · active 2026-10-23
+### 21 — Layout names and the Grid style · built on dev 2026-10-23, live checks open
 
 The user asked on 2026-10-23 for clearer layout names and the window look from their "Windows"
 handoff, without replacing the existing looks. One Layout setting: Floating, Tiled, Compact and
@@ -562,6 +562,12 @@ roles. Tickets are labelled `phase-21`; no protocol change.
 Declined while planning: the handoff's top bar, right-hand sidebar, fixed 2×2 grid, zoom and
 bare keys (ADR 0015). Later: its scratch shell, as its own proposal (needs a daemon-owned shell).
 The keybind system is to be discussed with the user before any key work.
+
+Status 2026-10-23: #153–#155 built on `dev`; the gate passed on the merged tree (819 tests)
+after each. Grid's colours come from `Theme::grid_colors`, which skips a role too like one
+already taken (Seshi Walnut's accent and violet are one teal), so every built-in theme gives
+four. Not checked live: Grid in a real terminal at 160×45, 100×30 and 80×24, light themes by
+eye, and an old config file loading under its new name.
 
 ## In scope
 
