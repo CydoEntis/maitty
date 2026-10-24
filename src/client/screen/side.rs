@@ -527,10 +527,14 @@ fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, changed: Option<(i
     put(buf, gx, y, &[seg(g, gs)], gx + gw);
     hit(app, Rect { x: gx, y, width: gw + 1, height: 1 }, ScreenHit::Why(s.term));
     let menu = hovered(app, cols.row(y)) && !rl.picked;
-    let when = if ages && s.is_agent && !menu { age(s.since) } else { String::new() };
+    let when = if ages && s.is_agent { age(s.since) } else { String::new() };
     let nx = gx + gw + 1;
-    // The hovered row's ⋯ takes the last column, a space before it.
-    let meta_end = if menu { cols.rx.saturating_sub(1) } else { cols.rx + 1 };
+    // The hovered row's ⋯ takes the last column, a space before it: over the age's place (at
+    // least two wide), else in two columns of its own. A row with `+N −N` and no age keeps
+    // those two free unhovered too, so the counts never move from under the pointer.
+    let counts = changed.is_some_and(|(a, r)| a > 0 || r > 0);
+    let meta_end = if when.is_empty() && (menu || counts) { cols.rx.saturating_sub(1) } else { cols.rx + 1 };
+    let when = if menu { " ".repeat(when.width()) } else { when };
     let free = meta_end.saturating_sub(nx) as usize;
     let ascii = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).needs.is_ascii();
     let (meta, lines_at) = row_meta(s, ascii, changed, &when, free.saturating_sub(NAME_MIN + 1), st, t);
@@ -1150,22 +1154,63 @@ mod v8_tests {
         mouse(app, MouseEventKind::Up(MouseButton::Left), at);
     }
 
-    /// The pointer on add-payments' `+12`, drawn as it is with the pointer there (a hovered
-    /// row trades its age for its ⋯, so the counts sit where the hovered frame puts them).
-    fn hover_counts(app: &mut App) -> ratatui::buffer::Buffer {
-        let buf = cells(app, Layout::Floating, 160, 45, "unicode");
-        let name = find(&buf, app, "add-payments");
-        mouse(app, crossterm::event::MouseEventKind::Moved, name);
-        let buf = cells(app, Layout::Floating, 160, 45, "unicode");
+    /// The pointer moved onto add-payments' `+12` where an unhovered frame drew it, and the
+    /// frame drawn with it there.
+    fn hover_counts(app: &mut App, w: u16, h: u16) -> ratatui::buffer::Buffer {
+        let buf = cells(app, Layout::Floating, w, h, "unicode");
         let counts = find(&buf, app, "+12");
         mouse(app, crossterm::event::MouseEventKind::Moved, counts);
-        cells(app, Layout::Floating, 160, 45, "unicode")
+        cells(app, Layout::Floating, w, h, "unicode")
+    }
+
+    fn opened_changes(app: &App) -> bool {
+        matches!(&app.mode, Mode::Confirm(c) if matches!(c.act, crate::client::menu::Act::GitInit(_)))
+    }
+
+    #[test]
+    fn the_changed_lines_stay_put_when_the_pointer_lands_on_them() {
+        // An agent's row has an age (the ⋯ takes its place); a shell's has none (two columns kept).
+        for agent in [true, false] {
+            let (mut app, _) = payments_with_changes();
+            if !agent {
+                app.snap.terms.get_mut(&2).unwrap().agent = None;
+                app.screen_sync();
+            }
+            let before = find(&cells(&mut app, Layout::Floating, 160, 45, "unicode"), &app, "+12");
+            let after = find(&hover_counts(&mut app, 160, 45), &app, "+12");
+            assert_eq!(after, before, "agent {agent}: hovering the row doesn't move the counts");
+            click(&mut app, before);
+            assert!(opened_changes(&app), "agent {agent}: a click where they were drawn opens Changes");
+        }
+    }
+
+    #[test]
+    fn right_clicking_a_row_s_changed_lines_opens_its_menu() {
+        let (mut app, _) = payments_with_changes();
+        let counts = find(&hover_counts(&mut app, 160, 45), &app, "+12");
+        mouse(&mut app, crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Right), counts);
+        assert!(matches!(app.mode, Mode::ScreenMenu(_)), "the session's menu, as on the rest of the row");
+    }
+
+    #[test]
+    fn dragging_from_a_row_s_changed_lines_moves_the_row() {
+        use crossterm::event::{MouseButton, MouseEventKind};
+        let (mut app, _) = payments_with_changes();
+        let counts = find(&hover_counts(&mut app, 160, 45), &app, "+12");
+        let onto = find(&cells(&mut app, Layout::Floating, 160, 45, "unicode"), &app, "fix-footer");
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), counts);
+        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), onto);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), onto);
+        assert!(!opened_changes(&app), "a drag is not a click");
+        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
+        let at = |name: &str| rows.iter().position(|r| r.contains(name)).unwrap_or_else(|| panic!("{name}: {rows:#?}"));
+        assert!(at("add-payments") < at("fix-footer"), "add-payments took fix-footer's place: {rows:#?}");
     }
 
     #[test]
     fn clicking_a_row_s_changed_lines_opens_its_changes_like_d() {
         let (mut app, path) = payments_with_changes();
-        let buf = hover_counts(&mut app);
+        let buf = hover_counts(&mut app, 160, 45);
         let counts = find(&buf, &app, "+12");
         click(&mut app, counts);
         let Mode::Confirm(c) = &app.mode else { panic!("the checkout's Changes (here: not a repo yet) opens") };
@@ -1194,7 +1239,7 @@ mod v8_tests {
     #[test]
     fn the_hover_tint_shows_on_the_changed_lines_alone() {
         let (mut app, _) = payments_with_changes();
-        let buf = hover_counts(&mut app);
+        let buf = hover_counts(&mut app, 160, 45);
         let (x, y) = find(&buf, &app, "+12");
         let (nx, _) = find(&buf, &app, "add-payments");
         let counts_bg = buf[(x, y)].bg;

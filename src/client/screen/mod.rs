@@ -235,9 +235,9 @@ pub(super) enum Drag {
     /// A group's header in the sidebar (its index when pressed; moved yet?): dragged onto
     /// another group it takes that place, released where it was it folds.
     Group(usize, bool),
-    /// A session's row (moved yet?): dragged onto another in its group it takes that place,
-    /// released where it was it opens.
-    Session(TermId, bool),
+    /// A session's row (moved yet?; what was pressed, the row or its `+N −N`): dragged onto
+    /// another in its group it takes that place, released where it was the press acts.
+    Session(TermId, bool, ScreenHit),
     /// A tab's pill (its index now): dragged onto another tab it takes that place.
     Tab(usize),
 }

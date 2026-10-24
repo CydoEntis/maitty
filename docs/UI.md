@@ -233,7 +233,9 @@ through `v7_fixture::as_one_line_rows`, which applies ADR 0021's one-line rows.
   agent's mark, so the name keeps 8 columns. The `+N −N` is its own click target
   (`ScreenHit::RowChanges`): it opens that checkout's Changes in the side panel, as `d` on
   the session does, and the hover tint covers just it; the rest of the row opens the
-  session. A name in a state worth a look (working,
+  session. A right-click or a drag from it acts on the row, as anywhere else on it. Hover
+  never moves it: the row's `⋯` takes the age's place, and a row with no age keeps two
+  columns free for it. A name in a state worth a look (working,
   checking, done and not seen, needs you) is drawn in its state's colour, the glyph's, and
   bold; with motion on it shimmers up toward `strong` (working, checking, not seen) or pulses
   (needs you) (`side.rs` `NameMotion`). Another row that wants a look (failed, new, a check

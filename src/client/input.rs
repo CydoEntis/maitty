@@ -506,7 +506,7 @@ impl App {
                                 self.scroll_to(term, v.min(total));
                             }
                         }
-                        screen::Drag::Session(t, _) => {
+                        screen::Drag::Session(t, _, press) => {
                             let over = self
                                 .hits
                                 .iter()
@@ -525,7 +525,7 @@ impl App {
                                 _ => false,
                             };
                             if moved {
-                                self.screen.drag = Some(screen::Drag::Session(t, true));
+                                self.screen.drag = Some(screen::Drag::Session(t, true, press));
                             }
                         }
                         screen::Drag::Group(pi, _) => {
@@ -580,10 +580,11 @@ impl App {
                     return;
                 }
                 MouseEventKind::Up(_) => {
-                    // A session pressed and let go where it was: open it.
-                    if let screen::Drag::Session(t, false) = d {
+                    // A session pressed and let go where it was: open it, or its Changes when
+                    // the press was on its `+N −N`.
+                    if let screen::Drag::Session(_, false, press) = d {
                         self.screen.drag = None;
-                        self.on_hy_hit(screen::ScreenHit::Session(t), false);
+                        self.on_hy_hit(press, false);
                         self.dirty = true;
                         return;
                     }
@@ -626,7 +627,7 @@ impl App {
             let hit = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
             let at = (m.column, m.row);
             match hit {
-                Some(Hit::Screen(screen::ScreenHit::Session(t))) => self.menu_for_session(t, at),
+                Some(Hit::Screen(screen::ScreenHit::Session(t) | screen::ScreenHit::RowChanges(t))) => self.menu_for_session(t, at),
                 Some(Hit::Screen(screen::ScreenHit::Why(t))) if self.screen.side_rect.contains(pos) => self.menu_for_session(t, at),
                 Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) => self.menu_for_project(pi, at),
                 _ => {
@@ -657,8 +658,8 @@ impl App {
             let hit = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
             // A session's row: it may be dragged within its group; a plain click opens it
             // (on release).
-            if let Some(Hit::Screen(screen::ScreenHit::Session(t))) = hit {
-                self.screen.drag = Some(screen::Drag::Session(t, false));
+            if let Some(Hit::Screen(press @ (screen::ScreenHit::Session(t) | screen::ScreenHit::RowChanges(t)))) = hit {
+                self.screen.drag = Some(screen::Drag::Session(t, false, press));
                 self.dirty = true;
                 return;
             }

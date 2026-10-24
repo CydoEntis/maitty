@@ -1511,7 +1511,7 @@ mod screen_tests {
         let at = (r.x + 10, r.y + 10);
         let mouse = |app: &mut App, kind: MouseEventKind| app.on_mouse(MouseEvent { kind, column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
         // A drag whose release never came is over once the mouse moves with no button held.
-        app.screen.drag = Some(screen::Drag::Session(2, false));
+        app.screen.drag = Some(screen::Drag::Session(2, false, screen::ScreenHit::Session(2)));
         mouse(&mut app, MouseEventKind::Moved);
         assert!(app.screen.drag.is_none(), "a stuck drag doesn't keep the mouse from the panes");
         // Claude Code's full-screen view, not taking the mouse: the wheel pages it.

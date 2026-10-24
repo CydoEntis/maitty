@@ -1208,10 +1208,8 @@ impl App {
                 self.screen_side_set(SideItem::Sess(t));
             }
             ScreenHit::RowChanges(t) => {
-                let Some(dir) = find(&self.screen_model(), t).map(|(_, wt, _)| wt.path.clone()) else { return };
-                self.screen.cursor = None;
-                self.mode = Mode::Normal;
-                self.open_changes(dir);
+                self.screen.cursor = Some(t);
+                self.act(Action::Changes);
             }
             ScreenHit::Update => self.act(Action::Update),
             ScreenHit::Restart => self.ask_restart(),
