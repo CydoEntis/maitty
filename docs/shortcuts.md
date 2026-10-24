@@ -5,8 +5,8 @@ in Settings › Keys or under `[keys.prefix]` in your config.
 
 ## Default shortcuts
 
-Press `Ctrl+Space` for shortcut mode, then the key. No default needs Shift, and each key does
-one thing (ADR 0017).
+Press `Ctrl+Space` for shortcut mode, then the key. Only `?` needs Shift, and each key does
+one thing (ADR 0017, 0022).
 
 ### Sessions
 
@@ -85,7 +85,8 @@ To send `Ctrl+Space` itself to the pane, search
 commands for "Send the leader key" or bind `send-prefix` to a key. One overlay holds every key
 reference; it is not a second palette:
 
-- **Key map** (`Ctrl+Space`, then a pause): the keys by group, Sessions, Panes, Tabs,
+- **Key map** (`Ctrl+Space`, then a pause, with Settings › General › **Leader waits for next
+  key** on; it is off by default): the keys by group, Sessions, Panes, Tabs,
   Project and Maitty, built from your real bindings. Pressing a key runs it.
 - **Search commands** (`Space` after the leader, `Tab` from the map, or typing a letter
   that is not a key): every command, including ones with no key. With nothing typed it
@@ -96,7 +97,7 @@ reference; it is not a second palette:
 Keys are drawn as keycaps; `Ctrl+Space` is two caps joined by a dim `+`. On Windows,
 Caps Lock does not change shortcut meaning, and no default but `?` needs Shift (ADR 0017,
 0022). The
-[README](../README.md#use) lists the defaults.
+[README](../README.md#shortcuts) lists the defaults.
 
 Mouse entry: **Menu** has a chip in the collapsed strip (row 0); with the sessions hidden
 (search commands for "Hide sidebar"), use the leader. Click a row to run it; the wheel moves the selection. Close buttons
@@ -154,7 +155,6 @@ The sidebar takes navigation only. No letter acts from it: every action is the l
 | Up / k, Down / j, Home, End | Browse rows, first row, last row; active session stays selected |
 | Right, Left | Expand project or enter session; fold project or go to session's project |
 | Enter | Toggle project or open selected session; opening a sleeping session wakes it. On a session whose check failed, could not run, was overridden, went stale or is never run for its repo, open its evidence sheet instead; on one whose repo command waits for approval, open the approval |
-| Up, Down in the activity inspector | Inspect the previous or next child record |
 | Esc | Return keyboard focus to the active pane |
 
 ## Text prompts and worktree picker
@@ -351,6 +351,7 @@ loads). It has the keys while open; closing it returns to shortcut mode.
 | Tab, Shift+Tab, Up / k, Down / j | Change settings category; choose row |
 | Left / h, Right / l, Enter, Space | Change value; Enter edits text or captures binding; theme opens browser |
 | o | Open configuration file outside Maitty |
+| u | Check for updates now |
 | R | Restart the daemon after an update (when the Restart now button shows) |
 | Keys on the Check page | As in `PROJECT · <name>` (see Check modals); Tab, Esc and o stay Settings' |
 | Enter, Esc when editing | Save field / cancel; when capturing press the new key or Esc |
