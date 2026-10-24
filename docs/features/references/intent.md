@@ -37,7 +37,8 @@ server (`src/mcp.rs`), the repo's `.maitty/` folder.
 
 ## Open questions
 
-Settled when Phase 28 is ticketed: whether `.maitty/references/` is gitignored by default.
+Decided 2026-10-24: `.maitty/references/` is gitignored by default (a reference is often a
+screenshot you don't mean to share); committing one is your choice.
 
 ## Tickets
 

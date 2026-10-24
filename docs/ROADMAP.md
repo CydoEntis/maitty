@@ -11,7 +11,9 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The latest published release on `main` is v0.42.0 (2026-10-23): the app renamed to Maitty
+The latest published release on `main` is v0.43.0 (2026-10-24): phases 25 and 26 (padding, one
+rounding setting, shortcut mode that stays, one-line rows; the side panel with Files, Changes,
+Branch and markdown). Before it, v0.42.0 (2026-10-23): the app renamed to Maitty
 (ADR 0020) with its splash, and Night and Day as the default themes. Before it, v0.41.0 was the v8 cleanup
 ([Phase 19](#19--the-v8-cleanup--shipped-in-v0410-live-checks-open)). Every action goes through the
 leader, one key overlay and a grouped Menu replace the palette and the shortcut screens, sessions are
@@ -687,7 +689,7 @@ opens the message box already holding the failure, so no new key).
 Per project, `.maitty/references/` holds screenshots and design files: a References view in the
 side panel lists, adds (paste or pick), removes and opens them in the system viewer, and an MCP
 tool lists them for agents. Intent: [references](features/references/intent.md). Tickets when
-phase 27 is done. Open: whether the folder is gitignored by default.
+phase 27 is done. Decided 2026-10-24: the folder is gitignored by default.
 
 ## In scope
 
