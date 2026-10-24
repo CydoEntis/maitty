@@ -943,11 +943,80 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(!o.contains("line 100"), "scrolled up: {:?}", app.history(1));
-        assert!(o.contains("↑ 30 lines up"), "and it says so");
+        assert!(o.contains("↓ Back to bottom · 30 lines up"), "and it says so, with a way back");
         app.on_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::SHIFT));
         app.on_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::SHIFT));
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("line 100") && !o.contains("lines up"), "Shift+PageDown back to the bottom");
+    }
+
+    /// Where the "Back to bottom" button was drawn for `term`, if it was.
+    fn to_bottom_at(app: &App, term: TermId) -> Option<Rect> {
+        app.hits.iter().find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::ToBottom(term))).map(|(r, _)| *r)
+    }
+
+    #[test]
+    fn back_to_bottom_is_a_click_away_in_seshis_history() {
+        use crossterm::event::{MouseEvent, MouseEventKind};
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (_, inside) = app.panes[0];
+        let mut p = vt100::Parser::new(inside.height, inside.width, 1000);
+        for i in 1..=100 {
+            p.process(format!("line {i}\r\n").as_bytes());
+        }
+        app.parsers.insert(1, p);
+        draw(&mut app, 160, 45);
+        assert!(to_bottom_at(&app, 1).is_none(), "at the bottom: no button");
+        app.scroll_to(1, 30);
+        draw(&mut app, 160, 45);
+        let at = to_bottom_at(&app, 1).expect("scrolled up: a button");
+        let (_, inner) = app.panes[0];
+        assert_eq!(at.y, inner.bottom() - 1, "at the bottom of the pane");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.x + 1, row: at.y, modifiers: KeyModifiers::NONE });
+        assert_eq!(app.history(1).0, 0, "one click: back at the newest line");
+    }
+
+    #[test]
+    fn back_to_bottom_pages_an_agent_that_scrolls_itself_back_down() {
+        use crossterm::event::{MouseEvent, MouseEventKind};
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        let mut p = vt100::Parser::new(40, 120, 1000);
+        p.process(b"\x1b[?1049h");
+        app.parsers.insert(1, p);
+        draw(&mut app, 160, 45);
+        let (_, inner) = app.panes[0];
+        for _ in 0..3 {
+            app.wheel_page = None;
+            app.on_mouse(MouseEvent { kind: MouseEventKind::ScrollUp, column: inner.x + 5, row: inner.y + 5, modifiers: KeyModifiers::NONE });
+        }
+        while rx.try_recv().is_ok() {}
+        let o = draw(&mut app, 160, 45);
+        assert!(o.contains("↓ Back to bottom"), "{o}");
+        let at = to_bottom_at(&app, 1).expect("a button");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.x + 1, row: at.y, modifiers: KeyModifiers::NONE });
+        let sent: Vec<u8> = std::iter::from_fn(|| rx.try_recv().ok())
+            .filter_map(|m| if let ClientMsg::Input { term: 1, data } = m { Some(data) } else { None })
+            .flatten()
+            .collect();
+        assert_eq!(sent, b"\x1b[6~".repeat(3), "three pages up, three back down");
+        assert!(!draw(&mut app, 160, 45).contains("Back to bottom"), "and the button goes");
+    }
+
+    #[test]
+    fn typing_to_an_agent_clears_its_back_to_bottom() {
+        use crossterm::event::{MouseEvent, MouseEventKind};
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let mut p = vt100::Parser::new(40, 120, 1000);
+        p.process(b"\x1b[?1049h");
+        app.parsers.insert(1, p);
+        draw(&mut app, 160, 45);
+        let (_, inner) = app.panes[0];
+        app.on_mouse(MouseEvent { kind: MouseEventKind::ScrollUp, column: inner.x + 5, row: inner.y + 5, modifiers: KeyModifiers::NONE });
+        assert!(draw(&mut app, 160, 45).contains("Back to bottom"));
+        app.on_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+        assert!(!draw(&mut app, 160, 45).contains("Back to bottom"), "the agent scrolls to its prompt itself");
     }
 
     #[test]

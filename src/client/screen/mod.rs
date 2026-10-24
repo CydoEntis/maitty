@@ -1000,6 +1000,8 @@ pub(super) enum ScreenHit {
     KeyRow(usize),
     /// A pane's scrollbar (click or drag).
     ScrollBar(TermId),
+    /// "Back to bottom" on a pane scrolled up.
+    ToBottom(TermId),
     FindTab(u8),
     FindRow(usize),
     BranchRow(usize),

@@ -335,6 +335,8 @@ impl App {
         if let Some(p) = self.parsers.get_mut(&term) {
             p.screen_mut().set_scrollback(0);
         }
+        // Typing goes to the prompt at the bottom; the agent scrolls there itself.
+        self.paged_up.remove(&term);
         self.send(ClientMsg::Input { term, data });
     }
 
@@ -736,6 +738,11 @@ impl App {
                     // arrow keys would walk its prompt history, so page it at most every 150 ms.
                     if self.wheel_page.is_none_or(|at| at.elapsed() >= Duration::from_millis(150)) {
                         self.wheel_page = Some(Instant::now());
+                        let paged = self.paged_up.entry(term).or_default();
+                        *paged = if up { *paged + 1 } else { paged.saturating_sub(1) };
+                        if *paged == 0 {
+                            self.paged_up.remove(&term);
+                        }
                         let key: &[u8] = if up { b"\x1b[5~" } else { b"\x1b[6~" };
                         self.send(ClientMsg::Input { term, data: key.to_vec() });
                     }

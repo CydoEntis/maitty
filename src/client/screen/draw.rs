@@ -587,16 +587,21 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         hit(app, track, ScreenHit::ScrollBar(term));
     }
 
-    // Scrolled up: say so, and how to get back.
-    if let Some(n) = scrolled {
-        let note = pill(
-            look,
-            vec![seg(format!(" ↑ {n} lines up "), Style::default().fg(t.acc_ink).add_modifier(Modifier::BOLD))],
-            t.accent,
-            c.bg,
-        );
-        let w = segs_width(&note);
-        put(f.buffer_mut(), inner.right().saturating_sub(w), inner.y, &note, inner.right());
+    // Scrolled up (in Seshi's history, or an agent that scrolls itself paged up by the wheel):
+    // a button back to the newest output, where a chat's is, at the bottom right.
+    let label = match (scrolled, app.paged_up.get(&term)) {
+        (Some(n), _) => Some(format!(" ↓ Back to bottom · {n} lines up ")),
+        (None, Some(_)) => Some(" ↓ Back to bottom ".to_string()),
+        (None, None) => None,
+    };
+    if let Some(label) = label
+        && inner.height > 0
+    {
+        let note = pill(look, vec![seg(label, Style::default().fg(t.acc_ink).add_modifier(Modifier::BOLD))], t.accent, c.bg);
+        let w = segs_width(&note).min(inner.width);
+        let (x, y) = (inner.right().saturating_sub(w), inner.bottom() - 1);
+        put(f.buffer_mut(), x, y, &note, inner.right());
+        hit(app, Rect { x, y, width: w, height: 1 }, ScreenHit::ToBottom(term));
     }
 
     // Not the one you're in: its inside fades (the border and its amber tag stay as they are).

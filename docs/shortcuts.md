@@ -275,6 +275,12 @@ No bare key answers from the sidebar.
 
 ## Terminal scrolling and mouse
 
+Scrolled up, a pane shows **↓ Back to bottom** at its bottom right (with how many lines up,
+in Seshi's own history); a click goes back to the newest output. An agent that scrolls itself
+(a full-screen one, which the wheel pages) shows it too, and the click pages it back down as
+far as the wheel paged it up; typing to the agent clears it, since the agent scrolls to its
+prompt itself.
+
 Leader `z` collapses the sessions into a strip of chips on the top row (click a chip to
 focus it, `»` or `+n more` to expand); with the strip focused, `←` `→` and `1`-`9` switch
 sessions. "Hide sidebar" (search commands) hides the sessions completely; `z` brings them back.

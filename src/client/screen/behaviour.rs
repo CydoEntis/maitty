@@ -1424,6 +1424,7 @@ impl App {
                 }
             }
             ScreenHit::SideEdge => self.screen.drag = Some(Drag::Side),
+            ScreenHit::ToBottom(term) => self.back_to_bottom(term),
             ScreenHit::ScrollBar(term) => {
                 self.screen.drag = Some(Drag::Scroll(term));
                 if let (Some((t, r, total)), Some(pos)) = (self.screen.bar, self.hover)

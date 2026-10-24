@@ -365,6 +365,9 @@ pub struct App {
     pane_frames: Vec<(TermId, Rect)>,
     /// When the wheel last paged an agent's full-screen view (see the wheel in input.rs).
     wheel_page: Option<Instant>,
+    /// Pages the wheel has sent up to an agent that scrolls itself, less those sent down:
+    /// Seshi can't see where it is, so this is how far "Back to bottom" has to page down.
+    paged_up: std::collections::HashMap<TermId, u32>,
     out: mpsc::UnboundedSender<ClientMsg>,
     quit: Option<String>,
     dirty: bool,
@@ -554,6 +557,7 @@ impl App {
             panes: Vec::new(),
             pane_frames: Vec::new(),
             wheel_page: None,
+            paged_up: std::collections::HashMap::new(),
             out,
             quit: None,
             dirty: true,
@@ -1364,6 +1368,16 @@ impl App {
         let total = p.screen().scrollback();
         p.screen_mut().set_scrollback(cur);
         (cur, total)
+    }
+
+    /// Back to the newest output: Seshi's own history to its end, and an agent that scrolls
+    /// itself paged down as far as the wheel paged it up.
+    pub(super) fn back_to_bottom(&mut self, term: TermId) {
+        self.scroll_to(term, 0);
+        if let Some(n) = self.paged_up.remove(&term) {
+            let down: Vec<u8> = b"\x1b[6~".repeat(n as usize);
+            self.send(ClientMsg::Input { term, data: down });
+        }
     }
 
     pub(super) fn scroll_to(&mut self, term: TermId, offset: usize) {
