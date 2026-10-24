@@ -222,7 +222,7 @@ ignored; lint, both cross-checks and dependency audit passed). Live mouse clicks
 opened a plain shell and Settings from Actions.
 
 Active phase: **26 — the inspector drawer** (planned 2026-10-24); phase 25 is built on `dev`.
-Next: #172 (resize the side panel), then #173, #175 and #176, then #174. Then
+Next: the phase 26 live look (its tickets are on `dev`). Then
 [Phase 27](#27--radar-and-sending-failures--planned-2026-10-24) and
 [Phase 28](#28--references--planned-2026-10-24). Live checks still open for phases 18 and 20–25.
 
@@ -666,6 +666,13 @@ change.
 
 Exit: every ticket closed, the gate green on `dev`, and a live look at 80×24, 100×30 and
 160×45 in Floating and Compact.
+
+Status 2026-10-24: #172–#176 built on `dev` (9463fb3..de25486), each reviewed independently and
+approved after one round of fixes; the gate passed at de25486 (912 tests, clippy, Linux and macOS
+checks). Also on `dev`: 39a3a2e, a view opened from shortcut mode takes the keys (a phase 25 bug
+the #175 review found: `k` in Changes stopped the agent). Open before the exit holds: the live look.
+Noticed: while a panel view is open, a click in a pane leaves the keyboard with the view, so typing
+there (`m`, `y` in Changes) acts on the view; awaiting the user's call.
 
 ### 27 — Radar and sending failures · planned 2026-10-24
 
