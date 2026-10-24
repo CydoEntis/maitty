@@ -1,6 +1,6 @@
 //! Which checks a session's project has, where each comes from, and whether it may run.
 //! Your own `[[check]]`s for the project run as they are; without any, the repo's own
-//! `.seshi/checks.toml` names them, and each of those waits for your approval.
+//! `.<app>/checks.toml` names them, and each of those waits for your approval.
 
 use super::approvals::{Approvals, Decision};
 use crate::config::{CheckDef, REPO_CHECKS_FILE, parse_repo_checks, same_path};
@@ -42,10 +42,10 @@ pub fn resolve(user: &[CheckDef], project: &Path, worktree: &Path, approvals: &A
     if yours.is_empty() { repo_checks(project, worktree, approvals) } else { yours }
 }
 
-/// The checks `worktree`'s `.seshi/checks.toml` names, each gated by what you decided. A file
+/// The checks `worktree`'s `.<app>/checks.toml` names, each gated by what you decided. A file
 /// that cannot be read or parsed is one result that says why, never a silent nothing.
 fn repo_checks(project: &Path, worktree: &Path, approvals: &Approvals) -> Vec<Resolved> {
-    let text = match std::fs::read_to_string(worktree.join(REPO_CHECKS_FILE)) {
+    let text = match std::fs::read_to_string(crate::config::repo_checks_path(worktree)) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
         Err(e) => return vec![unreadable(project, repo_source(worktree), format!("couldn't read {REPO_CHECKS_FILE}: {e}"))],
@@ -115,7 +115,7 @@ mod tests {
         assert!(resolve(&user, Path::new("/code/none"), Path::new("/code/none"), &Approvals::default()).is_empty());
     }
 
-    /// A real git repo whose `.seshi/checks.toml` names `test`, committed.
+    /// A real git repo whose `.<app>/checks.toml` names `test`, committed.
     struct Repo {
         _dir: super::super::persist::ScratchDir,
         root: PathBuf,
@@ -125,7 +125,7 @@ mod tests {
         fn new(checks: &str) -> Repo {
             let dir = super::super::persist::scratch_dir();
             let root = dir.path().to_path_buf();
-            std::fs::create_dir_all(root.join(".seshi")).unwrap();
+            std::fs::create_dir_all(root.join(concat!(".", env!("APP_COMMAND")))).unwrap();
             let repo = Repo { _dir: dir, root };
             repo.git(&["init", "-q"]);
             repo.write(checks);

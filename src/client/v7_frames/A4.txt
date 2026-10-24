@@ -12,14 +12,14 @@
 │   ● warm-finch              3m │ │                                                                                                                           │
 │     asks: use pnpm or npm?     │ │                                                                                                                           │
 │                                │ │    THIS REPO CHANGED ITS CHECK                                            Esc close                                       │
-│  ▾ seshi                 ⎇ dev │ │  │                                                                                  │                                     │
+│  ▾ orbit                 ⎇ dev │ │  │                                                                                  │                                     │
 │   ✓ quick-fox               9h │ │  │ The command changed since you said always:                                       │                                     │
 │     finished                   │ │  │                                                                                  │                                     │
 │   z old-moth                2d │ │  │  - npm test                                                                      │                                     │
 │     asleep zzZ                 │ │  │  + npm test && node scripts/seed.js                                              │                                     │
 │                                │ │  │                                                                                  │                                     │
 │                                │ │  │ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │                                     │
-│                                │ │  │ From     .seshi/checks.toml · changed in 9f3c2a1, 2h ago                         │                                     │
+│                                │ │  │ From     .maitty/checks.toml · changed in 9f3c2a1, 2h ago                        │                                     │
 │                                │ │  │ When     after every agent turn, with your permissions                           │                                     │
 │                                │ │  │                                                                                  │                                     │
 │                                │ │  │ Read it. It can do anything you can in that folder.                              │                                     │
@@ -56,9 +56,9 @@
 │   ● wa│                                                                                  │       │
 │     as│  - npm test                                                                      │       │
 │       │  + npm test && node scripts/seed.js                                              │       │
-│  ▾ ses│                                                                                  │       │
+│  ▾ orb│                                                                                  │       │
 │   ✓ qu│ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │       │
-│   z ol│ From     .seshi/checks.toml · changed in 9f3c2a1, 2h ago                         │       │
+│   z ol│ From     .maitty/checks.toml · changed in 9f3c2a1, 2h ago                        │       │
 │       │ When     after every agent turn, with your permissions                           │       │
 │       │                                                                                  │       │
 │       │ Read it. It can do anything you can in that folder.                              │       │
@@ -85,7 +85,7 @@
 ││  - npm test                                                                │
 ││  + npm test && node scripts/seed.js                                        │
 ││ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                         │
-││ From     .seshi/checks.toml · changed in 9f3c2a1, 2h ago                   │
+││ From     .maitty/checks.toml · changed in 9f3c2a1, 2h ago                  │
 ││ When     after every agent turn, with your permissions                     │
 ││                                                                            │
 ││ Read it. It can do anything you can in that folder.                        │
@@ -114,14 +114,14 @@
 │   ● warm-finch              3m ││                                                                                                                            │
 │     asks: use pnpm or npm?     ││                                                                                                                            │
 │                                ││     THIS REPO CHANGED ITS CHECK                                            Esc close                                       │
-│  ▾ seshi                 ⎇ dev ││   │                                                                                  │                                     │
+│  ▾ orbit                 ⎇ dev ││   │                                                                                  │                                     │
 │   ✓ quick-fox               9h ││   │ The command changed since you said always:                                       │                                     │
 │     finished                   ││   │                                                                                  │                                     │
 │   z old-moth                2d ││   │  - npm test                                                                      │                                     │
 │     asleep zzZ                 ││   │  + npm test && node scripts/seed.js                                              │                                     │
 │                                ││   │                                                                                  │                                     │
 │                                ││   │ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │                                     │
-│                                ││   │ From     .seshi/checks.toml · changed in 9f3c2a1, 2h ago                         │                                     │
+│                                ││   │ From     .maitty/checks.toml · changed in 9f3c2a1, 2h ago                        │                                     │
 │                                ││   │ When     after every agent turn, with your permissions                           │                                     │
 │                                ││   │                                                                                  │                                     │
 │                                ││   │ Read it. It can do anything you can in that folder.                              │                                     │
@@ -158,9 +158,9 @@
 │   ● wa│                                                                                  │       │
 │     as│  - npm test                                                                      │       │
 │       │  + npm test && node scripts/seed.js                                              │       │
-│  ▾ ses│                                                                                  │       │
+│  ▾ orb│                                                                                  │       │
 │   ✓ qu│ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │       │
-│   z ol│ From     .seshi/checks.toml · changed in 9f3c2a1, 2h ago                         │       │
+│   z ol│ From     .maitty/checks.toml · changed in 9f3c2a1, 2h ago                        │       │
 │       │ When     after every agent turn, with your permissions                           │       │
 │       │                                                                                  │       │
 │       │ Read it. It can do anything you can in that folder.                              │       │
@@ -187,7 +187,7 @@
 ││  - npm test                                                                │
 ││  + npm test && node scripts/seed.js                                        │
 ││ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                         │
-││ From     .seshi/checks.toml · changed in 9f3c2a1, 2h ago                   │
+││ From     .maitty/checks.toml · changed in 9f3c2a1, 2h ago                  │
 ││ When     after every agent turn, with your permissions                     │
 ││                                                                            │
 ││ Read it. It can do anything you can in that folder.                        │
@@ -216,14 +216,14 @@
    ● warm-finch                3m│
      asks: use pnpm or npm?      │
                                  │      THIS REPO CHANGED ITS CHECK                                            Esc close
-  ▾ seshi                   ⎇ dev│    │                                                                                  │
+  ▾ orbit                   ⎇ dev│    │                                                                                  │
    ✓ quick-fox                 9h│    │ The command changed since you said always:                                       │
      finished                    │    │                                                                                  │
    z old-moth                  2d│    │  - npm test                                                                      │
      asleep zzZ                  │    │  + npm test && node scripts/seed.js                                              │
                                  │    │                                                                                  │
                                  │    │ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │
-                                 │    │ From     .seshi/checks.toml · changed in 9f3c2a1, 2h ago                         │
+                                 │    │ From     .maitty/checks.toml · changed in 9f3c2a1, 2h ago                        │
                                  │    │ When     after every agent turn, with your permissions                           │
                                  │    │                                                                                  │
                                  │    │ Read it. It can do anything you can in that folder.                              │
@@ -260,9 +260,9 @@
    ● war│                                                                                  │
      ask│  - npm test                                                                      │
         │  + npm test && node scripts/seed.js                                              │
-  ▾ sesh│                                                                                  │
+  ▾ orbi│                                                                                  │
    ✓ qui│ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │
-   z old│ From     .seshi/checks.toml · changed in 9f3c2a1, 2h ago                         │
+   z old│ From     .maitty/checks.toml · changed in 9f3c2a1, 2h ago                        │
         │ When     after every agent turn, with your permissions                           │
         │                                                                                  │
         │ Read it. It can do anything you can in that folder.                              │
@@ -289,7 +289,7 @@
  │  - npm test                                                                │
  │  + npm test && node scripts/seed.js                                        │
  │ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                         │
- │ From     .seshi/checks.toml · changed in 9f3c2a1, 2h ago                   │
+ │ From     .maitty/checks.toml · changed in 9f3c2a1, 2h ago                  │
  │ When     after every agent turn, with your permissions                     │
  │                                                                            │
  │ Read it. It can do anything you can in that folder.                        │
@@ -314,7 +314,7 @@
  │  - npm test                                                                │
  │  + npm test && node scripts/seed.js                                        │
  │ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                         │
- │ From     .seshi/checks.toml · changed in 9f3c2a1, 2h ago                   │
+ │ From     .maitty/checks.toml · changed in 9f3c2a1, 2h ago                  │
  │ When     after every agent turn, with your permissions                     │
  │                                                                            │
  │ Read it. It can do anything you can in that folder.                        │

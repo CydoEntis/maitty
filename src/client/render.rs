@@ -12,7 +12,7 @@ use ratatui::text::Span;
 use ratatui::widgets::{Paragraph, Widget};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-/// The smallest window seshi draws into (below it, a note to make it bigger).
+/// The smallest window the app draws into (below it, a note to make it bigger).
 const MIN_WIDTH: u16 = 40;
 const MIN_HEIGHT: u16 = 10;
 
@@ -92,7 +92,7 @@ pub(super) fn tint(buf: &mut Buffer, r: Rect, t: &crate::theme::Theme) {
 }
 
 /// Hand every cell on the theme's ground back to the terminal's own background (SGR 49), so
-/// transparency or a background image looks the same under all of seshi's chrome. Done last,
+/// transparency or a background image looks the same under all of the app's chrome. Done last,
 /// after everything that blends colours has drawn. Raised tones (sheets, modals, the status
 /// line) and the colours programs paint for themselves are not `bg`, so they stay.
 fn use_terminal_background(buf: &mut ratatui::buffer::Buffer, bg: Color) {
@@ -107,8 +107,8 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
     let t = t.clone();
     // Copy mode holds the whole history; match by reference and clone only small fields.
     match &app.mode {
-        Mode::Prefix { since } => {
-            if app.keymap_shown(*since) {
+        Mode::Prefix { since, acted } => {
+            if !*acted && app.keymap_shown(*since) {
                 let km = super::screen::KeyMap::new(super::screen::KeyView::Map, None);
                 super::screen::draw_keymap(app, f, area, &t, &km);
             }

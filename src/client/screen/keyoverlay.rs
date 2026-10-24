@@ -64,8 +64,8 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
         (
             "PANES",
             vec![
-                r("Split right", vec![A::SplitRight], true),
-                r("Split down", vec![A::SplitDown], true),
+                r("Split side by side", vec![A::SplitRight], true),
+                r("Split stacked", vec![A::SplitDown], true),
                 r("Close pane", vec![A::ClosePane], true),
                 r("Move focus", vec![A::Focus(Dir::Left), A::Focus(Dir::Up), A::Focus(Dir::Down), A::Focus(Dir::Right)], true),
                 r("Collapse sidebar", vec![A::ToggleSidebar], true),
@@ -100,7 +100,7 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
             ],
         ),
         (
-            "SESHI",
+            env!("APP_ENV"),
             vec![
                 r("Search commands", vec![A::Palette], true),
                 r("Settings", vec![A::Settings], true),
@@ -124,7 +124,7 @@ fn group_of(a: &Action) -> &'static str {
         A::SplitLeft | A::SplitUp | A::FocusNext | A::FocusPrev | A::CloseSplit | A::Search | A::PaneInfo | A::Spawn(..) | A::SideMove(_) => "PANES",
         A::SpawnTab(_) | A::SelectTab(_) => "TABS",
         A::RemoveWorktree | A::TidyWorktrees | A::NewWorktree(_) => "PROJECT",
-        _ => "SESHI",
+        _ => env!("APP_ENV"),
     }
 }
 
@@ -374,6 +374,7 @@ fn frame(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, title: &str, wa
     let mut c = Card::new(t, title).lit(t.sky());
     c.title_fg = t.accent;
     c.bg = t.card;
+    c.float = true;
     let inside = card(app, buf, r, &c, t);
     hit(app, r, ScreenHit::Noop);
     (r, inside)
@@ -439,7 +440,7 @@ fn draw_grid(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap
             banner.extend(keycap(t, &lead));
             banner.push(seg(format!("{gap}then{gap}"), cs.fg(t.muted)));
             banner.extend(keycap(t, &k(app, &Action::SplitRight)));
-            banner.push(seg(format!("{gap}= split right"), cs.fg(t.muted)));
+            banner.push(seg(format!("{gap}= split"), cs.fg(t.muted)));
             banner
         };
         let room = r.width.saturating_sub(6);

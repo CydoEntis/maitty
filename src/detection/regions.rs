@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Adapted from Herdr commit 143bf5fd4781d164260c63fe28e7dc08054ad32f.
 // Copyright and license: vendor/herdr-detection/LICENSE and NOTICE.md.
-// Local changes: use Seshi input; omit unused remote engine version constant.
+// Local changes: use the app input; omit unused remote engine version constant.
 use super::DetectionInput;
 pub(super) fn region<'a>(input: DetectionInput<'a>, spec: &str) -> &'a str {
     let trimmed = spec.trim();

@@ -64,7 +64,7 @@ impl App {
             Mode::Prompt { input, .. } | Mode::Worktrees { query: input, .. } => {
                 input.push_str(s.lines().next().unwrap_or(""));
             }
-            // Seshi's own text boxes take the paste, not the pane behind them.
+            // The app's own text boxes take the paste, not the pane behind them.
             Mode::Find(v) => v.query.push_str(s.lines().next().unwrap_or("")),
             Mode::GoTo { query, .. } => query.push_str(s.lines().next().unwrap_or("").trim()),
             Mode::KeyMap(km) if km.view == screen::KeyView::Search && km.step.is_none() => {
@@ -90,7 +90,6 @@ impl App {
                 *sel = 0;
             }
             Mode::Themes { saving: true, .. } => {}
-            Mode::Spinners(view) => view.paste(&s),
             Mode::Branch(v) => v.query.push_str(s.lines().next().unwrap_or("").trim()),
             Mode::Finder(fd) => {
                 fd.q.push_str(s.lines().next().unwrap_or("").trim());
@@ -167,7 +166,7 @@ impl App {
         match self.mode.clone() {
             Mode::Normal => {
                 if spec == self.keymap.prefix {
-                    self.mode = Mode::Prefix { since: Instant::now() };
+                    self.mode = Mode::Prefix { since: Instant::now(), acted: false };
                 } else if let Some(a) = self.keymap.global.get(&spec).cloned() {
                     self.act(a);
                 } else if self.view.is_some() {
@@ -216,18 +215,22 @@ impl App {
                 }
                 _ => self.mode = Mode::Confirm(c),
             },
-            Mode::Prefix { since } => {
-                self.mode = Mode::Normal;
-                if k.code == KeyCode::Esc {
+            Mode::Prefix { since, acted } => {
+                // Esc or the leader again: back to typing.
+                if k.code == KeyCode::Esc || spec == self.keymap.prefix {
+                    self.mode = Mode::Normal;
                     return;
                 }
                 if let Some(a) = self.keymap.prefixed.get(&spec).cloned() {
-                    let repeat = a.repeats();
+                    let typing = a.leaves_shortcut_mode();
+                    self.mode = Mode::Normal;
                     self.act(a);
-                    if repeat && self.mode == Mode::Normal {
-                        self.mode = Mode::Prefix { since: crate::clock::ago(Duration::from_secs(60)) };
+                    // Still here (nothing opened, nothing to type into): the mode holds.
+                    if !typing && self.mode == Mode::Normal {
+                        self.mode = Mode::Prefix { since, acted: true };
                     }
-                } else if self.keymap_shown(since)
+                } else if !acted
+                    && self.keymap_shown(since)
                     && let KeyCode::Char(c) = k.code
                 {
                     // The key map is up and this key does nothing: it starts a search.
@@ -331,6 +334,8 @@ impl App {
         if let Some(p) = self.parsers.get_mut(&term) {
             p.screen_mut().set_scrollback(0);
         }
+        // Typing goes to the prompt at the bottom; the agent scrolls there itself.
+        self.paged_up.remove(&term);
         self.send(ClientMsg::Input { term, data });
     }
 
@@ -414,7 +419,7 @@ impl App {
         }
         // Programs that ask for the mouse (Claude Code's full-screen view, vim, lazygit,
         // htop, …) get it, like in any terminal: clicks, wheel, drags. Shift keeps it for
-        // seshi (select text); right-click stays seshi's menu.
+        // the app (select text); right-click stays the app's menu.
         if self.screen.drag.is_none()
             && !self.splash
             && matches!(self.mode, Mode::Normal)
@@ -423,7 +428,7 @@ impl App {
             && let Some((term, inner)) = self.panes.iter().find(|(_, r)| r.contains(pos)).copied()
             && (self.screen.right_clicks.contains(&term)
                 || !matches!(m.kind, MouseEventKind::Down(MouseButton::Right) | MouseEventKind::Up(MouseButton::Right) | MouseEventKind::Drag(MouseButton::Right)))
-            // Full-screen programs own their scrolling. On a normal screen, use Seshi history
+            // Full-screen programs own their scrolling. On a normal screen, use the app history
             // while it exists; pass the wheel to a mouse-aware program when that history is empty.
             && (!matches!(m.kind, MouseEventKind::ScrollUp | MouseEventKind::ScrollDown)
                 || self.parsers.get(&term).is_some_and(|p| p.screen().alternate_screen())
@@ -728,10 +733,15 @@ impl App {
                 let agent = self.snap.terms.get(&term).is_some_and(|t| t.agent.is_some());
                 let no_history = self.history(term).1 == 0;
                 if (alt || no_history) && agent && !m.modifiers.contains(KeyModifiers::SHIFT) {
-                    // A full-screen view, or a normal-screen agent with no Seshi history:
+                    // A full-screen view, or a normal-screen agent with no the app history:
                     // arrow keys would walk its prompt history, so page it at most every 150 ms.
                     if self.wheel_page.is_none_or(|at| at.elapsed() >= Duration::from_millis(150)) {
                         self.wheel_page = Some(Instant::now());
+                        let paged = self.paged_up.entry(term).or_default();
+                        *paged = if up { *paged + 1 } else { paged.saturating_sub(1) };
+                        if *paged == 0 {
+                            self.paged_up.remove(&term);
+                        }
                         let key: &[u8] = if up { b"\x1b[5~" } else { b"\x1b[6~" };
                         self.send(ClientMsg::Input { term, data: key.to_vec() });
                     }

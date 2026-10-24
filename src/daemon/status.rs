@@ -108,7 +108,7 @@ impl Daemon {
                         });
                         if sa.start {
                             // Its start, or news from one already running (listed once; one
-                            // missed while seshi was away joins the list here).
+                            // missed while the app was away joins the list here).
                             if event_is_current && (sa.id.is_empty() || !t.subagents.iter().any(|(id, _)| *id == sa.id)) {
                                 t.subagents.push((sa.id.clone(), sa.kind.clone()));
                             }
@@ -143,7 +143,7 @@ impl Daemon {
                             // A stop with no id can only be for the last one started.
                             t.subagents.pop();
                         }
-                        // A stop for an id we never saw start (it began before seshi was
+                        // A stop for an id we never saw start (it began before the app was
                         // listening) must not remove a different helper that is still running.
                         tracing::debug!("pane {term}: {} helper(s) running after {event}", t.subagents.len());
                         if !sa.start && !sa.id.is_empty() && event_is_current
@@ -710,5 +710,27 @@ impl Daemon {
             }
             self.set_status(id, s, &why);
         }
+        for t in self.terms.values_mut() {
+            let quiet = quiet_since(t, term::unix_now());
+            if quiet.is_some() != t.quiet_since.is_some() {
+                t.quiet_since = quiet;
+                self.dirty = true;
+            }
+        }
     }
+}
+
+/// A working agent this long with no output and no hook report may be stuck. A live one
+/// redraws its timer every second, so ten silent minutes is far past any slow step.
+pub(super) const QUIET_AFTER: Duration = Duration::from_secs(10 * 60);
+
+/// When a working agent went silent, if it has been silent past `QUIET_AFTER`. Never while
+/// helpers it reported are running (it is waiting on them) or while it asks for helpers.
+fn quiet_since(t: &term::Term, now: u64) -> Option<u64> {
+    let helpers_running = !t.subagents.is_empty() && t.subagent_seen.is_some_and(|s| s.elapsed() <= SUBAGENTS_QUIET_AT_MOST);
+    if t.status != Status::Working || t.agent.is_none() || helpers_running || !t.helpers.asked.is_empty() {
+        return None;
+    }
+    let silent = t.last_hook_at.map_or(t.last_output.elapsed(), |h| h.elapsed().min(t.last_output.elapsed()));
+    (silent >= QUIET_AFTER).then(|| now.saturating_sub(silent.as_secs()))
 }

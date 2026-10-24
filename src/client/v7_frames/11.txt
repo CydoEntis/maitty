@@ -12,7 +12,7 @@
 │   ● warm-finch              3m │ │                                                  │ │▎   Output ⏎   Re-run r   Override… O                                 │
 │     asks: use pnpm or npm?     │ │                                                  │ │                                                                      │
 │                                │ │                                                  │ │  FINISHED  1                                                         │
-│  ▾ seshi                 ⎇ dev │ │                                                  │ │ ✓ quick-fox · seshi                                               9h │
+│  ▾ orbit                 ⎇ dev │ │                                                  │ │ ✓ quick-fox · orbit                                               9h │
 │   ✓ quick-fox               9h │ │                                                  │ │   finished · not seen                                                │
 │     finished                   │ │                                                  │ │                                                                      │
 │   z old-moth                2d │ │                                                  │ │                                                                      │
@@ -56,9 +56,9 @@
 │   ● warm-finch      3m │ │▎  failed: test · exit 1 · 14:22                                       │
 │     asks: use pnpm or n│ │▎  ✗ legal.test.tsx › footer shows current year                        │
 │                        │ │▎   Output ⏎   Re-run r   Override… O                                  │
-│  ▾ seshi         ⎇ dev │ │                                                                       │
+│  ▾ orbit         ⎇ dev │ │                                                                       │
 │   ✓ quick-fox       9h │ │  FINISHED  1                                                          │
-│   z old-moth        2d │ │ ✓ quick-fox · seshi                                                9h │
+│   z old-moth        2d │ │ ✓ quick-fox · orbit                                                9h │
 │                        │ │   finished · not seen                                                 │
 │                        │ │                                                                       │
 │                        │ │                                                                       │
@@ -87,9 +87,9 @@
 │   ● warm-finch         │ │▎  failed: test · exit 1 · 14:22                   │
 │     asks: use pnpm or n│ │▎  ✗ legal.test.tsx › footer shows current year    │
 │                        │ │▎   Output ⏎   Re-run r   Override… O              │
-│  ▾ seshi         ⎇ dev │ │                                                   │
+│  ▾ orbit         ⎇ dev │ │                                                   │
 │   ✓ quick-fox          │ │  FINISHED  1                                      │
-│   z old-moth           │ │ ✓ quick-fox · seshi                            9h │
+│   z old-moth           │ │ ✓ quick-fox · orbit                            9h │
 │                        │ │   finished · not seen                             │
 │                        │ │                                                   │
 │                        │ │                                                   │
@@ -114,7 +114,7 @@
 │   ● warm-finch              3m ││                                                    ││▎   Output ⏎   Re-run r   Override… O                                 │
 │     asks: use pnpm or npm?     ││                                                    ││                                                                      │
 │                                ││                                                    ││  FINISHED  1                                                         │
-│  ▾ seshi                 ⎇ dev ││                                                    ││ ✓ quick-fox · seshi                                               9h │
+│  ▾ orbit                 ⎇ dev ││                                                    ││ ✓ quick-fox · orbit                                               9h │
 │   ✓ quick-fox               9h ││                                                    ││   finished · not seen                                                │
 │     finished                   ││                                                    ││                                                                      │
 │   z old-moth                2d ││                                                    ││                                                                      │
@@ -158,9 +158,9 @@
 │   ● warm-finch      3m ││▎  failed: test · exit 1 · 14:22                                        │
 │     asks: use pnpm or n││▎  ✗ legal.test.tsx › footer shows current year                         │
 │                        ││▎   Output ⏎   Re-run r   Override… O                                   │
-│  ▾ seshi         ⎇ dev ││                                                                        │
+│  ▾ orbit         ⎇ dev ││                                                                        │
 │   ✓ quick-fox       9h ││  FINISHED  1                                                           │
-│   z old-moth        2d ││ ✓ quick-fox · seshi                                                 9h │
+│   z old-moth        2d ││ ✓ quick-fox · orbit                                                 9h │
 │                        ││   finished · not seen                                                  │
 │                        ││                                                                        │
 │                        ││                                                                        │
@@ -189,9 +189,9 @@
 │   ● warm-finch         ││▎  failed: test · exit 1 · 14:22                    │
 │     asks: use pnpm or n││▎  ✗ legal.test.tsx › footer shows current year     │
 │                        ││▎   Output ⏎   Re-run r   Override… O               │
-│  ▾ seshi         ⎇ dev ││                                                    │
+│  ▾ orbit         ⎇ dev ││                                                    │
 │   ✓ quick-fox          ││  FINISHED  1                                       │
-│   z old-moth           ││ ✓ quick-fox · seshi                             9h │
+│   z old-moth           ││ ✓ quick-fox · orbit                             9h │
 │                        ││   finished · not seen                              │
 │                        ││                                                    │
 │                        ││                                                    │
@@ -216,7 +216,7 @@
    ● warm-finch                3m│                                                      │▎   Output ⏎   Re-run r   Override… O
      asks: use pnpm or npm?      │                                                      │
                                  │                                                      │  FINISHED  1
-  ▾ seshi                   ⎇ dev│                                                      │ ✓ quick-fox · seshi                                               9h
+  ▾ orbit                   ⎇ dev│                                                      │ ✓ quick-fox · orbit                                               9h
    ✓ quick-fox                 9h│                                                      │   finished · not seen
      finished                    │                                                      │
    z old-moth                  2d│                                                      │
@@ -260,9 +260,9 @@
    ● warm-finch        3m│▎  failed: test · exit 1 · 14:22
      asks: use pnpm or np│▎  ✗ legal.test.tsx › footer shows current year
                          │▎   Output ⏎   Re-run r   Override… O
-  ▾ seshi           ⎇ dev│
+  ▾ orbit           ⎇ dev│
    ✓ quick-fox         9h│  FINISHED  1
-   z old-moth          2d│ ✓ quick-fox · seshi                                                  9h
+   z old-moth          2d│ ✓ quick-fox · orbit                                                  9h
                          │   finished · not seen
                          │
                          │
@@ -291,9 +291,9 @@
    ● warm-finch          │▎  failed: test · exit 1 · 14:22
      asks: use pnpm or np│▎  ✗ legal.test.tsx › footer shows current year
                          │▎   Output ⏎   Re-run r   Override… O
-  ▾ seshi           ⎇ dev│
+  ▾ orbit           ⎇ dev│
    ✓ quick-fox           │  FINISHED  1
-   z old-moth            │ ✓ quick-fox · seshi                              9h
+   z old-moth            │ ✓ quick-fox · orbit                              9h
                          │   finished · not seen
                          │
                          │
@@ -316,9 +316,9 @@
    ! warm-finch          │|  failed: test · exit 1 · 14:22
      asks: use pnpm or np│|  ✗ legal.test.tsx › footer shows current year
                          │|   Output ⏎   Re-run r   Override… O
-  v seshi        git: dev│
+  v orbit        git: dev│
    + quick-fox           │  FINISHED  1
-   z old-moth            │ + quick-fox · seshi                              9h
+   z old-moth            │ + quick-fox · orbit                              9h
                          │   finished · not seen
                          │
                          │

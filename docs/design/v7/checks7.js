@@ -1,16 +1,16 @@
-// Seshi · checkpoints in all three layouts (design brief v7). Cell-grid spec. SAMPLE DATA ONLY.
+// __APP_NAME__ · checkpoints in all three layouts (design brief v7). Cell-grid spec. SAMPLE DATA ONLY.
 import { Grid, trunc, segLen, L, mix, THEMES as GT } from './seshi-grid.js';
 const PT = {
-  pixls: { name: 'dark', label: 'Seshi Pixls', bg: '#141413', fg: '#c9c5bb', card: '#1c1c1a', card2: '#262624', btn: '#2e2d2a', hov: '#3a3935', line: '#3a3934', dim: '#8a867c', text: '#c9c5bb', strong: '#ece9e1',
+  pixls: { name: 'dark', label: '__APP_NAME__ Pixls', bg: '#141413', fg: '#c9c5bb', card: '#1c1c1a', card2: '#262624', btn: '#2e2d2a', hov: '#3a3935', line: '#3a3934', dim: '#8a867c', text: '#c9c5bb', strong: '#ece9e1',
     acc: '#ff6a2f', accInk: '#141413', needs: '#f2c200', work: '#c9c5bb', ok: '#3cc27e', err: '#ff5a52', rev: '#b58cff', wait: '#8fa6ff', sky: '#5aa9ff', scrim: '#000000',
     a: { green: '#7fd962', red: '#ff6b6b', cyan: '#3dd6c0', blue: '#5aa9ff', yellow: '#e8c565', magenta: '#a593ff', gray: '#8a867c' } },
-  night: { name: 'dark', label: 'Seshi Night', bg: '#070b10', fg: '#c9d1d9', card: '#0f1821', card2: '#18242f', btn: '#1d2a37', hov: '#2a3a4c', line: '#1f2c3a', dim: '#71808f', text: '#a7b4c2', strong: '#f2f6f8',
+  night: { name: 'dark', label: '__APP_NAME__ Night', bg: '#070b10', fg: '#c9d1d9', card: '#0f1821', card2: '#18242f', btn: '#1d2a37', hov: '#2a3a4c', line: '#1f2c3a', dim: '#71808f', text: '#a7b4c2', strong: '#f2f6f8',
     acc: '#c3f53c', accInk: '#0a1204', needs: '#ffb547', work: '#a7b4c2', ok: '#7fd962', err: '#ff6b6b', rev: '#a593ff', wait: '#5aa9ff', sky: '#5aa9ff', scrim: '#000000',
     a: { green: '#7fd962', red: '#ff6b6b', cyan: '#3dd6c0', blue: '#5aa9ff', yellow: '#e8c565', magenta: '#a593ff', gray: '#71808f' } },
 };
 const lt = GT.light;
 export const THEMES = { pixls: PT.pixls, night: PT.night,
-  paper: { name: 'light', label: 'Seshi Paper', bg: lt.bg, fg: lt.fg, card: lt.surf, card2: lt.surf2, btn: lt.btn, line: lt.line, dim: lt.dim, text: lt.text, strong: lt.strong, acc: lt.acc, accInk: '#ffffff', needs: lt.needs, work: lt.work, ok: lt.ok, err: lt.err, rev: lt.ws.violet, sky: lt.ws.sky, wait: lt.ws.sky, scrim: lt.scrim, a: lt.a } };
+  paper: { name: 'light', label: '__APP_NAME__ Paper', bg: lt.bg, fg: lt.fg, card: lt.surf, card2: lt.surf2, btn: lt.btn, line: lt.line, dim: lt.dim, text: lt.text, strong: lt.strong, acc: lt.acc, accInk: '#ffffff', needs: lt.needs, work: lt.work, ok: lt.ok, err: lt.err, rev: lt.ws.violet, sky: lt.ws.sky, wait: lt.ws.sky, scrim: lt.scrim, a: lt.a } };
 
 const bl = [0, 0x40, 0x44, 0x46, 0x47], brr = [0, 0x80, 0xA0, 0xB0, 0xB8];
 const BARS = [[1, 3, 2], [2, 4, 1], [3, 3, 3], [4, 2, 4], [3, 1, 3], [2, 2, 2], [1, 4, 3], [2, 3, 4], [4, 1, 2], [3, 2, 1]].map(([a, b, c]) => String.fromCharCode(0x2800 + bl[a] + brr[b]) + String.fromCharCode(0x2800 + bl[c]));
@@ -86,7 +86,7 @@ function sessions(T, G, s) {
   return [
     { name: 'affiliate-site', meta: G.branch + ' main' + (hasCheck ? (st === 'multi' ? ' · 4 checkpoints' : ' · check: test') : ''), list: [ff, ap] },
     { name: 'pixls', meta: 'no git', list: [{ id: 'warm-finch', agent: 'codex', age: '3m', k: 'needs', keep: 1, checks: [], sub: [{ t: 'asks: use pnpm or npm?', fg: T.needs }] }] },
-    { name: 'seshi', meta: G.branch + ' dev', list: [{ id: 'quick-fox', agent: 'claude', age: '9h', k: 'done', checks: [], sub: [{ t: 'finished', fg: T.dim }] }, { id: 'old-moth', agent: 'codex', age: '2d', k: 'asleep', checks: [], sub: [{ t: 'asleep zzZ', fg: T.dim }] }] },
+    { name: 'orbit', meta: G.branch + ' dev', list: [{ id: 'quick-fox', agent: 'claude', age: '9h', k: 'done', checks: [], sub: [{ t: 'finished', fg: T.dim }] }, { id: 'old-moth', agent: 'codex', age: '2d', k: 'asleep', checks: [], sub: [{ t: 'asleep zzZ', fg: T.dim }] }] },
   ];
 }
 function chips(T, G, s, checks, narrow) {
@@ -177,7 +177,7 @@ function drawEvidence(g, R, T, G, s, x, y, w, h) {
   kv('Command', [{ t: st === 'couldnt' ? 'pnpm test' : 'npm test', fg: T.strong, b: 1 }]);
   kv('Folder', [{ t: '~\\dev\\affiliate-site-worktrees\\fix-footer', fg: T.text }]);
   kv('Ran', [{ t: '14:22:05', fg: T.text }, { t: ' · took ', fg: T.dim }, { t: st === 'couldnt' ? '0.1s' : '14.2s', fg: T.text }, { t: ' · after turn 3 ended 14:21:51', fg: T.dim }]);
-  if (st === 'never') kv('Source', [{ t: '.seshi/checks.toml · you chose never 14:31', fg: T.text }]); else kv('Seen by', [{ t: 'Seshi ran this itself. The agent said "tests pass".', fg: T.dim }]);
+  if (st === 'never') kv('Source', [{ t: '.__APP_COMMAND__/checks.toml · you chose never 14:31', fg: T.text }]); else kv('Seen by', [{ t: '__APP_NAME__ ran this itself. The agent said "tests pass".', fg: T.dim }]);
   yy++;
   if (st === 'over') { g.fill(X, yy, iw, 2, mix(T.bg, T.text, 0.1)); g.putSegs(X + 1, yy++, [{ t: G.over + ' Overridden by you 14:30', fg: T.strong, b: 1 }, { t: '  · u undo', fg: T.dim }], {}, X + iw); g.putSegs(X + 3, yy++, [{ t: 'reason: flaky legal test, tracked in #212 · next run replaces this', fg: T.text }], {}, X + iw); yy++; }
   if (st === 'stale') { const sb = mix(T.bg, T.text, 0.1); g.fill(X, yy, iw, 5, sb);
@@ -192,7 +192,7 @@ function drawEvidence(g, R, T, G, s, x, y, w, h) {
   g.putSegs(X + 9, yy++, [{ t: s.out === 'empty' ? 'empty' : out.length > room || s.out === 'long' ? 'last ' + Math.min(room, out.length) + ' of ' + total.toLocaleString() + ' lines' : 'all ' + out.length + ' lines', fg: T.dim }, ...(s.out === 'long' ? [{ t: '  f full output', fg: T.dim }] : [])]);
   const ob = mix(T.bg, T.scrim, 0.25), oh = Math.min(room, Math.max(out.length, 3));
   g.fill(X, yy, iw, oh, ob);
-  if (!out.length) { const E = st === 'never' ? ['(nothing ran)', 'There is no output because Seshi did not run it.'] : st === 'failed' ? ['(no output)', 'It exited 1 without printing. Run it in the session to see more.'] : ['(the command printed nothing)', 'exit 0 is what passed it.']; g.put(X + 2, yy + 1, E[0], { fg: T.dim, bg: ob, i: 1 }); g.put(X + 2, yy + 2, trunc(E[1], iw - 3), { fg: T.dim, bg: ob }); }
+  if (!out.length) { const E = st === 'never' ? ['(nothing ran)', 'There is no output because __APP_NAME__ did not run it.'] : st === 'failed' ? ['(no output)', 'It exited 1 without printing. Run it in the session to see more.'] : ['(the command printed nothing)', 'exit 0 is what passed it.']; g.put(X + 2, yy + 1, E[0], { fg: T.dim, bg: ob, i: 1 }); g.put(X + 2, yy + 2, trunc(E[1], iw - 3), { fg: T.dim, bg: ob }); }
   const shown = out.slice(Math.max(0, out.length - oh)), first = total - shown.length + 1;
   shown.forEach(([t, k], i) => { g.putSegs(X, yy + i, [{ t: pad(String(first + i), 5), fg: mix(T.dim, ob, 0.35), bg: ob }, { t: trunc(t, iw - 6), fg: k === 'err' ? T.err : k === 'ok' ? T.ok : k === 'd' ? T.dim : T.text, bg: ob }], {}, X + iw); });
   if (s.out === 'long') g.set(X + iw - 1, yy, '▲', { fg: T.dim, bg: ob });
@@ -213,7 +213,7 @@ function inboxItems(T, G, s) {
   if (st === 'failed' || st === 'multi') it.push({ grp: 'failed', id: 'fix-footer', proj: 'affiliate-site', age: '2m', k: 'failed', mc: st === 'multi' ? [{ n: 'commits', r: 'pass' }, { n: 'test', r: 'fail' }, { n: 'approval', r: 'pend' }, { n: 'review', r: 'pend' }] : null, l2: [{ t: 'failed: test · exit 1 · 14:22', fg: T.err, b: 1 }], l3: [{ t: '✗ legal.test.tsx › footer shows current year', fg: T.dim }], acts: [['Output', '⏎', { t: 'sheet', v: 'evidence' }], ['Re-run', 'r', { t: 'rerun' }], ['Override…', 'O', { t: 'modal', v: 'override' }]] });
   if (st === 'couldnt') it.push({ grp: 'couldnt', id: 'fix-footer', proj: 'affiliate-site', age: '2m', k: 'couldnt', l2: [{ t: 'test could not run: pnpm not found', fg: T.rev }], acts: [['Output', '⏎', { t: 'sheet', v: 'evidence' }], ['Settings', ',', { t: 'modal', v: 'settings', set: 'missing' }]] });
   if (st === 'passed' || st === 'stale' || st === 'over' || st === 'none' || st === 'never') it.push({ grp: 'done', id: 'fix-footer', proj: 'affiliate-site', age: '2m', k: st === 'none' ? 'done' : st, l2: st === 'over' ? [{ t: 'failed, overridden: test', fg: T.text, b: 1 }] : st === 'stale' ? [{ t: 'stale pass: test', fg: T.text, b: 1 }, { t: ' · 3 files changed since', fg: T.dim }] : st === 'never' ? [{ t: 'not checked: never for this repo', fg: T.rev }] : st === 'none' ? [{ t: 'finished', fg: T.dim }] : [{ t: 'passed: test', fg: T.ok, b: 1 }, { t: ' · 14.2s', fg: T.dim }], acts: st === 'stale' ? [['Re-run', 'r', { t: 'rerun' }], ['Output', '⏎', { t: 'sheet', v: 'evidence' }]] : [] });
-  it.push({ grp: 'done', id: 'quick-fox', proj: 'seshi', age: '9h', k: 'done', l2: [{ t: 'finished · not seen', fg: T.dim }], acts: [] });
+  it.push({ grp: 'done', id: 'quick-fox', proj: 'orbit', age: '9h', k: 'done', l2: [{ t: 'finished · not seen', fg: T.dim }], acts: [] });
   return it;
 }
 function drawInbox(g, R, T, G, s, x, y, w, h) {
@@ -266,7 +266,7 @@ function drawModal(g, R, T, G, s, W, H) {
     if (ch) { cmd('-', T.err, 'npm test'); cmd('+', T.ok, 'npm test && node scripts/seed.js'); } else cmd('$', T.dim, 'npm test');
     if (H >= 30) y++;
     P(p, [{ t: pad('Runs in', 9), fg: T.dim }, { t: '~\\dev\\affiliate-site-worktrees\\fix-footer', fg: T.strong }], y++);
-    P(p, [{ t: pad('From', 9), fg: T.dim }, { t: '.seshi/checks.toml', fg: T.strong }, { t: ch ? ' · changed in 9f3c2a1, 2h ago' : ' · added in a1b2c3d, 3 days ago', fg: T.text }], y++);
+    P(p, [{ t: pad('From', 9), fg: T.dim }, { t: '.__APP_COMMAND__/checks.toml', fg: T.strong }, { t: ch ? ' · changed in 9f3c2a1, 2h ago' : ' · added in a1b2c3d, 3 days ago', fg: T.text }], y++);
     P(p, [{ t: pad('When', 9), fg: T.dim }, { t: 'after every agent turn, with your permissions', fg: T.text }], y++); y++;
     P(p, [{ t: 'Read it. It can do anything you can in that folder.', fg: T.needs, b: 1 }], y++);
     P(p, [{ t: 'Enter and y do nothing here. Choose with 1, 2 or 3.', fg: T.dim }], y++);
@@ -282,7 +282,7 @@ function drawModal(g, R, T, G, s, W, H) {
     const w = Math.min(W - 2, 80), h = Math.min(H - 2, 20), p = { ...modal(g, T, W, H, w, h, 'PROJECT · affiliate-site'), w }; let y = p.y + 2;
     chipHead(g, y++, p.x + 2, T, 'CHECK', T.btn, null, T.strong); y++;
     if (s.set === 'empty') {
-      P(p, [{ t: 'No check set.', fg: T.strong, b: 1 }, { t: ' Seshi can run one command itself when an agent\'s', fg: T.text }], y++);
+      P(p, [{ t: 'No check set.', fg: T.strong, b: 1 }, { t: ' __APP_NAME__ can run one command itself when an agent\'s', fg: T.text }], y++);
       P(p, [{ t: 'turn ends; the session isn\'t done until it passes. Agents keep working.', fg: T.text }], y++); y++;
       P(p, [{ t: pad('Command', 10), fg: T.dim }], y); field(g, p.x + 12, y++, w - 14, T, '', 'e.g. npm test'); y++;
       P(p, [{ t: 'Projects without a check look exactly as they do today.', fg: T.dim }], y++);
@@ -308,7 +308,7 @@ function drawWhy(g, R, T, G, s, x, y, W) {
   g.putSegs(x + 1, y, [{ t: ' WHY · fix-footer reads failed ', fg: T.strong, bg: T.btn, b: 1 }]);
   const P = (yy, segs) => g.putSegs(x + 2, yy, segs.map(t => ({ bg, ...t })), {}, x + w - 1);
   P(y + 2, [{ t: '14:21:51 ', fg: T.dim }, { t: 'agent\'s turn ended · it said "tests pass"', fg: T.text }]);
-  P(y + 3, [{ t: '14:22:05 ', fg: T.dim }, { t: 'Seshi ran ', fg: T.text }, { t: 'npm test', fg: T.strong, b: 1 }, { t: ' in its worktree', fg: T.text }]);
+  P(y + 3, [{ t: '14:22:05 ', fg: T.dim }, { t: '__APP_NAME__ ran ', fg: T.text }, { t: 'npm test', fg: T.strong, b: 1 }, { t: ' in its worktree', fg: T.text }]);
   P(y + 4, [{ t: '14:22:19 ', fg: T.dim }, { t: G.failed + ' exit 1 after 14.2s · 1 of 59 tests failed', fg: T.err, b: 1 }]);
   P(y + 6, hints(T, [['⏎', 'evidence'], ['r', 're-run'], ['O', 'override'], ['Esc', 'close']]));
   R.push({ x, y, w, h, act: { t: 'sheet', v: 'evidence' } });

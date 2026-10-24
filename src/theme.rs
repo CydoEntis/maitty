@@ -2,7 +2,7 @@
 //! colours; the theme only paints hydra's chrome (sidebar, title bars, status line).
 //!
 //! The roles follow the design handoff: `surf` for chrome, `card`/`card2` for panels and
-//! action rows, `btn`/`hov` for buttons and the hovered row, `acc` (teal in Seshi Dark
+//! action rows, `btn`/`hov` for buttons and the hovered row, `acc` (teal in Dark
 //! theme) for focus, `needs` (amber) only for "needs you".
 
 use ratatui::style::Color;
@@ -52,6 +52,18 @@ pub struct Theme {
     /// Terminal colours for agent output (red, green, yellow, blue, magenta, cyan, gray),
     /// when the theme has its own; otherwise programs keep the terminal's palette.
     pub ansi: Option<[Color; 7]>,
+    /// The splash's own colours (wordmark, its A and I, the swell, the deep the letters rise
+    /// from), when the theme has them; otherwise `splash()` takes them from its roles.
+    pub splash: Option<[Color; 4]>,
+}
+
+/// The colours the splash paints with.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SplashColors {
+    pub wordmark: Color,
+    pub wordmark_ai: Color,
+    pub swell: Color,
+    pub deep: Color,
 }
 
 /// Every field optional, as hex strings ("#89b4fa") or names ("red", "reset", "123").
@@ -60,14 +72,11 @@ pub struct Theme {
 pub struct ThemeOverrides(pub BTreeMap<String, String>);
 
 /// The theme when none is chosen.
-pub const DEFAULT: &str = "seshi-dark";
+pub const DEFAULT: &str = "night";
 
 pub const BUILTIN: &[&str] = &[
-    "seshi-dark",
-    "seshi-light",
-    "seshi-walnut",
-    "seshi-night",
-    "seshi-day",
+    "night",
+    "day",
     "harbor",
     "harbor-day",
     "moss",
@@ -130,13 +139,10 @@ pub const BUILTIN: &[&str] = &[
     "mono",
 ];
 
-/// The themes shown by name in Settings, Seshi's own first.
+/// The themes shown by name in Settings, the app's own first.
 pub const DESIGN: &[(&str, &str)] = &[
-    ("seshi-dark", "Seshi Dark"),
-    ("seshi-light", "Seshi Light"),
-    ("seshi-walnut", "Seshi Walnut"),
-    ("seshi-night", "Seshi Night"),
-    ("seshi-day", "Seshi Day"),
+    ("night", "Night"),
+    ("day", "Day"),
     ("harbor", "Harbor"),
     ("harbor-day", "Harbor Day"),
     ("moss", "Moss"),
@@ -327,6 +333,7 @@ impl Theme {
             err: readable_on(ansi[0], ink, &[card], 3.0),
             ws: Some([ansi[4], ansi[3], ansi[0], ansi[5]]),
             ansi: Some(ansi),
+            splash: None,
         }
     }
 
@@ -424,6 +431,7 @@ impl Theme {
             err: hex(c[11]),
             ws: None,
             ansi: None,
+            splash: None,
         }
     }
 
@@ -458,12 +466,13 @@ impl Theme {
             err: h(13),
             ws: Some(ws.map(hex)),
             ansi: Some(a.map(hex)),
+            splash: None,
         }
     }
 
     pub fn named(name: &str) -> Theme {
         let theme = Theme::base(name);
-        if name == "seshi-dark" || name == "mono" {
+        if name == "night" || name == "mono" {
             return theme;
         }
         theme.with_distinct_needs()
@@ -471,59 +480,29 @@ impl Theme {
 
     fn base(name: &str) -> Theme {
         match name {
-            "seshi-dark" => Theme::design(
+            // The app's own pair: the sea at night, sea-glass teal for focus and working, foam
+            // for names, brass amber only for what needs you.
+            "night" => Theme::design(
                 [
-                    "#10141b", "#dce4ee", "#141a23", "#1a222d", "#202a37", "#344252", "#8695a8", "#c1ccda",
-                    "#f4f7fb", "#43c7c4", "#0c2022", "#f1ad4f", "#92d477", "#ff6678", "#273443", "#314456",
+                    "#08111d", "#c9d6e3", "#0b1624", "#0f1b2b", "#15253a", "#1d2d42", "#6f8399", "#c9d6e3",
+                    "#eef5fb", "#3dd6c6", "#08111d", "#3dd6c6", "#7fd99a", "#f5c542", "#1a2c44", "#15253a",
                 ],
-                ["#b393f5", "#5aa9ff", "#e581b5", "#4dc8c1"],
-                ["#ff6678", "#92d477", "#f1ad4f", "#65b6e8", "#bb93f5", "#4dc8c1", "#8695a8"],
+                ["#c4a7ff", "#6cb6ff", "#e9b44c", "#3dd6c6"],
+                ["#ff7b72", "#7fd99a", "#f2c75c", "#6cb6ff", "#c4a7ff", "#3dd6c6", "#6f8399"],
             )
-            .with_err("#ff6678")
-            .with_amber_needs("#f4c24d"),
-            "seshi-light" => Theme::design(
+            .with_err("#ff7b72")
+            .with_splash(["#e8f1f8", "#3dd6c6", "#1f6f8b", "#123049"]),
+            // The same sea by day: pale grey-blue, deep teal for focus.
+            "day" => Theme::design(
                 [
-                    "#f5f7fa", "#243244", "#e9eef4", "#ffffff", "#edf2f7", "#c8d2de", "#68788b", "#43546a",
-                    "#172536", "#087f86", "#f5ffff", "#915300", "#287844", "#c33343", "#dfe7ef", "#d4e0e9",
+                    "#f6f8fa", "#1f2f3f", "#eef3f6", "#ffffff", "#e0edf2", "#d3dce5", "#61748a", "#1f2f3f",
+                    "#0b1724", "#0b7a71", "#ffffff", "#0b7a71", "#2e8b57", "#b06a00", "#e4ebf1", "#e0edf2",
                 ],
-                ["#6753b7", "#087f86", "#af3973", "#2c6e9d"],
-                ["#c33343", "#287844", "#915300", "#2c6e9d", "#7350a8", "#087f86", "#68788b"],
+                ["#7e57c2", "#2f6fbf", "#a8741a", "#0f8f84"],
+                ["#c93c37", "#2e8b57", "#9a6700", "#2f6fbf", "#7e57c2", "#0f8f84", "#61748a"],
             )
-            .with_err("#b3263a"),
-            // A walnut-cased keyboard with chocolate keys: brown grounds, turquoise for focus,
-            // the red, orange and lemon-lime run for needs you, working and done, cream text,
-            // lemon (ws[1]) for leader mode.
-            "seshi-walnut" => Theme::design(
-                [
-                    "#1f140d", "#f1e4d4", "#281a12", "#2f2017", "#3b291e", "#4a3326", "#a68b77", "#e8d8c4",
-                    "#fff4e6", "#3fc6cc", "#0f2427", "#f58a32", "#c6d64c", "#ff5a3c", "#4a3326", "#533a2c",
-                ],
-                ["#3fc6cc", "#ece65a", "#f58a32", "#ff5a3c"],
-                ["#ff5a3c", "#b9d64a", "#ece65a", "#5cb8ea", "#e57fb8", "#3fc6cc", "#a68b77"],
-            )
-            .with_err("#ff4f6e"),
-            // Golden hour after the session: warm driftwood dark, sunset peach for focus, sun
-            // for what needs you, sea glass (ws[1]) for leader mode.
-            "seshi-night" => Theme::design(
-                [
-                    "#191411", "#e6d8ca", "#221b17", "#261e19", "#30261f", "#33291f", "#9b8a7c", "#d9cbbd",
-                    "#fff6ec", "#ff9e7a", "#2a1208", "#d9cbbd", "#8bd17c", "#ffd25e", "#372b23", "#43352b",
-                ],
-                ["#c3a6ff", "#6fd3c4", "#ff9fb8", "#7fd8c0"],
-                ["#f2777a", "#9fd27f", "#f0c66b", "#7fb4e6", "#d4a5f5", "#6fd3c4", "#9b8a7c"],
-            )
-            .with_err("#ff5d73"),
-            // The same beach in daylight: sand, deep coral for focus, gold for what needs you.
-            "seshi-day" => Theme::design(
-                [
-                    "#fbf3eb", "#4a3c33", "#f4e7da", "#fffaf5", "#f6ebdf", "#e2cfbd", "#8f7b6c", "#5a4a3f",
-                    "#2a1f18", "#b8492c", "#fff7f0", "#5a4a3f", "#3f8f45", "#a06a00", "#efdfcf", "#e7d2bf",
-                ],
-                ["#7b5cd6", "#13867c", "#c2477a", "#1d8f86"],
-                ["#c0392b", "#3f8f45", "#a06a00", "#2f6fb0", "#8e4dbf", "#13867c", "#8f7b6c"],
-            )
-            .with_err("#c73a55"),
-            // Seshi's other pairs, a dark one and its day, and one loud one.
+            .with_err("#c93c37"),
+            // The app's other pairs, a dark one and its day, and one loud one.
             // A harbour at night: deep navy, brass for focus.
             "harbor" => Theme::design(
                 [
@@ -877,22 +856,29 @@ impl Theme {
                 err: Color::Red,
                 ws: None,
                 ansi: None,
+                splash: None,
             },
             _ => Theme::base(DEFAULT),
         }
     }
 
     /// Destructive red apart from what needs you (the design palettes share one colour).
-    fn with_err(mut self, c: &str) -> Theme {
-        self.err = hex(c);
+    fn with_splash(mut self, c: [&str; 4]) -> Theme {
+        self.splash = Some(c.map(hex));
         self
     }
 
-    /// Needs you in amber, apart from failed red (the handoff's `needs` and `err` roles; most
-    /// themes share one red for both), and working as the accent so amber is only needs you.
-    fn with_amber_needs(mut self, needs: &str) -> Theme {
-        self.blocked = hex(needs);
-        self.working = self.accent;
+    /// The splash's colours: the theme's own, or the strongest text for the wordmark, the
+    /// accent for its A and I, and a swell and a deep drawn from the accent toward the ground.
+    pub fn splash(&self) -> SplashColors {
+        match self.splash {
+            Some([wordmark, wordmark_ai, swell, deep]) => SplashColors { wordmark, wordmark_ai, swell, deep },
+            None => SplashColors { wordmark: self.strong, wordmark_ai: self.accent, swell: mix(self.bg, self.accent, 0.55), deep: mix(self.bg, self.accent, 0.2) },
+        }
+    }
+
+    fn with_err(mut self, c: &str) -> Theme {
+        self.err = hex(c);
         self
     }
 
@@ -1001,6 +987,31 @@ impl Theme {
         self.ws.map(|w| w[1]).unwrap_or(Color::Rgb(0x5a, 0xa9, 0xff))
     }
 
+    /// The workspace palette's cyan.
+    pub fn cyan(&self) -> Color {
+        self.ws.map(|w| w[3]).unwrap_or(Color::Rgb(0x4e, 0xe0, 0xfa))
+    }
+
+    /// Grid's pane colours, in pane order (green, pink, violet, cyan in the design), from roles
+    /// every theme has. Identity, not state: they repeat from the fifth pane. A theme whose
+    /// roles share a colour (an accent that is also its violet) moves on to the next role, so
+    /// no two panes in a row look alike.
+    pub fn grid_colors(&self) -> [Color; 4] {
+        let pink = self.ws.map(|w| w[2]);
+        let roles = [Some(self.done), Some(self.accent), Some(self.violet()), Some(self.cyan()), pink, Some(self.sky()), Some(self.working)];
+        let terminal = self.ansi.into_iter().flatten().map(Some);
+        let mut out: Vec<Color> = Vec::with_capacity(4);
+        for c in roles.into_iter().chain(terminal).chain([Some(self.blocked)]).flatten() {
+            if out.len() < 4 && !out.iter().any(|o| colors_alike(*o, c)) {
+                out.push(c);
+            }
+        }
+        while out.len() < 4 {
+            out.push(self.strong);
+        }
+        [out[0], out[1], out[2], out[3]]
+    }
+
     /// A check that could not run, or that you chose never to run: not a failure, so not red.
     /// The theme's violet, moved toward its strongest text where it wouldn't read on the
     /// ground, a card or the selected row (some themes' violet is a dim terminal blue).
@@ -1017,6 +1028,23 @@ impl Theme {
             Done => self.done,
             Idle => self.idle,
             None => self.muted,
+        }
+    }
+}
+
+#[cfg(test)]
+mod grid {
+    use super::{BUILTIN, Theme};
+
+    #[test]
+    fn every_theme_gives_grid_four_different_pane_colours() {
+        for name in BUILTIN {
+            let c = Theme::named(name).grid_colors();
+            for i in 0..c.len() {
+                for j in i + 1..c.len() {
+                    assert_ne!(c[i], c[j], "{name}: Grid colours {i} and {j} are the same");
+                }
+            }
         }
     }
 }

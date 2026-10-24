@@ -52,10 +52,9 @@ fn has_detail(s: &Session) -> bool {
     s.is_agent || s.asleep || check::shown(s).is_some() || s.question.is_some()
 }
 
-/// Its second line stays below `NARROW` columns: a check result, a question, or a wait for a
-/// plan limit.
-/// A finished agent with nothing to say: below `NARROW` its row is one line. Anything that
-/// needs a look (working, asking, new, a check result, a wait for a plan limit) keeps its second.
+/// A finished agent with nothing to say: its row is one line, since its `○` already says idle.
+/// Anything that needs a look (working, asking, new, a check result, a wait for a plan limit)
+/// keeps its second.
 fn quiet_done(s: &Session) -> bool {
     !is_new(s) && check::shown(s).is_none() && s.question.is_none() && s.resume_at.is_none() && matches!(s.status, Status::Idle | Status::None)
 }
@@ -164,17 +163,17 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
     out
 }
 
-/// The lines drawn at `screen_w` columns. Below `NARROW` a finished, seen row is one line and
-/// the third line goes; a row that needs a look keeps its second.
+/// The lines drawn at `screen_w` columns. A finished, seen row is one line (an asleep one only
+/// below `NARROW`, where the third line goes too). A row that needs a look keeps its second.
 fn fitted_lines(app: &App, model: &[Proj], t: &Theme, screen_w: u16) -> Vec<Line> {
     let mut lines = side_lines(app, model, t);
-    if screen_w < NARROW {
-        lines.retain(|l| match l {
-            Line::Third(_) => false,
-            Line::Detail(term) => find(model, *term).is_some_and(|(.., s)| !quiet_done(s)) || app.screen.receipts.contains_key(term),
-            _ => true,
-        });
-    }
+    lines.retain(|l| match l {
+        Line::Third(_) => screen_w >= NARROW,
+        Line::Detail(term) => {
+            find(model, *term).is_some_and(|(.., s)| !quiet_done(s) || (s.asleep && screen_w >= NARROW)) || app.screen.receipts.contains_key(term)
+        }
+        _ => true,
+    });
     lines
 }
 
@@ -326,9 +325,12 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 fill(buf, row, rl.bg);
             }
             if look.round_rows && rl.bg != pb && row.width > 2 {
-                // Each line is a pill; the cap stands where the edge bar would.
-                buf[(row.x, y)].set_symbol(CAP_L).set_fg(rl.bg).set_bg(pb);
-                buf[(row.right() - 1, y)].set_symbol(CAP_R).set_fg(rl.bg).set_bg(pb);
+                // The session's lines are one block; its ends stand where the edge bar would.
+                let first = (scroll..=i).rev().find(|&j| matches!(lines[j], Line::Sess(..)) || j == scroll).unwrap_or(i);
+                let block = row_rect(first, top + (first - scroll) as u16);
+                let (l, e) = block_ends(y - block.y, block.height);
+                buf[(row.x, y)].set_symbol(l).set_fg(rl.bg).set_bg(pb);
+                buf[(row.right() - 1, y)].set_symbol(e).set_fg(rl.bg).set_bg(pb);
             } else if let Some(c) = rl.bar {
                 check::edge(app, buf, cols.x, y, c, rl.bg);
             }
@@ -425,7 +427,10 @@ fn draw_head(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme
     let (chip_bg, ink, count) = if lit { (t.accent, t.acc_ink, t.acc_ink) } else { (t.btn, t.strong, t.text) };
     let chip = Style::default().bg(chip_bg);
     let host = crate::ipc::remote().map(|h| format!(" ⇄ {h}")).unwrap_or_default();
-    let title = [seg(" SESSIONS", chip.fg(ink).add_modifier(Modifier::BOLD)), seg(format!(" {}{host} ", all.len()), chip.fg(count))];
+    let mut title = vec![seg(" SESSIONS", chip.fg(ink).add_modifier(Modifier::BOLD)), seg(format!(" {}{host} ", all.len()), chip.fg(count))];
+    if Look::of(&app.cfg.ui).caps {
+        title = round_ends(title, if flat { t.card } else { Color::Reset });
+    }
     put(buf, r.x + if flat { 1 } else { 2 }, r.y, &title, rx.saturating_sub(1));
     if rw > 0 {
         let pad = if flat { vec![] } else { vec![seg(" ", ground)] };
@@ -574,6 +579,9 @@ fn status_words(app: &App, s: &Session, t: &Theme) -> Vec<Seg> {
                 0 => {}
                 _ if !app.cfg.ui.subagent_count => {}
                 n => words.push(seg(format!(" · {n} agent{}", if n == 1 { "" } else { "s" }), Style::default().fg(t.text))),
+            }
+            if let Some(at) = s.quiet_since {
+                words.push(seg(format!(" · quiet {}", age(at)), Style::default().fg(t.muted)));
             }
             words
         }
@@ -728,9 +736,7 @@ fn checkpoint_names(app: &App, p: &Proj) -> Vec<String> {
 /// A `btn` chip: `word` in `text`, after an `accent` bold `icon` when it has one. Its ends
 /// follow `ui.rounded`.
 pub(super) fn word_chip(app: &App, icon: Option<&str>, word: &str, t: &Theme, outer: Color) -> Vec<Seg> {
-    // A cap needs a raised ground to sit on: on the plain `bg` (which a transparent terminal
-    // background hands back to the terminal) it would have none, so the chip stays square.
-    let look = Look { caps: Look::of(&app.cfg.ui).caps && outer != Color::Reset && outer != t.bg, ..Look::of(&app.cfg.ui) };
+    let look = Look::of(&app.cfg.ui);
     let mut body = Vec::new();
     if let Some(icon) = icon {
         body.push(seg(format!("{icon} "), Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD)));
@@ -1014,6 +1020,16 @@ mod v8_tests {
     }
 
     #[test]
+    fn a_quiet_agent_says_how_long_on_its_row() {
+        let mut app = world(Stage::None);
+        let before = side_rows(&mut app, Layout::Floating, 160, 45);
+        assert!(!before.iter().any(|r| r.contains("quiet")), "{before:#?}");
+        app.snap.terms.get_mut(&2).unwrap().quiet_since = Some(crate::client::screen::now_secs() - 12 * 60);
+        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
+        assert!(has(&rows, "working · quiet 12m"), "{rows:#?}");
+    }
+
+    #[test]
     fn line_two_says_what_each_state_is_doing() {
         let mut app = world(Stage::None);
         app.snap.terms.get_mut(&2).unwrap().subagents = vec!["a".into(), "b".into()];
@@ -1033,12 +1049,12 @@ mod v8_tests {
         let new = app.snap.terms.get_mut(&5).unwrap();
         (new.asleep, new.status, new.label) = (false, Status::Idle, String::new());
         let rows = side_rows(&mut app, Layout::Floating, 160, 45);
-        assert!(rows.iter().any(|r| said(r) == "idle"), "{rows:#?}");
+        assert!(!rows.iter().any(|r| said(r) == "idle"), "{rows:#?}");
         assert!(has(&rows, "codex · new · type to begin"), "{rows:#?}");
     }
 
     #[test]
-    fn only_a_finished_seen_row_collapses_below_140_columns() {
+    fn a_finished_seen_row_is_one_line_at_every_width() {
         let mut app = world(Stage::None);
         app.snap.terms.get_mut(&4).unwrap().status = Status::Idle;
         for layout in LAYOUTS {
@@ -1047,7 +1063,8 @@ mod v8_tests {
             assert!(has(&rows, "asks: use pnpm"), "{layout:?}: {rows:#?}");
             assert!(!rows.iter().any(|r| said(r) == "idle"), "{layout:?}: a plain idle row is one line: {rows:#?}");
             let rows = side_rows(&mut app, layout, 160, 45);
-            assert!(rows.iter().any(|r| said(r) == "idle"), "{layout:?}: from 140 columns it has its line: {rows:#?}");
+            assert!(!rows.iter().any(|r| said(r) == "idle"), "{layout:?}: wide, it is one line too: {rows:#?}");
+            assert!(has(&rows, "working"), "{layout:?}: a working row keeps its line: {rows:#?}");
         }
     }
 

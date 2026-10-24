@@ -116,10 +116,10 @@ an SSH remote being someone else's machine; what agents work on leaking through 
 the topic name is the only secret on the public server).
 
 The agent launchers (`src/shim.rs`) sit first on `PATH` in every plain shell pane. They are
-files in seshi's own data folder, written by the daemon as the user; a process that can write
-there can already run as the user through the shell startup files seshi writes beside them.
-A launcher asks for a worktree with `seshi agent-dir`, which sends the pane's own
-`SESHI_TERM_ID` and `SESHI_PANE_TOKEN` and nothing from its arguments; a wrong or missing token
+files in maitty's own data folder, written by the daemon as the user; a process that can write
+there can already run as the user through the shell startup files maitty writes beside them.
+A launcher asks for a worktree with `maitty agent-dir`, which sends the pane's own
+`MAITTY_TERM_ID` and `MAITTY_PANE_TOKEN` and nothing from its arguments; a wrong or missing token
 makes the caller "from a pane" but not that pane, and the daemon answers with nothing (worktrees,
 like status reports, are trusted only from the pane itself). A launcher passes the agent's
 arguments on as an argument vector, never through a shell, and the paths it embeds are
@@ -127,8 +127,8 @@ single-quoted.
 
 A project's check is a command the daemon runs as the user when an agent's turn ends. It
 comes from the user's own `config.toml` (`[[check]]`) or, for a project with none there, from
-the repo's `.seshi/checks.toml` under the approval rules below. It runs through the user's shell in the
-session's worktree with no stdin and without `SESHI_PANE_TOKEN`, so it cannot report status
+the repo's `.maitty/checks.toml` under the approval rules below. It runs through the user's shell in the
+session's worktree with no stdin and without `MAITTY_PANE_TOKEN`, so it cannot report status
 as the pane. On timeout its whole process tree is killed (process group on unix, job object
 on Windows). If the daemon dies, a check dies with it on Windows (the job closes) and on
 Linux (a parent-death signal kills the shell; a descendant the shell already started is
@@ -139,9 +139,9 @@ never in the state snapshot. It may contain secrets the command printed, like an
 output.
 
 An agent can start helpers only if you say so. Who is asking is proven the way status reports are
-(the pane's `SESHI_PANE_TOKEN` on the connection); the answer is `AnswerHelpers`, which the daemon
+(the pane's `MAITTY_PANE_TOKEN` on the connection); the answer is `AnswerHelpers`, which the daemon
 refuses from any pane and accepts only for a request it holds. "Always in this project" is kept in
-`helper-projects.json` in Seshi's data folder, never in the repo, so an agent that can write the
+`helper-projects.json` in Maitty's data folder, never in the repo, so an agent that can write the
 repo cannot grant itself helpers. A helper's own permission prompts still come to you.
 A project may name several check commands. Each one runs under the same rules, one after
 another in one background task, and each keeps its own output tail. A command the
@@ -152,13 +152,13 @@ index file in the git directory, as snapshots do. It never touches the user's in
 tree's blobs go into the repo's object store, where `git gc` drops them.
 
 A repo-supplied command never runs until you approve it, so cloning a repo, or an agent
-editing `.seshi/checks.toml`, cannot make Seshi run anything. The rules:
+editing `.maitty/checks.toml`, cannot make Maitty run anything. The rules:
 
 - Your own `[[check]]` for a project wins whole; the repo's file is then not read.
 - Approval is per exact command: Always is kept with the command's sha256, and a changed
   command asks again. Never holds whatever the command becomes. Once lets one run of that
   pane's checkpoint go and is never saved.
-- Answers live in `check-approvals.json` in Seshi's data folder, outside every repo, written
+- Answers live in `check-approvals.json` in Maitty's data folder, outside every repo, written
   atomically (synced, then renamed). The daemon reads the file once at start and goes by its
   own copy, so writing the file changes nothing while it runs. Every daemon shares the file,
   so an answer is written into the file as it is then, never as the daemon's whole copy, and
@@ -176,29 +176,39 @@ editing `.seshi/checks.toml`, cannot make Seshi run anything. The rules:
 
 Residual risk: a process running as the same OS user can edit `check-approvals.json`, which
 counts after the next daemon restart, and a process that hides its pane identity (no
-`SESHI_TERM_ID`) is treated as you, as for grants. Both need code already running as you.
+`MAITTY_TERM_ID`) is treated as you, as for grants. Both need code already running as you.
 
 Overriding a failed check is a recorded, visible action: the time and the reason stay on the
 result and its `Overridden` state shows wherever the check does. It needs the write grant on
 the target pane, and a pane can never override or undo its own check, so an agent's claim
 cannot turn its failure into done. An override covers one result; the next run replaces it.
 
-`seshi handoff` copies the tail of a pane's screen, its prompts and its changed file names into
+`maitty handoff` copies the tail of a pane's screen, its prompts and its changed file names into
 another agent's first prompt, so whatever the screen showed (secrets included) reaches that
 agent. It adds no permission of its own: the screen read needs the read grant on the pane and
-the new pane needs the start grant, both checked by the daemon as for `seshi read` and
-`seshi split`. The brief is quoted with `Config::quote_for_shell` like any first prompt; for
+the new pane needs the start grant, both checked by the daemon as for `maitty read` and
+`maitty split`. The brief is quoted with `Config::quote_for_shell` like any first prompt; for
 PowerShell that escapes the curly single quotes as well as `'`, since PowerShell ends a
 single-quoted string at either.
+
+Text sent to an agent through `maitty send` (and `--wait`), MCP `maitty_send` and a
+`maitty_start` task is refused when it holds characters that draw as nothing or reorder the text
+(`hidden::is_invisible`: zero-width and direction marks, the BOM, Unicode tag characters), so
+one agent cannot hide instructions to another from you. The error names each one and where it
+is; nothing is sent. Your own typing and pastes in a pane are not checked.
+
+Saved pane output and check tails can hold secrets that were on screen. On unix their folders
+are 0700 and their files 0600 (`persist::private_dir`, `create_private`); on Windows they sit
+in your own profile. `[restore] output = false` stops saving pane output and deletes it.
 
 ## Project-specific: auth and permissions
 
 No user accounts. Access to the daemon is access to its local socket: a named
 pipe on Windows, a Unix socket in the temp directory elsewhere, named per user
-(`seshi-<user>-<label>.sock`). Socket access must stay limited to the user who
-started the daemon. Status reports (`seshi hook`) are accepted only from a
+(`maitty-<user>-<label>.sock`). Socket access must stay limited to the user who
+started the daemon. Status reports (`maitty hook`) are accepted only from a
 process inside the pane (traced through its process tree) or carrying that
-pane's `SESHI_PANE_TOKEN`, a random secret set only in that pane's environment.
+pane's `MAITTY_PANE_TOKEN`, a random secret set only in that pane's environment.
 Remote work goes over the user's own `ssh`, so SSH's authentication applies.
 Machine-only settings and secrets belong in `config.local.toml`, which config sync
 never uploads.
@@ -208,7 +218,7 @@ never uploads.
 Bundled Herdr detection rules and adapted integration code are pinned to a
 reviewed source commit; provenance and Apache terms live in
 `vendor/herdr-detection/NOTICE.md` and LICENSE. No remote rules are executed or
-downloaded. Native JavaScript adapters invoke the installed Seshi executable with
+downloaded. Native JavaScript adapters invoke the installed Maitty executable with
 an argument array and inherited pane authentication; they do not forward prompt
 or answer text. Setup rejects non-regular owned-file targets and preserves
 unowned extensions/hooks. OpenCode's JSONC editor uses pinned jsonc-parser 0.33.1

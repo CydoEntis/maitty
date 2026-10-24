@@ -38,3 +38,9 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0012](0012-flat-rendering-style.md) | Add a flat rendering style | Accepted |
 | [0013](0013-v7-frame.md) | Draw the v7 frame: tabs in the pane title, no margin | Proposed |
 | [0014](0014-v8-cleanup.md) | Bring over the v8 cleanup, keeping what the user already decided | Proposed |
+| [0015](0015-four-named-layouts-and-grid.md) | Four named layouts, one setting, and the Grid style | Accepted |
+| [0016](0016-sticky-shortcut-mode.md) | The leader opens a shortcut mode that stays until you leave it | Accepted |
+| [0017](0017-keys-other-apps-use.md) | Default shortcuts: one key each, no Shift, keys other apps use | Accepted |
+| [0018](0018-rename-to-vibecasso.md) | The app is called Vibecasso | Accepted |
+| [0019](0019-the-name-lives-in-one-place.md) | The app's name lives in one place | Accepted |
+| [0020](0020-rename-to-maitty.md) | The app is called Maitty | Accepted |

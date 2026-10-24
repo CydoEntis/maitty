@@ -1,4 +1,4 @@
-//! Right-click menus for the seshi layout: a pane, an agent row, a project, a branch or a
+//! Right-click menus for the app's layout: a pane, an agent row, a project, a branch or a
 //! worktree. Short, hoverable, and every item does something.
 
 use super::design::{BtnKind, button, put, seg, segs_width};
@@ -16,11 +16,13 @@ use unicode_width::UnicodeWidthStr;
 
 /// How many snapshots the list offers (each has its number as its key).
 const SNAPSHOTS_LISTED: usize = 9;
+/// Why a snapshot is not restored while its session's agent works.
+pub(super) const RESTORE_WHILE_WORKING: &str = "Its agent is working; stop it or wait for the turn to end.";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Act {
     Beside(TermId),
-    /// The program in this pane is an agent: seshi learns it.
+    /// The program in this pane is an agent: the app learns it.
     TeachAgent(TermId),
     /// End these (stops what runs in them).
     End(Vec<TermId>),
@@ -45,7 +47,7 @@ pub enum Act {
     TidyOpen(usize),
     /// Remove these worktrees (each: its folder, and whether to lose uncommitted changes).
     Tidy(Vec<(PathBuf, bool)>),
-    /// Install the newest seshi without interrupting the running sessions.
+    /// Install the newest the app without interrupting the running sessions.
     Update,
     /// Stop the daemon so the window reconnects to the installed version.
     RestartDaemon,
@@ -141,6 +143,10 @@ pub struct ScreenMenu {
 }
 
 impl App {
+    fn agent_working(&self, term: TermId) -> bool {
+        self.snap.terms.get(&term).is_some_and(|x| x.status == crate::protocol::Status::Working)
+    }
+
     pub(super) fn menu(&mut self, title: String, mut items: Vec<(String, Act)>, at: (u16, u16)) {
         // The destructive item last.
         items.sort_by_key(|(_, a)| matches!(a, Act::End(_) | Act::CloseProject(_)));
@@ -156,14 +162,14 @@ impl App {
         let agent = find(&model, term).map(|(_, _, s)| s.agent.clone()).unwrap_or_default();
         let mut items = vec![
             ("Rename pane".to_string(), Act::RenamePane(term)),
-            ("Split right".to_string(), Act::Split(term, crate::layout::Dir::Right)),
-            ("Split down".to_string(), Act::Split(term, crate::layout::Dir::Down)),
+            ("Split side by side".to_string(), Act::Split(term, crate::layout::Dir::Right)),
+            ("Split stacked".to_string(), Act::Split(term, crate::layout::Dir::Down)),
         ];
         items.push((
             if self.screen.right_clicks.contains(&term) { "Stop sending right-clicks to pane" } else { "Send right-clicks to pane" }.to_string(),
             Act::RightClicks(term),
         ));
-        // A program seshi doesn't know (an agent started by an alias, say): teach it.
+        // A program the app doesn't know (an agent started by an alias, say): teach it.
         if let Some(t) = self.snap.terms.get(&term).filter(|t| t.agent.is_none() && !t.is_shell() && !t.process.is_empty() && t.remote.is_none()) {
             items.push((format!("{} is an agent…", t.process), Act::TeachAgent(term)));
         }
@@ -186,7 +192,7 @@ impl App {
         let agent = s.agent.clone();
         let dir = find(&model, term).map(|(_, w, _)| w.path.clone());
         let info = self.snap.terms.get(&term);
-        // A program seshi doesn't know can be taught.
+        // A program the app doesn't know can be taught.
         let mut items = Vec::new();
         if let Some(t) = info.filter(|t| t.agent.is_none() && !t.is_shell() && !t.process.is_empty() && t.remote.is_none()) {
             items.push((format!("{} is an agent…", t.process), Act::TeachAgent(term)));
@@ -340,25 +346,20 @@ impl App {
                 danger: true,
                 act: a.clone(),
             }),
-            Act::Restore(dir, _, when, term) => {
-                let working = self.snap.terms.get(term).is_some_and(|x| x.status == crate::protocol::Status::Working);
-                Some(Confirm {
-                    title: "Restore snapshot".into(),
-                    sub: String::new(),
-                    what: super::screen::folder_name(dir),
-                    detail: when.clone(),
-                    note: if working {
-                        "Its agent is working in these files right now. They go back to how they were then; what's there now is kept as a snapshot first.".into()
-                    } else {
-                        "The files go back to how they were then. What's there now is kept as a snapshot first, so this can be taken back.".into()
-                    },
-                    list: Vec::new(),
-                    yes: "Restore".into(),
-                    key: '\n',
-                    danger: working,
-                    act: a.clone(),
-                })
-            }
+            // Refused while it works (menu_do says so): nothing to ask.
+            Act::Restore(_, _, _, term) if self.agent_working(*term) => None,
+            Act::Restore(dir, _, when, _) => Some(Confirm {
+                title: "Restore snapshot".into(),
+                sub: String::new(),
+                what: super::screen::folder_name(dir),
+                detail: when.clone(),
+                note: "The files go back to how they were then. What's there now is kept as a snapshot first, so this can be taken back.".into(),
+                list: Vec::new(),
+                yes: "Restore".into(),
+                key: '\n',
+                danger: false,
+                act: a.clone(),
+            }),
             Act::GitInit(p) => Some(Confirm {
                 title: "Make it a git repo".into(),
                 sub: String::new(),
@@ -460,6 +461,8 @@ impl App {
                     super::Bg::Then(Box::new(move |app: &mut App| app.snapshots_menu(dir, term, kept, at)))
                 });
             }
+            // Its agent would keep writing into files being rolled back, even after you confirmed.
+            Act::Restore(_, _, _, term) if self.agent_working(term) => self.notify(RESTORE_WHILE_WORKING.into(), true),
             Act::Restore(dir, commit, _, _) => {
                 self.notify("restoring…".into(), false);
                 self.spawn_bg(move || {
@@ -481,7 +484,7 @@ impl App {
             Act::RightClicks(t) => {
                 if !self.screen.right_clicks.remove(&t) {
                     self.screen.right_clicks.insert(t);
-                    self.notify("right-clicks go to this pane now (Shift+right-click for seshi's menu)".into(), false);
+                    self.notify(concat!("right-clicks go to this pane now (Shift+right-click for ", env!("APP_COMMAND"), "'s menu)").into(), false);
                 }
             }
             Act::RenameProject(key, name) => self.mode = Mode::Prompt { kind: super::PromptKind::RenameProject(key), input: name },

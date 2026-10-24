@@ -12,10 +12,10 @@
 │   ● warm-finch              3m │ │                                                                                                                           │
 │     asks: use pnpm or npm?     │ │                                                                                                                           │
 │                                │ │      PROJECT · affiliate-site                                           Esc close                                         │
-│  ▾ seshi                 ⎇ dev │ │    │                                                                              │                                       │
+│  ▾ orbit                 ⎇ dev │ │    │                                                                              │                                       │
 │   ✓ quick-fox               9h │ │    │  CHECK                                                                       │                                       │
 │     finished                   │ │    │                                                                              │                                       │
-│   z old-moth                2d │ │    │ No check set. Seshi can run one command itself when an agent's               │                                       │
+│   z old-moth                2d │ │    │ No check set. Maitty can run one command itself when an agent's              │                                       │
 │     asleep zzZ                 │ │    │ turn ends; the session isn't done until it passes. Agents keep working.      │                                       │
 │                                │ │    │                                                                              │                                       │
 │                                │ │    │ Command    e.g. npm test                                                     │                                       │
@@ -54,8 +54,8 @@
 │  ▾ pixls│                                                                              │         │
 │   ● warm│  CHECK                                                                       │         │
 │     asks│                                                                              │         │
-│         │ No check set. Seshi can run one command itself when an agent's               │         │
-│  ▾ seshi│ turn ends; the session isn't done until it passes. Agents keep working.      │         │
+│         │ No check set. Maitty can run one command itself when an agent's              │         │
+│  ▾ orbit│ turn ends; the session isn't done until it passes. Agents keep working.      │         │
 │   ✓ quic│                                                                              │         │
 │   z old-│ Command    e.g. npm test                                                     │         │
 │         │                                                                              │         │
@@ -82,7 +82,7 @@
 ││                                                                            │
 ││  CHECK                                                                     │
 ││                                                                            │
-││ No check set. Seshi can run one command itself when an agent's             │
+││ No check set. Maitty can run one command itself when an agent's            │
 ││ turn ends; the session isn't done until it passes. Agents keep working.    │
 ││                                                                            │
 ││ Command    e.g. npm test                                                   │
@@ -114,10 +114,10 @@
 │   ● warm-finch              3m ││                                                                                                                            │
 │     asks: use pnpm or npm?     ││                                                                                                                            │
 │                                ││       PROJECT · affiliate-site                                           Esc close                                         │
-│  ▾ seshi                 ⎇ dev ││     │                                                                              │                                       │
+│  ▾ orbit                 ⎇ dev ││     │                                                                              │                                       │
 │   ✓ quick-fox               9h ││     │  CHECK                                                                       │                                       │
 │     finished                   ││     │                                                                              │                                       │
-│   z old-moth                2d ││     │ No check set. Seshi can run one command itself when an agent's               │                                       │
+│   z old-moth                2d ││     │ No check set. Maitty can run one command itself when an agent's              │                                       │
 │     asleep zzZ                 ││     │ turn ends; the session isn't done until it passes. Agents keep working.      │                                       │
 │                                ││     │                                                                              │                                       │
 │                                ││     │ Command    e.g. npm test                                                     │                                       │
@@ -156,8 +156,8 @@
 │  ▾ pixls│                                                                              │         │
 │   ● warm│  CHECK                                                                       │         │
 │     asks│                                                                              │         │
-│         │ No check set. Seshi can run one command itself when an agent's               │         │
-│  ▾ seshi│ turn ends; the session isn't done until it passes. Agents keep working.      │         │
+│         │ No check set. Maitty can run one command itself when an agent's              │         │
+│  ▾ orbit│ turn ends; the session isn't done until it passes. Agents keep working.      │         │
 │   ✓ quic│                                                                              │         │
 │   z old-│ Command    e.g. npm test                                                     │         │
 │         │                                                                              │         │
@@ -184,7 +184,7 @@
 ││                                                                            │
 ││  CHECK                                                                     │
 ││                                                                            │
-││ No check set. Seshi can run one command itself when an agent's             │
+││ No check set. Maitty can run one command itself when an agent's            │
 ││ turn ends; the session isn't done until it passes. Agents keep working.    │
 ││                                                                            │
 ││ Command    e.g. npm test                                                   │
@@ -216,10 +216,10 @@
    ● warm-finch                3m│
      asks: use pnpm or npm?      │
                                  │        PROJECT · affiliate-site                                           Esc close
-  ▾ seshi                   ⎇ dev│      │                                                                              │
+  ▾ orbit                   ⎇ dev│      │                                                                              │
    ✓ quick-fox                 9h│      │  CHECK                                                                       │
      finished                    │      │                                                                              │
-   z old-moth                  2d│      │ No check set. Seshi can run one command itself when an agent's               │
+   z old-moth                  2d│      │ No check set. Maitty can run one command itself when an agent's              │
      asleep zzZ                  │      │ turn ends; the session isn't done until it passes. Agents keep working.      │
                                  │      │                                                                              │
                                  │      │ Command    e.g. npm test                                                     │
@@ -258,8 +258,8 @@
   ▾ pixls │                                                                              │
    ● warm-│  CHECK                                                                       │
      asks:│                                                                              │
-          │ No check set. Seshi can run one command itself when an agent's               │
-  ▾ seshi │ turn ends; the session isn't done until it passes. Agents keep working.      │
+          │ No check set. Maitty can run one command itself when an agent's              │
+  ▾ orbit │ turn ends; the session isn't done until it passes. Agents keep working.      │
    ✓ quick│                                                                              │
    z old-m│ Command    e.g. npm test                                                     │
           │                                                                              │
@@ -286,7 +286,7 @@
  │                                                                            │
  │  CHECK                                                                     │
  │                                                                            │
- │ No check set. Seshi can run one command itself when an agent's             │
+ │ No check set. Maitty can run one command itself when an agent's            │
  │ turn ends; the session isn't done until it passes. Agents keep working.    │
  │                                                                            │
  │ Command    e.g. npm test                                                   │
@@ -311,7 +311,7 @@
  │                                                                            │
  │  CHECK                                                                     │
  │                                                                            │
- │ No check set. Seshi can run one command itself when an agent's             │
+ │ No check set. Maitty can run one command itself when an agent's            │
  │ turn ends; the session isn't done until it passes. Agents keep working.    │
  │                                                                            │
  │ Command    e.g. npm test                                                   │

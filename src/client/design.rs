@@ -1,7 +1,7 @@
 //! The "workspaces" layout from the design handoff: a sidebar of workspaces (one per repo)
 //! → their worktrees → the agent in each; borderless panes with one-row title bars; an
 //! answer bar on panes that need you; a crumb in the top bar and counts in the status line.
-//! Plus the seshi-native views that replace the pane area (Changes, Files), the
+//! Plus the app's own views that replace the pane area (Changes, Files), the
 //! talk-to-a-worktree modal and the + Pane menu.
 
 use super::render::{status_icon, truncate};
@@ -683,7 +683,7 @@ pub(super) fn key_rows() -> Vec<(&'static str, Vec<(&'static str, Vec<crate::key
 pub(super) enum SRow {
     Setting(&'static super::modal::Setting),
     Bind { label: &'static str, acts: Vec<crate::keys::Action> },
-    /// A line of the Agents page that is not a setting: what seshi can tell about an agent.
+    /// A line of the Agents page that is not a setting: what the app can tell about an agent.
     Agent(AgentRow),
 }
 
@@ -709,8 +709,8 @@ impl AgentRow {
 
     pub(super) fn help(self) -> &'static str {
         match self {
-            AgentRow::Claude => "Seshi reads working, needs you and done from Claude's hooks. Missing? Run seshi integrate claude.",
-            AgentRow::Codex => "No hooks needed: seshi watches the Codex process.",
+            AgentRow::Claude => concat!(env!("APP_NAME"), " reads working, needs you and done from Claude's hooks. Missing? Run ", env!("APP_COMMAND"), " integrate claude."),
+            AgentRow::Codex => concat!("No hooks needed: ", env!("APP_COMMAND"), " watches the Codex process."),
             AgentRow::SetUp => "Connect another agent so it reports working, needs you and done itself. Enter opens the list.",
         }
     }
@@ -733,7 +733,7 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "ui.update_check" => "UPDATES",
             "shell" | "editor" | "shell_integration" | "ui.start_dir" => "SHELL",
             "ui.attention_sort" => "SIDEBAR",
-            "ui.panes" | "ui.corners" | "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.rounded" => "PANES",
+            "ui.corners" | "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.rounded" => "PANES",
             p if p.starts_with("notify.") => "ALERTS",
             "worktree.delete_with_last" | "worktree.per_agent" | "worktree.command" => "WORKTREES",
             p if p.starts_with("restore.") => "RESTARTS",
@@ -857,7 +857,7 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
     }
 }
 
-/// What seshi can tell about an agent, as the value of its AGENT STATUS row.
+/// What the app can tell about an agent, as the value of its AGENT STATUS row.
 fn agent_control(app: &App, t: &Theme, row: AgentRow) -> Vec<Seg> {
     let ok = Style::default().fg(t.done);
     match row {

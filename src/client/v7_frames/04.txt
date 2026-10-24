@@ -12,7 +12,7 @@
 │   ● warm-finch              3m │ │                                                                                                                           │
 │     asks: use pnpm or npm?     │ │                                                                                                                           │
 │                                │ │                                                                                                                           │
-│  ▾ seshi                 ⎇ dev │ │                                                                                                                           │
+│  ▾ orbit                 ⎇ dev │ │                                                                                                                           │
 │   ✓ quick-fox               9h │ │                                                                                                                           │
 │     finished                   │ │                                                                                                                           │
 │   z old-moth                2d │ │                                                                                                                           │
@@ -56,7 +56,7 @@
 │   ● warm-finch      3m │ │                                                                       │
 │     asks: use pnpm or n│ │                                                                       │
 │                        │ │                                                                       │
-│  ▾ seshi         ⎇ dev │ │                                                                       │
+│  ▾ orbit         ⎇ dev │ │                                                                       │
 │   ✓ quick-fox       9h │ │                                                                       │
 │   z old-moth        2d │ │                                                                       │
 │                        │ │  › rename the footer copyright to 2026                                │
@@ -87,7 +87,7 @@
 │   ● warm-finch         │ │  › rename the footer copyright to 2026            │
 │     asks: use pnpm or n│ │                                                   │
 │                        │ │  • Edit src/components/Footer.tsx                 │
-│  ▾ seshi         ⎇ dev │ │    - © 2025 Affiliate Co.                         │
+│  ▾ orbit         ⎇ dev │ │    - © 2025 Affiliate Co.                         │
 │   ✓ quick-fox          │ │    + © 2026 Affiliate Co.                         │
 │   z old-moth           │ │                                                   │
 │                        │ │  • Ran npm test -- Footer                         │
@@ -114,7 +114,7 @@
 │   ● warm-finch              3m ││                                                                                                                            │
 │     asks: use pnpm or npm?     ││                                                                                                                            │
 │                                ││                                                                                                                            │
-│  ▾ seshi                 ⎇ dev ││                                                                                                                            │
+│  ▾ orbit                 ⎇ dev ││                                                                                                                            │
 │   ✓ quick-fox               9h ││                                                                                                                            │
 │     finished                   ││                                                                                                                            │
 │   z old-moth                2d ││                                                                                                                            │
@@ -158,7 +158,7 @@
 │   ● warm-finch      3m ││                                                                        │
 │     asks: use pnpm or n││                                                                        │
 │                        ││                                                                        │
-│  ▾ seshi         ⎇ dev ││                                                                        │
+│  ▾ orbit         ⎇ dev ││                                                                        │
 │   ✓ quick-fox       9h ││                                                                        │
 │   z old-moth        2d ││                                                                        │
 │                        ││  › rename the footer copyright to 2026                                 │
@@ -189,7 +189,7 @@
 │   ● warm-finch         ││  › rename the footer copyright to 2026             │
 │     asks: use pnpm or n││                                                    │
 │                        ││  • Edit src/components/Footer.tsx                  │
-│  ▾ seshi         ⎇ dev ││    - © 2025 Affiliate Co.                          │
+│  ▾ orbit         ⎇ dev ││    - © 2025 Affiliate Co.                          │
 │   ✓ quick-fox          ││    + © 2026 Affiliate Co.                          │
 │   z old-moth           ││                                                    │
 │                        ││  • Ran npm test -- Footer                          │
@@ -216,7 +216,7 @@
    ● warm-finch                3m│
      asks: use pnpm or npm?      │
                                  │
-  ▾ seshi                   ⎇ dev│
+  ▾ orbit                   ⎇ dev│
    ✓ quick-fox                 9h│
      finished                    │
    z old-moth                  2d│
@@ -260,7 +260,7 @@
    ● warm-finch        3m│
      asks: use pnpm or np│
                          │
-  ▾ seshi           ⎇ dev│
+  ▾ orbit           ⎇ dev│
    ✓ quick-fox         9h│
    z old-moth          2d│
                          │  › rename the footer copyright to 2026
@@ -291,7 +291,7 @@
    ● warm-finch          │  › rename the footer copyright to 2026
      asks: use pnpm or np│
                          │  • Edit src/components/Footer.tsx
-  ▾ seshi           ⎇ dev│    - © 2025 Affiliate Co.
+  ▾ orbit           ⎇ dev│    - © 2025 Affiliate Co.
    ✓ quick-fox           │    + © 2026 Affiliate Co.
    z old-moth            │
                          │  • Ran npm test -- Footer
@@ -316,7 +316,7 @@
    ! warm-finch          │  › rename the footer copyright to 2026
      asks: use pnpm or np│
                          │  • Edit src/components/Footer.tsx
-  v seshi        git: dev│    - © 2025 Affiliate Co.
+  v orbit        git: dev│    - © 2025 Affiliate Co.
    + quick-fox           │    + © 2026 Affiliate Co.
    z old-moth            │
                          │  • Ran npm test -- Footer

@@ -6,13 +6,13 @@
 │ ▎   stale pass: test · 3 files │ │                                                  │ │ Command  npm test                                                    │
 │ ▎   footer shows current year  │ │                                                  │ │ Folder   ~\dev\affiliate-site-worktrees\fix-footer                   │
 │   ⣶⡆ add-payments          now │ │                                                  │ │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51         │
-│     claude · working           │ │                                                  │ │ Seen by  Seshi ran this itself. The agent said "tests pass".         │
+│     claude · working           │ │                                                  │ │ Seen by  Maitty ran this itself. The agent said "tests pass".        │
 │                                │ │                                                  │ │                                                                      │
 │  ▾ pixls                no git │ │                                                  │ │  ◷ Stale. The agent changed 3 files after this ran (14:24).          │
 │   ● warm-finch              3m │ │                                                  │ │    This pass is for older code, not for what is there now.           │
 │     asks: use pnpm or npm?     │ │                                                  │ │    M src/components/Footer.tsx                                       │
 │                                │ │                                                  │ │    M src/pages/legal.tsx                                             │
-│  ▾ seshi                 ⎇ dev │ │                                                  │ │    A tests/legal.test.tsx                                            │
+│  ▾ orbit                 ⎇ dev │ │                                                  │ │    A tests/legal.test.tsx                                            │
 │   ✓ quick-fox               9h │ │                                                  │ │                                                                      │
 │     finished                   │ │                                                  │ │  OUTPUT  all 3 lines                                                 │
 │   z old-moth                2d │ │                                                  │ │ 1    > vitest run                                                    │
@@ -52,11 +52,11 @@
 │ ▎   stale pass: test · │ │ Command  npm test                                                     │
 │   ⣶⡆ add-payments  now │ │ Folder   ~\dev\affiliate-site-worktrees\fix-footer                    │
 │                        │ │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51          │
-│  ▾ pixls        no git │ │ Seen by  Seshi ran this itself. The agent said "tests pass".          │
+│  ▾ pixls        no git │ │ Seen by  Maitty ran this itself. The agent said "tests pass".         │
 │   ● warm-finch      3m │ │                                                                       │
 │     asks: use pnpm or n│ │  ◷ Stale. The agent changed 3 files after this ran (14:24).           │
 │                        │ │    This pass is for older code, not for what is there now.            │
-│  ▾ seshi         ⎇ dev │ │    M src/components/Footer.tsx                                        │
+│  ▾ orbit         ⎇ dev │ │    M src/components/Footer.tsx                                        │
 │   ✓ quick-fox       9h │ │    M src/pages/legal.tsx                                              │
 │   z old-moth        2d │ │    A tests/legal.test.tsx                                             │
 │                        │ │                                                                       │
@@ -83,11 +83,11 @@
 │ ▎   stale pass: test · │ │ Command  npm test                                 │
 │   ⣶⡆ add-payments      │ │ Folder   ~\dev\affiliate-site-worktrees\fix-foote │
 │                        │ │ Ran      14:22:05 · took 14.2s · after turn 3 end │
-│  ▾ pixls        no git │ │ Seen by  Seshi ran this itself. The agent said "t │
+│  ▾ pixls        no git │ │ Seen by  Maitty ran this itself. The agent said " │
 │   ● warm-finch         │ │                                                   │
 │     asks: use pnpm or n│ │  ◷ Stale. The agent changed 3 files after this ra │
 │                        │ │    This pass is for older code, not for what is t │
-│  ▾ seshi         ⎇ dev │ │    M src/components/Footer.tsx                    │
+│  ▾ orbit         ⎇ dev │ │    M src/components/Footer.tsx                    │
 │   ✓ quick-fox          │ │    M src/pages/legal.tsx                          │
 │   z old-moth           │ │    A tests/legal.test.tsx                         │
 │                        │ │                                                   │
@@ -108,13 +108,13 @@
 │ ▎   stale pass: test · 3 files ││                                                    ││ Command  npm test                                                    │
 │ ▎   footer shows current year  ││                                                    ││ Folder   ~\dev\affiliate-site-worktrees\fix-footer                   │
 │   ⣶⡆ add-payments          now ││                                                    ││ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51         │
-│     claude · working           ││                                                    ││ Seen by  Seshi ran this itself. The agent said "tests pass".         │
+│     claude · working           ││                                                    ││ Seen by  Maitty ran this itself. The agent said "tests pass".        │
 │                                ││                                                    ││                                                                      │
 │  ▾ pixls                no git ││                                                    ││  ◷ Stale. The agent changed 3 files after this ran (14:24).          │
 │   ● warm-finch              3m ││                                                    ││    This pass is for older code, not for what is there now.           │
 │     asks: use pnpm or npm?     ││                                                    ││    M src/components/Footer.tsx                                       │
 │                                ││                                                    ││    M src/pages/legal.tsx                                             │
-│  ▾ seshi                 ⎇ dev ││                                                    ││    A tests/legal.test.tsx                                            │
+│  ▾ orbit                 ⎇ dev ││                                                    ││    A tests/legal.test.tsx                                            │
 │   ✓ quick-fox               9h ││                                                    ││                                                                      │
 │     finished                   ││                                                    ││  OUTPUT  all 3 lines                                                 │
 │   z old-moth                2d ││                                                    ││ 1    > vitest run                                                    │
@@ -154,11 +154,11 @@
 │ ▎   stale pass: test · ││ Command  npm test                                                      │
 │   ⣶⡆ add-payments  now ││ Folder   ~\dev\affiliate-site-worktrees\fix-footer                     │
 │                        ││ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51           │
-│  ▾ pixls        no git ││ Seen by  Seshi ran this itself. The agent said "tests pass".           │
+│  ▾ pixls        no git ││ Seen by  Maitty ran this itself. The agent said "tests pass".          │
 │   ● warm-finch      3m ││                                                                        │
 │     asks: use pnpm or n││  ◷ Stale. The agent changed 3 files after this ran (14:24).            │
 │                        ││    This pass is for older code, not for what is there now.             │
-│  ▾ seshi         ⎇ dev ││    M src/components/Footer.tsx                                         │
+│  ▾ orbit         ⎇ dev ││    M src/components/Footer.tsx                                         │
 │   ✓ quick-fox       9h ││    M src/pages/legal.tsx                                               │
 │   z old-moth        2d ││    A tests/legal.test.tsx                                              │
 │                        ││                                                                        │
@@ -185,11 +185,11 @@
 │ ▎   stale pass: test · ││ Command  npm test                                  │
 │   ⣶⡆ add-payments      ││ Folder   ~\dev\affiliate-site-worktrees\fix-footer │
 │                        ││ Ran      14:22:05 · took 14.2s · after turn 3 ende │
-│  ▾ pixls        no git ││ Seen by  Seshi ran this itself. The agent said "te │
+│  ▾ pixls        no git ││ Seen by  Maitty ran this itself. The agent said "t │
 │   ● warm-finch         ││                                                    │
 │     asks: use pnpm or n││  ◷ Stale. The agent changed 3 files after this ran │
 │                        ││    This pass is for older code, not for what is th │
-│  ▾ seshi         ⎇ dev ││    M src/components/Footer.tsx                     │
+│  ▾ orbit         ⎇ dev ││    M src/components/Footer.tsx                     │
 │   ✓ quick-fox          ││    M src/pages/legal.tsx                           │
 │   z old-moth           ││    A tests/legal.test.tsx                          │
 │                        ││                                                    │
@@ -210,13 +210,13 @@
  ▎   stale pass: test · 3 files c│                                                      │ Command  npm test
  ▎   footer shows current year   │                                                      │ Folder   ~\dev\affiliate-site-worktrees\fix-footer
    ⣶⡆ add-payments            now│                                                      │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
-     claude · working            │                                                      │ Seen by  Seshi ran this itself. The agent said "tests pass".
+     claude · working            │                                                      │ Seen by  Maitty ran this itself. The agent said "tests pass".
                                  │                                                      │
   ▾ pixls                  no git│                                                      │  ◷ Stale. The agent changed 3 files after this ran (14:24).
    ● warm-finch                3m│                                                      │    This pass is for older code, not for what is there now.
      asks: use pnpm or npm?      │                                                      │    M src/components/Footer.tsx
                                  │                                                      │    M src/pages/legal.tsx
-  ▾ seshi                   ⎇ dev│                                                      │    A tests/legal.test.tsx
+  ▾ orbit                   ⎇ dev│                                                      │    A tests/legal.test.tsx
    ✓ quick-fox                 9h│                                                      │
      finished                    │                                                      │  OUTPUT  all 3 lines
    z old-moth                  2d│                                                      │ 1    > vitest run
@@ -256,11 +256,11 @@
  ▎   stale pass: test · 3│ Command  npm test
    ⣶⡆ add-payments    now│ Folder   ~\dev\affiliate-site-worktrees\fix-footer
                          │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
-  ▾ pixls          no git│ Seen by  Seshi ran this itself. The agent said "tests pass".
+  ▾ pixls          no git│ Seen by  Maitty ran this itself. The agent said "tests pass".
    ● warm-finch        3m│
      asks: use pnpm or np│  ◷ Stale. The agent changed 3 files after this ran (14:24).
                          │    This pass is for older code, not for what is there now.
-  ▾ seshi           ⎇ dev│    M src/components/Footer.tsx
+  ▾ orbit           ⎇ dev│    M src/components/Footer.tsx
    ✓ quick-fox         9h│    M src/pages/legal.tsx
    z old-moth          2d│    A tests/legal.test.tsx
                          │
@@ -287,11 +287,11 @@
  ▎   stale pass: test · 3│ Command  npm test
    ⣶⡆ add-payments       │ Folder   ~\dev\affiliate-site-worktrees\fix-footer
                          │ Ran      14:22:05 · took 14.2s · after turn 3 ended
-  ▾ pixls          no git│ Seen by  Seshi ran this itself. The agent said "tes
+  ▾ pixls          no git│ Seen by  Maitty ran this itself. The agent said "te
    ● warm-finch          │
      asks: use pnpm or np│  ◷ Stale. The agent changed 3 files after this ran
                          │    This pass is for older code, not for what is the
-  ▾ seshi           ⎇ dev│    M src/components/Footer.tsx
+  ▾ orbit           ⎇ dev│    M src/components/Footer.tsx
    ✓ quick-fox           │    M src/pages/legal.tsx
    z old-moth            │    A tests/legal.test.tsx
                          │
@@ -312,11 +312,11 @@
  |   stale pass: test · 3│ Command  npm test
    O  add-payments       │ Folder   ~\dev\affiliate-site-worktrees\fix-footer
                          │ Ran      14:22:05 · took 14.2s · after turn 3 ended
-  v pixls          no git│ Seen by  Seshi ran this itself. The agent said "tes
+  v pixls          no git│ Seen by  Maitty ran this itself. The agent said "te
    ! warm-finch          │
      asks: use pnpm or np│  ~ Stale. The agent changed 3 files after this ran
                          │    This pass is for older code, not for what is the
-  v seshi        git: dev│    M src/components/Footer.tsx
+  v orbit        git: dev│    M src/components/Footer.tsx
    + quick-fox           │    M src/pages/legal.tsx
    z old-moth            │    A tests/legal.test.tsx
                          │

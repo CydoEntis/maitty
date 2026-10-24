@@ -1,12 +1,12 @@
-# seshi configuration
-# Location: %APPDATA%\seshi\config.toml on Windows, ~/.config/seshi/config.toml elsewhere
-# (override with SESHI_CONFIG). Every key is optional; reload with <prefix> r.
+# maitty configuration
+# Location: %APPDATA%\maitty\config.toml on Windows, ~/.config/maitty/config.toml elsewhere
+# (override with MAITTY_CONFIG). Every key is optional; reload with <prefix> r.
 
 prefix = "ctrl+space"
 
 # Browse all built-in names in Settings > Appearance > Theme.
-# Families and variants: docs/theme-credits.md (gruvbox is Dark; tokyo-night is Night).
-theme = "seshi-dark"
+# The app's own pair is night (the default) and day; the rest: docs/theme-credits.md.
+theme = "night"
 
 # Shell for new panes. Default: pwsh / powershell on Windows, $SHELL elsewhere.
 # shell = "pwsh.exe"
@@ -34,13 +34,12 @@ replay_bytes = 2097152      # output kept per pane by the daemon, replayed on re
 # sidebar_bg = "#16161e"
 
 [ui]
-start_dir = ""              # where plain `seshi` opens, e.g. "~/code" (empty: where you run it)
+start_dir = ""              # where plain `maitty` opens, e.g. "~/code" (empty: where you run it)
 attention_sort = true       # sidebar: sessions that need you first, the rest keep their place
 sidebar = true              # <leader> b
 sidebar_position = "left"   # left | right
-layout = "cards"            # cards | flat
-panes = "floating"          # floating | tiled; applies to Cards layout
-corners = "square"          # square | rounded card edges ("flush" reads as square)
+layout = "floating"         # floating | tiled | compact | grid (older "cards" / "flat" still read)
+corners = "square"          # square | rounded box corners ("flush" reads as square)
 glyphs = "auto"             # auto | unicode | ascii | nerd: session and check marks (auto: ascii when [icons] are)
 which_key = false         # Settings: "Leader waits for next key"; list every key if you pause after the leader (? always shows them)
 which_key_delay_ms = 350
@@ -51,9 +50,9 @@ subagent_count = true       # show "· N agents" on a working session row when t
 # spinner = []              # static icons.working; at most 64 custom frames
 workspace_colors = ["#89b4fa", "#a6e3a1", "#cba6f7", "#fab387", "#94e2d5", "#f5c2e7", "#f9e2af", "#f38ba8"]
 
-# Settings > Sessions. `helpers`: may a session start helpers (other agents through `seshi mcp`)?
+# Settings > Sessions. `helpers`: may a session start helpers (other agents through `maitty mcp`)?
 # ask puts the question on the session's row the first time; Always in this project is
-# remembered in helper-projects.json in Seshi's data folder. `helpers_at_once` is per session.
+# remembered in helper-projects.json in Maitty's data folder. `helpers_at_once` is per session.
 # (An old [mcp] helpers_at_once is used until this is set.)
 [sessions]
 agent = "last used"         # last used | claude | codex | gemini
@@ -65,6 +64,7 @@ helpers_at_once = "3"       # 2 | 3 | 4
 enabled = true              # rebuild workspaces / tabs / panes when the server starts
 agents = true               # resume agents (claude --resume <id>, codex resume --last, ...)
 commands = true             # re-run commands panes were started with
+output = true               # keep each pane's recent output on disk (may hold secrets; false deletes it)
 
 [quick]
 place = "worktree"          # right | down | tab | worktree | here
@@ -91,8 +91,8 @@ branch = "\ue0a0 "          # Nerd Font branch glyph; use "" or "on " without on
 enabled = true              # keep a checkout's files as they were when an agent's turn begins; restore from its menu
 
 [notify]
-sound = true                # seshi's own sounds when an agent you're not looking at needs you or finishes
-# phone_topic = "seshi-pick-something-unguessable"   # ntfy app topic; empty is off
+sound = true                # maitty's own sounds when an agent you're not looking at needs you or finishes
+# phone_topic = "maitty-pick-something-unguessable"   # ntfy app topic; empty is off
 # phone_after = 60          # seconds an agent waits unanswered before your phone buzzes
 # phone_done = false        # also when one finishes and nobody looked
 # phone_text = false        # include what it's doing (the topic name is the only secret)
@@ -131,7 +131,7 @@ A = "new-worktree:claude"   # worktree picker; whatever you open or create start
 # Agents are detected from the pane's process tree. Entries here merge over the
 # built-ins (claude, codex, gemini, opencode, cursor, copilot, amp, qwen, aider,
 # goose, crush, droid, pi, kiro) by name. Patterns are case-insensitive regexes
-# matched against the bottom of the screen; hooks (`seshi integrate claude`)
+# matched against the bottom of the screen; hooks (`maitty integrate claude`)
 # override them with exact lifecycle events.
 # [[agents]]
 # name = "my-agent"
@@ -152,18 +152,18 @@ A = "new-worktree:claude"   # worktree picker; whatever you open or create start
 # worktree = true
 # run = ["claude", "npm run dev", "lazygit"]
 
-# Per-repo settings go in the repo, in a .seshi.toml file (commit it to share them):
+# Per-repo settings go in the repo, in a .maitty.toml file (commit it to share them):
 #   [hooks]
-#   on_create = "npm install"        # runs in each new worktree ($SESHI_BRANCH, $SESHI_WORKTREE, ...)
+#   on_create = "npm install"        # runs in each new worktree ($MAITTY_BRANCH, $MAITTY_WORKTREE, ...)
 #   on_remove = ""                   # runs before a worktree is removed
 
-# Checks: when an agent's turn ends in a project listed here, Seshi runs `command` through
+# Checks: when an agent's turn ends in a project listed here, Maitty runs `command` through
 # your shell in that session's worktree and records the result. `project` is the repo's
 # main checkout. A project may list several
 # checks (checkpoints), each with its own `name` (default: the command's last word, so
 # "npm test" is `test`); two in one project may not share a name.
 # `timeout_s` (default 600) stops a run that hangs, and its whole process tree with it.
-# The command does not get the pane's SESHI_PANE_TOKEN, and its output stays on the daemon.
+# The command does not get the pane's MAITTY_PANE_TOKEN, and its output stays on the daemon.
 # Several run in the order listed, each whatever the one before it returned; the session
 # reads done only when every one passed (or you overrode it).
 # [[check]]
@@ -177,12 +177,12 @@ A = "new-worktree:claude"   # worktree picker; whatever you open or create start
 # timeout_s = 600
 # Settings > Check edits this table for the project you are in and keeps your comments.
 #
-# A repo can name its own checks in .seshi/checks.toml (same keys, no `project`). Seshi
+# A repo can name its own checks in .maitty/checks.toml (same keys, no `project`). Maitty
 # reads it only for a project with no [[check]] here: yours win and the file is then ignored.
-# None of its commands runs until you approve it from a Seshi window (once, always, or never
+# None of its commands runs until you approve it from a Maitty window (once, always, or never
 # for this repo); an Always holds for that exact command, so a changed command asks again.
-# Your answers are kept in check-approvals.json in Seshi's data folder, not in the repo.
-#   # .seshi/checks.toml
+# Your answers are kept in check-approvals.json in Maitty's data folder, not in the repo.
+#   # .maitty/checks.toml
 #   [[check]]
 #   name = "build"
 #   command = "cargo build"
@@ -209,5 +209,5 @@ A = "new-worktree:claude"   # worktree picker; whatever you open or create start
 # where = "worktree"
 
 [mcp]
-approve = "never"       # may agents (through `seshi mcp`) answer "yes" to prompts? never | safe | always
+approve = "never"       # may agents (through `maitty mcp`) answer "yes" to prompts? never | safe | always
 scope = "project"       # project | all

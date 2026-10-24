@@ -1,4 +1,4 @@
-//! What you decided about repo-supplied check commands, kept in Seshi's own data folder and
+//! What you decided about repo-supplied check commands, kept in the app's own data folder and
 //! never in the repo: an agent that can write the repo must not be able to approve its own
 //! command. An Always holds only for the exact command it was given to (by its hash).
 
@@ -185,7 +185,7 @@ static WRITTEN: std::sync::Mutex<std::collections::BTreeMap<(PathBuf, PathBuf, S
 static SAVE_TICKETS: AtomicU64 = AtomicU64::new(1);
 
 /// Write one answer into the file as it is now, not this daemon's whole copy: every daemon
-/// (one per `SESHI_SOCKET`) shares the file, and another's newer answers must survive. A
+/// (one per `<APP>_SOCKET`) shares the file, and another's newer answers must survive. A
 /// damaged file is left as it is.
 fn write_change(change: Change, path: &Path, ticket: u64) -> Result<()> {
     let mut written = WRITTEN.lock().unwrap_or_else(|e| e.into_inner());
@@ -391,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    fn they_are_kept_in_seshi_s_data_folder() {
+    fn they_are_kept_in_app_s_data_folder() {
         assert_eq!(path(), crate::config::data_dir().join("check-approvals.json"));
     }
 }

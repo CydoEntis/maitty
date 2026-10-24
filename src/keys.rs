@@ -253,11 +253,11 @@ pub enum Action {
     PaneInfo,
     SendPrefix,
     KillServer,
-    /// Install the newest seshi without interrupting running sessions.
+    /// Install the newest the app without interrupting running sessions.
     Update,
-    /// Ask now whether a newer seshi is out, without waiting for the next check.
+    /// Ask now whether a newer the app is out, without waiting for the next check.
     CheckUpdate,
-    /// Replace the running server and this window with the installed seshi.
+    /// Replace the running server and this window with the installed the app.
     Restart,
     /// The clean-up list for the worktrees of the project you're in.
     TidyWorktrees,
@@ -270,9 +270,14 @@ pub enum Action {
 }
 
 impl Action {
-    /// Actions that keep prefix mode armed so they can be repeated (like tmux `-r`).
-    pub fn repeats(&self) -> bool {
-        matches!(self, Action::Resize(_) | Action::NextTab | Action::PrevTab | Action::ScrollUp | Action::ScrollDown)
+    /// Actions that give you something to type into, so shortcut mode ends with them.
+    pub fn leaves_shortcut_mode(&self) -> bool {
+        matches!(
+            self,
+            Action::SplitRight | Action::SplitDown | Action::SplitLeft | Action::SplitUp | Action::Spawn(..) | Action::SpawnTab(_)
+                | Action::NewTab | Action::NewWorkspace | Action::NewWorktree(_) | Action::NewPane | Action::StartSession
+                | Action::NewSession | Action::ShellHere | Action::SendPrefix
+        )
     }
 
     pub fn describe(&self) -> String {
@@ -284,8 +289,8 @@ impl Action {
             Down => "down",
         };
         match self {
-            Action::SplitRight => "Split right".into(),
-            Action::SplitDown => "Split down".into(),
+            Action::SplitRight => "Split side by side".into(),
+            Action::SplitDown => "Split stacked".into(),
             Action::SplitLeft => "Split left".into(),
             Action::SplitUp => "Split up".into(),
             Action::Spawn(d, c) => format!("Run `{c}` {}", dir(d)),
@@ -343,9 +348,9 @@ impl Action {
             Action::PaneInfo => "Pane info".into(),
             Action::SendPrefix => "Send the leader key to the pane".into(),
             Action::KillServer => "Kill server".into(),
-            Action::Update => "Update seshi".into(),
+            Action::Update => concat!("Update ", env!("APP_COMMAND")).into(),
             Action::CheckUpdate => "Check for updates".into(),
-            Action::Restart => "Restart seshi".into(),
+            Action::Restart => concat!("Restart ", env!("APP_COMMAND")).into(),
             Action::TidyWorktrees => "Clean up worktrees".into(),
             Action::Menu => "Menu".into(),
             Action::Worktrees => "Worktrees…".into(),
@@ -534,62 +539,66 @@ impl FromStr for Action {
     }
 }
 
-/// Bindings active after the prefix key.
+/// Bindings in shortcut mode (after the leader), ADR 0017: one key each, none needing Shift,
+/// chosen from what other apps use. Hide sidebar, prompt jumps, new worktree, rename workspace
+/// and send-prefix have no default key; search commands finds them.
 pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     // Sessions
-    ("j", "jump"),
-    ("M", "message"),
-    ("i", "why"),
     ("n", "shell-here"),
     ("s", "start-session"),
-    ("c", "new-pane"),
-    ("S", "stop-agent"),
+    ("o", "new-pane"),
+    ("enter", "message"),
+    ("k", "stop-agent"),
+    ("i", "jump"),
+    ("y", "why"),
     // Panes
-    ("p", "split-right"),
-    ("z", "toggle-sidebar"),
-    ("Z", "hide-sidebar"),
-    ("x", "close-pane"),
     ("left", "focus-left"),
     ("down", "focus-down"),
     ("up", "focus-up"),
     ("right", "focus-right"),
-    ("-", "split-down"),
-    ("H", "resize-left"),
-    ("J", "resize-down"),
-    ("K", "resize-up"),
-    ("L", "resize-right"),
-    ("y", "copy-mode"),
+    ("v", "split-right"),
+    ("h", "split-down"),
+    ("x", "close-pane"),
+    ("ctrl+left", "resize-left"),
+    ("ctrl+down", "resize-down"),
+    ("ctrl+up", "resize-up"),
+    ("ctrl+right", "resize-right"),
+    ("c", "copy-mode"),
     ("pageup", "scroll-up"),
     ("pagedown", "scroll-down"),
-    ("{", "prev-prompt"),
-    ("}", "next-prompt"),
+    ("z", "toggle-sidebar"),
     // Tabs
     ("t", "new-tab"),
+    ("ctrl+w", "close-tab"),
     ("r", "rename-tab"),
     ("]", "next-tab"),
     ("[", "prev-tab"),
-    ("X", "close-tab"),
+    ("1", "select-tab-1"),
+    ("2", "select-tab-2"),
+    ("3", "select-tab-3"),
+    ("4", "select-tab-4"),
+    ("5", "select-tab-5"),
+    ("6", "select-tab-6"),
+    ("7", "select-tab-7"),
+    ("8", "select-tab-8"),
+    ("9", "select-tab-9"),
     // Project
-    ("w", "worktrees"),
     ("f", "files"),
-    ("d", "changes"),
-    ("F", "find-file"),
-    ("/", "search-code"),
-    ("B", "switch-branch"),
-    ("W", "new-worktree"),
-    // Getting around
     ("e", "browse-tree"),
+    ("p", "find-file"),
+    ("/", "search-code"),
+    ("d", "changes"),
+    ("g", "worktrees"),
+    ("b", "switch-branch"),
+    // The app
     ("space", "palette"),
     ("m", "menu"),
-    ("R", "rename-workspace"),
-    ("V", "paste-image"),
-    // Seshi
     (",", "settings"),
-    ("?", "help"),
-    ("N", "history"),
+    ("f1", "help"),
+    ("l", "history"),
+    ("ctrl+v", "paste-image"),
     ("q", "detach"),
     ("ctrl+r", "reload-config"),
-    ("ctrl+space", "send-prefix"),
 ];
 
 /// Bindings active without the prefix: Alt+1–9 go to a tab. Nothing else is taken from
@@ -880,6 +889,24 @@ pub fn encode(ev: &KeyEvent, app_cursor: bool) -> Vec<u8> {
 mod tests {
     use super::*;
     use ratatui::crossterm::event::{KeyEventKind, KeyEventState};
+
+    /// Characters a US keyboard types only with Shift.
+    const SHIFTED: &str = "~!@#$%^&*()_+{}|:\"<>?";
+
+    #[test]
+    fn default_shortcuts_are_one_key_each_and_none_needs_shift() {
+        let mut keys = std::collections::HashSet::new();
+        let mut actions = std::collections::HashSet::new();
+        for (key, action) in DEFAULT_PREFIX_KEYS {
+            let spec: KeySpec = key.parse().unwrap();
+            assert!(keys.insert(spec), "{key} is bound twice");
+            assert!(actions.insert(*action), "{action} has two keys");
+            assert!(!spec.mods.contains(KeyModifiers::SHIFT), "{key} needs Shift");
+            if let KeyCode::Char(c) = spec.code {
+                assert!(!c.is_uppercase() && !SHIFTED.contains(c), "{key} needs Shift");
+            }
+        }
+    }
 
     fn ev(code: KeyCode, mods: KeyModifiers) -> KeyEvent {
         KeyEvent { code, modifiers: mods, kind: KeyEventKind::Press, state: KeyEventState::NONE }

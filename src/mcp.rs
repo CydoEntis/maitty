@@ -1,4 +1,4 @@
-//! `seshi mcp`: seshi as an MCP server (stdio), so an agent can see and steer the others —
+//! `<app> mcp`: the app as an MCP server (stdio), so an agent can see and steer the others —
 //! list them, read their screens, message them, answer their prompts (only as allowed), start
 //! new ones in their own worktrees, interrupt them. There is no merge, push or delete.
 //!
@@ -9,6 +9,7 @@
 //! the first time (see `daemon/helpers.rs`). A refused start comes back as an error to read.
 
 use crate::cli;
+use crate::brand::{APP_COMMAND};
 use crate::protocol::*;
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -35,6 +36,9 @@ fn row_of(t: &TermInfo, me: Option<TermId>) -> Value {
         "on": t.summary,
         "asleep": t.asleep,
     });
+    if let Some(at) = t.quiet_since.filter(|_| t.status == Status::Working) {
+        row["quiet_since"] = json!(at);
+    }
     if Some(t.id) == me {
         row["you"] = json!(true);
     }
@@ -66,17 +70,17 @@ fn tools() -> Value {
     let id = json!({ "type": "integer", "description": "The session id (from the session list)." });
     json!([
         {
-            "name": "seshi_list",
+            "name": concat!(env!("APP_COMMAND"), "_list"),
             "description": "List sessions in the caller's project, with their status and current task.",
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
-            "name": "seshi_read",
+            "name": concat!(env!("APP_COMMAND"), "_read"),
             "description": "Read the end of a session's screen (what the agent shows right now).",
             "inputSchema": { "type": "object", "properties": { "id": id, "lines": { "type": "integer", "description": "How many lines from the bottom (default 40)." } }, "required": ["id"] }
         },
         {
-            "name": "seshi_send",
+            "name": concat!(env!("APP_COMMAND"), "_send"),
             "description": "Type a message into a session's prompt and press Enter, like a person would. With wait, returns once it has finished that turn, with its reply.",
             "inputSchema": { "type": "object", "properties": {
                 "id": id,
@@ -86,7 +90,7 @@ fn tools() -> Value {
             }, "required": ["id", "text"] }
         },
         {
-            "name": "seshi_wait",
+            "name": concat!(env!("APP_COMMAND"), "_wait"),
             "description": "Wait until a session finishes its turn (or needs an answer), or until text matching a regex shows on its screen. Returns its reply or the matching line.",
             "inputSchema": { "type": "object", "properties": {
                 "id": id,
@@ -95,12 +99,16 @@ fn tools() -> Value {
             }, "required": ["id"] }
         },
         {
-            "name": "seshi_answer",
-            "description": "Answer a session's numbered prompt (e.g. 1 = Yes, 3 = No). Saying yes is only allowed if the user has turned that on in seshi's settings; otherwise ask the user.",
-            "inputSchema": { "type": "object", "properties": { "id": id, "choice": { "type": "integer", "minimum": 1, "maximum": 9 } }, "required": ["id", "choice"] }
+            "name": concat!(env!("APP_COMMAND"), "_answer"),
+            "description": concat!("Answer a session's numbered prompt (e.g. 1 = Yes, 3 = No). Pass the prompt id ", env!("APP_COMMAND"), "_list or ", env!("APP_COMMAND"), "_wait gave you; if the prompt on screen has changed since, nothing is sent and you get the current one. Saying yes is only allowed if the user has turned that on in ", env!("APP_COMMAND"), "'s settings; otherwise ask the user."),
+            "inputSchema": { "type": "object", "properties": {
+                "id": id,
+                "choice": { "type": "integer", "minimum": 1, "maximum": 9 },
+                "prompt": { "type": "string", "description": concat!("The prompt id from ", env!("APP_COMMAND"), "_list or ", env!("APP_COMMAND"), "_wait.") }
+            }, "required": ["id", "choice", "prompt"] }
         },
         {
-            "name": "seshi_start",
+            "name": concat!(env!("APP_COMMAND"), "_start"),
             "description": "Start a helper: a new agent on a task. In a git repo it gets its own worktree and branch, so it never edits the same files as anyone else. Returns its session id. The first time, the user is asked to allow helpers; the error says so. Call it for every helper you want, then try again once they have answered. If the user said no, do the work yourself.",
             "inputSchema": { "type": "object", "properties": {
                 "prompt": { "type": "string", "description": "The task." },
@@ -109,7 +117,7 @@ fn tools() -> Value {
             }, "required": ["prompt"] }
         },
         {
-            "name": "seshi_interrupt",
+            "name": concat!(env!("APP_COMMAND"), "_interrupt"),
             "description": "Interrupt what a session is doing (Ctrl+C).",
             "inputSchema": { "type": "object", "properties": { "id": id }, "required": ["id"] }
         }
@@ -136,6 +144,28 @@ fn prompt_on(screen: &str) -> (String, Vec<(u32, String)>) {
     (question, opts)
 }
 
+/// A short id for the prompt on a screen: its question and choices, whitespace aside. An
+/// answer names the id it saw, so a prompt that changed meanwhile is never answered.
+fn prompt_id(question: &str, opts: &[(u32, String)]) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::hash::DefaultHasher::new();
+    question.split_whitespace().collect::<Vec<_>>().hash(&mut h);
+    opts.hash(&mut h);
+    format!("{:08x}", h.finish() as u32)
+}
+
+/// The prompt on `screen` if it is the one with id `seen`; else what it reads now.
+fn prompt_seen(screen: &str, seen: &str) -> Result<(String, Vec<(u32, String)>), String> {
+    let (question, opts) = prompt_on(screen);
+    if prompt_id(&question, &opts) == seen { Ok((question, opts)) } else { Err(prompt_lines(&question, &opts)) }
+}
+
+/// The prompt's lines for a reply: the question, its choices and its id.
+fn prompt_lines(question: &str, opts: &[(u32, String)]) -> String {
+    let choices: Vec<String> = opts.iter().map(|(n, l)| format!("{n}. {l}")).collect();
+    format!("{}\n{}\nprompt {}", question.trim(), choices.join("\n"), prompt_id(question, opts))
+}
+
 impl Server {
     fn snapshot(&self) -> Result<Snapshot, String> {
         match cli::block_on(cli::request(ClientMsg::Query(Query::List))) {
@@ -155,7 +185,7 @@ impl Server {
         let snap = self.snapshot()?;
         let t = snap.terms.get(&id).cloned().ok_or_else(|| format!("no session {id}"))?;
         if !self.in_scope(&t) {
-            return Err(format!("session {id} is in another project; seshi only lets you reach sessions in {}", self.root.display()));
+            return Err(format!("session {id} is in another project; {APP_COMMAND} only lets you reach sessions in {}", self.root.display()));
         }
         Ok(t)
     }
@@ -170,16 +200,16 @@ impl Server {
 
     fn call(&self, name: &str, args: &Value) -> Value {
         let r = match name {
-            "seshi_list" => self.list(),
-            "seshi_read" => self.read(args),
-            "seshi_send" => self.send(args),
-            "seshi_wait" => self.session(args).and_then(|t| {
+            concat!(env!("APP_COMMAND"), "_list") => self.list(),
+            concat!(env!("APP_COMMAND"), "_read") => self.read(args),
+            concat!(env!("APP_COMMAND"), "_send") => self.send(args),
+            concat!(env!("APP_COMMAND"), "_wait") => self.session(args).and_then(|t| {
                 let regex = args.get("regex").and_then(Value::as_str).map(str::to_string);
                 self.wait(t.id, regex.as_deref(), args, false)
             }),
-            "seshi_answer" => self.answer(args),
-            "seshi_start" => self.start(args),
-            "seshi_interrupt" => self.session(args).and_then(|t| cli::send(Some(t.id), "\x03".into(), false).map(|_| format!("interrupted {}", t.id)).map_err(|e| format!("{e:#}"))),
+            concat!(env!("APP_COMMAND"), "_answer") => self.answer(args),
+            concat!(env!("APP_COMMAND"), "_start") => self.start(args),
+            concat!(env!("APP_COMMAND"), "_interrupt") => self.session(args).and_then(|t| cli::send(Some(t.id), "\x03".into(), false).map(|_| format!("interrupted {}", t.id)).map_err(|e| format!("{e:#}"))),
             other => Err(format!("no tool {other}")),
         };
         match r {
@@ -199,6 +229,7 @@ impl Server {
                 let (q, opts) = prompt_on(&screen);
                 row["question"] = json!(q.trim());
                 row["choices"] = json!(opts.iter().map(|(n, l)| format!("{n}. {l}")).collect::<Vec<_>>());
+                row["prompt"] = json!(prompt_id(&q, &opts));
             }
             out.push(row);
         }
@@ -220,9 +251,9 @@ impl Server {
         }
         let msg = args.get("text").and_then(Value::as_str).ok_or("give the text")?;
         // Text sent to a session that's waiting on a question would answer it; that goes
-        // through seshi_answer and the user's approval rules instead.
+        // through the app_answer and the user's approval rules instead.
         if t.status == Status::Blocked && self.cfg.mcp.approve != "always" {
-            return Err(format!("session {} is waiting on a question; use seshi_answer (the user's approval rules apply) or ask the user", t.id));
+            return Err(format!(concat!("session {} is waiting on a question; use ", env!("APP_COMMAND"), "_answer (the user's approval rules apply) or ask the user"), t.id));
         }
         cli::send(Some(t.id), msg.to_string(), true).map_err(|e| format!("{e:#}"))?;
         if args.get("wait").and_then(Value::as_bool) == Some(true) {
@@ -238,7 +269,8 @@ impl Server {
         let secs = args.get("timeout").and_then(Value::as_u64).unwrap_or(600);
         match cli::wait_on(term, regex, std::time::Duration::from_secs(secs), just_sent).map_err(|e| format!("{e:#}"))? {
             cli::Waited::Matched(l) => Ok(format!("matched: {l}")),
-            cli::Waited::TimedOut => Err(format!("still going after {secs}s")),
+            cli::Waited::TimedOut { quiet: Some(at) } => Err(format!("still working, but quiet for {} (waited {secs}s)", cli::quiet_for(at))),
+            cli::Waited::TimedOut { quiet: None } => Err(format!("still going after {secs}s")),
             cli::Waited::Turn(s, said, check) => {
                 let reply = if said.trim().is_empty() {
                     let screen = self.screen(term)?;
@@ -248,11 +280,17 @@ impl Server {
                     said
                 };
                 let state = match s {
-                    Status::Blocked => "needs an answer (see seshi_read / seshi_answer)",
+                    Status::Blocked => concat!("needs an answer (see ", env!("APP_COMMAND"), "_read / ", env!("APP_COMMAND"), "_answer)"),
                     _ => "finished",
                 };
                 let checked = check.map(|c| format!("\n{}", cli::check_line(&c))).unwrap_or_default();
-                Ok(format!("{term} {state}:\n{reply}{checked}"))
+                let prompt = if s == Status::Blocked {
+                    let (q, opts) = prompt_on(&self.screen(term)?);
+                    format!("\nprompt {}", prompt_id(&q, &opts))
+                } else {
+                    String::new()
+                };
+                Ok(format!("{term} {state}:\n{reply}{checked}{prompt}"))
             }
         }
     }
@@ -260,8 +298,8 @@ impl Server {
     fn answer(&self, args: &Value) -> Result<String, String> {
         let t = self.session(args)?;
         let choice = args.get("choice").and_then(Value::as_u64).filter(|c| (1..=9).contains(c)).ok_or("choice must be 1-9")? as u32;
-        let screen = self.screen(t.id)?;
-        let (question, opts) = prompt_on(&screen);
+        let seen = args.get("prompt").and_then(Value::as_str).ok_or(concat!("call ", env!("APP_COMMAND"), "_list first and pass its prompt id"))?;
+        let (question, opts) = prompt_seen(&self.screen(t.id)?, seen).map_err(|now| format!("the prompt on session {} has changed since you read it; nothing was sent. It now reads:\n{now}", t.id))?;
         let label = opts.iter().find(|(n, _)| *n == choice).map(|(_, l)| l.clone()).unwrap_or_default();
         let saying_no = label.to_lowercase().starts_with("no");
         if !saying_no {
@@ -270,10 +308,10 @@ impl Server {
                 "safe" => {
                     let q = question.to_lowercase();
                     if !self.cfg.mcp.safe.iter().any(|s| !s.is_empty() && q.contains(&s.to_lowercase())) {
-                        return Err(format!("\"{}\" isn't on the user's safe list, so seshi won't approve it. Ask the user.", question.trim()));
+                        return Err(format!(concat!("\"{}\" isn't on the user's safe list, so ", env!("APP_COMMAND"), " won't approve it. Ask the user."), question.trim()));
                     }
                 }
-                _ => return Err("The user hasn't let agents approve prompts (seshi Settings → Agents). Ask the user to answer it.".into()),
+                _ => return Err(concat!("The user hasn't let agents approve prompts (", env!("APP_COMMAND"), " Settings → Agents). Ask the user to answer it.").into()),
             }
         }
         cli::send(Some(t.id), choice.to_string(), false).map_err(|e| format!("{e:#}"))?;
@@ -282,6 +320,7 @@ impl Server {
 
     fn start(&self, args: &Value) -> Result<String, String> {
         let prompt = args.get("prompt").and_then(Value::as_str).filter(|p| !p.trim().is_empty()).ok_or("give the task")?;
+        crate::hidden::check(prompt)?;
         let (agent, cmd) = start_command(&self.cfg, args, prompt)?;
         let before = self.snapshot()?;
         let had: Vec<TermId> = before.terms.keys().copied().collect();
@@ -289,7 +328,7 @@ impl Server {
         let worktree = args.get("worktree").and_then(Value::as_bool).unwrap_or(true) && crate::gitfs::head(&self.root).is_some();
         let branch = slug(prompt);
         let c = if worktree {
-            let ws = before.active_ws.or_else(|| before.workspaces.first().map(|w| w.id)).ok_or("seshi has nothing open")?;
+            let ws = before.active_ws.or_else(|| before.workspaces.first().map(|w| w.id)).ok_or(concat!(env!("APP_COMMAND"), " has nothing open"))?;
             let branch = if before.terms.values().any(|t| t.branch.as_deref() == Some(branch.as_str())) { format!("{branch}-{}", had.len()) } else { branch.clone() };
             Command::NewWorktree { ws, branch, base: None, cmd: Some(cmd), split: None, from: Some(self.root.clone()) }
         } else {
@@ -308,11 +347,11 @@ impl Server {
                 return Ok(format!("started {agent} as session {new} in {place}"));
             }
         }
-        Ok(format!("asked seshi to start {agent}; it hasn't appeared yet"))
+        Ok(format!("asked {APP_COMMAND} to start {agent}; it hasn't appeared yet"))
     }
 }
 
-/// The agent `seshi_start` runs and its command line: the named `agent`, or the user's first.
+/// The agent `<app>_start` runs and its command line: the named `agent`, or the user's first.
 fn start_command(cfg: &crate::config::Config, args: &Value, prompt: &str) -> Result<(String, String), String> {
     let agent = args.get("agent").and_then(Value::as_str).map_or_else(|| cfg.default_agent(), String::from);
     let cmd = cfg.agent_command(Some(&agent), None, prompt)?;
@@ -329,7 +368,7 @@ fn slug(s: &str) -> String {
 /// Run the server on stdin / stdout until stdin closes.
 pub fn run() -> Result<()> {
     let (cfg, _) = crate::config::Config::load_or_default();
-    let server = Server { cfg, root: caller_root(), me: std::env::var("SESHI_TERM_ID").ok().and_then(|s| s.parse().ok()) };
+    let server = Server { cfg, root: caller_root(), me: std::env::var(concat!(env!("APP_ENV"), "_TERM_ID")).ok().and_then(|s| s.parse().ok()) };
     let stdin = std::io::stdin();
     let mut out = std::io::stdout();
     for line in stdin.lock().lines() {
@@ -345,8 +384,8 @@ pub fn run() -> Result<()> {
             "initialize" => Ok(json!({
                 "protocolVersion": params.get("protocolVersion").cloned().unwrap_or(json!("2025-06-18")),
                 "capabilities": { "tools": {} },
-                "serverInfo": { "name": "seshi", "version": env!("CARGO_PKG_VERSION") },
-                "instructions": "seshi runs your user's coding agents side by side. Use seshi_list/read/send/start for helpers. Don't answer prompts unless the user allows it."
+                "serverInfo": { "name": env!("APP_COMMAND"), "version": env!("CARGO_PKG_VERSION") },
+                "instructions": concat!(env!("APP_COMMAND"), " runs your user's coding agents side by side. Use ", env!("APP_COMMAND"), "_list/read/send/start for helpers. Don't answer prompts unless the user allows it; when you do, pass ", env!("APP_COMMAND"), "_answer the prompt id ", env!("APP_COMMAND"), "_list gave you.")
             })),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": tools() })),
@@ -401,6 +440,49 @@ mod tests {
         let stale = CheckInfo { name: "test".into(), state: CheckState::Stale, changed_files: vec![crate::protocol::ChangedFile { kind: 'M', path: "a".into() }], ..Default::default() };
         t.checks = vec![CheckInfo { name: "build".into(), state: CheckState::Passed, ..Default::default() }, stale];
         assert_eq!(row_of(&t, None)["check"], "stale pass: test · 1 file changed · 2 checkpoints");
+    }
+
+    const RM_PROMPT: &str = "Bash command\n  rm -rf build\nDo you want to proceed?\n❯ 1. Yes\n  2. No";
+    const LS_PROMPT: &str = "Bash command\n  ls\nDo you want to proceed?\n❯ 1. Yes\n  2. No";
+
+    #[test]
+    fn a_helper_task_with_hidden_characters_is_never_started() {
+        let server = Server { cfg: crate::config::Config::default(), root: std::env::temp_dir(), me: None };
+        let err = server.start(&json!({ "prompt": "fix the bug\u{e0049}\u{e0067}" })).unwrap_err();
+        assert!(err.starts_with("refused: hidden characters \\u{e0049} at 11"), "{err}");
+    }
+
+    #[test]
+    fn an_answer_goes_only_to_the_prompt_it_saw() {
+        let (q, opts) = prompt_on(LS_PROMPT);
+        let seen = prompt_id(&q, &opts);
+        assert!(prompt_seen(LS_PROMPT, &seen).is_ok(), "the same prompt is answered");
+        assert!(prompt_seen(&LS_PROMPT.replace("  ls", "ls    "), &seen).is_ok(), "spacing alone is the same prompt");
+        let now = prompt_seen(RM_PROMPT, &seen).expect_err("a different command is a different prompt");
+        let (rq, ropts) = prompt_on(RM_PROMPT);
+        assert!(now.contains("rm -rf build") && now.contains("1. Yes") && now.ends_with(&format!("prompt {}", prompt_id(&rq, &ropts))), "{now}");
+        assert!(prompt_seen("$ ", &seen).is_err(), "no prompt left on screen");
+    }
+
+    #[test]
+    fn app_answer_requires_the_prompt_id() {
+        let tools = tools();
+        let answer = tools.as_array().unwrap().iter().find(|t| t["name"] == concat!(env!("APP_COMMAND"), "_answer")).unwrap();
+        assert_eq!(answer["inputSchema"]["required"], json!(["id", "choice", "prompt"]));
+    }
+
+    #[test]
+    fn the_list_gives_a_quiet_working_agent_its_quiet_since() {
+        let mut t: TermInfo = serde_json::from_value(json!({
+            "id": 4, "cols": 80, "rows": 24, "title": "", "process": "node", "agent": "claude",
+            "status": "Working", "cwd": "/code", "summary": "", "name": "", "model": "", "said": "",
+            "branch": null, "linked": false, "subagents": [], "root": null, "top": null,
+            "since": 0, "asleep": false, "win32_input": false,
+        }))
+        .unwrap();
+        assert!(row_of(&t, None).get("quiet_since").is_none(), "not quiet, no key");
+        t.quiet_since = Some(1_000);
+        assert_eq!(row_of(&t, None)["quiet_since"], 1_000);
     }
 
     fn command(cfg: &crate::config::Config, args: Value) -> Result<String, String> {

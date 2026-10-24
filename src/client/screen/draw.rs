@@ -2,6 +2,7 @@
 //! the sheet, the pill at the top right and the toast.
 
 use super::*;
+use crate::brand::{APP_COMMAND};
 use super::glyphs::{self, Kind};
 
 // ---- main screen ---------------------------------------------------------------------------
@@ -111,7 +112,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     }
     draw_corner_pill(app, f.buffer_mut(), area, t);
     app.screen.crumb_x = g.panes.x + 1;
-    // A popup (`seshi popup`) floats over everything, the rest dimmed.
+    // A popup (`<app> popup`) floats over everything, the rest dimmed.
     match app.mode.clone() {
         Mode::Compose(c) if c.inbox.is_none() => draw_compose_pop(app, f.buffer_mut(), area, g.side, &c, t),
         Mode::Why { term, .. } => draw_why_pop(app, f.buffer_mut(), area, g.side, term, t),
@@ -150,14 +151,14 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
 /// The pill at the top right of row 0: the leader while it's armed, else Update when a newer
 /// release is out, else Restart once a newer one is installed but not running.
 pub(super) fn corner_pill(app: &App, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
+    // Shortcut mode is on (ADR 0016): say so, and how to leave it.
     if armed(app) {
-        let lead = app.keymap.prefix.to_string().replace("C-", "Ctrl+");
-        return Some((vec![seg(format!(" {lead} "), Style::default().fg(t.bg).bg(t.sky()).add_modifier(Modifier::BOLD))], ScreenHit::Leader));
+        return Some((vec![seg(" SHORTCUT · Esc ", Style::default().fg(t.bg).bg(t.sky()).add_modifier(Modifier::BOLD))], ScreenHit::Leader));
     }
     if let Some(version) = app.update_available.as_ref() {
         return Some((vec![seg(format!(" ↑ Update {version} "), Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD))], ScreenHit::Update));
     }
-    // Installed (here or from outside seshi), not running yet: one click finishes it.
+    // Installed (here or from outside the app), not running yet: one click finishes it.
     app.restart_needed().then(|| (vec![seg(" ↻ Restart ", Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD))], ScreenHit::Restart))
 }
 
@@ -379,6 +380,75 @@ fn corner_room(app: &App, r: Rect, screen: Rect, t: &Theme) -> u16 {
 /// of the tab, else one chip with its session's name; on the right, the session's mark (it
 /// opens why) and a ✕ that closes the pane. The terminal sits inside, 3 columns and 2 rows in.
 /// Unfocused cards fade; one that needs you keeps its amber.
+/// How far an unfocused Grid pane's colour fades toward the ground.
+const GRID_UNFOCUSED_FADE: f32 = 0.42;
+
+/// How far an unfocused Grid pane's name tag fades toward the ground.
+const GRID_TAG_FADE: f32 = 0.28;
+
+/// A pane's place among the tab's panes (0 first): top-left first, left to right and top to
+/// bottom. Grid numbers and colours panes by it.
+fn grid_index(app: &App, term: TermId) -> usize {
+    let mut order: Vec<(u16, u16, TermId)> = app.screen.leaf_rects.iter().map(|(id, r)| (r.y, r.x, *id)).collect();
+    order.sort_unstable();
+    order.iter().position(|(.., id)| *id == term).unwrap_or(0)
+}
+
+/// A Grid pane's colour, by its place; they repeat from the fifth.
+fn grid_color(app: &App, term: TermId, t: &Theme) -> Color {
+    let colors = t.grid_colors();
+    colors[grid_index(app, term) % colors.len()]
+}
+
+/// Grid's top border: the pane's number and its state on the left (the top-left pane's tabs
+/// after them), its name as a tag at the front of the right-hand segments. A narrow pane drops
+/// the tag, then the state's words, keeping the number. Returns where the number and state
+/// sit, which open why.
+fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: Rect, c: &mut Card, t: &Theme) -> Rect {
+    let look = Look::of(&app.cfg.ui);
+    let own = grid_color(app, info.id, t);
+    let bold = |s: Style| if focused { s.add_modifier(Modifier::BOLD) } else { s };
+    let number = seg(format!(" {}", grid_index(app, info.id) + 1), bold(Style::default().fg(own)));
+    let state = match (info.agent.is_some(), info.status) {
+        (true, Status::Blocked) => Some(seg(" ▲ needs you", Style::default().fg(t.blocked).add_modifier(Modifier::BOLD))),
+        (true, Status::Working) => Some(seg(format!(" {} working", glyph(app, Status::Working)), Style::default().fg(own))),
+        _ => None,
+    };
+    let name = session_name(app, model, info.id);
+    let tag_style = if focused {
+        Style::default().bg(own).fg(t.ink_on(own)).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().bg(crate::theme::mix(own, t.bg, GRID_TAG_FADE)).fg(t.strong)
+    };
+    let tag = seg(format!(" {name} "), tag_style);
+    let x = title_x(look, r);
+    let room = right_end(look, r).saturating_sub(x);
+    // The ✕ and the spaces round the right-hand segments.
+    let rest = segs_width(&c.right) + 4;
+    let (number_w, state_w, tag_w) = (number.0.width() as u16, state.as_ref().map_or(0, |s| s.0.width() as u16), tag.0.width() as u16 + 2);
+    let with_tag = number_w + state_w + 2 + tag_w + rest <= room;
+    if with_tag {
+        // A gap only when something (a load note) follows it; the ✕ brings its own.
+        let gap = (!c.right.is_empty()).then(|| seg("  ", Style::default()));
+        c.right.splice(0..0, std::iter::once(tag).chain(gap));
+    }
+    let rest = rest + if with_tag { tag_w } else { 0 };
+    let mut left = vec![number];
+    if number_w + state_w + 2 + rest <= room {
+        left.extend(state);
+    }
+    left.push(seg(" ", Style::default()));
+    let left_w = segs_width(&left);
+    let top_left = app.screen.leaf_rects.iter().min_by_key(|(_, lr)| (lr.y, lr.x)).is_some_and(|(id, _)| *id == info.id);
+    if top_left {
+        let title_end = right_end(look, r).saturating_sub(rest + 2);
+        left.push(seg(" ", Style::default()));
+        left.extend(tab_strip(app, model, x + left_w + 1, r.y, title_end, focused, t));
+    }
+    c.chips = left;
+    Rect { x, y: r.y, width: left_w, height: 1 }
+}
+
 pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, term: TermId, focused: bool, model: &[Proj], t: &Theme) {
     let Some(info) = app.snap.terms.get(&term).cloned() else { return };
     let look = Look::of(&app.cfg.ui);
@@ -387,7 +457,14 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     // Exactly one lit edge: an open sheet has the keys, so the pane gives up its lit border.
     let focused = focused && !side_focused(app) && open_sheet(app).is_none();
     let scrolled = app.parsers.get(&term).map(|p| p.screen().scrollback()).filter(|n| *n > 0);
-    let border = if !focused {
+    let grid_color = look.grid.then(|| grid_color(app, term, t));
+    let border = if let Some(own) = grid_color {
+        match (focused, armed(app)) {
+            (true, true) => t.sky(),
+            (true, false) => own,
+            (false, _) => crate::theme::mix(own, t.bg, GRID_UNFOCUSED_FADE),
+        }
+    } else if !focused {
         t.line
     } else if armed(app) {
         t.sky()
@@ -413,7 +490,10 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     if let Some((note, colour)) = note {
         c.right.push(seg(format!("{note}  "), Style::default().fg(colour)));
     }
-    if let Some((m, _)) = &mark {
+    // Grid says the state on the left of the border instead.
+    if let Some((m, _)) = &mark
+        && !look.grid
+    {
         c.right.push(m.clone());
     }
     c.close = Some(ScreenHit::CloseSplit(term));
@@ -427,29 +507,35 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     let terminal_bg = c.bg;
     if focused {
         c = c.lit(border);
+    } else if look.grid {
+        c.border = border;
     }
-    // The title runs up to two cells before the right-hand segments ("  ✕ " is the close).
-    let right_w = segs_width(&c.right) + if c.right.is_empty() { 2 } else { 4 };
-    let title_end = right_end(look, r).saturating_sub(right_w + 2);
     let top_left = app.screen.leaf_rects.iter().min_by_key(|(_, lr)| (lr.y, lr.x)).is_some_and(|(id, _)| *id == term);
-    c.chips = if top_left {
-        tab_strip(app, model, title_x(look, r), r.y, title_end, focused, t)
+    let why_at = if look.grid {
+        Some(grid_title(app, model, &info, focused, r, &mut c, t))
     } else {
-        let caps = if look.round_tabs { 2 } else { 0 };
-        let name = truncate(&session_name(app, model, term), title_end.saturating_sub(title_x(look, r) + 2 + caps) as usize);
-        let chip = vec![name_chip(&name, focused, t)];
-        if look.round_tabs { round_ends(chip, title_ground(look, t)) } else { chip }
+        // The title runs up to two cells before the right-hand segments ("  ✕ " is the close).
+        let right_w = segs_width(&c.right) + if c.right.is_empty() { 2 } else { 4 };
+        let title_end = right_end(look, r).saturating_sub(right_w + 2);
+        c.chips = if top_left {
+            tab_strip(app, model, title_x(look, r), r.y, title_end, focused, t)
+        } else {
+            let caps = if look.round_tabs { 2 } else { 0 };
+            let name = truncate(&session_name(app, model, term), title_end.saturating_sub(title_x(look, r) + 2 + caps) as usize);
+            let chip = vec![name_chip(&name, focused, t)];
+            if look.round_tabs { round_ends(chip, title_ground(look, t)) } else { chip }
+        };
+        mark.map(|(_, w)| Rect { x: right_end(look, r).saturating_sub(room + 4 + w), y: r.y, width: w, height: 1 })
     };
     let buf = f.buffer_mut();
     let inside = card(app, buf, r, &c, t);
-    if let Some((_, w)) = mark {
-        let mx = right_end(look, r).saturating_sub(room + 4 + w);
-        hit(app, Rect { x: mx, y: r.y, width: w, height: 1 }, ScreenHit::Why(term));
+    if let Some(at) = why_at {
+        hit(app, at, ScreenHit::Why(term));
     }
     app.pane_frames.push((term, r));
 
     // The terminal: 3 columns in, a row below the title, down to the last row inside.
-    // Answer buttons only for a question asked through seshi (ask-human), which has nowhere
+    // Answer buttons only for a question asked through the app (ask-human), which has nowhere
     // else to be answered: an agent's own question is answered in its own prompt.
     let ask = st == Status::Blocked && info.agent.is_some() && app.pending_question(term).is_some();
     let below = 1 + if ask { 2 } else { 0 };
@@ -502,16 +588,21 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         hit(app, track, ScreenHit::ScrollBar(term));
     }
 
-    // Scrolled up: say so, and how to get back.
-    if let Some(n) = scrolled {
-        let note = pill(
-            look,
-            vec![seg(format!(" ↑ {n} lines up "), Style::default().fg(t.acc_ink).add_modifier(Modifier::BOLD))],
-            t.accent,
-            c.bg,
-        );
-        let w = segs_width(&note);
-        put(f.buffer_mut(), inner.right().saturating_sub(w), inner.y, &note, inner.right());
+    // Scrolled up (in the app's history, or an agent that scrolls itself paged up by the wheel):
+    // a button back to the newest output, where a chat's is, at the bottom right.
+    let label = match (scrolled, app.paged_up.get(&term)) {
+        (Some(n), _) => Some(format!(" ↓ Back to bottom · {n} lines up ")),
+        (None, Some(_)) => Some(" ↓ Back to bottom ".to_string()),
+        (None, None) => None,
+    };
+    if let Some(label) = label
+        && inner.height > 0
+    {
+        let note = pill(look, vec![seg(label, Style::default().fg(t.acc_ink).add_modifier(Modifier::BOLD))], t.accent, c.bg);
+        let w = segs_width(&note).min(inner.width);
+        let (x, y) = (inner.right().saturating_sub(w), inner.bottom() - 1);
+        put(f.buffer_mut(), x, y, &note, inner.right());
+        hit(app, Rect { x, y, width: w, height: 1 }, ScreenHit::ToBottom(term));
     }
 
     // Not the one you're in: its inside fades (the border and its amber tag stay as they are).
@@ -519,7 +610,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         dim_inside(f.buffer_mut(), inside, look.dim, t);
     }
 
-    // Answer bar: the choices of the question asked through seshi, a full-width pill that
+    // Answer bar: the choices of the question asked through the app, a full-width pill that
     // keeps its amber even when the card is faded.
     if ask && r.height >= 8 {
         let ay = r.bottom() - 3;
@@ -591,7 +682,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     let fade = if on && left < crate::client::motion::TOAST_FADE { 1.0 - left.as_secs_f32() / crate::client::motion::TOAST_FADE.as_secs_f32() } else { 0.0 };
     // The update's own sentence is long; with the button the toast keeps to the news.
     let title = match (restart, &app.installed_version) {
-        (true, Some(Ok(v))) => format!("seshi {v} installed"),
+        (true, Some(Ok(v))) => format!("{APP_COMMAND} {v} installed"),
         _ => title,
     };
     let card = app.notice_card.clone();

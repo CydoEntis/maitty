@@ -1,4 +1,4 @@
-//! Keys inside the full-pane views and popups that aren't seshi's own.
+//! Keys inside the full-pane views and popups that aren't the app's own.
 
 use super::*;
 

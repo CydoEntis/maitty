@@ -1,5 +1,5 @@
-//! Replacing a running server and window with the installed seshi, in one step: what the
-//! server publishes about its sessions (so a newer seshi can decide without asking an
+//! Replacing a running server and window with the installed the app, in one step: what the
+//! server publishes about its sessions (so a newer the app can decide without asking an
 //! older server anything), the policy for when to ask, and re-opening the window.
 
 use crate::ipc;
@@ -62,7 +62,7 @@ fn read_from(data: &std::path::Path, pid_file: &std::path::Path) -> Option<Activ
     (a.pid == pid).then_some(a)
 }
 
-/// What to do about a server of another protocol that this seshi can't talk to.
+/// What to do about a server of another protocol that this the app can't talk to.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Plan {
     /// Nothing is mid-turn: replace the server without asking.
@@ -75,7 +75,7 @@ pub enum Plan {
 /// `saved_agents`: the agents in the saved session, the best guess for a server that
 /// published nothing (one from before this existed).
 pub fn plan_for_mismatch(daemon_protocol: u32, published: Option<&Activity>, saved_agents: usize) -> Plan {
-    // A server newer than this seshi is never replaced by it unasked: that would be a downgrade.
+    // A server newer than this the app is never replaced by it unasked: that would be a downgrade.
     if daemon_protocol > crate::protocol::PROTOCOL_VERSION {
         return Plan::Ask { resume: published.map_or(saved_agents, |a| a.sessions), busy: published.map(Activity::busy) };
     }
@@ -87,7 +87,7 @@ pub fn plan_for_mismatch(daemon_protocol: u32, published: Option<&Activity>, sav
     }
 }
 
-/// Whether a server this seshi can talk to should still be replaced on launch: it is an
+/// Whether a server this the app can talk to should still be replaced on launch: it is an
 /// older release than this one and nothing is mid-turn.
 pub fn replace_older_idle_server(published: Option<&Activity>, ours: &str) -> bool {
     published.is_some_and(|a| a.busy() == 0 && crate::update::newer_than(ours, &a.version))
@@ -103,15 +103,15 @@ pub fn wait_until_server_gone() -> Result<()> {
     let start = std::time::Instant::now();
     while crate::cli::server_running() {
         if start.elapsed() > SERVER_GONE_WITHIN {
-            bail!("the old server is still running; try `seshi kill-server`");
+            bail!(concat!("the old server is still running; try `", env!("APP_COMMAND"), " kill-server`"));
         }
         std::thread::sleep(POLL);
     }
     Ok(())
 }
 
-/// Open the installed seshi in this terminal in place of this one, with the same arguments
-/// and environment (so `SESHI_SOCKET` keeps meaning the same server). Returns only when
+/// Open the installed the app in this terminal in place of this one, with the same arguments
+/// and environment (so `<APP>_SOCKET` keeps meaning the same server). Returns only when
 /// that failed.
 pub fn relaunch() -> Result<()> {
     let exe = crate::update::installed_executable()?;
@@ -131,7 +131,7 @@ pub fn relaunch() -> Result<()> {
     }
 }
 
-/// Set when the window should be replaced by the installed seshi as it closes.
+/// Set when the window should be replaced by the installed the app as it closes.
 static RELAUNCH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub fn request_relaunch() {
@@ -181,13 +181,13 @@ mod tests {
         assert!(replace_older_idle_server(Some(&activity(0, 0)), "0.41.0"));
         assert!(!replace_older_idle_server(Some(&activity(1, 0)), "0.41.0"), "never under a working agent");
         assert!(!replace_older_idle_server(Some(&activity(0, 0)), "0.40.0"), "the same version stays");
-        assert!(!replace_older_idle_server(Some(&activity(0, 0)), "0.39.0"), "a newer server is never replaced by an older seshi");
+        assert!(!replace_older_idle_server(Some(&activity(0, 0)), "0.39.0"), concat!("a newer server is never replaced by an older ", env!("APP_COMMAND")));
         assert!(!replace_older_idle_server(None, "0.41.0"));
     }
 
     #[test]
     fn the_published_activity_belongs_to_the_pid_file_s_process() {
-        let dir = std::env::temp_dir().join(format!("seshi-activity-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-activity-{}"), std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let (data, pid) = (dir.join("a.activity"), dir.join("a.pid"));
         let a = activity(0, 0);

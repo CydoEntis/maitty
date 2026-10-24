@@ -4,11 +4,12 @@
 //! worktree goes. The real index is never touched.
 
 use crate::proc;
+use crate::brand::{APP_COMMAND};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Where a checkout's snapshots are kept: refs of that worktree alone.
-const REFS: &str = "refs/worktree/seshi/snapshots";
+const REFS: &str = concat!("refs/worktree/", env!("APP_COMMAND"), "/snapshots");
 /// How many a checkout keeps; older ones are dropped as new ones come.
 pub const KEEP: usize = 30;
 /// Said of the snapshot a restore takes first, so the restore can itself be taken back.
@@ -43,7 +44,7 @@ fn tree_of_now(top: &Path) -> Result<String, String> {
     // Numbered too: a check's fingerprint and a snapshot may be taken of one checkout at once.
     static TAKEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let n = TAKEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let index = real.with_file_name(format!("seshi-snapshot-index-{}-{n}", std::process::id()));
+    let index = real.with_file_name(format!("{APP_COMMAND}-snapshot-index-{}-{n}", std::process::id()));
     // Started from the real index, git only reads the files that changed since.
     if real.exists() {
         std::fs::copy(&real, &index).map_err(|e| format!("couldn't copy the index: {e}"))?;
@@ -92,8 +93,8 @@ pub fn take(dir: &Path, why: &str) -> Result<Option<Snapshot>, String> {
     {
         return Ok(Some(last.clone()));
     }
-    // Named as seshi's: a machine with no git identity set can still take one.
-    let mut args = vec!["-c", "user.name=seshi", "-c", "user.email=seshi@localhost", "commit-tree", &tree, "-m", why];
+    // Named as the app's: a machine with no git identity set can still take one.
+    let mut args = vec!["-c", concat!("user.name=", env!("APP_COMMAND")), "-c", concat!("user.email=", env!("APP_COMMAND"), "@localhost"), "commit-tree", &tree, "-m", why];
     let head = git(&top, &["rev-parse", "--verify", "--quiet", "HEAD"]).ok();
     if let Some(head) = &head {
         args.extend(["-p", head]);
@@ -144,7 +145,7 @@ mod tests {
     struct Scratch(PathBuf);
     impl Scratch {
         fn new(tag: &str) -> Scratch {
-            let dir = std::env::temp_dir().join(format!("seshi-snapshot-{tag}-{}", std::process::id()));
+            let dir = std::env::temp_dir().join(format!("{APP_COMMAND}-snapshot-{tag}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
             Scratch(dir)

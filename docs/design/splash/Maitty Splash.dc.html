@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>@font-face{font-family:'JBM';src:url(https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono@2.304/fonts/webfonts/JetBrainsMono-Regular.woff2) format('woff2');font-weight:400}@font-face{font-family:'JBM';src:url(https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono@2.304/fonts/webfonts/JetBrainsMono-Bold.woff2) format('woff2');font-weight:700}@font-face{font-family:'JBM';src:url(https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono@2.304/fonts/webfonts/JetBrainsMono-Italic.woff2) format('woff2');font-weight:400;font-style:italic}
+html,body{margin:0;background:#050b14;color:#c9d6e3;font-family:'JBM','JetBrains Mono',monospace}a{color:#3dd6c6}a:hover{color:#eef5fb}:focus-visible{outline:2px solid #3dd6c6;outline-offset:3px}</style>
+</helmet>
+<div style="display:flex;flex-direction:column;gap:12px;padding:18px 22px 40px">
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span style="background:#3dd6c6;color:#08111d;font-weight:700;font-size:13px;padding:4px 10px">maitty · splash</span>
+    <sc-for list="{{ sizes }}" as="z" hint-placeholder-count="3"><button onClick="{{ z.pick }}" style="font:700 12px 'JBM',monospace;border:1px solid #1d2d42;padding:5px 10px;cursor:pointer;background:{{ z.bg }};color:{{ z.fg }}">{{ z.name }}</button></sc-for>
+    <span style="font-size:12px;color:#6f8399;margin-left:8px">Title</span>
+    <sc-for list="{{ titles }}" as="z" hint-placeholder-count="3"><button onClick="{{ z.pick }}" style="font:700 12px 'JBM',monospace;border:1px solid #1d2d42;padding:5px 10px;cursor:pointer;background:{{ z.bg }};color:{{ z.fg }}">{{ z.name }}</button></sc-for>
+    <span style="font-size:12px;color:#6f8399;margin-left:8px">Letters</span>
+    <sc-for list="{{ letters }}" as="z" hint-placeholder-count="4"><button onClick="{{ z.pick }}" style="font:700 12px 'JBM',monospace;border:1px solid #1d2d42;padding:5px 10px;cursor:pointer;background:{{ z.bg }};color:{{ z.fg }}">{{ z.name }}</button></sc-for>
+    <button onClick="{{ replay }}" style="font:700 12px 'JBM',monospace;border:1px solid #1d2d42;padding:5px 10px;cursor:pointer;background:transparent;color:#eef5fb">↻ Replay</button>
+    <button onClick="{{ toggleMotion }}" style="font:700 12px 'JBM',monospace;border:1px solid #1d2d42;padding:5px 10px;cursor:pointer;background:transparent;color:#c9d6e3">{{ motionLabel }}</button>
+  </div>
+  <span style="font-size:13px;color:#8fa3b8;line-height:1.6;max-width:900px;text-wrap:pretty">MAITTY in block letters. "AI on deck" lights the A and I in sea-glass teal, because the name already has AI in it. "Tall" uses taller, slimmer letters with the same AI highlight. "Classic" is the first version. Letters changes how they're drawn: Block (solid), Shadow (a deep-water drop shadow), Rope (one continuous line, like rigging), Tide (water rises and falls inside the letters). The letters fade up from deep water one by one, a quiet swell rolls under the name, then "All agents on deck." surfaces. Nothing moves or blocks: the menu is there and usable from the first frame. Click the grid, then ↑↓ or r / n / o.</span>
+  <div ref="{{ wrapRef }}" style="width:100%;overflow:hidden">
+    <div style="width:{{ sw }}px;height:{{ sh }}px;position:relative">
+      <div tabIndex="0" aria-label="Maitty splash" onClick="{{ onClick }}" style="position:absolute;left:0;top:0;transform:scale({{ scale }});transform-origin:0 0;display:inline-block;font-family:'JBM','JetBrains Mono',monospace;font-size:12px;line-height:16px;font-variant-ligatures:none;border:1px solid #1d2d42;user-select:none;cursor:default;background:#08111d"><sc-for list="{{ rows }}" as="row" hint-placeholder-count="34"><div style="display:flex;height:16px;white-space:pre"><sc-for list="{{ row }}" as="r"><span style="color:{{ r.fg }};background:{{ r.bg }};font-weight:{{ r.fw }};font-style:{{ r.fs }};text-decoration:{{ r.td }};width:{{ r.wd }};flex:none;overflow:{{ r.ov }};font-size:{{ r.fz }};line-height:{{ r.lh }};text-align:{{ r.ta }};display:flex;justify-content:{{ r.ta }}">{{ r.t }}</span></sc-for></div></sc-for></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { s: null, ww: 0 };
+  wrapRef = React.createRef();
+  componentDidMount() {
+    import(new URL('./splash.js', document.baseURI).href).then(m => { this.lib = m; this.setState({ s: m.initial(120, 34) }); this.tick = setInterval(() => this.setState(st => st.s ? { s: { ...st.s, f: st.s.f + 1 } } : null), 50); }).catch(e => console.error('splash.js failed', e));
+    this.onKey = e => { const el = document.activeElement; if (!this.lib || !this.state.s || !el || el.getAttribute('tabindex') !== '0' || e.metaKey || e.ctrlKey || e.altKey) return; const n = this.lib.act(this.state.s, { t: 'key', key: e.key }); if (n) { e.preventDefault(); this.setState({ s: n }); } };
+    window.addEventListener('keydown', this.onKey);
+    if (window.ResizeObserver) this.ro = new ResizeObserver(() => this.measure());
+  }
+  componentDidUpdate() { this.measure(); }
+  measure() { const el = this.wrapRef.current; if (!el) return; if (this.ro && el !== this._obs) { this.ro.observe(el); this._obs = el; } const w = el.clientWidth; if (w > 50 && Math.abs(w - this.state.ww) > 1) this.setState({ ww: w }); }
+  componentWillUnmount() { clearInterval(this.tick); window.removeEventListener('keydown', this.onKey); if (this.ro) this.ro.disconnect(); }
+  renderVals() {
+    const s = this.state.s, lib = this.lib;
+    if (!s || !lib) return { wrapRef: this.wrapRef, rows: [], titles: [], letters: [], sizes: [], sw: 0, sh: 0, scale: 1, onClick: null, replay: null, toggleMotion: null, motionLabel: '' };
+    let out; try { out = lib.render(s); } catch (err) { console.error(err); out = { rows: [], regions: [], W: s.W, H: s.H }; }
+    const gw = out.W * 7.22 + 2, sc = this.state.ww > 50 ? Math.min(1, (this.state.ww - 4) / gw) : 1;
+    return { wrapRef: this.wrapRef, rows: out.rows, sw: Math.ceil(gw * sc), sh: Math.ceil((out.H * 16 + 2) * sc), scale: sc.toFixed(4),
+      sizes: [[120, 34], [160, 45], [80, 24]].map(([W, H]) => ({ name: W + '×' + H, bg: s.W === W ? '#3dd6c6' : '#0f1b2b', fg: s.W === W ? '#08111d' : '#c9d6e3', pick: () => this.setState({ s: { ...lib.initial(W, H), motion: s.motion, title: s.title, letters: s.letters } }) })),
+      titles: Object.entries(lib.TITLES).map(([k, n]) => ({ name: n, bg: s.title === k ? '#3dd6c6' : '#0f1b2b', fg: s.title === k ? '#08111d' : '#c9d6e3', pick: () => this.setState({ s: { ...s, title: k, t0: s.f } }) })),
+      letters: Object.entries(lib.LETTERS).map(([k, n]) => ({ name: n, bg: s.letters === k ? '#3dd6c6' : '#0f1b2b', fg: s.letters === k ? '#08111d' : '#c9d6e3', pick: () => this.setState({ s: { ...s, letters: k, t0: s.f } }) })),
+      replay: () => this.setState({ s: { ...s, t0: s.f, sel: 0 } }), motionLabel: s.motion ? 'Motion on' : 'Motion off', toggleMotion: () => this.setState({ s: { ...s, motion: !s.motion } }),
+      onClick: e => { e.currentTarget.focus(); const r = e.currentTarget.getBoundingClientRect(), x = Math.floor((e.clientX - r.left) / (r.width / out.W)), y = Math.floor((e.clientY - r.top) / (r.height / out.H)); for (let k = out.regions.length - 1; k >= 0; k--) { const q = out.regions[k]; if (x >= q.x && x < q.x + q.w && y >= q.y && y < q.y + q.h) { const n = lib.act(this.state.s, q.act); if (n) this.setState({ s: n }); return; } } } };
+  }
+}
+</script>
+</body>
+</html>

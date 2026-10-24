@@ -14,7 +14,7 @@ pub struct Saved {
     pub workspaces: Vec<SavedWs>,
     /// Index into `workspaces`.
     pub active: usize,
-    /// Worktrees seshi created (the only ones it may remove by itself).
+    /// Worktrees the app created (the only ones it may remove by itself).
     #[serde(default)]
     pub made_worktrees: Vec<PathBuf>,
 }
@@ -87,7 +87,7 @@ pub struct SavedPane {
 }
 
 pub fn path() -> PathBuf {
-    let label = std::env::var("SESHI_SOCKET").unwrap_or_else(|_| "default".into());
+    let label = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
     crate::config::data_dir().join(format!("session-{label}.json"))
 }
 
@@ -125,18 +125,54 @@ pub fn forget() {
     let _ = std::fs::remove_dir_all(check_output_dir());
 }
 
+/// Saved output can hold secrets that were on screen: its folder is yours alone on unix
+/// (on Windows it sits in your own profile).
+fn private_dir(dir: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
+}
+
+/// A new file only you can read on unix, for saved output. Set again after opening, so a
+/// leftover file from an older the app is fixed too; the rename that follows carries it over.
+fn create_private(path: &Path) -> std::io::Result<std::fs::File> {
+    let mut open = std::fs::OpenOptions::new();
+    open.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut open, 0o600);
+    let f = open.open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        f.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(f)
+}
+
+/// Delete every pane's saved output (none saved is fine).
+pub fn forget_outputs() -> std::io::Result<()> {
+    match std::fs::remove_dir_all(output_dir()) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        r => r,
+    }
+}
+
 /// Where each pane's recent output is kept, so its history is still there after the server
 /// restarts (an update, a reboot): one file per pane, named by its id.
 pub fn output_dir() -> PathBuf {
     if cfg!(test) {
-        return std::env::temp_dir().join(format!("seshi-test-output-{}", std::process::id()));
+        return std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-test-output-{}"), std::process::id()));
     }
-    let label = std::env::var("SESHI_SOCKET").unwrap_or_else(|_| "default".into());
+    let label = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
     crate::config::data_dir().join(format!("output-{label}"))
 }
 
-fn output_file(term: TermId) -> PathBuf {
-    output_dir().join(format!("{term}.bin"))
+fn output_file(dir: &Path, term: TermId) -> PathBuf {
+    dir.join(format!("{term}.bin"))
 }
 
 /// Which of a pane's two kept check results an output tail belongs to.
@@ -159,9 +195,9 @@ impl CheckSlot {
 /// file in it as a pane's output.
 pub fn check_output_dir() -> PathBuf {
     if cfg!(test) {
-        return std::env::temp_dir().join(format!("seshi-test-check-output-{}", std::process::id()));
+        return std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-test-check-output-{}"), std::process::id()));
     }
-    let label = std::env::var("SESHI_SOCKET").unwrap_or_else(|_| "default".into());
+    let label = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
     crate::config::data_dir().join(format!("check-output-{label}"))
 }
 
@@ -226,7 +262,7 @@ pub fn save_check_outputs(dir: &Path, ticket: u64, outputs: &[CheckTail], live: 
     let written = guard.get_or_insert_with(Default::default).entry(dir.to_path_buf()).or_default();
     let mut failed: Vec<TermId> = Vec::new();
     if !outputs.is_empty()
-        && let Err(e) = std::fs::create_dir_all(dir)
+        && let Err(e) = private_dir(dir)
     {
         tracing::warn!("saving checks' output: {e}");
         return outputs.iter().map(|o| o.term).collect();
@@ -238,7 +274,12 @@ pub fn save_check_outputs(dir: &Path, ticket: u64, outputs: &[CheckTail], live: 
         }
         let path = check_output_file(dir, *term, name, *slot);
         let tmp = path.with_extension("tmp");
-        match std::fs::write(&tmp, text).and_then(|()| std::fs::rename(&tmp, &path)) {
+        let write = || -> std::io::Result<()> {
+            use std::io::Write;
+            create_private(&tmp)?.write_all(text.as_bytes())?;
+            std::fs::rename(&tmp, &path)
+        };
+        match write() {
             Ok(()) => {
                 written.tails.insert(key, ticket);
             }
@@ -292,7 +333,7 @@ struct Written {
     cleaned: u64,
 }
 
-static WRITTEN: std::sync::Mutex<Option<Written>> = std::sync::Mutex::new(None);
+static WRITTEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, Written>>> = std::sync::Mutex::new(None);
 static TICKETS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// A number for a save, taken when its output is gathered: a higher one is a newer picture.
@@ -304,22 +345,25 @@ pub fn save_ticket() -> u64 {
 /// one at a time; a pane already written by a newer `ticket` is left alone. One pane failing
 /// doesn't stop the rest; the first error is returned after all were tried.
 pub fn save_outputs(ticket: u64, outputs: &[(TermId, Vec<u8>)], live: &[TermId]) -> Result<()> {
+    save_outputs_in(&output_dir(), ticket, outputs, live)
+}
+
+fn save_outputs_in(dir: &Path, ticket: u64, outputs: &[(TermId, Vec<u8>)], live: &[TermId]) -> Result<()> {
     use std::io::Write;
     let mut guard = WRITTEN.lock().unwrap_or_else(|e| e.into_inner());
-    let written = guard.get_or_insert_with(Written::default);
-    let dir = output_dir();
-    std::fs::create_dir_all(&dir)?;
+    let written = guard.get_or_insert_with(Default::default).entry(dir.to_path_buf()).or_default();
+    private_dir(dir)?;
     let mut first_err: Option<anyhow::Error> = None;
     for (term, bytes) in outputs {
         if written.panes.get(term).is_some_and(|&t| t > ticket) {
             continue;
         }
-        let path = output_file(*term);
+        let path = output_file(dir, *term);
         let tmp = path.with_extension("tmp");
         // Synced before the rename, so a power cut leaves the old file or the new one, never
         // an empty one.
         let result = (|| -> std::io::Result<()> {
-            let mut f = std::fs::File::create(&tmp)?;
+            let mut f = create_private(&tmp)?;
             f.write_all(bytes)?;
             f.sync_all()?;
             std::fs::rename(&tmp, &path)
@@ -336,7 +380,7 @@ pub fn save_outputs(ticket: u64, outputs: &[(TermId, Vec<u8>)], live: &[TermId])
     if ticket > written.cleaned {
         written.cleaned = ticket;
         written.panes.retain(|id, _| live.contains(id));
-        for e in std::fs::read_dir(&dir)?.flatten() {
+        for e in std::fs::read_dir(dir)?.flatten() {
             let id = e.path().file_stem().and_then(|s| s.to_str()).and_then(|s| s.parse::<TermId>().ok());
             if id.is_none_or(|id| !live.contains(&id)) {
                 let _ = std::fs::remove_file(e.path());
@@ -348,7 +392,11 @@ pub fn save_outputs(ticket: u64, outputs: &[(TermId, Vec<u8>)], live: &[TermId])
 
 /// A pane's kept output, taken (its file goes: the pane it's restored into saves its own).
 pub fn take_output(term: TermId) -> Option<Vec<u8>> {
-    let path = output_file(term);
+    take_output_in(&output_dir(), term)
+}
+
+fn take_output_in(dir: &Path, term: TermId) -> Option<Vec<u8>> {
+    let path = output_file(dir, term);
     let bytes = std::fs::read(&path).ok()?;
     let _ = std::fs::remove_file(&path);
     Some(bytes)
@@ -376,7 +424,7 @@ impl Drop for ScratchDir {
 pub(super) fn scratch_dir() -> ScratchDir {
     static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    ScratchDir(std::env::temp_dir().join(format!("seshi-test-scratch-{}-{n}", std::process::id())))
+    ScratchDir(std::env::temp_dir().join(format!("{}-test-scratch-{}-{n}", crate::brand::APP_COMMAND, std::process::id())))
 }
 
 #[cfg(test)]
@@ -388,6 +436,24 @@ mod tests {
         CheckTail { term, name: name.into(), slot, text: text.into() }
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn saved_output_is_readable_only_by_you() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        let dir = scratch_dir();
+        let old = check_output_file(dir.path(), 7, "test", CheckSlot::Latest);
+        std::fs::create_dir_all(dir.path()).unwrap();
+        std::fs::write(&old, concat!("from an older ", env!("APP_COMMAND"))).unwrap();
+        std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(save_check_outputs(dir.path(), save_ticket(), &[tail(7, "test", CheckSlot::Latest, "tail")], &[7]).is_empty());
+        assert_eq!((mode(dir.path()), mode(&old)), (0o700, 0o600), "a check tail, and the older file it replaced");
+        let pane = dir.path().join("pane.bin");
+        let mut f = create_private(&pane).unwrap();
+        std::io::Write::write_all(&mut f, b"secret").unwrap();
+        assert_eq!(mode(&pane), 0o600, "a pane's output");
+    }
+
     fn files_in(dir: &Path) -> Vec<String> {
         let mut files: Vec<String> = std::fs::read_dir(dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
         files.sort();
@@ -396,12 +462,13 @@ mod tests {
 
     #[test]
     fn a_slow_older_save_cannot_overwrite_a_newer_one() {
+        let dir = scratch_dir();
         let term: crate::protocol::TermId = 9_001;
         let old = super::save_ticket();
         let new = super::save_ticket();
-        super::save_outputs(new, &[(term, b"newer".to_vec())], &[term]).unwrap();
-        super::save_outputs(old, &[(term, b"older".to_vec())], &[term]).unwrap();
-        assert_eq!(super::take_output(term).as_deref(), Some(b"newer".as_slice()));
+        super::save_outputs_in(dir.path(), new, &[(term, b"newer".to_vec())], &[term]).unwrap();
+        super::save_outputs_in(dir.path(), old, &[(term, b"older".to_vec())], &[term]).unwrap();
+        assert_eq!(super::take_output_in(dir.path(), term).as_deref(), Some(b"newer".as_slice()));
     }
 
     #[test]

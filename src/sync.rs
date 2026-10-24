@@ -1,14 +1,15 @@
-//! Keep your seshi setup the same on every machine through a private GitHub repo. The
+//! Keep your the app setup the same on every machine through a private GitHub repo. The
 //! config folder itself is the git repo; only config.toml is shared.
 //! Anything machine-specific goes in config.local.toml, which is never synced and wins
 //! over config.toml.
 
 use anyhow::{Context, Result, bail};
+use crate::brand::{APP_COMMAND};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-const IGNORE: &str = "# seshi sync: only these are shared between machines\n*\n!.gitignore\n!config.toml\n";
+const IGNORE: &str = concat!("# ", env!("APP_COMMAND"), " sync: only these are shared between machines\n*\n!.gitignore\n!config.toml\n");
 
 pub fn dir() -> PathBuf {
     crate::config::config_path().parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."))
@@ -59,12 +60,12 @@ pub fn setup(name: &str) -> Result<String> {
         }
         Err(_) => {
             if !d.join("config.toml").exists() {
-                std::fs::write(d.join("config.toml"), "# seshi config (shared between your machines)\n")?;
+                std::fs::write(d.join("config.toml"), concat!("# ", env!("APP_COMMAND"), " config (shared between your machines)\n"))?;
             }
             git(&["add", "-A"]).map_err(anyhow::Error::msg)?;
-            let _ = git(&["commit", "-q", "-m", &format!("seshi setup from {}", host())]);
+            let _ = git(&["commit", "-q", "-m", &format!(concat!(env!("APP_COMMAND"), " setup from {}"), host())]);
             run("gh", &["repo", "create", name, "--private", "--source", ".", "--remote", "origin", "--push"]).map_err(anyhow::Error::msg)?;
-            Ok(format!("created the private repo {name}; run `seshi sync setup {name}` on your other machines"))
+            Ok(format!("created the private repo {name}; run `{APP_COMMAND} sync setup {name}` on your other machines"))
         }
     }
 }
@@ -80,7 +81,7 @@ pub fn pull() -> Result<bool, String> {
 pub fn push() -> Result<(), String> {
     git(&["add", "-A"])?;
     if git(&["diff", "--cached", "--quiet"]).is_err() {
-        git(&["commit", "-q", "-m", &format!("seshi: from {}", host())])?;
+        git(&["commit", "-q", "-m", &format!(concat!(env!("APP_COMMAND"), ": from {}"), host())])?;
     }
     if git(&["push", "-q", "origin", "main"]).is_err() {
         // Another machine pushed first: take theirs, then ours on top.
@@ -104,11 +105,11 @@ pub fn push_soon() {
     });
 }
 
-/// `seshi sync [setup <name> | off]`
+/// `<app> sync [setup <name> | off]`
 pub fn command(action: Option<&str>, name: Option<&str>) -> Result<()> {
     match action {
         Some("setup") => {
-            println!("{}", setup(name.unwrap_or("seshi-config"))?);
+            println!("{}", setup(name.unwrap_or(concat!(env!("APP_COMMAND"), "-config")))?);
         }
         Some("off") => {
             let g = dir().join(".git");
@@ -117,10 +118,10 @@ pub fn command(action: Option<&str>, name: Option<&str>) -> Result<()> {
             }
             println!("sync is off on this machine (the GitHub repo is untouched)");
         }
-        Some(other) => bail!("unknown `{other}`: use `seshi sync`, `seshi sync setup [repo]` or `seshi sync off`"),
+        Some(other) => bail!("unknown `{other}`: use `{APP_COMMAND} sync`, `{APP_COMMAND} sync setup [repo]` or `{APP_COMMAND} sync off`"),
         None => {
             if !enabled() {
-                println!("sync is off. `seshi sync setup` shares your config through a private GitHub repo.");
+                println!(concat!("sync is off. `", env!("APP_COMMAND"), " sync setup` shares your config through a private GitHub repo."));
                 return Ok(());
             }
             let changed = pull().map_err(anyhow::Error::msg)?;

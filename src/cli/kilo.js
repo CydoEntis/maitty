@@ -1,13 +1,13 @@
-// Written by `seshi integrate kilo`: events from Herdr 143bf5fd4781d164260c63fe28e7dc08054ad32f.
+// Written by `__APP_COMMAND__ integrate kilo`: events from Herdr 143bf5fd4781d164260c63fe28e7dc08054ad32f.
 // SPDX-License-Identifier: Apache-2.0; see vendor/herdr-detection/NOTICE.md.
 // Local changes: authenticated CLI transport, serialized reports and pending-request tracking.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const execute = promisify(execFile);
-const executable = __SESHI_EXE__;
+const executable = __APP_EXE__;
 
-export const Seshi = async ({ client } = {}) => {
-  if (!process.env.SESHI_TERM_ID) return {};
+export const AppStatus = async ({ client } = {}) => {
+  if (!process.env.__APP_ENV___TERM_ID) return {};
   const pending = new Set();
   let queue = Promise.resolve(), warned = false, active, state = "idle";
   const send = (id, next, event) => {
@@ -21,9 +21,9 @@ export const Seshi = async ({ client } = {}) => {
       } catch {
         if (!warned) {
           try {
-            await client?.app?.log?.({ body: { service: "seshi", level: "warn", message: "Seshi status report failed; check the daemon version." } });
+            await client?.app?.log?.({ body: { service: "__APP_COMMAND__", level: "warn", message: "__APP_NAME__ status report failed; check the daemon version." } });
           } catch {
-            console.warn("Seshi status report and Kilo warning log failed; later events will retry.");
+            console.warn("__APP_NAME__ status report and Kilo warning log failed; later events will retry.");
           }
         }
         warned = true;

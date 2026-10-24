@@ -2,6 +2,7 @@
 //! so a config file only needs the keys you want to change.
 
 use crate::keys::{self, Action, KeySpec};
+use crate::brand::{APP_COMMAND};
 use crate::theme::{Theme, ThemeOverrides};
 use anyhow::{Context, Result};
 use regex::Regex;
@@ -17,16 +18,16 @@ pub const CODEX_QUEUED_QUESTION_PATTERN: &str = r"(?m)^[ \t]*\?[ \t]+[1-9][0-9]*
 pub struct Config {
     /// Key that arms command mode, tmux style.
     pub prefix: String,
-    /// Teach Claude (when seshi starts it) to move itself into a worktree when asked.
+    /// Teach Claude (when the app starts it) to move itself into a worktree when asked.
     pub teach_agents: bool,
-    /// What agents may do through `seshi mcp`.
+    /// What agents may do through `<app> mcp`.
     pub mcp: Mcp,
     /// Named setups for + New: e.g. a worktree with claude, a dev server and lazygit.
     pub recipes: Vec<Recipe>,
     /// Saved launches: an agent, a model and a prompt, e.g. "commit and push" (Ctrl+Space .).
     pub presets: Vec<Preset>,
     /// Editor for "open in editor" (Files, Changes). Empty: $VISUAL, $EDITOR, then `code`.
-    /// Terminal editors (nvim, vim, hx, nano, micro, …) open inside seshi beside the agent.
+    /// Terminal editors (nvim, vim, hx, nano, micro, …) open inside the app beside the agent.
     pub editor: String,
     pub theme: String,
     pub theme_overrides: ThemeOverrides,
@@ -61,7 +62,7 @@ pub struct Config {
     pub agents: Vec<AgentDef>,
     /// Drop the built-in agent list and use only `agents`.
     pub agents_replace_defaults: bool,
-    /// Commands Seshi runs when an agent's turn ends in the named project (`[[check]]`).
+    /// Commands the app runs when an agent's turn ends in the named project (`[[check]]`).
     pub check: Vec<CheckDef>,
 }
 
@@ -79,12 +80,12 @@ pub struct Ui {
     pub spinner: Vec<String>,
     /// One colour per workspace, assigned in order and kept across restarts.
     pub workspace_colors: Vec<String>,
-    /// The welcome screen when seshi starts.
+    /// The welcome screen when the app starts.
     pub splash: bool,
     /// When the splash's wordmark falls into place: "cold start" (a first start of a version, or
     /// nothing left running), "always" or "never".
     pub splash_animation: String,
-    /// Look for a newer seshi when the window opens (and every few hours) and say so.
+    /// Look for a newer the app when the window opens (and every few hours) and say so.
     pub update_check: bool,
     /// Short slides and glides (the sidebar, the sheet, the highlight, toasts). Always off
     /// over SSH.
@@ -92,17 +93,19 @@ pub struct Ui {
     /// Alt+arrows move between panes without the leader (off: they go to the program, for
     /// shells that jump words with them).
     pub alt_arrows: bool,
-    /// Where plain `seshi` opens its first shell (and the one after you close everything).
-    /// Empty: wherever you run seshi. `~` is your home folder.
+    /// Where plain `<app>` opens its first shell (and the one after you close everything).
+    /// Empty: wherever you run the app. `~` is your home folder.
     pub start_dir: String,
     /// Sidebar sessions (and worktrees) that need you go first; the rest keep their place.
     pub attention_sort: bool,
-    /// "cards" keeps the standard hydra look; "flat" draws full-bleed zones with square edges (pill ends still follow `pill_caps`).
+    /// The look (ADR 0015): "floating", "tiled", "compact" or "grid". Read with `layout_kind`,
+    /// which also takes older files' "cards" (with `panes`) and "flat"; empty means unset.
     pub layout: String,
     /// "terminal" leaves chrome on the terminal's own background (so transparency and a
     /// background image show through evenly); "solid" paints everything the theme's `bg`.
     pub background: String,
-    /// Panes as cards with gaps between them ("floating"), or packed edge to edge ("tiled").
+    /// Older files' Cards spacing, "floating" or "tiled": read only while `layout` is unset or
+    /// "cards".
     pub panes: String,
     /// Card edges: "square" (lines on the card's edge, its colour right up to them) or "rounded"
     /// (a centred line with rounded corners, a thin strip of desk inside it). "flush", the old
@@ -188,8 +191,11 @@ pub struct Restore {
     pub enabled: bool,
     /// Relaunch agents with their resume command (`claude --resume <id>`, ...).
     pub agents: bool,
-    /// Re-run commands panes were started with (`spawn-right:lazygit`, `seshi split -- x`).
+    /// Re-run commands panes were started with (`spawn-right:lazygit`, `<app> split -- x`).
     pub commands: bool,
+    /// Keep each pane's recent output on disk so it is there after a restart. It can hold
+    /// secrets that were on screen; off deletes what is saved.
+    pub output: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,7 +208,7 @@ pub struct Worktree {
     /// New agents (+ New, the quick prompt, or a quick-prompt agent typed into a pane's
     /// PowerShell, bash or fish) get their own worktree when started in a repo's main checkout.
     pub per_agent: bool,
-    /// Closing the last thing running in a worktree seshi made removes its folder (the
+    /// Closing the last thing running in a worktree the app made removes its folder (the
     /// branch is kept; a worktree with uncommitted changes is left alone).
     pub delete_with_last: bool,
     /// Keep this agent (e.g. "claude") booted in a spare worktree of the repo you last
@@ -222,7 +228,7 @@ pub struct Mcp {
     pub safe: Vec<String>,
     /// project: only sessions in the calling agent's repo; all: every session.
     pub scope: String,
-    /// What an agent's pane may do through seshi by default (`seshi grant` changes one
+    /// What an agent's pane may do through the app by default (`<app> grant` changes one
     /// pane): read (other panes' screens), write (type into them), start (new sessions),
     /// respond (answer another agent's prompt or question), admin (close other panes, stop
     /// the server).
@@ -247,6 +253,41 @@ impl Default for Mcp {
 
 const CORNERS_SQUARE: &str = "square";
 
+/// The four looks over the one session layout (ADR 0015).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutKind {
+    Floating,
+    Tiled,
+    Compact,
+    Grid,
+}
+
+impl LayoutKind {
+    /// Its value in `ui.layout`.
+    pub fn name(self) -> &'static str {
+        match self {
+            LayoutKind::Floating => "floating",
+            LayoutKind::Tiled => "tiled",
+            LayoutKind::Compact => "compact",
+            LayoutKind::Grid => "grid",
+        }
+    }
+}
+
+impl Ui {
+    /// The look chosen, reading older files too: "cards" (or no `layout` at all) with
+    /// `panes = "tiled"` is Tiled, other "cards" Floating, and "flat" Compact.
+    pub fn layout_kind(&self) -> LayoutKind {
+        match self.layout.as_str() {
+            "tiled" => LayoutKind::Tiled,
+            "compact" | "flat" => LayoutKind::Compact,
+            "grid" => LayoutKind::Grid,
+            "" | "cards" if self.panes == "tiled" => LayoutKind::Tiled,
+            _ => LayoutKind::Floating,
+        }
+    }
+}
+
 fn corners_named<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
     let name = String::deserialize(d)?;
     Ok(if name == "flush" { CORNERS_SQUARE.into() } else { name })
@@ -255,7 +296,7 @@ fn corners_named<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Er
 /// How long a check may run unless its `[[check]]` says otherwise.
 pub const CHECK_TIMEOUT_S_DEFAULT: u64 = 600;
 
-/// The command Seshi runs in a session's worktree when an agent's turn ends in `project`.
+/// The command the app runs in a session's worktree when an agent's turn ends in `project`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct CheckDef {
@@ -324,12 +365,21 @@ fn validate_check(n: usize, c: &CheckDef, place: &str) -> Result<()> {
 }
 
 /// The file a repository names its own checks in, relative to its root.
-pub const REPO_CHECKS_FILE: &str = ".seshi/checks.toml";
+pub const REPO_CHECKS_FILE: &str = concat!(".", env!("APP_COMMAND"), "/checks.toml");
+/// The repo's checks file in `worktree`: the current name, else one under a name the app had
+/// before if that is there.
+pub fn repo_checks_path(worktree: &Path) -> PathBuf {
+    let new = worktree.join(REPO_CHECKS_FILE);
+    if new.exists() {
+        return new;
+    }
+    crate::brand::previous().map(|p| worktree.join(format!(".{p}/checks.toml"))).find(|old| old.exists()).unwrap_or(new)
+}
 
-/// The checks in a repository's `.seshi/checks.toml`, refused as a whole when any is unusable,
-/// two share a name, or the file has a key Seshi doesn't know. Their `project` is left empty.
+/// The checks in a repository's `.<app>/checks.toml`, refused as a whole when any is unusable,
+/// two share a name, or the file has a key the app doesn't know. Their `project` is left empty.
 pub fn parse_repo_checks(text: &str) -> Result<Vec<CheckDef>> {
-    /// `.seshi/checks.toml`: checks a repository ships. No `project`: it is the repo.
+    /// `.<app>/checks.toml`: checks a repository ships. No `project`: it is the repo.
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
     struct RepoChecks {
@@ -434,7 +484,7 @@ impl Default for Recipe {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Quick {
-    /// The agents seshi can start (the new-agent dialog lists them).
+    /// The agents the app can start (the new-agent dialog lists them).
     pub agents: Vec<QuickAgent>,
 }
 
@@ -510,7 +560,7 @@ impl Default for Snapshots {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Notify {
-    /// Play seshi's sound when an agent needs you.
+    /// Play the app's sound when an agent needs you.
     pub sound: bool,
     /// Alerts on your phone through ntfy (the free ntfy app): your topic's name. Empty is off.
     /// On the public server the name is all that keeps them private, so make it hard to guess.
@@ -549,7 +599,7 @@ pub struct AgentDef {
 /// Programs that run an agent's script rather than being the agent: they can't name it.
 const INTERPRETERS: &[&str] = &["node", "nodejs", "bun", "deno", "python", "python3", "py", "ruby", "java", "uv", "uvx", "npx", "pnpm", "tsx", "ts-node"];
 
-/// What seshi learns from a program you say is an agent: matched by its name, or (run by
+/// What the app learns from a program you say is an agent: matched by its name, or (run by
 /// node, python, …) by its package or script. The usual screen signs of a working agent;
 /// None when there's nothing to go on (a shell, no script).
 pub fn agent_from_command(program: &str, args: &[String]) -> Option<AgentDef> {
@@ -687,7 +737,7 @@ impl Default for Ui {
             alt_arrows: true,
             start_dir: String::new(),
             attention_sort: true,
-            layout: "cards".into(),
+            layout: String::new(),
             background: "terminal".into(),
             panes: "floating".into(),
             corners: CORNERS_SQUARE.into(),
@@ -718,7 +768,7 @@ impl Default for Quick {
 
 impl Default for Restore {
     fn default() -> Self {
-        Restore { enabled: true, agents: true, commands: true }
+        Restore { enabled: true, agents: true, commands: true, output: true }
     }
 }
 
@@ -738,12 +788,20 @@ pub const SPINNERS: &[(&str, &[&str])] = &[
     ("Braille", &["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]),
     ("Dots", &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
     ("Line (ASCII)", &["|", "/", "-", "\\"]),
-    ("Circle", &["◴", "◷", "◶", "◵"]),
-    ("Arrows", &["←", "↖", "↑", "↗", "→", "↘", "↓", "↙"]),
-    ("Pulse", &["·", "•", "●", "•"]),
+    // Three dots chasing round the cell's edge.
+    ("Snake", &["⠇", "⠋", "⠙", "⠸", "⢰", "⣠", "⣄", "⡆"]),
+    // Each frame held twice: the pulse breathes at half the other styles' pace.
+    ("Pulse", &["·", "·", "•", "•", "●", "●", "•", "•"]),
+    // From ratatui-spinner's FluxFrames (MIT): Fill is its PULSE.
+    ("Fill", &["⣀", "⣤", "⣶", "⣾", "⣿", "⣾", "⣶", "⣤"]),
+    ("Orbit", &["⠁", "⠈", "⠐", "⠠", "⢀", "⡀", "⠄", "⠂"]),
+    ("Bounce", &["⠉", "⠒", "⣀", "⠒"]),
+    ("Pair", &["⠉", "⠘", "⠰", "⢠", "⣀", "⡄", "⠆", "⠃"]),
+    ("Arc", &["◜", "◝", "◞", "◟"]),
+    ("Moon", &["◓", "◑", "◒", "◐"]),
+    ("Star", &["✶", "✷", "✸", "✹"]),
     ("Blocks", &["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃", "▂"]),
     ("Bars", BARS_FRAMES),
-    ("Static", &[]),
 ];
 /// The v7 handoff's working spinner: three Braille bars, two columns wide. The ASCII glyph set
 /// swaps it for `BARS_ASCII` (see `client::render::status_icon`).
@@ -773,13 +831,6 @@ pub fn validate_spinner(frames: &[String]) -> Result<()> {
     Ok(())
 }
 
-pub fn parse_spinner(text: &str) -> Result<Vec<String>> {
-    anyhow::ensure!(!text.chars().any(|c| c.is_control() && !c.is_whitespace()), "spinner frames cannot contain control characters");
-    let frames = text.split_whitespace().map(String::from).collect::<Vec<_>>();
-    validate_spinner(&frames)?;
-    Ok(frames)
-}
-
 #[cfg(test)]
 mod spinner_tests {
     use super::*;
@@ -791,12 +842,9 @@ mod spinner_tests {
             validate_spinner(&frames).unwrap();
             assert_eq!(spinner_name(&frames), *name);
         }
-        assert_eq!(parse_spinner("| / - \\").unwrap(), ["|", "/", "-", "\\"]);
-        assert_eq!(parse_spinner("e\u{301} x").unwrap(), ["e\u{301}", "x"]);
         for frames in [vec!["".into()], vec![" ".into()], vec!["🌈".into()], vec!["\x1b[31m".into()], vec!["a".into(); MAX_SPINNER_FRAMES+1]] {
             assert!(validate_spinner(&frames).is_err());
         }
-        assert!(parse_spinner("\x1b[31m").is_err());
     }
 
     #[test]
@@ -805,9 +853,8 @@ mod spinner_tests {
         assert_eq!(BARS_FRAMES.len(), 10);
         assert!(BARS_FRAMES.iter().all(|f| f.width() == 2 && f.chars().count() == 2));
         assert!(BARS_ASCII.iter().all(|f| f.is_ascii() && f.width() == 2));
-        assert_eq!(parse_spinner("⣰⡄ ⣼⡀").unwrap(), ["⣰⡄", "⣼⡀"]);
         for bad in ["ab", "🌈", "⣰a", "⣰⡄⣰"] {
-            assert!(parse_spinner(bad).is_err(), "{bad}");
+            assert!(validate_spinner(&[bad.to_string()]).is_err(), "{bad}");
         }
     }
 }
@@ -937,19 +984,19 @@ pub fn builtin_agents() -> Vec<AgentDef> {
 }
 
 pub fn config_path() -> PathBuf {
-    if let Ok(p) = std::env::var("SESHI_CONFIG") {
+    if let Ok(p) = std::env::var(concat!(env!("APP_ENV"), "_CONFIG")) {
         return PathBuf::from(p);
     }
     if cfg!(windows)
         && let Some(d) = directories::BaseDirs::new() {
-            return d.config_dir().join("seshi").join("config.toml");
+            return d.config_dir().join(env!("APP_COMMAND")).join("config.toml");
         }
     // XDG-style on macOS too: that's where terminal people look.
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().join(".config")))
         .unwrap_or_else(|| PathBuf::from("."));
-    base.join("seshi").join("config.toml")
+    base.join(env!("APP_COMMAND")).join("config.toml")
 }
 
 /// Write a file so a reader (or a crash) never sees half of it: write a temporary file
@@ -959,7 +1006,7 @@ pub fn write_atomic(path: &std::path::Path, data: impl AsRef<[u8]>) -> std::io::
         std::fs::create_dir_all(dir)?;
     }
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let tmp = path.with_file_name(format!(".{name}.seshi-tmp"));
+    let tmp = path.with_file_name(format!(".{name}.{APP_COMMAND}-tmp"));
     std::fs::write(&tmp, data)?;
     std::fs::rename(&tmp, path).inspect_err(|_| {
         let _ = std::fs::remove_file(&tmp);
@@ -984,7 +1031,7 @@ pub fn read_state<T: serde::de::DeserializeOwned + Default>(path: &std::path::Pa
 }
 
 pub fn data_dir() -> PathBuf {
-    directories::ProjectDirs::from("", "", "seshi")
+    directories::ProjectDirs::from("", "", env!("APP_COMMAND"))
         .map(|d| d.data_local_dir().to_path_buf())
         .unwrap_or_else(std::env::temp_dir)
 }
@@ -1001,17 +1048,14 @@ fn merge(base: &mut toml::Table, over: toml::Table) {
     }
 }
 
-/// The names the app had before: its config and data are brought over once, the first
-/// time seshi runs without its own. Newest first.
-const OLD_NAMES: [&str; 2] = ["hydra", "drover"];
 /// Left in the data folder once the move is done, so it happens only once.
 const MIGRATED: &str = "migrated-from";
 
-/// The app used to be called hydra (and before that, drover): bring its config (with the old
-/// default theme moved to the new one) and its data (saved sessions, pane history, UI state)
-/// over once. The old folders are left in place.
+/// The app had other names before (`brand::previous`): bring the newest one's config (with
+/// hydra's default theme moved to the new one) and its data (saved sessions, pane history, UI
+/// state) over once. The old folders are left in place.
 pub fn migrate_old_names() {
-    if std::env::var_os("SESHI_CONFIG").is_some() {
+    if std::env::var_os(concat!(env!("APP_ENV"), "_CONFIG")).is_some() {
         return;
     }
     let new_cfg = config_path();
@@ -1020,7 +1064,8 @@ pub fn migrate_old_names() {
     if new_data.join(MIGRATED).exists() {
         return;
     }
-    for old in OLD_NAMES {
+    // The names the app had before, newest first: the first found is brought over.
+    for old in crate::brand::previous() {
         let old_cfg_dir = new_dir.as_ref().and_then(|d| d.parent()).map(|d| d.join(old));
         let old_data = directories::ProjectDirs::from("", "", old).map(|d| d.data_local_dir().to_path_buf());
         let has_cfg = old_cfg_dir.as_ref().is_some_and(|d| d.join("config.toml").exists());
@@ -1069,7 +1114,7 @@ fn copy_renamed(from: &Path, to: &Path, old: &str) {
             continue;
         }
         let renamed = match name.strip_prefix(&format!("{old}-")) {
-            Some(rest) => format!("seshi-{rest}"),
+            Some(rest) => format!("{APP_COMMAND}-{rest}"),
             None => name,
         };
         let dest = to.join(renamed);
@@ -1079,6 +1124,20 @@ fn copy_renamed(from: &Path, to: &Path, old: &str) {
         } else if !dest.exists() {
             let _ = std::fs::copy(&path, &dest);
         }
+    }
+}
+
+/// The app's own themes were once named after it ("seshi-night", ADR 0019), and the first set
+/// gave way to Night and Day: an old choice moves to the one of the same lightness.
+fn retired_theme(theme: &str) -> Option<&'static str> {
+    let plain = theme
+        .split_once('-')
+        .filter(|(p, _)| std::iter::once(crate::brand::APP_COMMAND).chain(crate::brand::previous()).any(|n| n == *p))
+        .map_or(theme, |(_, rest)| rest);
+    match plain {
+        "dark" | "walnut" | "night" => Some("night"),
+        "light" | "day" => Some("day"),
+        _ => None,
     }
 }
 
@@ -1098,7 +1157,7 @@ impl Config {
         };
         // This machine's own settings (never synced) win over the shared ones.
         let local = path.with_file_name("config.local.toml");
-        if std::env::var_os("SESHI_CONFIG").is_none()
+        if std::env::var_os(concat!(env!("APP_ENV"), "_CONFIG")).is_none()
             && let Ok(s) = std::fs::read_to_string(&local)
         {
             let over: toml::Table = toml::from_str(&s).with_context(|| format!("parsing {}", local.display()))?;
@@ -1114,6 +1173,11 @@ impl Config {
         if cfg.icons.shell == OLD_SHELL_ICON {
             cfg.icons.shell = Icons::default().shell;
         }
+        if let Some(t) = retired_theme(&cfg.theme) {
+            cfg.theme = t.to_string();
+        }
+        // Settings shows the look by its name, whatever an older file called it.
+        cfg.ui.layout = cfg.ui.layout_kind().name().into();
         validate_spinner(&cfg.ui.spinner)?;
         validate_checks(&cfg.check)?;
         validate_sessions(&cfg.sessions)?;
@@ -1160,11 +1224,11 @@ impl Config {
         self.quick.agents.iter().find(|a| a.name == name && !a.env.is_empty())
     }
 
-    /// What goes in front of an account's command: `seshi account <name> -- `. The session
+    /// What goes in front of an account's command: `<app> account <name> -- `. The session
     /// then runs with that account's environment, and the command line itself says which
     /// account it is, so nothing else has to remember.
     fn account_prefix(&self, name: &str) -> String {
-        format!("seshi account {} -- ", self.quote_for_shell(name))
+        format!(concat!(env!("APP_COMMAND"), " account {} -- "), self.quote_for_shell(name))
     }
 
     /// `cmd` as account `name` runs it (unchanged for an agent that isn't an account).
@@ -1241,7 +1305,7 @@ impl Config {
         let quick = self.quick.agents.iter().find(|a| a.name == agent);
         let cmd = match quick {
             Some(a) => a.command.replace("{prompt}", quoted),
-            // Only agents seshi knows, by plain name: anything else would run as a command.
+            // Only agents the app knows, by plain name: anything else would run as a command.
             None if known_agent(self, agent) => format!("{agent} {quoted}"),
             None => {
                 let mut names: Vec<String> = self.quick.agents.iter().map(|a| a.name.clone()).collect();
@@ -1397,6 +1461,15 @@ mod tests {
     }
 
     #[test]
+    fn a_retired_theme_moves_to_night_or_day() {
+        for (old, now) in [("dark", "night"), ("walnut", "night"), ("seshi-night", "night"), ("light", "day"), ("vibecasso-day", "day")] {
+            assert_eq!(retired_theme(old), Some(now), "{old}");
+        }
+        assert_eq!(retired_theme("tokyo-night"), None, "a theme of another name is kept");
+        assert_eq!(retired_theme("harbor-day"), None);
+    }
+
+    #[test]
     fn a_check_that_could_never_run_fails_the_config_at_load() {
         let check = |toml: &str| -> Result<(), String> {
             let c: super::Config = toml::from_str(toml).map_err(|e| e.to_string())?;
@@ -1478,7 +1551,7 @@ mod tests {
             let err = format!("{:#}", super::parse_repo_checks(bad).expect_err(bad));
             assert!(err.contains(why), "{bad:?} -> {err}");
         }
-        assert!(super::REPO_CHECKS_FILE.starts_with(".seshi/"), "the file lives in the repo's .seshi folder");
+        assert!(super::REPO_CHECKS_FILE.starts_with(concat!(".", env!("APP_COMMAND"), "/")), concat!("the file lives in the repo's .", env!("APP_COMMAND"), " folder"));
     }
 
     #[test]
@@ -1565,7 +1638,7 @@ rounded = true
     #[test]
     fn an_agent_entry_with_an_env_is_an_account() {
         let toml = "[[quick.agents]]\nname = \"claude\"\ncommand = \"claude {prompt}\"\n\n[[quick.agents]]\nname = \"claude work\"\ncommand = \"claude {prompt}\"\nenv = { CLAUDE_CONFIG_DIR = \"~/.claude-work\" }\n";
-        for (shell, prefix) in [("pwsh.exe", "seshi account 'claude work' -- "), ("bash", "seshi account 'claude work' -- ")] {
+        for (shell, prefix) in [("pwsh.exe", concat!(env!("APP_COMMAND"), " account 'claude work' -- ")), ("bash", concat!(env!("APP_COMMAND"), " account 'claude work' -- "))] {
             let mut c: super::Config = toml::from_str(toml).unwrap();
             c.shell = Some(shell.into());
             assert!(c.account("claude").is_none() && c.account("claude work").is_some(), "only the one with an env");
@@ -1613,7 +1686,7 @@ rounded = true
 
     #[test]
     fn adding_an_agent_keeps_the_rest_of_the_config() {
-        let file = std::env::temp_dir().join(format!("seshi-agents-{}.toml", std::process::id()));
+        let file = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-agents-{}.toml"), std::process::id()));
         std::fs::write(&file, "# mine\ntheme = \"default\"\n\n[ui]\nsplash = true\n\n[notify]\ndesktop = true\n").unwrap();
         let def = super::agent_from_command("dst", &["dst".to_string()]).unwrap();
         super::add_agent_to(&file, &def).unwrap();
@@ -1623,14 +1696,14 @@ rounded = true
         assert_eq!(text.matches("[[agents]]").count(), 1, "the same name once: {text}");
         assert!(text.find("[[agents]]") > text.find("[notify]"), "added at the end: {text}");
         let cfg: super::Config = toml::from_str(&text).unwrap();
-        assert!(cfg.agent_defs().iter().any(|a| a.name == "dst"), "and seshi reads it back");
+        assert!(cfg.agent_defs().iter().any(|a| a.name == "dst"), concat!("and ", env!("APP_COMMAND"), " reads it back"));
         let _ = std::fs::remove_file(&file);
     }
 
     #[test]
     fn the_start_folder() {
         let mut cfg = super::Config::default();
-        assert_eq!(cfg.start_dir(), None, "empty: wherever you run seshi");
+        assert_eq!(cfg.start_dir(), None, concat!("empty: wherever you run ", env!("APP_COMMAND")));
         cfg.ui.start_dir = "~".into();
         let home = directories::BaseDirs::new().unwrap().home_dir().to_path_buf();
         assert_eq!(cfg.start_dir(), Some(home), "~ is home");
@@ -1643,12 +1716,12 @@ rounded = true
 
     #[test]
     fn state_files_swap_in_and_keep_a_bad_copy() {
-        let dir = std::env::temp_dir().join(format!("seshi-state-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-state-{}"), std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let f = dir.join("s.json");
         super::write_atomic(&f, "[1,2]").unwrap();
         assert_eq!(std::fs::read_to_string(&f).unwrap(), "[1,2]");
-        assert!(!dir.join(".s.json.seshi-tmp").exists(), "no temporary file left behind");
+        assert!(!dir.join(concat!(".s.json.", env!("APP_COMMAND"), "-tmp")).exists(), "no temporary file left behind");
         let v: Vec<u32> = super::read_state(&f);
         assert_eq!(v, vec![1, 2]);
         std::fs::write(&f, "[1,2").unwrap();
@@ -1662,8 +1735,8 @@ rounded = true
 
     #[test]
     fn an_old_install_is_brought_over_once() {
-        let base = std::env::temp_dir().join(format!("seshi-migrate-{}", std::process::id()));
-        let (old_cfg, new_cfg, old_data, new_data) = (base.join("cfg-hydra"), base.join("cfg-seshi"), base.join("data-hydra"), base.join("data-seshi"));
+        let base = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-migrate-{}"), std::process::id()));
+        let (old_cfg, new_cfg, old_data, new_data) = (base.join("cfg-hydra"), base.join(concat!("cfg-", env!("APP_COMMAND"))), base.join("data-hydra"), base.join(concat!("data-", env!("APP_COMMAND"))));
         std::fs::create_dir_all(old_cfg.join("ext")).unwrap();
         std::fs::create_dir_all(old_data.join("output-default")).unwrap();
         std::fs::write(old_cfg.join("config.toml"), "theme = \"hydra\"
@@ -1678,9 +1751,9 @@ shell = \"pwsh\"
         let cfg = std::fs::read_to_string(new_cfg.join("config.toml")).unwrap();
         assert!(cfg.contains(&format!("theme = \"{}\"", crate::theme::DEFAULT)) && cfg.contains("shell = \"pwsh\""), "settings kept, the old default theme moved: {cfg}");
         assert!(new_cfg.join("ext").join("x.toml").exists(), "folders inside come too");
-        assert!(new_data.join("seshi-ui.json").exists() && !new_data.join("hydra-ui.json").exists(), "files named after the old app take the new name");
+        assert!(new_data.join(concat!(env!("APP_COMMAND"), "-ui.json")).exists() && !new_data.join("hydra-ui.json").exists(), "files named after the old app take the new name");
         assert!(new_data.join("session-default.json").exists() && new_data.join("output-default").join("1.log").exists(), "saved sessions and pane history");
-        assert!(!new_data.join("seshi-me-default.sock.pid").exists(), "not the old server's pid");
+        assert!(!new_data.join(concat!(env!("APP_COMMAND"), "-me-default.sock.pid")).exists(), "not the old server's pid");
         assert!(new_data.join(MIGRATED).exists() && old_data.join("hydra-ui.json").exists(), "marked done; the old folders stay");
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -1705,10 +1778,17 @@ shell = \"pwsh\"
     }
 
     #[test]
-    fn older_ui_configs_default_to_cards_layout() {
-        let cfg: Config = toml::from_str("[ui]\npanes = 'tiled'").unwrap();
-        assert_eq!(cfg.ui.layout, "cards");
-        assert_eq!(cfg.ui.panes, "tiled");
+    fn older_ui_configs_keep_their_look_under_its_new_name() {
+        let kind = |toml: &str| toml::from_str::<Config>(toml).unwrap().ui.layout_kind();
+        assert_eq!(kind("[ui]\npanes = 'tiled'"), LayoutKind::Tiled, "no layout line: Cards, tiled");
+        assert_eq!(kind("[ui]\nlayout = 'cards'\npanes = 'tiled'"), LayoutKind::Tiled);
+        assert_eq!(kind("[ui]\nlayout = 'cards'\npanes = 'floating'"), LayoutKind::Floating);
+        assert_eq!(kind("[ui]\nlayout = 'cards'"), LayoutKind::Floating);
+        assert_eq!(kind("[ui]\nlayout = 'flat'\npanes = 'floating'"), LayoutKind::Compact);
+        assert_eq!(kind(""), LayoutKind::Floating, "the default");
+        assert_eq!(kind("[ui]\nlayout = 'floating'\npanes = 'tiled'"), LayoutKind::Floating, "a new name wins over a leftover panes");
+        assert_eq!(kind("[ui]\nlayout = 'compact'"), LayoutKind::Compact);
+        assert_eq!(kind("[ui]\nlayout = 'grid'"), LayoutKind::Grid);
     }
 
     #[test]
@@ -1763,7 +1843,7 @@ shell = \"pwsh\"
     #[test]
     fn an_account_agent_runs_through_its_account() {
         let c = sh_config(vec![quick("work", "claude {prompt}", &[("CLAUDE_CONFIG_DIR", "~/.claude-work")])]);
-        assert_eq!(c.agent_command(Some("work"), None, "go").unwrap(), "seshi account 'work' -- claude 'go'");
+        assert_eq!(c.agent_command(Some("work"), None, "go").unwrap(), concat!(env!("APP_COMMAND"), " account 'work' -- claude 'go'"));
     }
 
     #[test]

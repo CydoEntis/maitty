@@ -10,7 +10,7 @@ async function adapter(name, inside = true, argv = ["node", "opencode", "run"], 
   const polls = new Set();
   const timers = new Map();
   const context = createContext({
-    process: { env: inside ? { SESHI_TERM_ID: "7", ...extraEnv } : {}, argv }, console,
+    process: { env: inside ? { TESTAPP_TERM_ID: "7", ...extraEnv } : {}, argv }, console,
     setTimeout: name === "omp" ? (callback, delay) => { const timer = { unref() {} }; timers.set(timer, { callback, delay }); return timer; } : setTimeout,
     clearTimeout: name === "omp" ? (timer) => timers.delete(timer) : clearTimeout,
     setInterval: (callback) => { polls.add(callback); return callback; },
@@ -19,7 +19,7 @@ async function adapter(name, inside = true, argv = ["node", "opencode", "run"], 
   });
   const child = new SyntheticModule(["execFile"], function () {
     this.setExport("execFile", (exe, args, options, done) => {
-      assert.equal(exe, "C:\\Program Files\\seshi\\seshi.exe");
+      assert.equal(exe, "C:\\Program Files\\testapp\\testapp.exe");
       assert.equal(options.windowsHide, true);
       assert.ok(options.timeout <= 3000);
       const payload = JSON.parse(args[2]);
@@ -30,7 +30,9 @@ async function adapter(name, inside = true, argv = ["node", "opencode", "run"], 
     });
   }, { context });
   const util = new SyntheticModule(["promisify"], function () { this.setExport("promisify", promisify); }, { context });
-  const source = (await readFile(new URL(`${name}.js`, import.meta.url), "utf8")).replace("__SESHI_EXE__", JSON.stringify("C:\\Program Files\\seshi\\seshi.exe"));
+  const source = (await readFile(new URL(`${name}.js`, import.meta.url), "utf8"))
+    .replaceAll("__APP_EXE__", JSON.stringify("C:\\Program Files\\testapp\\testapp.exe"))
+    .replaceAll("__APP_ENV__", "TESTAPP").replaceAll("__APP_NAME__", "TestApp").replaceAll("__APP_COMMAND__", "testapp");
   const module = new SourceTextModule(source, { context });
   await module.link((id) => {
     if (id === "node:child_process") return child;
@@ -75,7 +77,7 @@ test("Pi follows native lifecycle, nested dialogs, settlement and recovery witho
 test("OpenCode preserves pending questions across busy events and helper completion", async () => {
   const { api, reports } = await adapter("opencode");
   const client = { session: { get: async ({ sessionID }) => ({ data: { id: sessionID, parentID: sessionID === "child" ? "root" : undefined } }) }, app: { log: async () => {} } };
-  const plugin = await api.Seshi({ directory: "/project", client });
+  const plugin = await api.AppStatus({ directory: "/project", client });
   const emit = (type, properties) => plugin.event({ event: { type, properties } });
   await emit("session.status", { sessionID: "root", status: { type: "busy", message: "not forwarded" } });
   await Promise.all([
@@ -94,11 +96,11 @@ test("OpenCode preserves pending questions across busy events and helper complet
   assert.ok(reports.every((r) => !JSON.stringify(r.payload).includes("not forwarded")));
 });
 
-test("OpenCode recovers after a daemon error and remains inert outside Seshi", async () => {
+test("OpenCode recovers after a daemon error and remains inert outside the app", async () => {
   const { api, reports, setFail } = await adapter("opencode");
   const logs = [];
   const client = { session: { get: async () => ({ data: { id: "root" } }) }, app: { log: async (entry) => logs.push(entry) } };
-  const plugin = await api.Seshi({ directory: "/project", client });
+  const plugin = await api.AppStatus({ directory: "/project", client });
   setFail(true);
   await plugin.event({ event: { type: "session.status", properties: { sessionID: "root", status: { type: "busy" } } } });
   setFail(false);
@@ -106,10 +108,10 @@ test("OpenCode recovers after a daemon error and remains inert outside Seshi", a
   assert.equal(logs.length, 1);
   assert.equal(reports.at(-1).status, "done");
   const outside = await adapter("opencode", false);
-  await (await outside.api.Seshi({ directory: "/project", client })).event({ event: { type: "session.idle", properties: { sessionID: "root" } } });
+  await (await outside.api.AppStatus({ directory: "/project", client })).event({ event: { type: "session.idle", properties: { sessionID: "root" } } });
   assert.equal(outside.reports.length, 0);
   const pi = await adapter("pi", false);
-  pi.api.default({ on: () => assert.fail("must not subscribe outside Seshi") });
+  pi.api.default({ on: () => assert.fail("must not subscribe outside the app") });
 });
 
 test("Pi reload resumes work, RPC does not report and false settlement cannot finish it", async () => {
@@ -127,7 +129,7 @@ test("Pi reload resumes work, RPC does not report and false settlement cannot fi
 test("OpenCode shared server and interactive TUI leave reporting to the selected-session bridge", async () => {
   for (const argv of [["opencode"], ["opencode", "serve"], ["opencode", "web"], ["opencode", "attach"], ["opencode", "run", "--attach", "http://localhost"]]) {
     const { api } = await adapter("opencode", true, ["node", ...argv]);
-    assert.equal((await api.Seshi({ directory: "/project", client: {} })).event, undefined, argv.join(" "));
+    assert.equal((await api.AppStatus({ directory: "/project", client: {} })).event, undefined, argv.join(" "));
   }
 });
 
@@ -267,7 +269,7 @@ test("OMP keeps continuations and retry holds working and counts overlapping nat
 
 test("Kilo keeps needs-you until every native request resolves", async () => {
   const bridge = await adapter("kilo");
-  const plugin = await bridge.api.Seshi();
+  const plugin = await bridge.api.AppStatus();
   await plugin["chat.message"]({ sessionID: "root" });
   const emit = (type, properties) => plugin.event({ event: { type, properties: { sessionID: "root", ...properties } } });
   await emit("permission.asked", { id: "p1" });
@@ -280,12 +282,12 @@ test("Kilo keeps needs-you until every native request resolves", async () => {
   await emit("session.idle");
   assert.equal(bridge.reports.at(-1).status, "done");
   const outside = await adapter("kilo", false);
-  assert.equal((await outside.api.Seshi()).event, undefined);
+  assert.equal((await outside.api.AppStatus()).event, undefined);
 });
 
 test("Kilo retries later events when both reporting and its native log fail", async () => {
   const bridge = await adapter("kilo");
-  const plugin = await bridge.api.Seshi({ client: { app: { log: async () => { throw new Error("log unavailable"); } } } });
+  const plugin = await bridge.api.AppStatus({ client: { app: { log: async () => { throw new Error("log unavailable"); } } } });
   bridge.setFail(true);
   await plugin["chat.message"]({ sessionID: "root" });
   bridge.setFail(false);

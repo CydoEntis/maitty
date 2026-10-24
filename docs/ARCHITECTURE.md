@@ -73,10 +73,10 @@ src/
     worktrees.rs making and trusting worktrees, spares, hooks, cleanup
     restore.rs   saving sessions and recovering agents left asleep by older versions
     check.rs     a pane's check result, and the runner: the project's check command run in the session's worktree when a turn ends
-    check_source.rs which checks a project has (yours, else the repo's .seshi/checks.toml), where each comes from, whether it may run
+    check_source.rs which checks a project has (yours, else the repo's .maitty/checks.toml), where each comes from, whether it may run
     check_stale.rs  a pass gone stale: the worktree's tree when a run starts, compared on the git poll
     helpers.rs   sessions starting helpers: the ask / always / never rule, the request a session's row shows, and the projects you said Always for (helper-projects.json)
-    approvals.rs your Always / Never / Once for repo-supplied check commands (kept in Seshi's data folder, read at start), and the ApproveCheck / ForgetCheckApproval commands
+    approvals.rs your Always / Never / Once for repo-supplied check commands (kept in Maitty's data folder, read at start), and the ApproveCheck / ForgetCheckApproval commands
     term.rs      one pane: PTY, input thread, vt100 emulator
     scan.rs, git.rs, persist.rs
   client/        the UI
@@ -97,7 +97,7 @@ src/
     motion.rs (slides and glides), …
     tests.rs     rendering and behaviour tests
   mcp.rs, project.rs, gitfs.rs, alert.rs, reveal.rs, update.rs, restart.rs, sync.rs
-  shim.rs        the per-agent launchers on a shell pane's PATH, and the PATH code `seshi agent-launch` shares
+  shim.rs        the per-agent launchers on a shell pane's PATH, and the PATH code `maitty agent-launch` shares
 docs/            these docs, the roadmap, design briefs
 config.example.toml
 ```
@@ -156,22 +156,22 @@ monorepo split.
 
 ## Project-specific: system context
 
-Seshi is one binary that runs in two roles:
+Maitty is one binary that runs in two roles:
 
-- **Daemon (server):** started on demand, one per user (or per `SESHI_SOCKET`
+- **Daemon (server):** started on demand, one per user (or per `MAITTY_SOCKET`
   name). Owns every pane: spawns shells and agents in pseudo-terminals
   (ConPTY on Windows), parses their output with `vt100`, detects agent status,
   manages worktrees, persists sessions, and restores them after a restart.
 - **Client (UI):** the full-screen TUI. Connects over a local socket (named pipe
   on Windows, Unix socket elsewhere), receives snapshots and pane output, sends
   commands and keystrokes. Many clients can attach; any can detach.
-- **CLI subcommands** (`seshi send`, `seshi read`, `seshi wait`, `seshi worktree`,
-  `seshi handoff`, `seshi doctor`, `seshi mcp`, `seshi proxy`, …) talk to the same daemon.
+- **CLI subcommands** (`maitty send`, `maitty read`, `maitty wait`, `maitty worktree`,
+  `maitty handoff`, `maitty doctor`, `maitty mcp`, `maitty proxy`, …) talk to the same daemon.
 
 External systems: the agent CLIs it runs (claude, codex, …) and their hook
-callbacks (`seshi hook`), `git` and `gh`, `ssh`
-for remote machines (`--remote host` runs `ssh host seshi proxy`), the OS
-clipboard and notifications, and an MCP server (`seshi mcp`) agents use to talk to
+callbacks (`maitty hook`), `git` and `gh`, `ssh`
+for remote machines (`--remote host` runs `ssh host maitty proxy`), the OS
+clipboard and notifications, and an MCP server (`maitty mcp`) agents use to talk to
 each other.
 
 ## Project-specific: stack
@@ -184,7 +184,7 @@ format) over `tokio-util` length-delimited frames, `serde`/`toml`/`toml_edit`
 `arboard` (clipboard), `clap` (CLI), `anyhow` (errors), `tracing` (logs).
 `jsonc-parser` 0.33.1 with CST/serde support edits OpenCode's native JSONC plugin
 lists while retaining comments and settings; serde_json alone cannot preserve them.
-`vt100` is a patched copy in `vendor/vt100` (see its `SESHI.md`; wired in with
+`vt100` is a patched copy in `vendor/vt100` (see its `MAITTY.md`; wired in with
 `[patch.crates-io]`): keep its changes there and listed in that file.
 Rules for the language live in `docs/stack/rust.md`.
 
@@ -217,7 +217,7 @@ The client never touches a PTY; the daemon never draws. They meet only through
 src/
   main.rs        argument parsing, picks client / daemon / CLI role
   cli.rs         one-shot subcommands (send, read, wait, hook, doctor, …)
-  cli/handoff.rs `seshi handoff`: the text brief, and the files a checkout changed
+  cli/handoff.rs `maitty handoff`: the text brief, and the files a checkout changed
   tidy.rs        what removing a worktree would lose (shared by the server's sweep and the clean-up list)
   snapshot.rs    a checkout's files kept before each agent turn, and put back (the server takes them, the client lists and restores)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
@@ -239,8 +239,21 @@ config.example.toml
 
 ## Project-specific: patterns and conventions
 
-`client/text_input.rs` owns cursor editing and input display shared by task and
-spinner settings fields.
+**The app's name** lives in `Cargo.toml` and nowhere else in the code (ADR 0019): the package
+name is the command, `[package.metadata.brand]` holds the name people see and the names it had
+before. `build.rs` hands them to the code as `APP_COMMAND`, `APP_NAME`, `APP_ENV` and
+`APP_PREVIOUS`; `src/brand.rs` wraps them. Write a name-bearing string as
+`concat!(".", env!("APP_COMMAND"), ".toml")`, or name `APP_NAME` in a format string with
+arguments of its own. Adapters in `src/cli/*.js` are templates (`__APP_NAME__`,
+`__APP_COMMAND__`, `__APP_ENV__`, `__APP_EXE__`) filled in when installed. `tests/naming.rs`
+fails on the name written out. To rename the app:
+
+1. In `Cargo.toml`, set the package `name` (the command) and `[package.metadata.brand] name`,
+   and put the old command first in `previous`. Build once and commit `Cargo.lock` too (it
+   records the package name; releases build `--locked`).
+2. In `install.sh` and `install.ps1`, set `APP` / `$app` and the repository (a test checks them).
+3. Run `sh src/client/v7_frames/regen.sh` (the reference frames show the name).
+4. Replace the name in the docs (not the ADRs), then rename the GitHub repository.
 
 `client/screen/keyoverlay.rs` is the one key overlay: the key map, the search over every
 command and All keys, all built from `key_groups()` and the active keymap (`Action::Palette`
@@ -248,20 +261,20 @@ opens the search, `Action::Help` opens All keys). The Menu and tab renaming are 
 `client/screen/leader.rs`. `docs/shortcuts.md` is documentation only; the app does not embed it.
 
 **Agent launchers.** A plain shell pane (no command, not a popup) starts with a launcher per
-agent first on its `PATH` (`shim.rs`, written to `<data>/shell/bin/`; only files seshi wrote are
-replaced or removed): `claude` there runs `seshi agent-dir claude …`, goes to the folder it
+agent first on its `PATH` (`shim.rs`, written to `<data>/shell/bin/`; only files maitty wrote are
+replaced or removed): `claude` there runs `maitty agent-dir claude …`, goes to the folder it
 prints, and execs the next `claude` on `PATH` with the launcher folder taken off (a `.cmd`
-calling `seshi agent-launch` on Windows). The agents are the built-in four plus the programs the quick
+calling `maitty agent-launch` on Windows). The agents are the built-in four plus the programs the quick
 agents run (the first word of a plain-named `command`, so an agent named `work` that runs `claude` adds nothing), and only when `worktree.per_agent` is on. `daemon/term.rs` also defines a shell
 function per agent (bash `--rcfile`, zsh `ZDOTDIR`, fish `-C`, PowerShell's startup script) and
 keeps the launcher folder first on `PATH` before each prompt or command, since a manager like
-mise puts its own shims in front. The function sets `SESHI_AGENT_DIR_DONE` for the one command
+mise puts its own shims in front. The function sets `MAITTY_AGENT_DIR_DONE` for the one command
 so the launcher does not ask a second time. The daemon decides (`Command::AgentWorktree`): only
 a pane with no agent yet, only in a git repo's main checkout, and a caller without the pane's
 secret gets an empty answer.
 
 `client/restart_prompt.rs` is the one screen outside the app loop: before a window opens, it
-asks once to replace a running server of another version that has agents working or waiting (`main.rs` calls it). `restart.rs` owns the rest of the one-step update: the activity file a server publishes beside its pid file (`Activity`, so a newer seshi can decide without asking an older server anything), the plan for a mismatch (`plan_for_mismatch`), waiting for the old server's socket to close, and re-opening the window on the installed seshi (`relaunch`). The stop itself is `cli::kill_server`, which reaches servers of any version by process and only ever the server of this `SESHI_SOCKET`.
+asks once to replace a running server of another version that has agents working or waiting (`main.rs` calls it). `restart.rs` owns the rest of the one-step update: the activity file a server publishes beside its pid file (`Activity`, so a newer maitty can decide without asking an older server anything), the plan for a mismatch (`plan_for_mismatch`), waiting for the old server's socket to close, and re-opening the window on the installed maitty (`relaunch`). The stop itself is `cli::kill_server`, which reaches servers of any version by process and only ever the server of this `MAITTY_SOCKET`.
 offers to replace a running server of another version (`main.rs` calls it; the restart itself is
 `cli::kill_server`, which reaches servers of any version).
 
@@ -275,8 +288,8 @@ Source provenance and redistribution terms are in the vendor NOTICE and LICENSE.
 Kilo's plugin and native Kimi/Mastracode hook configurations. OpenCode configuration
 editing lives in `cli/opencode_config.rs` and preserves its V1-to-V2 migration.
 Actions invokes installation through
-`spawn_bg`; adapters send authenticated `seshi hook` reports and remain inert
-outside Seshi. No provider-specific status adapter is needed.
+`spawn_bg`; adapters send authenticated `maitty hook` reports and remain inert
+outside Maitty. No provider-specific status adapter is needed.
 
 - **Commands and snapshots.** The client sends `Command`s; the daemon answers
   with full `Snapshot`s plus per-pane output. The client derives its view model
@@ -304,4 +317,4 @@ Decisions: [0001 daemon owns sessions](adr/0001-daemon-owns-sessions.md),
 [0003 msgpack over local sockets](adr/0003-msgpack-over-local-sockets.md),
 [0004 one layout](adr/0004-one-layout.md),
 [0005 herdr-compatible keys](adr/0005-herdr-compatible-keys.md),
-[0011 keep Seshi terminal-first](adr/0011-keep-seshi-terminal-first.md).
+[0011 keep Maitty terminal-first](adr/0011-keep-seshi-terminal-first.md).

@@ -44,7 +44,7 @@ impl App {
                     self.daemon_restart_requested = false;
                     self.daemon_restart_reconnect = false;
                     if daemon_matches_install {
-                        self.notify("The Seshi daemon restarted with the update.".into(), false);
+                        self.notify(concat!("The ", env!("APP_NAME"), " daemon restarted with the update.").into(), false);
                     }
                 }
                 if first {
@@ -126,7 +126,7 @@ impl App {
             }
             ServerMsg::Raise => crate::reveal::raise_window(),
             // The server stopped for the update: an older window can't speak to the new one, so
-            // the installed seshi takes its place; a current window just connects again.
+            // the installed the app takes its place; a current window just connects again.
             ServerMsg::Bye if self.daemon_restart_requested && self.window_stale() => self.relaunch_window(),
             ServerMsg::Bye if self.daemon_restart_requested => self.daemon_restart_reconnect = true,
             ServerMsg::Bye => self.quit = Some("server exited".into()),

@@ -1,11 +1,11 @@
-// Written by `seshi integrate opencode`: inert outside Seshi.
+// Written by `__APP_COMMAND__ integrate opencode`: inert outside __APP_NAME__.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execute = promisify(execFile);
-const executable = __SESHI_EXE__;
+const executable = __APP_EXE__;
 
-export const Seshi = async ({ directory, client }) => {
+export const AppStatus = async ({ directory, client }) => {
   const args = process.argv?.slice(2) ?? [];
   if (args.some((arg) => ["serve", "web", "attach"].includes(arg) || arg === "--attach" || arg.startsWith("--attach="))) return {};
   // Interactive sessions report through their own TUI, including shared servers.
@@ -68,14 +68,14 @@ export const Seshi = async ({ directory, client }) => {
   };
   return {
     event: async ({ event }) => {
-      if (!process.env.SESHI_TERM_ID || !relevant.has(event.type)) return;
+      if (!process.env.__APP_ENV___TERM_ID || !relevant.has(event.type)) return;
       // Preserve event order even when the host dispatches several callbacks together.
       queue = queue.then(() => send(event)).catch(async () => {
         if (!warned) {
           try {
-            await client.app.log({ body: { service: "seshi", level: "warn", message: "Status report failed. Check that Seshi and its daemon are up to date." } });
+            await client.app.log({ body: { service: "__APP_COMMAND__", level: "warn", message: "Status report failed. Check that __APP_NAME__ and its daemon are up to date." } });
           } catch {
-            console.warn("Seshi could not report status or log the failure.");
+            console.warn("__APP_NAME__ could not report status or log the failure.");
           }
         }
         warned = true;

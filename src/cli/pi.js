@@ -1,12 +1,12 @@
-// Written by `seshi integrate pi`: inert outside Seshi; requires Pi's agent_settled and ui_prompt events.
+// Written by `__APP_COMMAND__ integrate pi`: inert outside __APP_NAME__; requires Pi's agent_settled and ui_prompt events.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execute = promisify(execFile);
-const executable = __SESHI_EXE__;
+const executable = __APP_EXE__;
 
 export default function (pi) {
-  if (!process.env.SESHI_TERM_ID) return;
+  if (!process.env.__APP_ENV___TERM_ID) return;
   let running = false;
   let prompts = 0;
   let warned = false;
@@ -19,7 +19,7 @@ export default function (pi) {
       await execute(executable, args, { timeout: 3000, windowsHide: true });
       warned = false;
     } catch {
-      if (!warned && ctx.hasUI) ctx.ui.notify("Seshi status report failed. Check that Seshi and its daemon are up to date.", "warning");
+      if (!warned && ctx.hasUI) ctx.ui.notify("__APP_NAME__ status report failed. Check that __APP_NAME__ and its daemon are up to date.", "warning");
       warned = true;
     }
   };

@@ -295,7 +295,7 @@ fn round_tabs_cap_every_chip_on_the_ground_behind_the_title() {
 }
 
 #[test]
-fn round_rows_end_every_line_of_the_selected_session_in_a_cap_and_off_leaves_it_square() {
+fn round_rows_draw_the_selected_session_as_one_softened_block_and_off_leaves_it_square() {
     for layout in LAYOUTS {
         for on in [false, true] {
             let mut app = world(Stage::None);
@@ -312,7 +312,9 @@ fn round_rows_end_every_line_of_the_selected_session_in_a_cap_and_off_leaves_it_
             for y in row.y..row.bottom() {
                 let (left, right) = (&buf[(row.x, y)], &buf[(row.right() - 1, y)]);
                 if on {
-                    assert_eq!((left.symbol(), right.symbol()), (CAP_L, CAP_R), "caps on line {y}: {layout:?}");
+                    let ends = block_ends(y - row.y, row.height);
+                    assert_eq!((left.symbol(), right.symbol()), ends, "line {y} of one block: {layout:?}");
+                    assert!(row.height == 1 || (left.symbol() != CAP_L && right.symbol() != CAP_R), "no pill per line: {layout:?}");
                     assert_eq!((left.fg, right.fg), (t.sel_bg(), t.sel_bg()), "on the selection's colour: {layout:?}");
                     assert_ne!(left.bg, t.sel_bg(), "over what is behind it, not the selection: {layout:?}");
                 } else {
@@ -344,4 +346,32 @@ fn round_tabs_end_the_selected_folder_row_in_a_cap_and_off_leaves_it_square() {
             }
         }
     }
+}
+
+/// Rounded shapes reach every chip and floating card: the SESSIONS chip, + New and Menu on the
+/// plain ground, and the Menu, rounded in Cards and one softened block in Flat.
+#[test]
+fn rounded_shapes_round_the_sidebar_chips_and_the_menu() {
+    for layout in LAYOUTS {
+        let mut app = world(Stage::None);
+        app.cfg.ui.rounded = true;
+        let text = v7_fixture::raw_text(&mut app, layout, 100, 30, "unicode");
+        for chip in [" SESSIONS 4 ", "+ New", "Menu"] {
+            assert!(text.contains(&format!("{CAP_L}{chip}")), "{chip} has a left cap: {layout:?}\n{text}");
+        }
+        app.act(Action::Menu);
+        let text = v7_fixture::raw_text(&mut app, layout, 100, 30, "unicode");
+        let title = text.lines().find(|l| l.contains(" Menu ")).expect("the menu's title row");
+        assert!(title.contains(&format!("{CAP_L} Menu {CAP_R}")), "the title chip is round: {layout:?}\n{title}");
+        let corner = if layout == Layout::Flat { "▗" } else { "╭" };
+        assert!(title.contains(corner), "the menu's corner is soft: {layout:?}\n{title}");
+    }
+}
+
+#[test]
+fn a_block_of_lines_ends_in_soft_corners_and_one_line_in_caps() {
+    assert_eq!(block_ends(0, 1), (CAP_L, CAP_R));
+    assert_eq!(block_ends(0, 2), ("▗", "▖"));
+    assert_eq!(block_ends(1, 2), ("▝", "▘"));
+    assert_eq!(block_ends(1, 3), ("▐", "▌"), "the sides between");
 }

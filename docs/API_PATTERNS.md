@@ -101,10 +101,10 @@ entry point (handler / route / command / consumer)
 ## Project-specific: API style
 
 Not HTTP. A private IPC protocol between client and daemon over a local socket
-(or `ssh host seshi proxy`): length-delimited frames carrying msgpack-encoded
+(or `ssh host maitty proxy`): length-delimited frames carrying msgpack-encoded
 `ClientMsg` / `ServerMsg` enums (`src/protocol.rs`). The first exchange is
 `Hello { version }` → `Welcome { version }`; mismatched `PROTOCOL_VERSION`s are
-refused. The CLI subcommands and the MCP server (`seshi mcp`, JSON-RPC over stdio)
+refused. The CLI subcommands and the MCP server (`maitty mcp`, JSON-RPC over stdio)
 are thin wrappers that send the same commands.
 
 ## Project-specific: response and error shapes
@@ -117,14 +117,19 @@ and exit non-zero.
 ## Project-specific: auth model
 
 Socket access is the auth (see `docs/SECURITY.md`); pane status reports also need
-the pane's process tree or `SESHI_PANE_TOKEN`.
+the pane's process tree or `MAITTY_PANE_TOKEN`.
 
 ## Project-specific: feature/module structure
 
 Saved role profiles and sequenced planner/worker/reviewer workflows are not part
-of Seshi's interface, and neither is a fleet commander (`seshi brief`, `[team]`): old
+of Maitty's interface, and neither is a fleet commander (`maitty brief`, `[team]`): old
 config keys for them are read and ignored. Sessions, ordinary agent launches, helpers, and
-MCP session controls remain supported. The wire protocol is version 45.
+MCP session controls remain supported. The wire protocol is version 46.
+
+`maitty_answer` takes the `prompt` id that `maitty_list` (`prompt` on a session that needs you) or
+`maitty_wait` (`prompt <id>`) gave. It hashes the question and its choices, whitespace aside. If the
+prompt on screen has a different id, nothing is sent and the error shows the current question,
+choices and id.
 
 **Helpers.** A start that comes from an agent's pane (`NewWorkspace`, `NewTab`, `Split`,
 `NewWorktree` over a connection that proved it is that pane by its secret) is a helper
@@ -133,7 +138,7 @@ agent the user was asked, and the daemon records the task on the pane. `TermInfo
 lists the recorded tasks (not empty: the pane needs you, and `TermInfo.status` reads Blocked
 whatever its hooks report), and the request is announced like any needs-you. Only you answer
 it, with `Command::AnswerHelpers { term, choice }`: `Allow` (this session may from now on),
-`Always` (and every session in its project; kept in `helper-projects.json` in Seshi's data
+`Always` (and every session in its project; kept in `helper-projects.json` in Maitty's data
 folder), or `No` (its starts are refused for the rest of its run). A pane may not send it, and
 it is an error unless the pane is asking. `always` and `never` skip the question; `never`
 refuses with an error the agent can read. `sessions.helpers_at_once` (2, 3 or 4) bounds the
@@ -247,12 +252,12 @@ completion uses the soft completion sound; helper completion stays quiet. Helper
 questions may ring after the same blocked delay.
 
 A session whose project has a check is not finished until the check settles. While it
-runs, no finished alert (desktop or phone) rings and `seshi wait`, `seshi send --wait` and
-MCP `seshi_wait` / `seshi_send` with `wait` stay blocked, bounded by their timeout. A
+runs, no finished alert (desktop or phone) rings and `maitty wait`, `maitty send --wait` and
+MCP `maitty_wait` / `maitty_send` with `wait` stay blocked, bounded by their timeout. A
 passed check lets the normal finished alert ring. A failed check raises a blocked
 attention alert and a notice saying "check failed", rings no finished alert (desktop or
 phone), and the waiter returns with the result: `Waited::Turn` carries the check's
-`CheckInfo`, MCP replies end with its one-line result, and `seshi wait` prints that line
+`CheckInfo`, MCP replies end with its one-line result, and `maitty wait` prints that line
 to stderr and exits 4 (2 is timed out, 3 needs you). A check that could not run gives a
 notice and then the normal finished alert. Queued follow-ups still send when the turn
 ends, and `sessions.helpers_at_once` still counts only working sessions. A session with no check
@@ -265,12 +270,16 @@ any failed. A checkpoint waiting for approval, one you said never to, one that c
 run and a stale pass all exit 0. Waiting for approval raises a blocked attention alert and
 the notice `<place>: approve check: <command>` once a turn; it is never a finish.
 
-`seshi ls`, `seshi ls --json` and MCP `seshi_list` report a check next to the status, never in
+A working agent the daemon marks quiet (`TermInfo::quiet_since`) reads `[claude: working · quiet
+12m]` in `maitty ls`; `ls --json` and `maitty_list` add `quiet_since` (unix seconds) only then. A
+`maitty wait` or `maitty_wait` that times out on one says `still working, but quiet for 12m`.
+
+`maitty ls`, `maitty ls --json` and MCP `maitty_list` report a check next to the status, never in
 place of it: `status` keeps its value (`done`) and `TermInfo::reported_check` decides whether a
 result is shown (not while the agent is working or asking, as in the sidebar). `cli::check_note`
 is the one wording for both text surfaces: `check failed (exit 1)`, `checking`, `check passed`,
 `check could not run`, `check overridden`. `ls` prints it in the agent tag
-(`[claude: done · check failed (exit 1)]`); `seshi_list` adds it as a `check` string. `ls --json`
+(`[claude: done · check failed (exit 1)]`); `maitty_list` adds it as a `check` string. `ls --json`
 adds a `check` object (`state` as `checking`, `passed`, `failed`, `overridden` or
 `could_not_run`; `command`; `exit_code`; `duration_ms`; `first_failing_line`; `rerun_queued`;
 `overridden_at`). A pane with no check has no `check` key and its output is unchanged.

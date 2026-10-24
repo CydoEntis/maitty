@@ -69,8 +69,19 @@ impl Daemon {
         }
     }
 
+    /// With `restore.output` off, delete the pane output already saved: it can hold secrets
+    /// that were on screen.
+    pub(super) fn drop_saved_outputs(&self) {
+        if !self.cfg.restore.output
+            && let Err(e) = persist::forget_outputs()
+        {
+            tracing::warn!("deleting saved pane output: {e:#}");
+        }
+    }
+
     /// Save panes' output to disk so their history survives the server restarting: what
-    /// changed, off the loop (`all`: everything, now, for a server that's stopping).
+    /// changed, off the loop (`all`: everything, now, for a server that's stopping). With
+    /// `restore.output` off only check tails are saved.
     pub(super) fn save_outputs(&mut self, all: bool) {
         if !self.cfg.restore.enabled {
             return;
@@ -87,7 +98,7 @@ impl Daemon {
             })
             .collect();
         self.save_check_tails(ticket, live.clone(), all);
-        if outputs.is_empty() && !all {
+        if !self.cfg.restore.output || (outputs.is_empty() && !all) {
             return;
         }
         let save = move || {
@@ -248,7 +259,9 @@ impl Daemon {
                     match self.spawn(cmd.as_deref(), &cwd, 120, 32) {
                         Ok(new) => {
                             if let Some(t) = self.terms.get_mut(&new) {
-                                if let Some(out) = persist::take_output(old) {
+                                if self.cfg.restore.output
+                                    && let Some(out) = persist::take_output(old)
+                                {
                                     t.seed_output(&out);
                                 }
                                 // Keep the original identity so the next save matches this one.
@@ -266,7 +279,7 @@ impl Daemon {
                                     if activity.state.active() {
                                         activity.state = SubagentState::ConnectionLost;
                                         activity.updated_at = now;
-                                        activity.latest_activity = Some("Seshi restarted while the child was active; completion unconfirmed".into());
+                                        activity.latest_activity = Some(concat!(env!("APP_NAME"), " restarted while the child was active; completion unconfirmed").into());
                                     }
                                     activity
                                 }).collect();

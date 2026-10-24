@@ -1,22 +1,102 @@
-# Contextual shortcuts
+# Shortcuts
 
-The leader is `Ctrl+Space`. Press it, release, then a key. One overlay holds every key
+Every default shortcut, then the keys each screen has of its own. You can change any of them
+in Settings › Keys or under `[keys.prefix]` in your config.
+
+## Default shortcuts
+
+Press `Ctrl+Space` for shortcut mode, then the key. No default needs Shift, and each key does
+one thing (ADR 0017).
+
+### Sessions
+
+| Key | Action |
+|---|---|
+| `n` | New shell where you are |
+| `s` | New session, started straight away with your default agent |
+| `o` | New session with options (agent, where, project) |
+| `Enter` | Message the agent |
+| `k` | Stop the agent |
+| `i` | Inbox: what needs you, then every session |
+| `y` | Why this status |
+
+### Panes
+
+| Key | Action |
+|---|---|
+| `←` `↓` `↑` `→` | Move to the pane that way (left past the edge: the sidebar) |
+| `v` | Split side by side |
+| `h` | Split stacked |
+| `x` | Close the pane |
+| `Ctrl`+arrows | Resize the pane |
+| `c` | Copy mode: select text with keys |
+| `PgUp` / `PgDn` | Scroll half a pane |
+| `z` | Collapse the sidebar (again brings it back) |
+
+### Tabs
+
+| Key | Action |
+|---|---|
+| `t` | New tab |
+| `Ctrl+W` | Close the tab |
+| `r` | Rename the tab |
+| `]` / `[` | Next / previous tab |
+| `1`–`9` | Go to that tab (`Alt+1`–`9` works without the leader) |
+
+### Project
+
+| Key | Action |
+|---|---|
+| `f` | Files |
+| `e` | The sidebar |
+| `p` | Find a file |
+| `/` | Search the code |
+| `d` | Changes |
+| `g` | Worktrees › |
+| `b` | Switch branch |
+
+### Maitty
+
+| Key | Action |
+|---|---|
+| `Space` | Search commands |
+| `m` | Menu |
+| `,` | Settings |
+| `F1` | All keys |
+| `l` | What happened (history) |
+| `Ctrl+V` | Paste the clipboard's image |
+| `q` | Step away (agents keep running) |
+| `Ctrl+R` | Reload the config |
+
+**Search only** (`Space`, then type): hide the sidebar completely, previous / next command in
+history, open the worktree picker, rename a session, send `Ctrl+Space` itself to the program.
+
+## How shortcut mode works
+
+The leader is `Ctrl+Space`. Press it and you are in **shortcut mode**: each key runs its
+action, and the mode stays for the next, so a run of actions is one key each. `Esc`, the
+leader again or a click into a pane go back to **input mode**, where keys type into the pane;
+so does an action that gives you something to type into (a new shell, session, tab, split,
+pane or worktree). An action that opens a popup or sheet hands it the keys, and closing it
+returns to input mode. While shortcut mode is on, a `SHORTCUT` pill sits at the top right and
+the focused pane's border is sky blue. To send `Ctrl+Space` itself to the pane, search
+commands for "Send the leader key" or bind `send-prefix` to a key. One overlay holds every key
 reference; it is not a second palette:
 
 - **Key map** (`Ctrl+Space`, then a pause): the keys by group, Sessions, Panes, Tabs,
-  Project and Seshi, built from your real bindings. Pressing a key runs it.
+  Project and Maitty, built from your real bindings. Pressing a key runs it.
 - **Search commands** (`Space` after the leader, `Tab` from the map, or typing a letter
   that is not a key): every command, including ones with no key. With nothing typed it
   lists the ones you ran last.
-- **All keys** (`?` after the leader, or Menu → All keys): the map in full, the keys that
+- **All keys** (`F1` after the leader, or Menu → All keys): the map in full, the keys that
   need no leader, and the commands that only search finds.
 
 Keys are drawn as keycaps; `Ctrl+Space` is two caps joined by a dim `+`. On Windows,
-Caps Lock does not change shortcut meaning; hold Shift for uppercase bindings such as
-`N` (What happened). The [README](../README.md#use) lists the defaults.
+Caps Lock does not change shortcut meaning, and no default needs Shift (ADR 0017). The
+[README](../README.md#use) lists the defaults.
 
 Mouse entry: **Menu** has a chip in the collapsed strip (row 0); with the sessions hidden
-(`Z`), use the leader. Click a row to run it; the wheel moves the selection. Close buttons
+(search commands for "Hide sidebar"), use the leader. Click a row to run it; the wheel moves the selection. Close buttons
 dismiss overlays.
 
 Keys below act inside the named screen, without the leader. Ordinary typing edits the
@@ -37,15 +117,17 @@ or another program follow that program's own help.
 | Esc | Close; no command runs while reading |
 
 Every key is a leader key: there is no letter that acts by itself in the sidebar.
-Defaults added in this release: `s` Session (an agent at once), `c` Session with options, `S` Stop agent; `n` stays a plain shell where you are. Dropped
-as duplicates (your own `[keys.prefix]` entries still load): `v`, `|`, `b`, `:`,
-`Ctrl+V`.
+The defaults are one key each, none needing Shift, chosen from what other apps use (ADR
+0017): `v` / `h` split side by side / stacked, `c` copy mode, `i` Inbox, `y` why, `k` stop
+the agent, `Enter` message it, `o` session with options, `p` find a file, `g` worktrees, `b`
+branches, `l` what happened, `F1` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image,
+`Ctrl`+arrows resize, `1`–`9` go to a tab. Your own `[keys.prefix]` entries still load.
 
 ## Menu
 
 | Keys | Action |
 | --- | --- |
-| The key shown beside a row | Run it (the same leader key works anywhere): `n` Shell here, `s` Session, `c` Session with options…, `p` Pane beside this, `t` Tab, `j` Inbox, `Space` Search commands, `?` All keys, `z` Collapse sidebar, `Z` Hide sidebar, `,` Settings |
+| The key shown beside a row | Run it (the same leader key works anywhere): `n` Shell here, `s` Session, `o` Session with options…, `v` Pane beside this, `t` Tab, `i` Inbox, `Space` Search commands, `F1` All keys, `z` Collapse sidebar, `,` Settings |
 | Up, Down, Enter | Choose and run a row |
 | Esc | Close the Menu |
 
@@ -62,7 +144,7 @@ worktree in a git project.
 
 ## Sidebar keyboard focus
 
-The sidebar takes navigation only. No letter acts from it: every action is the leader (`Ctrl+Space`) and its key, such as `n` new shell, `s` new session, `x` close, `m` Menu, `M` message the agent, `i` why, `S` stop the agent. Any other key leaves the sidebar and types into the pane. The row's right-click menu runs its items by letter while it is open.
+The sidebar takes navigation only. No letter acts from it: every action is the leader (`Ctrl+Space`) and its key, such as `n` new shell, `s` new session, `x` close, `m` Menu, `Enter` message the agent, `y` why, `k` stop the agent. Any other key leaves the sidebar and types into the pane. The row's right-click menu runs its items by letter while it is open.
 
 | Keys | Action |
 | --- | --- |
@@ -82,9 +164,9 @@ The sidebar takes navigation only. No letter acts from it: every action is the l
 | Enter, Esc | Open the selected result / submit prompt, or cancel |
 | y / Y / Enter in close-group or remove-worktree prompt | Confirm; f / F forces worktree removal when offered; other keys cancel |
 
-## New session (`c`)
+## New session (`o`)
 
-`s` starts a session at once with no dialog (Settings › Sessions sets the agent and where); `c`
+`s` starts a session at once with no dialog (Settings › Sessions sets the agent and where); `o`
 opens this dialog. `n` and the `+ new` chip start a plain shell, not a session.
 
 | Keys | Action |
@@ -234,7 +316,7 @@ No bare key answers from the sidebar.
 | --- | --- |
 | Tab, Shift+Tab, Up / k, Down / j | Change settings category; choose row |
 | Left / h, Right / l, Enter, Space | Change value; Enter edits text or captures binding; theme opens browser |
-| o | Open configuration file outside Seshi |
+| o | Open configuration file outside Maitty |
 | R | Restart the daemon after an update (when the Restart now button shows) |
 | Keys on the Check page | As in `PROJECT · <name>` (see Check modals); Tab, Esc and o stay Settings' |
 | Enter, Esc when editing | Save field / cancel; when capturing press the new key or Esc |
@@ -266,17 +348,23 @@ No bare key answers from the sidebar.
 
 ## Terminal scrolling and mouse
 
+Scrolled up, a pane shows **↓ Back to bottom** at its bottom right (with how many lines up,
+in Maitty's own history); a click goes back to the newest output. An agent that scrolls itself
+(a full-screen one, which the wheel pages) shows it too, and the click pages it back down as
+far as the wheel paged it up; typing to the agent clears it, since the agent scrolls to its
+prompt itself.
+
 Leader `z` collapses the sessions into a strip of chips on the top row (click a chip to
 focus it, `»` or `+n more` to expand); with the strip focused, `←` `→` and `1`-`9` switch
-sessions. Leader `Z` hides the sessions completely; `z` or `Z` brings them back.
+sessions. "Hide sidebar" (search commands) hides the sessions completely; `z` brings them back.
 
 | Keys | Action |
 | --- | --- |
 | PageUp, PageDown at a prompt | Scroll history; full-screen programs keep these keys |
 | Shift+PageUp, Shift+PageDown, Ctrl+Shift+Up, Ctrl+Shift+Down | Scroll half-pages or individual lines outside full-screen mode |
-| Shift with mouse | Keep selection/scrolling in Seshi when program captures the mouse |
+| Shift with mouse | Keep selection/scrolling in Maitty when program captures the mouse |
 | Ctrl+click | Open a path or link |
-| Shift+right-click | Seshi menu even when program handles right-click |
+| Shift+right-click | Maitty menu even when program handles right-click |
 | Double-click, drag | Copy word/path/link, select and copy text |
 
 ## Menus, history, splash and confirmations

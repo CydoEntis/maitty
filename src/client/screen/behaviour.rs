@@ -563,7 +563,7 @@ impl App {
         let proj = self.screen.cursor_proj.clone();
         let model = self.screen_model();
         if spec == self.keymap.prefix {
-            self.mode = Mode::Prefix { since: Instant::now() };
+            self.mode = Mode::Prefix { since: Instant::now(), acted: false };
             return;
         }
         let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
@@ -624,7 +624,7 @@ impl App {
                 }
             },
             KeyCode::Esc => self.screen_side_leave(),
-            _ if spec == self.keymap.prefix => self.mode = Mode::Prefix { since: Instant::now() },
+            _ if spec == self.keymap.prefix => self.mode = Mode::Prefix { since: Instant::now(), acted: false },
             // Nothing else acts from the sidebar: an action is the leader and its key (ADR 0014).
             // Anything else is typing: leave the sidebar and hand the key over.
             _ => {
@@ -670,7 +670,7 @@ impl App {
         self.notify(format!("answered {name}: {label}"), false);
     }
 
-    /// A question an agent asked you with `seshi ask-human`, waiting in this pane.
+    /// A question an agent asked you with `<app> ask-human`, waiting in this pane.
     pub(in crate::client) fn pending_question(&self, term: TermId) -> Option<&crate::protocol::HumanQuestion> {
         self.snap.questions.iter().find(|q| q.term == term)
     }
@@ -981,6 +981,12 @@ impl App {
                     self.cmd(Command::MarkSeen { term });
                 }
             }
+            KeyCode::Delete if let Some(GoRow::Quiet(term)) = sel_row => {
+                if let Some(at) = self.snap.terms.get(&term).and_then(|i| i.quiet_since) {
+                    self.screen.quiet_seen.insert(term, at);
+                    self.screen_fresh();
+                }
+            }
             KeyCode::Enter if let Some(t) = sel_row.as_ref().and_then(GoRow::term) && self.approval_waits(t) => {
                 self.open_approval(t);
                 self.screen.inbox_return = Some((query, sel));
@@ -998,7 +1004,7 @@ impl App {
                         self.do_check_key(t, None, 'r');
                         self.mode = Mode::GoTo { query, sel };
                     }
-                    Some(GoRow::Ask(t) | GoRow::Done(t) | GoRow::Sess(_, t)) => {
+                    Some(GoRow::Ask(t) | GoRow::Done(t) | GoRow::Quiet(t) | GoRow::Sess(_, t)) => {
                         self.mode = Mode::Normal;
                         self.screen_focus(t);
                     }
@@ -1132,21 +1138,34 @@ impl App {
         self.mode = Mode::ScreenPane(np);
     }
 
-    /// Keys on the splash: move between its buttons, Enter picks one, or a button's own key.
-    /// Nothing else leaves it.
+    /// Keys on the splash: arrows (or j, k) and a card's own key choose, Enter opens the chosen
+    /// one. Nothing else leaves it.
     pub(in crate::client) fn on_hy_splash_key(&mut self, k: &KeyEvent) {
         let opts = splash_options(self);
-        let n = opts.len().max(1);
+        let last = opts.len().saturating_sub(1);
+        let sel = self.screen.splash_sel.min(last);
         match k.code {
-            KeyCode::Up | KeyCode::Left | KeyCode::BackTab | KeyCode::Char('k') => self.screen.splash_sel = (self.screen.splash_sel + n - 1) % n,
-            KeyCode::Down | KeyCode::Right | KeyCode::Tab | KeyCode::Char('j') => self.screen.splash_sel = (self.screen.splash_sel + 1) % n,
-            KeyCode::Enter => {
-                if let Some((_, _, c)) = opts.get(self.screen.splash_sel.min(n - 1)) {
-                    self.screen_splash_action(*c);
+            KeyCode::Up | KeyCode::BackTab | KeyCode::Char('k') => self.screen.splash_sel = sel.saturating_sub(1),
+            KeyCode::Down | KeyCode::Tab | KeyCode::Char('j') => self.screen.splash_sel = (sel + 1).min(last),
+            KeyCode::Enter => self.screen_splash_open(sel),
+            KeyCode::Char('?' | ',') => {
+                if let KeyCode::Char(c) = k.code {
+                    self.screen_splash_action(c);
                 }
             }
-            KeyCode::Char(c) if opts.iter().any(|(_, _, k)| *k == c) || c == '?' || c == ',' => self.screen_splash_action(c),
+            KeyCode::Char(c) => {
+                if let Some(i) = opts.iter().position(|(_, _, key)| *key == c) {
+                    self.screen.splash_sel = i;
+                }
+            }
             _ => {}
+        }
+    }
+
+    /// Open the splash's `i`th choice.
+    pub(in crate::client) fn screen_splash_open(&mut self, i: usize) {
+        if let Some((_, _, c)) = splash_options(self).get(i) {
+            self.screen_splash_action(*c);
         }
     }
 
@@ -1362,6 +1381,13 @@ impl App {
                 self.splash = false;
                 self.screen_splash_action(c);
             }
+            ScreenHit::SplashCard(i) => {
+                if self.screen.splash_sel == i || double {
+                    self.screen_splash_open(i);
+                } else {
+                    self.screen.splash_sel = i;
+                }
+            }
             ScreenHit::MenuPick(i) => self.menu_pick(i),
             ScreenHit::HistRow(i) => {
                 if let Mode::History { sel } = &mut self.mode {
@@ -1418,6 +1444,7 @@ impl App {
                 }
             }
             ScreenHit::SideEdge => self.screen.drag = Some(Drag::Side),
+            ScreenHit::ToBottom(term) => self.back_to_bottom(term),
             ScreenHit::ScrollBar(term) => {
                 self.screen.drag = Some(Drag::Scroll(term));
                 if let (Some((t, r, total)), Some(pos)) = (self.screen.bar, self.hover)

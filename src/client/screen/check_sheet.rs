@@ -2,6 +2,7 @@
 //! The summary is read live from the snapshot; only the output is fetched, by
 //! `Query::CheckOutput`, and fetched again when a new run replaces the result.
 use super::check;
+use crate::brand::{APP_NAME};
 use super::*;
 use crate::client::{Btn, View};
 use crate::output_line::{classify, clean, LineKind};
@@ -277,8 +278,8 @@ fn seen_row(info: &CheckInfo, said: &str, t: &Theme, c: Style) -> (&'static str,
         return ("Source", vec![seg(parts.join(" · "), c.fg(t.text))]);
     }
     let words = match said.lines().rev().map(str::trim).find(|l| !l.is_empty()) {
-        Some(s) => format!("Seshi ran this itself. The agent said \"{s}\"."),
-        None => "Seshi ran this itself.".into(),
+        Some(s) => format!("{APP_NAME} ran this itself. The agent said \"{s}\"."),
+        None => concat!(env!("APP_NAME"), " ran this itself.").into(),
     };
     ("Seen by", vec![seg(words, c.fg(t.muted))])
 }
@@ -366,7 +367,7 @@ fn output_note(v: &CheckView, info: &CheckInfo, rows: usize) -> String {
 /// What the block says when there is no output.
 fn empty_words(info: &CheckInfo) -> (&'static str, String) {
     match info.state {
-        CheckState::Never => ("(nothing ran)", "There is no output because Seshi did not run it.".into()),
+        CheckState::Never => ("(nothing ran)", concat!("There is no output because ", env!("APP_NAME"), " did not run it.").into()),
         CheckState::Passed | CheckState::Stale => ("(the command printed nothing)", "exit 0 is what passed it.".into()),
         _ => match info.exit_code {
             Some(code) => ("(no output)", format!("It exited {code} without printing. Run it in the session to see more.")),
@@ -590,7 +591,7 @@ mod tests {
     fn a_check_you_chose_never_to_run_explains_itself() {
         matches_reference("A5 Never for this repo", Stage::Never, "", Some(0), |want| {
             want.set_row(5, " Ran      did not run · after turn 3 ended 14:21:51");
-            want.set_row(6, " Source   .seshi/checks.toml · a1b2c3d · you chose never");
+            want.set_row(6, concat!(" Source   .", env!("APP_COMMAND"), "/checks.toml · a1b2c3d · you chose never"));
         });
     }
 

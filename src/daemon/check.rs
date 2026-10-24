@@ -43,7 +43,7 @@ const OUTPUT_DRAIN_GRACE: Duration = Duration::from_secs(2);
 const READ_CHUNK_BYTES: usize = 8 * 1024;
 /// Variables the check's process must not see: the pane's secret lets whoever holds it
 /// report that pane's status.
-const SCRUBBED_ENV: &[&str] = &["SESHI_PANE_TOKEN"];
+const SCRUBBED_ENV: &[&str] = &[concat!(env!("APP_ENV"), "_PANE_TOKEN")];
 
 /// How a check's process ended, before it is read as a result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -565,7 +565,7 @@ impl Daemon {
         let tx = self.tx.clone();
         tokio::task::spawn_blocking(move || {
             let found = dirs.into_iter().map(|(id, dir)| {
-                let has = dir.join(crate::config::REPO_CHECKS_FILE).is_file();
+                let has = crate::config::repo_checks_path(&dir).is_file();
                 (id, dir, has)
             });
             let _ = tx.blocking_send(Ev::RepoChecksFound(found.collect()));
@@ -908,17 +908,17 @@ mod tests {
 
     #[test]
     fn a_shell_that_cannot_start_reads_as_not_run() {
-        let run = run_check(&["/no/such/shell-for-seshi".into()], &std::env::temp_dir(), "exit 0", LONG);
+        let run = run_check(&[concat!("/no/such/shell-for-", env!("APP_COMMAND")).into()], &std::env::temp_dir(), "exit 0", LONG);
         assert_eq!(run.outcome, CheckOutcome::SpawnFailed);
         assert_eq!(state_for(run.outcome), CheckState::CouldNotRun);
     }
 
     #[test]
     fn a_missing_command_reads_as_not_run_not_failed() {
-        let run = run("seshi-no-such-command-xyz", LONG);
+        let run = run(concat!(env!("APP_COMMAND"), "-no-such-command-xyz"), LONG);
         assert_eq!(run.outcome, CheckOutcome::Exited(EXIT_COMMAND_NOT_FOUND));
         assert_eq!(state_for(run.outcome), CheckState::CouldNotRun);
-        assert!(run.output.contains("seshi-no-such-command-xyz"), "it says what was missing: {}", run.output);
+        assert!(run.output.contains(concat!(env!("APP_COMMAND"), "-no-such-command-xyz")), "it says what was missing: {}", run.output);
     }
 
     #[test]
@@ -997,7 +997,7 @@ mod tests {
     }
 
     #[cfg(target_os = "linux")]
-    const KILLED_DAEMON_ENV: &str = "SESHI_TEST_CHECK_AS_DAEMON";
+    const KILLED_DAEMON_ENV: &str = concat!(env!("APP_ENV"), "_TEST_CHECK_AS_DAEMON");
 
     /// Run as the stand-in daemon for `a_check_dies_with_the_daemon_that_started_it`: start a
     /// check that writes its pid and waits, and never return.
@@ -1045,9 +1045,9 @@ mod tests {
 
     #[test]
     fn the_check_does_not_inherit_the_panes_token_but_keeps_the_rest_of_the_environment() {
-        assert!(SCRUBBED_ENV.contains(&"SESHI_PANE_TOKEN"), "the secret is scrubbed");
+        assert!(SCRUBBED_ENV.contains(&concat!(env!("APP_ENV"), "_PANE_TOKEN")), "the secret is scrubbed");
         // Names nothing else reads, so setting them cannot disturb a test running beside this one.
-        let (secret, plain) = ("SESHI_TEST_CHECK_SECRET", "SESHI_TEST_CHECK_PLAIN");
+        let (secret, plain) = (concat!(env!("APP_ENV"), "_TEST_CHECK_SECRET"), concat!(env!("APP_ENV"), "_TEST_CHECK_PLAIN"));
         // SAFETY: only this test touches these two names.
         unsafe {
             std::env::set_var(secret, "hunter2");
@@ -1056,7 +1056,7 @@ mod tests {
         let print = if cfg!(windows) { "Get-ChildItem Env: | ForEach-Object { \"$($_.Name)=$($_.Value)\" }" } else { "env" };
         let run = run_scrubbed(&test_shell(), &std::env::temp_dir(), print, LONG, &[secret]);
         assert_eq!(run.outcome, CheckOutcome::Exited(0));
-        assert!(run.output.contains("SESHI_TEST_CHECK_PLAIN=visible"), "the rest passes through");
+        assert!(run.output.contains(concat!(env!("APP_ENV"), "_TEST_CHECK_PLAIN=visible")), "the rest passes through");
         assert!(!run.output.contains(secret) && !run.output.contains("hunter2"), "the scrubbed name is gone: {}", run.output);
     }
 

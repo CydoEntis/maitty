@@ -74,7 +74,7 @@ journeys that must never break.
 The built-in test harness: `cargo test` runs everything (unit tests sit in
 `#[cfg(test)] mod` blocks beside the code). UI tests render frames with
 ratatui's `TestBackend` and assert on the text and cell styles;
-`SESHI_SHOW=1 cargo test <name> -- --nocapture` prints the frames. One test:
+`MAITTY_SHOW=1 cargo test <name> -- --nocapture` prints the frames. One test:
 `cargo test <name>`.
 
 ## Project-specific: layout and fixtures
@@ -83,7 +83,7 @@ Tests live next to the code they test. Client UI tests build a fake snapshot
 with `design_tests::render_with(w, h)` (projects, worktrees, agents in
 each state) and drive it with `app.on_key` / `app.act`. v7 layout tests use
 `client/v7_fixture.rs`: `world(stage)` is the handoff's sample world (affiliate-site,
-pixls, seshi) with fix-footer's check at one of `checks7.js`'s stages, on a pinned clock
+pixls, maitty) with fix-footer's check at one of `checks7.js`'s stages, on a pinned clock
 (`screen::FIXED_NOW`), and `frame(app, layout, w, h, glyphs)` draws it as text in Cards
 floating, Cards tiled or Flat, to compare with the handoff's frames
 (`docs/design/v7/render-frames.mjs`).
@@ -103,8 +103,8 @@ node src/client/v7_frames/split-frames.mjs "$T/frames.txt"
 ```
 
 Live checks use a nested
-server: `SESHI_SOCKET=test seshi`, then `seshi send` / `seshi read` against it.
-Tests never touch the user's real config (`SESHI_CONFIG` or in-memory configs).
+server: `MAITTY_SOCKET=test maitty`, then `maitty send` / `maitty read` against it.
+Tests never touch the user's real config (`MAITTY_CONFIG` or in-memory configs).
 
 ## Project-specific: required coverage
 
@@ -132,7 +132,7 @@ Native Pi/OMP/OpenCode/Kilo adapters also run without an installed agent, networ
 status socket: `node --experimental-vm-modules --test src/cli/integrations.test.mjs`.
 The VM supplies the process-launch boundary and executes the bundled adapters.
 Cover nested dialogs, event ordering, helper versus parent completion, unrelated
-sessions, reporting failures/recovery and inert behavior outside Seshi. CI runs
+sessions, reporting failures/recovery and inert behavior outside Maitty. CI runs
 these adapter tests on Windows and Linux; Node's VM flag is test-only.
 Cover OpenCode TUI V1/V2 selection, initial idle, shared-backend isolation and
 disposal. Exercise OMP retry/continuation timers deterministically. Rust tests

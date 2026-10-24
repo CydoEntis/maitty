@@ -372,8 +372,10 @@ pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: R
     ];
     let c = Style::default().bg(t.card);
     let confirmed = info.why_hook_at.max(info.why_screen_at);
-    let summary = if info.agent.is_some() && confirmed == 0 && info.status_why.is_empty() {
-        "Status uncertain — no report or screen confirmation."
+    let summary = if let (Status::Working, Some(at)) = (info.status, info.quiet_since) {
+        format!("No output or report for {} — it may be stuck.", age(at))
+    } else if info.agent.is_some() && confirmed == 0 && info.status_why.is_empty() {
+        "Status uncertain — no report or screen confirmation.".into()
     } else {
         match info.status {
             Status::Blocked => "Waiting for your answer or permission.",
@@ -385,6 +387,7 @@ pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: R
             Status::Working => "Working — estimated from the screen.",
             Status::None => "No agent status is available for this terminal.",
         }
+        .into()
     };
     put(buf, r.x + 3, r.y + 2, &[seg(summary, c.fg(t.text))], r.right() - 2);
     let confirmation = if confirmed == 0 { "Last confirmation: none".into() } else { format!("Last confirmation: {}", ago(confirmed)) };
@@ -446,7 +449,7 @@ fn check_keys(state: CheckState) -> Vec<(&'static str, &'static str)> {
     keys
 }
 
-/// Why a session with a check reads as it does: the turn that ended, Seshi running the
+/// Why a session with a check reads as it does: the turn that ended, the app running the
 /// command, and what came of it, one line each with its time, inside the popover `r`.
 fn draw_check_why(app: &App, buf: &mut Buffer, r: Rect, info: &TermInfo, check: &CheckInfo, t: &Theme) {
     let c = Style::default().bg(t.card);
@@ -459,7 +462,7 @@ fn draw_check_why(app: &App, buf: &mut Buffer, r: Rect, info: &TermInfo, check: 
         lines.push((check.after_turn_ended_at, vec![seg(format!("agent's turn ended{quote}"), c.fg(t.text))]));
     }
     if check.started_at > 0 {
-        lines.push((check.started_at, vec![seg("Seshi ran ", c.fg(t.text)), seg(check.command.clone(), c.fg(t.strong).add_modifier(Modifier::BOLD)), seg(" in its worktree", c.fg(t.text))]));
+        lines.push((check.started_at, vec![seg(concat!(env!("APP_NAME"), " ran "), c.fg(t.text)), seg(check.command.clone(), c.fg(t.strong).add_modifier(Modifier::BOLD)), seg(" in its worktree", c.fg(t.text))]));
     }
     let (result, color) = check_result(app, check, t);
     let finished = if check.state == CheckState::Checking || check.started_at == 0 { 0 } else { check.started_at + check.duration_ms / 1000 };
