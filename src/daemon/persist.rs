@@ -171,8 +171,8 @@ pub fn output_dir() -> PathBuf {
     crate::config::data_dir().join(format!("output-{label}"))
 }
 
-fn output_file(term: TermId) -> PathBuf {
-    output_dir().join(format!("{term}.bin"))
+fn output_file(dir: &Path, term: TermId) -> PathBuf {
+    dir.join(format!("{term}.bin"))
 }
 
 /// Which of a pane's two kept check results an output tail belongs to.
@@ -333,7 +333,7 @@ struct Written {
     cleaned: u64,
 }
 
-static WRITTEN: std::sync::Mutex<Option<Written>> = std::sync::Mutex::new(None);
+static WRITTEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, Written>>> = std::sync::Mutex::new(None);
 static TICKETS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// A number for a save, taken when its output is gathered: a higher one is a newer picture.
@@ -345,17 +345,20 @@ pub fn save_ticket() -> u64 {
 /// one at a time; a pane already written by a newer `ticket` is left alone. One pane failing
 /// doesn't stop the rest; the first error is returned after all were tried.
 pub fn save_outputs(ticket: u64, outputs: &[(TermId, Vec<u8>)], live: &[TermId]) -> Result<()> {
+    save_outputs_in(&output_dir(), ticket, outputs, live)
+}
+
+fn save_outputs_in(dir: &Path, ticket: u64, outputs: &[(TermId, Vec<u8>)], live: &[TermId]) -> Result<()> {
     use std::io::Write;
     let mut guard = WRITTEN.lock().unwrap_or_else(|e| e.into_inner());
-    let written = guard.get_or_insert_with(Written::default);
-    let dir = output_dir();
-    private_dir(&dir)?;
+    let written = guard.get_or_insert_with(Default::default).entry(dir.to_path_buf()).or_default();
+    private_dir(dir)?;
     let mut first_err: Option<anyhow::Error> = None;
     for (term, bytes) in outputs {
         if written.panes.get(term).is_some_and(|&t| t > ticket) {
             continue;
         }
-        let path = output_file(*term);
+        let path = output_file(dir, *term);
         let tmp = path.with_extension("tmp");
         // Synced before the rename, so a power cut leaves the old file or the new one, never
         // an empty one.
@@ -377,7 +380,7 @@ pub fn save_outputs(ticket: u64, outputs: &[(TermId, Vec<u8>)], live: &[TermId])
     if ticket > written.cleaned {
         written.cleaned = ticket;
         written.panes.retain(|id, _| live.contains(id));
-        for e in std::fs::read_dir(&dir)?.flatten() {
+        for e in std::fs::read_dir(dir)?.flatten() {
             let id = e.path().file_stem().and_then(|s| s.to_str()).and_then(|s| s.parse::<TermId>().ok());
             if id.is_none_or(|id| !live.contains(&id)) {
                 let _ = std::fs::remove_file(e.path());
@@ -389,7 +392,11 @@ pub fn save_outputs(ticket: u64, outputs: &[(TermId, Vec<u8>)], live: &[TermId])
 
 /// A pane's kept output, taken (its file goes: the pane it's restored into saves its own).
 pub fn take_output(term: TermId) -> Option<Vec<u8>> {
-    let path = output_file(term);
+    take_output_in(&output_dir(), term)
+}
+
+fn take_output_in(dir: &Path, term: TermId) -> Option<Vec<u8>> {
+    let path = output_file(dir, term);
     let bytes = std::fs::read(&path).ok()?;
     let _ = std::fs::remove_file(&path);
     Some(bytes)
@@ -455,12 +462,13 @@ mod tests {
 
     #[test]
     fn a_slow_older_save_cannot_overwrite_a_newer_one() {
+        let dir = scratch_dir();
         let term: crate::protocol::TermId = 9_001;
         let old = super::save_ticket();
         let new = super::save_ticket();
-        super::save_outputs(new, &[(term, b"newer".to_vec())], &[term]).unwrap();
-        super::save_outputs(old, &[(term, b"older".to_vec())], &[term]).unwrap();
-        assert_eq!(super::take_output(term).as_deref(), Some(b"newer".as_slice()));
+        super::save_outputs_in(dir.path(), new, &[(term, b"newer".to_vec())], &[term]).unwrap();
+        super::save_outputs_in(dir.path(), old, &[(term, b"older".to_vec())], &[term]).unwrap();
+        assert_eq!(super::take_output_in(dir.path(), term).as_deref(), Some(b"newer".as_slice()));
     }
 
     #[test]
