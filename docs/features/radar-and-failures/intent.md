@@ -35,7 +35,8 @@ the message box.
 
 ## Open questions
 
-Settled when Phase 27 is ticketed: the "nearly full" threshold, and the key for send failure.
+Decided 2026-10-24: "nearly full" is 85%. Open until phase 27 is ticketed: the key for send failure
+(recommended: `m` on a failed check, which already opens the message box, pre-fills the failure).
 
 ## Tickets
 
