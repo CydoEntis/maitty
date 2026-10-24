@@ -197,10 +197,6 @@ pub(in crate::client) fn heads_up(app: &App) -> Vec<(PathBuf, Overlap)> {
         .collect()
 }
 
-/// Columns of a sheet's title row that are not the text after its name: the corners, the
-/// name, the ✕ and the gaps between.
-const TITLE_CHROME: u16 = 24;
-
 pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t: &Theme) {
     let (title, sub, close) = match kind {
         SheetKind::Inbox => ("INBOX", inbox_count(app).to_string(), ScreenHit::Close),
@@ -214,8 +210,6 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     if sheet_has_keys(app) {
         c = c.lit(t.accent);
     }
-    // Cut here, so a long name still shows its start rather than being left out.
-    let sub = truncate(&sub, r.width.saturating_sub(TITLE_CHROME) as usize);
     c.sub = &sub;
     // The read-while-working sheets and Changes sit on the desk's ground, like the panes.
     c.bg = if kind == SheetKind::Both { t.card } else { t.bg };

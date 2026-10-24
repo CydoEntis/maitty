@@ -309,7 +309,15 @@ fn plain_title_chip(c: &Card, t: &Theme, room: u16) -> Vec<Seg> {
     let st = Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD);
     let sub = if c.sub.is_empty() { String::new() } else { format!(" {}", c.sub) };
     let fits = |s: &str| s.width() as u16 + 2 <= room;
-    let (title, sub) = if fits(&format!("{}{sub}", c.title)) { (c.title.to_string(), sub) } else { (truncate(c.title, room.saturating_sub(2) as usize), String::new()) };
+    // A long sub is cut to the room left, so it still shows its start; only a title that does
+    // not fit on its own loses it.
+    let (title, sub) = if fits(&format!("{}{sub}", c.title)) {
+        (c.title.to_string(), sub)
+    } else if fits(c.title) {
+        (c.title.to_string(), truncate(&sub, room.saturating_sub(2 + c.title.width() as u16) as usize))
+    } else {
+        (truncate(c.title, room.saturating_sub(2) as usize), String::new())
+    };
     let mut out = vec![seg(format!(" {title}"), st)];
     if !sub.is_empty() {
         out.push(seg(sub, Style::default().bg(bg).fg(if c.bold { fg } else { t.text })));
