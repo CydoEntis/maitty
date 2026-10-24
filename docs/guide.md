@@ -43,7 +43,7 @@ and your configured custom ones; rows click and the wheel scrolls.
   the keys, dim when a pane does). The open session keeps a dim bar while you browse with the
   keyboard. Hover is a separate, quieter tint.
 - Collapsing the sidebar (leader, then `z`) moves the sessions into a strip of chips along
-  the top row: click a chip to go to it, `»` or `+n more` to expand the sidebar again.
+  the top row: click a chip to go to it, `»` (`«` with the sidebar on the right) or `+n more` to expand the sidebar again.
 - Things that need you sort to the top; everything else keeps its place. Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
 - A session taking a real share of the machine says so in its pane's title, beside its state
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
@@ -86,8 +86,9 @@ first), `e` opens the file in your editor, `x` marks it reviewed (it sinks; the 
 if the file changes again), `r` goes to its agent. In a worktree, `m` merges and `d` throws
 it away, also after asking.
 
-The side panel's width is kept for each view: `[` and `]` narrow or widen it, `=` puts it
-back, or drag its left edge. A markdown file in Files is drawn by default; `m` switches
+The side panel's width is kept for each view. While the panel has the keys, `[` and `]`
+narrow or widen it and `=` puts it back (after the leader, `[` and `]` switch tabs instead);
+or drag its left edge. A markdown file in Files is drawn by default; `m` switches
 between drawn and raw text.
 
 Everything also works with the mouse. Hold Shift to select text with your terminal.
@@ -209,7 +210,8 @@ They show up in + New as `⚙ feature`.
 
 ## Agents that steer agents (MCP)
 
-`maitty integrate mcp` registers `maitty mcp` with Claude Code. An agent then has tools to
+`maitty integrate mcp` registers `maitty mcp` with Claude Code and prints the
+`[mcp_servers.maitty]` lines to add to Codex's `~/.codex/config.toml`. An agent then has tools to
 list sessions (`maitty_list`), read a screen (`maitty_read`), send a message
 (`maitty_send`), wait for a turn to end (`maitty_wait`), answer a prompt (`maitty_answer`),
 interrupt (`maitty_interrupt`) and start helpers (`maitty_start`, see *Helpers* above).
