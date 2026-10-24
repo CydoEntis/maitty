@@ -54,6 +54,8 @@ pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, titl
     if r.width < 4 || r.height < 2 {
         return r;
     }
+    let look = Look::of(&app.cfg.ui);
+    let behind = ends_behind(buf, Rect { height: 1, ..r });
     fill(buf, r, t.card);
     let edge = Style::default().fg(t.line).bg(t.card);
     let (right_x, bottom) = (r.right() - 1, r.bottom() - 1);
@@ -64,10 +66,13 @@ pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, titl
     for x in r.x..r.right() {
         buf[(x, bottom)].set_symbol("─").set_style(edge);
     }
-    let [_, _, bl, br] = corners(Look::of(&app.cfg.ui));
+    let [_, _, bl, br] = corners(Look { rounded: look.rounded || look.caps, ..look });
     buf[(r.x, bottom)].set_symbol(bl).set_style(edge);
     buf[(right_x, bottom)].set_symbol(br).set_style(edge);
     fill(buf, Rect { height: 1, ..r }, t.accent);
+    if look.caps {
+        soften_block(buf, Rect { height: 1, ..r }, &behind);
+    }
     let ink = Style::default().fg(t.acc_ink).bg(t.accent);
     let esc_x = r.right().saturating_sub(ESC_CLOSE.len() as u16 + 2);
     put(buf, esc_x, r.y, &[seg(ESC_CLOSE, ink)], r.right());

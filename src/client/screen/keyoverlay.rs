@@ -374,6 +374,7 @@ fn frame(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, title: &str, wa
     let mut c = Card::new(t, title).lit(t.sky());
     c.title_fg = t.accent;
     c.bg = t.card;
+    c.float = true;
     let inside = card(app, buf, r, &c, t);
     hit(app, r, ScreenHit::Noop);
     (r, inside)

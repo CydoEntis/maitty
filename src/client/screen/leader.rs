@@ -58,6 +58,7 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
     let r = Rect { x, y, width: w, height: h };
     let mut c = Card::new(t, "Menu").lit(t.accent);
     c.bg = t.card;
+    c.float = true;
     let inside = card(app, buf, r, &c, t);
     hit(app, r, ScreenHit::Noop);
     let needs = app.screen_model().iter().flat_map(|p| p.sessions()).filter(|s| s.status == Status::Blocked).count();

@@ -325,9 +325,12 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 fill(buf, row, rl.bg);
             }
             if look.round_rows && rl.bg != pb && row.width > 2 {
-                // Each line is a pill; the cap stands where the edge bar would.
-                buf[(row.x, y)].set_symbol(CAP_L).set_fg(rl.bg).set_bg(pb);
-                buf[(row.right() - 1, y)].set_symbol(CAP_R).set_fg(rl.bg).set_bg(pb);
+                // The session's lines are one block; its ends stand where the edge bar would.
+                let first = (scroll..=i).rev().find(|&j| matches!(lines[j], Line::Sess(..)) || j == scroll).unwrap_or(i);
+                let block = row_rect(first, top + (first - scroll) as u16);
+                let (l, e) = block_ends(y - block.y, block.height);
+                buf[(row.x, y)].set_symbol(l).set_fg(rl.bg).set_bg(pb);
+                buf[(row.right() - 1, y)].set_symbol(e).set_fg(rl.bg).set_bg(pb);
             } else if let Some(c) = rl.bar {
                 check::edge(app, buf, cols.x, y, c, rl.bg);
             }
@@ -424,7 +427,10 @@ fn draw_head(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme
     let (chip_bg, ink, count) = if lit { (t.accent, t.acc_ink, t.acc_ink) } else { (t.btn, t.strong, t.text) };
     let chip = Style::default().bg(chip_bg);
     let host = crate::ipc::remote().map(|h| format!(" ⇄ {h}")).unwrap_or_default();
-    let title = [seg(" SESSIONS", chip.fg(ink).add_modifier(Modifier::BOLD)), seg(format!(" {}{host} ", all.len()), chip.fg(count))];
+    let mut title = vec![seg(" SESSIONS", chip.fg(ink).add_modifier(Modifier::BOLD)), seg(format!(" {}{host} ", all.len()), chip.fg(count))];
+    if Look::of(&app.cfg.ui).caps {
+        title = round_ends(title, if flat { t.card } else { Color::Reset });
+    }
     put(buf, r.x + if flat { 1 } else { 2 }, r.y, &title, rx.saturating_sub(1));
     if rw > 0 {
         let pad = if flat { vec![] } else { vec![seg(" ", ground)] };
@@ -730,9 +736,7 @@ fn checkpoint_names(app: &App, p: &Proj) -> Vec<String> {
 /// A `btn` chip: `word` in `text`, after an `accent` bold `icon` when it has one. Its ends
 /// follow `ui.rounded`.
 pub(super) fn word_chip(app: &App, icon: Option<&str>, word: &str, t: &Theme, outer: Color) -> Vec<Seg> {
-    // A cap needs a raised ground to sit on: on the plain `bg` (which a transparent terminal
-    // background hands back to the terminal) it would have none, so the chip stays square.
-    let look = Look { caps: Look::of(&app.cfg.ui).caps && outer != Color::Reset && outer != t.bg, ..Look::of(&app.cfg.ui) };
+    let look = Look::of(&app.cfg.ui);
     let mut body = Vec::new();
     if let Some(icon) = icon {
         body.push(seg(format!("{icon} "), Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD)));

@@ -146,6 +146,40 @@ pub(in crate::client) fn row_pill(look: Look, buf: &mut Buffer, x: u16, y: u16, 
     put(buf, x, y, &segs, x + w);
 }
 
+/// The left and right end of line `i` of a block `n` lines tall drawn in one colour: half-circle
+/// caps for a single line; for a taller block quarter cells at its corners and half cells down
+/// its sides, so it reads as one shape with softened corners rather than a stack of pills.
+pub(in crate::client) fn block_ends(i: u16, n: u16) -> (&'static str, &'static str) {
+    match (i, n) {
+        (_, 0 | 1) => (CAP_L, CAP_R),
+        (0, _) => ("▗", "▖"),
+        (i, n) if i + 1 == n => ("▝", "▘"),
+        _ => ("▐", "▌"),
+    }
+}
+
+/// Soften the corners of the block at `r` (already drawn) over what lay behind it, `behind`
+/// at each line's ends: the block's colour stays in the cut cell's foreground.
+pub(in crate::client) fn soften_block(buf: &mut Buffer, r: Rect, behind: &[(Color, Color)]) {
+    let r = r.intersection(buf.area);
+    if r.width < 2 {
+        return;
+    }
+    for (i, y) in (r.y..r.bottom()).enumerate() {
+        let (l, e) = block_ends(i as u16, r.height);
+        let (bl, br) = behind.get(i).copied().unwrap_or((Color::Reset, Color::Reset));
+        let (lf, rf) = (buf[(r.x, y)].bg, buf[(r.right() - 1, y)].bg);
+        buf[(r.x, y)].set_symbol(l).set_fg(lf).set_bg(bl);
+        buf[(r.right() - 1, y)].set_symbol(e).set_fg(rf).set_bg(br);
+    }
+}
+
+/// What lies under the two ends of each line of `r`, read before a block is drawn over it.
+pub(in crate::client) fn ends_behind(buf: &Buffer, r: Rect) -> Vec<(Color, Color)> {
+    let r = r.intersection(buf.area);
+    (r.y..r.bottom()).map(|y| (buf[(r.x, y)].bg, buf[(r.right().saturating_sub(1), y)].bg)).collect()
+}
+
 /// A card's corners by the setting: top left, top right, bottom left, bottom right.
 pub(in crate::client) fn corners(look: Look) -> [&'static str; 4] {
     if look.rounded { ["╭", "╮", "╰", "╯"] } else { ["┌", "┐", "└", "┘"] }
@@ -199,11 +233,14 @@ pub(in crate::client) struct Card<'a> {
     pub title_fg: Color,
     /// The inside's ground.
     pub bg: Color,
+    /// Floats over the screen (a menu, an overlay): with rounded shapes its corners round
+    /// whatever the corner setting, since nothing beside it has to line up with it.
+    pub float: bool,
 }
 
 impl<'a> Card<'a> {
     pub fn new(t: &Theme, title: &'a str) -> Card<'a> {
-        Card { title, sub: "", chips: Vec::new(), right: Vec::new(), close: None, border: t.line, bold: false, title_fg: t.strong, bg: pane_bg(t) }
+        Card { title, sub: "", chips: Vec::new(), right: Vec::new(), close: None, border: t.line, bold: false, title_fg: t.strong, bg: pane_bg(t), float: false }
     }
 
     /// The focused look: the border and the title chip in `c`.
@@ -227,8 +264,15 @@ pub(in crate::client) fn right_end(look: Look, r: Rect) -> u16 {
 }
 
 /// The title chip, at most `room` wide: the title (and its sub, dropped first) padded by a
-/// space each side on `btn`, or on the focus colour when focused.
-fn title_chip(c: &Card, t: &Theme, room: u16) -> Vec<Seg> {
+/// space each side on `btn`, or on the focus colour when focused; with rounded shapes its ends
+/// are caps on `ground`.
+fn title_chip(look: Look, c: &Card, t: &Theme, room: u16, ground: Color) -> Vec<Seg> {
+    let caps = look.caps && c.chips.is_empty() && !c.title.is_empty();
+    let chip = plain_title_chip(c, t, room.saturating_sub(if caps { 2 } else { 0 }));
+    if caps { round_ends(chip, ground) } else { chip }
+}
+
+fn plain_title_chip(c: &Card, t: &Theme, room: u16) -> Vec<Seg> {
     if !c.chips.is_empty() || c.title.is_empty() {
         return c.chips.clone();
     }
@@ -256,7 +300,13 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
     if r.width < 4 || r.height < 2 {
         return Rect { width: 0, height: 0, ..r };
     }
-    let inside = if look.flat { flat_frame(buf, r, c, t) } else { box_frame(buf, r, c, look) };
+    let soften = c.float && look.caps;
+    let behind = if soften && look.flat { ends_behind(buf, r) } else { Vec::new() };
+    let boxed = Look { rounded: look.rounded || soften, ..look };
+    let inside = if look.flat { flat_frame(buf, r, c, t) } else { box_frame(buf, r, c, boxed) };
+    if soften && look.flat {
+        soften_block(buf, r, &behind);
+    }
     let ground = if look.flat { t.card } else { t.bg };
     let mut right = c.right.clone();
     if c.close.is_some() {
@@ -279,7 +329,7 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
         }
     }
     let chip_end = if shown { rx.saturating_sub(2) } else { end };
-    put(buf, chip_x, r.y, &title_chip(c, t, chip_end.saturating_sub(chip_x)), chip_end);
+    put(buf, chip_x, r.y, &title_chip(look, c, t, chip_end.saturating_sub(chip_x), title_ground(look, t)), chip_end);
     inside
 }
 
