@@ -197,6 +197,10 @@ Text sent to an agent through `seshi send` (and `--wait`), MCP `seshi_send` and 
 one agent cannot hide instructions to another from you. The error names each one and where it
 is; nothing is sent. Your own typing and pastes in a pane are not checked.
 
+Saved pane output and check tails can hold secrets that were on screen. On unix their folders
+are 0700 and their files 0600 (`persist::private_dir`, `create_private`); on Windows they sit
+in your own profile. `[restore] output = false` stops saving pane output and deletes it.
+
 ## Project-specific: auth and permissions
 
 No user accounts. Access to the daemon is access to its local socket: a named
