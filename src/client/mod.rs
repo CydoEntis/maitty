@@ -203,6 +203,10 @@ pub(super) enum Bg {
 /// Save the clipboard image as a PNG under the data folder; old pastes (a week) are
 /// cleared out. Returns (path, width, height).
 fn clipboard_image_to_file() -> Result<(PathBuf, usize, usize), String> {
+    // Tests never touch the machine's clipboard: what is on it is not theirs to read.
+    if cfg!(test) {
+        return Err("there's no image on the clipboard".into());
+    }
     let mut cb = arboard::Clipboard::new().map_err(|e| format!("can't open the clipboard: {e}"))?;
     let img = cb.get_image().map_err(|_| "there's no image on the clipboard".to_string())?;
     let dir = crate::config::data_dir().join("pastes");

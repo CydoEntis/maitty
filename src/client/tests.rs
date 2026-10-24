@@ -2937,6 +2937,7 @@ second line
         show(&o);
         assert!(o.contains("Copied to clipboard") && o.contains("7 characters · 1 line"), "{o}");
         assert!(o.contains("\"alpha b\""), "the preview quotes the text");
+        assert_eq!(copy::LAST_COPY.with(|c| c.borrow().clone()).as_deref(), Some("alpha b"), "what reached the clipboard (recorded, never the real one)");
         app.copy_flash.as_mut().unwrap().at = Instant::now() - copy::FLASH_FOR;
         let buf = frame(&mut app, 160, 45);
         assert_ne!(buf[(r.x, r.y)].bg, glow, "the glow ends");
