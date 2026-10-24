@@ -225,7 +225,8 @@ Next: three follow-ups the user approved on 2026-10-23: `a` on a sidebar row ope
 amber for needs-you in every theme (built), and `seshi wait` reporting a check waiting for approval or that could
 not run. Then the Phase 17 live trial and the Phase 18 live checks. Then
 [Phase 20](#20--borrowed-from-tuios--built-on-dev-2026-10-23-live-checks-open), borrowed from TUIOS (approved 2026-10-23), and
-[Phase 21](#21--layout-names-and-the-grid-style--built-on-dev-2026-10-23-live-checks-open), layout names and the Grid style.
+[Phase 21](#21--layout-names-and-the-grid-style--built-on-dev-2026-10-23-live-checks-open), layout names and the Grid style, and
+[Phase 22](#22--shortcut-mode--active-2026-10-23), shortcut mode.
 
 Current user-requested work: expand the built-in themes to cover the 25 requested
 families and add a searchable preview browser in Appearance. Acceptance: all
@@ -569,6 +570,18 @@ already taken (Seshi Walnut's accent and violet are one teal), so every built-in
 four. Not checked live: Grid in a real terminal at 160×45, 100×30 and 80×24, light themes by
 eye, and an old config file loading under its new name.
 
+### 22 — Shortcut mode · active 2026-10-23
+
+The user asked on 2026-10-23 for an input mode and a shortcut mode, so a run of actions is one
+key each rather than the leader every time, with the mode shown
+([ADR 0016](adr/0016-sticky-shortcut-mode.md)). The leader enters shortcut mode and it stays
+until Esc, the leader again, a click into a pane, or an action that gives you something to type
+into. Shown by a `SHORTCUT` pill and a sky border; input mode shows nothing. Tickets are
+labelled `phase-22`; no protocol change.
+
+1. #156 keys: a shortcut mode that stays until you leave it
+2. #157 UI: show shortcut mode with a SHORTCUT pill and a sky border (after #156)
+
 ## In scope
 
 Everything below is shipped on `main` unless marked.
@@ -659,6 +672,7 @@ Everything below is shipped on `main` unless marked.
 - [ADR-0012](adr/0012-flat-rendering-style.md) — Add a flat rendering style over the shared session layout; Cards stays default.
 - [ADR-0014](adr/0014-v8-cleanup.md) — Bring over the v8 cleanup, keeping what the user already decided. Rules out: bare letters acting in the sidebar; per-state glyphs on session rows; the fleet, the Team tab, the subagent tree and a helper mode.
 - [ADR-0011](adr/0011-keep-seshi-terminal-first.md) — Keep Seshi terminal-first. Rules out: adding a separate desktop GUI client to this project.
+- [ADR-0016](adr/0016-sticky-shortcut-mode.md) — The leader opens a shortcut mode that stays until Esc, the leader, a click into a pane or a typing action. Rules out: letters acting outside that shown mode.
 - [ADR-0015](adr/0015-four-named-layouts-and-grid.md) — One Layout setting: Floating, Tiled, Compact, Grid; Grid is a look over the shared layout. Rules out: Grid's own sidebar, top bar, fixed grid, zoom and bare keys.
 
 ## Rules
