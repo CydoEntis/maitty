@@ -226,7 +226,7 @@ amber for needs-you in every theme (built), and `seshi wait` reporting a check w
 not run. Then the Phase 17 live trial and the Phase 18 live checks. Then
 [Phase 20](#20--borrowed-from-tuios--built-on-dev-2026-10-23-live-checks-open), borrowed from TUIOS (approved 2026-10-23), and
 [Phase 21](#21--layout-names-and-the-grid-style--built-on-dev-2026-10-23-live-checks-open), layout names and the Grid style, and
-[Phase 22](#22--shortcut-mode--active-2026-10-23), shortcut mode.
+[Phase 22](#22--shortcut-mode--built-on-dev-2026-10-23-live-checks-open), shortcut mode.
 
 Current user-requested work: expand the built-in themes to cover the 25 requested
 families and add a searchable preview browser in Appearance. Acceptance: all
@@ -570,7 +570,7 @@ already taken (Seshi Walnut's accent and violet are one teal), so every built-in
 four. Not checked live: Grid in a real terminal at 160×45, 100×30 and 80×24, light themes by
 eye, and an old config file loading under its new name.
 
-### 22 — Shortcut mode · active 2026-10-23
+### 22 — Shortcut mode · built on dev 2026-10-23, live checks open
 
 The user asked on 2026-10-23 for an input mode and a shortcut mode, so a run of actions is one
 key each rather than the leader every time, with the mode shown
@@ -581,6 +581,10 @@ labelled `phase-22`; no protocol change.
 
 1. #156 keys: a shortcut mode that stays until you leave it
 2. #157 UI: show shortcut mode with a SHORTCUT pill and a sky border (after #156)
+
+Status 2026-10-23: #156–#157 built on `dev`; the gate passed (826 tests). Ctrl+Space after the
+leader now leaves shortcut mode, so `send-prefix` lost its default key; it is in search
+commands and can be bound. Not checked live: the mode in a real terminal with a working agent.
 
 ## In scope
 
