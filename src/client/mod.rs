@@ -443,6 +443,8 @@ pub struct App {
     last_click: Option<(Hit, Instant)>,
     /// Shortcut mode was on when the open popup took the keys; it comes back when that closes.
     shortcut_held: bool,
+    /// When shortcut mode last said a key did nothing, so mashing keys shows it once.
+    dead_key_hint: Option<Instant>,
     /// The open view a click into a pane set aside: while that view stays open, keys go to the
     /// pane. A click back in the side sheet, or another view opening, hands them back.
     view_set_aside: Option<std::mem::Discriminant<View>>,
@@ -633,6 +635,7 @@ impl App {
             undo_hint: false,
             last_click: None,
             shortcut_held: false,
+            dead_key_hint: None,
             view_set_aside: None,
             view_opened: 0,
             splash: false,

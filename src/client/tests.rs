@@ -4453,6 +4453,64 @@ second line
         assert_eq!((paused_close, typing_close), (lit_close, lit_close), "the ✕ holds still in all three");
     }
 
+    /// A letter shortcut mode has no action for.
+    fn dead_letter(app: &App) -> char {
+        ('a'..='z').chain('A'..='Z').find(|c| !app.keymap.prefixed.contains_key(&KeySpec::from_event(&KeyEvent::new(KeyCode::Char(*c), KeyModifiers::NONE)))).expect("an unbound letter")
+    }
+
+    fn notice(app: &App) -> Option<String> {
+        app.notice.as_ref().map(|(title, ..)| title.clone())
+    }
+
+    #[test]
+    fn a_dead_key_in_shortcut_mode_says_how_to_type() {
+        let mut app = shortcut_mode();
+        let dead = dead_letter(&app);
+        tap(&mut app, dead);
+        assert!(matches!(app.mode, Mode::Prefix { .. }), "the mode stays");
+        assert_eq!(notice(&app).as_deref(), Some("Shortcut mode — Esc to type"));
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("Shortcut mode — Esc to type"), "the toast is on screen: {o}");
+    }
+
+    #[test]
+    fn the_dead_key_hint_shows_once_while_keys_are_mashed() {
+        let mut app = shortcut_mode();
+        let dead = dead_letter(&app);
+        tap(&mut app, dead);
+        let first = app.notice.as_ref().map(|(_, at, _)| *at);
+        tap(&mut app, dead);
+        assert_eq!(app.notice.as_ref().map(|(_, at, _)| *at), first, "a second key doesn't restart it");
+        app.notice = None;
+        tap(&mut app, dead);
+        assert_eq!(notice(&app), None, "nor bring it back soon after");
+        app.dead_key_hint = Some(crate::clock::ago(std::time::Duration::from_secs(7)));
+        tap(&mut app, dead);
+        assert_eq!(notice(&app).as_deref(), Some("Shortcut mode — Esc to type"), "a while later, it says so again");
+    }
+
+    #[test]
+    fn a_dead_key_does_not_cover_another_toast() {
+        let mut app = shortcut_mode();
+        app.notify("worktree created".into(), false);
+        let dead = dead_letter(&app);
+        tap(&mut app, dead);
+        assert_eq!(notice(&app).as_deref(), Some("worktree created"));
+    }
+
+    #[test]
+    fn a_bound_key_in_shortcut_mode_shows_no_hint() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'z');
+        assert_eq!(notice(&app), None, "z toggled the sidebar quietly");
+        let mut app = shortcut_mode();
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        let dead = dead_letter(&app);
+        tap(&mut app, dead);
+        assert_eq!(notice(&app), None, "typing: the key went to the pane");
+    }
+
     #[test]
     fn the_mode_reads_at_a_glance_at_the_default_padding() {
         for layout in ["floating", "compact"] {

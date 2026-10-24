@@ -5,6 +5,10 @@ use super::*;
 /// One line this long, arriving in a single burst, was pasted: nobody types it that fast.
 const PASTE_MIN_CHARS: usize = 16;
 
+/// What shortcut mode says when a key does nothing, and how often at most.
+const DEAD_KEY_HINT: &str = "Shortcut mode — Esc to type";
+const DEAD_KEY_HINT_EVERY: std::time::Duration = std::time::Duration::from_secs(6);
+
 /// How many keys went down in `events`.
 pub(super) fn presses(events: &[Event]) -> usize {
     events.iter().filter(|ev| matches!(ev, Event::Key(k) if k.kind != KeyEventKind::Release)).count()
@@ -129,6 +133,22 @@ impl App {
             Mode::Normal if self.shortcut_held && self.view.is_none() => self.mode = Mode::Prefix { since: Instant::now(), acted: true },
             _ => {}
         }
+    }
+
+    /// A key that does nothing in shortcut mode says why, in a toast (ADR 0023): someone who
+    /// thinks they are typing sees where their keys went. Once per `DEAD_KEY_HINT_EVERY`, and
+    /// never over a toast still showing, so mashing keys doesn't keep it up or hide news.
+    fn hint_dead_key(&mut self) {
+        let due = self.dead_key_hint.is_none_or(|at| at.elapsed() >= DEAD_KEY_HINT_EVERY);
+        let showing = self.notice.as_ref().is_some_and(|(_, at, err)| at.elapsed() < screen::toast_hold(*err, self.notice_term.is_some(), self.toast_restart()));
+        if !due || showing {
+            return;
+        }
+        self.dead_key_hint = Some(Instant::now());
+        // Not `notify`: a hint about keys is not news for the notification history.
+        self.notice = Some((DEAD_KEY_HINT.to_string(), Instant::now(), false));
+        (self.notice_term, self.notice_restart, self.notice_card) = (None, false, None);
+        self.dirty = true;
     }
 
     /// Which kind of view is open, to tell whether an action opened one.
@@ -274,6 +294,8 @@ impl App {
                 {
                     // The key map is up and this key does nothing: it starts a search.
                     self.mode = Mode::KeyMap(Box::new(screen::KeyMap { query: c.to_string(), ..screen::KeyMap::new(screen::KeyView::Search, None) }));
+                } else if !matches!(k.code, KeyCode::Modifier(_)) {
+                    self.hint_dead_key();
                 }
             }
             Mode::KeyMap(km) => self.on_keymap_key(*km, &k),
