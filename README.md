@@ -29,7 +29,7 @@ natively on Windows, macOS and Linux.
   edit the same files. Review the diff, commit, merge or open a pull request without leaving.
 - **A side panel for the code.** Files, Changes and Branch open beside your panes as tabs:
   browse the tree, read markdown drawn or raw, review each file's diff, and see where the
-  branch stands. Drag or press `[` `]` to resize it.
+  branch stands. Drag its edge to resize it, or press `[` `]` while it has the keys.
 - **Checks you can rely on.** Name a command, such as your tests, and Maitty runs it after
   each agent turn. A session whose check fails reads *failed*, not *done*.
 - **Agents that work together.** Agents can list, read, message and start other sessions
@@ -143,7 +143,7 @@ theme = "tokyo-night"
 
 [ui]
 layout = "grid"            # floating | tiled | compact | grid
-rounded = "full"           # full | corners | off
+rounded = "full"           # full (needs a Nerd Font) | corners | off
 padding = "1"              # 0 | 1 | 2: space round the screen
 
 [keys.prefix]
