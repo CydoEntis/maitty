@@ -32,8 +32,6 @@ pub(in crate::client) fn tool_rect(area: Rect) -> Rect {
     Rect { x: area.x + (area.width - w) / 2, y: area.y + (area.height - h) / 2, width: w, height: h }
 }
 
-const ESC_CLOSE: &str = "Esc close";
-
 /// A centred modal over the dimmed screen: `panel_at` in the middle of `area`, at most
 /// `w`×`h`. A click outside it closes it.
 #[allow(clippy::too_many_arguments)]
@@ -45,9 +43,10 @@ pub(in crate::client) fn panel(app: &mut App, buf: &mut Buffer, area: Rect, w: u
     panel_at(app, buf, r, title, right, t)
 }
 
-/// A modal's frame at `r`: a body of `card`, a title row filled with the accent
-/// (the title two in, bold, and `Esc close` at the right), `│` sides and a `─` bottom in
-/// `line` with corners by the setting. `right` sits in the title row before `Esc close`.
+/// A modal's frame at `r`, drawn like a pane's card: a body of `card` boxed in `line` with
+/// corners by the setting, the title as an accent chip on the top border two in, and an
+/// `Esc close` chip at the border's right, a `─` before the corner. Chip ends are caps with
+/// `ui.rounded = full`. `right` sits on the border before `Esc close`.
 /// Returns `r`; its contents start two in and two down.
 pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, title: &str, right: &[Seg], t: &Theme) -> Rect {
     let r = r.intersection(buf.area);
@@ -55,34 +54,49 @@ pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, titl
         return r;
     }
     let look = Look::of(&app.cfg.ui);
-    let behind = ends_behind(buf, Rect { height: 1, ..r });
     fill(buf, r, t.card);
-    let edge = Style::default().fg(t.line).bg(t.card);
+    panel_box(buf, r, look, Style::default().fg(t.line).bg(t.card));
+    let lit = Style::default().bg(t.btn).add_modifier(Modifier::BOLD);
+    let esc = header_chip(look, vec![seg(" Esc", lit.fg(t.accent)), seg(" close ", lit.fg(t.strong))], t.card);
+    let esc_w = segs_width(&esc);
+    let esc_x = r.right().saturating_sub(esc_w + 2);
+    put(buf, esc_x, r.y, &esc, r.right() - 2);
+    let segs: Vec<Seg> = right.iter().map(|(s, st)| (s.clone(), st.bg(t.card))).collect();
+    let rx = esc_x.saturating_sub(segs_width(&segs) + 1);
+    put(buf, rx, r.y, &segs, esc_x.saturating_sub(1));
+    let chip_x = r.x + 2;
+    let room = rx.saturating_sub(1).saturating_sub(chip_x);
+    let text_room = room.saturating_sub(if look.caps { 4 } else { 2 }) as usize;
+    let ink = Style::default().fg(t.acc_ink).bg(t.accent).add_modifier(Modifier::BOLD);
+    let chip = header_chip(look, vec![seg(format!(" {} ", truncate(title, text_room)), ink)], t.card);
+    put(buf, chip_x, r.y, &chip, rx.saturating_sub(1));
+    hit(app, r, ScreenHit::Noop);
+    hit(app, Rect { x: esc_x, y: r.y, width: esc_w, height: 1 }, ScreenHit::Close);
+    r
+}
+
+/// A modal's box: `─` top and bottom, `│` sides, corners by the setting.
+fn panel_box(buf: &mut Buffer, r: Rect, look: Look, edge: Style) {
     let (right_x, bottom) = (r.right() - 1, r.bottom() - 1);
+    for x in r.x..r.right() {
+        buf[(x, r.y)].set_symbol("─").set_style(edge);
+        buf[(x, bottom)].set_symbol("─").set_style(edge);
+    }
     for y in r.y + 1..bottom {
         buf[(r.x, y)].set_symbol("│").set_style(edge);
         buf[(right_x, y)].set_symbol("│").set_style(edge);
     }
-    for x in r.x..r.right() {
-        buf[(x, bottom)].set_symbol("─").set_style(edge);
-    }
-    let [_, _, bl, br] = corners(look);
+    let [tl, tr, bl, br] = corners(look);
+    buf[(r.x, r.y)].set_symbol(tl).set_style(edge);
+    buf[(right_x, r.y)].set_symbol(tr).set_style(edge);
     buf[(r.x, bottom)].set_symbol(bl).set_style(edge);
     buf[(right_x, bottom)].set_symbol(br).set_style(edge);
-    fill(buf, Rect { height: 1, ..r }, t.accent);
-    if look.caps {
-        soften_block(buf, Rect { height: 1, ..r }, &behind);
-    }
-    let ink = Style::default().fg(t.acc_ink).bg(t.accent);
-    let esc_x = r.right().saturating_sub(ESC_CLOSE.len() as u16 + 2);
-    put(buf, esc_x, r.y, &[seg(ESC_CLOSE, ink)], r.right());
-    let segs: Vec<Seg> = right.iter().map(|(s, st)| (s.clone(), st.bg(t.accent))).collect();
-    let rx = esc_x.saturating_sub(segs_width(&segs) + 2);
-    put(buf, rx, r.y, &segs, esc_x.saturating_sub(2));
-    put(buf, r.x + 2, r.y, &[seg(title, ink.add_modifier(Modifier::BOLD))], rx.saturating_sub(1));
-    hit(app, r, ScreenHit::Noop);
-    hit(app, Rect { x: esc_x, y: r.y, width: ESC_CLOSE.len() as u16, height: 1 }, ScreenHit::Close);
-    r
+}
+
+/// A chip on a modal's top border: `segs` as they are, with caps on `ground` at both ends
+/// when shapes are rounded in full.
+fn header_chip(look: Look, segs: Vec<Seg>, ground: Color) -> Vec<Seg> {
+    if look.caps { round_ends(segs, ground) } else { segs }
 }
 
 /// A popover keeps at least this many columns from its left edge to the screen's.

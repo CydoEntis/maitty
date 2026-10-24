@@ -4183,7 +4183,7 @@ second line
             app.act(a);
             let o = draw(&mut app, 120, 34);
             show(&o);
-            assert!(o.contains(title) && o.contains("Esc close"), "{title}: a {APP_COMMAND} modal (title in its accent row, Esc to close)");
+            assert!(o.contains(title) && o.contains("Esc close"), "{title}: a {APP_COMMAND} modal (title in its accent chip, Esc to close)");
         }
     }
 

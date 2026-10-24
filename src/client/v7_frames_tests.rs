@@ -429,6 +429,25 @@ fn mask_key_bar(row: &mut [char], x0: usize, x1: usize) {
     }
 }
 
+/// A modal's title row in `[x0, x1)` as the app draws it since modals took a pane's frame (the
+/// user's choice, 2026-10-24, docs/UI.md): the handoff's accent bar becomes the top border with
+/// the corners of its `bottom` row, its title a chip two in and `Esc close` a chip a `─` before
+/// the corner. Every other cell of the modal is still the handoff's.
+fn as_bordered_header(row: &mut [char], bottom: &[char], x0: usize, x1: usize) {
+    let bar: String = row[x0..x1].iter().collect();
+    let title = bar.trim().strip_suffix("Esc close").unwrap_or_else(|| panic!("the handoff's title bar: {bar:?}")).trim_end();
+    let top = |c: char| match c {
+        '└' => '┌',
+        '┘' => '┐',
+        c => c,
+    };
+    let tail: Vec<char> = format!(" Esc close ─{}", top(bottom[x1 - 1])).chars().collect();
+    let mut header: Vec<char> = format!("{}─ {title} ", top(bottom[x0])).chars().collect();
+    header.resize(x1 - x0 - tail.len(), '─');
+    header.extend(tail);
+    row[x0..x1].copy_from_slice(&header);
+}
+
 /// The reference frame as the app should draw it on the fixture: masks and sample swaps.
 fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
     let (stage, _) = preset(id);
@@ -468,6 +487,13 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
             }
         }
     }
+    // A modal's title row is a border now; it holds no key bar, so no mask passes over it.
+    let modal = matches!(preset(id).1, Over::Override | Over::Approve | Over::Settings);
+    let header = g.overlays.first().filter(|_| modal).map(|m| {
+        let bottom = want[m.bottom() as usize - 1].clone();
+        as_bordered_header(&mut want[m.y as usize], &bottom, m.x as usize, m.right() as usize);
+        m.y as usize
+    });
     // The sample's second tab is add-payments, a session of its own in the app (the sidebar
     // lists it); fix-footer has one tab.
     let flat = b.layout == Layout::Flat;
@@ -491,8 +517,10 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
             let full = format!("{word} · build {ok} · test {last}");
             if full.chars().count() <= room { full } else { format!("{word} {ok}{last}") }
         };
-        for row in want.iter_mut().take(s.bottom() as usize).skip(s.y as usize) {
-            mask_key_bar(row, x0, x1);
+        for (y, row) in want.iter_mut().enumerate().take(s.bottom() as usize).skip(s.y as usize) {
+            if Some(y) != header {
+                mask_key_bar(row, x0, x1);
+            }
             swap(row, QUESTION, "use pnpm or npm?", x0, x1);
             // The sample's approval item is a minute younger than its row; the app reads one age.
             if stage == Stage::Approve && find(&row[x0..x1], "fix-footer").is_some() && let Some(i) = find(&row[x0..x1], "1m") {
@@ -515,8 +543,10 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
     // The sample's "1 of 59 tests failed" is read from vitest's output; the app does not parse
     // a command's output.
     for pop in &g.overlays {
-        for row in want.iter_mut().take(pop.bottom() as usize).skip(pop.y as usize) {
-            mask_key_bar(row, pop.x as usize, pop.right() as usize - 1);
+        for (y, row) in want.iter_mut().enumerate().take(pop.bottom() as usize).skip(pop.y as usize) {
+            if Some(y) != header {
+                mask_key_bar(row, pop.x as usize, pop.right() as usize - 1);
+            }
         }
     }
     if let Some(pop) = g.overlays.first().filter(|_| preset(id).1 == Over::Why) {
@@ -862,16 +892,17 @@ fn flat_rounds_its_pill_ends_on_the_ground_around_them() {
     assert!(total > 0, "Flat's buttons have round ends with pill_caps on");
 }
 
-/// Flat has no card edges, so rounded corners reach only a modal's bottom corners there.
+/// Flat has no card edges, so rounded corners reach only a modal there: its box, all four.
 #[test]
-fn flat_corners_round_only_a_modals_bottom() {
+fn flat_corners_round_only_a_modal() {
     let mut app = open("12");
     let square = frame(&mut app, Layout::Flat, 160, 45, "unicode");
     assert!(!square.contains(['╭', '╮', '╰', '╯']), "square is the default\n{square}");
     app.cfg.ui.rounded = crate::config::Rounding::Full;
     let rounded = frame(&mut app, Layout::Flat, 160, 45, "unicode");
-    assert_eq!(rounded.matches(['╰', '╯']).count(), 2, "the modal's bottom corners\n{rounded}");
-    assert!(!rounded.contains(['╭', '╮']), "nothing else is a box\n{rounded}");
+    for corner in ['╭', '╮', '╰', '╯'] {
+        assert_eq!(rounded.matches(corner).count(), 1, "the modal's {corner}, and nothing else is a box\n{rounded}");
+    }
 }
 
 fn press(app: &mut App, code: crossterm::event::KeyCode) {

@@ -145,7 +145,7 @@ fn beside_and_under(r: Rect, w: u16, h: u16) -> impl Iterator<Item = (u16, u16)>
 }
 
 #[test]
-fn a_modal_is_centred_with_an_accent_title_a_bottom_border_and_no_shadow() {
+fn a_modal_is_centred_with_a_border_all_round_and_no_shadow() {
     for layout in LAYOUTS {
         for (w, h) in SIZES {
             for (preset, mw, mh) in modal_sizes(w, h) {
@@ -158,13 +158,50 @@ fn a_modal_is_centred_with_an_accent_title_a_bottom_border_and_no_shadow() {
                 let at = format!("{preset} {layout:?} {w}x{h}");
                 assert_eq!(r, Rect::new((w - mw) / 2, (h - mh) / 2, mw, mh), "{at}");
                 let line = |y: u16, x0: u16, x1: u16| (x0..x1).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>();
-                assert!((r.x..r.right()).all(|x| buf[(x, r.y)].bg == t.accent), "the title row is the accent: {at}");
-                assert_eq!(line(r.y, r.x + 2, r.x + 25), "OVERRIDE A FAILED CHECK", "{at}");
-                assert_eq!(line(r.y, r.right() - 11, r.right() - 2), "Esc close", "{at}");
-                assert_eq!(line(r.bottom() - 1, r.x, r.right()), format!("└{}┘", "─".repeat(mw as usize - 2)), "{at}");
+                let fill = |n: usize| "─".repeat(n);
+                assert_eq!(line(r.y, r.x, r.right()), format!("┌─ OVERRIDE A FAILED CHECK {} Esc close ─┐", fill(mw as usize - 40)), "{at}");
+                assert_eq!(line(r.bottom() - 1, r.x, r.right()), format!("└{}┘", fill(mw as usize - 2)), "{at}");
                 assert!((r.y + 1..r.bottom() - 1).all(|y| buf[(r.x, y)].symbol() == "│" && buf[(r.right() - 1, y)].symbol() == "│"), "{at}");
                 assert!(beside_and_under(r, w, h).all(|p| buf[p] == before[p]), "no shadow: {at}");
             }
+        }
+    }
+}
+
+/// The modal's frame works like a pane's (the user's choice, 2026-10-24): corners by
+/// `ui.rounded`, the title an accent chip on the top border, `Esc close` a chip at its right
+/// that a click closes, chip ends capped with `full`, and no accent bar across the top.
+#[test]
+fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and_rounding() {
+    use crate::config::Rounding;
+    for layout in ["cards", "tiled", "compact", "grid"] {
+        for rounded in [Rounding::Full, Rounding::Corners, Rounding::Off] {
+            let mut app = world(Stage::Failed);
+            (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
+            let t = app.theme.clone();
+            let area = Rect::new(0, 0, 100, 30);
+            let mut buf = Buffer::empty(area);
+            let r = panel(&mut app, &mut buf, area, 70, 15, "OVERRIDE", &[], &t);
+            let at = format!("{layout} {rounded:?}");
+            let sym = |x: u16| buf[(x, r.y)].symbol().to_string();
+            let (tl, tr) = if rounded == Rounding::Off { ("┌", "┐") } else { ("╭", "╮") };
+            assert_eq!((sym(r.x), sym(r.x + 1), sym(r.right() - 2), sym(r.right() - 1)), (tl.into(), "─".into(), "─".into(), tr.into()), "{at}");
+            let caps = rounded == Rounding::Full;
+            let (title, esc) = (r.x + 2, r.right() - 2 - if caps { 13 } else { 11 });
+            let row = |x0: u16, x1: u16| (x0..x1).map(sym).collect::<String>();
+            let (l, e) = if caps { (CAP_L, CAP_R) } else { ("", "") };
+            assert_eq!(row(title, title + 10 + 2 * u16::from(caps)), format!("{l} OVERRIDE {e}"), "{at}");
+            assert_eq!(row(esc, r.right() - 2), format!("{l} Esc close {e}"), "{at}");
+            assert_eq!(buf[(title + 2, r.y)].bg, t.accent, "the title chip is the accent: {at}");
+            let chip = |x: u16| buf[(x, r.y)].symbol() != "─";
+            assert!((r.x + 1..r.right() - 1).filter(|x| !chip(*x)).all(|x| buf[(x, r.y)].bg == t.card), "no accent bar: {at}");
+            if caps {
+                for x in [title, esc] {
+                    assert_eq!(buf[(x, r.y)].bg, t.card, "a cap sits on the border's ground: {at}");
+                }
+            }
+            let close = app.hits.iter().rev().find(|(_, h)| *h == Hit::Screen(ScreenHit::Close)).map(|(r, _)| *r).expect("a close target");
+            assert_eq!(close, Rect::new(esc, r.y, r.right() - 2 - esc, 1), "the whole Esc chip closes: {at}");
         }
     }
 }
