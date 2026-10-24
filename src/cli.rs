@@ -502,6 +502,7 @@ fn wait_print(term: TermId, regex: Option<String>, timeout: u64, just_sent: bool
 }
 
 pub fn send(pane: Option<TermId>, text: String, enter: bool) -> Result<()> {
+    crate::hidden::check(&text).map_err(|e| anyhow!(e))?;
     let term = resolve_pane(pane)?;
     block_on(async move {
         let (_r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() { "over ssh" } else { "couldn't reach the seshi server" })?;
@@ -2018,6 +2019,14 @@ mod tests {
         assert_eq!(agent_tag(&pane("Done", None, Some(check(CheckState::Failed)))), None, "a shell has no tag");
         let working = pane("Working", Some("claude"), Some(check(CheckState::Failed)));
         assert_eq!(agent_tag(&working).as_deref(), Some("claude: working"), "the last result is about an older turn");
+    }
+
+    #[test]
+    fn send_refuses_hidden_characters_before_reaching_any_pane() {
+        // Pane 0 is never real, so reaching the server would fail with a different error.
+        let err = send(Some(0), "looks fine\u{200b}".into(), true).unwrap_err().to_string();
+        assert_eq!(err, "refused: hidden characters \\u{200b} at 10; remove them and send again");
+        assert!(crate::hidden::check("\x03").is_ok() && crate::hidden::check("2").is_ok(), "Ctrl-C and a digit answer still go");
     }
 
     #[test]

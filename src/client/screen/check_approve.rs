@@ -80,16 +80,11 @@ pub(in crate::client) fn shown_command(command: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            c if c.is_control() || is_invisible(c) => out.push_str(&format!("\\u{{{:04x}}}", c as u32)),
+            c if c.is_control() || crate::hidden::is_invisible(c) => out.push_str(&format!("\\u{{{:04x}}}", c as u32)),
             c => out.push(c),
         }
     }
     out
-}
-
-/// Characters that draw as nothing, or reorder the text around them.
-fn is_invisible(c: char) -> bool {
-    matches!(c, '\u{00ad}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2069}' | '\u{feff}')
 }
 
 /// `text` cut into rows of at most `cols` cells, anywhere: every character is kept.

@@ -6,6 +6,7 @@ mod config;
 mod daemon;
 mod detection;
 mod gitfs;
+mod hidden;
 mod ipc;
 mod mcp;
 mod output_line;

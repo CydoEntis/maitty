@@ -643,7 +643,7 @@ Everything below is shipped on `main` unless marked.
 - clippy is clean — `cargo clippy --all-targets -- -D warnings` — CODE-STANDARDS
 - A session's "started by" is only set by the daemon, from a pane whose secret checked out — `src/daemon/mod.rs` `starter`, tests in `src/daemon/logic_tests.rs` — AGENTS.md non-negotiable 5
 - `seshi_answer` sends a key only for the prompt id the caller passed — `src/mcp.rs` `answer` / `prompt_seen`, test `an_answer_goes_only_to_the_prompt_it_saw`
-- Text with invisible characters never reaches an agent through `seshi send`, `seshi_send` or `seshi_start` — `src/hidden.rs`, tests there — not yet: #147
+- Text with invisible characters never reaches an agent through `seshi send`, `seshi_send` or `seshi_start` — `src/hidden.rs` `check`, tests there and `send_refuses_hidden_characters_before_reaching_any_pane`
 
 ## Records
 

@@ -319,6 +319,7 @@ impl Server {
 
     fn start(&self, args: &Value) -> Result<String, String> {
         let prompt = args.get("prompt").and_then(Value::as_str).filter(|p| !p.trim().is_empty()).ok_or("give the task")?;
+        crate::hidden::check(prompt)?;
         let (agent, cmd) = start_command(&self.cfg, args, prompt)?;
         let before = self.snapshot()?;
         let had: Vec<TermId> = before.terms.keys().copied().collect();
@@ -442,6 +443,13 @@ mod tests {
 
     const RM_PROMPT: &str = "Bash command\n  rm -rf build\nDo you want to proceed?\n❯ 1. Yes\n  2. No";
     const LS_PROMPT: &str = "Bash command\n  ls\nDo you want to proceed?\n❯ 1. Yes\n  2. No";
+
+    #[test]
+    fn a_helper_task_with_hidden_characters_is_never_started() {
+        let server = Server { cfg: crate::config::Config::default(), root: std::env::temp_dir(), me: None };
+        let err = server.start(&json!({ "prompt": "fix the bug\u{e0049}\u{e0067}" })).unwrap_err();
+        assert!(err.starts_with("refused: hidden characters \\u{e0049} at 11"), "{err}");
+    }
 
     #[test]
     fn an_answer_goes_only_to_the_prompt_it_saw() {

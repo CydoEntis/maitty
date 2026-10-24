@@ -191,6 +191,12 @@ the new pane needs the start grant, both checked by the daemon as for `seshi rea
 PowerShell that escapes the curly single quotes as well as `'`, since PowerShell ends a
 single-quoted string at either.
 
+Text sent to an agent through `seshi send` (and `--wait`), MCP `seshi_send` and a
+`seshi_start` task is refused when it holds characters that draw as nothing or reorder the text
+(`hidden::is_invisible`: zero-width and direction marks, the BOM, Unicode tag characters), so
+one agent cannot hide instructions to another from you. The error names each one and where it
+is; nothing is sent. Your own typing and pastes in a pane are not checked.
+
 ## Project-specific: auth and permissions
 
 No user accounts. Access to the daemon is access to its local socket: a named
