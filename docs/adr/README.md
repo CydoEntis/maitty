@@ -41,3 +41,4 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0015](0015-four-named-layouts-and-grid.md) | Four named layouts, one setting, and the Grid style | Accepted |
 | [0016](0016-sticky-shortcut-mode.md) | The leader opens a shortcut mode that stays until you leave it | Accepted |
 | [0017](0017-keys-other-apps-use.md) | Default shortcuts: one key each, no Shift, keys other apps use | Accepted |
+| [0018](0018-rename-to-vibecasso.md) | The app is called Vibecasso | Accepted |
