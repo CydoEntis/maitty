@@ -716,6 +716,8 @@ rounded at both ends, and a way to tell shortcut mode is still on under a popup.
 Also: the mode made unmistakable ([ADR 0023](adr/0023-the-mode-is-always-shown.md)): a sky frame
 round the window in shortcut mode, a `TYPING` / `SHORTCUT` tag always in the corner, and a hint
 toast on a key that does nothing. Built on `feat/loud-mode`; not checked live.
+Also: Grid titles: the state glyph sits in the tab; no state words; no repeated name tag. Built
+on `feat/grid-title-status`; not checked live.
 
 Status 2026-10-24: built on `dev` (d8da65e..95b5c91), three parts each reviewed independently and
 approved after fixes; the gate passed at 95b5c91 (959 tests, clippy, Linux and macOS checks). Also
