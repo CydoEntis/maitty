@@ -224,7 +224,9 @@ ignored; lint, both cross-checks and dependency audit passed). Live mouse clicks
 opened a plain shell and Settings from Actions.
 
 Active phase: **26 — the inspector drawer** (planned 2026-10-24); phase 25 is built on `dev`.
-Next: the phase 26 live look (its tickets are on `dev`). Then
+[Phase 29](#29--polish-from-the-043-trial--built-on-dev-2026-10-24-live-checks-open), the user's
+fixes from the 0.43 trial, is built on `dev`.
+Next: the phase 26 and 29 live look. Then
 [Phase 27](#27--radar-and-sending-failures--planned-2026-10-24) and
 [Phase 28](#28--references--planned-2026-10-24). Live checks still open for phases 18 and 20–25.
 
@@ -694,6 +696,31 @@ Per project, `.maitty/references/` holds screenshots and design files: a Referen
 side panel lists, adds (paste or pick), removes and opens them in the system viewer, and an MCP
 tool lists them for agents. Intent: [references](features/references/intent.md). Tickets when
 phase 27 is done. Decided 2026-10-24: the folder is gitignored by default.
+
+### 29 — Polish from the 0.43 trial · built on dev 2026-10-24, live checks open
+
+The user tried v0.43 on 2026-10-24 and asked for: everything in the theme and uniform, the side
+panel's views as tabs with keys, `c` for Changes, Settings on `,` and every key on `?`
+([ADR 0022](adr/0022-question-mark-all-keys-c-changes.md)), modals framed like panes, a folder row
+rounded at both ends, and a way to tell shortcut mode is still on under a popup. No protocol change.
+
+1. leader `c` opens Changes, `?` lists every key; F1, `d` and copy mode lose their default keys
+2. a Files · Changes · Branch strip across the side panel (click, Tab, Shift+Tab); a commit asks first
+3. modals framed like panes: the title as a chip on the border, `Esc close` as a chip
+4. a folder row rounds both ends; no stray rule beside a padded Compact sidebar
+5. ` SHORTCUT · paused ` stays, dimmed, while a popup has the keys; shortcut mode comes back when a
+   popup closes by itself
+6. Grid's number, name tag and `+` as chips; toasts and corner pills follow `ui.rounded`
+7. a narrow title keeps the current tab and drops the state's glyph last of all
+
+Status 2026-10-24: built on `dev` (d8da65e..95b5c91), three parts each reviewed independently and
+approved after fixes; the gate passed at 95b5c91 (959 tests, clippy, Linux and macOS checks). Also
+fixed: the `Esc close` chip on a confirm did nothing when clicked. Not checked live: the new
+frames at 80×24, 100×30 and 160×45 in each look.
+Follow-ups: in Files, `d` still opens Changes; the side panel's title repeats its lit tab;
+`docs/guide.md` still describes the older Files panel; the paused pill gets no room in a
+right-hand sidebar's header; below about 60 columns a narrow pane's name chip can shrink to `…`;
+`screen_tests::tiled_square_and_faded` failed once in a parallel run.
 
 ## In scope
 
