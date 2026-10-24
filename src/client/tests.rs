@@ -8251,6 +8251,87 @@ mod drawer_tab_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The next background result, once its thread is done.
+    fn next_bg(rx: &mut mpsc::UnboundedReceiver<Bg>) -> Bg {
+        let until = Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            if let Ok(b) = rx.try_recv() {
+                return b;
+            }
+            assert!(Instant::now() < until, "no background work was queued");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    /// Changes open on a repo with one commit and one new file, its review read.
+    fn changes_with_a_new_file(tag: &str) -> (App, PathBuf, mpsc::UnboundedReceiver<Bg>) {
+        let (mut app, dir) = in_repo(tag);
+        let git = |args: &[&str]| crate::proc::git(&dir, args).unwrap();
+        git(&["config", "user.email", "t@t"]);
+        git(&["config", "user.name", "t"]);
+        git(&["add", "."]);
+        git(&["commit", "-qm", "start"]);
+        std::fs::write(dir.join("new.txt"), "fresh\n").unwrap();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.bg = tx;
+        app.act(Action::Changes);
+        let b = next_bg(&mut rx);
+        app.on_bg(b);
+        assert!(matches!(&app.view, Some(View::Changes(v)) if v.review.is_some()), "Changes read the repo");
+        (app, dir, rx)
+    }
+
+    fn commits(dir: &std::path::Path) -> usize {
+        crate::proc::git(dir, &["rev-list", "--count", "HEAD"]).unwrap().trim().parse().unwrap()
+    }
+
+    #[test]
+    fn c_in_changes_asks_before_committing_and_y_commits() {
+        let (mut app, dir, mut rx) = changes_with_a_new_file("commit");
+        key(&mut app, KeyCode::Char('c'), KeyModifiers::NONE);
+        assert!(matches!(&app.view, Some(View::Changes(v)) if v.confirm.as_ref().is_some_and(|(q, _)| q.starts_with("Commit 1 file on "))), "c asks first");
+        assert!(text(&draw(&mut app)).contains("Commit 1 file on "), "the question is on screen");
+        assert!(rx.try_recv().is_err() && commits(&dir) == 1, "nothing is committed yet");
+        key(&mut app, KeyCode::Char('y'), KeyModifiers::NONE);
+        let b = next_bg(&mut rx);
+        app.on_bg(b);
+        assert_eq!(commits(&dir), 2, "y commits");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tab_answers_no_to_a_changes_question_instead_of_switching() {
+        let (mut app, dir, mut rx) = changes_with_a_new_file("ask-tab");
+        key(&mut app, KeyCode::Char('c'), KeyModifiers::NONE);
+        key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+        assert!(matches!(&app.view, Some(View::Changes(v)) if v.confirm.is_none()), "still Changes, the question answered no");
+        assert!(rx.try_recv().is_err() && commits(&dir) == 1, "nothing is committed");
+        key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+        assert_eq!(open(&app), Some(screen::SheetKind::Branch), "with no question, Tab switches");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn at_its_narrowest_the_strip_keeps_every_tab_whole_and_clickable() {
+        let (mut app, dir) = in_repo("narrow");
+        app.screen.saved.sheet_w.insert("files".into(), screen::SHEET_MIN);
+        app.act(Action::Files);
+        let buf = draw(&mut app);
+        let sheet = app.screen.sheet_rect;
+        assert_eq!(sheet.width, screen::SHEET_MIN);
+        let o = text(&buf);
+        super::check_settings_tests::show(&o);
+        for i in 0..3 {
+            let r = app.hits.iter().rev().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::DrawerTab(i))).then_some(*r)).expect("each tab has a target");
+            assert!(r.width >= 4 && r.right() < sheet.right(), "tab {i} is whole inside the panel: {r:?} in {sheet:?}");
+        }
+        let row = o.lines().find(|l| l.contains("Chg")).unwrap_or_else(|| panic!("short names:\n{o}"));
+        assert!(row.contains("Files") && row.contains("Br"), "short names: {row}");
+        click_tab(&mut app, 2);
+        assert_eq!(open(&app), Some(screen::SheetKind::Branch), "the last tab still switches");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn each_view_keeps_its_own_width_across_switches() {
         let (mut app, dir) = in_repo("width");

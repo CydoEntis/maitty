@@ -274,7 +274,7 @@ your own leader keys; the Inbox and checks have none.
 | Up / k, Down / j | Previous or next changed file |
 | PgUp, PgDn, Space | Read diff; Space pages down |
 | x, e, r | Mark reviewed, open editor, return to agent |
-| c, p | Commit; ask to push and open a pull request |
+| c, p | Ask to commit every changed file; ask to push and open a pull request (y or Enter says yes) |
 | m, d | Linked worktree: ask to merge, ask to discard |
 | Enter / y in confirmation | Confirm the requested action; other keys cancel |
 | Up, Down, PgUp, PgDn in shared-file diffs | Scroll both checkout diffs together |

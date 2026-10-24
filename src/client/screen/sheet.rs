@@ -68,10 +68,14 @@ pub(in crate::client) fn widest(col: Rect, look: Look) -> u16 {
     col.width.saturating_sub(look.gap + PANES_KEEP)
 }
 
-/// The side panel's tabs, in Tab's order: the view, its name and the action that opens it.
+/// The side panel's tabs, in Tab's order: the view, its name, its name where room is short and
+/// the action that opens it.
 /// The Inbox and the check sheets are not among them.
-const DRAWER_TABS: [(SheetKind, &str, Action); 3] =
-    [(SheetKind::Files, "Files", Action::Files), (SheetKind::Changes, "Changes", Action::Changes), (SheetKind::Branch, "Branch", Action::Branches)];
+const DRAWER_TABS: [(SheetKind, &str, &str, Action); 3] = [
+    (SheetKind::Files, "Files", "Files", Action::Files),
+    (SheetKind::Changes, "Changes", "Chg", Action::Changes),
+    (SheetKind::Branch, "Branch", "Br", Action::Branches),
+];
 
 /// Where `kind` sits in the tab strip, if it has a tab.
 fn drawer_tab(kind: SheetKind) -> Option<usize> {
@@ -96,7 +100,7 @@ impl App {
     /// Open the strip's tab `to` for the same checkout (`screen_target_dir`), as its leader key
     /// does; the open tab's own key would close it, so that one does nothing.
     pub(in crate::client) fn switch_drawer(&mut self, to: usize) {
-        let Some((kind, _, act)) = DRAWER_TABS.get(to) else { return };
+        let Some((kind, _, _, act)) = DRAWER_TABS.get(to) else { return };
         if open_sheet(self) != Some(*kind) {
             self.act(act.clone());
         }
@@ -264,22 +268,42 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     }
 }
 
+/// A tab's width: its name and key (with its trailing space) between the pill's ends and pads.
+fn tab_w(name: &str, key: &str) -> u16 {
+    (name.width() + key.width()) as u16 + 4
+}
+
+/// Each tab's (name, key) in the widest form whose strip fits `room` columns: names and keys,
+/// names alone, then short names.
+fn drawer_tab_labels(app: &App, room: u16) -> Vec<(String, String)> {
+    let key = |act: &Action| {
+        let k = crate::client::design::key_text(app, std::slice::from_ref(act));
+        let k = k.split("  ").next().unwrap_or_default().replace(' ', "");
+        if k.is_empty() { k } else { format!("{k} ") }
+    };
+    let full: Vec<(String, String)> = DRAWER_TABS.iter().map(|(_, name, _, act)| (name.to_string(), key(act))).collect();
+    let names: Vec<(String, String)> = DRAWER_TABS.iter().map(|(_, name, ..)| (name.to_string(), String::new())).collect();
+    let short: Vec<(String, String)> = DRAWER_TABS.iter().map(|(_, _, short, _)| (short.to_string(), String::new())).collect();
+    // The strip's lead column, then each tab and the ` · ` between them.
+    let strip_w = |tabs: &[(String, String)]| 1 + tabs.iter().map(|(n, k)| tab_w(n, k)).sum::<u16>() + 3 * (tabs.len() as u16 - 1);
+    [full, names].into_iter().find(|tabs| strip_w(tabs) <= room).unwrap_or(short)
+}
+
 /// The tab strip across the top of Files, Changes and Branch: `Files f · Changes c · Branch b`
 /// with each one's leader key from the keymap, the open one a pill like Settings' tabs (lit
-/// while the panel has the keys). A click switches.
+/// while the panel has the keys). A click switches. Where the whole strip does not fit, the
+/// keys go, then the long names, so every tab stays on screen.
 fn draw_drawer_tabs(app: &mut App, buf: &mut Buffer, row: Rect, cur: usize, ground: Color, t: &Theme) {
     let look = Look::of(&app.cfg.ui);
     let (pill_bg, pill_ink) = if sheet_has_keys(app) { (t.accent, t.acc_ink) } else { (t.btn, t.strong) };
+    let tabs = drawer_tab_labels(app, row.width);
     let mut x = row.x + 1;
-    for (i, (_, name, act)) in DRAWER_TABS.iter().enumerate() {
+    for (i, (name, key)) in tabs.into_iter().enumerate() {
         if i > 0 {
             put(buf, x, row.y, &[seg("·", Style::default().fg(t.muted).bg(ground))], row.right());
             x += 2;
         }
-        let key = crate::client::design::key_text(app, std::slice::from_ref(act));
-        let key = key.split("  ").next().unwrap_or_default().replace(' ', "");
-        let key = if key.is_empty() { String::new() } else { format!("{key} ") };
-        let w = (name.width() + key.width()) as u16 + 4;
+        let w = tab_w(&name, &key);
         let tr = Rect { x, y: row.y, width: w.min(row.right().saturating_sub(x)), height: 1 };
         let segs = if i == cur {
             let st = Style::default().fg(pill_ink).add_modifier(Modifier::BOLD);
