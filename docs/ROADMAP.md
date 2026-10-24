@@ -604,7 +604,7 @@ renamed to CydoEntis/vibecasso. Tickets are labelled `phase-23`.
 
 Declined while planning: the Starry Night art background (the user's call).
 
-### 24 — The name in one place · active 2026-10-23
+### 24 — The name in one place · built on dev 2026-10-23
 
 The user asked on 2026-10-23 for a rename to mean changing the name, not the code
 ([ADR 0019](adr/0019-the-name-lives-in-one-place.md)): the name is set in `Cargo.toml`, the code
@@ -614,6 +614,12 @@ takes it from `brand`, and a test keeps it so. Tickets are labelled `phase-24`.
 2. #165 hooks, MCP, shims and adapters take the name from brand (after #164)
 3. #166 no code or text writes the app's name out (after #165)
 4. #167 scripts name the app once, and the docs say how to rename (after #166)
+
+Status 2026-10-23: #164–#167 built on `dev`; the gate passed (836 tests, 3 naming tests, 10
+adapter tests). A trial rename to `testrename` by the four steps in ARCHITECTURE (Cargo.toml,
+the installers' first lines, `regen.sh`, docs) passed the whole gate with no code change; it
+first found the splash font and two tests that assumed the name's length, now fixed. Not
+checked live: a release built by the workflow under a new name.
 
 Status 2026-10-23: #160–#163 built on `dev` (834 tests and the rest of the gate passed); the
 repository is now CydoEntis/vibecasso. The v7 design source names the product anew and its
