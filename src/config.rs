@@ -1127,6 +1127,20 @@ fn copy_renamed(from: &Path, to: &Path, old: &str) {
     }
 }
 
+/// The app's own themes were once named after it ("seshi-night", ADR 0019), and the first set
+/// gave way to Night and Day: an old choice moves to the one of the same lightness.
+fn retired_theme(theme: &str) -> Option<&'static str> {
+    let plain = theme
+        .split_once('-')
+        .filter(|(p, _)| std::iter::once(crate::brand::APP_COMMAND).chain(crate::brand::previous()).any(|n| n == *p))
+        .map_or(theme, |(_, rest)| rest);
+    match plain {
+        "dark" | "walnut" | "night" => Some("night"),
+        "light" | "day" => Some("day"),
+        _ => None,
+    }
+}
+
 impl Config {
     /// How many helpers one session may have working at once (`sessions.helpers_at_once`).
     pub fn helpers_at_once(&self) -> usize {
@@ -1159,12 +1173,8 @@ impl Config {
         if cfg.icons.shell == OLD_SHELL_ICON {
             cfg.icons.shell = Icons::default().shell;
         }
-        // The app's own themes were named after it ("seshi-night"); they are plain now (ADR 0019).
-        if let Some((_, rest)) = cfg.theme.split_once('-')
-            && ["dark", "light", "walnut", "night", "day"].contains(&rest)
-            && std::iter::once(crate::brand::APP_COMMAND).chain(crate::brand::previous()).any(|p| cfg.theme.starts_with(&format!("{p}-")))
-        {
-            cfg.theme = rest.to_string();
+        if let Some(t) = retired_theme(&cfg.theme) {
+            cfg.theme = t.to_string();
         }
         // Settings shows the look by its name, whatever an older file called it.
         cfg.ui.layout = cfg.ui.layout_kind().name().into();
@@ -1448,6 +1458,15 @@ mod tests {
         assert_eq!(got, [("/work/app", "npm test", super::CHECK_TIMEOUT_S_DEFAULT), ("/work/lib", "cargo test", 90)]);
         assert_eq!(super::CHECK_TIMEOUT_S_DEFAULT, 600);
         assert!(super::Config::default().check.is_empty(), "no check unless the user names one");
+    }
+
+    #[test]
+    fn a_retired_theme_moves_to_night_or_day() {
+        for (old, now) in [("dark", "night"), ("walnut", "night"), ("seshi-night", "night"), ("light", "day"), ("vibecasso-day", "day")] {
+            assert_eq!(retired_theme(old), Some(now), "{old}");
+        }
+        assert_eq!(retired_theme("tokyo-night"), None, "a theme of another name is kept");
+        assert_eq!(retired_theme("harbor-day"), None);
     }
 
     #[test]

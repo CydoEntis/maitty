@@ -960,7 +960,7 @@ fn a_working_row_s_mark_is_the_only_working_colour() {
 #[test]
 fn needs_you_is_amber_and_failed_red_in_app_dark() {
     let mut app = open("11");
-    app.theme = crate::theme::Theme::named("dark");
+    app.theme = crate::theme::Theme::named("night");
     let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
     let t = &app.theme;
     assert_ne!(t.blocked, t.err);
@@ -978,7 +978,7 @@ fn needs_you_is_amber_and_failed_red_in_app_dark() {
 #[test]
 fn a_check_that_could_not_run_is_violet_not_red_or_amber() {
     let mut app = open("06");
-    app.theme = crate::theme::Theme::named("dark");
+    app.theme = crate::theme::Theme::named("night");
     let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
     let t = &app.theme;
     let (x, y) = at(&buf, "fix-footer        ");

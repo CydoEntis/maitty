@@ -5,8 +5,8 @@
 prefix = "ctrl+space"
 
 # Browse all built-in names in Settings > Appearance > Theme.
-# Families and variants: docs/theme-credits.md (gruvbox is Dark; tokyo-night is Night).
-theme = "dark"
+# The app's own pair is night (the default) and day; the rest: docs/theme-credits.md.
+theme = "night"
 
 # Shell for new panes. Default: pwsh / powershell on Windows, $SHELL elsewhere.
 # shell = "pwsh.exe"
