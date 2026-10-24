@@ -383,22 +383,30 @@ fn tab_strip(app: &mut App, model: &[Proj], x: u16, y: u16, max_x: u16, lit: boo
     let mut at = x;
     let tabs = app.session_tabs();
     let closable = tabs.len() > 1;
+    let mut all_fit = true;
     for (n, i) in tabs.into_iter().enumerate() {
         let tab = &app.screen.tabs[i];
         let name = tab_name(tab).unwrap_or_else(|| session_name(app, model, tab.focus));
         let on = i == app.screen.tab;
         let number = if on { Style::default().fg(t.acc_ink).bg(t.accent).add_modifier(Modifier::BOLD) } else { Style::default().fg(t.text).bg(t.btn) };
-        let label = if on { name_chip(&name, lit, t) } else { seg(format!(" {name} "), Style::default().fg(t.text).bg(t.card)) };
-        let mut pair = vec![seg(format!(" {} ", n + 1), number), label];
-        if closable {
-            let (fg, bg) = if on { if lit { (t.acc_ink, t.accent) } else { (t.strong, t.btn) } } else { (t.muted, t.card) };
-            pair.push(seg("✕ ", Style::default().fg(fg).bg(bg)));
-        }
-        if look.round_tabs {
-            pair = round_ends(pair, ground);
+        let chips = |name: &str| {
+            let label = if on { name_chip(name, lit, t) } else { seg(format!(" {name} "), Style::default().fg(t.text).bg(t.card)) };
+            let mut pair = vec![seg(format!(" {} ", n + 1), number), label];
+            if closable {
+                let (fg, bg) = if on { if lit { (t.acc_ink, t.accent) } else { (t.strong, t.btn) } } else { (t.muted, t.card) };
+                pair.push(seg("✕ ", Style::default().fg(fg).bg(bg)));
+            }
+            if look.round_tabs { round_ends(pair, ground) } else { pair }
+        };
+        let mut pair = chips(&name);
+        // The tab you are on shortens its name before it would drop out of a narrow title.
+        let rest = segs_width(&pair).saturating_sub(name.width() as u16);
+        if on && at + segs_width(&pair) > max_x && max_x > at + rest + 1 {
+            pair = chips(&truncate(&name, (max_x - at - rest) as usize));
         }
         let w = segs_width(&pair);
         if at + w > max_x {
+            all_fit = false;
             break;
         }
         hit(app, Rect { x: at, y, width: w, height: 1 }, ScreenHit::TabPick(i));
@@ -409,8 +417,11 @@ fn tab_strip(app: &mut App, model: &[Proj], x: u16, y: u16, max_x: u16, lit: boo
         out.extend(pair);
         at += w;
     }
-    // The chip that opens a tab, a cell clear of the tabs: it drops like a tab when the title
-    // has no room.
+    // The chip that opens a tab, a cell clear of the tabs: it drops first, so never shows
+    // without every tab before it.
+    if !all_fit {
+        return out;
+    }
     let mut plus = vec![seg(" + ", Style::default().fg(t.strong).bg(t.btn).add_modifier(Modifier::BOLD))];
     if look.round_tabs {
         plus = round_ends(plus, ground);
@@ -460,6 +471,9 @@ const GRID_UNFOCUSED_FADE: f32 = 0.42;
 /// How far an unfocused Grid pane's number and name chips fade toward the ground.
 const GRID_TAG_FADE: f32 = 0.28;
 
+/// The narrowest a tab chip pair gets before it drops: ` 1 ` and ` x… `.
+const SHORTEST_TAB: u16 = 7;
+
 /// A pane's place among the tab's panes (0 first): top-left first, left to right and top to
 /// bottom. Grid numbers and colours panes by it.
 fn grid_index(app: &App, term: TermId) -> usize {
@@ -492,8 +506,8 @@ fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: 
     };
     let number = chip(format!(" {} ", grid_index(app, info.id) + 1));
     let state = match (info.agent.is_some(), info.status) {
-        (true, Status::Blocked) => Some(seg(" ▲ needs you", Style::default().fg(t.blocked).add_modifier(Modifier::BOLD))),
-        (true, Status::Working) => Some(seg(format!(" {} working", glyph(app, Status::Working)), Style::default().fg(own))),
+        (true, Status::Blocked) => Some(("▲".to_string(), " needs you", Style::default().fg(t.blocked).add_modifier(Modifier::BOLD))),
+        (true, Status::Working) => Some((glyph(app, Status::Working).to_string(), " working", Style::default().fg(own))),
         _ => None,
     };
     let tag = chip(format!(" {} ", session_name(app, model, info.id)));
@@ -501,8 +515,14 @@ fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: 
     let room = right_end(look, r).saturating_sub(x);
     // The ✕, the spaces round the right-hand segments and the corner pill's room.
     let rest = segs_width(&c.right) + 4 + c.right_room;
-    let (number_w, state_w, tag_w) = (segs_width(&number), state.as_ref().map_or(0, |s| s.0.width() as u16), segs_width(&tag) + 2);
-    let with_tag = number_w + state_w + 2 + tag_w + rest <= room;
+    let (number_w, state_w, tag_w) = (segs_width(&number), state.as_ref().map_or(0, |(g, words, _)| (1 + g.width() + words.width()) as u16), segs_width(&tag) + 2);
+    // The top-left pane keeps room for its current tab at its shortest: the tag and then the
+    // state's words drop before it does.
+    let top_left = app.screen.leaf_rects.iter().min_by_key(|(_, lr)| (lr.y, lr.x)).is_some_and(|(id, _)| *id == info.id);
+    let caps = if look.round_tabs { 2 } else { 0 };
+    let close = if app.session_tabs().len() > 1 { 2 } else { 0 };
+    let tabs_min = if top_left { SHORTEST_TAB + caps + close + 2 } else { 0 };
+    let with_tag = number_w + state_w + 2 + tag_w + rest + tabs_min <= room;
     if with_tag {
         // A gap only when something (a load note) follows it; the ✕ brings its own.
         let gap = (!c.right.is_empty()).then(|| seg("  ", Style::default()));
@@ -510,11 +530,13 @@ fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: 
     }
     let rest = rest + if with_tag { tag_w } else { 0 };
     let mut left = number;
-    if let Some(state) = state.filter(|_| number_w + state_w + 2 + rest <= room) {
+    // The state in words, else its glyph alone, else nothing.
+    let fits = |s: &String| number_w + s.width() as u16 + 2 + rest + tabs_min <= room;
+    let state = state.and_then(|(g, words, st)| [format!(" {g}{words}"), format!(" {g}")].into_iter().find(fits).map(|s| seg(s, st)));
+    if let Some(state) = state {
         left.extend([state, seg(" ", Style::default())]);
     }
     let left_w = segs_width(&left);
-    let top_left = app.screen.leaf_rects.iter().min_by_key(|(_, lr)| (lr.y, lr.x)).is_some_and(|(id, _)| *id == info.id);
     if top_left {
         let title_end = right_end(look, r).saturating_sub(rest + 2);
         left.push(seg(" ", Style::default()));

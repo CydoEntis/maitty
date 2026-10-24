@@ -1352,7 +1352,14 @@ mod screen_tests {
     fn a_narrow_grid_pane_drops_its_name_tag_before_its_state() {
         let (app, [a, ..], rows) = grid_frame(60, 20);
         let ta = top_border(&app, &rows, a);
-        assert!(ta.starts_with("┌─ 1  ▲ needs you ") && !ta.contains("claude"), "{ta}");
+        assert!(ta.starts_with("┌─ 1  ▲ ") && !ta.contains("needs you") && !ta.contains("claude   ✕"), "the tag, then the state's words go: {ta}");
+        // Narrowing step by step: the tag goes before the words, and the current tab stays.
+        for w in 60..=110 {
+            let (app, [a, ..], rows) = grid_frame(w, 20);
+            let ta = top_border(&app, &rows, a);
+            assert!(!ta.contains("claude   ✕") || ta.contains("needs you"), "{w}: {ta}");
+            assert!(app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab))), "{w}: the current tab: {ta}");
+        }
     }
 
     fn drawn(app: &mut App, w: u16, h: u16) -> ratatui::buffer::Buffer {
@@ -4373,6 +4380,31 @@ second line
         tap(&mut app, 'y');
         let (paused, _) = close_and_pill(&mut app);
         assert_eq!(paused, lit, "the ✕ holds still between lit and paused");
+    }
+
+    #[test]
+    fn a_narrow_title_in_shortcut_mode_keeps_the_current_tab_and_drops_the_plus_first() {
+        use screen::ScreenHit as S;
+        for layout in ["floating", "tiled", "grid"] {
+            for h in [24, 30] {
+                for paused in [false, true] {
+                    let (_, mut app) = super::design_tests::render_with(80, h);
+                    (app.cfg.ui.layout, app.cfg.ui.rounded, app.cfg.ui.which_key) = (layout.into(), crate::config::Rounding::Full, false);
+                    app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+                    if paused {
+                        tap(&mut app, ',');
+                    }
+                    let at = format!("{layout} 80x{h} paused {paused}");
+                    let o = draw(&mut app, 80, h);
+                    let row0 = o.lines().next().unwrap_or_default();
+                    let current = app.screen.tab;
+                    let tabs: Vec<usize> = app.hits.iter().filter_map(|(_, k)| match k { Hit::Screen(S::TabPick(i)) => Some(*i), _ => None }).collect();
+                    assert!(tabs.contains(&current), "the current tab is drawn: {at}\n{row0}");
+                    let plus = app.hits.iter().any(|(_, k)| *k == Hit::Screen(S::NewTab));
+                    assert!(!plus || tabs.len() == app.session_tabs().len(), "no + without every tab before it: {at}\n{row0}");
+                }
+            }
+        }
     }
 
     #[test]
