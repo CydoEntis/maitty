@@ -182,9 +182,16 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     g.panes
 }
 
-/// The pill at the top right of row 0: the leader while it's armed, else Update when a newer
-/// release is out, else Restart once a newer one is installed but not running.
+/// The pill at the top right of row 0, capped like every chip when rounded: the caps' ground is
+/// filled in where it is drawn (`draw_corner_pill`).
 pub(super) fn corner_pill(app: &App, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
+    let (segs, h) = corner_words(app, t)?;
+    Some((if Look::of(&app.cfg.ui).round_tabs { round_ends(segs, Color::Reset) } else { segs }, h))
+}
+
+/// What the corner pill says: the leader while it's armed, else Update when a newer release is
+/// out, else Restart once a newer one is installed but not running.
+fn corner_words(app: &App, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
     // Shortcut mode is on (ADR 0016): say so, and how to leave it.
     if armed(app) {
         return Some((vec![seg(" SHORTCUT · Esc ", Style::default().fg(t.bg).bg(t.sky()).add_modifier(Modifier::BOLD))], ScreenHit::Leader));
@@ -204,8 +211,18 @@ pub(in crate::client) fn draw_corner_pill(app: &mut App, buf: &mut Buffer, area:
     let Some((segs, h)) = corner_pill(app, t) else { return };
     let w = segs_width(&segs);
     let x = area.right().saturating_sub(w + 1);
+    let r = Rect { x, y: area.y, width: w, height: 1 };
+    let behind = ends_behind(buf, r);
     put(buf, x, area.y, &segs, area.right());
-    hit(app, Rect { x, y: area.y, width: w, height: 1 }, h);
+    // The caps sit on whatever is there: a border, a header strip, the dimming behind a popup.
+    if Look::of(&app.cfg.ui).round_tabs
+        && let Some(&(bl, br)) = behind.first()
+    {
+        let on = r.intersection(buf.area);
+        buf[(on.x, on.y)].set_bg(bl);
+        buf[(on.right() - 1, on.y)].set_bg(br);
+    }
+    hit(app, r, h);
 }
 
 pub(in crate::client) fn find(model: &[Proj], term: TermId) -> Option<(&Proj, &Wt, &Session)> {

@@ -4291,6 +4291,46 @@ second line
     }
 
     #[test]
+    fn every_corner_pill_is_capped_when_rounded_and_its_click_covers_the_caps() {
+        use crate::config::Rounding;
+        use screen::ScreenHit as S;
+        type SetUp = fn(&mut App);
+        let states: [(&str, S, SetUp); 4] = [
+            ("SHORTCUT · Esc", S::Leader, |_| {}),
+            ("SHORTCUT · paused", S::Leader, |app| tap(app, 'i')),
+            ("↑ Update", S::Update, |app| {
+                app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                app.update_available = Some("9.9.9".into());
+            }),
+            ("↻ Restart", S::Restart, |app| {
+                app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                app.installed_version = Some(Ok("999.0.0".into()));
+            }),
+        ];
+        for (words, kind, set_up) in states {
+            for rounded in [Rounding::Off, Rounding::Full] {
+                let mut app = shortcut_mode();
+                app.cfg.ui.rounded = rounded;
+                set_up(&mut app);
+                let at = format!("{words} {rounded:?}");
+                let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+                term.draw(|f| render::draw(&mut app, f)).unwrap();
+                let buf = term.backend().buffer().clone();
+                let r = app.hits.iter().rev().find(|(r, h)| r.y == 0 && *h == Hit::Screen(kind)).unwrap_or_else(|| panic!("the pill takes a click: {at}")).0;
+                let text: String = (r.x..r.right()).map(|x| buf[(x, 0)].symbol()).collect();
+                assert!(text.contains(words), "{text:?}: {at}");
+                let (l, e, inside) = (&buf[(r.x, 0)], &buf[(r.right() - 1, 0)], buf[(r.x + 1, 0)].bg);
+                if rounded == Rounding::Full {
+                    assert_eq!((l.symbol(), l.fg, e.symbol(), e.fg), (screen::CAP_L, inside, screen::CAP_R, inside), "capped, the click on both caps: {at}");
+                    assert_ne!(l.bg, inside, "the caps sit on the ground behind: {at}");
+                } else {
+                    assert_eq!((l.symbol(), l.bg, e.symbol(), e.bg), (" ", inside, " ", inside), "square: {at}");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn a_click_on_the_paused_pill_opens_the_key_map() {
         let mut app = shortcut_mode();
         tap(&mut app, 'y');
