@@ -16,6 +16,8 @@ use unicode_width::UnicodeWidthStr;
 
 /// How many snapshots the list offers (each has its number as its key).
 const SNAPSHOTS_LISTED: usize = 9;
+/// Why a snapshot is not restored while its session's agent works.
+pub(super) const RESTORE_WHILE_WORKING: &str = "Its agent is working; stop it or wait for the turn to end.";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Act {
@@ -141,6 +143,10 @@ pub struct ScreenMenu {
 }
 
 impl App {
+    fn agent_working(&self, term: TermId) -> bool {
+        self.snap.terms.get(&term).is_some_and(|x| x.status == crate::protocol::Status::Working)
+    }
+
     pub(super) fn menu(&mut self, title: String, mut items: Vec<(String, Act)>, at: (u16, u16)) {
         // The destructive item last.
         items.sort_by_key(|(_, a)| matches!(a, Act::End(_) | Act::CloseProject(_)));
@@ -340,25 +346,20 @@ impl App {
                 danger: true,
                 act: a.clone(),
             }),
-            Act::Restore(dir, _, when, term) => {
-                let working = self.snap.terms.get(term).is_some_and(|x| x.status == crate::protocol::Status::Working);
-                Some(Confirm {
-                    title: "Restore snapshot".into(),
-                    sub: String::new(),
-                    what: super::screen::folder_name(dir),
-                    detail: when.clone(),
-                    note: if working {
-                        "Its agent is working in these files right now. They go back to how they were then; what's there now is kept as a snapshot first.".into()
-                    } else {
-                        "The files go back to how they were then. What's there now is kept as a snapshot first, so this can be taken back.".into()
-                    },
-                    list: Vec::new(),
-                    yes: "Restore".into(),
-                    key: '\n',
-                    danger: working,
-                    act: a.clone(),
-                })
-            }
+            // Refused while it works (menu_do says so): nothing to ask.
+            Act::Restore(_, _, _, term) if self.agent_working(*term) => None,
+            Act::Restore(dir, _, when, _) => Some(Confirm {
+                title: "Restore snapshot".into(),
+                sub: String::new(),
+                what: super::screen::folder_name(dir),
+                detail: when.clone(),
+                note: "The files go back to how they were then. What's there now is kept as a snapshot first, so this can be taken back.".into(),
+                list: Vec::new(),
+                yes: "Restore".into(),
+                key: '\n',
+                danger: false,
+                act: a.clone(),
+            }),
             Act::GitInit(p) => Some(Confirm {
                 title: "Make it a git repo".into(),
                 sub: String::new(),
@@ -460,6 +461,8 @@ impl App {
                     super::Bg::Then(Box::new(move |app: &mut App| app.snapshots_menu(dir, term, kept, at)))
                 });
             }
+            // Its agent would keep writing into files being rolled back, even after you confirmed.
+            Act::Restore(_, _, _, term) if self.agent_working(term) => self.notify(RESTORE_WHILE_WORKING.into(), true),
             Act::Restore(dir, commit, _, _) => {
                 self.notify("restoring…".into(), false);
                 self.spawn_bg(move || {

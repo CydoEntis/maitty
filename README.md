@@ -295,7 +295,8 @@ the row, and the row's menu drops it.
 Each time an agent's turn begins, seshi keeps the checkout's files as they are (tracked or
 not; never what git ignores). **Snapshots…** in the agent's menu lists the last nine;
 picking one puts the files back as they were then. What's there now is kept as a snapshot
-first, so a restore can be taken back the same way. Snapshots are commits under the
+first, so a restore can be taken back the same way. It is refused while the agent is working,
+since it would keep writing into the files being put back. Snapshots are commits under the
 worktree's own refs (`refs/worktree/seshi/snapshots`): no branch, nothing in your history,
 your staging untouched, the newest 30 kept. `[snapshots] enabled = false` turns them off.
 

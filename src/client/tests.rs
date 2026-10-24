@@ -2773,6 +2773,34 @@ second line
         assert!(o.contains("Restore snapshot") && o.contains("dsa-tool"));
     }
 
+    fn one_snapshot(app: &mut App) {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let kept = vec![crate::snapshot::Snapshot { commit: "c0".into(), at: now - 120, why: "before claude's turn".into() }];
+        app.snapshots_menu(std::path::PathBuf::from("/code/dsa-tool"), 1, kept, (30, 6));
+    }
+
+    #[test]
+    fn a_snapshot_is_not_restored_while_its_agent_works() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.snap.terms.get_mut(&1).unwrap().status = Status::Working;
+        one_snapshot(&mut app);
+        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+        assert!(!matches!(app.mode, Mode::Confirm(_)), "nothing to confirm: {:?}", app.mode);
+        assert_eq!(app.notice.as_ref().map(|n| n.0.as_str()), Some(crate::client::menu::RESTORE_WHILE_WORKING));
+    }
+
+    #[test]
+    fn a_restore_confirmed_before_the_agent_started_working_is_still_refused() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.snap.terms.get_mut(&1).unwrap().status = Status::Idle;
+        one_snapshot(&mut app);
+        app.on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
+        assert!(matches!(app.mode, Mode::Confirm(_)), "idle: it asks first");
+        app.snap.terms.get_mut(&1).unwrap().status = Status::Working;
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(app.notice.as_ref().map(|n| n.0.as_str()), Some(crate::client::menu::RESTORE_WHILE_WORKING));
+    }
+
     #[test]
     fn a_follow_up_to_a_working_agent_waits_its_turn() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
