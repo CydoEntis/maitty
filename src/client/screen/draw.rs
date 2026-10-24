@@ -182,6 +182,9 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     g.panes
 }
 
+/// The corner pill while shortcut mode is held under a popup, the wider of its two words.
+const SHORTCUT_PAUSED: &str = " SHORTCUT · paused ";
+
 /// The pill at the top right of row 0, capped like every chip when rounded: the caps' ground is
 /// filled in where it is drawn (`draw_corner_pill`).
 pub(super) fn corner_pill(app: &App, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
@@ -198,7 +201,7 @@ fn corner_words(app: &App, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
     }
     // Held under a popup or view it opened: dim, so you still know it comes back.
     if shortcut_paused(app) {
-        return Some((vec![seg(" SHORTCUT · paused ", Style::default().fg(t.muted).bg(t.btn))], ScreenHit::Leader));
+        return Some((vec![seg(SHORTCUT_PAUSED, Style::default().fg(t.muted).bg(t.btn))], ScreenHit::Leader));
     }
     if let Some(version) = app.update_available.as_ref() {
         return Some((vec![seg(format!(" ↑ Update {version} "), Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD))], ScreenHit::Update));
@@ -434,12 +437,17 @@ fn pane_mark(app: &App, info: &TermInfo, t: &Theme) -> Option<(Seg, u16)> {
     Some((seg(text, Style::default().fg(m.color).add_modifier(Modifier::BOLD)), w))
 }
 
-/// Room the top-right pane leaves at the end of its title for the Update pill.
-fn corner_room(app: &App, r: Rect, screen: Rect, t: &Theme) -> u16 {
-    if armed(app) || r.y != screen.y || r.right() != screen.right() {
+/// Room a card in the top-right corner (a pane or the sheet) leaves at the end of its title for
+/// whichever corner pill shows, so its mark and ✕ never sit under it or jump as it changes.
+pub(in crate::client) fn corner_room(app: &App, r: Rect, screen: Rect, t: &Theme) -> u16 {
+    if r.y != screen.y || r.right() != screen.right() {
         return 0;
     }
-    corner_pill(app, t).map_or(0, |(segs, _)| segs_width(&segs))
+    let shown = corner_pill(app, t).map_or(0, |(segs, _)| segs_width(&segs));
+    // Lit and paused differ in width: both keep the wider, so the title holds still between them.
+    let caps = if Look::of(&app.cfg.ui).round_tabs { 2 } else { 0 };
+    let held = if armed(app) || shortcut_paused(app) { SHORTCUT_PAUSED.width() as u16 + caps } else { 0 };
+    shown.max(held)
 }
 
 /// A pane as a card. Its title: the tabs of the session on screen when it's the top-left pane

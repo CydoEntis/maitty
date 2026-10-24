@@ -4353,6 +4353,42 @@ second line
         assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc".into(), app.theme.sky())), "and the pill lit");
     }
 
+    /// Where the top-right card's ✕ and the corner pill sit on row 0.
+    fn close_and_pill(app: &mut App) -> (u16, u16) {
+        let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let row: String = (0..160).map(|x| buf[(x, 0)].symbol()).collect();
+        let pill = last_at(&buf, "SHORTCUT", 0, 0, 160).unwrap_or_else(|| panic!("the pill: {row}"));
+        let close = (0..pill).rev().find(|&x| buf[(x, 0)].symbol() == "✕").unwrap_or_else(|| panic!("a ✕ left of the pill: {row}"));
+        (close, pill)
+    }
+
+    #[test]
+    fn the_lit_pill_leaves_the_pane_s_close_in_view_where_the_paused_one_does() {
+        let mut app = shortcut_mode();
+        let (lit, pill) = close_and_pill(&mut app);
+        let pane = app.pane_frames.iter().map(|(_, r)| *r).find(|r| r.y == 0 && r.right() == 160).expect("the top-right pane");
+        assert!(lit > pane.x && lit + 1 < pill, "lit: ✕ {lit}, pill {pill}");
+        tap(&mut app, 'y');
+        let (paused, _) = close_and_pill(&mut app);
+        assert_eq!(paused, lit, "the ✕ holds still between lit and paused");
+    }
+
+    #[test]
+    fn the_paused_pill_leaves_the_sheet_s_close_in_view_and_clickable() {
+        let (mut app, _rx) = super::check_settings_tests::app_with_channel();
+        app.cfg.ui.which_key = false;
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        tap(&mut app, 'f');
+        assert!(matches!(app.view, Some(View::Files(_))), "f opened Files");
+        let (close, pill) = close_and_pill(&mut app);
+        let sheet = app.screen.sheet_rect;
+        assert!(sheet.y == 0 && sheet.right() == 160 && close > sheet.x && close + 1 < pill, "the sheet's ✕ {close} left of the pill {pill}");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: close, row: 0, modifiers: KeyModifiers::NONE });
+        assert!(app.view.is_none(), "a click on it closes Files");
+    }
+
     #[test]
     fn shortcut_mode_returns_when_a_server_message_closes_a_popup() {
         let mut app = shortcut_mode();

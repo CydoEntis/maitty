@@ -220,6 +220,7 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     // The read-while-working sheets and Changes sit on the desk's ground, like the panes.
     c.bg = if kind == SheetKind::Both { t.card } else { t.bg };
     c.close = Some(close);
+    c.right_room = corner_room(app, r, framed(app, buf.area), t);
     let inside = card(app, buf, r, &c, t);
     // Clicks inside it stay in it.
     hit(app, inside, ScreenHit::Noop);
