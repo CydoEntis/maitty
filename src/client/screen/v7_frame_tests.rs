@@ -422,6 +422,46 @@ fn a_selected_or_hovered_folder_row_ends_in_caps_only_when_rounded_in_full() {
     }
 }
 
+/// Compact rules a zone's left only where it meets another zone, measured in the room left
+/// inside the padding: the panes beside a left sidebar, a sidebar on the right. A left sidebar
+/// has none at any padding, so its selected or hovered folder row ends in caps.
+#[test]
+fn compact_rules_only_a_zone_beside_another_at_every_padding() {
+    use crate::config::Rounding;
+    for padding in ["0", "1", "2"] {
+        for side in ["left", "right"] {
+            for selected in [true, false] {
+                let at = format!("padding {padding}, sidebar {side}, {}", if selected { "selected" } else { "hovered" });
+                let mut app = world(Stage::None);
+                (app.cfg.ui.padding, app.cfg.ui.sidebar_position, app.cfg.ui.rounded) = (padding.into(), side.into(), Rounding::Full);
+                if selected {
+                    app.mode = Mode::Side;
+                    app.screen.cursor = None;
+                    app.screen.cursor_proj = Some(app.screen_model()[0].key.clone());
+                }
+                drawn_in(&mut app, "compact");
+                if !selected {
+                    let row = folder_row(&app);
+                    app.hover = Some(Position::new(row.x + 3, row.y));
+                }
+                let buf = drawn_in(&mut app, "compact");
+                let panes = grid(&app, framed(&app, buf.area)).panes;
+                let rule = |r: Rect| (r.y + 1..r.bottom()).filter(|&y| buf[(r.x, y)].symbol() == "│").count() as u16;
+                let (side_r, row) = (app.screen.side_rect, folder_row(&app));
+                if side == "left" {
+                    assert_eq!(rule(side_r), 0, "no rule left of the sidebar: {at}");
+                    assert_eq!(rule(panes), panes.height - 1, "the panes are ruled off the sidebar: {at}");
+                    let (left, right) = (&buf[(row.x, row.y)], &buf[(row.right() - 1, row.y)]);
+                    assert_eq!((left.symbol(), right.symbol()), (CAP_L, CAP_R), "{at}");
+                } else {
+                    assert_eq!(rule(side_r), side_r.height - 1, "the sidebar is ruled off the panes: {at}");
+                    assert_eq!(rule(panes), 0, "no rule left of the panes: {at}");
+                }
+            }
+        }
+    }
+}
+
 /// Rounded shapes reach every chip and floating card: the SESSIONS chip, + New and Menu on the
 /// plain ground, and the Menu, rounded in Cards and one softened block in Flat.
 #[test]

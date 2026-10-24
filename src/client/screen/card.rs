@@ -329,7 +329,7 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
     }
     let soften = c.float && look.caps && look.flat;
     let behind = if soften { ends_behind(buf, r) } else { Vec::new() };
-    let inside = if look.flat { flat_frame(buf, r, c, t) } else { box_frame(buf, r, c, look) };
+    let inside = if look.flat { flat_frame(buf, r, c, t, ruled(app, buf, r)) } else { box_frame(buf, r, c, look) };
     if soften {
         soften_block(buf, r, &behind);
     }
@@ -381,12 +381,19 @@ fn box_frame(buf: &mut Buffer, r: Rect, c: &Card, look: Look) -> Rect {
     Rect { x: x + 1, y: y + 1, width: r.width - 2, height: r.height - 2 }
 }
 
+/// Whether a Flat zone at `r` has a `│` rule down its left: it does not start at the left of
+/// the room the screen is laid out in (the window less its padding), as the panes beside a
+/// left sidebar, or a sidebar on the right.
+pub(in crate::client) fn ruled(app: &App, buf: &Buffer, r: Rect) -> bool {
+    r.x > framed(app, buf.area).x
+}
+
 /// The Flat zone: a header strip of `card` on its first row, and a `│` rule down its left
-/// unless it starts at the screen's edge.
-fn flat_frame(buf: &mut Buffer, r: Rect, c: &Card, t: &Theme) -> Rect {
+/// when `ruled`.
+fn flat_frame(buf: &mut Buffer, r: Rect, c: &Card, t: &Theme, ruled: bool) -> Rect {
     fill(buf, r, c.bg);
     fill(buf, Rect { height: 1, ..r }, t.card);
-    if r.x > buf.area.x {
+    if ruled {
         buf[(r.x, r.y)].set_symbol("│").set_style(Style::default().fg(t.line).bg(t.card));
         let rule = Style::default().fg(if c.bold { c.border } else { t.line }).bg(c.bg);
         for yy in r.y + 1..r.bottom() {

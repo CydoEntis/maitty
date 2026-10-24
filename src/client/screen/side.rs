@@ -220,7 +220,7 @@ struct Cols {
 }
 
 impl Cols {
-    /// `ruled`: the zone is drawn with a `│` rule down its left (Flat, away from the screen's edge).
+    /// `ruled`: a Flat zone has a `│` rule down its left (`card::ruled`).
     fn of(r: Rect, flat: bool, cap: bool, ruled: bool) -> Cols {
         let (left, right) = if flat { (1, 2) } else { (2, 3) };
         // In Flat the tint ends on RX itself, so right-aligned text steps back a cell for the cap.
@@ -285,7 +285,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     app.screen.side_rect = r;
     hit(app, r, ScreenHit::SideFocus);
     draw_head(app, buf, r, model, t, focused_side, look.flat);
-    let cols = Cols::of(r, look.flat, look.round_rows, r.x > buf.area.x);
+    let cols = Cols::of(r, look.flat, look.round_rows, ruled(app, buf, r));
     let screen_w = buf.area.width;
     let lines = fitted_lines(app, model, t, screen_w);
     let shown: Vec<TermId> = app.screen.tabs.get(app.screen.tab).map(|t| t.layout.leaves()).unwrap_or_default();
