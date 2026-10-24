@@ -330,13 +330,13 @@ fn without_new_tab_chip(row: &str) -> String {
 /// title's fill, so the top-right card's mark and ✕ keep the handoff's columns. What the room
 /// cost a narrow title (a tab that gave way) stays the app's.
 fn without_mode_tag(row: &[char], app: &App, layout: Layout) -> Vec<char> {
+    let cards = app.pane_frames.iter().map(|(_, r)| *r).chain([app.screen.sheet_rect]);
+    let Some(card) = cards.filter(|r| r.y == 0 && r.right() as usize == row.len()).max_by_key(|r| r.x) else { return row.to_vec() };
     let t = app.theme.clone();
-    let reserve = super::screen::corner_reserve(app, row.len() as u16, &t) as usize;
+    let reserve = super::screen::corner_reserve(app, row.len() as u16, card.width, &t) as usize;
     let corner = row.len() - 1;
     let mut out: Vec<char> = row[..corner - reserve].iter().chain(&row[corner..]).copied().collect();
     let fill = if layout == Layout::Flat { ' ' } else { '─' };
-    let cards = app.pane_frames.iter().map(|(_, r)| *r).chain([app.screen.sheet_rect]);
-    let Some(card) = cards.filter(|r| r.y == 0 && r.right() as usize == row.len()).max_by_key(|r| r.x) else { return row.to_vec() };
     // The title's fill: its longest run on that card, between the tabs and the mark.
     let (mut best, mut at, mut run) = ((card.x as usize, 0), 0, 0);
     for (i, c) in out.iter().enumerate().skip(card.x as usize) {

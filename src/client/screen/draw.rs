@@ -199,14 +199,18 @@ type ModeWords = [&'static str; 3];
 /// own tag's room, so a narrow title keeps its tabs, and only lit and paused hold still.
 const HOLD_TYPING_FROM: u16 = NARROW;
 
+/// What the corner card's title keeps beside the pills: its start, the current tab at its
+/// shortest, the status glyph and the ✕.
+const TITLE_KEEP: u16 = 32;
+
 fn tag_words(room_w: u16) -> ModeWords {
     TAGS.iter().find(|(from, _)| room_w >= *from).map_or(TAGS[TAGS.len() - 1].1, |(_, words)| *words)
 }
 
 /// What the mode tag says now: lit while keys are shortcuts, held under a popup or view that
 /// took the keys, else typing.
-fn mode_words(app: &App, room_w: u16) -> &'static str {
-    let [lit, paused, typing] = tag_words(room_w);
+fn mode_words(app: &App, words: ModeWords) -> &'static str {
+    let [lit, paused, typing] = words;
     if armed(app) {
         lit
     } else if shortcut_paused(app) {
@@ -216,23 +220,56 @@ fn mode_words(app: &App, room_w: u16) -> &'static str {
     }
 }
 
+/// How much of Update or Restart shows: all its words, the version, the arrow, or nothing.
+#[derive(Clone, Copy, PartialEq)]
+enum Release {
+    Words,
+    Version,
+    Arrow,
+    Hidden,
+}
+
+/// How much the corner says.
+#[derive(Clone, Copy)]
+struct Corner {
+    release: Release,
+    words: ModeWords,
+}
+
+/// The fullest corner that leaves a card `card_w` wide its title (`TITLE_KEEP`): Update shortens
+/// to its version, then its arrow, then the tag to one word, and last Update goes. Chosen on the
+/// widest tag, so it holds as the mode changes.
+fn corner_fit(app: &App, room_w: u16, card_w: u16, t: &Theme) -> Corner {
+    let words = tag_words(room_w);
+    let short = [" SHORTCUT ", " PAUSED ", words[2]];
+    let last = Corner { release: Release::Hidden, words: short };
+    let steps = [
+        Corner { release: Release::Words, words },
+        Corner { release: Release::Version, words },
+        Corner { release: Release::Arrow, words },
+        Corner { release: Release::Arrow, words: short },
+    ];
+    let budget = card_w.saturating_sub(TITLE_KEEP);
+    steps.into_iter().find(|c| reserve_of(app, *c, true, t) <= budget).unwrap_or(last)
+}
+
 /// The pills at the top right of row 0, left to right: Update or Restart when one is waiting,
 /// then the mode tag in the corner. Each is capped like every chip when rounded: the caps'
 /// ground is filled in where they are drawn (`draw_corner_pills`).
-pub(super) fn corner_pills(app: &App, room_w: u16, t: &Theme) -> Vec<(Vec<Seg>, Option<ScreenHit>)> {
+fn corner_pills(app: &App, corner: Corner, t: &Theme) -> Vec<(Vec<Seg>, Option<ScreenHit>)> {
     let round = Look::of(&app.cfg.ui).round_tabs;
-    release_pill(app, t)
+    release_pill(app, corner.release, t)
         .map(|(segs, h)| (segs, Some(h)))
         .into_iter()
-        .chain(mode_tag(app, room_w, t))
+        .chain(mode_tag(app, corner.words, t))
         .map(|(segs, h)| (if round { round_ends(segs, Color::Reset) } else { segs }, h))
         .collect()
 }
 
 /// The mode, always in view: sky and bold while lit, quiet otherwise. A click on it opens the
 /// key map.
-fn mode_tag(app: &App, room_w: u16, t: &Theme) -> Option<(Vec<Seg>, Option<ScreenHit>)> {
-    let words = mode_words(app, room_w);
+fn mode_tag(app: &App, words: ModeWords, t: &Theme) -> Option<(Vec<Seg>, Option<ScreenHit>)> {
+    let words = mode_words(app, words);
     let style = if armed(app) { Style::default().fg(t.bg).bg(t.sky()).add_modifier(Modifier::BOLD) } else { Style::default().fg(t.muted).bg(t.btn) };
     // Typing under a popup, the tag is only dimmed words: a click there still reaches the
     // popup's own outside-click, as it did before the tag was there.
@@ -241,37 +278,61 @@ fn mode_tag(app: &App, room_w: u16, t: &Theme) -> Option<(Vec<Seg>, Option<Scree
 }
 
 /// Update when a newer release is out, else Restart once a newer one is installed but not
-/// running.
-fn release_pill(app: &App, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
+/// running, as much of it as `shown`.
+fn release_pill(app: &App, shown: Release, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
     let style = Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD);
-    if let Some(version) = app.update_available.as_ref() {
-        return Some((vec![seg(format!(" ↑ Update {version} "), style)], ScreenHit::Update));
-    }
-    // Installed (here or from outside the app), not running yet: one click finishes it.
-    app.restart_needed().then(|| (vec![seg(" ↻ Restart ", style)], ScreenHit::Restart))
+    let (words, h) = if let Some(version) = app.update_available.as_ref() {
+        let words = match shown {
+            Release::Words => format!(" ↑ Update {version} "),
+            Release::Version => format!(" ↑ {version} "),
+            _ => " ↑ ".to_string(),
+        };
+        (words, ScreenHit::Update)
+    } else if app.restart_needed() {
+        // Installed (here or from outside the app), not running yet: one click finishes it.
+        ((if shown == Release::Words { " ↻ Restart " } else { " ↻ " }).to_string(), ScreenHit::Restart)
+    } else {
+        return None;
+    };
+    (shown != Release::Hidden).then(|| (vec![seg(words, style)], h))
 }
 
-/// Room the corner pills take from the right of row 0, a cell between them, with the mode tag
-/// at its widest (see `HOLD_TYPING_FROM`), so what sits left of them holds still as it changes.
-pub(in crate::client) fn corner_reserve(app: &App, room_w: u16, t: &Theme) -> u16 {
+/// Room `corner` takes from the right of row 0, a cell between its pills; `held` keeps the tag
+/// at its widest, so what sits left holds still as the mode changes.
+fn reserve_of(app: &App, corner: Corner, held: bool, t: &Theme) -> u16 {
     let caps = if Look::of(&app.cfg.ui).round_tabs { 2 } else { 0 };
-    let release = release_pill(app, t).map_or(0, |(segs, _)| segs_width(&segs) + caps + 1);
-    let words = mode_words(app, room_w);
-    let held = armed(app) || shortcut_paused(app) || room_w >= HOLD_TYPING_FROM;
+    let release = release_pill(app, corner.release, t).map_or(0, |(segs, _)| segs_width(&segs) + caps + 1);
+    let words = mode_words(app, corner.words);
     let tag = match (words.is_empty(), held) {
         (true, _) => 0,
-        (false, true) => tag_words(room_w).iter().map(|w| w.width() as u16).max().unwrap_or(0) + caps,
+        (false, true) => corner.words.iter().map(|w| w.width() as u16).max().unwrap_or(0) + caps,
         (false, false) => words.width() as u16 + caps,
     };
     release + tag
 }
 
+/// Room the corner pills take on row 0 in a room `room_w` wide, over a corner card `card_w`
+/// wide (see `HOLD_TYPING_FROM`).
+pub(in crate::client) fn corner_reserve(app: &App, room_w: u16, card_w: u16, t: &Theme) -> u16 {
+    let held = armed(app) || shortcut_paused(app) || room_w >= HOLD_TYPING_FROM;
+    reserve_of(app, corner_fit(app, room_w, card_w, t), held, t)
+}
+
+/// How wide the card under the corner pills is: the pane or sheet at the top right, or no limit
+/// when none is (the collapsed strip holds row 0 then).
+fn corner_card_w(app: &App, area: Rect) -> u16 {
+    let right = corner_right(app, area);
+    let cards = app.pane_frames.iter().map(|(_, r)| *r).chain([app.screen.sheet_rect]);
+    cards.filter(|r| r.y == area.y && r.right() == right && r.width > 0).map(|r| r.width).min().unwrap_or(u16::MAX)
+}
+
 pub(in crate::client) fn draw_corner_pills(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
     let paused = shortcut_paused(app);
+    let card_w = corner_card_w(app, area);
     let mut right = corner_right(app, area).saturating_sub(1);
     // Never past the room the corner card's title left for them.
-    let limit = right.saturating_sub(corner_reserve(app, area.width, t)).max(area.x);
-    for (segs, h) in corner_pills(app, area.width, t).into_iter().rev() {
+    let limit = right.saturating_sub(corner_reserve(app, area.width, card_w, t)).max(area.x);
+    for (segs, h) in corner_pills(app, corner_fit(app, area.width, card_w, t), t).into_iter().rev() {
         let w = segs_width(&segs);
         let x = right.saturating_sub(w);
         if x < limit || w > right {
@@ -562,7 +623,7 @@ pub(in crate::client) fn corner_room(app: &App, r: Rect, screen: Rect, t: &Theme
     if r.y != screen.y || r.right() != corner_right(app, screen) {
         return 0;
     }
-    corner_reserve(app, screen.width, t)
+    corner_reserve(app, screen.width, r.width, t)
 }
 
 /// Where the corner pills end on row 0: the right of the room inside the padding, or, with the

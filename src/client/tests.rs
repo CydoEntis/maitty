@@ -1353,10 +1353,11 @@ mod screen_tests {
         let mut failures = Vec::new();
         for layout in ["grid", "floating", "compact"] {
             for split in [false, true] {
-                for mode in ["off", "lit", "paused"] {
+                for (mode, update) in [("off", false), ("lit", false), ("paused", false), ("off", true), ("lit", true), ("paused", true)] {
                     for w in 56..=110u16 {
                         let (_, mut app) = super::design_tests::render_with(w, 24);
                         (app.cfg.ui.layout, app.cfg.ui.rounded, app.cfg.ui.which_key) = (layout.into(), crate::config::Rounding::Full, false);
+                        app.update_available = update.then(|| "0.44.0".into());
                         if split {
                             let [_, b, _] = three_panes(&mut app);
                             app.snap.terms.get_mut(&b).unwrap().status = Status::Blocked;
@@ -1374,13 +1375,13 @@ mod screen_tests {
                         for r in blocked {
                             let row: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
                             if !row.contains('▲') && !row.contains('●') {
-                                failures.push(format!("{layout} split {split} {mode} {w}: {row}"));
+                                failures.push(format!("{layout} split {split} {mode} update {update} {w}: {row}"));
                             }
                         }
                         // From the narrowest supported window, typing says so in the corner too.
                         let row0: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
                         if mode == "off" && w >= 80 && !row0.contains(" TYPING ") {
-                            failures.push(format!("{layout} split {split} {mode} {w}: no TYPING tag: {row0}"));
+                            failures.push(format!("{layout} split {split} {mode} update {update} {w}: no TYPING tag: {row0}"));
                         }
                     }
                 }
@@ -4591,14 +4592,17 @@ second line
         use screen::ScreenHit as S;
         for layout in ["floating", "tiled", "grid"] {
             for h in [24, 30] {
-                for paused in [false, true] {
+                for (mode, update) in [("lit", false), ("paused", false), ("typing", true), ("lit", true), ("paused", true)] {
                     let (_, mut app) = super::design_tests::render_with(80, h);
                     (app.cfg.ui.layout, app.cfg.ui.rounded, app.cfg.ui.which_key) = (layout.into(), crate::config::Rounding::Full, false);
-                    app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
-                    if paused {
+                    app.update_available = update.then(|| "0.44.0".into());
+                    if mode != "typing" {
+                        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+                    }
+                    if mode == "paused" {
                         tap(&mut app, ',');
                     }
-                    let at = format!("{layout} 80x{h} paused {paused}");
+                    let at = format!("{layout} 80x{h} {mode} update {update}");
                     let o = draw(&mut app, 80, h);
                     let row0 = o.lines().next().unwrap_or_default();
                     let current = app.screen.tab;
@@ -4765,8 +4769,8 @@ second line
                     let side = app.screen.side_rect;
                     let title: String = (side.x..side.right()).map(|x| buf[(x, 0)].symbol()).collect();
                     assert!(title.contains("SESSIONS") && title.contains("●1"), "{at}: the sidebar's title and count: {row}");
-                    let tag = if mode == "typing" { "TYPING" } else { "SHORTCUT" };
-                    let tag_at = last_at(&buf, tag, 0, 0, side.x).unwrap_or_else(|| panic!("{at}: the tag left of the sidebar: {row}"));
+                    let tags: &[&str] = match mode { "typing" => &["TYPING"], "lit" => &["SHORTCUT"], _ => &["SHORTCUT", "PAUSED"] };
+                    let tag_at = tags.iter().find_map(|tag| last_at(&buf, tag, 0, 0, side.x)).unwrap_or_else(|| panic!("{at}: the tag left of the sidebar: {row}"));
                     let pane = app.pane_frames.iter().map(|(_, r)| *r).find(|r| r.y == 0 && r.right() <= side.x && r.right() > tag_at).expect("the pane under the tag");
                     let words: String = (pane.x..tag_at).map(|x| buf[(x, 0)].symbol()).collect();
                     assert!(words.contains('●'), "{at}: the pane's status stays left of the pills: {row}");

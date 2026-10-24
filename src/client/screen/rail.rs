@@ -65,7 +65,7 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
     let start_x = x0 + ew + 1;
 
     // The corner pills (the mode, and Update or Restart) keep the top right.
-    let reserved = super::draw::corner_reserve(app, area.width, t) + 2;
+    let reserved = super::draw::corner_reserve(app, area.width, u16::MAX, t) + 2;
     // The Menu keeps a chip here, so mouse access to it doesn't need the sidebar open.
     let menu = super::side::word_chip(app, None, "Menu", t, ground);
     let mw = segs_width(&menu);
