@@ -190,6 +190,9 @@ Only the area with the keyboard is lit: the focused pane's whole border (Cards),
 
 Appearance has one Theme control. Enter or clicking its value opens a searchable
 browser with palette swatches, an applied marker, a result count, and a preview.
+Themes are listed alphabetically by display name, ignoring case (`BUILTIN` in
+`theme.rs` is kept in that order, and every list of themes follows it); there are
+no user-defined themes, only overrides of a built-in's colours.
 Typing filters by name or flavor; arrows, Home/End, page keys, and the mouse wheel
 move the selection. Click a row to preview; click it again or press Enter to
 save. Esc or the close button returns to Appearance without changing the theme.
