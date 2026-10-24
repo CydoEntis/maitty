@@ -244,7 +244,7 @@ These apply in every project built from this starter:
 
 ## Project-specific: mission
 
-Seshi is a terminal multiplexer built for running many coding agents at once
+Vibecasso is a terminal multiplexer built for running many coding agents at once
 (Claude Code, Codex, Gemini, OpenCode, …): see which ones need you, jump to them,
 and keep them running when you leave. It serves developers who run several agents
 across several projects, on Windows, macOS and Linux. The one thing it must do
@@ -262,11 +262,11 @@ has to be right, and sessions survive the UI closing.
 3. **Windows is a first-class target.** Every change builds and behaves on
    Windows (ConPTY, named pipes, PowerShell) as well as Linux and macOS; the
    cross-checks in the gate are not optional.
-4. **Seshi is terminal-first.** The `seshi` terminal layout is its only user
+4. **Vibecasso is terminal-first.** The `vibecasso` terminal layout is its only user
    interface. Floating and tiled are two drawing styles (ADR 0007). Do not add a
    separate desktop GUI client (ADR 0011).
 5. **Status reports are only trusted from the pane itself**: its process tree, or
-   its `SESHI_PANE_TOKEN`. Never accept a status change from an unverified source.
+   its `VIBECASSO_PANE_TOKEN`. Never accept a status change from an unverified source.
 6. **No blocking work on the UI thread.** Git, file walks, network and process
    spawns go through background tasks (`spawn_bg`) and report back as messages.
 
@@ -283,18 +283,18 @@ cargo check --target aarch64-apple-darwin
 ```
 
 For UI changes, also look at the screen: tests render frames with `TestBackend`
-(`SESHI_SHOW=1 cargo test <name> -- --nocapture` prints them), and a live check
-runs a nested server with `SESHI_SOCKET=<name> seshi`.
+(`VIBECASSO_SHOW=1 cargo test <name> -- --nocapture` prints them), and a live check
+runs a nested server with `VIBECASSO_SOCKET=<name> vibecasso`.
 
 ## Project-specific: workflow and tooling
 
 - **Plan:** `docs/ROADMAP.md` (the plan doc: phases, scope, decisions, rules). Design references: the v8 handoff `docs/design/v8/` (the current design; `app8.js` is the spec, ADR 0014 records where the app differs) and the v7 handoff `docs/design/v7/` (the layout and checkpoints; `checks7.js` is the spec, `render-frames.mjs` prints the frames the tests compare against). Older briefs and handoffs are in git history.
-- **Branches:** work lands on `dev` at https://github.com/CydoEntis/seshi; one
+- **Branches:** work lands on `dev` at https://github.com/CydoEntis/vibecasso; one
   commit per logical change, pushed after the gate passes.
-- **Install locally:** `cargo install --path .` (stop a running `seshi` first on
+- **Install locally:** `cargo install --path .` (stop a running `vibecasso` first on
   Windows, or the binary is locked).
 - **Releases:** set `version` in `Cargo.toml`, commit, bring `main` up to `dev`, then tag
   `vX.Y.Z` on `main` and push the tag. `.github/workflows/release.yml` builds Windows, macOS
   (Apple Silicon and Intel) and Linux (x64, ARM; static musl) archives with checksums and
   publishes the GitHub Release that `install.sh` / `install.ps1` download from.
-- **Tickets:** GitHub issues on CydoEntis/seshi, labelled by phase (`phase-5`, …) and linked from the plan.
+- **Tickets:** GitHub issues on CydoEntis/vibecasso, labelled by phase (`phase-5`, …) and linked from the plan.

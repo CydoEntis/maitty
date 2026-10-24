@@ -1,4 +1,77 @@
-# Contextual shortcuts
+# Shortcuts
+
+Every default shortcut, then the keys each screen has of its own. You can change any of them
+in Settings › Keys or under `[keys.prefix]` in your config.
+
+## Default shortcuts
+
+Press `Ctrl+Space` for shortcut mode, then the key. No default needs Shift, and each key does
+one thing (ADR 0017).
+
+### Sessions
+
+| Key | Action |
+|---|---|
+| `n` | New shell where you are |
+| `s` | New session, started straight away with your default agent |
+| `o` | New session with options (agent, where, project) |
+| `Enter` | Message the agent |
+| `k` | Stop the agent |
+| `i` | Inbox: what needs you, then every session |
+| `y` | Why this status |
+
+### Panes
+
+| Key | Action |
+|---|---|
+| `←` `↓` `↑` `→` | Move to the pane that way (left past the edge: the sidebar) |
+| `v` | Split side by side |
+| `h` | Split stacked |
+| `x` | Close the pane |
+| `Ctrl`+arrows | Resize the pane |
+| `c` | Copy mode: select text with keys |
+| `PgUp` / `PgDn` | Scroll half a pane |
+| `z` | Collapse the sidebar (again brings it back) |
+
+### Tabs
+
+| Key | Action |
+|---|---|
+| `t` | New tab |
+| `Ctrl+W` | Close the tab |
+| `r` | Rename the tab |
+| `]` / `[` | Next / previous tab |
+| `1`–`9` | Go to that tab (`Alt+1`–`9` works without the leader) |
+
+### Project
+
+| Key | Action |
+|---|---|
+| `f` | Files |
+| `e` | The sidebar |
+| `p` | Find a file |
+| `/` | Search the code |
+| `d` | Changes |
+| `g` | Worktrees › |
+| `b` | Switch branch |
+
+### Vibecasso
+
+| Key | Action |
+|---|---|
+| `Space` | Search commands |
+| `m` | Menu |
+| `,` | Settings |
+| `F1` | All keys |
+| `l` | What happened (history) |
+| `Ctrl+V` | Paste the clipboard's image |
+| `q` | Step away (agents keep running) |
+| `Ctrl+R` | Reload the config |
+
+**Search only** (`Space`, then type): hide the sidebar completely, previous / next command in
+history, open the worktree picker, rename a session, send `Ctrl+Space` itself to the program.
+
+## How shortcut mode works
 
 The leader is `Ctrl+Space`. Press it and you are in **shortcut mode**: each key runs its
 action, and the mode stays for the next, so a run of actions is one key each. `Esc`, the
@@ -11,7 +84,7 @@ commands for "Send the leader key" or bind `send-prefix` to a key. One overlay h
 reference; it is not a second palette:
 
 - **Key map** (`Ctrl+Space`, then a pause): the keys by group, Sessions, Panes, Tabs,
-  Project and Seshi, built from your real bindings. Pressing a key runs it.
+  Project and Vibecasso, built from your real bindings. Pressing a key runs it.
 - **Search commands** (`Space` after the leader, `Tab` from the map, or typing a letter
   that is not a key): every command, including ones with no key. With nothing typed it
   lists the ones you ran last.
@@ -243,7 +316,7 @@ No bare key answers from the sidebar.
 | --- | --- |
 | Tab, Shift+Tab, Up / k, Down / j | Change settings category; choose row |
 | Left / h, Right / l, Enter, Space | Change value; Enter edits text or captures binding; theme opens browser |
-| o | Open configuration file outside Seshi |
+| o | Open configuration file outside Vibecasso |
 | R | Restart the daemon after an update (when the Restart now button shows) |
 | Keys on the Check page | As in `PROJECT · <name>` (see Check modals); Tab, Esc and o stay Settings' |
 | Enter, Esc when editing | Save field / cancel; when capturing press the new key or Esc |
@@ -276,7 +349,7 @@ No bare key answers from the sidebar.
 ## Terminal scrolling and mouse
 
 Scrolled up, a pane shows **↓ Back to bottom** at its bottom right (with how many lines up,
-in Seshi's own history); a click goes back to the newest output. An agent that scrolls itself
+in Vibecasso's own history); a click goes back to the newest output. An agent that scrolls itself
 (a full-screen one, which the wheel pages) shows it too, and the click pages it back down as
 far as the wheel paged it up; typing to the agent clears it, since the agent scrolls to its
 prompt itself.
@@ -289,9 +362,9 @@ sessions. "Hide sidebar" (search commands) hides the sessions completely; `z` br
 | --- | --- |
 | PageUp, PageDown at a prompt | Scroll history; full-screen programs keep these keys |
 | Shift+PageUp, Shift+PageDown, Ctrl+Shift+Up, Ctrl+Shift+Down | Scroll half-pages or individual lines outside full-screen mode |
-| Shift with mouse | Keep selection/scrolling in Seshi when program captures the mouse |
+| Shift with mouse | Keep selection/scrolling in Vibecasso when program captures the mouse |
 | Ctrl+click | Open a path or link |
-| Shift+right-click | Seshi menu even when program handles right-click |
+| Shift+right-click | Vibecasso menu even when program handles right-click |
 | Double-click, drag | Copy word/path/link, select and copy text |
 
 ## Menus, history, splash and confirmations

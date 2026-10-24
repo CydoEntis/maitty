@@ -2,7 +2,7 @@
 
 Research checked on 2026-10-14 against the creators' source repositories. The
 catalog covers all 25 requested families with 42 palettes. Before this expansion,
-Seshi already included Dracula, Gruvbox Dark, Nord, Tokyo Night Night, and
+Vibecasso already included Dracula, Gruvbox Dark, Nord, Tokyo Night Night, and
 Catppuccin Mocha/Latte. These are six palettes across five families.
 
 ## Coverage and primary sources
@@ -38,24 +38,24 @@ Source links pin the researched revision. Preserve the existing `gruvbox` and
 | Apprentice | Added | Standard | [romainl/Apprentice](https://github.com/romainl/Apprentice/blob/2a4557410fe6b5e3906c5290d42c4e4d8813b0d8/colortemplate/apprentice.colortemplate) | [MIT](https://github.com/romainl/Apprentice/blob/2a4557410fe6b5e3906c5290d42c4e4d8813b0d8/LICENSE) |
 | Zenbones | Added | Dark / Light, default contrast | [zenbones-theme/zenbones.nvim](https://github.com/zenbones-theme/zenbones.nvim/tree/8304d8df9b823ff11e103afa62f38c39f534abe6/extras/alacritty) | [MIT](https://github.com/zenbones-theme/zenbones.nvim/blob/8304d8df9b823ff11e103afa62f38c39f534abe6/LICENSE) |
 
-## Mapping to Seshi
+## Mapping to Vibecasso
 
-These are terminal palettes adapted to Seshi's UI roles, rather than editor
+These are terminal palettes adapted to Vibecasso's UI roles, rather than editor
 syntax themes reproduced verbatim. Keep the original background, foreground,
 and ANSI accent identities; derive surfaces, borders, muted labels, and status
-roles for Seshi's contrast and semantic checks. Upstream terminal bright-black
+roles for Vibecasso's contrast and semantic checks. Upstream terminal bright-black
 colors are frequently unsuitable for small UI labels. A selection background
 may assume dark selected text, so it is not automatically a valid menu fill.
 
 - Catppuccin supplies four distinct flavors; Latte's source foreground is
-  `#4c4f69`. The older Seshi Latte foreground was not the canonical Latte text.
+  `#4c4f69`. The older Vibecasso Latte foreground was not the canonical Latte text.
 - Tokyo Night includes the official Moon terminal variant as well as Night,
   Storm, and Day. Its Day foreground needs the UI's strongest-text contrast
   adjustment on derived surfaces.
 - Gruvbox uses the source's bright accents in dark mode and faded accents in
   light mode; both use its default medium background contrast.
 - Solarized uses Ethan Schoonover's canonical sRGB base and accent colors.
-  Its precise palette does not imply that every accent passes Seshi's UI
+  Its precise palette does not imply that every accent passes Vibecasso's UI
   contrast thresholds unchanged.
 - Kanagawa includes Wave, Dragon, and the light Lotus variant. Everforest uses
   the default medium contrast for its dark and light variants.
@@ -77,12 +77,12 @@ may assume dark selected text, so it is not automatically a valid menu fill.
   it over its terminal background `#1e1e3f` to obtain opaque `#e43937`.
 - Zenbones is primarily a contrast and font-variation theme. Its terminal
   extras supply explicit dark/light backgrounds; the upstream theme is not
-  inherently transparent. Keep Seshi's existing `mono` choice for inherited
+  inherently transparent. Keep Vibecasso's existing `mono` choice for inherited
   terminal colors.
 
 ## Attribution and license notices
 
-The color values are adapted from the projects above. Seshi's derived UI roles,
+The color values are adapted from the projects above. Vibecasso's derived UI roles,
 contrast adjustments, and status mappings are local adaptations. Retain these
 notices with distributed copies containing the corresponding palettes.
 
@@ -137,7 +137,7 @@ THE SOFTWARE.
 ```
 
 Tokyo Night by Folke Lemaitre and Ayu by Konstantin Pschera use Apache-2.0.
-Their source palette values are adapted to Seshi UI roles as described above.
+Their source palette values are adapted to Vibecasso UI roles as described above.
 The shared Apache license text follows; see their linked original license files
 for each project's application appendix.
 
