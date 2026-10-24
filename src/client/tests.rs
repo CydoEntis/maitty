@@ -4354,6 +4354,17 @@ second line
     }
 
     #[test]
+    fn shortcut_mode_returns_when_a_server_message_closes_a_popup() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'i');
+        app.mode = Mode::Normal;
+        let snap = app.snap.clone();
+        app.on_server(ServerMsg::State(snap));
+        assert!(matches!(app.mode, Mode::Prefix { acted: true, .. }), "back with the message: {:?}", std::mem::discriminant(&app.mode));
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc".into(), app.theme.sky())), "and the pill lit");
+    }
+
+    #[test]
     fn a_popup_closing_by_itself_does_not_bring_back_a_mode_you_left() {
         let mut app = shortcut_mode();
         tap(&mut app, 'i');
