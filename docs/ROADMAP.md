@@ -681,8 +681,8 @@ A session row shows its context as `72%` once past half full (red when nearly fu
 phase 14's "context is left to the agent's status line"; and a failed check's command, exit code
 and last 40 lines can be put into the agent's message box with one key, sent only on Enter.
 Intent: [radar-and-failures](features/radar-and-failures/intent.md). Tickets when phase 26 is
-done. Decided 2026-10-24: red from 85% full. Open: the key (recommended: `m` on a failed check
-opens the message box already holding the failure, so no new key).
+done. Decided 2026-10-24: red from 85% full; `m` on a failed check opens the message box with the
+failure in it (no new key).
 
 ### 28 — References · planned 2026-10-24
 
