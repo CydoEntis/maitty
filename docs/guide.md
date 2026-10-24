@@ -63,29 +63,8 @@ session, tab or split). Wait a moment after the leader for the compact key map: 
 command, Tab (or typing a letter that is no key) searches every command, `F1` shows all keys,
 and keys marked `›` open a second step (`g` worktrees: new, switch, merge, delete; Backspace
 goes back). No default needs Shift, and each key does one thing; no letter acts by itself in
-the sidebar. See [contextual shortcuts](docs/shortcuts.md) for every screen's controls.
-The table below lists the default bindings; custom bindings appear in All keys.
-
-| keys (in shortcut mode) | action |
-|---|---|
-| `n` / `s` / `o` | a plain shell right where you are (cd and run what you like, or type `claude`; it groups itself) / a new session at once (your default agent; you type the task there) / new session with options (agent, where, project) |
-| `Enter` / `k` | message the current agent / stop the agent (Ctrl+C) |
-| `i` / `y` / `m` | **inbox**: what needs you (answer a question with its number, Enter goes there), then every session; type to find one / why it shows this status / the Menu |
-| arrows | focus the pane that way (left past the edge: the sidebar). `Alt`+arrows do it without the leader (Settings → General turns that off) |
-| `v` / `h` / `x` | split side by side / split stacked / close the pane |
-| `Ctrl`+arrows | resize the pane that way |
-| `c` / `PageUp` `PageDown` | select text with keys (copy mode) / scroll half a pane |
-| `z` | collapse the sidebar into the top strip (again brings it back) |
-| `t` / `Ctrl+W` / `r` / `]` `[` / `1`–`9` | **tabs**: new tab (a shell where you are) / close it / rename it in its pill (or double-click it) / next, previous / go to that tab. `Alt+1`–`9` does it without the leader |
-| `f` / `p` / `/` / `d` | files / find a file / search the code / changes |
-| `g` / `b` / `e` | worktrees › / switch branch / focus the sidebar |
-| `Space` / `,` / `F1` | search commands / settings / All keys |
-| `l` / `Ctrl+V` / `q` | what happened / paste the clipboard's image / quit (agents keep running) |
-| `Ctrl+R` | reload configuration |
-
-Search commands (`Space`) also finds what has no default key: hide the sessions completely,
-the previous or next command in history, open the worktree picker directly, rename a session,
-and send `Ctrl+Space` itself to the program.
+the sidebar. Every default shortcut, and every screen's own keys, are in
+[shortcuts](shortcuts.md).
 
 Without the leader: **Alt+1–9** selects tabs; **Alt+arrows** moves pane focus
 when enabled in Settings. All keys shows changes to these bindings too.
@@ -341,7 +320,7 @@ them. It says so first when ticked ones hold uncommitted changes, which would be
 
 `Esc` clears an active selection before exiting; **Ctrl+C** exits immediately.
 Without a selection, `y` or `Y` copies the current line; Enter exits without copying.
-**Ctrl+Y / Ctrl+E** scroll one line up / down. Full details: [Copy mode controls](docs/shortcuts.md#copy-mode).
+**Ctrl+Y / Ctrl+E** scroll one line up / down. Full details: [Copy mode controls](shortcuts.md#copy-mode).
 
 Copies go to the system clipboard and, through OSC 52, to your outer terminal (works over SSH).
 
@@ -358,7 +337,7 @@ terminal-screen and native lifecycle evidence where available. Status means:
    `vibecasso integrate pi` installs Pi's native extension. These, and Codex's hooks, can also
    be installed with the mouse through **Settings › Agents → Set up another agent…** (or search for Connect agents). Restart Codex or
    OpenCode after setup, or reload Pi. Status follows the app with any provider, including
-   z.ai and DeepSeek; see [status setup and requirements](docs/agent-status.md).
+   z.ai and DeepSeek; see [status setup and requirements](agent-status.md).
    For Codex, `vibecasso integrate codex` adds native `SubagentStart` / `SubagentStop`
    hooks in `~/.codex/config.toml`, so helper events carry their parent session ID;
    it also configures `notify` when free, preserving another program's notify.
@@ -379,7 +358,7 @@ starts and remove it when it stops.
 Hook authority ends when a recognized agent's process exits. Vibecasso recognizes
 Herdr's 24 agent identities plus its five additional existing agents; OMP,
 Mastracode, Kilo and Kimi native status setup is also available through the Menu.
-See [status setup and its limits](docs/agent-status.md).
+See [status setup and its limits](agent-status.md).
 Terminal bells do not replace the status icon or add musical-note history entries.
 Click a status icon/tag (or `<leader> y`) for a plain-language explanation and the ages of
 hook, screen and process evidence; a status without confirmation is shown as uncertain.
