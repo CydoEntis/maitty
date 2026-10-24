@@ -1728,8 +1728,8 @@ mod screen_tests {
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
         assert_eq!((buf[(159, 0)].symbol(), buf[(159, 0)].fg), ("┐", app.theme.sky()), "the focused border turns sky");
-        let pill: String = (147..159).map(|x| buf[(x, 0)].symbol().to_string()).collect();
-        assert_eq!((pill.as_str(), buf[(148, 0)].bg), (" Ctrl+Space ", app.theme.sky()), "the leader pill at the top right, a column in");
+        let pill: String = (143..159).map(|x| buf[(x, 0)].symbol().to_string()).collect();
+        assert_eq!((pill.as_str(), buf[(144, 0)].bg), (" SHORTCUT · Esc ", app.theme.sky()), "the shortcut pill at the top right, a column in");
         // The delayed overview groups common commands; ? opens the full reference instead.
         app.open_keymap(None);
         assert!(matches!(app.mode, Mode::KeyMap(_)));
@@ -3865,10 +3865,28 @@ second line
             app.on_key(lead);
             assert!(matches!(app.mode, Mode::Prefix { .. }), "leader waits");
             let o = draw(&mut app, 160, 45);
-            assert!(o.lines().next().unwrap_or_default().trim_end().ends_with(" Ctrl+Space ┐"), "the leader pill at the top right: {o}");
+            assert!(o.lines().next().unwrap_or_default().trim_end().ends_with(" SHORTCUT · Esc ┐"), "the shortcut pill at the top right: {o}");
             app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
             assert!(!matches!(app.mode, Mode::Normal | Mode::Prefix { .. }), "leader + {c} opens {what}: {:?}", std::mem::discriminant(&app.mode));
         }
+    }
+
+    #[test]
+    fn grid_shows_shortcut_mode_on_the_focused_border_too() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.cfg.ui.layout = "grid".into();
+        let border = |app: &mut App| {
+            let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+            term.draw(|f| render::draw(app, f)).unwrap();
+            let r = app.pane_frames.first().expect("a pane").1;
+            term.backend().buffer()[(r.x, r.y + 1)].fg
+        };
+        let own = border(&mut app);
+        assert_ne!(own, app.theme.sky(), "typing: the pane's own colour");
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        assert_eq!(border(&mut app), app.theme.sky(), "shortcut mode: sky");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(border(&mut app), own, "back to its own colour");
     }
 
     fn shortcut_mode() -> App {

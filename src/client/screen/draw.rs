@@ -150,9 +150,9 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
 /// The pill at the top right of row 0: the leader while it's armed, else Update when a newer
 /// release is out, else Restart once a newer one is installed but not running.
 pub(super) fn corner_pill(app: &App, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
+    // Shortcut mode is on (ADR 0016): say so, and how to leave it.
     if armed(app) {
-        let lead = app.keymap.prefix.to_string().replace("C-", "Ctrl+");
-        return Some((vec![seg(format!(" {lead} "), Style::default().fg(t.bg).bg(t.sky()).add_modifier(Modifier::BOLD))], ScreenHit::Leader));
+        return Some((vec![seg(" SHORTCUT · Esc ", Style::default().fg(t.bg).bg(t.sky()).add_modifier(Modifier::BOLD))], ScreenHit::Leader));
     }
     if let Some(version) = app.update_available.as_ref() {
         return Some((vec![seg(format!(" ↑ Update {version} "), Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD))], ScreenHit::Update));
@@ -458,7 +458,11 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     let scrolled = app.parsers.get(&term).map(|p| p.screen().scrollback()).filter(|n| *n > 0);
     let grid_color = look.grid.then(|| grid_color(app, term, t));
     let border = if let Some(own) = grid_color {
-        if focused { own } else { crate::theme::mix(own, t.bg, GRID_UNFOCUSED_FADE) }
+        match (focused, armed(app)) {
+            (true, true) => t.sky(),
+            (true, false) => own,
+            (false, _) => crate::theme::mix(own, t.bg, GRID_UNFOCUSED_FADE),
+        }
     } else if !focused {
         t.line
     } else if armed(app) {
