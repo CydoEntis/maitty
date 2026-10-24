@@ -713,6 +713,10 @@ rounded at both ends, and a way to tell shortcut mode is still on under a popup.
 6. Grid's number, name tag and `+` as chips; toasts and corner pills follow `ui.rounded`
 7. a narrow title keeps the current tab and drops the state's glyph last of all
 
+Also: the mode made unmistakable ([ADR 0023](adr/0023-the-mode-is-always-shown.md)): a sky frame
+round the window in shortcut mode, a `TYPING` / `SHORTCUT` tag always in the corner, and a hint
+toast on a key that does nothing. Built on `feat/loud-mode`; not checked live.
+
 Status 2026-10-24: built on `dev` (d8da65e..95b5c91), three parts each reviewed independently and
 approved after fixes; the gate passed at 95b5c91 (959 tests, clippy, Linux and macOS checks). Also
 fixed: the `Esc close` chip on a confirm did nothing when clicked. Not checked live: the new
@@ -823,6 +827,7 @@ Everything below is shipped on `main` unless marked.
 - [ADR-0015](adr/0015-four-named-layouts-and-grid.md) — One Layout setting: Floating, Tiled, Compact, Grid; Grid is a look over the shared layout. Rules out: Grid's own sidebar, top bar, fixed grid, zoom and bare keys.
 - [ADR-0021](adr/0021-one-line-rows-one-rounding-sticky-mode.md) — One-line session rows, one rounding setting (full, corners, off), padding round the screen, and shortcut mode that stays until Esc, the leader or a click (amends ADR-0016). Rules out: a second line that only names the state; separate corner and pill-end switches.
 - [ADR-0022](adr/0022-question-mark-all-keys-c-changes.md) — `?` after the leader lists all keys, `c` opens Changes, copy mode has no default key (amends ADR-0017). Rules out: `F1` and `d` as defaults.
+- [ADR-0023](adr/0023-the-mode-is-always-shown.md) — The mode is always shown in the corner (`TYPING` or `SHORTCUT`), the window is framed in sky in shortcut mode, and a key with no action says how to type (amends ADR-0016 and ADR-0021). Rules out: an unlabelled input mode; keys dropped without a word.
 
 ## Rules
 

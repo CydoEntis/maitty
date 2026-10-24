@@ -1,6 +1,6 @@
 # 0021. One-line session rows, one rounding setting, and shortcut mode that stays
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by [ADR 0023](0023-the-mode-is-always-shown.md))
 - **Date:** 2026-10-24
 
 ## Context
