@@ -265,6 +265,10 @@ any failed. A checkpoint waiting for approval, one you said never to, one that c
 run and a stale pass all exit 0. Waiting for approval raises a blocked attention alert and
 the notice `<place>: approve check: <command>` once a turn; it is never a finish.
 
+A working agent the daemon marks quiet (`TermInfo::quiet_since`) reads `[claude: working · quiet
+12m]` in `seshi ls`; `ls --json` and `seshi_list` add `quiet_since` (unix seconds) only then. A
+`seshi wait` or `seshi_wait` that times out on one says `still working, but quiet for 12m`.
+
 `seshi ls`, `seshi ls --json` and MCP `seshi_list` report a check next to the status, never in
 place of it: `status` keeps its value (`done`) and `TermInfo::reported_check` decides whether a
 result is shown (not while the agent is working or asking, as in the sidebar). `cli::check_note`

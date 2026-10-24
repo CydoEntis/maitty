@@ -287,7 +287,8 @@ pub enum Waited {
     Turn(Status, String, Option<Box<CheckInfo>>),
     /// The regex matched this line.
     Matched(String),
-    TimedOut,
+    /// Out of time; `quiet` when the session was working but silent, since then (unix seconds).
+    TimedOut { quiet: Option<u64> },
 }
 
 /// `seshi wait` exits with this when the turn ended but its check failed (2: timed out;
@@ -373,8 +374,26 @@ pub fn checks_note(p: &TermInfo) -> Option<String> {
 /// `claude: done · check failed (exit 1)`, for an agent pane.
 fn agent_tag(p: &TermInfo) -> Option<String> {
     let agent = p.agent.as_deref()?;
+    let quiet = quiet_note(p).map(|n| format!(" · {n}")).unwrap_or_default();
     let note = checks_note(p).map(|n| format!(" · {n}")).unwrap_or_default();
-    Some(format!("{agent}: {}{note}", p.status.label()))
+    Some(format!("{agent}: {}{quiet}{note}", p.status.label()))
+}
+
+/// `quiet 12m` for a working agent that has gone silent: it may be stuck.
+pub fn quiet_note(p: &TermInfo) -> Option<String> {
+    p.quiet_since.filter(|_| p.status == Status::Working).map(|at| format!("quiet {}", quiet_for(at)))
+}
+
+/// How long since `at` (unix seconds), shortest unit: `45s`, `12m`, `3h`, `2d`.
+pub fn quiet_for(at: u64) -> String {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let s = now.saturating_sub(at);
+    match s {
+        0..=59 => format!("{s}s"),
+        60..=3599 => format!("{}m", s / 60),
+        3600..=86_399 => format!("{}h", s / 3600),
+        _ => format!("{}d", s / 86_400),
+    }
 }
 
 /// One pane in `seshi ls --json`.
@@ -383,6 +402,9 @@ fn pane_json(p: &TermInfo) -> Value {
         "id": p.id, "process": p.process, "title": p.title, "agent": p.agent, "asleep": p.asleep, "status_why": p.status_why, "win32_input": p.win32_input, "model": p.model, "name": p.name, "mem_mb": p.mem >> 20, "bell": p.bell,
         "status": p.status.label(), "cols": p.cols, "rows": p.rows, "cwd": p.cwd,
     });
+    if let Some(at) = p.quiet_since.filter(|_| p.status == Status::Working) {
+        v["quiet_since"] = json!(at);
+    }
     if let Some(c) = p.reported_check() {
         v["check"] = json!({
             "state": c.state.label(), "command": c.command, "exit_code": c.exit_code, "duration_ms": c.duration_ms,
@@ -411,6 +433,7 @@ pub fn wait_on(term: TermId, regex: Option<&str>, timeout: Duration, just_sent: 
     let re = regex.map(|r| regex::RegexBuilder::new(r).case_insensitive(true).build()).transpose().context("bad --regex")?;
     let start = std::time::Instant::now();
     let mut seen_working = !just_sent;
+    let mut quiet = None;
     loop {
         if let Some(re) = &re {
             if let Reply::Text(screen) = block_on(request(ClientMsg::Query(Query::Read { term })))?
@@ -422,12 +445,13 @@ pub fn wait_on(term: TermId, regex: Option<&str>, timeout: Duration, just_sent: 
             let snap = snapshot()?;
             let t = snap.terms.get(&term).ok_or_else(|| anyhow!("pane {term} is gone"))?;
             seen_working |= t.status == Status::Working;
+            quiet = t.quiet_since.filter(|_| t.status == Status::Working);
             if let Some(done) = turn_over(t.status, &t.said, &t.checks, seen_working, start.elapsed() > QUIET_TURN_AFTER) {
                 return Ok(done);
             }
         }
         if start.elapsed() >= timeout {
-            return Ok(Waited::TimedOut);
+            return Ok(Waited::TimedOut { quiet });
         }
         std::thread::sleep(Duration::from_millis(400));
     }
@@ -466,8 +490,11 @@ fn wait_print(term: TermId, regex: Option<String>, timeout: u64, just_sent: bool
                 std::process::exit(code);
             }
         }
-        Waited::TimedOut => {
-            eprintln!("timed out waiting on pane {term}");
+        Waited::TimedOut { quiet } => {
+            match quiet {
+                Some(at) => eprintln!("timed out waiting on pane {term}: still working, but quiet for {}", quiet_for(at)),
+                None => eprintln!("timed out waiting on pane {term}"),
+            }
             std::process::exit(2);
         }
     }
@@ -1991,6 +2018,18 @@ mod tests {
         assert_eq!(agent_tag(&pane("Done", None, Some(check(CheckState::Failed)))), None, "a shell has no tag");
         let working = pane("Working", Some("claude"), Some(check(CheckState::Failed)));
         assert_eq!(agent_tag(&working).as_deref(), Some("claude: working"), "the last result is about an older turn");
+    }
+
+    #[test]
+    fn ls_says_how_long_a_working_agent_has_been_quiet() {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let mut p = pane("Working", Some("claude"), None);
+        p.quiet_since = Some(now - 12 * 60);
+        assert_eq!(agent_tag(&p).as_deref(), Some("claude: working · quiet 12m"));
+        assert_eq!(pane_json(&p)["quiet_since"], json!(now - 12 * 60));
+        p.status = Status::Done;
+        assert_eq!(agent_tag(&p).as_deref(), Some("claude: done"), "only a working agent is quiet");
+        assert!(pane_json(&p).get("quiet_since").is_none());
     }
 
     #[test]

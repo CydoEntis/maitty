@@ -35,6 +35,9 @@ fn row_of(t: &TermInfo, me: Option<TermId>) -> Value {
         "on": t.summary,
         "asleep": t.asleep,
     });
+    if let Some(at) = t.quiet_since.filter(|_| t.status == Status::Working) {
+        row["quiet_since"] = json!(at);
+    }
     if Some(t.id) == me {
         row["you"] = json!(true);
     }
@@ -238,7 +241,8 @@ impl Server {
         let secs = args.get("timeout").and_then(Value::as_u64).unwrap_or(600);
         match cli::wait_on(term, regex, std::time::Duration::from_secs(secs), just_sent).map_err(|e| format!("{e:#}"))? {
             cli::Waited::Matched(l) => Ok(format!("matched: {l}")),
-            cli::Waited::TimedOut => Err(format!("still going after {secs}s")),
+            cli::Waited::TimedOut { quiet: Some(at) } => Err(format!("still working, but quiet for {} (waited {secs}s)", cli::quiet_for(at))),
+            cli::Waited::TimedOut { quiet: None } => Err(format!("still going after {secs}s")),
             cli::Waited::Turn(s, said, check) => {
                 let reply = if said.trim().is_empty() {
                     let screen = self.screen(term)?;
@@ -401,6 +405,20 @@ mod tests {
         let stale = CheckInfo { name: "test".into(), state: CheckState::Stale, changed_files: vec![crate::protocol::ChangedFile { kind: 'M', path: "a".into() }], ..Default::default() };
         t.checks = vec![CheckInfo { name: "build".into(), state: CheckState::Passed, ..Default::default() }, stale];
         assert_eq!(row_of(&t, None)["check"], "stale pass: test · 1 file changed · 2 checkpoints");
+    }
+
+    #[test]
+    fn the_list_gives_a_quiet_working_agent_its_quiet_since() {
+        let mut t: TermInfo = serde_json::from_value(json!({
+            "id": 4, "cols": 80, "rows": 24, "title": "", "process": "node", "agent": "claude",
+            "status": "Working", "cwd": "/code", "summary": "", "name": "", "model": "", "said": "",
+            "branch": null, "linked": false, "subagents": [], "root": null, "top": null,
+            "since": 0, "asleep": false, "win32_input": false,
+        }))
+        .unwrap();
+        assert!(row_of(&t, None).get("quiet_since").is_none(), "not quiet, no key");
+        t.quiet_since = Some(1_000);
+        assert_eq!(row_of(&t, None)["quiet_since"], 1_000);
     }
 
     fn command(cfg: &crate::config::Config, args: Value) -> Result<String, String> {
