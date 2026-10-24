@@ -1336,11 +1336,11 @@ mod screen_tests {
     fn grid_numbers_each_pane_and_says_its_state_on_the_left_and_its_name_on_the_right() {
         let (app, [a, b, c], rows) = grid_frame(200, 50);
         let (ta, tb, tc) = (top_border(&app, &rows, a), top_border(&app, &rows, b), top_border(&app, &rows, c));
-        assert!(ta.starts_with("┌─ 1 ▲ needs you "), "{ta}");
+        assert!(ta.starts_with("┌─ 1  ▲ needs you "), "the number is a chip: {ta}");
         assert_eq!(ta.matches("needs you").count(), 1, "the state is not repeated on the right: {ta}");
         assert!(ta.contains("  claude   ✕"), "the name tag before the close: {ta}");
-        assert!(ta.contains("1  claude  +"), "the top-left pane keeps its tabs: {ta}");
-        assert!(tb.starts_with("┌─ 2 ") && tb.contains(" working ") && tb.contains(" codex "), "{tb}");
+        assert!(ta.contains("1  claude   + "), "the top-left pane keeps its tabs: {ta}");
+        assert!(tb.starts_with("┌─ 2  ") && tb.contains(" working ") && tb.contains(" codex "), "{tb}");
         assert!(tc.starts_with("┌─ 3 ─") && tc.contains(" shell "), "no state for a shell: {tc}");
         let card = app.pane_frames.iter().find(|(t, _)| *t == a).unwrap().1;
         let on_border = |r: &Rect| r.y == card.y && r.x >= card.x && r.right() <= card.right();
@@ -1352,7 +1352,77 @@ mod screen_tests {
     fn a_narrow_grid_pane_drops_its_name_tag_before_its_state() {
         let (app, [a, ..], rows) = grid_frame(60, 20);
         let ta = top_border(&app, &rows, a);
-        assert!(ta.starts_with("┌─ 1 ▲ needs you ") && !ta.contains("claude"), "{ta}");
+        assert!(ta.starts_with("┌─ 1  ▲ needs you ") && !ta.contains("claude"), "{ta}");
+    }
+
+    fn drawn(app: &mut App, w: u16, h: u16) -> ratatui::buffer::Buffer {
+        app.screen_fresh();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        term.backend().buffer().clone()
+    }
+
+    /// Where `word` last starts on row `y` between `from` and `to`.
+    fn last_at(buf: &ratatui::buffer::Buffer, word: &str, y: u16, from: u16, to: u16) -> Option<u16> {
+        let n = word.chars().count() as u16;
+        (from..to.saturating_sub(n)).rev().find(|&x| (0..n).map(|i| buf[(x + i, y)].symbol()).collect::<String>() == word)
+    }
+
+    #[test]
+    fn the_new_tab_chip_is_raised_and_a_cell_clear_of_the_tabs_in_every_look() {
+        use crate::config::Rounding;
+        for layout in ["floating", "tiled", "compact", "grid"] {
+            for rounded in [Rounding::Off, Rounding::Full] {
+                let (_, mut app) = super::design_tests::render_with(160, 45);
+                (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
+                let buf = drawn(&mut app, 160, 45);
+                let at = format!("{layout} {rounded:?}");
+                let t = app.theme.clone();
+                let r = app.hits.iter().find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::NewTab)).expect("a + chip").0;
+                let plus = (r.x..r.right()).find(|&x| buf[(x, r.y)].symbol() == "+").expect("its +");
+                assert_eq!((buf[(plus, r.y)].fg, buf[(plus, r.y)].bg), (t.strong, t.btn), "strong on btn: {at}");
+                let (l, e) = (&buf[(r.x, r.y)], &buf[(r.right() - 1, r.y)]);
+                if rounded == Rounding::Full {
+                    assert_eq!((l.symbol(), l.fg, e.symbol(), e.fg), (screen::CAP_L, t.btn, screen::CAP_R, t.btn), "capped: {at}");
+                } else {
+                    assert_eq!((l.symbol(), l.bg, e.symbol(), e.bg), (" ", t.btn, " ", t.btn), "square: {at}");
+                }
+                let gap = &buf[(r.x - 1, r.y)];
+                assert!(gap.symbol() == " " && gap.bg != t.btn, "a clear cell before it: {at}");
+            }
+        }
+    }
+
+    #[test]
+    fn grid_draws_the_pane_number_and_name_tag_as_chips_in_the_pane_s_colour() {
+        use crate::config::Rounding;
+        for rounded in [Rounding::Off, Rounding::Full] {
+            let (_, mut app) = super::design_tests::render_with(200, 50);
+            (app.cfg.ui.layout, app.cfg.ui.rounded) = ("grid".into(), rounded);
+            let [a, b, _] = three_panes(&mut app);
+            let buf = drawn(&mut app, 200, 50);
+            let t = app.theme.clone();
+            let colours = t.grid_colors();
+            for (term, name, chip) in [(a, "claude", colours[0]), (b, "codex", crate::theme::mix(colours[1], t.bg, 0.28))] {
+                let at = format!("{name} {rounded:?}");
+                let card = app.pane_frames.iter().find(|(id, _)| *id == term).unwrap().1;
+                let ink = if term == a { t.ink_on(chip) } else { t.strong };
+                let digit = (card.x..card.right()).find(|&x| buf[(x, card.y)].symbol().chars().all(|c| c.is_ascii_digit())).expect("the number");
+                let tag = last_at(&buf, name, card.y, card.x, card.right()).expect("the name tag");
+                for (x, what) in [(digit, "number"), (tag, "tag")] {
+                    let cell = &buf[(x, card.y)];
+                    assert_eq!((cell.fg, cell.bg), (ink, chip), "the {what} on the pane's colour: {at}");
+                    let pad = &buf[(x - 1, card.y)];
+                    assert_eq!((pad.symbol(), pad.bg), (" ", chip), "the {what} is padded on its chip: {at}");
+                    let end = &buf[(x - 2, card.y)];
+                    if rounded == Rounding::Full {
+                        assert_eq!((end.symbol(), end.fg), (screen::CAP_L, chip), "the {what} is capped: {at}");
+                    } else {
+                        assert_ne!(end.bg, chip, "the {what} is square: {at}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]

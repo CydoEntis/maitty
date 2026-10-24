@@ -386,14 +386,16 @@ fn tab_strip(app: &mut App, model: &[Proj], x: u16, y: u16, max_x: u16, lit: boo
         out.extend(pair);
         at += w;
     }
-    // The chip that opens a tab: it drops like a tab when the title has no room.
-    let mut plus = vec![seg(" + ", Style::default().fg(t.accent).bg(t.card).add_modifier(Modifier::BOLD))];
+    // The chip that opens a tab, a cell clear of the tabs: it drops like a tab when the title
+    // has no room.
+    let mut plus = vec![seg(" + ", Style::default().fg(t.strong).bg(t.btn).add_modifier(Modifier::BOLD))];
     if look.round_tabs {
         plus = round_ends(plus, ground);
     }
     let w = segs_width(&plus);
-    if at + w <= max_x {
-        hit(app, Rect { x: at, y, width: w, height: 1 }, ScreenHit::NewTab);
+    if at + 1 + w <= max_x {
+        hit(app, Rect { x: at + 1, y, width: w, height: 1 }, ScreenHit::NewTab);
+        out.push(seg(" ", Style::default()));
         out.extend(plus);
     }
     out
@@ -427,7 +429,7 @@ fn corner_room(app: &App, r: Rect, screen: Rect, t: &Theme) -> u16 {
 /// How far an unfocused Grid pane's colour fades toward the ground.
 const GRID_UNFOCUSED_FADE: f32 = 0.42;
 
-/// How far an unfocused Grid pane's name tag fades toward the ground.
+/// How far an unfocused Grid pane's number and name chips fade toward the ground.
 const GRID_TAG_FADE: f32 = 0.28;
 
 /// A pane's place among the tab's panes (0 first): top-left first, left to right and top to
@@ -451,37 +453,38 @@ fn grid_color(app: &App, term: TermId, t: &Theme) -> Color {
 fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: Rect, c: &mut Card, t: &Theme) -> Rect {
     let look = Look::of(&app.cfg.ui);
     let own = grid_color(app, info.id, t);
-    let bold = |s: Style| if focused { s.add_modifier(Modifier::BOLD) } else { s };
-    let number = seg(format!(" {}", grid_index(app, info.id) + 1), bold(Style::default().fg(own)));
+    let chip_style = if focused {
+        Style::default().bg(own).fg(t.ink_on(own)).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().bg(crate::theme::mix(own, t.bg, GRID_TAG_FADE)).fg(t.strong)
+    };
+    let chip = |text: String| {
+        let chip = vec![seg(text, chip_style)];
+        if look.round_tabs { round_ends(chip, title_ground(look, t)) } else { chip }
+    };
+    let number = chip(format!(" {} ", grid_index(app, info.id) + 1));
     let state = match (info.agent.is_some(), info.status) {
         (true, Status::Blocked) => Some(seg(" ▲ needs you", Style::default().fg(t.blocked).add_modifier(Modifier::BOLD))),
         (true, Status::Working) => Some(seg(format!(" {} working", glyph(app, Status::Working)), Style::default().fg(own))),
         _ => None,
     };
-    let name = session_name(app, model, info.id);
-    let tag_style = if focused {
-        Style::default().bg(own).fg(t.ink_on(own)).add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().bg(crate::theme::mix(own, t.bg, GRID_TAG_FADE)).fg(t.strong)
-    };
-    let tag = seg(format!(" {name} "), tag_style);
+    let tag = chip(format!(" {} ", session_name(app, model, info.id)));
     let x = title_x(look, r);
     let room = right_end(look, r).saturating_sub(x);
     // The ✕ and the spaces round the right-hand segments.
     let rest = segs_width(&c.right) + 4;
-    let (number_w, state_w, tag_w) = (number.0.width() as u16, state.as_ref().map_or(0, |s| s.0.width() as u16), tag.0.width() as u16 + 2);
+    let (number_w, state_w, tag_w) = (segs_width(&number), state.as_ref().map_or(0, |s| s.0.width() as u16), segs_width(&tag) + 2);
     let with_tag = number_w + state_w + 2 + tag_w + rest <= room;
     if with_tag {
         // A gap only when something (a load note) follows it; the ✕ brings its own.
         let gap = (!c.right.is_empty()).then(|| seg("  ", Style::default()));
-        c.right.splice(0..0, std::iter::once(tag).chain(gap));
+        c.right.splice(0..0, tag.into_iter().chain(gap));
     }
     let rest = rest + if with_tag { tag_w } else { 0 };
-    let mut left = vec![number];
-    if number_w + state_w + 2 + rest <= room {
-        left.extend(state);
+    let mut left = number;
+    if let Some(state) = state.filter(|_| number_w + state_w + 2 + rest <= room) {
+        left.extend([state, seg(" ", Style::default())]);
     }
-    left.push(seg(" ", Style::default()));
     let left_w = segs_width(&left);
     let top_left = app.screen.leaf_rects.iter().min_by_key(|(_, lr)| (lr.y, lr.x)).is_some_and(|(id, _)| *id == info.id);
     if top_left {

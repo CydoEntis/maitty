@@ -288,7 +288,8 @@ pub(super) fn cells(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str)
 /// text: one line per row, trailing spaces trimmed. `<APP>_SHOW=1` prints it under a heading
 /// like the handoff's reference frames.
 /// Row 0 as the handoff draws it: its tabs end without the `✕ ` the app gives each, and its frames
-/// have no `+` chip after them (the app keeps one, so a tab opens with a click). What the app adds
+/// have no `+` chip after them (the app keeps one a cell clear of them, so a tab opens with a
+/// click). What the app adds
 /// reads as the title's own fill, so everything after it keeps its column.
 fn without_new_tab_chip(row: &str) -> String {
     let chars: Vec<char> = row.chars().collect();
@@ -311,7 +312,8 @@ fn without_new_tab_chip(row: &str) -> String {
             i += 1;
         }
     }
-    const CHIP: &str = " + ";
+    // The `+` chip and the cell the app keeps clear before it.
+    const CHIP: &str = "  + ";
     let Some(at) = out.find(CHIP) else {
         let fill = out[cut_at..].chars().next().unwrap_or(' ');
         out.insert_str(cut_at, &fill.to_string().repeat(cut));
