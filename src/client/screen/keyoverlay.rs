@@ -96,7 +96,7 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
                 r("New worktree", vec![A::NewWorktree(None)], false),
                 r("Find a file", vec![A::Find(0)], false),
                 r("Search the code", vec![A::Find(1)], false),
-                r("Switch branch", vec![A::Branches], false),
+                r("Branch", vec![A::Branches], false),
             ],
         ),
         (
@@ -669,8 +669,10 @@ impl App {
             _ => None,
         };
         match k.code {
+            // The key map is shortcut mode's own overlay: Esc leaves both.
             KeyCode::Esc => {
                 self.mode = Mode::Normal;
+                self.shortcut_held = false;
                 return;
             }
             KeyCode::Tab if km.step.is_none() => {

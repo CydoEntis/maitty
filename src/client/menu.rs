@@ -473,6 +473,7 @@ impl App {
                             Ok(n) => app.notify(format!("Restored {n} file{} · the newest snapshot takes it back", if n == 1 { "" } else { "s" }), false),
                             Err(e) => app.notify(format!("couldn't restore: {e}"), true),
                         }
+                        app.branch_sheet_reload();
                         app.screen_fresh();
                     }))
                 });

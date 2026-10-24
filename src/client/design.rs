@@ -478,9 +478,11 @@ pub(super) fn draw_changes(app: &mut App, buf: &mut Buffer, area: Rect, t: &Them
     }
 }
 
-pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, v: &super::views::FilesTree) {
+/// Files: the tree beside the selected file. `one_side` (a narrow panel) shows the tree, or
+/// the file you opened with a `‹` back to the tree.
+pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, v: &mut super::views::FilesTree, one_side: bool) {
     fill(buf, area, t.bg);
-    let (green, yellow) = (t.done, Color::Rgb(0xe8, 0xc5, 0x65));
+    app.screen.preview_rect = Rect::default();
     let branch = v.branch.clone().map(|b| format!(" · {b}")).unwrap_or_default();
     let left = vec![
         seg("files  ", Style::default().fg(t.strong).add_modifier(Modifier::BOLD)),
@@ -491,68 +493,34 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
     let right = vec![
         seg(mode, Style::default().fg(t.muted)),
         seg(filter, Style::default().fg(if v.filtering { t.accent } else { t.muted })),
-        seg("✕ ", Style::default().fg(t.muted)),
     ];
+    // The panel's card has the ✕.
     title_bar(buf, area, t, &left, &right, true);
-    app.hits.push((Rect { x: area.right().saturating_sub(2), y: area.y, width: 2, height: 1 }, Hit::Button(super::Btn::CloseView)));
 
     let body = Rect { y: area.y + 1, height: area.height.saturating_sub(2), ..area };
-    let fw: u16 = 44.min(body.width / 2);
-    let rows = v.visible();
-    let list_h = body.height.saturating_sub(4) as usize;
-    let start = v.sel.saturating_sub(list_h.saturating_sub(1));
-    for (k, (i, e)) in rows.iter().skip(start).take(list_h).enumerate() {
-        let y = body.y + 1 + (k as u16);
-        let sel = *i == v.sel;
-        let rr = Rect { x: body.x + 1, y, width: fw - 1, height: 1 };
-        let bg = if sel { t.sel_on(t.bg) } else { t.bg };
-        if sel {
-            fill(buf, rr, bg);
-        }
-        if sel {
-            put(buf, body.x + 1, y, &[seg(">", Style::default().fg(t.accent).bg(bg).add_modifier(Modifier::BOLD))], body.right());
-        }
-        let s = Style::default().bg(bg);
-        let lead = if e.is_dir { if v.expanded.contains(&e.path) { "▾ " } else { "▸ " } } else { "  " };
-        let mut ns = s.fg(if e.is_dir { t.text } else if sel { t.strong } else { t.fg });
-        if sel {
-            ns = ns.add_modifier(Modifier::BOLD);
-        }
-        put(buf, body.x + 2, y, &[seg(format!("{}{lead}", "  ".repeat(e.depth)), s.fg(t.muted)), seg(e.label.clone(), ns)], body.x + fw - 5);
-        let mut marks: Vec<Seg> = Vec::new();
-        if v.editing.contains_key(&e.rel) {
-            marks.push(seg(app.cfg.icons.blocked.clone(), s.fg(t.blocked)));
-        }
-        if let Some(m) = v.git.get(&e.rel) {
-            marks.push(seg(format!(" {m}"), s.fg(if *m == 'A' { green } else { yellow }).add_modifier(Modifier::BOLD)));
-        }
-        let mw = segs_width(&marks);
-        put(buf, body.x + fw - mw - 1, y, &marks, body.x + fw);
-        app.hits.push((rr, Hit::Button(super::Btn::Row(*i))));
+    let file_open = v.in_preview || v.edit.is_some();
+    let (show_tree, show_file) = if one_side { (!file_open, file_open) } else { (true, true) };
+    let fw: u16 = if one_side { body.width } else { 44.min(body.width / 2) };
+    if show_tree {
+        draw_files_tree(app, buf, body, fw, t, v, one_side);
     }
-    if rows.is_empty() {
-        let msg = if v.loading { "reading files…" } else if v.recent { "Nothing new in Downloads, Desktop, Documents or here lately." } else { "No files match." };
-        put(buf, body.x + 2, body.y + 1, &[seg(msg, Style::default().fg(t.muted))], body.x + fw);
-    }
-    if !v.recent {
-        let legend = vec![
-            seg("M", Style::default().fg(yellow).add_modifier(Modifier::BOLD)),
-            seg(" changed   ", Style::default().fg(t.muted)),
-            seg("A", Style::default().fg(green).add_modifier(Modifier::BOLD)),
-            seg(" new   ", Style::default().fg(t.muted)),
-            seg(app.cfg.icons.blocked.clone(), Style::default().fg(t.blocked)),
-            seg(" an agent is editing", Style::default().fg(t.muted)),
-        ];
-        put(buf, body.x + 2, body.bottom().saturating_sub(2), &legend, body.x + fw);
-    }
-    for yy in body.top()..body.bottom() {
-        if let Some(px) = buf.cell_mut((body.x + fw, yy)) {
-            px.set_symbol("│").set_style(Style::default().fg(t.line).bg(t.bg));
+    if !one_side {
+        for yy in body.top()..body.bottom() {
+            if let Some(px) = buf.cell_mut((body.x + fw, yy)) {
+                px.set_symbol("│").set_style(Style::default().fg(t.line).bg(t.bg));
+            }
         }
     }
-    // Preview
-    let px = body.x + fw + 3;
-    if let Some((path, lines)) = &v.preview {
+    let px = if one_side { body.x + 3 } else { body.x + fw + 3 };
+    if show_file && v.edit.is_none() {
+        v.lay_out(body.right().saturating_sub(px + 1), t, &app.cfg.theme);
+    }
+    let v = &*v;
+    if one_side && show_file && v.edit.is_none() {
+        put(buf, body.x + 1, body.y + 1, &[seg("‹", Style::default().fg(t.accent).add_modifier(Modifier::BOLD))], px);
+        app.hits.push((Rect { x: body.x, y: body.y + 1, width: 2, height: 1 }, Hit::Button(super::Btn::ViewKey('h'))));
+    }
+    if let Some((path, lines)) = v.preview.as_ref().filter(|_| show_file) {
         let rel = path.strip_prefix(&v.root).map(|p| p.display().to_string()).unwrap_or_else(|_| tilde(path));
         #[allow(unused_assignments)]
         let mut header = vec![seg(rel, Style::default().fg(t.strong).add_modifier(Modifier::BOLD))];
@@ -587,47 +555,114 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
             }
             None => {
                 if v.in_preview {
-                    header.push(seg("   ↑↓ PgUp PgDn read · i edit · ← back", Style::default().fg(t.accent)));
+                    // One side shows `‹` for the way back, and has little room.
+                    let hint = if one_side { "   i edit" } else { "   ↑↓ PgUp PgDn read · i edit · ← back" };
+                    header.push(seg(hint, Style::default().fg(t.accent)));
                 }
-                put(buf, px, body.y + 1, &header, body.right());
+                let pretty = v.pretty();
+                let shown = pretty.map_or(lines.len(), <[_]>::len);
+                let at = (shown > prect.height as usize).then(|| format!(" {}–{} of {} ", v.scroll + 1, (v.scroll + prect.height as usize).min(shown), shown));
+                let at_x = body.right().saturating_sub(at.as_ref().map_or(0, |a| a.width() as u16 + 1));
+                put(buf, px, body.y + 1, &header, at_x);
                 // The side the arrows are on gets the accent line.
-                if v.in_preview {
+                if v.in_preview && !one_side {
                     for yy in body.top()..body.bottom() {
                         if let Some(px) = buf.cell_mut((body.x + fw, yy)) {
                             px.set_symbol("┃").set_style(Style::default().fg(t.accent).bg(t.bg));
                         }
                     }
                 }
-                for (k, l) in lines.iter().enumerate().skip(v.scroll).take(prect.height as usize) {
-                    let yy = prect.y + (k - v.scroll) as u16;
-                    let mut segs = vec![seg(format!("{:>4}  ", k + 1), Style::default().fg(t.muted))];
-                    segs.extend(super::views::highlight(l, t));
-                    put(buf, px, yy, &segs, prect.right());
+                match pretty {
+                    // Drawn lines are no lines of the file, so they go without numbers.
+                    Some(pretty) => {
+                        for (k, l) in pretty.iter().skip(v.scroll).take(prect.height as usize).enumerate() {
+                            put(buf, px, prect.y + k as u16, l, prect.right());
+                        }
+                    }
+                    None => {
+                        for (k, l) in lines.iter().enumerate().skip(v.scroll).take(prect.height as usize) {
+                            let yy = prect.y + (k - v.scroll) as u16;
+                            let mut segs = vec![seg(format!("{:>4}  ", k + 1), Style::default().fg(t.muted))];
+                            segs.extend(super::views::highlight(l, t));
+                            put(buf, px, yy, &segs, prect.right());
+                        }
+                    }
                 }
-                if lines.len() > prect.height as usize {
-                    let at = format!(" {}–{} of {} ", v.scroll + 1, (v.scroll + prect.height as usize).min(lines.len()), lines.len());
-                    put(buf, body.right().saturating_sub(at.width() as u16 + 1), body.y + 1, &[seg(at, Style::default().fg(t.muted))], body.right());
+                if let Some(at) = at {
+                    put(buf, at_x, body.y + 1, &[seg(at, Style::default().fg(t.muted))], body.right());
                 }
             }
         }
     }
     let who = app.focused().and_then(|id| app.snap.terms.get(&id)).map(pane_name).unwrap_or_else(|| "the pane".into());
     let insert = format!("Insert path into {who}");
-    action_row(
-        app,
-        buf,
-        area,
-        t,
-        &[
-            (&insert, "Enter", BtnKind::Primary, Hit::Button(super::Btn::ViewKey('\n'))),
-            ("Edit here", "i", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('i'))),
-            ("Editor", "e", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('e'))),
-            ("Open", "o", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('o'))),
-            ("Copy path", "y", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('y'))),
-            ("Show diff", "d", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('d'))),
-        ],
-        &[seg("PgUp PgDn / wheel scroll", Style::default().fg(t.muted))],
-    );
+    let mut buttons = vec![(insert.as_str(), "Enter", BtnKind::Primary, Hit::Button(super::Btn::ViewKey('\n')))];
+    if v.markdown() && v.edit.is_none() {
+        buttons.push((if v.drawn() { "Raw" } else { "Pretty" }, "m", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('m'))));
+    }
+    buttons.extend([
+        ("Edit here", "i", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('i'))),
+        ("Editor", "e", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('e'))),
+        ("Open", "o", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('o'))),
+        ("Copy path", "y", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('y'))),
+        ("Show diff", "d", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('d'))),
+    ]);
+    action_row(app, buf, area, t, &buttons, &[seg("PgUp PgDn / wheel scroll", Style::default().fg(t.muted))]);
+}
+
+/// The tree (or the recent files) in the left `fw` columns of `body`.
+fn draw_files_tree(app: &mut App, buf: &mut Buffer, body: Rect, fw: u16, t: &Theme, v: &super::views::FilesTree, one_side: bool) {
+    let (green, yellow) = (t.done, Color::Rgb(0xe8, 0xc5, 0x65));
+    let rows = v.visible();
+    let list_h = body.height.saturating_sub(4) as usize;
+    let start = v.sel.saturating_sub(list_h.saturating_sub(1));
+    for (k, (i, e)) in rows.iter().skip(start).take(list_h).enumerate() {
+        let y = body.y + 1 + (k as u16);
+        let sel = *i == v.sel;
+        let rr = Rect { x: body.x + 1, y, width: fw - 1, height: 1 };
+        let bg = if sel { t.sel_on(t.bg) } else { t.bg };
+        if sel {
+            fill(buf, rr, bg);
+        }
+        if sel {
+            put(buf, body.x + 1, y, &[seg(">", Style::default().fg(t.accent).bg(bg).add_modifier(Modifier::BOLD))], body.right());
+        }
+        let s = Style::default().bg(bg);
+        let lead = if e.is_dir { if v.expanded.contains(&e.path) { "▾ " } else { "▸ " } } else { "  " };
+        let mut ns = s.fg(if e.is_dir { t.text } else if sel { t.strong } else { t.fg });
+        if sel {
+            ns = ns.add_modifier(Modifier::BOLD);
+        }
+        put(buf, body.x + 2, y, &[seg(format!("{}{lead}", "  ".repeat(e.depth)), s.fg(t.muted)), seg(e.label.clone(), ns)], body.x + fw - 5);
+        let mut marks: Vec<Seg> = Vec::new();
+        if v.editing.contains_key(&e.rel) {
+            marks.push(seg(app.cfg.icons.blocked.clone(), s.fg(t.blocked)));
+        }
+        if let Some(m) = v.git.get(&e.rel) {
+            marks.push(seg(format!(" {m}"), s.fg(if *m == 'A' { green } else { yellow }).add_modifier(Modifier::BOLD)));
+        }
+        let mw = segs_width(&marks);
+        put(buf, body.x + fw - mw - 1, y, &marks, body.x + fw);
+        // With one side showing, the file isn't beside the tree: a click on the selected file
+        // (the second of a double-click too) opens it rather than inserting its path.
+        let open = one_side && sel && !e.is_dir;
+        app.hits.push((rr, Hit::Button(if open { super::Btn::ViewKey('l') } else { super::Btn::Row(*i) })));
+    }
+    if rows.is_empty() {
+        let msg = if v.loading { "reading files…" } else if v.recent { "Nothing new in Downloads, Desktop, Documents or here lately." } else { "No files match." };
+        put(buf, body.x + 2, body.y + 1, &[seg(msg, Style::default().fg(t.muted))], body.x + fw);
+    }
+    if !v.recent {
+        let legend = vec![
+            seg("M", Style::default().fg(yellow).add_modifier(Modifier::BOLD)),
+            seg(" changed   ", Style::default().fg(t.muted)),
+            seg("A", Style::default().fg(green).add_modifier(Modifier::BOLD)),
+            seg(" new   ", Style::default().fg(t.muted)),
+            seg(app.cfg.icons.blocked.clone(), Style::default().fg(t.blocked)),
+            seg(" an agent is editing", Style::default().fg(t.muted)),
+        ];
+        put(buf, body.x + 2, body.bottom().saturating_sub(2), &legend, body.x + fw);
+    }
 }
 
 // ---- modals: talk, + Pane -----------------------------------------------------------------
@@ -685,6 +720,9 @@ pub(super) enum SRow {
     Bind { label: &'static str, acts: Vec<crate::keys::Action> },
     /// A line of the Agents page that is not a setting: what the app can tell about an agent.
     Agent(AgentRow),
+    /// General's UPDATES: which version this is, whether it is current, and the way to check
+    /// again or install what was found.
+    Version,
 }
 
 /// The AGENT STATUS rows of Settings > Agents.
@@ -721,6 +759,7 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
     match row {
         SRow::Bind { label, .. } => key_rows().into_iter().find(|(_, items)| items.iter().any(|(l, _)| l == label)).map(|(g, _)| g).unwrap_or("KEYS"),
         SRow::Agent(_) => AGENT_STATUS_GROUP,
+        SRow::Version => "UPDATES",
         SRow::Setting(s) => match s.path {
             "sessions.agent" | "sessions.where" => "NEW SESSIONS",
             "sessions.helpers" | "sessions.helpers_at_once" => "HELPERS",
@@ -728,12 +767,12 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "theme" => "THEME",
             "ui.spinner" | "ui.glyphs" => "STATUS INDICATORS",
             "prefix" | "ui.mouse" | "ui.which_key" | "ui.alt_arrows" => "INPUT",
-            "ui.layout" | "ui.background" | "ui.sidebar_position" | "ui.motion" => "LAYOUT",
+            "ui.layout" | "ui.padding" | "ui.background" | "ui.sidebar_position" | "ui.motion" => "LAYOUT",
             "ui.splash" | "ui.splash_animation" => "STARTUP",
             "ui.update_check" => "UPDATES",
             "shell" | "editor" | "shell_integration" | "ui.start_dir" => "SHELL",
             "ui.attention_sort" => "SIDEBAR",
-            "ui.corners" | "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.rounded" => "PANES",
+            "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.rounded" => "PANES",
             p if p.starts_with("notify.") => "ALERTS",
             "worktree.delete_with_last" | "worktree.per_agent" | "worktree.command" => "WORKTREES",
             p if p.starts_with("restore.") => "RESTARTS",
@@ -763,6 +802,9 @@ pub(super) fn settings_rows(cat: super::modal::Cat) -> Vec<SRow> {
         rows.extend([AgentRow::Claude, AgentRow::Codex, AgentRow::SetUp].map(SRow::Agent));
     }
     rows.extend(super::modal::in_cat(cat).into_iter().map(SRow::Setting));
+    if cat == super::modal::Cat::General {
+        rows.push(SRow::Version);
+    }
     // Grouped under their headings, in the order the headings first come.
     let order: Vec<&str> = rows.iter().map(settings_group).fold(Vec::new(), |mut v, g| {
         if !v.contains(&g) {
@@ -809,6 +851,7 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
             }
         }
         SRow::Agent(row) => agent_control(app, t, *row),
+        SRow::Version => version_control(app, t),
         SRow::Setting(s) => {
             if s.path == "theme" {
                 let name = if cfg.theme.is_empty() { crate::theme::DEFAULT } else { &cfg.theme };
@@ -855,6 +898,32 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
             }
         }
     }
+}
+
+/// The Version row's value: this version, then what was found and Update now, or `up to date`
+/// and `u check now`; the daemon's version when it differs from this window's.
+fn version_control(app: &App, t: &Theme) -> Vec<Seg> {
+    let (dot, accent) = (Style::default().fg(t.muted), Style::default().fg(t.accent).add_modifier(Modifier::BOLD));
+    let window = env!("CARGO_PKG_VERSION");
+    let mut out = vec![seg(format!("{} {window}", crate::brand::APP_COMMAND), Style::default().fg(t.strong).add_modifier(Modifier::BOLD)), seg("  ·  ", dot)];
+    match (&app.update_available, app.updating, app.update_checking) {
+        (Some(new), updating, _) => {
+            out.push(seg(format!("{new} is out"), accent));
+            out.push(seg("  ·  ", dot));
+            out.push(seg(if updating { "updating…" } else { "Enter to update" }, accent));
+        }
+        (None, _, true) => out.push(seg("checking…", dot)),
+        (None, ..) => {
+            out.push(seg("up to date", dot));
+            out.push(seg("  ·  ", dot));
+            out.extend([seg("u", accent), seg(" check now", dot)]);
+        }
+    }
+    let daemon = &app.snap.daemon_version;
+    if !daemon.is_empty() && daemon != window {
+        out.extend([seg("  ·  ", dot), seg(format!("daemon {daemon}"), Style::default().fg(t.accent))]);
+    }
+    out
 }
 
 /// What the app can tell about an agent, as the value of its AGENT STATUS row.

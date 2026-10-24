@@ -5,6 +5,7 @@ mod copy;
 mod marks;
 mod design;
 mod files;
+mod markdown;
 mod find;
 mod branch;
 mod screen;
@@ -153,13 +154,14 @@ pub(super) enum View {
     Both(Box<screen::BothView>),
     /// A check's evidence (in the sheet).
     Check(Box<screen::CheckView>),
+    /// Where a checkout stands (in the sheet).
+    Branch(Box<screen::BranchSheet>),
 }
 
 /// Clickable chips and buttons.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum Btn {
     Answer(TermId, char),
-    CloseView,
     /// A key inside the current view ('\n' for Enter).
     ViewKey(char),
     /// A row of the current view's list.
@@ -180,6 +182,9 @@ pub(super) enum Bg {
     BothDiff(PathBuf, Vec<(String, String)>),
     /// Files more than one checkout of a repo changed (by the repo's folder).
     Overlaps(PathBuf, Vec<overlap::Overlap>),
+    /// A checkout's uncommitted lines, added and removed.
+    /// None: they could not be counted (git failed there), so the rows show none.
+    LinesChanged(PathBuf, Option<(i64, i64)>),
     /// Pulled a shared setup from another machine.
     Synced(bool),
     /// Every file under a folder (Find).
@@ -200,6 +205,10 @@ pub(super) enum Bg {
 /// Save the clipboard image as a PNG under the data folder; old pastes (a week) are
 /// cleared out. Returns (path, width, height).
 fn clipboard_image_to_file() -> Result<(PathBuf, usize, usize), String> {
+    // Tests never touch the machine's clipboard: what is on it is not theirs to read.
+    if cfg!(test) {
+        return Err("there's no image on the clipboard".into());
+    }
     let mut cb = arboard::Clipboard::new().map_err(|e| format!("can't open the clipboard: {e}"))?;
     let img = cb.get_image().map_err(|_| "there's no image on the clipboard".to_string())?;
     let dir = crate::config::data_dir().join("pastes");
@@ -387,6 +396,13 @@ pub struct App {
     undo_hint: bool,
     /// The last click, for double-click detection.
     last_click: Option<(Hit, Instant)>,
+    /// Shortcut mode was on when the open popup took the keys; it comes back when that closes.
+    shortcut_held: bool,
+    /// The open view a click into a pane set aside: while that view stays open, keys go to the
+    /// pane. A click back in the side sheet, or another view opening, hands them back.
+    view_set_aside: Option<std::mem::Discriminant<View>>,
+    /// Bumped each time a view opens, to tell an action that opened one (even of the same kind).
+    view_opened: u64,
     /// The welcome screen is up; which of its panes is selected.
     splash: bool,
     /// The app layout's own state.
@@ -571,6 +587,9 @@ impl App {
             hover: None,
             undo_hint: false,
             last_click: None,
+            shortcut_held: false,
+            view_set_aside: None,
+            view_opened: 0,
             splash: false,
             screen: screen::Screen::load(),
             window_focused: true,

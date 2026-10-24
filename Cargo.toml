@@ -1,6 +1,6 @@
 [package]
 name = "maitty"
-version = "0.42.0"
+version = "0.43.0"
 edition = "2024"
 description = "All agents on deck: run many coding agents side by side, see which need you, keep them running when you leave"
 license = "MIT"
@@ -19,6 +19,7 @@ previous = ["vibecasso", "seshi", "hydra", "drover"]
 anyhow = "1"
 arboard = { version = "3", default-features = false, features = ["image-data"] }
 png = "0.17"
+pulldown-cmark = { version = "0.13", default-features = false }
 bytes = "1"
 crossterm = { version = "0.29", features = ["event-stream"] }
 clap = { version = "4", features = ["derive"] }
@@ -43,6 +44,7 @@ toml_edit = "0.23"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 unicode-width = "0.2"
+unicode-segmentation = "1"
 vt100 = "0.16"
 jsonc-parser = { version = "=0.33.1", default-features = false, features = ["cst", "serde_json"] }
 

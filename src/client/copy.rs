@@ -440,8 +440,24 @@ fn find_all(text: &str, q: &str, insensitive: bool) -> Vec<(usize, usize)> {
         .collect()
 }
 
+#[cfg(test)]
+thread_local! {
+    /// What the last copy on this thread would have put on the clipboard. Tests read it here
+    /// instead of the machine's clipboard, which they must never overwrite.
+    pub static LAST_COPY: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Write `text` to the system clipboard, and to the outer terminal with OSC 52 so it also
+/// works over SSH. Under test it is only recorded (`LAST_COPY`).
+#[cfg(test)]
+pub fn to_clipboard(text: &str) -> bool {
+    LAST_COPY.with(|c| *c.borrow_mut() = Some(text.to_string()));
+    true
+}
+
 /// Write `text` to the system clipboard, and to the outer terminal with OSC 52 so it also
 /// works over SSH.
+#[cfg(not(test))]
 pub fn to_clipboard(text: &str) -> bool {
     use std::io::Write;
     let native = arboard::Clipboard::new().and_then(|mut c| c.set_text(text.to_string())).is_ok();

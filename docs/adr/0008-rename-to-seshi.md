@@ -1,6 +1,6 @@
 # 0008. The app is called Seshi
 
-- **Status:** Accepted
+- **Status:** Accepted; the name superseded by [ADR 0018](0018-rename-to-vibecasso.md), then [ADR 0020](0020-rename-to-maitty.md)
 - **Date:** 2026-10-09
 
 ## Context

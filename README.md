@@ -28,8 +28,8 @@ It runs natively on Windows, macOS and Linux.
   each agent turn. A session whose check fails reads *failed*, not *done*.
 - **Agents that work together.** Agents can list, read, message and start other sessions
   through MCP tools, within limits you set.
-- **Your look.** Four layouts (Floating, Tiled, Compact and Grid) with square or rounded
-  corners, 62 themes, and every key and colour configurable.
+- **Your look.** Four layouts (Floating, Tiled, Compact and Grid), square or rounded shapes,
+  62 themes, and every key and colour configurable.
 
 ## Install
 
@@ -133,7 +133,8 @@ theme = "tokyo-night"
 
 [ui]
 layout = "grid"            # floating | tiled | compact | grid
-corners = "rounded"        # square | rounded
+rounded = "full"           # full | corners | off
+padding = "1"              # 0 | 1 | 2: space round the screen
 
 [keys.prefix]
 "ctrl+l" = "spawn-tab:lazygit"   # any command, in a split or a new tab

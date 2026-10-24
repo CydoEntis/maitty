@@ -53,7 +53,7 @@ one thing (ADR 0017).
 | `/` | Search the code |
 | `d` | Changes |
 | `g` | Worktrees › |
-| `b` | Switch branch |
+| `b` | Branch (in the side panel; its first row switches branch) |
 
 ### Maitty
 
@@ -75,10 +75,10 @@ history, open the worktree picker, rename a session, send `Ctrl+Space` itself to
 
 The leader is `Ctrl+Space`. Press it and you are in **shortcut mode**: each key runs its
 action, and the mode stays for the next, so a run of actions is one key each. `Esc`, the
-leader again or a click into a pane go back to **input mode**, where keys type into the pane;
-so does an action that gives you something to type into (a new shell, session, tab, split,
-pane or worktree). An action that opens a popup or sheet hands it the keys, and closing it
-returns to input mode. While shortcut mode is on, a `SHORTCUT` pill sits at the top right and
+leader again or a click go back to **input mode**, where keys type into the pane; nothing
+else does. A new shell, session, tab or split leaves you in shortcut mode, so press `Esc` to
+type into it. An action that opens a popup or sheet hands it the keys, and closing it returns
+to shortcut mode. While shortcut mode is on, a `SHORTCUT` pill sits at the top right and
 the focused pane's border is sky blue. To send `Ctrl+Space` itself to the pane, search
 commands for "Send the leader key" or bind `send-prefix` to a key. One overlay holds every key
 reference; it is not a second palette:
@@ -120,7 +120,7 @@ Every key is a leader key: there is no letter that acts by itself in the sidebar
 The defaults are one key each, none needing Shift, chosen from what other apps use (ADR
 0017): `v` / `h` split side by side / stacked, `c` copy mode, `i` Inbox, `y` why, `k` stop
 the agent, `Enter` message it, `o` session with options, `p` find a file, `g` worktrees, `b`
-branches, `l` what happened, `F1` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image,
+Branch, `l` what happened, `F1` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image,
 `Ctrl`+arrows resize, `1`–`9` go to a tab. Your own `[keys.prefix]` entries still load.
 
 ## Menu
@@ -187,6 +187,18 @@ No bare key answers from the sidebar.
 | 3 | No, do it alone |
 | Esc | Later: the row keeps asking |
 
+## Side panel
+
+The panel docked right (Inbox, Changes, Files, checks, Branch). Its width is kept for each kind of view.
+
+| Keys | Action |
+| --- | --- |
+| [ , ] | Narrow or widen it by 4 columns (in the Inbox, while its search is empty; in Files, not while filtering or editing) |
+| = | Back to its default width |
+| Drag its left edge | Resize it |
+| Click a pane | Type into that pane; the view stays open, unlit |
+| Click the panel | Give the view the keys again |
+
 ## Inbox
 
 | Keys | Action |
@@ -226,10 +238,12 @@ No bare key answers from the sidebar.
 | Enter on file | Insert quoted path into agent prompt and close Files |
 | Tab, / | Toggle recent/tree, filter paths; Enter ends filtering, Esc clears filter |
 | e, i, o, y, d | External editor, edit in preview, open outside, copy path, Changes |
+| m on a markdown file | Show it as text or drawn (drawn is the default) |
 | PgUp, PgDn, Shift+Up, Shift+Down | Scroll preview pages or individual lines |
-| Right on file | Focus preview; arrows / j / k scroll, Space pages down, g / G or Home / End go to ends |
-| Left / h / Esc in preview | Return to tree |
-| Esc in tree | Close Files |
+| Right / l on file | Focus preview; arrows / j / k scroll, Space pages down, g / G or Home / End go to ends |
+| Left / h / Esc in preview, or click ‹ | Return to tree (on a narrow panel the file takes the whole panel) |
+| Click the selected file, or double-click a file, on a narrow panel | Open it in the panel |
+| f, Esc in tree | Close Files |
 
 ## Built-in file editor
 
@@ -297,6 +311,19 @@ No bare key answers from the sidebar.
 | r | Run it now (queued while the agent is working) |
 | Delete | Remove your checkpoint; forget your choice for a repo's |
 | Esc | Close and drop the draft |
+
+## Branch view
+
+Leader + `b` opens it for the session you're on; `b` there used to open the branch switcher,
+which is now its first row. In `[keys.prefix]` its action is `branch` (`switch-branch` still
+loads). It has the keys while open; closing it returns to shortcut mode.
+
+| Keys | Action |
+| --- | --- |
+| Up / k, Down / j | Choose a row: Switch branch…, or a snapshot |
+| Enter on Switch branch… | Open the branch switcher |
+| Enter on a snapshot | Restore it (asks first; refused while the agent works) |
+| b, Esc | Close it |
 
 ## Branches and worktree cleanup
 

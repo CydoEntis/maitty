@@ -5,6 +5,11 @@ use super::*;
 impl App {
     /// Keys while a view replaces the pane area (single letters act directly).
     pub(super) fn on_view_key(&mut self, k: &KeyEvent) {
+        // `[` `]` `=` are text while Files' filter or editor takes it.
+        let typing = matches!(&self.view, Some(View::Files(v)) if v.filtering || v.edit.is_some());
+        if !typing && self.sheet_size_key(k) {
+            return;
+        }
         let Some(view) = self.view.take() else { return };
         match view {
             View::Changes(mut v) => {
@@ -25,6 +30,11 @@ impl App {
             View::Check(mut v) => {
                 if self.on_check_key(&mut v, k) {
                     self.view = Some(View::Check(v));
+                }
+            }
+            View::Branch(mut v) => {
+                if self.on_branch_sheet_key(&mut v, k) {
+                    self.view = Some(View::Branch(v));
                 }
             }
         }
@@ -207,7 +217,7 @@ impl App {
             return true;
         }
         let node = v.selected();
-        let lines = v.preview.as_ref().map(|(_, l)| l.len()).unwrap_or(0);
+        let lines = v.shown_lines(self.screen.preview_rect.width, &self.theme, &self.cfg.theme);
         // In the preview: the arrows read the file; ← (or Esc) goes back to the tree.
         if v.in_preview {
             match k.code {
@@ -222,7 +232,9 @@ impl App {
                 _ => {
                     v.in_preview = false;
                     let keep = self.on_files_tree_key(v, k);
-                    if v.edit.is_none() && !matches!(k.code, KeyCode::Enter) {
+                    // Still the file once an edit opened here ends; the filter (`/`) and the
+                    // recent list (Tab) show the tree, so they leave the file.
+                    if !matches!(k.code, KeyCode::Enter | KeyCode::Tab | KeyCode::Char('/')) {
                         v.in_preview = true;
                     }
                     return keep;
@@ -231,8 +243,8 @@ impl App {
             return true;
         }
         match k.code {
-            KeyCode::Right if node.as_ref().is_some_and(|n| !n.is_dir) && lines > 0 => v.in_preview = true,
-            KeyCode::Esc => return false,
+            KeyCode::Right | KeyCode::Char('l') if node.as_ref().is_some_and(|n| !n.is_dir) && lines > 0 => v.in_preview = true,
+            KeyCode::Esc | KeyCode::Char('f') => return false,
             // Read the preview: page, or a line at a time with Shift.
             KeyCode::PageDown => v.scroll = (v.scroll + page).min(lines.saturating_sub(1)),
             KeyCode::PageUp => v.scroll = v.scroll.saturating_sub(page),
@@ -243,12 +255,22 @@ impl App {
                 if let Some(n) = node.as_ref().filter(|n| !n.is_dir) {
                     match views::Edit::open(&n.path) {
                         Ok(mut ed) => {
+                            // A drawn line is no line of the text: start at the top.
+                            if v.drawn() {
+                                v.scroll = 0;
+                            }
                             ed.row = v.scroll.min(ed.lines.len().saturating_sub(1));
                             v.edit = Some(ed);
                         }
                         Err(e) => self.notify(e, true),
                     }
                 }
+            }
+            KeyCode::Char('m') => {
+                v.toggle_raw();
+                // Keep about the same place in the file: the same share of the way down.
+                let after = v.shown_lines(self.screen.preview_rect.width, &self.theme, &self.cfg.theme);
+                v.scroll = (v.scroll * after).checked_div(lines).unwrap_or(0);
             }
             KeyCode::Char('/') => {
                 v.filtering = true;
@@ -460,6 +482,9 @@ impl App {
                 Some(design::SRow::Bind { .. }) => self.notify("that row has several keys: change them in the config file (o)".into(), false),
                 // Claude and Codex rows only report; the last one opens the list of agents.
                 Some(design::SRow::Agent(design::AgentRow::SetUp)) => self.act(Action::AgentStatusSetup),
+                // Version: install what was found, else look again.
+                Some(design::SRow::Version) if self.update_available.is_some() => self.act(Action::Update),
+                Some(design::SRow::Version) => self.act(Action::CheckUpdate),
                 Some(design::SRow::Agent(_)) | None => {}
             },
             _ => {}

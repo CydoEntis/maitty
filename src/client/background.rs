@@ -278,6 +278,7 @@ impl App {
                     Ok(m) => self.notify(m, false),
                     Err(e) => self.notify(format!("couldn't switch: {e}"), true),
                 }
+                self.branch_sheet_reload();
                 self.screen_fresh();
                 self.dirty = true;
                 return;
@@ -390,6 +391,9 @@ impl App {
                             v.sel = i;
                         }
                         v.refresh_preview();
+                        if line.is_some() && v.markdown() {
+                            v.raw = Some(target);
+                        }
                         v.scroll = line.map(|l| (l as usize).saturating_sub(4)).unwrap_or(0);
                         v.in_preview = true;
                     }
@@ -411,6 +415,12 @@ impl App {
                 {
                     v.parts = Some(parts);
                 }
+            }
+            (Bg::LinesChanged(dir, Some(counts)), _) => {
+                self.screen.lines_changed.insert(dir, counts);
+            }
+            (Bg::LinesChanged(dir, None), _) => {
+                self.screen.lines_changed.remove(&dir);
             }
             (Bg::Overlaps(repo, found), _) => {
                 // Say each overlap once, when it first shows up.

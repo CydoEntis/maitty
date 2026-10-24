@@ -1,6 +1,6 @@
 # 0018. The app is called Vibecasso
 
-- **Status:** Accepted
+- **Status:** Accepted; the name superseded by [ADR 0020](0020-rename-to-maitty.md)
 - **Date:** 2026-10-23
 
 ## Context

@@ -232,6 +232,8 @@ pub(super) fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, ground: 
     let model = app.screen_model();
     let heads = heads_up(app);
     let rows = goto_rows(&model, &query, heads.len());
+    // A selection from an older list may point past this one.
+    let sel = sel.min(rows.len().saturating_sub(1));
     let items: Vec<Option<Item>> = rows.iter().map(|r| check_inbox::item(app, &model, r, t)).collect();
     let bar = super::glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).bar;
     let (x, right) = (inside.x + 1, inside.right().saturating_sub(1));

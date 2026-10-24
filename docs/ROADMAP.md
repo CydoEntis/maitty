@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-22 at `97d6d19` on `main` (v0.37.0).
+Last reconciled: 2026-10-24 at `e8b84f3` on `dev` (v0.42.0 plus phase 25).
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Maitty is a terminal multiplexer built for running many coding agents at once: see
@@ -11,7 +11,10 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The latest published release on `main` is v0.41.0 (2026-10-23): the v8 cleanup
+The latest published release on `main` is v0.43.0 (2026-10-24): phases 25 and 26 (padding, one
+rounding setting, shortcut mode that stays, one-line rows; the side panel with Files, Changes,
+Branch and markdown). Before it, v0.42.0 (2026-10-23): the app renamed to Maitty
+(ADR 0020) with its splash, and Night and Day as the default themes. Before it, v0.41.0 was the v8 cleanup
 ([Phase 19](#19--the-v8-cleanup--shipped-in-v0410-live-checks-open)). Every action goes through the
 leader, one key overlay and a grouped Menu replace the palette and the shortcut screens, sessions are
 coloured dots, and a collapsed sidebar becomes a top strip. A new shell is `n`, and an agent typed in a
@@ -220,13 +223,10 @@ check. Status: verified for 0.28.1 (253 tests passed, three pre-existing tests
 ignored; lint, both cross-checks and dependency audit passed). Live mouse clicks
 opened a plain shell and Settings from Actions.
 
-Active phase: **15 — checks Maitty runs itself** (chosen 2026-10-22)
-Next: three follow-ups the user approved on 2026-10-23: `a` on a sidebar row opens the row menu, an
-amber for needs-you in every theme (built), and `maitty wait` reporting a check waiting for approval or that could
-not run. Then the Phase 17 live trial and the Phase 18 live checks. Then
-[Phase 20](#20--borrowed-from-tuios--built-on-dev-2026-10-23-live-checks-open), borrowed from TUIOS (approved 2026-10-23), and
-[Phase 21](#21--layout-names-and-the-grid-style--built-on-dev-2026-10-23-live-checks-open), layout names and the Grid style, and
-[Phase 22](#22--shortcut-mode--built-on-dev-2026-10-23-live-checks-open), shortcut mode.
+Active phase: **26 — the inspector drawer** (planned 2026-10-24); phase 25 is built on `dev`.
+Next: the phase 26 live look (its tickets are on `dev`). Then
+[Phase 27](#27--radar-and-sending-failures--planned-2026-10-24) and
+[Phase 28](#28--references--planned-2026-10-24). Live checks still open for phases 18 and 20–25.
 
 Current user-requested work: expand the built-in themes to cover the 25 requested
 families and add a searchable preview browser in Appearance. Acceptance: all
@@ -369,7 +369,7 @@ dropping model, context and cost from Maitty's own chrome. One commit per step, 
 
 Shipped since v0.35.0. The gate passed on `main` at `865998b`.
 
-### 15 — Checks Maitty runs itself · active, chosen 2026-10-22
+### 15 — Checks Maitty runs itself · shipped in v0.37.0
 
 Today an agent saying "done" turns its session done even when the project's checks fail. This phase
 makes "done" mean something Maitty observed. Chosen by the user 2026-10-22 (verify slice only).
@@ -591,7 +591,7 @@ Shift (`v` / `h` splits, `i` Inbox, `y` why, `k` stop, `Enter` message, `o` sess
 options, `c` copy mode, `p` find file, `g` worktrees, `b` branches, `l` history, `F1` all keys,
 `Ctrl+W` close tab, `Ctrl+V` paste image, `Ctrl`+arrows resize, `1`–`9` tabs).
 
-### 23 — Rename to Vibecasso · built on dev 2026-10-23, live checks open
+### 23 — Rename to Vibecasso · built on dev 2026-10-23, then renamed to Maitty
 
 The user renamed the app to Vibecasso on 2026-10-23, a clean break with no `vibecasso` command
 ([ADR 0018](adr/0018-rename-to-vibecasso.md)), with a paint-stroke splash and the repository
@@ -603,6 +603,18 @@ renamed to CydoEntis/vibecasso. Tickets are labelled `phase-23`.
 4. #163 a product README and a shortcuts reference under the new name (after #160)
 
 Declined while planning: the Starry Night art background (the user's call).
+
+Status 2026-10-23: #160–#163 built on `dev` (834 tests and the rest of the gate passed); the
+repository is now CydoEntis/maitty. The v7 design source names the product anew and its
+frames are regenerated; its sample project is `orbit`. The README is a short product page;
+the detailed feature notes moved to [the guide](guide.md). Not checked live: installing over a
+real seshi install (migration, Claude hooks, `maitty integrate mcp`), the release workflow
+under the new archive names, and the splash at 80×24 and 160×45 by eye.
+
+Then, outside a phase (2026-10-23): the app was renamed again, to Maitty
+([ADR 0020](adr/0020-rename-to-maitty.md), #168), with a new splash (#170); Night and Day
+replaced the Seshi-era themes and became the defaults (#169); rounded shapes reached every chip
+(#171). Shipped in v0.42.0.
 
 ### 24 — The name in one place · built on dev 2026-10-23
 
@@ -621,12 +633,63 @@ the installers' first lines, `regen.sh`, docs) passed the whole gate with no cod
 first found the splash font and two tests that assumed the name's length, now fixed. Not
 checked live: a release built by the workflow under a new name.
 
-Status 2026-10-23: #160–#163 built on `dev` (834 tests and the rest of the gate passed); the
-repository is now CydoEntis/maitty. The v7 design source names the product anew and its
-frames are regenerated; its sample project is `orbit`. The README is a short product page;
-the detailed feature notes moved to [the guide](guide.md). Not checked live: installing over a
-real seshi install (migration, Claude hooks, `maitty integrate mcp`), the release workflow
-under the new archive names, and the splash at 80×24 and 160×45 by eye.
+### 25 — Rows, rounding and padding · built on dev 2026-10-24, live checks open
+
+The user asked on 2026-10-24 for padding round the screen, one rounding setting with three
+choices, a round hover, shortcut mode that stays until left, and one-line session rows with the
+agent and the uncommitted lines ([ADR 0021](adr/0021-one-line-rows-one-rounding-sticky-mode.md)).
+No protocol change; config keeps reading `corners` and a `true`/`false` `rounded`.
+
+1. `ui.padding` (0, 1, 2) round the screen in every layout
+2. `ui.rounded` is `full`, `corners` or `off`; Corners leaves Settings
+3. the pointer's hover rounds its ends with `full`
+4. shortcut mode ends only on Esc, the leader or a click; closing a popup returns to it
+5. one-line session rows: the agent's mark, `+N −N` uncommitted, the name in its state's colour
+6. the version and update check move to General › UPDATES › Version; no version line over every tab
+
+Status 2026-10-24: built on `dev` (e48ed40..e2b1eab, one commit per change, each green); the gate passed. Not checked live: rows, hover and
+padding in a real terminal at 80×24, 100×30 and 160×45. Also fixed here: Backspace on the last letter of an empty Inbox's search crashed the window
+(the selection outlived the matches), and tests wrote the real clipboard.
+
+### 26 — The inspector drawer · planned 2026-10-24
+
+The user asked on 2026-10-24 for the file tree, branch and diff in a native, resizable drawer,
+after reviewing the [inspector design handoff](design/inspector-v1/README.md). It grows the
+existing side panel rather than adding a second one; the sidebar keeps its state; markdown reads
+pretty with pulldown-cmark. Intent: [inspector-drawer](features/inspector-drawer/intent.md),
+spec: [spec](features/inspector-drawer/spec.md). Tickets are labelled `phase-26`; no protocol
+change.
+
+1. #172 resize the side panel and remember its width per view
+2. #173 Files opens in the side panel (after #172)
+3. #174 markdown previews pretty, `m` shows raw (after #173)
+4. #175 a Branch view in the side panel (after #172)
+5. #176 a row's `+N −N` opens its Changes (after #172; needs phase 25 on `dev`)
+
+Exit: every ticket closed, the gate green on `dev`, and a live look at 80×24, 100×30 and
+160×45 in Floating and Compact.
+
+Status 2026-10-24: #172–#176 built on `dev` (9463fb3..de25486), each reviewed independently and
+approved after one round of fixes; the gate passed at de25486 (912 tests, clippy, Linux and macOS
+checks). Also on `dev`: 39a3a2e, a view opened from shortcut mode takes the keys (a phase 25 bug
+the #175 review found: `k` in Changes stopped the agent). Open before the exit holds: the live look.
+Then, at the user's call: a click into a pane gives it the keys beside an open view (07d9fe6).
+
+### 27 — Radar and sending failures · planned 2026-10-24
+
+A session row shows its context as `72%` once past half full (red when nearly full), reversing
+phase 14's "context is left to the agent's status line"; and a failed check's command, exit code
+and last 40 lines can be put into the agent's message box with one key, sent only on Enter.
+Intent: [radar-and-failures](features/radar-and-failures/intent.md). Tickets when phase 26 is
+done. Decided 2026-10-24: red from 85% full. Open: the key (recommended: `m` on a failed check
+opens the message box already holding the failure, so no new key).
+
+### 28 — References · planned 2026-10-24
+
+Per project, `.maitty/references/` holds screenshots and design files: a References view in the
+side panel lists, adds (paste or pick), removes and opens them in the system viewer, and an MCP
+tool lists them for agents. Intent: [references](features/references/intent.md). Tickets when
+phase 27 is done. Decided 2026-10-24: the folder is gitignored by default.
 
 ## In scope
 
@@ -648,18 +711,18 @@ Everything below is shipped on `main` unless marked.
 - New agent task box (project, worktree, agent, model, effort), presets and recipes as its choices, prewarm — shipped — `src/client/screen/dialogs.rs`, `src/client/recipes.rs`
 - Agents talk to agents (MCP server `maitty mcp`) — shipped — `src/mcp.rs`
 - `maitty send --wait`, `maitty wait`, `maitty read` — shipped — `src/cli.rs`
-- At most a set number of helpers working at once (`[mcp] helpers_at_once`) — shipped 0.25.0 — `Daemon::starting` in `src/daemon/mod.rs`
-- A commander runs a fleet: one agent starts, briefs and checks helpers, which sit under it in the sidebar — shipped in v0.20.0 — #32–#38
+- At most a set number of helpers working at once (`[sessions] helpers_at_once`; an old `[mcp]` value is read as a fallback) — shipped 0.25.0 — `Daemon::starting` in `src/daemon/mod.rs`
+- A commander running a fleet (shipped in v0.20.0, #32–#38): removed in phase 19 (ADR 0014); old `[fleet]` and `[team]` tables are read and ignored
 
 **The TUI (one shared session layout; ADR-0007, superseded by ADR-0012)**
 - Flat rendering style: square, full-bleed sidebar, tabs, panes and sheets; sidebar/pane focus zones, no global footer; shipped in v0.36.0; `src/client/screen/draw.rs`, ADR-0012
 - Floating look: rounded cards with gaps, title and state in the border, unfocused cards faded, pill tabs, no app footer; floating or tiled, corners, gap, dim, focus border, pill ends in Settings — shipped by v0.30.1 — `src/client/screen/card.rs`, `screen.rs`, ADR-0007
-- Sidebar card: projects → sessions, state glyph + name, branch · age, question under it, attention sort, helpers indented under the session that started them, keyboard and mouse, row letter keys, `a actions` / `, settings` foot — shipped — `src/client/screen/draw.rs` `draw_side`
+- Sidebar card: projects → sessions, one-line rows (mark, name in its state's colour, agent, uncommitted lines, age), a second line only when it says more, attention sort, keyboard and mouse, `+ New` / `Menu` foot — shipped — `src/client/screen/side.rs` `draw_side`
 - Panes: tabs as pills (named in their pill), any number of splits (grid for 3+), drag the gap between them, ✕ in the border — shipped — `src/client/screen/draw.rs` `draw_session`
-- Inbox (what needs you first, type to go anywhere), command palette (plain-word commands), key map (searchable, second steps), actions list — shipped — `draw_goto`, `draw_palette`, `src/client/screen/leader.rs`
+- Inbox (what needs you first, type to go anywhere), command palette (plain-word commands), key map (searchable, second steps), actions list — shipped — `src/client/screen/inbox.rs` `draw_inbox`, `src/client/screen/keyoverlay.rs` (key map and search commands), `src/client/screen/leader.rs`
 - Right-click menus, confirm before closing, toasts — shipped — `src/client/menu.rs`
 - Splash: Resume / New shell here — shipped — `draw_splash`
-- Settings popup grouped by section, key rebinding, themes with contrast audit — shipped — `draw_settings`, `src/theme.rs`
+- Settings popup grouped by section, key rebinding, themes with contrast audit — shipped — `src/client/screen/dialogs.rs` `draw_settings`, `src/theme.rs`
 - Leader keys (a shell is `n`, only kept features have keys), Alt+arrows without the leader, armed pill in sky — shipped by v0.30.1 — `src/keys.rs` `DEFAULT_PREFIX_KEYS`, ADR-0009
 - Copy on select with toast, copy mode, Ctrl+click paths, paste images — shipped — `src/client/copy.rs`, `src/client/pick.rs`
 
@@ -673,12 +736,12 @@ Everything below is shipped on `main` unless marked.
 - Own worktree for `claude`/`codex` typed into a shell in a repo's main folder — shipped 0.9.12; a launcher per agent first on a shell pane's PATH (any shell) built on the working tree — `maitty agent-dir`, `src/shim.rs`, `daemon/term.rs` `agent_functions`
 - Usage and limits meter, context per agent, continue after a limit — shipped 0.10.0 — `maitty statusline`, `src/daemon/usage.rs`
 - Automatic idle sleeping and its sleep/wake screen and animation: removed; legacy recovery remains only for sessions saved by older versions.
-- A session's share of the machine (CPU and memory) in its pane's title when it's large — shipped 0.25.0, moved off the sidebar row 0.26.2 — `src/daemon/scan.rs`, `load_note` in `src/client/screen/draw.rs`
+- A session's share of the machine (CPU and memory) in its pane's title when it's large — shipped 0.25.0, moved off the sidebar row 0.26.2 — `src/daemon/scan.rs`, `load_note` in `src/client/screen/side.rs`
 - Merge that cleans up (the worktree and its branch go) — shipped 0.11.0 — `src/client/view_keys.rs`
 
 **Identity**
 - Renamed hydra → Seshi (v0.30.1, ADR-0008), Seshi → Vibecasso (ADR-0018), then Vibecasso → Maitty (ADR-0020): the name lives in `Cargo.toml` (ADR-0019); one-time move of an old install — `config::migrate_old_names`
-- Walnut (default), Night and Day themes; block MAITTY wordmark on the splash — shipped by v0.30.1 — `src/theme.rs`, `src/client/screen/splash.rs`
+- Night (default) and Day themes among 62 built-in themes; block MAITTY wordmark on the splash — shipped in v0.42.0 — `src/theme.rs`, `src/client/screen/splash.rs`
 
 **Extras**
 - Alert when an agent needs you: Maitty's two rising notes and an in-app notice; a desktop notification only with no window open. Completions stay quiet — `src/alert.rs`
@@ -692,21 +755,23 @@ Everything below is shipped on `main` unless marked.
 
 ## Out
 
-- Saved role profiles and the planner/approval/worker/reviewer workflow runner were removed by user decision (2026-10-18). Use the agent's own configuration and external workflow tools; Maitty remains the session manager. Narrowed 2026-10-22 by the user: a team list for the commander (jobs with a model per agent family, [Phase 17](#17--team-roles-for-the-commander--queued-2026-10-22)) is allowed. A Maitty-run pipeline, where Maitty starts or orders stages itself, stays cut.
+- Saved role profiles and the planner/approval/worker/reviewer workflow runner were removed by user decision (2026-10-18). Use the agent's own configuration and external workflow tools; Maitty remains the session manager. The team list for the commander that phase 17 allowed (2026-10-22) was removed with the commander in phase 19. A Maitty-run pipeline, where Maitty starts or orders stages itself, stays cut.
 
 - Features cut 2026-10-09 remain out unless re-approved: open project, go to, next agent that needs you, arrange panes, undo automatic workspace, the map, ideas, races, run a preset as a list (presets stay in the new-agent dialog), past chats, agent tools, extensions, and the tmux stand-in for Claude agent teams. Memory per session later returned as the load line under a busy session. Items explicitly restored since the cut are listed in In scope; races remain cut.
 - Desktop notifications while a maitty window is open, the terminal bell on an alert, and choosing among system sounds (or your own sound file) — cut 2026-10-11 (the user's call: three overlapping alerts, two of them the Windows error ding). Bringing one back needs a new decision.
 - Separate desktop GUI client — declined 2026-10-17: keep Maitty terminal-first and use T3 Code when a chat-first GUI is wanted. Revisit only through a new proposal (ADR-0011).
 - Other structural terminal layouts (workspaces, tree, dock, alternate sidebar) — declined 2026-10-03. Flat is an accepted rendering style of the shared session layout, per ADR-0012; it does not introduce another session model.
 - Phase 7 proposals canceled 2026-10-17: named hosts and remote panes/agents (#23); terminal graphics and Kitty keyboard protocol (#27); launcher, templates, recording/replay, screenshots and key display (#29); web terminal and SSH server mode (#30); package-manager distribution (#31). Revisit only through a new proposal. This does not remove shipped SSH remote-client support.
+- Fleet work declined 2026-10-24 (the fleet was removed in phase 19): the phase 9 live fleet check, the designed team view, pause the fleet, stop all, cost per fleet.
 
 ## Later
 
-- Non-blocking validation follow-ups: run the Phase 9 live fleet check with two helpers visible under the commander; use the four Phase 10 features in real work; address the squash-merged-branch detection gap.
+- Non-blocking validation follow-ups: use the four Phase 10 features in real work; address the squash-merged-branch detection gap.
+- Phase 18 follow-ups, kept 2026-10-24: `maitty wait` should exit non-zero when a check needs approval or could not run, and approving a check has no default key. Comes back after phase 28, or sooner if a script relies on `wait`.
 
 - Personas are dropped, not deferred: saved role profiles were removed 2026-10-18 (see [Out](#out)). Phase 15 replaces the idea with checkpoints that Maitty checks itself.
-- Checkpoint kinds beyond the first (`commits`, `approval`, `review`) and a project-defined checkpoint list — deferred 2026-10-22 until Phase 15's verify check has been used in real work. `approval` and `review` sit close to the workflow runner cut on 2026-10-18; each needs the user's explicit re-approval before any ticket. Phase 17's handoffs use the verify check only.
-- The designed team view, threads between agents, take over and hand back, pause the fleet, stop all, cost per fleet — deferred 2026-10-11: waiting on a design for it. Comes back when the prototype is in.
+- Checkpoint kinds beyond the first (`commits`, `approval`, `review`) and a project-defined checkpoint list — deferred 2026-10-22 until Phase 15's verify check has been used in real work. `approval` and `review` sit close to the workflow runner cut on 2026-10-18; each needs the user's explicit re-approval before any ticket.
+- Threads between agents, take over and hand back — deferred 2026-10-11: waiting on a design for it. Comes back when the prototype is in.
 
 ## Decisions
 
@@ -714,16 +779,18 @@ Everything below is shipped on `main` unless marked.
 - [ADR-0002](adr/0002-portable-pty-and-vt100.md) — portable-pty (ConPTY) and vt100 for terminals. Rules out: a home-grown PTY layer.
 - [ADR-0003](adr/0003-msgpack-over-local-sockets.md) — msgpack frames over local sockets, versioned. Rules out: unversioned message changes; network listeners.
 - [ADR-0009](adr/0009-leader-keys-after-the-cut.md) — Leader keys: a shell is one key, and only kept features have keys (supersedes ADR-0006). Rules out: keys for features that don't exist; defaults that differ from the key map shown in the app.
-- [ADR-0008](adr/0008-rename-to-seshi.md) — The app was called Seshi (now superseded by ADR-0018 for the name); an old hydra install is brought over once.
+- [ADR-0008](adr/0008-rename-to-seshi.md) — The app was called Seshi (the name superseded by ADR-0018, then ADR-0020); an old hydra install is brought over once.
 - [ADR-0012](adr/0012-flat-rendering-style.md) — Add a flat rendering style over the shared session layout; Cards stays default.
 - [ADR-0014](adr/0014-v8-cleanup.md) — Bring over the v8 cleanup, keeping what the user already decided. Rules out: bare letters acting in the sidebar; per-state glyphs on session rows; the fleet, the Team tab, the subagent tree and a helper mode.
 - [ADR-0011](adr/0011-keep-seshi-terminal-first.md) — Keep Maitty terminal-first. Rules out: adding a separate desktop GUI client to this project.
 - [ADR-0020](adr/0020-rename-to-maitty.md) — The app is called Maitty, "All agents on deck"; a vibecasso or seshi install carries over once.
 - [ADR-0019](adr/0019-the-name-lives-in-one-place.md) — The app's name lives in `Cargo.toml`; code takes it from `brand`. Rules out: writing the app's name out in code, adapters or comments.
-- [ADR-0018](adr/0018-rename-to-vibecasso.md) — The app is called Vibecasso, a clean break; a vibecasso install carries over once. Rules out: a `vibecasso` command, new code or paths under the old name.
+- [ADR-0018](adr/0018-rename-to-vibecasso.md) — The app was called Vibecasso (the name superseded by ADR-0020), a clean break; a vibecasso install carries over once. Rules out: a `vibecasso` command, new code or paths under the old name.
 - [ADR-0017](adr/0017-keys-other-apps-use.md) — Default shortcuts are one key each, none needing Shift, keys other apps use. Rules out: capital or Shift-symbol defaults; two keys for one action.
 - [ADR-0016](adr/0016-sticky-shortcut-mode.md) — The leader opens a shortcut mode that stays until Esc, the leader, a click into a pane or a typing action. Rules out: letters acting outside that shown mode.
+- [ADR-0013](adr/0013-v7-frame.md) — Draw the v7 frame: tabs in the pane title (the "no margin" part replaced by `ui.padding`, ADR-0021). Rules out: a separate tab row.
 - [ADR-0015](adr/0015-four-named-layouts-and-grid.md) — One Layout setting: Floating, Tiled, Compact, Grid; Grid is a look over the shared layout. Rules out: Grid's own sidebar, top bar, fixed grid, zoom and bare keys.
+- [ADR-0021](adr/0021-one-line-rows-one-rounding-sticky-mode.md) — One-line session rows, one rounding setting (full, corners, off), padding round the screen, and shortcut mode that stays until Esc, the leader or a click (amends ADR-0016). Rules out: a second line that only names the state; separate corner and pill-end switches.
 
 ## Rules
 
@@ -731,7 +798,7 @@ Everything below is shipped on `main` unless marked.
 - Status reports need the pane's token or its process chain — `src/daemon/mod.rs` hook handling — AGENTS.md non-negotiable 5
 - Nothing in a cloned repo runs without the user's approval — `src/project.rs` — SECURITY.md
 - Client and daemon refuse to talk across protocol versions — `src/protocol.rs` `PROTOCOL_VERSION`, checked on `Hello` — ADR-0003
-- Config selects the Cards or Flat rendering style while sharing the session layout — `src/config.rs` `Ui.layout`, `src/client/screen/card.rs` `Look::of` — ADR-0012
+- Config selects one of four looks (Floating, Tiled, Compact, Grid) over the one shared session layout — `src/config.rs` `Ui.layout` / `layout_kind`, `src/client/screen/card.rs` `Look::of` — ADR-0015
 - Every built-in theme passes the contrast audit — `cargo test` (theme audit test in `src/theme.rs`) — readability
 - Both platform sides compile — `cargo check --target x86_64-unknown-linux-gnu` / `aarch64-apple-darwin` — AGENTS.md non-negotiable 3
 - clippy is clean — `cargo clippy --all-targets -- -D warnings` — CODE-STANDARDS
@@ -742,7 +809,7 @@ Everything below is shipped on `main` unless marked.
 ## Records
 
 Docs: `AGENTS.md`, `docs/` (architecture, standards, testing, security, UI, API patterns), `docs/stack/rust.md`.
-Design references: the v8 handoff [`design/v8/`](design/v8/README.md) (current) and the v7 handoff [`design/v7/`](design/v7/README.md) (layout and checkpoints; its frames back the tests). Older briefs and handoffs (v1–v6, Flat, wake-up) are in git history.
+Design references: the v8 handoff [`design/v8/`](design/v8/README.md) (current), the inspector handoff [`design/inspector-v1/`](design/inspector-v1/README.md) (the drawer, phases 26–28; `theme.js` is its spec) and the v7 handoff [`design/v7/`](design/v7/README.md) (layout and checkpoints; its frames back the tests). Older briefs and handoffs (v1–v6, Flat, wake-up) are in git history.
 Glossary: none yet.
 Feature docs: `docs/features/`. Each live intent is linked from its phase; shipped or removed intents are in git history.
 

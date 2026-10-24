@@ -52,7 +52,7 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
     let lines: u16 = groups.iter().map(|items| items.len() as u16 + 1).sum();
     let w = 46.min(area.width.saturating_sub(4));
     let h = (lines + 5).min(area.height.saturating_sub(2));
-    let side = grid(app, area).side;
+    let side = grid(app, framed(app, area)).side;
     let x = (if side.width > 0 { side.x + 1 } else { area.x + 3 }).min(area.right().saturating_sub(w));
     let y = area.bottom().saturating_sub(4 + h).max(area.y);
     let r = Rect { x, y, width: w, height: h };

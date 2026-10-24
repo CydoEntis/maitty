@@ -94,7 +94,7 @@ fn preset_01_s_frame_is_the_reference_s_in_every_layout_and_size() {
 fn rounded_corners_round_every_card() {
     for layout in [Layout::Floating, Layout::Tiled] {
         let mut app = world(Stage::None);
-        app.cfg.ui.corners = "rounded".into();
+        app.cfg.ui.rounded = crate::config::Rounding::Full;
         let text = v7_fixture::frame(&mut app, layout, 100, 30, "unicode");
         let r = rows(&text);
         let (sw, px) = (side_w(100), pane_x(layout, 100));
@@ -256,7 +256,7 @@ fn tab_rects(app: &App) -> Vec<Rect> {
 fn square_tabs_draw_no_caps_and_keep_their_widths_by_default() {
     for layout in LAYOUTS {
         let mut app = world(Stage::None);
-        assert!(!app.cfg.ui.rounded, "off by default");
+        assert_eq!(app.cfg.ui.rounded, crate::config::Rounding::Off, "off by default");
         let buf = buffer(&mut app, layout, 160, 45);
         let rects = tab_rects(&app);
         assert_eq!(rects.len(), 3, "two tabs and the + chip: {layout:?}");
@@ -274,7 +274,7 @@ fn round_tabs_cap_every_chip_on_the_ground_behind_the_title() {
         let square = tab_rects(&off);
 
         let mut app = world(Stage::None);
-        app.cfg.ui.rounded = true;
+        app.cfg.ui.rounded = crate::config::Rounding::Full;
         let buf = buffer(&mut app, layout, 160, 45);
         let t = app.theme.clone();
         let rects = tab_rects(&app);
@@ -299,7 +299,7 @@ fn round_rows_draw_the_selected_session_as_one_softened_block_and_off_leaves_it_
     for layout in LAYOUTS {
         for on in [false, true] {
             let mut app = world(Stage::None);
-            app.cfg.ui.rounded = on;
+            app.cfg.ui.rounded = if on { crate::config::Rounding::Full } else { crate::config::Rounding::Off };
             app.mode = Mode::Side;
             let term = app.screen_model().iter().flat_map(|p| p.sessions().map(|s| s.term).collect::<Vec<_>>()).next().expect("a session");
             app.screen.cursor_proj = None;
@@ -330,7 +330,7 @@ fn round_tabs_end_the_selected_folder_row_in_a_cap_and_off_leaves_it_square() {
     for layout in LAYOUTS {
         for on in [false, true] {
             let mut app = world(Stage::None);
-            app.cfg.ui.rounded = on;
+            app.cfg.ui.rounded = if on { crate::config::Rounding::Full } else { crate::config::Rounding::Off };
             app.mode = Mode::Side;
             app.screen.cursor = None;
             app.screen.cursor_proj = Some(app.screen_model()[0].key.clone());
@@ -354,7 +354,7 @@ fn round_tabs_end_the_selected_folder_row_in_a_cap_and_off_leaves_it_square() {
 fn rounded_shapes_round_the_sidebar_chips_and_the_menu() {
     for layout in LAYOUTS {
         let mut app = world(Stage::None);
-        app.cfg.ui.rounded = true;
+        app.cfg.ui.rounded = crate::config::Rounding::Full;
         let text = v7_fixture::raw_text(&mut app, layout, 100, 30, "unicode");
         for chip in [" SESSIONS 4 ", "+ New", "Menu"] {
             assert!(text.contains(&format!("{CAP_L}{chip}")), "{chip} has a left cap: {layout:?}\n{text}");

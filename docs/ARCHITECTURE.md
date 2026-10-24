@@ -94,6 +94,7 @@ src/
     render.rs, design.rs  drawing entry point and shared helpers
     themes.rs    searchable theme browser, previews, background save
     menu.rs, views.rs, files.rs, find.rs, branch.rs, recipes.rs, overlap.rs,
+    markdown.rs (markdown drawn for the Files preview: text, width, theme in; styled lines out),
     motion.rs (slides and glides), …
     tests.rs     rendering and behaviour tests
   mcp.rs, project.rs, gitfs.rs, alert.rs, reveal.rs, update.rs, restart.rs, sync.rs

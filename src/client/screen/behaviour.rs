@@ -541,7 +541,13 @@ impl App {
                 let dir = self.screen_target_dir();
                 self.screen.cursor = None;
                 self.mode = Mode::Normal;
-                if *a == Action::Files {
+                // Open with the keys: f closes it; set aside by a click into a pane: f hands it
+                // the keys back.
+                if *a == Action::Files && matches!(self.view, Some(crate::client::View::Files(_))) && !self.view_has_keys() {
+                    self.view_set_aside = None;
+                } else if *a == Action::Files && matches!(self.view, Some(crate::client::View::Files(_))) {
+                    self.view = None;
+                } else if *a == Action::Files {
                     self.open_files(dir);
                 } else {
                     self.open_changes(dir);
@@ -853,6 +859,11 @@ impl App {
     }
 
     pub(in crate::client) fn on_goto_key(&mut self, mut query: String, mut sel: usize, k: &KeyEvent) {
+        // With nothing typed, `[` `]` `=` size the sheet; once you search they are text.
+        if query.is_empty() && self.sheet_size_key(k) {
+            self.mode = Mode::GoTo { query, sel };
+            return;
+        }
         let model = self.screen_model();
         let rows = goto_rows(&model, &query, heads_up(self).len());
         // Headings aren't rows you land on.
@@ -1012,9 +1023,14 @@ impl App {
                 }
                 return;
             }
+            // The list changes with the search: land on its first row you can pick, worked out
+            // on the new list (the rows above are the old search's).
             KeyCode::Backspace => {
                 query.pop();
-                sel = 0;
+                let rows = goto_rows(&model, &query, heads_up(self).len());
+                let sel = rows.iter().position(GoRow::pickable).unwrap_or(0);
+                self.mode = Mode::GoTo { query, sel };
+                return;
             }
             KeyCode::Char(c) if !k.modifiers.contains(KeyModifiers::CONTROL) => {
                 query.push(c);
@@ -1197,8 +1213,11 @@ impl App {
                 self.screen_focus(t);
                 self.screen_side_set(SideItem::Sess(t));
             }
+            ScreenHit::RowChanges(t) => {
+                self.screen.cursor = Some(t);
+                self.act(Action::Changes);
+            }
             ScreenHit::Update => self.act(Action::Update),
-            ScreenHit::CheckUpdate => self.act(Action::CheckUpdate),
             ScreenHit::Restart => self.ask_restart(),
             ScreenHit::Why(term) => {
                 self.mode = Mode::Why { term, side: matches!(self.mode, Mode::Side) };
@@ -1444,6 +1463,7 @@ impl App {
                 }
             }
             ScreenHit::SideEdge => self.screen.drag = Some(Drag::Side),
+            ScreenHit::SheetEdge => self.screen.drag = Some(Drag::Sheet),
             ScreenHit::ToBottom(term) => self.back_to_bottom(term),
             ScreenHit::ScrollBar(term) => {
                 self.screen.drag = Some(Drag::Scroll(term));

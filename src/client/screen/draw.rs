@@ -41,8 +41,17 @@ pub(in crate::client) struct Grid {
     pub sheet: Rect,
 }
 
-/// The grid, with no outer margin: the sidebar the full height at one side, then the pane
-/// column from row 0. Cards floating leave the gap setting between them, tiled none (the two
+/// Most the padding round the screen may be, in cells.
+const PADDING_MAX: u16 = 2;
+
+/// The room the screen is laid out in: the window less the padding setting all round.
+pub(in crate::client) fn framed(app: &App, area: Rect) -> Rect {
+    let m = app.cfg.ui.padding.parse().unwrap_or(1).min(PADDING_MAX);
+    Rect { x: area.x + m, y: area.y + m, width: area.width.saturating_sub(2 * m), height: area.height.saturating_sub(2 * m) }
+}
+
+/// The grid in `area` (already `framed`): the sidebar the full height at one side, then the
+/// pane column from its top row. Cards floating leave the gap setting between them, tiled none (the two
 /// borders sit side by side); Flat starts the panes on the sidebar's last column, so one `│`
 /// parts them. A width you dragged the sidebar to wins over the default.
 pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
@@ -61,8 +70,43 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
     // Collapsed, the sessions are chips on row 0 and the panes (with their tabs) start below it.
     let col = if strip_on(app) { Rect { y: col.y + 1, height: col.height.saturating_sub(1), ..col } } else { col };
     let edge = if side.x > col.x { Rect { x: col.right(), width: gap.max(1), ..area } } else { Rect { x: col.x.saturating_sub(gap), width: gap.max(1), ..area } };
-    let (sheet, panes) = if open_sheet(app).is_some() { split_for_sheet(area.width, col, look, app.sheet_frac) } else { (Rect::default(), col) };
+    let (sheet, panes) = match open_sheet(app) {
+        Some(kind) => split_for_sheet(area.width, col, look, app.sheet_frac, wanted_w(app, kind, area.width)),
+        None => (Rect::default(), col),
+    };
     Grid { side, panes, edge, sheet }
+}
+
+/// Where the side sheet is this frame, the widest it could be, and the screen's width, for its
+/// edge and its `[` `]` keys. A sheet that takes the whole pane column, or none, can't be
+/// sized: its widest is 0.
+fn note_sheet(app: &mut App, g: &Grid, screen_w: u16) {
+    let look = Look::of(&app.cfg.ui);
+    let col = Rect { width: g.sheet.right().saturating_sub(g.panes.x), ..g.panes };
+    let sizable = open_sheet(app).is_some() && screen_w >= NARROW && widest(col, look) >= SHEET_MIN;
+    app.screen.sheet_rect = g.sheet;
+    app.screen.sheet_widest = if sizable { widest(col, look) } else { 0 };
+    app.screen.sheet_screen_w = screen_w;
+}
+
+/// The side sheet's left edge, beside the panes: drag it to resize the sheet. It lights up
+/// while you point at it or drag it. A sheet that takes the whole pane column has none.
+fn draw_sheet_edge(app: &mut App, buf: &mut Buffer, g: &Grid, t: &Theme) {
+    if app.screen.sheet_widest < SHEET_MIN || g.panes.width == 0 {
+        return;
+    }
+    // The gap between them (Floating); the sheet's own line where they touch (Tiled, Compact).
+    let x = g.panes.right().min(g.sheet.x);
+    let edge = Rect { x, width: g.sheet.x.saturating_sub(g.panes.right()).max(1), ..g.sheet };
+    if app.screen.drag == Some(Drag::Sheet) || hovered(app, edge) {
+        let ex = edge.x + edge.width / 2;
+        for yy in g.sheet.top() + 1..g.sheet.bottom().saturating_sub(1) {
+            if let Some(px) = buf.cell_mut((ex, yy)) {
+                px.set_symbol("│").set_style(Style::default().fg(t.accent).bg(t.bg));
+            }
+        }
+    }
+    hit(app, edge, ScreenHit::SheetEdge);
 }
 
 /// The sessions are collapsed into the strip on row 0 (`z`), not hidden (`Z`).
@@ -81,7 +125,13 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     app.screen.wt_keys.clear();
     app.screen.branch_keys.clear();
     fill(f.buffer_mut(), area, t.bg);
-    let g = grid(app, area);
+    let room = framed(app, area);
+    // A view set aside by a click into a pane is forgotten once it closes.
+    if app.view.is_none() {
+        app.view_set_aside = None;
+    }
+    let g = grid(app, room);
+    note_sheet(app, &g, room.width);
     // Too narrow mid-slide to draw anything sensible: just the room it takes.
     if g.side.width >= SIDE_DRAWN_FROM {
         draw_side(app, f.buffer_mut(), g.side, &model, t);
@@ -96,7 +146,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         }
         hit(app, g.edge, ScreenHit::SideEdge);
     } else if strip_on(app) {
-        rail::draw(app, f.buffer_mut(), area, &model, t);
+        rail::draw(app, f.buffer_mut(), room, &model, t);
     } else {
         // Hidden: nothing to point at, nothing to move a cursor over.
         app.screen.side_rect = Rect::default();
@@ -109,8 +159,9 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     }
     if let Some(kind) = open_sheet(app).filter(|_| g.sheet.width >= SHEET_DRAWN_FROM) {
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
+        draw_sheet_edge(app, f.buffer_mut(), &g, t);
     }
-    draw_corner_pill(app, f.buffer_mut(), area, t);
+    draw_corner_pill(app, f.buffer_mut(), room, t);
     app.screen.crumb_x = g.panes.x + 1;
     // A popup (`<app> popup`) floats over everything, the rest dimmed.
     match app.mode.clone() {
@@ -127,24 +178,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         let r = Rect { x: whole.x + (whole.width - w) / 2, y: whole.y + (whole.height - h) / 2, width: w, height: h };
         draw_session(app, f, r, term, true, &model, t);
     }
-    draw_toast(app, f.buffer_mut(), area, t);
-    // Files open over everything in one tool-window size; Esc closes. (Changes is a sheet.)
-    if let Some(view) = app.view.take_if(|v| matches!(v, crate::client::View::Files(_))) {
-        let buf = f.buffer_mut();
-        dim_all(buf, area, t);
-        hit(app, area, ScreenHit::Noop);
-        let r = panel_at(app, buf, tool_rect(area), "Files", &[], t);
-        // The tool draws inside with a cell of air.
-        let inner = Rect { x: r.x + 2, y: r.y + 1, width: r.width.saturating_sub(4), height: r.height.saturating_sub(2) };
-        match view {
-            crate::client::View::Files(v) => {
-                crate::client::design::draw_files(app, buf, inner, t, &v);
-                app.view = Some(crate::client::View::Files(v));
-            }
-            // In the sheet (above).
-            v @ (crate::client::View::Changes(_) | crate::client::View::Both(_) | crate::client::View::Check(_)) => app.view = Some(v),
-        }
-    }
+    draw_toast(app, f.buffer_mut(), room, t);
     g.panes
 }
 
@@ -455,7 +489,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     let st = info.status;
     // While the sidebar has the keys, no pane shows as focused.
     // Exactly one lit edge: an open sheet has the keys, so the pane gives up its lit border.
-    let focused = focused && !side_focused(app) && open_sheet(app).is_none();
+    let focused = focused && !side_focused(app) && !sheet_has_keys(app);
     let scrolled = app.parsers.get(&term).map(|p| p.screen().scrollback()).filter(|n| *n > 0);
     let grid_color = look.grid.then(|| grid_color(app, term, t));
     let border = if let Some(own) = grid_color {
@@ -497,7 +531,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         c.right.push(m.clone());
     }
     c.close = Some(ScreenHit::CloseSplit(term));
-    let room = corner_room(app, r, f.area(), t);
+    let room = corner_room(app, r, framed(app, f.area()), t);
     if room > 0 {
         c.right.push(seg(" ".repeat(room as usize), Style::default()));
     }
@@ -558,7 +592,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
             && !screen.hide_cursor()
             && scrolled.is_none()
             && matches!(app.mode, Mode::Normal | Mode::Prefix { .. })
-            && app.view.is_none()
+            && !sheet_has_keys(app)
         {
             let (row, col) = screen.cursor_position();
             if row < inner.height && col < inner.width {

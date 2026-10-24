@@ -172,7 +172,7 @@ fn with_check(app: &mut App, command: &str) {
 
 /// The sample's words where the fixture has none of its own.
 fn sample_words(app: &mut App) {
-    app.cfg.ui.rounded = false;
+    app.cfg.ui.rounded = crate::config::Rounding::Off;
     let footer = app.snap.terms.get_mut(&1).unwrap();
     footer.said = "tests pass".into();
     for c in &mut footer.checks {
@@ -381,12 +381,15 @@ fn app_sidebar(id: &str, stage: Stage, rows: Vec<Vec<char>>, inner_w: usize, asc
             rows.insert(rows.len() - 1, vec![' '; inner_w]);
         }
     }
-    // quick-fox: finished and unseen.
-    if let Some(i) = rows.iter().position(|r| text(r).contains("quick-fox"))
-        && rows.get(i + 1).is_some_and(|r| text(r).trim() == "finished")
-    {
-        swap(&mut rows[i + 1], "finished", "finished · not seen", 0, end);
+    // Sessions are one line now, each with its agent's mark (ADR 0021).
+    let n = rows.len();
+    let foot_row = rows.pop().expect("the foot");
+    let mut rows = super::v7_fixture::as_one_line_rows(rows, ascii, ANY);
+    for r in &mut rows {
+        r.resize(inner_w, ' ');
     }
+    rows.resize(n - 1, vec![' '; inner_w]);
+    rows.push(foot_row);
     // Folders: the one with a session asking you goes first.
     let foot = rows.len() - 1;
     let mut groups: Vec<Vec<Vec<char>>> = Vec::new();
@@ -799,7 +802,7 @@ fn pill_caps_only_round_the_buttons_ends() {
         let mut square = open(id);
         let flat = cells(&mut square, Layout::Floating, 160, 45, "unicode");
         let mut round = open(id);
-        round.cfg.ui.rounded = true;
+        round.cfg.ui.rounded = crate::config::Rounding::Full;
         let capped = cells(&mut round, Layout::Floating, 160, 45, "unicode");
         let caps = [CAP_L, CAP_R];
         let mut changed = 0;
@@ -829,7 +832,7 @@ fn flat_rounds_its_pill_ends_on_the_ground_around_them() {
         assert!(!plain.content().iter().any(|c| caps.contains(&c.symbol())), "{id}: pill_caps off draws no cap");
 
         let mut round = open(id);
-        round.cfg.ui.rounded = true;
+        round.cfg.ui.rounded = crate::config::Rounding::Full;
         let buf = cells(&mut round, Layout::Flat, 160, 45, "unicode");
         let area = buf.area;
         let mut seen = 0;
@@ -859,13 +862,13 @@ fn flat_rounds_its_pill_ends_on_the_ground_around_them() {
     assert!(total > 0, "Flat's buttons have round ends with pill_caps on");
 }
 
-/// Flat has no card edges, so `ui.corners` reaches only a modal's bottom corners there.
+/// Flat has no card edges, so rounded corners reach only a modal's bottom corners there.
 #[test]
 fn flat_corners_round_only_a_modals_bottom() {
     let mut app = open("12");
     let square = frame(&mut app, Layout::Flat, 160, 45, "unicode");
     assert!(!square.contains(['╭', '╮', '╰', '╯']), "square is the default\n{square}");
-    app.cfg.ui.corners = "rounded".into();
+    app.cfg.ui.rounded = crate::config::Rounding::Full;
     let rounded = frame(&mut app, Layout::Flat, 160, 45, "unicode");
     assert_eq!(rounded.matches(['╰', '╯']).count(), 2, "the modal's bottom corners\n{rounded}");
     assert!(!rounded.contains(['╭', '╮']), "nothing else is a box\n{rounded}");
@@ -940,9 +943,9 @@ fn overriding_from_the_inbox_opens_the_evidence() {
     assert!(frame(&mut app, Layout::Floating, 160, 45, "unicode").contains("CHECK · fix-footer › test"));
 }
 
-/// Only the working glyph carries the working colour; the name is white and the word quiet.
+/// A working row speaks in the working colour: its spinner and its name, in every theme.
 #[test]
-fn a_working_row_s_mark_is_the_only_working_colour() {
+fn a_working_row_s_mark_and_name_are_the_working_colour() {
     for &name in crate::theme::BUILTIN {
         let mut app = open("01");
         app.theme = crate::theme::Theme::named(name);
@@ -950,8 +953,7 @@ fn a_working_row_s_mark_is_the_only_working_colour() {
         let work = app.theme.accent;
         let (x, y) = at(&buf, "add-payments");
         assert_eq!(buf[(x - 2, y)].fg, work, "{name}: the spinner");
-        let (x, y) = at(&buf, "   working");
-        assert_eq!(buf[(x + 3, y)].fg, app.theme.muted, "{name}: the word");
+        assert_eq!(buf[(x, y)].fg, work, "{name}: the name (motion off holds it still)");
     }
 }
 
@@ -985,3 +987,28 @@ fn a_check_that_could_not_run_is_violet_not_red_or_amber() {
     assert_eq!(buf[(x - 2, y)].fg, t.violet(), "the row's glyph");
     assert!(![t.err, t.blocked, t.accent].contains(&t.violet()));
 }
+
+#[test]
+/// Backspace in the Inbox edits its search and never closes it or the app, whatever it holds.
+fn backspace_in_the_inbox_only_edits_its_search() {
+    for stage in v7_fixture::STAGES {
+        for (w, h) in v7_fixture::SIZES {
+            for keys in ["", "a", "zz"] {
+                let mut app = v7_fixture::world(stage);
+                app.cfg.ui.padding = "1".into();
+                app.open_goto();
+                let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
+                for c in keys.chars() {
+                    app.on_key(crate::client::KeyEvent::new(crate::client::KeyCode::Char(c), crate::client::KeyModifiers::NONE));
+                }
+                for _ in 0..3 {
+                    term.draw(|f| crate::client::render::draw(&mut app, f)).unwrap();
+                    app.on_key(crate::client::KeyEvent::new(crate::client::KeyCode::Backspace, crate::client::KeyModifiers::NONE));
+                    assert!(app.quit.is_none(), "{stage:?}");
+                }
+                term.draw(|f| crate::client::render::draw(&mut app, f)).unwrap();
+            }
+        }
+    }
+}
+

@@ -28,7 +28,7 @@ impl App {
                 ("Connect Kilo".into(), menu::Act::InstallStatus("kilo".into())),
                 ("Connect Kimi".into(), menu::Act::InstallStatus("kimi".into())),
             ], (3, 3)),
-            Action::Branches => self.open_branches(None),
+            Action::Branches => self.toggle_branch_sheet(),
             Action::History => self.mode = Mode::History { sel: 0 },
             Action::SpawnTab(c) => {
                 if let Some(ws) = ws {
@@ -274,7 +274,7 @@ impl App {
         }
         let Some((task, info, linked)) = self.task_for(&dir) else { return };
         let (top, term, ws) = (task.dir.clone(), task.agent, Some(task.ws).filter(|w| *w != 0));
-        self.view = Some(View::Changes(Box::new(views::ChangesView {
+        self.show_view(View::Changes(Box::new(views::ChangesView {
             dir: top.clone(),
             review: None,
             error: None,
@@ -388,7 +388,7 @@ impl App {
         let head = crate::gitfs::head(&dir);
         let root = head.as_ref().map(|h| h.top.clone()).unwrap_or(dir);
         let branch = head.map(|h| h.branch);
-        self.view = Some(View::Files(Box::new(views::FilesTree::new(root.clone(), branch))));
+        self.show_view(View::Files(Box::new(views::FilesTree::new(root.clone(), branch))));
         self.spawn_bg(move || Bg::Tree(root.clone(), views::scan_tree(&root), views::git_marks(&root)));
     }
 

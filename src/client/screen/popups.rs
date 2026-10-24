@@ -66,7 +66,7 @@ pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, titl
     for x in r.x..r.right() {
         buf[(x, bottom)].set_symbol("─").set_style(edge);
     }
-    let [_, _, bl, br] = corners(Look { rounded: look.rounded || look.caps, ..look });
+    let [_, _, bl, br] = corners(look);
     buf[(r.x, bottom)].set_symbol(bl).set_style(edge);
     buf[(right_x, bottom)].set_symbol(br).set_style(edge);
     fill(buf, Rect { height: 1, ..r }, t.accent);

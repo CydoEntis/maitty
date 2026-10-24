@@ -235,7 +235,9 @@ pub(super) fn world(stage: Stage) -> App {
     FIXED_NOW.with(|n| n.set(Some(now())));
     let (tx, _rx) = mpsc::unbounded_channel();
     let (bg_tx, _bg_rx) = mpsc::unbounded_channel();
-    let mut app = App::new(Config::default(), tx, None, bg_tx);
+    // The handoff has no padding round the screen; its frames are compared cell for cell.
+    let cfg = Config { ui: crate::config::Ui { padding: "0".into(), ..Default::default() }, ..Default::default() };
+    let mut app = App::new(cfg, tx, None, bg_tx);
     app.splash = false;
     let dev = home();
     let (site, pixls, orbit) = (dev.join("affiliate-site"), dev.join("pixls"), dev.join("orbit"));
@@ -325,60 +327,16 @@ fn without_new_tab_chip(row: &str) -> String {
 /// on purpose, put back:
 /// - the foot sits a row higher in Flat and has a divider above it; its `new` and `menu` chips
 ///   read `+ new` and `a actions` (the app's `+ New` and `Menu`), the handoff's words at the same edges;
-/// - a finished row says `done` and `done · not seen` where the handoff says `finished`;
-/// - below 140 columns a working row and a not-seen row keep their second line, which the
-///   handoff drops (only a finished, seen row collapses in v8).
-fn as_the_handoff_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffer, app: &App, flat: bool, width: u16) {
+///
+/// A second line that only names the state is gone from the app; `as_one_line_rows` drops it
+/// from the reference.
+fn as_the_handoff_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffer, app: &App, flat: bool) {
     let side = app.screen.side_rect;
     if side.width < 4 || side.height < 6 {
         return;
     }
     let (left, right) = (side.x as usize + 1, side.right() as usize - 1);
     let foot_y = side.bottom() as usize - 2;
-    // A modal may cover part of a row: the sidebar's own part ends at the first box line.
-    let span = |row: &[char]| row[left..right].iter().position(|c| "│└┌┐┘─╭╮╰╯".contains(*c)).map_or(right, |p| left + p);
-    let end = foot_y - 1;
-    let mut seconds: Vec<(usize, bool)> = Vec::new();
-    for (term, y) in &app.screen.row_y {
-        let Some(info) = app.snap.terms.get(term) else { continue };
-        if info.reported_check().is_some() || info.asleep {
-            continue;
-        }
-        let y = *y as usize + 1;
-        match info.status {
-            crate::protocol::Status::Working | crate::protocol::Status::Done => seconds.push((y, width < 140)),
-            crate::protocol::Status::Idle if info.agent.is_some() && width >= 140 => seconds.push((y, false)),
-            _ => {}
-        }
-    }
-    // Lowest first, so a removed line doesn't move the ones still to do.
-    seconds.sort_by_key(|s| std::cmp::Reverse(s.0));
-    for (y, drop) in seconds {
-        if y >= end {
-            continue;
-        }
-        if drop {
-            for k in y..end - 1 {
-                let (to, from) = (span(&rows[k]), span(&rows[k + 1]));
-                let below: Vec<char> = rows[k + 1][left..from].to_vec();
-                for (i, c) in (left..to).zip(below.into_iter().chain(std::iter::repeat(' '))) {
-                    rows[k][i] = c;
-                }
-            }
-            let to = span(&rows[end - 1]);
-            rows[end - 1][left..to].fill(' ');
-            continue;
-        }
-        let line: String = rows[y][left..right].iter().collect();
-        for (from, to) in [("done · not seen", "finished · not seen"), ("done", "finished")] {
-            if let Some(at) = line.find(from).filter(|_| line.trim_start_matches(['▎', '|', ' ']).starts_with(from)) {
-                let at = line[..at].chars().count();
-                let cells: Vec<char> = to.chars().chain(std::iter::repeat(' ')).take(from.chars().count().max(to.chars().count())).collect();
-                rows[y][left + at..left + at + cells.len()].copy_from_slice(&cells);
-                break;
-            }
-        }
-    }
     // The foot: the divider over it goes (only its own run of `─`, a modal may cross that row).
     let divider_from = left + usize::from(!flat);
     for x in divider_from..right {
@@ -462,7 +420,7 @@ pub(super) fn frame(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str)
     let mut rows: Vec<Vec<char>> = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().chars().next().unwrap_or(' ')).collect()).collect();
     with_the_handoff_carets(&mut rows, app, glyphs);
     with_the_handoff_failed_bars(&mut rows, app, layout == Layout::Flat, glyphs);
-    as_the_handoff_sidebar(&mut rows, buf, app, layout == Layout::Flat, w);
+    as_the_handoff_sidebar(&mut rows, buf, app, layout == Layout::Flat);
     let text: String = rows
         .iter()
         .enumerate()
@@ -511,4 +469,46 @@ mod tests {
         assert_eq!(names(2), [("build".to_string(), CheckState::Passed), ("test".to_string(), CheckState::NeedsApproval)]);
         assert!(world(Stage::None).snap.terms[&1].checks.is_empty());
     }
+}
+
+/// The fixture's sessions and the mark of the agent each runs (Unicode, then ASCII).
+const AGENT_MARKS: [(&str, char, char); 5] = [("fix-footer", '◆', 'X'), ("add-payments", '✻', 'C'), ("warm-finch", '◆', 'X'), ("quick-fox", '✻', 'C'), ("old-moth", '◆', 'X')];
+
+/// The second lines that only name a session's state, which the app no longer draws.
+const STATE_ONLY_LINES: [&str; 5] = ["working", "finished", "finished · not seen", "needs you", "idle"];
+
+/// The v7 reference's sidebar rows as the app draws them on purpose since sessions became one
+/// line: a second line that only names the state is gone (the mark and the name's colour say
+/// it), and each session's row carries its agent's mark two spaces before its age, or where the
+/// age would end when there is none. A moving age (`any` in the reference) is any width, so the
+/// mark's place before it is `any` too. A name that would run into the mark is cut with `…`.
+pub(super) fn as_one_line_rows(rows: Vec<Vec<char>>, ascii: bool, any: char) -> Vec<Vec<char>> {
+    let text = |r: &[char]| r.iter().collect::<String>();
+    let mut rows: Vec<Vec<char>> = rows.into_iter().filter(|r| !STATE_ONLY_LINES.contains(&text(r).trim_start_matches([' ', '▎', '|']).trim_end())).collect();
+    let has = |r: &[char], needle: &str| text(r).contains(needle);
+    let last_of = |r: &[char]| r.iter().rposition(|c| *c != ' ');
+    let right_edge = rows.iter().find(|r| has(r, "pixls")).and_then(|r| last_of(r)).unwrap_or(0);
+    for row in &mut rows {
+        let Some((_, shape, letter)) = AGENT_MARKS.iter().find(|(name, ..)| has(row, name)) else { continue };
+        let Some(last) = last_of(row) else { continue };
+        let start = row[..=last].iter().rposition(|c| *c == ' ').map_or(0, |i| i + 1);
+        let token: String = row[start..=last].iter().collect();
+        let moving = !token.is_empty() && token.chars().all(|c| c == any);
+        let is_age = moving || token == "now" || token.trim_end_matches(['s', 'm', 'h', 'd']).parse::<u32>().is_ok();
+        let at = if is_age { start.saturating_sub(3) } else { right_edge };
+        if row.len() <= at + 1 {
+            row.resize(at + 2, ' ');
+        }
+        if moving {
+            // The name may or may not be cut, as the age is wider or narrower.
+            row[at.saturating_sub(2)..=at + 1].fill(any);
+            continue;
+        }
+        if at >= 2 && row[at - 1] != ' ' {
+            row[at - 2] = '…';
+            row[at - 1] = ' ';
+        }
+        row[at] = if ascii { *letter } else { *shape };
+    }
+    rows
 }

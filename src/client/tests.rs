@@ -80,6 +80,8 @@ mod design_tests {
         let mut cfg = Config::default();
         // The handoff's own glyphs: its tests read a state by shape. `dots` is the default.
         cfg.ui.glyphs = "unicode".into();
+        // The handoff has no padding round the screen; its frames are compared cell for cell.
+        cfg.ui.padding = "0".into();
         let mut app = App::new(cfg, tx, None, bg_tx);
         app.splash = false;
         let layout = Node::Leaf(1);
@@ -675,7 +677,7 @@ mod screen_tests {
         app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 2, sel: 0, editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("Corners") && o.contains("PREVIEW") && o.contains("focused") && o.contains("dimmed"), "the pane settings, with a preview");
+        assert!(o.contains("Gap") && !o.contains("Corners") && o.contains("PREVIEW") && o.contains("focused") && o.contains("dimmed"), "the pane settings, with a preview");
         // The splash: the <APP> wordmark, its tagline, what happened, buttons.
         app.mode = Mode::Normal;
         app.splash = true;
@@ -865,7 +867,7 @@ mod screen_tests {
         // The sidebar: sessions right under their project, worktree sessions tagged.
         let o = draw(&mut app, 160, 45);
         assert!(!o.contains("WORKTREES") && !o.contains("BRANCHES"), "no folder headings");
-        assert!(o.contains("rate") && o.contains(" 2m") && o.contains("working"), "a worktree session is named after it, with its age and what its agent is doing");
+        assert!(o.contains("rate") && o.contains(" 2m") && !o.contains("working"), "a worktree session is named after it, with its age; its spinner says it is working");
 
         // Resizing the sidebar, within its limits.
         let before = app.screen.side_rect.width;
@@ -1292,7 +1294,7 @@ mod screen_tests {
     fn grid_draws_each_pane_in_its_own_colour_by_place() {
         for corners in ["square", "rounded"] {
             let (_, mut app) = super::design_tests::render_with(200, 50);
-            (app.cfg.ui.layout, app.cfg.ui.corners) = ("grid".into(), corners.into());
+            (app.cfg.ui.layout, app.cfg.ui.rounded) = ("grid".into(), if corners == "rounded" { crate::config::Rounding::Corners } else { crate::config::Rounding::Off });
             let [a, b, c] = three_panes(&mut app);
             app.screen_fresh();
             let mut term = Terminal::new(TestBackend::new(200, 50)).unwrap();
@@ -1509,7 +1511,7 @@ mod screen_tests {
         let at = (r.x + 10, r.y + 10);
         let mouse = |app: &mut App, kind: MouseEventKind| app.on_mouse(MouseEvent { kind, column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
         // A drag whose release never came is over once the mouse moves with no button held.
-        app.screen.drag = Some(screen::Drag::Session(2, false));
+        app.screen.drag = Some(screen::Drag::Session(2, false, screen::ScreenHit::Session(2)));
         mouse(&mut app, MouseEventKind::Moved);
         assert!(app.screen.drag.is_none(), "a stuck drag doesn't keep the mouse from the panes");
         // Claude Code's full-screen view, not taking the mouse: the wheel pages it.
@@ -1647,7 +1649,7 @@ mod screen_tests {
         app.act(Action::BrowseTree);
         app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
         assert!(matches!(app.mode, Mode::Prefix { .. }), "Ctrl+Space waits for a key: {:?}", std::mem::discriminant(&app.mode));
-        app.mode = Mode::Normal;
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         // Typing in the sidebar goes to the pane instead.
         app.act(Action::BrowseTree);
         assert!(matches!(app.mode, Mode::Side));
@@ -1686,7 +1688,7 @@ mod screen_tests {
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("PANES") && o.contains("Corners") && o.contains("PREVIEW"), "the pane settings first, with their preview");
+        assert!(o.contains("PANES") && o.contains("Gap") && !o.contains("Corners") && o.contains("PREVIEW"), "the pane settings first, with their preview");
         let theme_row = design::settings_rows(modal::Cat::Appearance).iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme")).unwrap();
         for _ in 0..theme_row {
             app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
@@ -1951,7 +1953,7 @@ mod screen_tests {
                 } else {
                     leader(&mut app, 'n');
                 }
-                assert_eq!(app.mode, Mode::Normal, "new opens no form");
+                assert!(matches!(app.mode, Mode::Normal | Mode::Prefix { .. }), "new opens no form: {:?}", app.mode);
                 let commands = sent(&mut rx);
                 assert!(matches!(commands.as_slice(), [Command::NewWorkspace { cwd: Some(_), name: None, cmd: None }]), "one plain shell, no agent and no worktree: {commands:?}");
             }
@@ -2009,7 +2011,8 @@ mod screen_tests {
         assert!(draw(&mut app, 100, 30).contains("Opens codex in the folder of shop-api"));
         // Esc cancels, nothing starts.
         app.on_key(plain(KeyCode::Esc));
-        assert_eq!(app.mode, Mode::Normal);
+        assert!(matches!(app.mode, Mode::Prefix { .. }), "back to shortcut mode, where the dialog was opened from");
+        app.on_key(plain(KeyCode::Esc));
         assert!(sent(&mut rx).is_empty());
         // Enter starts what it shows.
         leader(&mut app, 'o');
@@ -2017,7 +2020,8 @@ mod screen_tests {
         app.on_key(plain(KeyCode::Down));
         app.on_key(plain(KeyCode::Right));
         app.on_key(plain(KeyCode::Enter));
-        assert_eq!(app.mode, Mode::Normal);
+        assert!(matches!(app.mode, Mode::Prefix { .. }), "started: still in shortcut mode");
+        app.on_key(plain(KeyCode::Esc));
         let cmds = sent(&mut rx);
         assert!(matches!(cmds.as_slice(), [Command::NewWorkspace { cwd: Some(cwd), cmd: Some(cmd), .. }] if cmd == "codex" && cwd.ends_with("shop-api")), "{cmds:?}");
         // The Start button does the same.
@@ -2093,7 +2097,7 @@ mod screen_tests {
             caps_state,
         ));
 
-        assert_eq!(app.mode, Mode::Normal, "Caps Lock must not open What happened");
+        assert!(matches!(app.mode, Mode::Prefix { .. }), "Caps Lock must not open What happened: {:?}", app.mode);
         assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|message| matches!(
             message,
             ClientMsg::Command(Command::NewWorkspace { cmd: None, .. })
@@ -2170,6 +2174,42 @@ mod screen_tests {
     }
 
     #[test]
+    fn padding_leaves_air_round_the_whole_screen_in_every_layout() {
+        for layout in ["floating", "tiled", "compact", "grid"] {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            app.cfg.ui.layout = layout.into();
+            app.cfg.ui.padding = "1".into();
+            let o = draw(&mut app, 160, 45);
+            show(&o);
+            let lines: Vec<&str> = o.lines().collect();
+            assert!(lines[0].trim().is_empty(), "{layout}: the top row is air: {:?}", lines[0]);
+            assert!(lines.iter().all(|l| l.chars().next().is_none_or(|c| c == ' ')), "{layout}: the left column is air");
+            assert_eq!(app.screen.side_rect.x, 1, "{layout}: the sidebar starts one in");
+            assert_eq!(app.screen.side_rect.bottom(), 44, "{layout}: and ends one up");
+        }
+    }
+
+    #[test]
+    fn the_hover_is_rounded_with_rounded_shapes_and_square_without() {
+        use crate::client::screen::{CAP_L, CAP_R};
+        for rounded in [true, false] {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            app.cfg.ui.rounded = if rounded { crate::config::Rounding::Full } else { crate::config::Rounding::Off };
+            app.mode = Mode::Actions { sel: 0 };
+            draw(&mut app, 160, 45);
+            let (row, _) = *app.hits.iter().find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::ActionRow(2))).expect("the third Menu row");
+            app.hover = Some(Position { x: row.x + 4, y: row.y });
+            let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+            term.draw(|f| render::draw(&mut app, f)).unwrap();
+            let buf = term.backend().buffer().clone();
+            let ends = (buf[(row.x, row.y)].symbol().to_string(), buf[(row.right() - 1, row.y)].symbol().to_string());
+            let want = if rounded { (CAP_L.to_string(), CAP_R.to_string()) } else { (" ".to_string(), " ".to_string()) };
+            assert_eq!(ends, want, "rounded {rounded}: the hovered Menu row's ends");
+            assert_ne!(buf[(row.x + 2, row.y)].bg, buf[(row.x, row.y + 1)].bg, "rounded {rounded}: the row is tinted");
+        }
+    }
+
+    #[test]
     fn tiled_square_and_faded() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let a = app.focused().unwrap();
@@ -2196,7 +2236,7 @@ mod screen_tests {
         assert_ne!(fg_at(focus), fg_at(other), "the unfocused pane's text is faded");
         // Tiled: no margin, cards edge to edge; square corners when asked.
         app.cfg.ui.panes = "tiled".into();
-        app.cfg.ui.corners = "square".into();
+        app.cfg.ui.rounded = crate::config::Rounding::Off;
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.lines().next().unwrap().starts_with("┌─"), "tiled starts at the very corner, square: {}", o.lines().next().unwrap());
@@ -2211,7 +2251,7 @@ mod screen_tests {
         // A 26-column sidebar card, no right-hand meta or question lines.
         assert!(lines[0].starts_with('┌') && lines[0].chars().nth(25) == Some('┐'), "a slim sidebar: {}", lines[0]);
         let side: String = lines.iter().map(|l| l.chars().take(30).collect::<String>() + "\n").collect();
-        assert!(side.contains("working"), "a working row keeps its second line below 140 columns: {side}");
+        assert!(!side.contains("working"), "a working row is one line: {side}");
         assert!(side.contains("asks: Run npm"), "a question keeps its line: {side}");
         assert!(o.contains("+ New") && o.contains("Menu"), "both controls fit at the sidebar foot");
         assert!(!o.contains("? keys") && !o.contains("inbox"), "there is no full-width status footer");
@@ -2897,6 +2937,7 @@ second line
         show(&o);
         assert!(o.contains("Copied to clipboard") && o.contains("7 characters · 1 line"), "{o}");
         assert!(o.contains("\"alpha b\""), "the preview quotes the text");
+        assert_eq!(copy::LAST_COPY.with(|c| c.borrow().clone()).as_deref(), Some("alpha b"), "what reached the clipboard (recorded, never the real one)");
         app.copy_flash.as_mut().unwrap().at = Instant::now() - copy::FLASH_FOR;
         let buf = frame(&mut app, 160, 45);
         assert_ne!(buf[(r.x, r.y)].bg, glow, "the glow ends");
@@ -3162,7 +3203,10 @@ second line
         let o = draw(&mut app, 160, 45);
         let tabs = o.lines().find(|l| l.contains("General") && l.contains("Sessions")).expect("the tab strip");
         assert!(!tabs.contains('●'), "the pill and the splash say so; the tabs do not: {tabs}");
-        assert!(o.contains("Update now"), "the Update now button is still on the General page");
+        let version_row = design::settings_rows(modal::Cat::General).iter().position(|r| matches!(r, design::SRow::Version)).unwrap();
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: version_row, editing: None, capturing: false, scroll: 0 }));
+        let o = draw(&mut app, 160, 45);
+        assert!(o.lines().any(|l| l.contains("Version") && l.contains("9.9.9 is out") && l.contains("Enter to update")), "General's Version row offers the update: {o}");
     }
 
     #[test]
@@ -3402,16 +3446,23 @@ second line
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let said = |app: &App| app.notice.as_ref().map(|(m, _, err)| (m.clone(), *err)).unwrap();
         assert!(app.palette_commands().contains(&Action::CheckUpdate), "in the palette");
-        // Settings: beside the version, when no newer one is known.
-        app.act(Action::Settings);
+        // Settings: General's Version row, when no newer one is known; no other tab shows it.
+        let version_row = design::settings_rows(modal::Cat::General).iter().position(|r| matches!(r, design::SRow::Version)).expect("General has a Version row");
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: version_row, editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains(&format!(concat!(env!("APP_COMMAND"), " {}"), env!("CARGO_PKG_VERSION"))) && o.contains("up to date") && o.contains("u check now"));
-        assert!(app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::CheckUpdate)), "it can be clicked");
-        // While it's asking, the button says so and can't be pressed twice.
+        let line = o.lines().find(|l| l.contains("Version")).unwrap_or_else(|| panic!("the Version row
+{o}"));
+        assert!(line.contains(&format!(concat!(env!("APP_COMMAND"), " {}"), env!("CARGO_PKG_VERSION"))) && line.contains("up to date") && line.contains("u check now"), "{line}");
+        assert!(o.contains("UPDATES"), "under UPDATES");
+        let keys = modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Keys).unwrap();
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: keys, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        assert!(!draw(&mut app, 160, 45).contains("up to date"), "not at the top of every tab");
+        // While it's asking, the row says so.
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: version_row, editing: None, capturing: false, scroll: 0 }));
         app.update_checking = true;
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("checking…") && !app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::CheckUpdate)));
+        assert!(o.lines().any(|l| l.contains("Version") && l.contains("checking…")), "{o}");
         // Nothing newer: you asked, so it says so. A check the app made itself stays quiet.
         app.notice = None;
         app.update_checked_now(false, Ok(None), Vec::new());
@@ -3424,7 +3475,8 @@ second line
         app.update_checked_now(true, Ok(Some("9.9.9".into())), vec!["New: something".into()]);
         assert_eq!(app.update_available.as_deref(), Some("9.9.9"));
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("Update now") && !o.contains("Check for updates"));
+        let line = o.lines().find(|l| l.contains("Version")).unwrap_or_else(|| panic!("{o}"));
+        assert!(line.contains("9.9.9 is out") && line.contains("Enter to update") && !line.contains("check now"), "{line}");
     }
 
     #[test]
@@ -3709,7 +3761,7 @@ second line
         let col = Rect { x: 40, y: 4, width: 118, height: 40 };
         for step in 0..=20 {
             let frac = step as f32 / 20.0;
-            let (sheet, panes) = screen::split_for_sheet(160, col, screen::Look::of(&app.cfg.ui), frac);
+            let (sheet, panes) = screen::split_for_sheet(160, col, screen::Look::of(&app.cfg.ui), frac, 72);
             assert!(panes.width + sheet.width <= col.width, "they share the column at {frac}");
             let mut buf = ratatui::buffer::Buffer::empty(Rect::new(0, 0, 160, 45));
             if sheet.width >= screen::SHEET_DRAWN_FROM {
@@ -3749,12 +3801,19 @@ second line
     }
 
     #[test]
-    fn general_settings_are_in_sections_under_one_version_line() {
+    fn general_settings_are_in_sections_with_the_version_under_updates() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("up to date") && o.contains("u check now"), "one version line");
+        let top: String = o.lines().take(6).collect::<Vec<_>>().join("
+");
+        assert!(!top.contains("up to date"), "no version line over the tabs' pages: {top}");
+        let rows_here = design::settings_rows(modal::Cat::General);
+        let version = rows_here.iter().position(|r| matches!(r, design::SRow::Version)).expect("a Version row");
+        assert_eq!(design::settings_group(&rows_here[version]), "UPDATES");
+        let check = rows_here.iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == "ui.update_check")).expect("Check for updates");
+        assert_eq!(version, check + 1, "right under Check for updates");
         assert!(!o.contains("Installed here") && !o.contains("This window"), "the detail lines only show when something differs");
         let rows = design::settings_rows(modal::Cat::General);
         let sections: Vec<(&str, &str)> = rows.iter().filter_map(|r| match r { design::SRow::Setting(s) => Some((design::settings_group(r), s.label)), _ => None }).collect();
@@ -3821,7 +3880,7 @@ second line
         assert_eq!(buf[(side.x, y)].bg, buf[(side.x + 1, y)].bg, "one ground: the line, not a second grey, marks the card");
         assert_eq!(buf[(side.x, side.y)].symbol(), "┌", "a square corner");
         // Rounded keeps the centred line.
-        app.cfg.ui.corners = "rounded".into();
+        app.cfg.ui.rounded = crate::config::Rounding::Full;
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
@@ -3993,6 +4052,24 @@ second line
     }
 
     #[test]
+    fn a_view_opened_from_shortcut_mode_takes_the_keys_and_closing_it_brings_the_mode_back() {
+        let (mut app, mut rx) = super::check_settings_tests::app_with_channel();
+        app.cfg.ui.which_key = false;
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        tap(&mut app, 'f');
+        assert!(matches!(app.view, Some(View::Files(_))), "f opened Files");
+        assert!(matches!(app.mode, Mode::Normal), "Files has the keys, not shortcut mode: {:?}", std::mem::discriminant(&app.mode));
+        while rx.try_recv().is_ok() {}
+        // k moves in Files; in shortcut mode it would stop the agent (Ctrl+C into its pane).
+        tap(&mut app, 'k');
+        let sent: Vec<ClientMsg> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(!sent.iter().any(|m| matches!(m, ClientMsg::Input { .. })), "nothing typed into a pane: {sent:?}");
+        assert!(matches!(app.view, Some(View::Files(_))), "still in Files");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(app.view.is_none() && matches!(app.mode, Mode::Prefix { .. }), "Esc closed Files and shortcut mode is back");
+    }
+
+    #[test]
     fn shortcut_mode_stays_for_the_next_key() {
         let mut app = shortcut_mode();
         tap(&mut app, 'z');
@@ -4014,21 +4091,32 @@ second line
     }
 
     #[test]
-    fn something_to_type_into_ends_shortcut_mode() {
+    fn shortcut_mode_stays_after_something_to_type_into() {
         for c in ['n', 'v', 'h', 't'] {
             let mut app = shortcut_mode();
             tap(&mut app, c);
-            assert!(!matches!(app.mode, Mode::Prefix { .. }), "{c} gives something to type into: {:?}", std::mem::discriminant(&app.mode));
+            assert!(matches!(app.mode, Mode::Prefix { .. }), "{c} keeps shortcut mode: {:?}", std::mem::discriminant(&app.mode));
         }
     }
 
     #[test]
-    fn a_popup_takes_the_keys_and_closing_it_goes_back_to_typing() {
+    fn a_popup_takes_the_keys_and_closing_it_goes_back_to_shortcut_mode() {
         let mut app = shortcut_mode();
         tap(&mut app, 'i');
         assert!(matches!(app.mode, Mode::GoTo { .. }), "the Inbox has the keys");
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(matches!(app.mode, Mode::Normal));
+        assert!(matches!(app.mode, Mode::Prefix { acted: true, .. }), "closed: shortcut mode is back");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(matches!(app.mode, Mode::Normal), "a second Esc goes back to typing");
+    }
+
+    #[test]
+    fn a_click_leaves_shortcut_mode_even_under_a_popup() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'i');
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: 0, row: 0, modifiers: KeyModifiers::NONE });
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(matches!(app.mode, Mode::Normal), "after a click, closing the popup goes back to typing");
     }
 
     #[test]
@@ -5431,7 +5519,8 @@ mod check_inbox_tests {
     fn inbox(app: &mut App, w: u16, h: u16) -> Vec<String> {
         app.act(Action::Jump);
         let buf = buffer(app, w, h);
-        let out = lines(&buf, 0);
+        // The Inbox only: the sidebar beside it lists the same sessions.
+        let out = lines(&buf, app.screen.side_rect.right());
         if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
             println!("--- {w}x{h} {}/{}\n{}", app.cfg.ui.layout, app.cfg.ui.panes, out.join("\n"));
         }
@@ -6995,5 +7084,961 @@ mod restart_tests {
         let (mut app, _rx) = scene(100, 30, LAYOUTS[0]);
         app.act(Action::Settings);
         assert!(draw(&mut app, 100, 30).contains("Restart now R"));
+    }
+}
+
+
+mod inbox_search_tests {
+    use super::*;
+
+    /// An empty Inbox: type a letter (sessions match), Backspace it. The selection from the
+    /// matches must not outlive them, or drawing the empty list reads past its end.
+    #[test]
+    fn backspacing_the_last_letter_in_an_empty_inbox_keeps_it_open() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        for t in app.snap.terms.values_mut() {
+            t.status = crate::protocol::Status::Idle;
+        }
+        app.snap.questions.clear();
+        app.screen_fresh();
+        app.open_goto();
+        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(160, 45)).unwrap();
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        assert!(matches!(&app.mode, Mode::GoTo { query, .. } if query.is_empty()), "the Inbox stays open, its search empty");
+    }
+}
+
+mod side_panel_width_tests {
+    use super::*;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    /// The Inbox open in the side sheet on a screen `w` columns wide, drawn once.
+    fn inbox_open(w: u16, h: u16) -> App {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        app.act(Action::Jump);
+        draw(&mut app, w, h);
+        app
+    }
+
+    fn draw(app: &mut App, w: u16, h: u16) {
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+    }
+
+    fn key(app: &mut App, c: char) {
+        app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+    }
+
+    fn edge(app: &App) -> Option<Rect> {
+        app.hits.iter().find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::SheetEdge)).map(|(r, _)| *r)
+    }
+
+    #[test]
+    fn brackets_narrow_and_widen_the_sheet_and_equals_puts_its_default_back() {
+        let mut app = inbox_open(200, 50);
+        assert_eq!(app.screen.sheet_rect.width, 72, "the Inbox starts 72 wide");
+        key(&mut app, '[');
+        draw(&mut app, 200, 50);
+        assert_eq!(app.screen.sheet_rect.width, 68, "[ narrows it 4");
+        key(&mut app, ']');
+        key(&mut app, ']');
+        draw(&mut app, 200, 50);
+        assert_eq!(app.screen.sheet_rect.width, 76, "] widens it 4 each");
+        assert_eq!(app.screen.saved.sheet_w.get("inbox"), Some(&76), "kept in the saved UI state");
+        key(&mut app, '=');
+        draw(&mut app, 200, 50);
+        assert_eq!(app.screen.sheet_rect.width, 72, "= puts the default back");
+        assert!(matches!(&app.mode, Mode::GoTo { query, .. } if query.is_empty()), "the keys sized the sheet, not the search");
+    }
+
+    #[test]
+    fn dragging_the_sheets_edge_resizes_it() {
+        let mut app = inbox_open(200, 50);
+        let at = edge(&app).expect("an edge to drag beside the panes");
+        let mouse = |kind, column| MouseEvent { kind, column, row: at.y + 5, modifiers: KeyModifiers::NONE };
+        app.on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), at.x));
+        app.on_mouse(mouse(MouseEventKind::Drag(MouseButton::Left), at.x - 10));
+        app.on_mouse(mouse(MouseEventKind::Up(MouseButton::Left), at.x - 10));
+        draw(&mut app, 200, 50);
+        assert_eq!(app.screen.sheet_rect.width, app.screen.sheet_rect.right() - (at.x - 10), "the sheet's edge follows the pointer");
+        assert!(app.screen.sheet_rect.width > 72, "wider than before");
+    }
+
+    #[test]
+    fn the_sheet_stays_between_its_least_and_what_leaves_the_panes_their_room() {
+        let mut app = inbox_open(200, 50);
+        app.screen.saved.sheet_w.insert("inbox".into(), 10);
+        draw(&mut app, 200, 50);
+        assert_eq!(app.screen.sheet_rect.width, screen::SHEET_MIN, "never under its least");
+        app.screen.saved.sheet_w.insert("inbox".into(), 500);
+        draw(&mut app, 200, 50);
+        let panes_w = edge(&app).map(|e| e.x).unwrap() - app.screen.side_rect.right();
+        assert!(panes_w >= screen::PANES_KEEP, "the panes keep {} columns, have {panes_w}", screen::PANES_KEEP);
+        // Too narrow for both: the sheet takes the whole pane column, with no edge to drag.
+        let app = inbox_open(80, 24);
+        assert!(edge(&app).is_none() && app.screen.sheet_rect.x <= app.screen.side_rect.right() + 1, "{:?}", app.screen.sheet_rect);
+    }
+
+    #[test]
+    fn changes_starts_half_the_screen_wide_and_an_older_saved_file_still_loads() {
+        let (_, app) = super::design_tests::render_with(200, 50);
+        assert_eq!(screen::wanted_w(&app, screen::SheetKind::Changes, 200), 100);
+        assert_eq!(screen::wanted_w(&app, screen::SheetKind::Check, 200), 72);
+        let old: screen::Saved = serde_json::from_str(r#"{"order":[],"draft":""}"#).expect("a file from before widths were kept");
+        assert!(old.sheet_w.is_empty());
+    }
+
+    #[test]
+    fn on_a_narrow_screen_the_keys_leave_your_width_alone() {
+        let mut app = inbox_open(80, 24);
+        key(&mut app, ']');
+        key(&mut app, '[');
+        assert!(app.screen.saved.sheet_w.is_empty(), "taking the whole column, there is no width to change: {:?}", app.screen.saved.sheet_w);
+    }
+
+    #[test]
+    fn keys_step_from_the_chosen_width_not_the_drawn_one() {
+        let mut app = inbox_open(200, 50);
+        // Mid-slide, or left from another view: the drawn rectangle says nothing about the width.
+        app.screen.sheet_rect.width = 22;
+        key(&mut app, '[');
+        assert_eq!(app.screen.saved.sheet_w.get("inbox"), Some(&68));
+    }
+
+    #[test]
+    fn at_160_columns_the_inbox_leaves_the_panes_their_room() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.cfg.ui.padding = "1".into();
+        app.act(Action::Jump);
+        draw(&mut app, 160, 45);
+        let panes_w = edge(&app).map(|e| e.x).unwrap() - app.screen.side_rect.right();
+        assert!(panes_w >= screen::PANES_KEEP, "{panes_w}");
+        assert!(app.screen.sheet_rect.width < 72 && app.screen.sheet_rect.width >= screen::SHEET_MIN, "{}", app.screen.sheet_rect.width);
+    }
+
+    #[test]
+    fn the_edge_lights_up_while_pointed_at() {
+        let mut app = inbox_open(200, 50);
+        let at = edge(&app).unwrap();
+        app.hover = Some(Position { x: at.x, y: at.y + 5 });
+        let mut term = Terminal::new(TestBackend::new(200, 50)).unwrap();
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        let cell = &term.backend().buffer()[(at.x + at.width / 2, at.y + 5)];
+        assert_eq!((cell.symbol(), cell.fg), ("│", app.theme.accent));
+    }
+
+    #[test]
+    fn widths_survive_a_save_and_load() {
+        let mut saved = screen::Saved::default();
+        saved.sheet_w.insert("changes".into(), 90);
+        let back: screen::Saved = serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+        assert_eq!(back.sheet_w.get("changes"), Some(&90));
+    }
+
+    #[test]
+    fn the_keys_size_changes_too() {
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        app.view = Some(View::Changes(Box::new(views::ChangesView {
+            dir: PathBuf::from("/repo"),
+            review: None,
+            error: None,
+            agent: String::new(),
+            said: String::new(),
+            term: None,
+            ws: None,
+            reviewed: Default::default(),
+            linked: false,
+            confirm: None,
+        })));
+        draw(&mut app, 200, 50);
+        let widest = app.screen.sheet_widest;
+        assert_eq!(app.screen.sheet_rect.width, 100.min(widest), "Changes starts half the screen, held to the room");
+        key(&mut app, '[');
+        assert_eq!(app.screen.saved.sheet_w.get("changes"), Some(&(100.min(widest) - 4)));
+    }
+
+    fn changes_view() -> View {
+        View::Changes(Box::new(views::ChangesView {
+            dir: PathBuf::from("/repo"),
+            review: None,
+            error: None,
+            agent: String::new(),
+            said: String::new(),
+            term: None,
+            ws: None,
+            reviewed: Default::default(),
+            linked: false,
+            confirm: None,
+        }))
+    }
+
+    fn click(app: &mut App, x: u16, y: u16) {
+        for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+            app.on_mouse(MouseEvent { kind, column: x, row: y, modifiers: KeyModifiers::NONE });
+        }
+    }
+
+    /// Whether `c` typed now reaches a pane (an `Input` goes out), drained afterwards.
+    fn typed_into_a_pane(app: &mut App, rx: &mut mpsc::UnboundedReceiver<ClientMsg>, c: char) -> bool {
+        while rx.try_recv().is_ok() {}
+        key(app, c);
+        std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Input { .. }))
+    }
+
+    #[test]
+    fn a_click_into_a_pane_gives_it_the_keys_and_the_view_stays_open() {
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.view = Some(changes_view());
+        draw(&mut app, 200, 50);
+        assert!(!typed_into_a_pane(&mut app, &mut rx, 'm'), "Changes has the keys first");
+        let (_, pane) = *app.pane_frames.first().expect("a pane beside the sheet");
+        click(&mut app, pane.x + pane.width / 2, pane.y + pane.height / 2);
+        draw(&mut app, 200, 50);
+        assert!(typed_into_a_pane(&mut app, &mut rx, 'm'), "after a click into the pane, typing goes there");
+        assert!(matches!(app.view, Some(View::Changes(_))), "and Changes is still open");
+        let sheet = app.screen.sheet_rect;
+        click(&mut app, sheet.x + sheet.width / 2, sheet.y + sheet.height / 2);
+        assert!(!typed_into_a_pane(&mut app, &mut rx, 'm'), "a click in the sheet gives Changes the keys back");
+    }
+
+    /// Files open in the sheet, set aside by a click into the pane beside it.
+    fn files_set_aside() -> App {
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        app.show_view(View::Files(Box::new(views::FilesTree::new(std::env::temp_dir(), None))));
+        draw(&mut app, 200, 50);
+        let (_, pane) = *app.pane_frames.first().unwrap();
+        click(&mut app, pane.x + pane.width / 2, pane.y + pane.height / 2);
+        assert!(!app.view_has_keys(), "set aside");
+        app
+    }
+
+    #[test]
+    fn the_pane_with_the_keys_shows_its_cursor() {
+        let mut app = files_set_aside();
+        let mut term = Terminal::new(TestBackend::new(200, 50)).unwrap();
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        let at = term.get_cursor_position().unwrap();
+        let (_, pane) = *app.pane_frames.first().unwrap();
+        assert!(pane.contains(at), "the caret is in the pane that has the keys: {at:?} not in {pane:?}");
+    }
+
+    #[test]
+    fn f_hands_a_set_aside_files_view_the_keys_and_the_leader_leaves_you_in_it() {
+        let mut app = files_set_aside();
+        app.act(Action::Files);
+        assert!(matches!(app.view, Some(View::Files(_))) && app.view_has_keys(), "f gave Files the keys back, not closed it");
+        // Through the leader in shortcut mode, too: the keys go to Files, not back to the leader.
+        let mut app = files_set_aside();
+        app.cfg.ui.which_key = false;
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        key(&mut app, 'f');
+        assert!(app.view_has_keys() && matches!(app.mode, Mode::Normal), "in Files: {:?}", std::mem::discriminant(&app.mode));
+    }
+
+    #[test]
+    fn a_new_view_opened_any_way_has_the_keys() {
+        let mut app = files_set_aside();
+        app.open_files(std::env::temp_dir());
+        assert!(app.view_has_keys(), "open_files (as Ctrl+click on a path does) gives the new view the keys");
+    }
+
+    #[test]
+    fn a_check_sheet_set_aside_stays_aside_when_its_run_updates() {
+        use crate::protocol::{CheckInfo, CheckState};
+        let run = |started_at| CheckInfo { command: "npm test".into(), state: CheckState::Failed, exit_code: Some(1), started_at, ..Default::default() };
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.snap.terms.get_mut(&1).unwrap().checks = vec![run(100)];
+        app.open_check_sheet(1);
+        draw(&mut app, 200, 50);
+        let (_, pane) = *app.pane_frames.first().unwrap();
+        click(&mut app, pane.x + pane.width / 2, pane.y + pane.height / 2);
+        // The check runs again: the sheet is brought up to date in place.
+        app.snap.terms.get_mut(&1).unwrap().checks = vec![run(200)];
+        app.check_view_sync();
+        assert!(matches!(app.view, Some(View::Check(_))), "the sheet is still open");
+        assert!(typed_into_a_pane(&mut app, &mut rx, 'o'), "typing still reaches the pane, not the sheet");
+    }
+
+    #[test]
+    fn a_view_opened_again_has_the_keys() {
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.view = Some(changes_view());
+        draw(&mut app, 200, 50);
+        let (_, pane) = *app.pane_frames.first().unwrap();
+        click(&mut app, pane.x + pane.width / 2, pane.y + pane.height / 2);
+        app.view = None;
+        draw(&mut app, 200, 50);
+        app.view = Some(changes_view());
+        draw(&mut app, 200, 50);
+        assert!(!typed_into_a_pane(&mut app, &mut rx, 'm'), "the reopened view has the keys");
+    }
+}
+
+mod files_panel_tests {
+    use super::*;
+    use super::check_settings_tests::{draw, show};
+    use std::path::Path;
+
+    /// A folder with `src/main.rs` (60 numbered lines) and `notes.txt`, unique to `name`.
+    fn project(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-files-{}-{}"), name, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        let body: String = (1..=60).map(|i| format!("let line_{i} = {i};\n")).collect();
+        std::fs::write(dir.join("src").join("main.rs"), body).unwrap();
+        std::fs::write(dir.join("notes.txt"), "remember the milk\n").unwrap();
+        dir
+    }
+
+    /// The main screen `w`×`h` with the focused pane running in `dir`.
+    fn screen_in(dir: &Path, w: u16, h: u16) -> App {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        let pane = app.snap.terms.get_mut(&1).expect("the focused pane");
+        pane.cwd = dir.to_path_buf();
+        pane.top = Some(dir.to_path_buf());
+        pane.root = Some(dir.to_path_buf());
+        app
+    }
+
+    /// The tree read, as the background scan would hand it back.
+    fn tree_read(app: &mut App, root: &Path) {
+        app.on_bg(Bg::Tree(root.to_path_buf(), views::scan_tree(root), views::git_marks(root)));
+    }
+
+    fn files(app: &App) -> &views::FilesTree {
+        match &app.view {
+            Some(View::Files(v)) => v,
+            _ => panic!("Files is open"),
+        }
+    }
+
+    fn key(app: &mut App, code: KeyCode) {
+        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    fn select(app: &mut App, name: &str) {
+        let Some(View::Files(v)) = &mut app.view else { panic!("Files is open") };
+        v.expanded.insert(v.root.join("src"));
+        v.sel = v.visible().iter().position(|(_, n)| n.label == name).expect("the file is listed");
+        v.refresh_preview();
+    }
+
+    #[test]
+    fn f_opens_files_in_the_side_panel_beside_the_panes_and_f_or_esc_closes_it() {
+        let dir = project("open");
+        let mut app = screen_in(&dir, 160, 45);
+        let before = draw(&mut app, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert_eq!(screen::open_sheet(&app), Some(screen::SheetKind::Files));
+        let sheet = app.screen.sheet_rect;
+        assert!(sheet.width > 0 && o.contains("notes.txt"), "the tree is in the panel:\n{o}");
+        let (_, pane) = *app.pane_frames.first().expect("a pane still on screen");
+        assert!(pane.right() <= sheet.x, "the panes reflow beside it: {pane:?} vs {sheet:?}");
+        let sidebar = |frame: &str| frame.lines().map(|l| l.chars().take(20).collect::<String>()).collect::<Vec<_>>();
+        assert_eq!(sidebar(&o), sidebar(&before), "the sidebar is not covered");
+        key(&mut app, KeyCode::Char('f'));
+        assert!(app.view.is_none(), "f again closes it");
+        app.act(Action::Files);
+        key(&mut app, KeyCode::Esc);
+        assert!(app.view.is_none(), "Esc closes it");
+        app.act(Action::Files);
+        app.act(Action::Files);
+        assert!(app.view.is_none(), "the leader's f again closes it");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_tree_and_the_selected_file_sit_side_by_side_in_a_wide_panel() {
+        let dir = project("wide");
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        let row = o.lines().find(|l| l.contains("notes.txt") && l.contains("let line_1 = 1;"));
+        assert!(row.is_some(), "the tree's row and the file beside it:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn files_starts_at_55_percent_of_the_screen_and_keeps_the_width_you_give_it() {
+        let dir = project("width");
+        let mut app = screen_in(&dir, 200, 50);
+        assert_eq!(screen::wanted_w(&app, screen::SheetKind::Files, 200), 110);
+        app.act(Action::Files);
+        draw(&mut app, 200, 50);
+        let widest = app.screen.sheet_widest;
+        assert_eq!(app.screen.sheet_rect.width, 110.min(widest), "55% of 200, held to the room");
+        key(&mut app, KeyCode::Char('['));
+        draw(&mut app, 200, 50);
+        assert_eq!(app.screen.saved.sheet_w.get("files"), Some(&(110.min(widest) - 4)), "kept per view, like the others");
+        assert_eq!(app.screen.sheet_rect.width, 110.min(widest) - 4);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn brackets_are_text_while_the_filter_or_the_editor_takes_it() {
+        let dir = project("text");
+        let mut app = screen_in(&dir, 200, 50);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        key(&mut app, KeyCode::Char('/'));
+        key(&mut app, KeyCode::Char('['));
+        assert_eq!(files(&app).filter, "[", "the filter took it");
+        key(&mut app, KeyCode::Esc);
+        select(&mut app, "notes.txt");
+        key(&mut app, KeyCode::Char('i'));
+        key(&mut app, KeyCode::Char(']'));
+        let ed = files(&app).edit.as_ref().expect("editing in place");
+        assert!(ed.lines[0].starts_with(']'), "the editor took it: {:?}", ed.lines[0]);
+        assert!(!app.screen.saved.sheet_w.contains_key("files"), "the panel kept its width");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_narrow_panel_gives_the_opened_file_the_whole_panel_with_a_way_back() {
+        let dir = project("narrow");
+        let mut app = screen_in(&dir, 80, 24);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        let o = draw(&mut app, 80, 24);
+        show(&o);
+        assert!(app.screen.sheet_rect.width < 60, "{:?}", app.screen.sheet_rect);
+        assert!(o.contains("notes.txt") && !o.contains("let line_1"), "the tree alone:\n{o}");
+        key(&mut app, KeyCode::Right);
+        let o = draw(&mut app, 80, 24);
+        show(&o);
+        assert!(o.contains("let line_1 = 1;") && o.contains('‹') && !o.contains("notes.txt"), "the file alone, with ‹ back:\n{o}");
+        let back = app.hits.iter().rev().find(|(_, h)| *h == Hit::Button(Btn::ViewKey('h'))).map(|(r, _)| *r).expect("‹ is clickable");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: back.x, row: back.y, modifiers: KeyModifiers::NONE });
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Up(MouseButton::Left), column: back.x, row: back.y, modifiers: KeyModifiers::NONE });
+        let o = draw(&mut app, 80, 24);
+        assert!(o.contains("notes.txt") && !o.contains("let line_1"), "‹ goes back to the tree:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ctrl_click_on_a_path_and_line_opens_files_in_the_panel_at_that_line() {
+        let dir = project("reveal");
+        let mut app = screen_in(&dir, 160, 45);
+        app.open_path_from(1, "src/main.rs", Some(40));
+        // Outside a repo, the tree is rooted at the file's folder.
+        let root = files(&app).root.clone();
+        tree_read(&mut app, &root);
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert_eq!(screen::open_sheet(&app), Some(screen::SheetKind::Files), "in the panel, not a popup");
+        let v = files(&app);
+        assert_eq!(v.preview.as_ref().map(|(p, _)| p.clone()), Some(dir.join("src").join("main.rs")));
+        assert!(o.contains("let line_40 = 40;"), "that line is shown:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn click(app: &mut App, at: Rect, modifiers: KeyModifiers) {
+        for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+            app.on_mouse(MouseEvent { kind, column: at.x, row: at.y, modifiers });
+        }
+    }
+
+    /// Where a row of the tree is drawn, by its text.
+    fn row_at(app: &App, frame: &str, name: &str) -> Rect {
+        let y = frame.lines().position(|l| l.contains(name)).expect("the row is drawn") as u16;
+        app.hits.iter().rev().find(|(r, _)| r.y == y && r.x >= app.screen.sheet_rect.x).map(|(r, _)| *r).expect("the row is clickable")
+    }
+
+    #[test]
+    fn ctrl_click_on_a_path_in_a_pane_opens_files_and_again_while_it_is_open() {
+        let dir = project("mouse");
+        let mut app = screen_in(&dir, 160, 45);
+        let mut p = vt100::Parser::new(20, 80, 0);
+        p.process(b"see src/main.rs:40\r\nand notes.txt:1\r\n");
+        app.parsers.insert(1, p);
+        draw(&mut app, 160, 45);
+        let (_, inner) = *app.panes.iter().find(|(t, _)| *t == 1).expect("the pane is drawn");
+        click(&mut app, Rect { x: inner.x + 6, y: inner.y, width: 1, height: 1 }, KeyModifiers::CONTROL);
+        let root = files(&app).root.clone();
+        tree_read(&mut app, &root);
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("let line_40 = 40;"), "Files opened at that line:\n{o}");
+        let (_, inner) = *app.panes.iter().find(|(t, _)| *t == 1).expect("the pane is still beside the panel");
+        click(&mut app, Rect { x: inner.x + 6, y: inner.y + 1, width: 1, height: 1 }, KeyModifiers::CONTROL);
+        tree_read(&mut app, &dir);
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert_eq!(files(&app).preview.as_ref().map(|(p, _)| p.clone()), Some(dir.join("notes.txt")), "retargeted to the second path");
+        assert!(o.contains("remember the milk"), "{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn in_a_narrow_panel_a_click_on_the_selected_file_or_a_double_click_opens_it() {
+        let dir = project("narrowclick");
+        let mut app = screen_in(&dir, 80, 24);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        let o = draw(&mut app, 80, 24);
+        let at = row_at(&app, &o, "main.rs");
+        click(&mut app, at, KeyModifiers::NONE);
+        let o = draw(&mut app, 80, 24);
+        assert!(o.contains("let line_1 = 1;") && app.view.is_some(), "the selected file opens in the panel:\n{o}");
+        key(&mut app, KeyCode::Left);
+        let o = draw(&mut app, 80, 24);
+        let at = row_at(&app, &o, "notes.txt");
+        click(&mut app, at, KeyModifiers::NONE);
+        let o = draw(&mut app, 80, 24);
+        let at = row_at(&app, &o, "notes.txt");
+        click(&mut app, at, KeyModifiers::NONE);
+        let o = draw(&mut app, 80, 24);
+        show(&o);
+        assert!(o.contains("remember the milk") && app.view.is_some(), "a double-click opens it, not inserts it:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_narrow_file_header_keeps_its_hint_clear_of_the_line_count() {
+        let dir = project("header");
+        let mut app = screen_in(&dir, 80, 24);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        key(&mut app, KeyCode::Right);
+        let o = draw(&mut app, 80, 24);
+        let header = o.lines().find(|l| l.contains('‹')).expect("the file's header");
+        assert!(header.contains("i edit") && header.contains("1–17 of 60 "), "{header}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ending_an_edit_in_a_narrow_panel_returns_to_the_file() {
+        let dir = project("editback");
+        let mut app = screen_in(&dir, 80, 24);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        key(&mut app, KeyCode::Right);
+        key(&mut app, KeyCode::Char('i'));
+        assert!(files(&app).edit.is_some(), "editing");
+        key(&mut app, KeyCode::Esc);
+        let o = draw(&mut app, 80, 24);
+        assert!(o.contains("let line_1 = 1;") && o.contains('‹') && !o.contains("notes.txt"), "back on the file:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn filtering_from_a_file_in_a_narrow_panel_shows_the_tree() {
+        let dir = project("filterback");
+        let mut app = screen_in(&dir, 80, 24);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        key(&mut app, KeyCode::Right);
+        assert!(files(&app).in_preview, "reading the file");
+        key(&mut app, KeyCode::Char('/'));
+        assert!(files(&app).filtering && !files(&app).in_preview, "the filter shows the tree, not the file");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn at_100_by_30_the_panel_takes_the_pane_column_with_both_sides() {
+        let dir = project("mid");
+        let mut app = screen_in(&dir, 100, 30);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        let o = draw(&mut app, 100, 30);
+        show(&o);
+        assert!(app.panes.is_empty(), "the panel takes the pane column");
+        assert!(app.screen.sheet_rect.width >= 60, "{:?}", app.screen.sheet_rect);
+        assert!(o.lines().any(|l| l.contains("notes.txt") && l.contains("let line_1 = 1;")), "the tree beside the file:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Every block markdown has, then a list of 60 so it scrolls and has a line 42.
+    const GUIDE: &str = "# Guide\n\nSome *odd* and **bold** words with `code`.\n\n## Lists\n\n- one\n  - inner\n\n1. first\n2. second\n\n> quoted words\n\n```\nfn main() {}\n```\n\n| name | n |\n|:--|--:|\n| alpha | 1 |\n| b | 200 |\n\nSee [the docs](https://x.dev).\n\n---\n";
+
+    /// `project` plus `GUIDE.md`.
+    fn project_with_guide(name: &str) -> PathBuf {
+        let dir = project(name);
+        let tail: String = (1..=60).map(|i| format!("- para {i}\n")).collect();
+        std::fs::write(dir.join("GUIDE.md"), format!("{GUIDE}\n{tail}")).unwrap();
+        dir
+    }
+
+    fn guide_open(name: &str) -> (PathBuf, App) {
+        let dir = project_with_guide(name);
+        let mut app = screen_in(&dir, 200, 50);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "GUIDE.md");
+        (dir, app)
+    }
+
+    /// The frame as text and its cells, for styles.
+    fn frame(app: &mut App, w: u16, h: u16) -> (String, ratatui::buffer::Buffer) {
+        app.screen_fresh();
+        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let text = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>().trim_end().to_string() + "\n").collect();
+        (text, buf)
+    }
+
+    /// Where `word` starts inside the preview.
+    fn at(app: &App, buf: &ratatui::buffer::Buffer, word: &str) -> (u16, u16) {
+        let r = app.screen.preview_rect;
+        for y in r.top()..r.bottom() {
+            let row: String = (r.left()..r.right()).map(|x| buf[(x, y)].symbol().to_string()).collect();
+            if let Some(i) = row.find(word) {
+                return (r.left() + row[..i].chars().count() as u16, y);
+            }
+        }
+        panic!("{word} is in the preview")
+    }
+
+    fn cell_of<'b>(app: &App, buf: &'b ratatui::buffer::Buffer, word: &str) -> &'b ratatui::buffer::Cell {
+        &buf[at(app, buf, word)]
+    }
+
+    fn hints(frame: &str) -> String {
+        frame.lines().find(|l| l.contains("Insert path into")).map(str::to_string).expect("the key hints")
+    }
+
+    #[test]
+    fn a_markdown_file_previews_pretty_by_default() {
+        let (dir, mut app) = guide_open("mdpretty");
+        let (o, buf) = frame(&mut app, 200, 50);
+        show(&o);
+        use ratatui::style::Modifier;
+        let t = app.theme.clone();
+        let heading = cell_of(&app, &buf, "Guide");
+        assert!(heading.fg == t.strong && heading.modifier.contains(Modifier::BOLD), "the heading is bold and strong");
+        assert!(!o.contains("# Guide") && !o.contains("**bold**") && !o.contains("```"), "no markup:\n{o}");
+        assert!(o.lines().skip_while(|l| !l.contains("Guide")).nth(1).is_some_and(|l| l.contains("────────")), "a rule under the title:\n{o}");
+        assert!(cell_of(&app, &buf, "odd").modifier.contains(Modifier::ITALIC), "emphasis");
+        assert_eq!(cell_of(&app, &buf, "code").bg, t.card2, "inline code");
+        assert!(o.contains("• one") && o.contains("  • inner") && o.contains("1. first") && o.contains("2. second"), "lists:\n{o}");
+        let bar = cell_of(&app, &buf, "│ quoted words");
+        assert_eq!(bar.fg, t.muted, "the quote's bar is muted");
+        assert_eq!(cell_of(&app, &buf, "fn main()").bg, t.card, "fenced code is on the raised ground");
+        assert!(o.contains("name  │   n") && o.contains("alpha │   1") && o.contains("b     │ 200"), "the table's columns line up:\n{o}");
+        assert!(o.contains("the docs (https://x.dev)"), "the link's text and its url:\n{o}");
+        assert_eq!(cell_of(&app, &buf, "(https://x.dev)").fg, t.muted, "the url is muted");
+        assert_eq!(at(&app, &buf, "Guide").0, app.screen.preview_rect.x, "no line numbers on drawn lines:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn m_toggles_a_markdown_file_between_pretty_and_raw_and_the_hints_say_which() {
+        let (dir, mut app) = guide_open("mdtoggle");
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(hints(&o).contains(" m  Raw"), "the key hint offers raw:\n{}", hints(&o));
+        key(&mut app, KeyCode::Char('m'));
+        let (o, _) = frame(&mut app, 200, 50);
+        show(&o);
+        assert!(o.contains("   1  # Guide") && o.contains("**bold**"), "the text as it is, numbered:\n{o}");
+        assert!(hints(&o).contains(" m  Pretty"), "the key hint offers pretty:\n{}", hints(&o));
+        key(&mut app, KeyCode::Right);
+        key(&mut app, KeyCode::Char('m'));
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(!o.contains("# Guide") && files(&app).in_preview, "m in the preview draws it again, still reading it:\n{o}");
+        select(&mut app, "notes.txt");
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(!hints(&o).contains(" m "), "only a markdown file has the hint:\n{}", hints(&o));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_markdown_file_edits_as_its_text_and_scrolls_both_ways() {
+        let (dir, mut app) = guide_open("mdedit");
+        frame(&mut app, 200, 50);
+        key(&mut app, KeyCode::PageDown);
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(files(&app).scroll > 0 && !o.contains("Guide") && o.contains("• para"), "the drawn file pages down:\n{o}");
+        key(&mut app, KeyCode::Char('i'));
+        let ed = files(&app).edit.as_ref().expect("editing in place");
+        assert_eq!(ed.lines[0], "# Guide", "the editor has the text, not the drawing");
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(o.contains("   1  # Guide"), "from the top:\n{o}");
+        key(&mut app, KeyCode::Esc);
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(files(&app).scroll == 0 && o.contains("Guide") && !o.contains("# Guide"), "the edit's row isn't taken for a drawn line:\n{o}");
+        key(&mut app, KeyCode::Char('m'));
+        key(&mut app, KeyCode::PageDown);
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(files(&app).scroll > 0 && !o.contains("# Guide"), "the raw text pages down too:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn m_keeps_about_the_same_place_in_the_file() {
+        let (dir, mut app) = guide_open("mdplace");
+        frame(&mut app, 200, 50);
+        key(&mut app, KeyCode::PageDown);
+        key(&mut app, KeyCode::Char('m'));
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(files(&app).scroll > 0 && !o.contains("# Guide") && o.contains("- para"), "still down in the list, now as text:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn drawn_markdown_is_laid_out_once_and_again_for_a_new_width_or_file() {
+        let (dir, mut app) = guide_open("mdcache");
+        frame(&mut app, 200, 50);
+        // A line the renderer never makes: still there means the last layout was reused.
+        let mark = |app: &mut App| {
+            let Some(View::Files(v)) = &mut app.view else { panic!("Files is open") };
+            v.drawn_cache.as_mut().expect("laid out").lines.insert(0, vec![design::seg("SENTINEL", ratatui::style::Style::default())]);
+        };
+        mark(&mut app);
+        key(&mut app, KeyCode::PageDown);
+        key(&mut app, KeyCode::PageUp);
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(o.contains("SENTINEL"), "the same file, width and theme reuse it:\n{o}");
+        let (o, _) = frame(&mut app, 180, 50);
+        assert!(!o.contains("SENTINEL"), "a new width lays it out again:\n{o}");
+        mark(&mut app);
+        select(&mut app, "notes.txt");
+        select(&mut app, "GUIDE.md");
+        let (o, _) = frame(&mut app, 180, 50);
+        assert!(!o.contains("SENTINEL") && o.contains("Guide"), "a new preview lays it out again:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn e_opens_a_markdown_file_in_your_editor() {
+        let (dir, mut app) = guide_open("mdeditor");
+        // A terminal editor opens in a new pane: a message to the daemon, not a process here.
+        app.cfg.editor = "nvim".into();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        key(&mut app, KeyCode::Char('e'));
+        let mut opened = None;
+        while let Ok(msg) = rx.try_recv() {
+            if let crate::protocol::ClientMsg::Command(crate::protocol::Command::NewWorkspace { cmd, .. }) = msg {
+                opened = cmd;
+            }
+        }
+        assert!(opened.as_ref().is_some_and(|c| c.starts_with("nvim") && c.contains("GUIDE.md")), "{opened:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ctrl_click_on_a_markdown_path_and_line_opens_it_raw_at_that_line() {
+        let dir = project_with_guide("mdreveal");
+        let mut app = screen_in(&dir, 160, 45);
+        app.open_path_from(1, "GUIDE.md", Some(42));
+        let root = files(&app).root.clone();
+        tree_read(&mut app, &root);
+        let (o, _) = frame(&mut app, 160, 45);
+        show(&o);
+        let source = std::fs::read_to_string(dir.join("GUIDE.md")).unwrap();
+        let want = format!("{:>4}  {}", 42, source.lines().nth(41).unwrap());
+        assert!(want.contains("- para"), "line 42 is a line of the list: {want:?}");
+        assert!(o.contains(&want), "line 42 is shown with its number:\n{o}");
+        assert!(!files(&app).drawn(), "raw, since drawn lines have no numbers");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+
+mod branch_view_tests {
+    use super::*;
+    use super::check_settings_tests::{draw, show};
+    use crate::client::menu::Act;
+    use crate::protocol::{CheckInfo, CheckState};
+
+    fn leader(app: &mut App, c: char) {
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+    }
+
+    fn key(app: &mut App, code: KeyCode) {
+        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    fn sheet(app: &App) -> Option<&screen::BranchSheet> {
+        match &app.view {
+            Some(View::Branch(v)) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// A repo on `main` with a commit, on a feature branch one commit ahead, with a snapshot.
+    fn repo(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("{APP_COMMAND}-branch-view-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let git = |args: &[&str]| crate::proc::git(&dir, args).unwrap();
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.email", "t@t"]);
+        git(&["config", "user.name", "t"]);
+        std::fs::write(dir.join("a.txt"), "1").unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-qm", "start the shop"]);
+        git(&["switch", "-qc", "fix-footer"]);
+        std::fs::write(dir.join("a.txt"), "2").unwrap();
+        git(&["commit", "-qam", "fix the footer links"]);
+        std::fs::write(dir.join("a.txt"), "3").unwrap();
+        crate::snapshot::take(&dir, "before claude's turn").unwrap();
+        dir
+    }
+
+    /// Background work the app queues comes here instead of being dropped.
+    fn catch_bg(app: &mut App) -> mpsc::UnboundedReceiver<Bg> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        app.bg = tx;
+        rx
+    }
+
+    /// The next background result, once its thread is done.
+    fn next_bg(rx: &mut mpsc::UnboundedReceiver<Bg>) -> Bg {
+        let until = Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            if let Ok(b) = rx.try_recv() {
+                return b;
+            }
+            assert!(Instant::now() < until, "no background work was queued");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    /// The app with session 1 in `dir` and its Branch view open, git's answer landed from the
+    /// background task.
+    fn opened(dir: &std::path::Path, w: u16, h: u16) -> (App, mpsc::UnboundedReceiver<Bg>) {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        let mut rx = catch_bg(&mut app);
+        app.snap.terms.get_mut(&1).unwrap().top = Some(dir.to_path_buf());
+        leader(&mut app, 'b');
+        assert!(sheet(&app).is_some_and(|v| v.dir == dir && v.facts.is_none()), "b opens the Branch view, reading git");
+        let b = next_bg(&mut rx);
+        app.on_bg(b);
+        assert!(matches!(sheet(&app).and_then(|v| v.facts.as_ref()), Some(screen::Facts::Repo(_))), "git's answer landed");
+        (app, rx)
+    }
+
+    #[test]
+    fn b_opens_branch_in_the_side_panel_and_b_or_esc_closes_it() {
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        leader(&mut app, 'b');
+        assert!(sheet(&app).is_some() && app.mode == Mode::Normal, "the view has the keys: {:?}", app.mode);
+        let o = draw(&mut app, 200, 50);
+        show(&o);
+        assert!(o.contains("BRANCH") && o.contains("Switch branch…"), "in the side panel");
+        assert_eq!(app.screen.sheet_rect.width, 60, "30% of the screen");
+        key(&mut app, KeyCode::Char(']'));
+        assert_eq!(app.screen.saved.sheet_w.get("branch"), Some(&64), "its width is remembered as Branch's");
+        key(&mut app, KeyCode::Char('b'));
+        assert!(sheet(&app).is_none() && matches!(app.mode, Mode::Prefix { .. }), "b closes it, back to shortcut mode");
+        key(&mut app, KeyCode::Char('b'));
+        assert!(sheet(&app).is_some(), "the leader's b opens it again");
+        key(&mut app, KeyCode::Esc);
+        assert!(sheet(&app).is_none() && matches!(app.mode, Mode::Prefix { .. }), "Esc closes it, back to shortcut mode");
+    }
+
+    #[test]
+    fn opened_from_shortcut_mode_its_keys_reach_it_and_k_types_nothing() {
+        let (mut app, mut out) = super::check_settings_tests::app_with_channel();
+        leader(&mut app, 'b');
+        while out.try_recv().is_ok() {}
+        // k is the leader's stop-the-agent: here it moves up, and nothing goes to a pane.
+        key(&mut app, KeyCode::Char('k'));
+        let sent: Vec<ClientMsg> = std::iter::from_fn(|| out.try_recv().ok()).collect();
+        assert!(!sent.iter().any(|m| matches!(m, ClientMsg::Input { .. })), "nothing typed into a pane: {sent:?}");
+        key(&mut app, KeyCode::Down);
+        key(&mut app, KeyCode::Enter);
+        assert!(matches!(app.mode, Mode::Branch(_)), "Enter on Switch branch… opens the switcher: {:?}", std::mem::discriminant(&app.mode));
+    }
+
+    #[test]
+    fn an_answer_for_another_folder_is_dropped_and_a_switch_or_restore_reads_again() {
+        let dir = repo("reload");
+        let (mut app, mut rx) = opened(&dir, 160, 45);
+        let before = sheet(&app).unwrap().facts.clone();
+        app.branch_facts_arrived(&dir.join("elsewhere"), screen::Facts::NotGit);
+        assert_eq!(sheet(&app).unwrap().facts, before, "not this view's folder");
+        app.on_bg(Bg::Switched(Ok("now on main".into())));
+        let b = next_bg(&mut rx);
+        app.on_bg(b);
+        let Some(screen::Facts::Repo(r)) = &sheet(&app).unwrap().facts else { panic!("a repo") };
+        assert_eq!(r.branch, "fix-footer", "read again after the switch");
+        let s = r.snapshots[0].clone();
+        std::fs::write(dir.join("a.txt"), "4").unwrap();
+        app.menu_do(Act::Restore(dir.clone(), s.commit, "now".into(), 1));
+        let restored = next_bg(&mut rx);
+        app.on_bg(restored);
+        let b = next_bg(&mut rx);
+        app.on_bg(b);
+        let Some(screen::Facts::Repo(r)) = &sheet(&app).unwrap().facts else { panic!("a repo") };
+        assert_eq!(r.snapshots.len(), 2, "read again after the restore: it kept one before it");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn it_shows_the_branch_its_gaps_commits_check_and_snapshots() {
+        let dir = repo("shows");
+        let (mut app, _rx) = opened(&dir, 160, 45);
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        app.snap.terms.get_mut(&1).unwrap().checks =
+            vec![CheckInfo { name: "test".into(), command: "npm test".into(), state: CheckState::Failed, exit_code: Some(1), started_at: now - 60, ..Default::default() }];
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("Branch    fix-footer"), "the branch");
+        assert!(o.contains("Upstream  none"), "no upstream yet");
+        assert!(o.contains("Base      main  ↑1 ↓0"), "one commit ahead of main");
+        assert!(o.contains("fix the footer links") && o.contains("start the shop"), "the commits");
+        let Some(screen::Facts::Repo(r)) = &sheet(&app).unwrap().facts else { panic!("a repo") };
+        assert!(o.contains(&r.commits.as_ref().unwrap()[0].hash), "with their short hash");
+        assert!(o.contains("Check     failed: test · exit 1"), "the last check");
+        assert!(o.contains("SNAPSHOTS") && o.contains("ago · before claude's turn"), "the snapshots");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn enter_on_its_first_row_opens_the_switcher_and_on_a_snapshot_asks_to_restore() {
+        let dir = repo("enter");
+        let (mut app, _rx) = opened(&dir, 160, 45);
+        draw(&mut app, 160, 45);
+        key(&mut app, KeyCode::Enter);
+        assert!(matches!(&app.mode, Mode::Branch(v) if v.dir == dir), "the switcher: {:?}", app.mode);
+        key(&mut app, KeyCode::Esc);
+        assert!(app.mode == Mode::Normal && sheet(&app).is_some(), "Esc leaves the switcher for the Branch view");
+        key(&mut app, KeyCode::Down);
+        key(&mut app, KeyCode::Enter);
+        let Mode::Confirm(c) = &app.mode else { panic!("a restore asks first: {:?}", app.mode) };
+        let Act::Restore(at, _, when, term) = &c.act else { panic!("{:?}", c.act) };
+        assert!(at == &dir && *term == 1 && when.ends_with("ago · before claude's turn"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_folder_outside_git_says_so() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        leader(&mut app, 'b');
+        let dir = sheet(&app).unwrap().dir.clone();
+        app.branch_facts_arrived(&dir, screen::Facts::NotGit);
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("isn't in a git repository."), "it says so");
+        assert!(!o.contains("Switch branch…") && !o.contains("COMMITS") && !o.contains("SNAPSHOTS"), "instead of the lists");
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(app.mode, Mode::Normal, "Enter has nothing to open");
     }
 }

@@ -151,6 +151,19 @@ pub struct FilesTree {
     pub in_preview: bool,
     /// Once the tree is read: select this file (and scroll to this line).
     pub reveal: Option<(PathBuf, Option<u32>)>,
+    /// The markdown file shown as its text rather than drawn (`m`).
+    pub raw: Option<PathBuf>,
+    /// The drawn markdown, kept until the file, the width or the theme changes.
+    pub(super) drawn_cache: Option<DrawnCache>,
+}
+
+/// Markdown drawn for the preview, and what it was drawn for.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct DrawnCache {
+    path: PathBuf,
+    width: u16,
+    theme: String,
+    pub(super) lines: Vec<Vec<super::design::Seg>>,
 }
 
 /// A small editor for the file in the preview.
@@ -342,6 +355,8 @@ impl FilesTree {
             edit: None,
             in_preview: false,
             reveal: None,
+            raw: None,
+            drawn_cache: None,
         }
     }
 
@@ -395,6 +410,55 @@ impl FilesTree {
         self.editing.get(&rel).cloned()
     }
 
+    /// The previewed file is markdown, drawn or shown raw.
+    pub fn markdown(&self) -> bool {
+        self.preview.as_ref().is_some_and(|(p, _)| super::markdown::is_markdown(p))
+    }
+
+    pub fn toggle_raw(&mut self) {
+        let Some((path, _)) = self.preview.as_ref().filter(|_| self.markdown()) else { return };
+        self.raw = if self.raw.as_ref() == Some(path) { None } else { Some(path.clone()) };
+        self.drawn_cache = None;
+    }
+
+    /// The previewed file is markdown and drawn, not shown raw.
+    pub fn drawn(&self) -> bool {
+        self.preview.as_ref().is_some_and(|(p, _)| super::markdown::is_markdown(p) && self.raw.as_ref() != Some(p))
+    }
+
+    /// Draw the previewed markdown `width` columns wide in `theme`, unless it is shown raw or
+    /// already drawn so: parsing a large file costs too much to repeat every frame and key.
+    pub(super) fn lay_out(&mut self, width: u16, t: &Theme, theme: &str) {
+        // A preview that isn't on screen has width 0; laid out that narrow, every character
+        // would take a line of its own.
+        const MIN_WIDTH: u16 = 20;
+        let width = width.max(MIN_WIDTH);
+        let Some((path, lines)) = self.preview.as_ref().filter(|_| self.drawn()) else { return };
+        if self.drawn_cache.as_ref().is_some_and(|c| c.path == *path && c.width == width && c.theme == theme) {
+            return;
+        }
+        let lines = super::markdown::render(&lines.join("\n"), width, t);
+        self.drawn_cache = Some(DrawnCache { path: path.clone(), width, theme: theme.to_string(), lines });
+    }
+
+    /// The drawn markdown from the last `lay_out`, unless the file is shown raw.
+    pub(super) fn pretty(&self) -> Option<&[Vec<super::design::Seg>]> {
+        let (path, _) = self.preview.as_ref().filter(|_| self.drawn())?;
+        self.drawn_cache.as_ref().filter(|c| c.path == *path).map(|c| c.lines.as_slice())
+    }
+
+    /// How many lines the preview shows at `width`: the edit, the drawn markdown, or the text.
+    pub(super) fn shown_lines(&mut self, width: u16, t: &Theme, theme: &str) -> usize {
+        if let Some(ed) = &self.edit {
+            return ed.lines.len();
+        }
+        self.lay_out(width, t, theme);
+        match self.pretty() {
+            Some(drawn) => drawn.len(),
+            None => self.preview.as_ref().map_or(0, |(_, l)| l.len()),
+        }
+    }
+
     pub fn refresh_preview(&mut self) {
         let Some(n) = self.selected() else {
             self.preview = None;
@@ -409,6 +473,7 @@ impl FilesTree {
             return;
         }
         self.scroll = 0;
+        self.drawn_cache = None;
         self.preview = Some((n.path.clone(), super::files::preview(&n.path)));
     }
 }

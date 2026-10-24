@@ -270,16 +270,6 @@ pub enum Action {
 }
 
 impl Action {
-    /// Actions that give you something to type into, so shortcut mode ends with them.
-    pub fn leaves_shortcut_mode(&self) -> bool {
-        matches!(
-            self,
-            Action::SplitRight | Action::SplitDown | Action::SplitLeft | Action::SplitUp | Action::Spawn(..) | Action::SpawnTab(_)
-                | Action::NewTab | Action::NewWorkspace | Action::NewWorktree(_) | Action::NewPane | Action::StartSession
-                | Action::NewSession | Action::ShellHere | Action::SendPrefix
-        )
-    }
-
     pub fn describe(&self) -> String {
         use crate::layout::Dir::*;
         let dir = |d: &crate::layout::Dir| match d {
@@ -333,7 +323,7 @@ impl Action {
             Action::CloseSplit => "Close the split".into(),
             Action::PasteImage => "Paste the clipboard image".into(),
             Action::AgentStatusSetup => "Connect agents".into(),
-            Action::Branches => "Switch branch".into(),
+            Action::Branches => "Branch".into(),
             Action::ShellHere => "New shell here".into(),
             Action::PrevPrompt => "Previous command in history".into(),
             Action::NextPrompt => "Next command in history".into(),
@@ -410,7 +400,7 @@ impl Action {
             Action::CloseSplit => "close-split".into(),
             Action::PasteImage => "paste-image".into(),
             Action::AgentStatusSetup => "agent-status-setup".into(),
-            Action::Branches => "switch-branch".into(),
+            Action::Branches => "branch".into(),
             Action::ShellHere => "shell-here".into(),
             Action::PrevPrompt => "prev-prompt".into(),
             Action::NextPrompt => "next-prompt".into(),
@@ -507,7 +497,7 @@ impl FromStr for Action {
             // them to the command palette so stale config never prevents startup.
             "profiles" | "workflows" | "workflow-runs" => Action::Palette,
             "agent-status-setup" => Action::AgentStatusSetup,
-            "switch-branch" => Action::Branches,
+            "branch" | "switch-branch" => Action::Branches,
             "shell-here" => Action::ShellHere,
             "prev-prompt" => Action::PrevPrompt,
             "next-prompt" => Action::NextPrompt,
@@ -589,7 +579,7 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("/", "search-code"),
     ("d", "changes"),
     ("g", "worktrees"),
-    ("b", "switch-branch"),
+    ("b", "branch"),
     // The app
     ("space", "palette"),
     ("m", "menu"),

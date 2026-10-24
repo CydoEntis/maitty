@@ -91,7 +91,7 @@ impl Look {
         Look {
             flat,
             grid: kind == LayoutKind::Grid,
-            rounded: ui.corners == "rounded",
+            rounded: ui.rounded.corners(),
             gap: if tiled { 0 } else { ui.gap.parse().unwrap_or(1).min(2) },
             dim: if flat { 0.0 } else { match ui.dim.as_str() {
                 "off" => 0.0,
@@ -99,9 +99,9 @@ impl Look {
                 "60%" => DIM_STRONG,
                 _ => DIM_DEFAULT,
             } },
-            caps: ui.rounded,
-            round_tabs: ui.rounded,
-            round_rows: ui.rounded,
+            caps: ui.rounded.caps(),
+            round_tabs: ui.rounded.caps(),
+            round_rows: ui.rounded.caps(),
         }
     }
 }
@@ -174,6 +174,33 @@ pub(in crate::client) fn soften_block(buf: &mut Buffer, r: Rect, behind: &[(Colo
     }
 }
 
+/// The glyphs a rounded shape's end is drawn with: a pill's caps and a block's soft edges.
+const END_GLYPHS: [&str; 8] = [CAP_L, CAP_R, "▗", "▖", "▝", "▘", "▐", "▌"];
+
+/// Round the ends of a region just tinted (the pointer's hover), with rounded shapes on. An end
+/// cell holding only ground, or already a rounded end, becomes the region's cap or soft corner
+/// in its tinted colour, over `behind`, the ground there before the tint. An end with text in
+/// it stays square, so nothing is drawn over.
+pub(in crate::client) fn round_tinted(buf: &mut Buffer, r: Rect, behind: &[(Color, Color)], tint: impl Fn(Color) -> Color) {
+    let r = r.intersection(buf.area);
+    if !round() || r.width < 2 {
+        return;
+    }
+    for (i, y) in (r.y..r.bottom()).enumerate() {
+        let (l, e) = block_ends(i as u16, r.height);
+        let (bl, br) = behind.get(i).copied().unwrap_or((Color::Reset, Color::Reset));
+        for (x, glyph, under) in [(r.x, l, bl), (r.right() - 1, e, br)] {
+            let cell = &mut buf[(x, y)];
+            let shape = match cell.symbol() {
+                " " => cell.bg,
+                s if END_GLYPHS.contains(&s) => tint(cell.fg),
+                _ => continue,
+            };
+            cell.set_symbol(glyph).set_fg(shape).set_bg(under);
+        }
+    }
+}
+
 /// What lies under the two ends of each line of `r`, read before a block is drawn over it.
 pub(in crate::client) fn ends_behind(buf: &Buffer, r: Rect) -> Vec<(Color, Color)> {
     let r = r.intersection(buf.area);
@@ -233,8 +260,8 @@ pub(in crate::client) struct Card<'a> {
     pub title_fg: Color,
     /// The inside's ground.
     pub bg: Color,
-    /// Floats over the screen (a menu, an overlay): with rounded shapes its corners round
-    /// whatever the corner setting, since nothing beside it has to line up with it.
+    /// Floats over the screen (a menu, an overlay): in Compact, with rounded shapes, its ends
+    /// are softened over what lies behind it.
     pub float: bool,
 }
 
@@ -300,11 +327,10 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
     if r.width < 4 || r.height < 2 {
         return Rect { width: 0, height: 0, ..r };
     }
-    let soften = c.float && look.caps;
-    let behind = if soften && look.flat { ends_behind(buf, r) } else { Vec::new() };
-    let boxed = Look { rounded: look.rounded || soften, ..look };
-    let inside = if look.flat { flat_frame(buf, r, c, t) } else { box_frame(buf, r, c, boxed) };
-    if soften && look.flat {
+    let soften = c.float && look.caps && look.flat;
+    let behind = if soften { ends_behind(buf, r) } else { Vec::new() };
+    let inside = if look.flat { flat_frame(buf, r, c, t) } else { box_frame(buf, r, c, look) };
+    if soften {
         soften_block(buf, r, &behind);
     }
     let ground = if look.flat { t.card } else { t.bg };
@@ -400,7 +426,7 @@ mod tests {
     }
 
     fn look(layout: &str, caps: bool) -> Look {
-        let ui = crate::config::Ui { layout: layout.into(), rounded: caps, ..Default::default() };
+        let ui = crate::config::Ui { layout: layout.into(), rounded: if caps { crate::config::Rounding::Full } else { crate::config::Rounding::Off }, ..Default::default() };
         Look::of(&ui)
     }
 

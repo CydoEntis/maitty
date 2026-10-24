@@ -65,6 +65,8 @@ pub(super) struct Saved {
     pub reviewed: HashMap<String, HashMap<String, u64>>,
     /// Commands run from the key overlay, latest first (config spelling), for its RECENT.
     pub recent: Vec<String>,
+    /// The side sheet's width per kind of view (`SheetKind::key`), as you sized it.
+    pub sheet_w: HashMap<String, u16>,
 }
 
 #[derive(Debug, Default)]
@@ -115,6 +117,12 @@ pub(super) struct Screen {
     pub side_scroll: u16,
     pub follow: bool,
     pub side_rect: Rect,
+    /// Where the side sheet was drawn, and the widest it could be there (its edge's drag and
+    /// `[` `]` keep within it).
+    pub sheet_rect: Rect,
+    pub sheet_widest: u16,
+    /// The screen's width when it was drawn (Changes starts at half of it).
+    pub sheet_screen_w: u16,
     /// Drawn this frame: sidebar sessions in order, project keys, worktree and branch rows.
     pub visible: Vec<TermId>,
     pub proj_keys: Vec<String>,
@@ -135,6 +143,10 @@ pub(super) struct Screen {
     /// it: Esc goes back there.
     pub inbox_return: Option<(String, usize)>,
     pub overlap_at: HashMap<PathBuf, Instant>,
+    /// Each checkout's lines added and removed and not committed (`+N −N` on its rows), and
+    /// when they were last counted.
+    pub lines_changed: HashMap<PathBuf, (i64, i64)>,
+    pub lines_at: HashMap<PathBuf, Instant>,
     /// Dragging the sidebar edge or the split divider.
     pub drag: Option<Drag>,
     /// The group being dragged in the sidebar (its key).
@@ -214,6 +226,8 @@ impl KeyMap {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum Drag {
     Side,
+    /// The side sheet's left edge.
+    Sheet,
     /// A divider between sessions (index into `dividers`).
     Divider(usize),
     /// A pane's scrollbar.
@@ -221,9 +235,9 @@ pub(super) enum Drag {
     /// A group's header in the sidebar (its index when pressed; moved yet?): dragged onto
     /// another group it takes that place, released where it was it folds.
     Group(usize, bool),
-    /// A session's row (moved yet?): dragged onto another in its group it takes that place,
-    /// released where it was it opens.
-    Session(TermId, bool),
+    /// A session's row (moved yet?; what was pressed, the row or its `+N −N`): dragged onto
+    /// another in its group it takes that place, released where it was the press acts.
+    Session(TermId, bool, ScreenHit),
     /// A tab's pill (its index now): dragged onto another tab it takes that place.
     Tab(usize),
 }
@@ -842,6 +856,7 @@ impl App {
         self.recipe_followup();
         if !cfg!(test) {
             self.check_overlaps(&model);
+            self.count_changed_lines(&model);
         }
     }
 
@@ -866,7 +881,26 @@ impl App {
             });
         }
     }
+
+    /// Every few seconds per checkout with a session in it: its uncommitted lines, for the
+    /// `+N −N` on its rows (off the UI thread; the answer comes back as `Bg::LinesChanged`).
+    fn count_changed_lines(&mut self, model: &[Proj]) {
+        let dirs: Vec<PathBuf> = model.iter().filter(|p| p.git).flat_map(|p| p.wts.iter()).filter(|w| !w.sessions.is_empty()).map(|w| w.path.clone()).collect();
+        for dir in dirs {
+            if self.screen.lines_at.get(&dir).is_some_and(|t| t.elapsed() < LINES_EVERY) {
+                continue;
+            }
+            self.screen.lines_at.insert(dir.clone(), Instant::now());
+            self.spawn_bg(move || {
+                let counts = crate::client::tasks::uncommitted_lines(&dir).ok();
+                super::Bg::LinesChanged(dir, counts)
+            });
+        }
+    }
 }
+
+/// How often a checkout's uncommitted lines are counted again.
+const LINES_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// How often a repo's checkouts are compared for files changed in more than one.
 const OVERLAP_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
@@ -977,17 +1011,19 @@ pub(super) enum ScreenHit {
     ViewClose,
     /// The sidebar's edge (drag to resize).
     SideEdge,
+    /// The side sheet's left edge: drag it to resize the sheet.
+    SheetEdge,
     /// The sidebar's empty space: the keys go to it.
     SideFocus,
     ExpandSidebar,
     /// Install the newer the app (in Settings › General).
     Update,
-    /// Ask now whether a newer the app is out (the same place, when none is known).
-    CheckUpdate,
     /// Restart the daemon onto the installed version (after an update).
     Restart,
     NewShell,
     Why(TermId),
+    /// The `+N −N` on a session's row: its checkout's Changes.
+    RowChanges(TermId),
     /// The why popover of a session with a check: its evidence sheet.
     CheckEvidence(TermId),
     /// A row of the worktree clean-up list (tick or untick it), and its Remove button.
@@ -1051,6 +1087,7 @@ pub(super) fn k(app: &App, a: &Action) -> String {
 
 mod rail;
 mod behaviour;
+mod branch_sheet;
 mod card;
 mod check;
 mod check_actions;
@@ -1079,4 +1116,4 @@ mod tidy;
 mod v7_frame_tests;
 #[cfg(test)]
 mod v7_ref;
-pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};
+pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};

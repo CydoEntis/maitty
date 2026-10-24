@@ -116,6 +116,40 @@ impl App {
     }
 
     pub(super) fn on_key(&mut self, k: KeyEvent) {
+        self.handle_key(k);
+        self.keep_shortcut_mode();
+    }
+
+    /// Shortcut mode stays until you leave it (ADR 0016, ADR 0021): an action that opened a
+    /// popup hands it the keys, and when the popup closes the mode is back.
+    fn keep_shortcut_mode(&mut self) {
+        match self.mode {
+            Mode::Prefix { .. } => self.shortcut_held = true,
+            // A view still open has the keys; the mode comes back once it closes.
+            Mode::Normal if self.shortcut_held && self.view.is_none() => self.mode = Mode::Prefix { since: Instant::now(), acted: true },
+            _ => {}
+        }
+    }
+
+    /// Which kind of view is open, to tell whether an action opened one.
+    fn view_kind(&self) -> Option<std::mem::Discriminant<View>> {
+        self.view.as_ref().map(std::mem::discriminant)
+    }
+
+    /// The open view has the keys, unless a click into a pane set it aside.
+    pub(super) fn view_has_keys(&self) -> bool {
+        self.view.is_some() && self.view_set_aside != self.view_kind()
+    }
+
+    /// Open `v` in the side sheet with the keys, whatever was set aside before: every new view
+    /// (Files, Changes, Branch, a check, both diffs) opens through here.
+    pub(super) fn show_view(&mut self, v: View) {
+        self.view_set_aside = None;
+        self.view_opened += 1;
+        self.view = Some(v);
+    }
+
+    fn handle_key(&mut self, k: KeyEvent) {
         self.screen_fresh();
         let spec = KeySpec::from_event(&k);
         if k.code == KeyCode::Esc && !matches!(self.mode, Mode::Copy(_)) {
@@ -169,7 +203,7 @@ impl App {
                     self.mode = Mode::Prefix { since: Instant::now(), acted: false };
                 } else if let Some(a) = self.keymap.global.get(&spec).cloned() {
                     self.act(a);
-                } else if self.view.is_some() {
+                } else if self.view_has_keys() {
                     self.on_view_key(&k);
                 } else if self.scroll_key(&k) {
                 } else {
@@ -219,14 +253,19 @@ impl App {
                 // Esc or the leader again: back to typing.
                 if k.code == KeyCode::Esc || spec == self.keymap.prefix {
                     self.mode = Mode::Normal;
+                    self.shortcut_held = false;
                     return;
                 }
                 if let Some(a) = self.keymap.prefixed.get(&spec).cloned() {
-                    let typing = a.leaves_shortcut_mode();
+                    let (opened_before, had_keys) = (self.view_opened, self.view_has_keys());
                     self.mode = Mode::Normal;
                     self.act(a);
-                    // Still here (nothing opened, nothing to type into): the mode holds.
-                    if !typing && self.mode == Mode::Normal {
+                    // A view it opened (Changes, Files, a check) takes the keys, as a popup
+                    // does: its own k, arrows and Esc must not run leader actions. Closing it
+                    // returns to shortcut mode (`keep_shortcut_mode`).
+                    let opened = self.view_has_keys() && (self.view_opened != opened_before || !had_keys);
+                    // Nothing opened: the mode holds, the key map stays away.
+                    if self.mode == Mode::Normal && !opened {
                         self.mode = Mode::Prefix { since, acted: true };
                     }
                 } else if !acted
@@ -383,12 +422,25 @@ impl App {
 
     pub(super) fn on_mouse(&mut self, m: MouseEvent) {
         let pos = Position::new(m.column, m.row);
+        // A click leaves shortcut mode for good, not just the popup it lands in.
+        if matches!(m.kind, MouseEventKind::Down(_)) {
+            self.shortcut_held = false;
+        }
+        // A click into a pane gives it the keys and leaves the open view beside it; a click in
+        // the side sheet gives them back to the view.
+        if m.kind == MouseEventKind::Down(MouseButton::Left) && self.view.is_some() {
+            if self.screen.sheet_rect.contains(pos) {
+                self.view_set_aside = None;
+            } else if self.pane_frames.iter().any(|(_, r)| r.contains(pos)) {
+                self.view_set_aside = self.view_kind();
+            }
+        }
         self.screen_fresh();
         // Ctrl+click opens a link; double-click copies a word (or a path, or a link).
         if m.kind == MouseEventKind::Down(MouseButton::Left)
             && !self.splash
             && matches!(self.mode, Mode::Normal)
-            && self.view.is_none()
+            && !self.screen.sheet_rect.contains(pos)
             && let Some((term, row, col)) = self.pane_cell(pos)
         {
             let screen_has_mouse = self.parsers.get(&term).is_some_and(|p| p.screen().mouse_protocol_mode() != vt100::MouseProtocolMode::None);
@@ -423,7 +475,7 @@ impl App {
         if self.screen.drag.is_none()
             && !self.splash
             && matches!(self.mode, Mode::Normal)
-            && self.view.is_none()
+            && !self.screen.sheet_rect.contains(pos)
             && !m.modifiers.contains(KeyModifiers::SHIFT)
             && let Some((term, inner)) = self.panes.iter().find(|(_, r)| r.contains(pos)).copied()
             && (self.screen.right_clicks.contains(&term)
@@ -463,6 +515,10 @@ impl App {
                             let w = if self.cfg.ui.sidebar_position == "right" { side.right().saturating_sub(m.column) } else { m.column.saturating_sub(side.x) };
                             self.screen.saved.side_w = Some(w.clamp(screen::SIDE_MIN, screen::SIDE_MAX));
                         }
+                        screen::Drag::Sheet => {
+                            let right = self.screen.sheet_rect.right();
+                            self.set_sheet_w(right.saturating_sub(m.column));
+                        }
                         screen::Drag::Scroll(term) => {
                             if let Some((t, r, total)) = self.screen.bar
                                 && t == term
@@ -472,7 +528,7 @@ impl App {
                                 self.scroll_to(term, v.min(total));
                             }
                         }
-                        screen::Drag::Session(t, _) => {
+                        screen::Drag::Session(t, _, press) => {
                             let over = self
                                 .hits
                                 .iter()
@@ -491,7 +547,7 @@ impl App {
                                 _ => false,
                             };
                             if moved {
-                                self.screen.drag = Some(screen::Drag::Session(t, true));
+                                self.screen.drag = Some(screen::Drag::Session(t, true, press));
                             }
                         }
                         screen::Drag::Group(pi, _) => {
@@ -546,10 +602,11 @@ impl App {
                     return;
                 }
                 MouseEventKind::Up(_) => {
-                    // A session pressed and let go where it was: open it.
-                    if let screen::Drag::Session(t, false) = d {
+                    // A session pressed and let go where it was: open it, or its Changes when
+                    // the press was on its `+N −N`.
+                    if let screen::Drag::Session(_, false, press) = d {
                         self.screen.drag = None;
-                        self.on_hy_hit(screen::ScreenHit::Session(t), false);
+                        self.on_hy_hit(press, false);
                         self.dirty = true;
                         return;
                     }
@@ -592,7 +649,7 @@ impl App {
             let hit = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
             let at = (m.column, m.row);
             match hit {
-                Some(Hit::Screen(screen::ScreenHit::Session(t))) => self.menu_for_session(t, at),
+                Some(Hit::Screen(screen::ScreenHit::Session(t) | screen::ScreenHit::RowChanges(t))) => self.menu_for_session(t, at),
                 Some(Hit::Screen(screen::ScreenHit::Why(t))) if self.screen.side_rect.contains(pos) => self.menu_for_session(t, at),
                 Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) => self.menu_for_project(pi, at),
                 _ => {
@@ -623,8 +680,8 @@ impl App {
             let hit = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
             // A session's row: it may be dragged within its group; a plain click opens it
             // (on release).
-            if let Some(Hit::Screen(screen::ScreenHit::Session(t))) = hit {
-                self.screen.drag = Some(screen::Drag::Session(t, false));
+            if let Some(Hit::Screen(press @ (screen::ScreenHit::Session(t) | screen::ScreenHit::RowChanges(t)))) = hit {
+                self.screen.drag = Some(screen::Drag::Session(t, false, press));
                 self.dirty = true;
                 return;
             }
@@ -716,7 +773,7 @@ impl App {
                 if self.screen.preview_rect.contains(pos)
                     && let Some(View::Files(v)) = &mut self.view
                 {
-                    let n = v.edit.as_ref().map(|e| e.lines.len()).or_else(|| v.preview.as_ref().map(|(_, l)| l.len())).unwrap_or(0);
+                    let n = v.shown_lines(self.screen.preview_rect.width, &self.theme, &self.cfg.theme);
                     v.scroll = if up { v.scroll.saturating_sub(3) } else { (v.scroll + 3).min(n.saturating_sub(1)) };
                     self.dirty = true;
                     return;
@@ -816,7 +873,7 @@ impl App {
                 Some(_) => "row-resize",
                 None => "default",
             },
-            Some(Hit::Screen(screen::ScreenHit::SideEdge)) => "col-resize",
+            Some(Hit::Screen(screen::ScreenHit::SideEdge | screen::ScreenHit::SheetEdge)) => "col-resize",
             _ => "default",
         };
         if self.pointer != want {
@@ -912,7 +969,6 @@ impl App {
         match hit {
             Hit::Button(b) => match b {
                 Btn::Answer(term, c) => self.answer(term, c),
-                Btn::CloseView => self.view = None,
                 Btn::ViewKey(c) => {
                     let code = match c {
                         '\n' => KeyCode::Enter,
@@ -932,6 +988,12 @@ impl App {
                     Some(View::Files(v)) => {
                         v.sel = i;
                         v.refresh_preview();
+                        if double {
+                            self.on_view_key(&KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                        }
+                    }
+                    Some(View::Branch(v)) => {
+                        v.sel = i;
                         if double {
                             self.on_view_key(&KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
                         }

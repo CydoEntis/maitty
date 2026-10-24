@@ -14,19 +14,17 @@ and your configured custom ones; rows click and the wheel scrolls.
 ┌─ SESSIONS 5 ──────────── ●1 ✕1 ┐
 │                                │
 │  ▾ affiliate-site ⎇ main · ch… │
-│ ▎ ✕ fix-footer              2m │
+│ ▎ ✕ fix-footer    ◆  +8 −2  2m │
 │ ▎   failed: test · exit 1      │
 │ ▎   footer shows current year  │
-│   ⣶ add-payments           now │
-│     claude · working           │
+│   ⣶ add-payments  ✻ +40 −3 now │
 │                                │
 │  ▾ pixls                no git │
-│   ● warm-finch              3m │
+│   ● warm-finch           ◆  3m │
 │     asks: use pnpm or npm?     │
 │                                │
 │  ▾ orbit                 ⎇ dev │
-│   ✓ quick-fox               9h │
-│     finished                   │
+│   ✓ quick-fox            ✻  9h │
 └────────────────────────────────┘
 ```
 
@@ -53,13 +51,13 @@ and your configured custom ones; rows click and the wheel scrolls.
   drop a session on another group (its name or one of its sessions) to move it there, within its
   section. Click to fold or open. With the sidebar focused
   (`Ctrl+Space e`), a row's menu letters work directly (a row's menu lists them): `x` (or
-  Delete) asks to close, `r` renames. Settings distinguishes installed, window and daemon versions.
+  Delete) asks to close, `r` renames. Settings › General › UPDATES shows the version; Settings warns at the top when the installed, window and daemon versions differ.
 
 The leader key is `Ctrl+Space`. Press it for **shortcut mode**: a sky-blue `SHORTCUT · Esc`
 pill appears at the top right (the pane you're in turns sky too), each key below runs its
 action, and the mode stays for the next key. `Esc`, `Ctrl+Space` again or a click into a pane
-go back to typing, as does anything that gives you something to type into (a new shell,
-session, tab or split). Wait a moment after the leader for the compact key map: a key runs its
+go back to typing; a new shell, session, tab or split keeps shortcut mode, so press `Esc`
+to type into it, and closing a popup returns to it. Wait a moment after the leader for the compact key map: a key runs its
 command, Tab (or typing a letter that is no key) searches every command, `F1` shows all keys,
 and keys marked `›` open a second step (`g` worktrees: new, switch, merge, delete; Backspace
 goes back). No default needs Shift, and each key does one thing; no letter acts by itself in
@@ -69,8 +67,13 @@ the sidebar. Every default shortcut, and every screen's own keys, are in
 Without the leader: **Alt+1–9** selects tabs; **Alt+arrows** moves pane focus
 when enabled in Settings. All keys shows changes to these bindings too.
 
-In **Files**: Enter puts the path in the agent's prompt, `e` opens it in your editor (`editor`
-in config; nvim, helix … open inside maitty), `y` copies the path. In **Changes**: `c` commit,
+**Files** opens in the side panel beside your panes: the tree, and the file you pick beside
+it (on a narrow panel the file takes the panel, `‹` goes back). `f` again or Esc closes it;
+Ctrl+click on a `path:line` in a pane opens it at that line. In **Files**: Enter puts the
+path in the agent's prompt, `e` opens it in your editor (`editor` in config; nvim, helix …
+open inside maitty), `y` copies the path.
+
+In **Changes**: `c` commit,
 `p` push and open a PR, `e` editor, `x` mark the file reviewed (it sinks; the mark clears
 if the file changes again), `r` goes to its agent.
 
@@ -150,8 +153,8 @@ into a question the agent is asking); Ctrl+Enter sends it at once. What's waitin
 the row, and the row's menu drops it.
 
 Each time an agent's turn begins, maitty keeps the checkout's files as they are (tracked or
-not; never what git ignores). **Snapshots…** in the agent's menu lists the last nine;
-picking one puts the files back as they were then. What's there now is kept as a snapshot
+not; never what git ignores). **Snapshots…** in the agent's menu lists the last nine, and
+the Branch view (leader + `b`) lists them all; picking one puts the files back as they were then. What's there now is kept as a snapshot
 first, so a restore can be taken back the same way. It is refused while the agent is working,
 since it would keep writing into the files being put back. Snapshots are commits under the
 worktree's own refs (`refs/worktree/maitty/snapshots`): no branch, nothing in your history,
@@ -217,6 +220,7 @@ answer, and return to your other work.
 |---|---|---|
 | `f` | **Files** | *Recent*: files that just appeared in Downloads, Desktop, Documents or the project (docs, zips, screenshots). *Project*: fuzzy search over the project's files. Enter types the path into your prompt; `^O` opens it, `^F` shows it in the file manager, `^Y` copies the path. |
 | `d` | **Changes** | A worktree's changed files and the diff: `c` commit, `m` merge into the base branch, `p` push and open a pull request, `r` go to its agent, `x` throw it away. |
+| `b` | **Branch** | Where the session's checkout stands, in the side panel: its branch, how far it is ahead of and behind its upstream and its base branch, the last 10 commits, the last check result and its snapshots. Its first row, **Switch branch…**, opens the branch switcher; Enter on a snapshot restores it (asked first). `b` again or Esc closes it. |
 
 Typing in a panel filters it; the action keys that would collide with typing use Ctrl.
 
