@@ -51,3 +51,4 @@ cargo check --target aarch64-apple-darwin
 - UI tests use ratatui's `TestBackend`; set `MAITTY_SHOW=1` to print frames.
 - Platform code is gated with `cfg(windows)` / `cfg(unix)`; both sides must compile (the cross-checks in the gate).
 - `pulldown-cmark` (default features off: no HTML writer, no CLI) parses markdown for the Files preview (`client/markdown.rs`); CommonMark and GFM tables are too much to parse by hand, and it brings only `bitflags`, `memchr` and `unicase`.
+- `unicode-segmentation` (already in the tree through ratatui) splits text into graphemes where it is wrapped or cut, so a joined emoji is never broken.

@@ -480,7 +480,7 @@ pub(super) fn draw_changes(app: &mut App, buf: &mut Buffer, area: Rect, t: &Them
 
 /// Files: the tree beside the selected file. `one_side` (a narrow panel) shows the tree, or
 /// the file you opened with a `‹` back to the tree.
-pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, v: &super::views::FilesTree, one_side: bool) {
+pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, v: &mut super::views::FilesTree, one_side: bool) {
     fill(buf, area, t.bg);
     app.screen.preview_rect = Rect::default();
     let branch = v.branch.clone().map(|b| format!(" · {b}")).unwrap_or_default();
@@ -512,6 +512,10 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
         }
     }
     let px = if one_side { body.x + 3 } else { body.x + fw + 3 };
+    if show_file && v.edit.is_none() {
+        v.lay_out(body.right().saturating_sub(px + 1), t, &app.cfg.theme);
+    }
+    let v = &*v;
     if one_side && show_file && v.edit.is_none() {
         put(buf, body.x + 1, body.y + 1, &[seg("‹", Style::default().fg(t.accent).add_modifier(Modifier::BOLD))], px);
         app.hits.push((Rect { x: body.x, y: body.y + 1, width: 2, height: 1 }, Hit::Button(super::Btn::ViewKey('h'))));
@@ -555,8 +559,8 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
                     let hint = if one_side { "   i edit" } else { "   ↑↓ PgUp PgDn read · i edit · ← back" };
                     header.push(seg(hint, Style::default().fg(t.accent)));
                 }
-                let pretty = v.pretty(prect.width, t);
-                let shown = pretty.as_ref().map_or(lines.len(), Vec::len);
+                let pretty = v.pretty();
+                let shown = pretty.map_or(lines.len(), <[_]>::len);
                 let at = (shown > prect.height as usize).then(|| format!(" {}–{} of {} ", v.scroll + 1, (v.scroll + prect.height as usize).min(shown), shown));
                 let at_x = body.right().saturating_sub(at.as_ref().map_or(0, |a| a.width() as u16 + 1));
                 put(buf, px, body.y + 1, &header, at_x);
@@ -568,7 +572,7 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
                         }
                     }
                 }
-                match &pretty {
+                match pretty {
                     // Drawn lines are no lines of the file, so they go without numbers.
                     Some(pretty) => {
                         for (k, l) in pretty.iter().skip(v.scroll).take(prect.height as usize).enumerate() {

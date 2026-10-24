@@ -5,7 +5,8 @@ use std::path::Path;
 
 use pulldown_cmark::{Alignment, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Modifier, Style};
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use super::design::{Seg, seg};
 use crate::theme::Theme;
@@ -95,7 +96,8 @@ impl<'t> Renderer<'t> {
             Event::InlineHtml(s) | Event::InlineMath(s) | Event::FootnoteReference(s) => self.inline.push(seg(s.to_string(), self.muted())),
             Event::Html(s) | Event::DisplayMath(s) => {
                 for line in s.lines() {
-                    self.emit(vec![seg(line.to_string(), self.muted())]);
+                    let body = cut(&[seg(line.to_string(), self.muted())], self.room());
+                    self.emit(body);
                 }
             }
             Event::SoftBreak => self.inline.push(seg(" ", self.style())),
@@ -226,7 +228,9 @@ impl<'t> Renderer<'t> {
             _ => "• ".to_string(),
         };
         self.indents.push(marker.width());
-        self.marker = Some(marker);
+        // An item that opens with a list shows both markers on that first line.
+        let outer = self.marker.take().unwrap_or_default();
+        self.marker = Some(outer + &marker);
     }
 
     /// The URL follows the link's text, unless the text already is the URL.
@@ -280,13 +284,13 @@ impl<'t> Renderer<'t> {
     /// The quote bars and list indent a line starts with; an item's first line shows its marker.
     fn prefix(&mut self) -> Vec<Seg> {
         let mut segs: Vec<Seg> = (0..self.quotes).map(|_| seg("│ ", self.muted())).collect();
-        let outer: usize = self.indents.iter().rev().skip(1).sum();
+        let indent: usize = self.indents.iter().sum();
         match self.marker.take() {
             Some(marker) => {
-                segs.push(seg(" ".repeat(outer), Style::default()));
+                segs.push(seg(" ".repeat(indent.saturating_sub(marker.width())), Style::default()));
                 segs.push(seg(marker, Style::default().fg(self.t.accent)));
             }
-            None => segs.push(seg(" ".repeat(outer + self.indents.last().copied().unwrap_or(0)), Style::default())),
+            None => segs.push(seg(" ".repeat(indent), Style::default())),
         }
         segs
     }
@@ -342,9 +346,9 @@ impl<'t> Renderer<'t> {
         if columns == 0 {
             return;
         }
-        let mut widths: Vec<usize> =
+        let natural: Vec<usize> =
             (0..columns).map(|c| table.rows.iter().filter_map(|r| r.get(c)).map(|cell| width(cell)).max().unwrap_or(0).max(1)).collect();
-        fit_columns(&mut widths, self.room().saturating_sub(COLUMN_GAP.width() * (columns - 1)));
+        let widths = column_widths(&natural, self.room());
         let line = Style::default().fg(self.t.line);
         for (i, row) in table.rows.iter().enumerate() {
             let mut body = Vec::new();
@@ -374,6 +378,25 @@ impl<'t> Renderer<'t> {
 
 fn width(segs: &[Seg]) -> usize {
     segs.iter().map(|(s, _)| s.width()).sum()
+}
+
+/// The columns that fit in `room`, narrowed: the last ones are left out when even
+/// `MIN_COLUMN` each is too wide, and a lone column is cut to the room.
+fn column_widths(natural: &[usize], room: usize) -> Vec<usize> {
+    let gaps = |n: usize| COLUMN_GAP.width() * n.saturating_sub(1);
+    let mut keep = natural.len();
+    loop {
+        let mut widths = natural[..keep].to_vec();
+        fit_columns(&mut widths, room.saturating_sub(gaps(keep)));
+        if keep == 1 {
+            widths[0] = widths[0].min(room);
+            return widths;
+        }
+        if widths.iter().sum::<usize>() + gaps(keep) <= room {
+            return widths;
+        }
+        keep -= 1;
+    }
 }
 
 /// Narrow the widest columns until they fit `room`, none under `MIN_COLUMN`.
@@ -408,13 +431,13 @@ fn cut(segs: &[Seg], w: usize) -> Vec<Seg> {
     let room = w.saturating_sub(1);
     for (text, style) in segs {
         let mut kept = String::new();
-        for c in text.chars() {
-            let cw = c.width().unwrap_or(0);
-            if used + cw > room {
+        for g in text.graphemes(true) {
+            let gw = g.width();
+            if used + gw > room {
                 break;
             }
-            used += cw;
-            kept.push(c);
+            used += gw;
+            kept.push_str(g);
         }
         let full = kept.len() == text.len();
         out.push(seg(kept, *style));
@@ -449,16 +472,16 @@ fn wrap(segs: &[Seg], w: usize) -> Vec<Vec<Seg>> {
             }
             if let Some((s, st)) = space.take() {
                 used += s.width();
-                push_char(&mut line, ' ', st);
+                push_str(&mut line, " ", st);
             }
-            for c in piece.chars() {
-                let cw = c.width().unwrap_or(0);
-                if used > 0 && used + cw > w {
+            for g in piece.graphemes(true) {
+                let gw = g.width();
+                if used > 0 && used + gw > w {
                     lines.push(std::mem::take(&mut line));
                     used = 0;
                 }
-                push_char(&mut line, c, *style);
-                used += cw;
+                push_str(&mut line, g, *style);
+                used += gw;
             }
         }
     }
@@ -468,11 +491,11 @@ fn wrap(segs: &[Seg], w: usize) -> Vec<Vec<Seg>> {
     lines
 }
 
-/// Add `c` to the line, joining the last run when it has the same style.
-fn push_char(line: &mut Vec<Seg>, c: char, style: Style) {
+/// Add `text` to the line, joining the last run when it has the same style.
+fn push_str(line: &mut Vec<Seg>, text: &str, style: Style) {
     match line.last_mut() {
-        Some((s, st)) if *st == style => s.push(c),
-        _ => line.push(seg(c.to_string(), style)),
+        Some((s, st)) if *st == style => s.push_str(text),
+        _ => line.push(seg(text, style)),
     }
 }
 
@@ -587,6 +610,34 @@ mod tests {
     fn long_prose_wraps_at_words_and_breaks_a_word_too_long_for_a_line() {
         let lines = text(&render("one two three abcdefghijkl", 8, &theme()));
         assert_eq!(lines, ["one two", "three", "abcdefgh", "ijkl"]);
+    }
+
+    #[test]
+    fn an_item_that_opens_with_a_list_keeps_its_own_marker() {
+        assert_eq!(text(&render("- - inner\n- outer", 40, &theme())), ["• • inner", "• outer"]);
+    }
+
+    #[test]
+    fn an_html_block_is_cut_to_the_width() {
+        let lines = text(&render("<div>some long html that runs on</div>", 12, &theme()));
+        assert!(lines.iter().all(|l| l.width() <= 12) && lines[0].ends_with('…'), "{lines:?}");
+    }
+
+    #[test]
+    fn a_table_too_wide_for_its_columns_leaves_the_last_ones_out() {
+        let md = "| a | b | c | d | e | f |\n|--|--|--|--|--|--|\n| 1 | 2 | 3 | 4 | 5 | 6 |";
+        let lines = text(&render(md, 20, &theme()));
+        assert!(lines.iter().all(|l| l.width() <= 20), "{lines:?}");
+        assert!(lines[0].starts_with("a │ b") && lines[2].starts_with("1 │ 2"), "{lines:?}");
+    }
+
+    #[test]
+    fn joined_emoji_are_never_split_when_wrapping_or_cutting() {
+        const FAMILY: &str = "\u{1F469}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+        let wrapped = text(&render(&FAMILY.repeat(3), 4, &theme()));
+        assert!(wrapped.len() > 1 && wrapped.iter().all(|l| l.replace(FAMILY, "").is_empty()), "{wrapped:?}");
+        let code = text(&render(&format!("```\n{}\n```", FAMILY.repeat(3)), 5, &theme()));
+        assert_eq!(code[0], format!(" {FAMILY}…"));
     }
 
     #[test]

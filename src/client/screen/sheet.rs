@@ -196,8 +196,8 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
         }
         SheetKind::Files => {
             let inner = Rect { x: inside.x + 1, width: inside.width.saturating_sub(2), ..inside };
-            if let Some(crate::client::View::Files(v)) = app.view.take() {
-                crate::client::design::draw_files(app, buf, inner, t, &v, r.width < FILES_BOTH_FROM);
+            if let Some(crate::client::View::Files(mut v)) = app.view.take() {
+                crate::client::design::draw_files(app, buf, inner, t, &mut v, r.width < FILES_BOTH_FROM);
                 app.view = Some(crate::client::View::Files(v));
             }
         }

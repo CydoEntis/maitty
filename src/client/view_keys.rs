@@ -217,7 +217,7 @@ impl App {
             return true;
         }
         let node = v.selected();
-        let lines = v.shown_lines(self.screen.preview_rect.width, &self.theme);
+        let lines = v.shown_lines(self.screen.preview_rect.width, &self.theme, &self.cfg.theme);
         // In the preview: the arrows read the file; ← (or Esc) goes back to the tree.
         if v.in_preview {
             match k.code {
@@ -266,7 +266,12 @@ impl App {
                     }
                 }
             }
-            KeyCode::Char('m') => v.toggle_raw(),
+            KeyCode::Char('m') => {
+                v.toggle_raw();
+                // Keep about the same place in the file: the same share of the way down.
+                let after = v.shown_lines(self.screen.preview_rect.width, &self.theme, &self.cfg.theme);
+                v.scroll = (v.scroll * after).checked_div(lines).unwrap_or(0);
+            }
             KeyCode::Char('/') => {
                 v.filtering = true;
                 v.sel = 0;

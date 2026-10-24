@@ -751,7 +751,7 @@ impl App {
                 if self.screen.preview_rect.contains(pos)
                     && let Some(View::Files(v)) = &mut self.view
                 {
-                    let n = v.shown_lines(self.screen.preview_rect.width, &self.theme);
+                    let n = v.shown_lines(self.screen.preview_rect.width, &self.theme, &self.cfg.theme);
                     v.scroll = if up { v.scroll.saturating_sub(3) } else { (v.scroll + 3).min(n.saturating_sub(1)) };
                     self.dirty = true;
                     return;

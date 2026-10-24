@@ -7656,10 +7656,65 @@ mod files_panel_tests {
         let (o, _) = frame(&mut app, 200, 50);
         assert!(o.contains("   1  # Guide"), "from the top:\n{o}");
         key(&mut app, KeyCode::Esc);
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(files(&app).scroll == 0 && o.contains("Guide") && !o.contains("# Guide"), "the edit's row isn't taken for a drawn line:\n{o}");
         key(&mut app, KeyCode::Char('m'));
         key(&mut app, KeyCode::PageDown);
         let (o, _) = frame(&mut app, 200, 50);
         assert!(files(&app).scroll > 0 && !o.contains("# Guide"), "the raw text pages down too:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn m_keeps_about_the_same_place_in_the_file() {
+        let (dir, mut app) = guide_open("mdplace");
+        frame(&mut app, 200, 50);
+        key(&mut app, KeyCode::PageDown);
+        key(&mut app, KeyCode::Char('m'));
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(files(&app).scroll > 0 && !o.contains("# Guide") && o.contains("- para"), "still down in the list, now as text:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn drawn_markdown_is_laid_out_once_and_again_for_a_new_width_or_file() {
+        let (dir, mut app) = guide_open("mdcache");
+        frame(&mut app, 200, 50);
+        // A line the renderer never makes: still there means the last layout was reused.
+        let mark = |app: &mut App| {
+            let Some(View::Files(v)) = &mut app.view else { panic!("Files is open") };
+            v.drawn_cache.as_mut().expect("laid out").lines.insert(0, vec![design::seg("SENTINEL", ratatui::style::Style::default())]);
+        };
+        mark(&mut app);
+        key(&mut app, KeyCode::PageDown);
+        key(&mut app, KeyCode::PageUp);
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(o.contains("SENTINEL"), "the same file, width and theme reuse it:\n{o}");
+        let (o, _) = frame(&mut app, 180, 50);
+        assert!(!o.contains("SENTINEL"), "a new width lays it out again:\n{o}");
+        mark(&mut app);
+        select(&mut app, "notes.txt");
+        select(&mut app, "GUIDE.md");
+        let (o, _) = frame(&mut app, 180, 50);
+        assert!(!o.contains("SENTINEL") && o.contains("Guide"), "a new preview lays it out again:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn e_opens_a_markdown_file_in_your_editor() {
+        let (dir, mut app) = guide_open("mdeditor");
+        // A terminal editor opens in a new pane: a message to the daemon, not a process here.
+        app.cfg.editor = "nvim".into();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        key(&mut app, KeyCode::Char('e'));
+        let mut opened = None;
+        while let Ok(msg) = rx.try_recv() {
+            if let crate::protocol::ClientMsg::Command(crate::protocol::Command::NewWorkspace { cmd, .. }) = msg {
+                opened = cmd;
+            }
+        }
+        assert!(opened.as_ref().is_some_and(|c| c.starts_with("nvim") && c.contains("GUIDE.md")), "{opened:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
