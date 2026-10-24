@@ -44,3 +44,4 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0018](0018-rename-to-vibecasso.md) | The app is called Vibecasso | Accepted |
 | [0019](0019-the-name-lives-in-one-place.md) | The app's name lives in one place | Accepted |
 | [0020](0020-rename-to-maitty.md) | The app is called Maitty | Accepted |
+| [0021](0021-one-line-rows-one-rounding-sticky-mode.md) | One-line session rows, one rounding setting, shortcut mode that stays | Accepted |

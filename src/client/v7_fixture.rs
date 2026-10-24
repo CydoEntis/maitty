@@ -235,7 +235,9 @@ pub(super) fn world(stage: Stage) -> App {
     FIXED_NOW.with(|n| n.set(Some(now())));
     let (tx, _rx) = mpsc::unbounded_channel();
     let (bg_tx, _bg_rx) = mpsc::unbounded_channel();
-    let mut app = App::new(Config::default(), tx, None, bg_tx);
+    // The handoff has no padding round the screen; its frames are compared cell for cell.
+    let cfg = Config { ui: crate::config::Ui { padding: "0".into(), ..Default::default() }, ..Default::default() };
+    let mut app = App::new(cfg, tx, None, bg_tx);
     app.splash = false;
     let dev = home();
     let (site, pixls, orbit) = (dev.join("affiliate-site"), dev.join("pixls"), dev.join("orbit"));

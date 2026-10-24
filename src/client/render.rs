@@ -23,7 +23,7 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     let area = f.area();
     let t = app.theme.clone();
     set_palette(t.ansi, t.ansi.map(|_| t.card2));
-    super::screen::set_round(app.cfg.ui.rounded);
+    super::screen::set_round(app.cfg.ui.rounded.caps());
     // The terminal's own background (its window padding) matches ours while we run.
     let terminal_bg = app.cfg.ui.background != "solid";
     if let Color::Rgb(r, g, b) = t.bg
@@ -79,16 +79,18 @@ fn tint_hovered(app: &App, buf: &mut Buffer, t: &crate::theme::Theme) {
     tint(buf, *r, t);
 }
 
-/// Lay the pointer's tint over `r`.
+/// Lay the pointer's tint over `r`, its ends rounded like every other shape when that is on.
 pub(super) fn tint(buf: &mut Buffer, r: Rect, t: &crate::theme::Theme) {
     let r = r.intersection(buf.area);
+    let lit = |c: Color| crate::theme::mix(if c == Color::Reset { t.bg } else { c }, t.text, HOVER_TINT);
+    let behind = super::screen::ends_behind(buf, r);
     for y in r.top()..r.bottom() {
         for x in r.left()..r.right() {
             let cell = &mut buf[(x, y)];
-            let ground = if cell.bg == Color::Reset { t.bg } else { cell.bg };
-            cell.bg = crate::theme::mix(ground, t.text, HOVER_TINT);
+            cell.bg = lit(cell.bg);
         }
     }
+    super::screen::round_tinted(buf, r, &behind, lit);
 }
 
 /// Hand every cell on the theme's ground back to the terminal's own background (SGR 49), so

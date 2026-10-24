@@ -80,6 +80,8 @@ mod design_tests {
         let mut cfg = Config::default();
         // The handoff's own glyphs: its tests read a state by shape. `dots` is the default.
         cfg.ui.glyphs = "unicode".into();
+        // The handoff has no padding round the screen; its frames are compared cell for cell.
+        cfg.ui.padding = "0".into();
         let mut app = App::new(cfg, tx, None, bg_tx);
         app.splash = false;
         let layout = Node::Leaf(1);
@@ -675,7 +677,7 @@ mod screen_tests {
         app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 2, sel: 0, editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("Corners") && o.contains("PREVIEW") && o.contains("focused") && o.contains("dimmed"), "the pane settings, with a preview");
+        assert!(o.contains("Gap") && !o.contains("Corners") && o.contains("PREVIEW") && o.contains("focused") && o.contains("dimmed"), "the pane settings, with a preview");
         // The splash: the <APP> wordmark, its tagline, what happened, buttons.
         app.mode = Mode::Normal;
         app.splash = true;
@@ -1292,7 +1294,7 @@ mod screen_tests {
     fn grid_draws_each_pane_in_its_own_colour_by_place() {
         for corners in ["square", "rounded"] {
             let (_, mut app) = super::design_tests::render_with(200, 50);
-            (app.cfg.ui.layout, app.cfg.ui.corners) = ("grid".into(), corners.into());
+            (app.cfg.ui.layout, app.cfg.ui.rounded) = ("grid".into(), if corners == "rounded" { crate::config::Rounding::Corners } else { crate::config::Rounding::Off });
             let [a, b, c] = three_panes(&mut app);
             app.screen_fresh();
             let mut term = Terminal::new(TestBackend::new(200, 50)).unwrap();
@@ -1686,7 +1688,7 @@ mod screen_tests {
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("PANES") && o.contains("Corners") && o.contains("PREVIEW"), "the pane settings first, with their preview");
+        assert!(o.contains("PANES") && o.contains("Gap") && !o.contains("Corners") && o.contains("PREVIEW"), "the pane settings first, with their preview");
         let theme_row = design::settings_rows(modal::Cat::Appearance).iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme")).unwrap();
         for _ in 0..theme_row {
             app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
@@ -2170,6 +2172,42 @@ mod screen_tests {
     }
 
     #[test]
+    fn padding_leaves_air_round_the_whole_screen_in_every_layout() {
+        for layout in ["floating", "tiled", "compact", "grid"] {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            app.cfg.ui.layout = layout.into();
+            app.cfg.ui.padding = "1".into();
+            let o = draw(&mut app, 160, 45);
+            show(&o);
+            let lines: Vec<&str> = o.lines().collect();
+            assert!(lines[0].trim().is_empty(), "{layout}: the top row is air: {:?}", lines[0]);
+            assert!(lines.iter().all(|l| l.chars().next().is_none_or(|c| c == ' ')), "{layout}: the left column is air");
+            assert_eq!(app.screen.side_rect.x, 1, "{layout}: the sidebar starts one in");
+            assert_eq!(app.screen.side_rect.bottom(), 44, "{layout}: and ends one up");
+        }
+    }
+
+    #[test]
+    fn the_hover_is_rounded_with_rounded_shapes_and_square_without() {
+        use crate::client::screen::{CAP_L, CAP_R};
+        for rounded in [true, false] {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            app.cfg.ui.rounded = if rounded { crate::config::Rounding::Full } else { crate::config::Rounding::Off };
+            app.mode = Mode::Actions { sel: 0 };
+            draw(&mut app, 160, 45);
+            let (row, _) = *app.hits.iter().find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::ActionRow(2))).expect("the third Menu row");
+            app.hover = Some(Position { x: row.x + 4, y: row.y });
+            let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+            term.draw(|f| render::draw(&mut app, f)).unwrap();
+            let buf = term.backend().buffer().clone();
+            let ends = (buf[(row.x, row.y)].symbol().to_string(), buf[(row.right() - 1, row.y)].symbol().to_string());
+            let want = if rounded { (CAP_L.to_string(), CAP_R.to_string()) } else { (" ".to_string(), " ".to_string()) };
+            assert_eq!(ends, want, "rounded {rounded}: the hovered Menu row's ends");
+            assert_ne!(buf[(row.x + 2, row.y)].bg, buf[(row.x, row.y + 1)].bg, "rounded {rounded}: the row is tinted");
+        }
+    }
+
+    #[test]
     fn tiled_square_and_faded() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let a = app.focused().unwrap();
@@ -2196,7 +2234,7 @@ mod screen_tests {
         assert_ne!(fg_at(focus), fg_at(other), "the unfocused pane's text is faded");
         // Tiled: no margin, cards edge to edge; square corners when asked.
         app.cfg.ui.panes = "tiled".into();
-        app.cfg.ui.corners = "square".into();
+        app.cfg.ui.rounded = crate::config::Rounding::Off;
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.lines().next().unwrap().starts_with("┌─"), "tiled starts at the very corner, square: {}", o.lines().next().unwrap());
@@ -3821,7 +3859,7 @@ second line
         assert_eq!(buf[(side.x, y)].bg, buf[(side.x + 1, y)].bg, "one ground: the line, not a second grey, marks the card");
         assert_eq!(buf[(side.x, side.y)].symbol(), "┌", "a square corner");
         // Rounded keeps the centred line.
-        app.cfg.ui.corners = "rounded".into();
+        app.cfg.ui.rounded = crate::config::Rounding::Full;
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();

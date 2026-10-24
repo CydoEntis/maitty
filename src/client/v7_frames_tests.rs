@@ -172,7 +172,7 @@ fn with_check(app: &mut App, command: &str) {
 
 /// The sample's words where the fixture has none of its own.
 fn sample_words(app: &mut App) {
-    app.cfg.ui.rounded = false;
+    app.cfg.ui.rounded = crate::config::Rounding::Off;
     let footer = app.snap.terms.get_mut(&1).unwrap();
     footer.said = "tests pass".into();
     for c in &mut footer.checks {
@@ -799,7 +799,7 @@ fn pill_caps_only_round_the_buttons_ends() {
         let mut square = open(id);
         let flat = cells(&mut square, Layout::Floating, 160, 45, "unicode");
         let mut round = open(id);
-        round.cfg.ui.rounded = true;
+        round.cfg.ui.rounded = crate::config::Rounding::Full;
         let capped = cells(&mut round, Layout::Floating, 160, 45, "unicode");
         let caps = [CAP_L, CAP_R];
         let mut changed = 0;
@@ -829,7 +829,7 @@ fn flat_rounds_its_pill_ends_on_the_ground_around_them() {
         assert!(!plain.content().iter().any(|c| caps.contains(&c.symbol())), "{id}: pill_caps off draws no cap");
 
         let mut round = open(id);
-        round.cfg.ui.rounded = true;
+        round.cfg.ui.rounded = crate::config::Rounding::Full;
         let buf = cells(&mut round, Layout::Flat, 160, 45, "unicode");
         let area = buf.area;
         let mut seen = 0;
@@ -859,13 +859,13 @@ fn flat_rounds_its_pill_ends_on_the_ground_around_them() {
     assert!(total > 0, "Flat's buttons have round ends with pill_caps on");
 }
 
-/// Flat has no card edges, so `ui.corners` reaches only a modal's bottom corners there.
+/// Flat has no card edges, so rounded corners reach only a modal's bottom corners there.
 #[test]
 fn flat_corners_round_only_a_modals_bottom() {
     let mut app = open("12");
     let square = frame(&mut app, Layout::Flat, 160, 45, "unicode");
     assert!(!square.contains(['╭', '╮', '╰', '╯']), "square is the default\n{square}");
-    app.cfg.ui.corners = "rounded".into();
+    app.cfg.ui.rounded = crate::config::Rounding::Full;
     let rounded = frame(&mut app, Layout::Flat, 160, 45, "unicode");
     assert_eq!(rounded.matches(['╰', '╯']).count(), 2, "the modal's bottom corners\n{rounded}");
     assert!(!rounded.contains(['╭', '╮']), "nothing else is a box\n{rounded}");

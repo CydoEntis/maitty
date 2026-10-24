@@ -41,8 +41,17 @@ pub(in crate::client) struct Grid {
     pub sheet: Rect,
 }
 
-/// The grid, with no outer margin: the sidebar the full height at one side, then the pane
-/// column from row 0. Cards floating leave the gap setting between them, tiled none (the two
+/// Most the padding round the screen may be, in cells.
+const PADDING_MAX: u16 = 2;
+
+/// The room the screen is laid out in: the window less the padding setting all round.
+pub(in crate::client) fn framed(app: &App, area: Rect) -> Rect {
+    let m = app.cfg.ui.padding.parse().unwrap_or(1).min(PADDING_MAX);
+    Rect { x: area.x + m, y: area.y + m, width: area.width.saturating_sub(2 * m), height: area.height.saturating_sub(2 * m) }
+}
+
+/// The grid in `area` (already `framed`): the sidebar the full height at one side, then the
+/// pane column from its top row. Cards floating leave the gap setting between them, tiled none (the two
 /// borders sit side by side); Flat starts the panes on the sidebar's last column, so one `│`
 /// parts them. A width you dragged the sidebar to wins over the default.
 pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
@@ -81,7 +90,8 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     app.screen.wt_keys.clear();
     app.screen.branch_keys.clear();
     fill(f.buffer_mut(), area, t.bg);
-    let g = grid(app, area);
+    let room = framed(app, area);
+    let g = grid(app, room);
     // Too narrow mid-slide to draw anything sensible: just the room it takes.
     if g.side.width >= SIDE_DRAWN_FROM {
         draw_side(app, f.buffer_mut(), g.side, &model, t);
@@ -96,7 +106,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         }
         hit(app, g.edge, ScreenHit::SideEdge);
     } else if strip_on(app) {
-        rail::draw(app, f.buffer_mut(), area, &model, t);
+        rail::draw(app, f.buffer_mut(), room, &model, t);
     } else {
         // Hidden: nothing to point at, nothing to move a cursor over.
         app.screen.side_rect = Rect::default();
@@ -110,7 +120,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     if let Some(kind) = open_sheet(app).filter(|_| g.sheet.width >= SHEET_DRAWN_FROM) {
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
     }
-    draw_corner_pill(app, f.buffer_mut(), area, t);
+    draw_corner_pill(app, f.buffer_mut(), room, t);
     app.screen.crumb_x = g.panes.x + 1;
     // A popup (`<app> popup`) floats over everything, the rest dimmed.
     match app.mode.clone() {
@@ -127,7 +137,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         let r = Rect { x: whole.x + (whole.width - w) / 2, y: whole.y + (whole.height - h) / 2, width: w, height: h };
         draw_session(app, f, r, term, true, &model, t);
     }
-    draw_toast(app, f.buffer_mut(), area, t);
+    draw_toast(app, f.buffer_mut(), room, t);
     // Files open over everything in one tool-window size; Esc closes. (Changes is a sheet.)
     if let Some(view) = app.view.take_if(|v| matches!(v, crate::client::View::Files(_))) {
         let buf = f.buffer_mut();
@@ -497,7 +507,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         c.right.push(m.clone());
     }
     c.close = Some(ScreenHit::CloseSplit(term));
-    let room = corner_room(app, r, f.area(), t);
+    let room = corner_room(app, r, framed(app, f.area()), t);
     if room > 0 {
         c.right.push(seg(" ".repeat(room as usize), Style::default()));
     }

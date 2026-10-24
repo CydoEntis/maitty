@@ -107,22 +107,19 @@ pub struct Ui {
     /// Older files' Cards spacing, "floating" or "tiled": read only while `layout` is unset or
     /// "cards".
     pub panes: String,
-    /// Card edges: "square" (lines on the card's edge, its colour right up to them) or "rounded"
-    /// (a centred line with rounded corners, a thin strip of desk inside it). "flush", the old
-    /// name for square, reads as square.
-    #[serde(deserialize_with = "corners_named")]
-    pub corners: String,
     /// Which glyph set marks sessions and checks: "auto" (ASCII when the blocked, done and idle
     /// icons are all ASCII, else Unicode), "unicode", "ascii" or "nerd".
     pub glyphs: String,
     /// Space between floating cards: "0", "1" or "2" rows stacked (and columns side by side).
     pub gap: String,
+    /// Space round the whole screen, in every layout: "0", "1" or "2" rows (and columns).
+    pub padding: String,
     /// How far unfocused panes fade toward their background: "off", "subtle", "30%", "60%" ("40%" from older configs counts as 30%).
     pub dim: String,
     /// The focused card's border: "accent", "bright" or "none".
     pub focus_border: String,
-    /// One shape for every selection, chip, button and row: round ends (Nerd Font half-circles) or, off, square blocks.
-    pub rounded: bool,
+    /// One setting for every rounded shape (`Rounding`).
+    pub rounded: Rounding,
     /// Show `· N agents` on a working session's row when the agent reports helpers.
     pub subagent_count: bool,
 }
@@ -170,6 +167,64 @@ fn fold_legacy_helpers(value: &mut toml::Table) {
     let sessions = value.entry("sessions").or_insert_with(|| toml::Value::Table(toml::Table::new()));
     if let Some(t) = sessions.as_table_mut() {
         t.insert("helpers_at_once".into(), toml::Value::String(nearest.into()));
+    }
+}
+
+/// How round the shapes are, all of them at once (`ui.rounded`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Rounding {
+    /// Round card corners, and half-circle ends on every chip, button, row and hover (Nerd Font).
+    Full,
+    /// Rounded squares: round card corners, square ends everywhere else. No Nerd Font needed.
+    Corners,
+    /// Everything square.
+    Off,
+}
+
+impl Rounding {
+    /// Settings' choices, in its order.
+    pub const NAMES: &[&str] = &["full", "corners", "off"];
+
+    /// Cards draw `╭╮╰╯`.
+    pub fn corners(self) -> bool {
+        self != Rounding::Off
+    }
+
+    /// Chips, buttons, rows and the hover end in half-circles.
+    pub fn caps(self) -> bool {
+        self == Rounding::Full
+    }
+}
+
+/// Older files wrote `rounded = true` / `false`: on is `full`, off is `off`.
+impl<'de> Deserialize<'de> for Rounding {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Written {
+            Switch(bool),
+            Name(String),
+        }
+        match Written::deserialize(d)? {
+            Written::Switch(on) => Ok(if on { Rounding::Full } else { Rounding::Off }),
+            Written::Name(name) => match name.as_str() {
+                "full" => Ok(Rounding::Full),
+                "corners" => Ok(Rounding::Corners),
+                "off" => Ok(Rounding::Off),
+                _ => Err(serde::de::Error::custom(format!("ui.rounded is \"{name}\"; use one of: {}", Rounding::NAMES.join(", ")))),
+            },
+        }
+    }
+}
+
+/// An old `ui.corners = "rounded"` is `ui.rounded = "corners"` unless the file sets that itself,
+/// now that one setting rounds everything. The file itself is not rewritten.
+fn fold_legacy_corners(value: &mut toml::Table) {
+    let Some(ui) = value.get_mut("ui").and_then(toml::Value::as_table_mut) else { return };
+    let corners = ui.remove("corners");
+    if !ui.contains_key("rounded") && corners.as_ref().and_then(toml::Value::as_str) == Some("rounded") {
+        ui.insert("rounded".into(), toml::Value::String("corners".into()));
     }
 }
 
@@ -251,8 +306,6 @@ impl Default for Mcp {
     }
 }
 
-const CORNERS_SQUARE: &str = "square";
-
 /// The four looks over the one session layout (ADR 0015).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayoutKind {
@@ -286,11 +339,6 @@ impl Ui {
             _ => LayoutKind::Floating,
         }
     }
-}
-
-fn corners_named<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
-    let name = String::deserialize(d)?;
-    Ok(if name == "flush" { CORNERS_SQUARE.into() } else { name })
 }
 
 /// How long a check may run unless its `[[check]]` says otherwise.
@@ -740,12 +788,12 @@ impl Default for Ui {
             layout: String::new(),
             background: "terminal".into(),
             panes: "floating".into(),
-            corners: CORNERS_SQUARE.into(),
             glyphs: "auto".into(),
             gap: "1".into(),
+            padding: "1".into(),
             dim: "30%".into(),
             focus_border: "accent".into(),
-            rounded: false,
+            rounded: Rounding::Off,
             subagent_count: true,
         }
     }
@@ -1164,6 +1212,7 @@ impl Config {
             merge(&mut value, over);
         }
         fold_legacy_helpers(&mut value);
+        fold_legacy_corners(&mut value);
         let mut cfg: Config = toml::Value::Table(value).try_into().with_context(|| format!("parsing {}", path.display()))?;
         // Config files written from the old example spell out the old "done" icon; it's a
         // green dot now (any other choice is kept).
@@ -1594,22 +1643,35 @@ mod tests {
     }
 
     #[test]
-    fn rounded_default_off_and_read_from_the_file() {
-        assert!(!super::Ui::default().rounded);
-        let c: super::Config = toml::from_str("[ui]
-rounded = true
-").unwrap();
-        assert!(c.ui.rounded);
+    fn rounded_default_off_and_read_from_the_file_old_switch_or_name() {
+        use super::Rounding;
+        assert_eq!(super::Ui::default().rounded, Rounding::Off);
+        for (written, read) in [("true", Rounding::Full), ("false", Rounding::Off), ("\"full\"", Rounding::Full), ("\"corners\"", Rounding::Corners), ("\"off\"", Rounding::Off)] {
+            let c: super::Config = toml::from_str(&format!("[ui]\nrounded = {written}\n")).unwrap();
+            assert_eq!(c.ui.rounded, read, "{written}");
+        }
+        assert!(toml::from_str::<super::Config>("[ui]\nrounded = \"very\"\n").is_err(), "an unknown name is refused");
     }
 
     #[test]
-    fn glyphs_default_to_auto_and_corners_to_square_with_flush_read_as_square() {
-        let ui = super::Config::default().ui;
-        assert_eq!((ui.glyphs.as_str(), ui.corners.as_str()), ("auto", "square"));
-        for (written, read) in [("flush", "square"), ("square", "square"), ("rounded", "rounded")] {
-            let c: super::Config = toml::from_str(&format!("[ui]\ncorners = \"{written}\"\nglyphs = \"nerd\"\n")).unwrap();
-            assert_eq!((c.ui.corners.as_str(), c.ui.glyphs.as_str()), (read, "nerd"), "{written}");
-        }
+    fn glyphs_default_to_auto() {
+        assert_eq!(super::Config::default().ui.glyphs, "auto");
+    }
+
+    #[test]
+    fn an_old_rounded_corners_setting_is_rounded_corners_unless_rounded_is_set() {
+        use super::Rounding;
+        let read = |text: &str| {
+            let mut t: toml::Table = toml::from_str(text).unwrap();
+            super::fold_legacy_corners(&mut t);
+            toml::Value::Table(t).try_into::<super::Config>().unwrap().ui.rounded
+        };
+        assert_eq!(read("[ui]\ncorners = \"rounded\"\n"), Rounding::Corners);
+        assert_eq!(read("[ui]\ncorners = \"square\"\n"), Rounding::Off);
+        assert_eq!(read("[ui]\ncorners = \"flush\"\n"), Rounding::Off);
+        assert_eq!(read("[ui]\ncorners = \"rounded\"\nrounded = false\n"), Rounding::Off, "the new key wins once it is set");
+        assert_eq!(read("[ui]\ncorners = \"rounded\"\nrounded = true\n"), Rounding::Full);
+        assert_eq!(read(""), Rounding::Off);
     }
 
     #[test]
