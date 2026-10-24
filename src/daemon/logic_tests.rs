@@ -2347,6 +2347,24 @@ fn a_turn_paused_on_background_work_does_not_ring_finished() {
 }
 
 #[test]
+fn desktop_and_phone_alerts_name_the_branch_of_a_worktree() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let p = d.terms.get_mut(&t).unwrap();
+    p.head = Some(crate::gitfs::Head {
+        top: std::path::PathBuf::from("/code/maitty-worktrees/grey-wolf"),
+        branch: "fix/early-alerts".into(),
+        linked: true,
+        main_root: std::path::PathBuf::from("/code/maitty"),
+    });
+    assert_eq!(p.alert_place(), "maitty · fix/early-alerts");
+    p.head = None;
+    p.cwd = std::path::PathBuf::from("/home/me/notes");
+    assert_eq!(p.alert_place(), "notes", "no repository: the folder");
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn a_wake_up_that_only_talks_still_rings_when_it_ends() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);

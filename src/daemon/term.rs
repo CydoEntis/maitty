@@ -492,6 +492,14 @@ impl Term {
         dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
     }
 
+    /// Where its alerts say it works: repository and branch, else its folder.
+    pub fn alert_place(&self) -> String {
+        match &self.head {
+            Some(h) => crate::alert::place_label(Some(&h.main_root), &h.top, Some(&h.branch)),
+            None => crate::alert::place_label(None, &self.cwd, None),
+        }
+    }
+
     pub fn spawn(cfg: &Config, spec: SpawnSpec, tx: mpsc::Sender<Ev>) -> Result<Term> {
         let token = new_secret()?;
         let pty = native_pty_system();

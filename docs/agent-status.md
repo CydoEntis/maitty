@@ -140,6 +140,9 @@ monitor: the `background_tasks` of its Stop hook) shows done but is not announce
 sound, desktop or phone alert. Claude wakes itself when that work ends; the stop that
 leaves nothing in flight announces the finish, even after a wake-up with no tool use.
 A turn whose background shell never ends (a dev server) therefore never rings finished.
+The desktop notification, phone alert and in-app note name the repository and branch
+(`maitty · fix/early-alerts`), so two worktrees of one repository tell apart; a detached
+checkout shows its short commit, and a session outside a repository its folder.
 Maitty retains its four-second global sound spacing and two-minute same-news
 deduplication; its delivery settings and multiple-client acknowledgements differ
 from Herdr.

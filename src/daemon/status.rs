@@ -454,7 +454,7 @@ impl Daemon {
         {
             t.alerted = Some((status, now));
             let agent = t.agent.clone().unwrap_or_else(|| "an agent".into());
-            let place = t.place();
+            let place = t.alert_place();
             let summary = t.summary.trim();
             let body = if summary.is_empty() { place } else { format!("{place} · {summary}") };
             if let Some(kind) = crate::alert::Kind::for_status(status) {
@@ -479,7 +479,7 @@ impl Daemon {
                 continue;
             }
             t.phoned = t.status_since;
-            let place = t.place();
+            let place = t.alert_place();
             let (title, body) = crate::alert::phone_message(&agent, &place, t.status == Status::Blocked, &t.summary, n.phone_text);
             let cfg = n.clone();
             std::thread::spawn(move || {

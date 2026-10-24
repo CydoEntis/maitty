@@ -173,6 +173,17 @@ pub fn phone_url(server: &str, topic: &str) -> Option<String> {
     Some(format!("{server}/{topic}"))
 }
 
+/// Where an alert says a session works: its repository and branch (`maitty · fix/x`), so
+/// worktrees of one repository tell apart; just its folder outside a repository.
+pub fn place_label(repo: Option<&std::path::Path>, folder: &std::path::Path, branch: Option<&str>) -> String {
+    let name = |p: &std::path::Path| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let project = repo.map(name).filter(|n| !n.is_empty()).unwrap_or_else(|| name(folder));
+    match branch.map(str::trim).filter(|b| !b.is_empty()) {
+        Some(branch) => format!("{project} · {branch}"),
+        None => project,
+    }
+}
+
 /// The phone alert for an agent: who and where always; what it's doing only with `text`.
 pub fn phone_message(agent: &str, place: &str, needs_you: bool, doing: &str, text: bool) -> (String, String) {
     let title = format!("{agent} {}", if needs_you { "needs you" } else { "finished" });
@@ -320,5 +331,15 @@ mod tests {
         assert_eq!(m(false), ("claude needs you".to_string(), "AeVox".to_string()));
         assert_eq!(m(true).1, "AeVox · Run npm test?");
         assert_eq!(phone_message("codex", "shop-api", false, "", true).0, "codex finished");
+    }
+
+    #[test]
+    fn an_alert_names_the_repository_and_branch() {
+        use std::path::Path;
+        let worktree = Path::new("/code/maitty-worktrees/grey-wolf");
+        assert_eq!(place_label(Some(Path::new("/code/maitty")), worktree, Some("fix/early-alerts")), "maitty · fix/early-alerts", "a worktree reads as its repository");
+        assert_eq!(place_label(Some(Path::new("/code/maitty")), worktree, Some("1a2b3c4")), "maitty · 1a2b3c4", "detached: its short commit");
+        assert_eq!(place_label(None, Path::new("/home/me/notes"), None), "notes", "outside a repository: the folder");
+        assert_eq!(place_label(None, Path::new("/home/me/notes"), Some(" ")), "notes");
     }
 }
