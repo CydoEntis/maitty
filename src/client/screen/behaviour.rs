@@ -1012,9 +1012,14 @@ impl App {
                 }
                 return;
             }
+            // The list changes with the search: land on its first row you can pick, worked out
+            // on the new list (the rows above are the old search's).
             KeyCode::Backspace => {
                 query.pop();
-                sel = 0;
+                let rows = goto_rows(&model, &query, heads_up(self).len());
+                let sel = rows.iter().position(GoRow::pickable).unwrap_or(0);
+                self.mode = Mode::GoTo { query, sel };
+                return;
             }
             KeyCode::Char(c) if !k.modifiers.contains(KeyModifiers::CONTROL) => {
                 query.push(c);

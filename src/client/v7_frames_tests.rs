@@ -987,3 +987,28 @@ fn a_check_that_could_not_run_is_violet_not_red_or_amber() {
     assert_eq!(buf[(x - 2, y)].fg, t.violet(), "the row's glyph");
     assert!(![t.err, t.blocked, t.accent].contains(&t.violet()));
 }
+
+#[test]
+/// Backspace in the Inbox edits its search and never closes it or the app, whatever it holds.
+fn backspace_in_the_inbox_only_edits_its_search() {
+    for stage in v7_fixture::STAGES {
+        for (w, h) in v7_fixture::SIZES {
+            for keys in ["", "a", "zz"] {
+                let mut app = v7_fixture::world(stage);
+                app.cfg.ui.padding = "1".into();
+                app.open_goto();
+                let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
+                for c in keys.chars() {
+                    app.on_key(crate::client::KeyEvent::new(crate::client::KeyCode::Char(c), crate::client::KeyModifiers::NONE));
+                }
+                for _ in 0..3 {
+                    term.draw(|f| crate::client::render::draw(&mut app, f)).unwrap();
+                    app.on_key(crate::client::KeyEvent::new(crate::client::KeyCode::Backspace, crate::client::KeyModifiers::NONE));
+                    assert!(app.quit.is_none(), "{stage:?}");
+                }
+                term.draw(|f| crate::client::render::draw(&mut app, f)).unwrap();
+            }
+        }
+    }
+}
+

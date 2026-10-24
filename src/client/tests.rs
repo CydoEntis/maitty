@@ -7049,3 +7049,28 @@ mod restart_tests {
         assert!(draw(&mut app, 100, 30).contains("Restart now R"));
     }
 }
+
+
+mod inbox_search_tests {
+    use super::*;
+
+    /// An empty Inbox: type a letter (sessions match), Backspace it. The selection from the
+    /// matches must not outlive them, or drawing the empty list reads past its end.
+    #[test]
+    fn backspacing_the_last_letter_in_an_empty_inbox_keeps_it_open() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        for t in app.snap.terms.values_mut() {
+            t.status = crate::protocol::Status::Idle;
+        }
+        app.snap.questions.clear();
+        app.screen_fresh();
+        app.open_goto();
+        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(160, 45)).unwrap();
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE));
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        app.on_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        assert!(matches!(&app.mode, Mode::GoTo { query, .. } if query.is_empty()), "the Inbox stays open, its search empty");
+    }
+}
