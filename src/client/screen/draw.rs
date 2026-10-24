@@ -761,6 +761,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     let r = Rect { x, y, width: area.right().saturating_sub(x).min(w), height: h };
     let ink = |c: Color, bg: Color| if fade > 0.0 { blend(c, bg, fade) } else { c };
     let bg = t.card;
+    let behind = ends_behind(buf, r);
     for yy in r.y..r.bottom() {
         for xx in r.x..r.right() {
             if let Some(px) = buf.cell_mut((xx, yy)) {
@@ -770,6 +771,13 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     }
     for yy in r.y..r.bottom() {
         put(buf, r.x, yy, &[seg("▌", Style::default().fg(ink(colour, bg)).bg(bg))], r.x + 1);
+    }
+    // Rounded, the card's corners soften as a popup's do, and the bar becomes its left edge.
+    if look.rounded && r.width >= 2 {
+        soften_block(buf, r, &behind);
+        for yy in r.y..r.bottom() {
+            buf[(r.x, yy)].set_fg(ink(colour, bg));
+        }
     }
     // Rows 2 and 3 start under the title, one column in from the border; the title also
     // leaves the mark's column and the ✕'s.

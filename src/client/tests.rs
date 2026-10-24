@@ -2922,6 +2922,36 @@ mod screen_tests {
     }
 
     #[test]
+    fn a_toast_s_corners_follow_the_rounding_setting_in_every_look() {
+        use crate::config::Rounding;
+        for layout in ["floating", "tiled", "compact", "grid"] {
+            for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
+                let (_, mut app) = super::design_tests::render_with(160, 45);
+                (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
+                app.notify_card("Copied to clipboard".into(), "9 characters".into(), None, false);
+                let buf = frame(&mut app, 160, 45);
+                let t = app.theme.clone();
+                let at = format!("{layout} {rounded:?}");
+                let (top, bottom) = (45 - 4 - 5, 45 - 5 - 1);
+                let mark = (0..160u16).find(|&x| buf[(x, top + 1)].symbol() == "✓").expect("the mark");
+                let close = (mark..160u16).find(|&x| buf[(x, top + 1)].symbol() == "✕").expect("the close");
+                let (left, right) = (mark - 2, close + 3);
+                let cell = |x: u16, y: u16| (buf[(x, y)].symbol().to_string(), buf[(x, y)].fg);
+                if rounded == Rounding::Off {
+                    for y in top..=bottom {
+                        assert_eq!(cell(left, y), ("▌".into(), t.accent), "a square bar: {at}");
+                        assert_eq!((buf[(right, y)].symbol(), buf[(right, y)].bg), (" ", t.card), "a square edge: {at}");
+                    }
+                } else {
+                    assert_eq!([cell(left, top), cell(left, top + 1), cell(left, bottom)], [("▗".into(), t.accent), ("▐".into(), t.accent), ("▝".into(), t.accent)], "the bar is the soft left edge: {at}");
+                    assert_eq!([cell(right, top), cell(right, top + 1), cell(right, bottom)], [("▖".into(), t.card), ("▌".into(), t.card), ("▘".into(), t.card)], "soft right edge: {at}");
+                    assert_ne!(buf[(right, top)].bg, t.card, "over what lies behind: {at}");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn a_three_row_toast_previews_in_dim_italics() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.notify_card("Copied to clipboard".into(), "9 characters · 1 line".into(), Some("\"cargo test\"".into()), false);
