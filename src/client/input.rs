@@ -947,7 +947,6 @@ impl App {
         match hit {
             Hit::Button(b) => match b {
                 Btn::Answer(term, c) => self.answer(term, c),
-                Btn::CloseView => self.view = None,
                 Btn::ViewKey(c) => {
                     let code = match c {
                         '\n' => KeyCode::Enter,

@@ -1,5 +1,5 @@
 //! The sheet: one card docked right of the panes for what you look at beside your work (the
-//! Inbox, Changes). The panes reflow into the rest; below `NARROW` it takes the whole pane
+//! Inbox, Changes, Files). The panes reflow into the rest; below `NARROW` it takes the whole pane
 //! column. One at a time; Esc closes it. Its last row is a pill of key hints.
 
 use super::*;
@@ -15,6 +15,8 @@ pub(in crate::client) enum SheetKind {
     Both,
     /// A check's output and where it came from.
     Check,
+    /// The project's files beside the one you picked.
+    Files,
 }
 
 /// Its width beside the panes, before you size it (Changes takes half the screen).
@@ -25,6 +27,10 @@ pub(in crate::client) const SHEET_MIN: u16 = 32;
 pub(in crate::client) const PANES_KEEP: u16 = 52;
 /// How far `[` and `]` move its edge.
 const SHEET_STEP: u16 = 4;
+/// The percent of the screen Files takes before you size it: the tree and a readable file.
+const FILES_SHARE: u32 = 55;
+/// Narrower than this, Files shows the tree or the open file, not both side by side.
+const FILES_BOTH_FROM: u16 = 60;
 
 impl SheetKind {
     /// Its name in the saved UI state, where its width is kept.
@@ -34,6 +40,7 @@ impl SheetKind {
             SheetKind::Changes => "changes",
             SheetKind::Both => "both",
             SheetKind::Check => "check",
+            SheetKind::Files => "files",
         }
     }
 
@@ -41,6 +48,7 @@ impl SheetKind {
     fn default_w(self, screen_w: u16) -> u16 {
         match self {
             SheetKind::Changes => screen_w / 2,
+            SheetKind::Files => (u32::from(screen_w) * FILES_SHARE / 100) as u16,
             _ => SHEET_W,
         }
     }
@@ -104,6 +112,8 @@ pub(in crate::client) fn open_sheet(app: &App) -> Option<SheetKind> {
         Some(SheetKind::Both)
     } else if matches!(app.view, Some(crate::client::View::Check(_))) {
         Some(SheetKind::Check)
+    } else if matches!(app.view, Some(crate::client::View::Files(_))) {
+        Some(SheetKind::Files)
     } else {
         None
     }
@@ -142,6 +152,7 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     let (title, sub, close) = match kind {
         SheetKind::Inbox => ("INBOX", inbox_count(app).to_string(), ScreenHit::Close),
         SheetKind::Changes | SheetKind::Both => ("Changes", String::new(), ScreenHit::ViewClose),
+        SheetKind::Files => ("Files", String::new(), ScreenHit::ViewClose),
         SheetKind::Check => ("CHECK", check_title(app), ScreenHit::ViewClose),
     };
     let mut c = Card::new(t, title).lit(t.accent);
@@ -174,6 +185,13 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
             if let Some(crate::client::View::Check(mut v)) = app.view.take() {
                 draw_check(app, buf, body, c.bg, t, &mut v);
                 app.view = Some(crate::client::View::Check(v));
+            }
+        }
+        SheetKind::Files => {
+            let inner = Rect { x: inside.x + 1, width: inside.width.saturating_sub(2), ..inside };
+            if let Some(crate::client::View::Files(v)) = app.view.take() {
+                crate::client::design::draw_files(app, buf, inner, t, &v, r.width < FILES_BOTH_FROM);
+                app.view = Some(crate::client::View::Files(v));
             }
         }
     }

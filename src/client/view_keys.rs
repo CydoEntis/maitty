@@ -5,7 +5,9 @@ use super::*;
 impl App {
     /// Keys while a view replaces the pane area (single letters act directly).
     pub(super) fn on_view_key(&mut self, k: &KeyEvent) {
-        if self.sheet_size_key(k) {
+        // `[` `]` `=` are text while Files' filter or editor takes it.
+        let typing = matches!(&self.view, Some(View::Files(v)) if v.filtering || v.edit.is_some());
+        if !typing && self.sheet_size_key(k) {
             return;
         }
         let Some(view) = self.view.take() else { return };
@@ -235,7 +237,7 @@ impl App {
         }
         match k.code {
             KeyCode::Right if node.as_ref().is_some_and(|n| !n.is_dir) && lines > 0 => v.in_preview = true,
-            KeyCode::Esc => return false,
+            KeyCode::Esc | KeyCode::Char('f') => return false,
             // Read the preview: page, or a line at a time with Shift.
             KeyCode::PageDown => v.scroll = (v.scroll + page).min(lines.saturating_sub(1)),
             KeyCode::PageUp => v.scroll = v.scroll.saturating_sub(page),

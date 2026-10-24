@@ -541,7 +541,9 @@ impl App {
                 let dir = self.screen_target_dir();
                 self.screen.cursor = None;
                 self.mode = Mode::Normal;
-                if *a == Action::Files {
+                if *a == Action::Files && matches!(self.view, Some(crate::client::View::Files(_))) {
+                    self.view = None;
+                } else if *a == Action::Files {
                     self.open_files(dir);
                 } else {
                     self.open_changes(dir);

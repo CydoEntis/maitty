@@ -478,9 +478,11 @@ pub(super) fn draw_changes(app: &mut App, buf: &mut Buffer, area: Rect, t: &Them
     }
 }
 
-pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, v: &super::views::FilesTree) {
+/// Files: the tree beside the selected file. `one_side` (a narrow panel) shows the tree, or
+/// the file you opened with a `‹` back to the tree.
+pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, v: &super::views::FilesTree, one_side: bool) {
     fill(buf, area, t.bg);
-    let (green, yellow) = (t.done, Color::Rgb(0xe8, 0xc5, 0x65));
+    app.screen.preview_rect = Rect::default();
     let branch = v.branch.clone().map(|b| format!(" · {b}")).unwrap_or_default();
     let left = vec![
         seg("files  ", Style::default().fg(t.strong).add_modifier(Modifier::BOLD)),
@@ -491,13 +493,110 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
     let right = vec![
         seg(mode, Style::default().fg(t.muted)),
         seg(filter, Style::default().fg(if v.filtering { t.accent } else { t.muted })),
-        seg("✕ ", Style::default().fg(t.muted)),
     ];
+    // The panel's card has the ✕.
     title_bar(buf, area, t, &left, &right, true);
-    app.hits.push((Rect { x: area.right().saturating_sub(2), y: area.y, width: 2, height: 1 }, Hit::Button(super::Btn::CloseView)));
 
     let body = Rect { y: area.y + 1, height: area.height.saturating_sub(2), ..area };
-    let fw: u16 = 44.min(body.width / 2);
+    let file_open = v.in_preview || v.edit.is_some();
+    let (show_tree, show_file) = if one_side { (!file_open, file_open) } else { (true, true) };
+    let fw: u16 = if one_side { body.width } else { 44.min(body.width / 2) };
+    if show_tree {
+        draw_files_tree(app, buf, body, fw, t, v);
+    }
+    if !one_side {
+        for yy in body.top()..body.bottom() {
+            if let Some(px) = buf.cell_mut((body.x + fw, yy)) {
+                px.set_symbol("│").set_style(Style::default().fg(t.line).bg(t.bg));
+            }
+        }
+    }
+    let px = if one_side { body.x + 3 } else { body.x + fw + 3 };
+    if one_side && show_file && v.edit.is_none() {
+        put(buf, body.x + 1, body.y + 1, &[seg("‹", Style::default().fg(t.accent).add_modifier(Modifier::BOLD))], px);
+        app.hits.push((Rect { x: body.x, y: body.y + 1, width: 2, height: 1 }, Hit::Button(super::Btn::ViewKey('h'))));
+    }
+    if let Some((path, lines)) = v.preview.as_ref().filter(|_| show_file) {
+        let rel = path.strip_prefix(&v.root).map(|p| p.display().to_string()).unwrap_or_else(|_| tilde(path));
+        #[allow(unused_assignments)]
+        let mut header = vec![seg(rel, Style::default().fg(t.strong).add_modifier(Modifier::BOLD))];
+        if let Some(who) = v.editing_by(path) {
+            header.push(seg(format!("   {who} is editing this file"), Style::default().fg(t.muted).add_modifier(Modifier::ITALIC)));
+        }
+        let prect = Rect { x: px, y: body.y + 3, width: body.right().saturating_sub(px + 1), height: body.bottom().saturating_sub(body.y + 3) };
+        app.screen.preview_rect = prect;
+        match &v.edit {
+            Some(ed) => {
+                header = vec![
+                    seg(ed.path.strip_prefix(&v.root).map(|p| p.display().to_string()).unwrap_or_default(), Style::default().fg(t.strong).add_modifier(Modifier::BOLD)),
+                    seg(if ed.dirty { "  ● unsaved" } else { "  editing" }, Style::default().fg(t.accent)),
+                    seg("   Ctrl+S save · Esc done", Style::default().fg(t.muted)),
+                ];
+                put(buf, px, body.y + 1, &header, body.right());
+                for (k, l) in ed.lines.iter().enumerate().skip(v.scroll).take(prect.height as usize) {
+                    let yy = prect.y + (k - v.scroll) as u16;
+                    let num = Style::default().fg(if k == ed.row { t.accent } else { t.muted });
+                    let mut segs = vec![seg(format!("{:>4}  ", k + 1), num)];
+                    segs.extend(super::views::highlight(&l.replace('\t', "    "), t));
+                    put(buf, px, yy, &segs, prect.right());
+                    if k == ed.row {
+                        let cx = px + 6 + ed.cursor_x() as u16;
+                        if cx < prect.right() {
+                            let cell = &mut buf[(cx, yy)];
+                            let sym = if cell.symbol().trim().is_empty() { " ".to_string() } else { cell.symbol().to_string() };
+                            cell.set_symbol(&sym).set_style(Style::default().bg(t.accent).fg(t.acc_ink));
+                        }
+                    }
+                }
+            }
+            None => {
+                if v.in_preview {
+                    header.push(seg("   ↑↓ PgUp PgDn read · i edit · ← back", Style::default().fg(t.accent)));
+                }
+                put(buf, px, body.y + 1, &header, body.right());
+                // The side the arrows are on gets the accent line.
+                if v.in_preview && !one_side {
+                    for yy in body.top()..body.bottom() {
+                        if let Some(px) = buf.cell_mut((body.x + fw, yy)) {
+                            px.set_symbol("┃").set_style(Style::default().fg(t.accent).bg(t.bg));
+                        }
+                    }
+                }
+                for (k, l) in lines.iter().enumerate().skip(v.scroll).take(prect.height as usize) {
+                    let yy = prect.y + (k - v.scroll) as u16;
+                    let mut segs = vec![seg(format!("{:>4}  ", k + 1), Style::default().fg(t.muted))];
+                    segs.extend(super::views::highlight(l, t));
+                    put(buf, px, yy, &segs, prect.right());
+                }
+                if lines.len() > prect.height as usize {
+                    let at = format!(" {}–{} of {} ", v.scroll + 1, (v.scroll + prect.height as usize).min(lines.len()), lines.len());
+                    put(buf, body.right().saturating_sub(at.width() as u16 + 1), body.y + 1, &[seg(at, Style::default().fg(t.muted))], body.right());
+                }
+            }
+        }
+    }
+    let who = app.focused().and_then(|id| app.snap.terms.get(&id)).map(pane_name).unwrap_or_else(|| "the pane".into());
+    let insert = format!("Insert path into {who}");
+    action_row(
+        app,
+        buf,
+        area,
+        t,
+        &[
+            (&insert, "Enter", BtnKind::Primary, Hit::Button(super::Btn::ViewKey('\n'))),
+            ("Edit here", "i", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('i'))),
+            ("Editor", "e", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('e'))),
+            ("Open", "o", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('o'))),
+            ("Copy path", "y", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('y'))),
+            ("Show diff", "d", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('d'))),
+        ],
+        &[seg("PgUp PgDn / wheel scroll", Style::default().fg(t.muted))],
+    );
+}
+
+/// The tree (or the recent files) in the left `fw` columns of `body`.
+fn draw_files_tree(app: &mut App, buf: &mut Buffer, body: Rect, fw: u16, t: &Theme, v: &super::views::FilesTree) {
+    let (green, yellow) = (t.done, Color::Rgb(0xe8, 0xc5, 0x65));
     let rows = v.visible();
     let list_h = body.height.saturating_sub(4) as usize;
     let start = v.sel.saturating_sub(list_h.saturating_sub(1));
@@ -545,89 +644,6 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
         ];
         put(buf, body.x + 2, body.bottom().saturating_sub(2), &legend, body.x + fw);
     }
-    for yy in body.top()..body.bottom() {
-        if let Some(px) = buf.cell_mut((body.x + fw, yy)) {
-            px.set_symbol("│").set_style(Style::default().fg(t.line).bg(t.bg));
-        }
-    }
-    // Preview
-    let px = body.x + fw + 3;
-    if let Some((path, lines)) = &v.preview {
-        let rel = path.strip_prefix(&v.root).map(|p| p.display().to_string()).unwrap_or_else(|_| tilde(path));
-        #[allow(unused_assignments)]
-        let mut header = vec![seg(rel, Style::default().fg(t.strong).add_modifier(Modifier::BOLD))];
-        if let Some(who) = v.editing_by(path) {
-            header.push(seg(format!("   {who} is editing this file"), Style::default().fg(t.muted).add_modifier(Modifier::ITALIC)));
-        }
-        let prect = Rect { x: px, y: body.y + 3, width: body.right().saturating_sub(px + 1), height: body.bottom().saturating_sub(body.y + 3) };
-        app.screen.preview_rect = prect;
-        match &v.edit {
-            Some(ed) => {
-                header = vec![
-                    seg(ed.path.strip_prefix(&v.root).map(|p| p.display().to_string()).unwrap_or_default(), Style::default().fg(t.strong).add_modifier(Modifier::BOLD)),
-                    seg(if ed.dirty { "  ● unsaved" } else { "  editing" }, Style::default().fg(t.accent)),
-                    seg("   Ctrl+S save · Esc done", Style::default().fg(t.muted)),
-                ];
-                put(buf, px, body.y + 1, &header, body.right());
-                for (k, l) in ed.lines.iter().enumerate().skip(v.scroll).take(prect.height as usize) {
-                    let yy = prect.y + (k - v.scroll) as u16;
-                    let num = Style::default().fg(if k == ed.row { t.accent } else { t.muted });
-                    let mut segs = vec![seg(format!("{:>4}  ", k + 1), num)];
-                    segs.extend(super::views::highlight(&l.replace('\t', "    "), t));
-                    put(buf, px, yy, &segs, prect.right());
-                    if k == ed.row {
-                        let cx = px + 6 + ed.cursor_x() as u16;
-                        if cx < prect.right() {
-                            let cell = &mut buf[(cx, yy)];
-                            let sym = if cell.symbol().trim().is_empty() { " ".to_string() } else { cell.symbol().to_string() };
-                            cell.set_symbol(&sym).set_style(Style::default().bg(t.accent).fg(t.acc_ink));
-                        }
-                    }
-                }
-            }
-            None => {
-                if v.in_preview {
-                    header.push(seg("   ↑↓ PgUp PgDn read · i edit · ← back", Style::default().fg(t.accent)));
-                }
-                put(buf, px, body.y + 1, &header, body.right());
-                // The side the arrows are on gets the accent line.
-                if v.in_preview {
-                    for yy in body.top()..body.bottom() {
-                        if let Some(px) = buf.cell_mut((body.x + fw, yy)) {
-                            px.set_symbol("┃").set_style(Style::default().fg(t.accent).bg(t.bg));
-                        }
-                    }
-                }
-                for (k, l) in lines.iter().enumerate().skip(v.scroll).take(prect.height as usize) {
-                    let yy = prect.y + (k - v.scroll) as u16;
-                    let mut segs = vec![seg(format!("{:>4}  ", k + 1), Style::default().fg(t.muted))];
-                    segs.extend(super::views::highlight(l, t));
-                    put(buf, px, yy, &segs, prect.right());
-                }
-                if lines.len() > prect.height as usize {
-                    let at = format!(" {}–{} of {} ", v.scroll + 1, (v.scroll + prect.height as usize).min(lines.len()), lines.len());
-                    put(buf, body.right().saturating_sub(at.width() as u16 + 1), body.y + 1, &[seg(at, Style::default().fg(t.muted))], body.right());
-                }
-            }
-        }
-    }
-    let who = app.focused().and_then(|id| app.snap.terms.get(&id)).map(pane_name).unwrap_or_else(|| "the pane".into());
-    let insert = format!("Insert path into {who}");
-    action_row(
-        app,
-        buf,
-        area,
-        t,
-        &[
-            (&insert, "Enter", BtnKind::Primary, Hit::Button(super::Btn::ViewKey('\n'))),
-            ("Edit here", "i", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('i'))),
-            ("Editor", "e", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('e'))),
-            ("Open", "o", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('o'))),
-            ("Copy path", "y", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('y'))),
-            ("Show diff", "d", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('d'))),
-        ],
-        &[seg("PgUp PgDn / wheel scroll", Style::default().fg(t.muted))],
-    );
 }
 
 // ---- modals: talk, + Pane -----------------------------------------------------------------

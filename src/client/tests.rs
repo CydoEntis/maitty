@@ -7262,3 +7262,169 @@ mod side_panel_width_tests {
         assert_eq!(app.screen.saved.sheet_w.get("changes"), Some(&(100.min(widest) - 4)));
     }
 }
+
+mod files_panel_tests {
+    use super::*;
+    use super::check_settings_tests::{draw, show};
+    use std::path::Path;
+
+    /// A folder with `src/main.rs` (60 numbered lines) and `notes.txt`, unique to `name`.
+    fn project(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-files-{}-{}"), name, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        let body: String = (1..=60).map(|i| format!("let line_{i} = {i};\n")).collect();
+        std::fs::write(dir.join("src").join("main.rs"), body).unwrap();
+        std::fs::write(dir.join("notes.txt"), "remember the milk\n").unwrap();
+        dir
+    }
+
+    /// The main screen `w`×`h` with the focused pane running in `dir`.
+    fn screen_in(dir: &Path, w: u16, h: u16) -> App {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        let pane = app.snap.terms.get_mut(&1).expect("the focused pane");
+        pane.cwd = dir.to_path_buf();
+        pane.top = Some(dir.to_path_buf());
+        pane.root = Some(dir.to_path_buf());
+        app
+    }
+
+    /// The tree read, as the background scan would hand it back.
+    fn tree_read(app: &mut App, root: &Path) {
+        app.on_bg(Bg::Tree(root.to_path_buf(), views::scan_tree(root), views::git_marks(root)));
+    }
+
+    fn files(app: &App) -> &views::FilesTree {
+        match &app.view {
+            Some(View::Files(v)) => v,
+            _ => panic!("Files is open"),
+        }
+    }
+
+    fn key(app: &mut App, code: KeyCode) {
+        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    fn select(app: &mut App, name: &str) {
+        let Some(View::Files(v)) = &mut app.view else { panic!("Files is open") };
+        v.expanded.insert(v.root.join("src"));
+        v.sel = v.visible().iter().position(|(_, n)| n.label == name).expect("the file is listed");
+        v.refresh_preview();
+    }
+
+    #[test]
+    fn f_opens_files_in_the_side_panel_beside_the_panes_and_f_or_esc_closes_it() {
+        let dir = project("open");
+        let mut app = screen_in(&dir, 160, 45);
+        let before = draw(&mut app, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert_eq!(screen::open_sheet(&app), Some(screen::SheetKind::Files));
+        let sheet = app.screen.sheet_rect;
+        assert!(sheet.width > 0 && o.contains("notes.txt"), "the tree is in the panel:\n{o}");
+        let (_, pane) = *app.pane_frames.first().expect("a pane still on screen");
+        assert!(pane.right() <= sheet.x, "the panes reflow beside it: {pane:?} vs {sheet:?}");
+        let sidebar = |frame: &str| frame.lines().map(|l| l.chars().take(20).collect::<String>()).collect::<Vec<_>>();
+        assert_eq!(sidebar(&o), sidebar(&before), "the sidebar is not covered");
+        key(&mut app, KeyCode::Char('f'));
+        assert!(app.view.is_none(), "f again closes it");
+        app.act(Action::Files);
+        key(&mut app, KeyCode::Esc);
+        assert!(app.view.is_none(), "Esc closes it");
+        app.act(Action::Files);
+        app.act(Action::Files);
+        assert!(app.view.is_none(), "the leader's f again closes it");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_tree_and_the_selected_file_sit_side_by_side_in_a_wide_panel() {
+        let dir = project("wide");
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        let row = o.lines().find(|l| l.contains("notes.txt") && l.contains("let line_1 = 1;"));
+        assert!(row.is_some(), "the tree's row and the file beside it:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn files_starts_at_55_percent_of_the_screen_and_keeps_the_width_you_give_it() {
+        let dir = project("width");
+        let mut app = screen_in(&dir, 200, 50);
+        assert_eq!(screen::wanted_w(&app, screen::SheetKind::Files, 200), 110);
+        app.act(Action::Files);
+        draw(&mut app, 200, 50);
+        let widest = app.screen.sheet_widest;
+        assert_eq!(app.screen.sheet_rect.width, 110.min(widest), "55% of 200, held to the room");
+        key(&mut app, KeyCode::Char('['));
+        draw(&mut app, 200, 50);
+        assert_eq!(app.screen.saved.sheet_w.get("files"), Some(&(110.min(widest) - 4)), "kept per view, like the others");
+        assert_eq!(app.screen.sheet_rect.width, 110.min(widest) - 4);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn brackets_are_text_while_the_filter_or_the_editor_takes_it() {
+        let dir = project("text");
+        let mut app = screen_in(&dir, 200, 50);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        key(&mut app, KeyCode::Char('/'));
+        key(&mut app, KeyCode::Char('['));
+        assert_eq!(files(&app).filter, "[", "the filter took it");
+        key(&mut app, KeyCode::Esc);
+        select(&mut app, "notes.txt");
+        key(&mut app, KeyCode::Char('i'));
+        key(&mut app, KeyCode::Char(']'));
+        let ed = files(&app).edit.as_ref().expect("editing in place");
+        assert!(ed.lines[0].starts_with(']'), "the editor took it: {:?}", ed.lines[0]);
+        assert!(!app.screen.saved.sheet_w.contains_key("files"), "the panel kept its width");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_narrow_panel_gives_the_opened_file_the_whole_panel_with_a_way_back() {
+        let dir = project("narrow");
+        let mut app = screen_in(&dir, 80, 24);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        let o = draw(&mut app, 80, 24);
+        show(&o);
+        assert!(app.screen.sheet_rect.width < 60, "{:?}", app.screen.sheet_rect);
+        assert!(o.contains("notes.txt") && !o.contains("let line_1"), "the tree alone:\n{o}");
+        key(&mut app, KeyCode::Right);
+        let o = draw(&mut app, 80, 24);
+        show(&o);
+        assert!(o.contains("let line_1 = 1;") && o.contains('‹') && !o.contains("notes.txt"), "the file alone, with ‹ back:\n{o}");
+        let back = app.hits.iter().rev().find(|(_, h)| *h == Hit::Button(Btn::ViewKey('h'))).map(|(r, _)| *r).expect("‹ is clickable");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: back.x, row: back.y, modifiers: KeyModifiers::NONE });
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Up(MouseButton::Left), column: back.x, row: back.y, modifiers: KeyModifiers::NONE });
+        let o = draw(&mut app, 80, 24);
+        assert!(o.contains("notes.txt") && !o.contains("let line_1"), "‹ goes back to the tree:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ctrl_click_on_a_path_and_line_opens_files_in_the_panel_at_that_line() {
+        let dir = project("reveal");
+        let mut app = screen_in(&dir, 160, 45);
+        app.open_path_from(1, "src/main.rs", Some(40));
+        // Outside a repo, the tree is rooted at the file's folder.
+        let root = files(&app).root.clone();
+        tree_read(&mut app, &root);
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert_eq!(screen::open_sheet(&app), Some(screen::SheetKind::Files), "in the panel, not a popup");
+        let v = files(&app);
+        assert_eq!(v.preview.as_ref().map(|(p, _)| p.clone()), Some(dir.join("src").join("main.rs")));
+        assert!(o.contains("let line_40 = 40;"), "that line is shown:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

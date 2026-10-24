@@ -189,11 +189,11 @@ No bare key answers from the sidebar.
 
 ## Side panel
 
-The panel docked right (Inbox, Changes, checks). Its width is kept for each kind of view.
+The panel docked right (Inbox, Changes, Files, checks). Its width is kept for each kind of view.
 
 | Keys | Action |
 | --- | --- |
-| [ , ] | Narrow or widen it by 4 columns (in the Inbox, while its search is empty) |
+| [ , ] | Narrow or widen it by 4 columns (in the Inbox, while its search is empty; in Files, not while filtering or editing) |
 | = | Back to its default width |
 | Drag its left edge | Resize it |
 
@@ -238,8 +238,8 @@ The panel docked right (Inbox, Changes, checks). Its width is kept for each kind
 | e, i, o, y, d | External editor, edit in preview, open outside, copy path, Changes |
 | PgUp, PgDn, Shift+Up, Shift+Down | Scroll preview pages or individual lines |
 | Right on file | Focus preview; arrows / j / k scroll, Space pages down, g / G or Home / End go to ends |
-| Left / h / Esc in preview | Return to tree |
-| Esc in tree | Close Files |
+| Left / h / Esc in preview, or click ‹ | Return to tree (on a narrow panel the file takes the whole panel) |
+| f, Esc in tree | Close Files |
 
 ## Built-in file editor
 

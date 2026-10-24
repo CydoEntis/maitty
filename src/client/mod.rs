@@ -159,7 +159,6 @@ pub(super) enum View {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum Btn {
     Answer(TermId, char),
-    CloseView,
     /// A key inside the current view ('\n' for Enter).
     ViewKey(char),
     /// A row of the current view's list.

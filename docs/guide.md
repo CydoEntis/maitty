@@ -67,8 +67,13 @@ the sidebar. Every default shortcut, and every screen's own keys, are in
 Without the leader: **Alt+1–9** selects tabs; **Alt+arrows** moves pane focus
 when enabled in Settings. All keys shows changes to these bindings too.
 
-In **Files**: Enter puts the path in the agent's prompt, `e` opens it in your editor (`editor`
-in config; nvim, helix … open inside maitty), `y` copies the path. In **Changes**: `c` commit,
+**Files** opens in the side panel beside your panes: the tree, and the file you pick beside
+it (on a narrow panel the file takes the panel, `‹` goes back). `f` again or Esc closes it;
+Ctrl+click on a `path:line` in a pane opens it at that line. In **Files**: Enter puts the
+path in the agent's prompt, `e` opens it in your editor (`editor` in config; nvim, helix …
+open inside maitty), `y` copies the path.
+
+In **Changes**: `c` commit,
 `p` push and open a PR, `e` editor, `x` mark the file reviewed (it sinks; the mark clears
 if the file changes again), `r` goes to its agent.
 

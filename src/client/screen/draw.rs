@@ -175,23 +175,6 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         draw_session(app, f, r, term, true, &model, t);
     }
     draw_toast(app, f.buffer_mut(), room, t);
-    // Files open over everything in one tool-window size; Esc closes. (Changes is a sheet.)
-    if let Some(view) = app.view.take_if(|v| matches!(v, crate::client::View::Files(_))) {
-        let buf = f.buffer_mut();
-        dim_all(buf, area, t);
-        hit(app, area, ScreenHit::Noop);
-        let r = panel_at(app, buf, tool_rect(area), "Files", &[], t);
-        // The tool draws inside with a cell of air.
-        let inner = Rect { x: r.x + 2, y: r.y + 1, width: r.width.saturating_sub(4), height: r.height.saturating_sub(2) };
-        match view {
-            crate::client::View::Files(v) => {
-                crate::client::design::draw_files(app, buf, inner, t, &v);
-                app.view = Some(crate::client::View::Files(v));
-            }
-            // In the sheet (above).
-            v @ (crate::client::View::Changes(_) | crate::client::View::Both(_) | crate::client::View::Check(_)) => app.view = Some(v),
-        }
-    }
     g.panes
 }
 
