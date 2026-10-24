@@ -1026,7 +1026,7 @@ dependencies = [
 
 [[package]]
 name = "maitty"
-version = "0.41.5"
+version = "0.42.0"
 dependencies = [
  "anyhow",
  "arboard",
