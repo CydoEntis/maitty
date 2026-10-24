@@ -124,7 +124,7 @@ impl App {
         let v = CheckView::new(term, info);
         self.mode = Mode::Normal;
         self.ask_check_output(&v);
-        self.view = Some(View::Check(Box::new(v)));
+        self.show_view(View::Check(Box::new(v)));
     }
 
     fn ask_check_output(&self, v: &CheckView) {
@@ -145,6 +145,8 @@ impl App {
         }
         let fresh = CheckView::new(v.term, info);
         self.ask_check_output(&fresh);
+        // The same sheet brought up to date, not a new one: if a click into a pane set it
+        // aside, it stays aside rather than taking the keys back mid-word.
         self.view = Some(View::Check(Box::new(fresh)));
     }
 

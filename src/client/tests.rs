@@ -7261,6 +7261,128 @@ mod side_panel_width_tests {
         key(&mut app, '[');
         assert_eq!(app.screen.saved.sheet_w.get("changes"), Some(&(100.min(widest) - 4)));
     }
+
+    fn changes_view() -> View {
+        View::Changes(Box::new(views::ChangesView {
+            dir: PathBuf::from("/repo"),
+            review: None,
+            error: None,
+            agent: String::new(),
+            said: String::new(),
+            term: None,
+            ws: None,
+            reviewed: Default::default(),
+            linked: false,
+            confirm: None,
+        }))
+    }
+
+    fn click(app: &mut App, x: u16, y: u16) {
+        for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+            app.on_mouse(MouseEvent { kind, column: x, row: y, modifiers: KeyModifiers::NONE });
+        }
+    }
+
+    /// Whether `c` typed now reaches a pane (an `Input` goes out), drained afterwards.
+    fn typed_into_a_pane(app: &mut App, rx: &mut mpsc::UnboundedReceiver<ClientMsg>, c: char) -> bool {
+        while rx.try_recv().is_ok() {}
+        key(app, c);
+        std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Input { .. }))
+    }
+
+    #[test]
+    fn a_click_into_a_pane_gives_it_the_keys_and_the_view_stays_open() {
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.view = Some(changes_view());
+        draw(&mut app, 200, 50);
+        assert!(!typed_into_a_pane(&mut app, &mut rx, 'm'), "Changes has the keys first");
+        let (_, pane) = *app.pane_frames.first().expect("a pane beside the sheet");
+        click(&mut app, pane.x + pane.width / 2, pane.y + pane.height / 2);
+        draw(&mut app, 200, 50);
+        assert!(typed_into_a_pane(&mut app, &mut rx, 'm'), "after a click into the pane, typing goes there");
+        assert!(matches!(app.view, Some(View::Changes(_))), "and Changes is still open");
+        let sheet = app.screen.sheet_rect;
+        click(&mut app, sheet.x + sheet.width / 2, sheet.y + sheet.height / 2);
+        assert!(!typed_into_a_pane(&mut app, &mut rx, 'm'), "a click in the sheet gives Changes the keys back");
+    }
+
+    /// Files open in the sheet, set aside by a click into the pane beside it.
+    fn files_set_aside() -> App {
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        app.show_view(View::Files(Box::new(views::FilesTree::new(std::env::temp_dir(), None))));
+        draw(&mut app, 200, 50);
+        let (_, pane) = *app.pane_frames.first().unwrap();
+        click(&mut app, pane.x + pane.width / 2, pane.y + pane.height / 2);
+        assert!(!app.view_has_keys(), "set aside");
+        app
+    }
+
+    #[test]
+    fn the_pane_with_the_keys_shows_its_cursor() {
+        let mut app = files_set_aside();
+        let mut term = Terminal::new(TestBackend::new(200, 50)).unwrap();
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        let at = term.get_cursor_position().unwrap();
+        let (_, pane) = *app.pane_frames.first().unwrap();
+        assert!(pane.contains(at), "the caret is in the pane that has the keys: {at:?} not in {pane:?}");
+    }
+
+    #[test]
+    fn f_hands_a_set_aside_files_view_the_keys_and_the_leader_leaves_you_in_it() {
+        let mut app = files_set_aside();
+        app.act(Action::Files);
+        assert!(matches!(app.view, Some(View::Files(_))) && app.view_has_keys(), "f gave Files the keys back, not closed it");
+        // Through the leader in shortcut mode, too: the keys go to Files, not back to the leader.
+        let mut app = files_set_aside();
+        app.cfg.ui.which_key = false;
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        key(&mut app, 'f');
+        assert!(app.view_has_keys() && matches!(app.mode, Mode::Normal), "in Files: {:?}", std::mem::discriminant(&app.mode));
+    }
+
+    #[test]
+    fn a_new_view_opened_any_way_has_the_keys() {
+        let mut app = files_set_aside();
+        app.open_files(std::env::temp_dir());
+        assert!(app.view_has_keys(), "open_files (as Ctrl+click on a path does) gives the new view the keys");
+    }
+
+    #[test]
+    fn a_check_sheet_set_aside_stays_aside_when_its_run_updates() {
+        use crate::protocol::{CheckInfo, CheckState};
+        let run = |started_at| CheckInfo { command: "npm test".into(), state: CheckState::Failed, exit_code: Some(1), started_at, ..Default::default() };
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.snap.terms.get_mut(&1).unwrap().checks = vec![run(100)];
+        app.open_check_sheet(1);
+        draw(&mut app, 200, 50);
+        let (_, pane) = *app.pane_frames.first().unwrap();
+        click(&mut app, pane.x + pane.width / 2, pane.y + pane.height / 2);
+        // The check runs again: the sheet is brought up to date in place.
+        app.snap.terms.get_mut(&1).unwrap().checks = vec![run(200)];
+        app.check_view_sync();
+        assert!(matches!(app.view, Some(View::Check(_))), "the sheet is still open");
+        assert!(typed_into_a_pane(&mut app, &mut rx, 'o'), "typing still reaches the pane, not the sheet");
+    }
+
+    #[test]
+    fn a_view_opened_again_has_the_keys() {
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.view = Some(changes_view());
+        draw(&mut app, 200, 50);
+        let (_, pane) = *app.pane_frames.first().unwrap();
+        click(&mut app, pane.x + pane.width / 2, pane.y + pane.height / 2);
+        app.view = None;
+        draw(&mut app, 200, 50);
+        app.view = Some(changes_view());
+        draw(&mut app, 200, 50);
+        assert!(!typed_into_a_pane(&mut app, &mut rx, 'm'), "the reopened view has the keys");
+    }
 }
 
 mod files_panel_tests {

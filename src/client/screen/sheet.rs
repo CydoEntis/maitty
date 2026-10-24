@@ -125,6 +125,16 @@ pub(in crate::client) fn open_sheet(app: &App) -> Option<SheetKind> {
     }
 }
 
+/// The open sheet has the keys: the Inbox always, a view unless a click into a pane set it
+/// aside.
+pub(in crate::client) fn sheet_has_keys(app: &App) -> bool {
+    match open_sheet(app) {
+        None => false,
+        Some(SheetKind::Inbox) => true,
+        Some(_) => app.view_has_keys(),
+    }
+}
+
 /// Where the sheet goes in the pane column `col`, and what's left for the panes, with `frac`
 /// of its width in (it slides in). It docks right, `want` wide (held between `SHEET_MIN` and
 /// what leaves the panes `PANES_KEEP`), the layout's gap from the panes (Flat: the panes run
@@ -162,7 +172,11 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
         SheetKind::Check => ("CHECK", check_title(app), ScreenHit::ViewClose),
         SheetKind::Branch => ("BRANCH", branch_title(app), ScreenHit::ViewClose),
     };
-    let mut c = Card::new(t, title).lit(t.accent);
+    // Lit while it has the keys; a click into a pane sets it aside, unlit, still open.
+    let mut c = Card::new(t, title);
+    if sheet_has_keys(app) {
+        c = c.lit(t.accent);
+    }
     // Cut here, so a long name still shows its start rather than being left out.
     let sub = truncate(&sub, r.width.saturating_sub(TITLE_CHROME) as usize);
     c.sub = &sub;

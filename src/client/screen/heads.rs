@@ -85,7 +85,7 @@ impl App {
             .collect();
         let file = o.file.clone();
         self.mode = Mode::Normal;
-        self.view = Some(crate::client::View::Both(Box::new(BothView { repo: repo.clone(), overlap: o, parts: None, scroll: 0 })));
+        self.show_view(crate::client::View::Both(Box::new(BothView { repo: repo.clone(), overlap: o, parts: None, scroll: 0 })));
         self.spawn_bg(move || {
             // Each side's changes since the two last had a commit in common (as the
             // heads-up itself is found): against the first other checkout.

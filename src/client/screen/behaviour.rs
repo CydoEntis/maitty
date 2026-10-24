@@ -541,7 +541,11 @@ impl App {
                 let dir = self.screen_target_dir();
                 self.screen.cursor = None;
                 self.mode = Mode::Normal;
-                if *a == Action::Files && matches!(self.view, Some(crate::client::View::Files(_))) {
+                // Open with the keys: f closes it; set aside by a click into a pane: f hands it
+                // the keys back.
+                if *a == Action::Files && matches!(self.view, Some(crate::client::View::Files(_))) && !self.view_has_keys() {
+                    self.view_set_aside = None;
+                } else if *a == Action::Files && matches!(self.view, Some(crate::client::View::Files(_))) {
                     self.view = None;
                 } else if *a == Action::Files {
                     self.open_files(dir);

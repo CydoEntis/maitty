@@ -398,6 +398,11 @@ pub struct App {
     last_click: Option<(Hit, Instant)>,
     /// Shortcut mode was on when the open popup took the keys; it comes back when that closes.
     shortcut_held: bool,
+    /// The open view a click into a pane set aside: while that view stays open, keys go to the
+    /// pane. A click back in the side sheet, or another view opening, hands them back.
+    view_set_aside: Option<std::mem::Discriminant<View>>,
+    /// Bumped each time a view opens, to tell an action that opened one (even of the same kind).
+    view_opened: u64,
     /// The welcome screen is up; which of its panes is selected.
     splash: bool,
     /// The app layout's own state.
@@ -583,6 +588,8 @@ impl App {
             undo_hint: false,
             last_click: None,
             shortcut_held: false,
+            view_set_aside: None,
+            view_opened: 0,
             splash: false,
             screen: screen::Screen::load(),
             window_focused: true,

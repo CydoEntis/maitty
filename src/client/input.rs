@@ -136,6 +136,19 @@ impl App {
         self.view.as_ref().map(std::mem::discriminant)
     }
 
+    /// The open view has the keys, unless a click into a pane set it aside.
+    pub(super) fn view_has_keys(&self) -> bool {
+        self.view.is_some() && self.view_set_aside != self.view_kind()
+    }
+
+    /// Open `v` in the side sheet with the keys, whatever was set aside before: every new view
+    /// (Files, Changes, Branch, a check, both diffs) opens through here.
+    pub(super) fn show_view(&mut self, v: View) {
+        self.view_set_aside = None;
+        self.view_opened += 1;
+        self.view = Some(v);
+    }
+
     fn handle_key(&mut self, k: KeyEvent) {
         self.screen_fresh();
         let spec = KeySpec::from_event(&k);
@@ -190,7 +203,7 @@ impl App {
                     self.mode = Mode::Prefix { since: Instant::now(), acted: false };
                 } else if let Some(a) = self.keymap.global.get(&spec).cloned() {
                     self.act(a);
-                } else if self.view.is_some() {
+                } else if self.view_has_keys() {
                     self.on_view_key(&k);
                 } else if self.scroll_key(&k) {
                 } else {
@@ -244,13 +257,13 @@ impl App {
                     return;
                 }
                 if let Some(a) = self.keymap.prefixed.get(&spec).cloned() {
-                    let before = self.view_kind();
+                    let (opened_before, had_keys) = (self.view_opened, self.view_has_keys());
                     self.mode = Mode::Normal;
                     self.act(a);
                     // A view it opened (Changes, Files, a check) takes the keys, as a popup
                     // does: its own k, arrows and Esc must not run leader actions. Closing it
                     // returns to shortcut mode (`keep_shortcut_mode`).
-                    let opened = self.view.is_some() && self.view_kind() != before;
+                    let opened = self.view_has_keys() && (self.view_opened != opened_before || !had_keys);
                     // Nothing opened: the mode holds, the key map stays away.
                     if self.mode == Mode::Normal && !opened {
                         self.mode = Mode::Prefix { since, acted: true };
@@ -412,6 +425,15 @@ impl App {
         // A click leaves shortcut mode for good, not just the popup it lands in.
         if matches!(m.kind, MouseEventKind::Down(_)) {
             self.shortcut_held = false;
+        }
+        // A click into a pane gives it the keys and leaves the open view beside it; a click in
+        // the side sheet gives them back to the view.
+        if m.kind == MouseEventKind::Down(MouseButton::Left) && self.view.is_some() {
+            if self.screen.sheet_rect.contains(pos) {
+                self.view_set_aside = None;
+            } else if self.pane_frames.iter().any(|(_, r)| r.contains(pos)) {
+                self.view_set_aside = self.view_kind();
+            }
         }
         self.screen_fresh();
         // Ctrl+click opens a link; double-click copies a word (or a path, or a link).

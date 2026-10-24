@@ -126,6 +126,10 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     app.screen.branch_keys.clear();
     fill(f.buffer_mut(), area, t.bg);
     let room = framed(app, area);
+    // A view set aside by a click into a pane is forgotten once it closes.
+    if app.view.is_none() {
+        app.view_set_aside = None;
+    }
     let g = grid(app, room);
     note_sheet(app, &g, room.width);
     // Too narrow mid-slide to draw anything sensible: just the room it takes.
@@ -485,7 +489,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     let st = info.status;
     // While the sidebar has the keys, no pane shows as focused.
     // Exactly one lit edge: an open sheet has the keys, so the pane gives up its lit border.
-    let focused = focused && !side_focused(app) && open_sheet(app).is_none();
+    let focused = focused && !side_focused(app) && !sheet_has_keys(app);
     let scrolled = app.parsers.get(&term).map(|p| p.screen().scrollback()).filter(|n| *n > 0);
     let grid_color = look.grid.then(|| grid_color(app, term, t));
     let border = if let Some(own) = grid_color {
@@ -588,7 +592,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
             && !screen.hide_cursor()
             && scrolled.is_none()
             && matches!(app.mode, Mode::Normal | Mode::Prefix { .. })
-            && app.view.is_none()
+            && !sheet_has_keys(app)
         {
             let (row, col) = screen.cursor_position();
             if row < inner.height && col < inner.width {

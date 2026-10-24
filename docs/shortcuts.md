@@ -196,6 +196,8 @@ The panel docked right (Inbox, Changes, Files, checks, Branch). Its width is kep
 | [ , ] | Narrow or widen it by 4 columns (in the Inbox, while its search is empty; in Files, not while filtering or editing) |
 | = | Back to its default width |
 | Drag its left edge | Resize it |
+| Click a pane | Type into that pane; the view stays open, unlit |
+| Click the panel | Give the view the keys again |
 
 ## Inbox
 

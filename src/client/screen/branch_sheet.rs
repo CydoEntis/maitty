@@ -191,6 +191,11 @@ impl App {
     /// `b`: the Branch view of the session you're on, or closed again when it's open.
     pub(in crate::client) fn toggle_branch_sheet(&mut self) {
         if matches!(self.view, Some(View::Branch(_))) {
+            // Set aside by a click into a pane: b hands it the keys back rather than closing it.
+            if !self.view_has_keys() {
+                self.view_set_aside = None;
+                return;
+            }
             self.view = None;
             return;
         }
@@ -200,7 +205,7 @@ impl App {
         let dir = self.screen_target_dir();
         self.screen.cursor = None;
         self.mode = Mode::Normal;
-        self.view = Some(View::Branch(Box::new(BranchSheet::new(dir.clone(), term))));
+        self.show_view(View::Branch(Box::new(BranchSheet::new(dir.clone(), term))));
         self.read_branch_facts(dir);
     }
 
