@@ -4705,8 +4705,35 @@ second line
                 let ring = ring(&buf);
                 let line = |c: &&&ratatui::buffer::Cell| c.symbol().chars().next().is_some_and(|ch| ('\u{2500}'..='\u{257f}').contains(&ch));
                 assert!(ring.iter().filter(line).all(|c| c.fg == app.theme.sky()), "{at}: every edge on the window's ring is sky");
-                let sides = [0u16, 159].iter().flat_map(|&x| (1..44).map(move |y| (x, y))).filter(|&(x, y)| buf[(x, y)].fg == app.theme.sky()).count();
-                assert!(sides >= 2 * 43 * 3 / 4, "{at}: the sides read as a frame: {sides} of {}\n{}", 2 * 43, buf_text(&buf));
+                // Compact has no boxes, so nothing on its edge to light.
+                if layout != "compact" {
+                    let sides = [0u16, 159].iter().flat_map(|&x| (1..44).map(move |y| (x, y))).filter(|&(x, y)| buf[(x, y)].fg == app.theme.sky()).count();
+                    assert!(sides >= 2 * 43 * 3 / 4, "{at}: the sides read as a frame: {sides} of {}\n{}", 2 * 43, buf_text(&buf));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn without_padding_the_frame_changes_no_words_on_the_edge() {
+        // The tag's slot at the right of row 0: its widest, capped.
+        const TAG_SLOT: u16 = 26;
+        let edge = |buf: &ratatui::buffer::Buffer| -> Vec<String> {
+            let (w, h) = (buf.area.width, buf.area.height);
+            let row = |y: u16, upto: u16| (0..upto).map(|x| buf[(x, y)].symbol()).collect::<String>();
+            let col = |x: u16| (0..h).map(|y| buf[(x, y)].symbol()).collect::<String>();
+            vec![row(0, w - 1 - TAG_SLOT), row(h - 1, w), col(0), col(w - 1)]
+        };
+        for layout in LOOKS {
+            for side in SIDES {
+                for rounded in [crate::config::Rounding::Off, crate::config::Rounding::Full] {
+                    let mut app = framed_app(layout, "0", side);
+                    app.cfg.ui.rounded = rounded;
+                    let lit = edge(&drawn(&mut app, 160, 45));
+                    app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                    let typing = edge(&drawn(&mut app, 160, 45));
+                    assert_eq!(lit, typing, "{layout} {side} {rounded:?}: the frame only recolours");
+                }
             }
         }
     }

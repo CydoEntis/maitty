@@ -18,8 +18,9 @@ stay hard to miss. The user asked for the mode to be unmistakable before the nex
 - **A frame round the whole window while shortcut mode is on.** With `ui.padding` 1 or 2
   the outermost padding ring is a solid sky line: `▀` along the top, `▄` along the bottom,
   `█` at each side, so all four read about equally thick. With padding 0 there is no ring,
-  so the box edges on the window's edge turn sky and the bare ground between them takes a
-  thin line; chips, words and Compact's header strip stay as they are. While a popup or
+  so only the box edges already on the window's edge turn sky; no glyph changes, so chips,
+  words, gaps and strips stay as they are (Compact has no boxes there and shows the mode by
+  its tag and the sky focus). While a popup or
   view holds the mode, the frame stays, faded 60% toward the ground and drawn above the
   dimming, like the paused pill. Input mode has no frame. Every look, every sidebar place.
 - **The mode tag is always in the corner of row 0:** ` TYPING ` (quiet, `muted` on `btn`)

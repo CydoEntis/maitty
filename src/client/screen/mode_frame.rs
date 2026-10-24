@@ -20,8 +20,8 @@ fn frame_color(app: &App, t: &Theme) -> Option<Color> {
 
 /// Draw the frame on the window's outermost ring. With padding, the ring is empty: a half-row
 /// line along the top and bottom and a full column at each side, so all four read equally thick.
-/// Without padding, the boxes' own edges on the ring take the colour, and the bare ground
-/// between them a line, so the edge still reads as one frame; chips and words stay as they are.
+/// Without padding, only the boxes' own edges on the ring take the colour; chips, words and
+/// strips stay exactly as they are.
 pub(in crate::client) fn draw_mode_frame(app: &App, buf: &mut Buffer, area: Rect, t: &Theme) {
     let Some(color) = frame_color(app, t) else { return };
     let area = area.intersection(buf.area);
@@ -29,16 +29,12 @@ pub(in crate::client) fn draw_mode_frame(app: &App, buf: &mut Buffer, area: Rect
         return;
     }
     let padded = framed(app, area) != area;
-    let rounded = Look::of(&app.cfg.ui).rounded;
     for (x, y) in ring(area) {
-        let edge = Edge::at(area, x, y);
         let cell = &mut buf[(x, y)];
         if padded {
-            cell.set_symbol(edge.block()).set_fg(color);
+            cell.set_symbol(block(area, x, y)).set_fg(color);
         } else if is_box_line(cell.symbol()) {
             cell.set_fg(color);
-        } else if cell.symbol() == " " && (cell.bg == t.bg || cell.bg == Color::Reset) {
-            cell.set_symbol(edge.line(rounded)).set_fg(color);
         }
     }
 }
@@ -50,55 +46,14 @@ fn ring(r: Rect) -> impl Iterator<Item = (u16, u16)> {
     rows.chain(cols)
 }
 
-/// Where a ring cell sits.
-#[derive(Clone, Copy)]
-enum Edge {
-    Top,
-    Bottom,
-    Side,
-    TopLeft,
-    TopRight,
-    BottomLeft,
-    BottomRight,
-}
-
-impl Edge {
-    fn at(r: Rect, x: u16, y: u16) -> Edge {
-        let (left, right, top) = (x == r.left(), x == r.right() - 1, y == r.top());
-        match (left, right, top) {
-            (true, _, true) => Edge::TopLeft,
-            (_, true, true) => Edge::TopRight,
-            (true, _, false) if y == r.bottom() - 1 => Edge::BottomLeft,
-            (_, true, false) if y == r.bottom() - 1 => Edge::BottomRight,
-            (false, false, true) => Edge::Top,
-            (false, false, false) => Edge::Bottom,
-            _ => Edge::Side,
-        }
-    }
-
-    /// The solid frame in the padding.
-    fn block(self) -> &'static str {
-        match self {
-            Edge::Top => "▀",
-            Edge::Bottom => "▄",
-            _ => "█",
-        }
-    }
-
-    /// The thin line across a gap between boxes, without padding.
-    fn line(self, rounded: bool) -> &'static str {
-        match (self, rounded) {
-            (Edge::Top | Edge::Bottom, _) => "─",
-            (Edge::Side, _) => "│",
-            (Edge::TopLeft, false) => "┌",
-            (Edge::TopRight, false) => "┐",
-            (Edge::BottomLeft, false) => "└",
-            (Edge::BottomRight, false) => "┘",
-            (Edge::TopLeft, true) => "╭",
-            (Edge::TopRight, true) => "╮",
-            (Edge::BottomLeft, true) => "╰",
-            (Edge::BottomRight, true) => "╯",
-        }
+/// The solid frame's glyph at a ring cell: the upper half along the top, the lower half along
+/// the bottom, a full cell at the sides and corners.
+fn block(r: Rect, x: u16, y: u16) -> &'static str {
+    let side = x == r.left() || x == r.right() - 1;
+    match (side, y == r.top()) {
+        (true, _) => "█",
+        (false, true) => "▀",
+        (false, false) => "▄",
     }
 }
 
