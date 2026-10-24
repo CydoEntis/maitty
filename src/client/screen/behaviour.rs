@@ -853,6 +853,11 @@ impl App {
     }
 
     pub(in crate::client) fn on_goto_key(&mut self, mut query: String, mut sel: usize, k: &KeyEvent) {
+        // With nothing typed, `[` `]` `=` size the sheet; once you search they are text.
+        if query.is_empty() && self.sheet_size_key(k) {
+            self.mode = Mode::GoTo { query, sel };
+            return;
+        }
         let model = self.screen_model();
         let rows = goto_rows(&model, &query, heads_up(self).len());
         // Headings aren't rows you land on.
@@ -1448,6 +1453,7 @@ impl App {
                 }
             }
             ScreenHit::SideEdge => self.screen.drag = Some(Drag::Side),
+            ScreenHit::SheetEdge => self.screen.drag = Some(Drag::Sheet),
             ScreenHit::ToBottom(term) => self.back_to_bottom(term),
             ScreenHit::ScrollBar(term) => {
                 self.screen.drag = Some(Drag::Scroll(term));

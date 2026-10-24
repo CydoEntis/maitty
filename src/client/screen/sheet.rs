@@ -17,8 +17,81 @@ pub(in crate::client) enum SheetKind {
     Check,
 }
 
-/// Its width beside the panes.
+/// Its width beside the panes, before you size it (Changes takes half the screen).
 pub(super) const SHEET_W: u16 = 72;
+/// The narrowest it gets.
+pub(in crate::client) const SHEET_MIN: u16 = 32;
+/// The columns the panes keep beside it; with less, it takes the whole pane column.
+pub(in crate::client) const PANES_KEEP: u16 = 52;
+/// How far `[` and `]` move its edge.
+const SHEET_STEP: u16 = 4;
+
+impl SheetKind {
+    /// Its name in the saved UI state, where its width is kept.
+    fn key(self) -> &'static str {
+        match self {
+            SheetKind::Inbox => "inbox",
+            SheetKind::Changes => "changes",
+            SheetKind::Both => "both",
+            SheetKind::Check => "check",
+        }
+    }
+
+    /// Its width before you size it, on a screen `screen_w` wide.
+    fn default_w(self, screen_w: u16) -> u16 {
+        match self {
+            SheetKind::Changes => screen_w / 2,
+            _ => SHEET_W,
+        }
+    }
+}
+
+/// The width the sheet showing `kind` wants: what you sized it to, else its default.
+pub(in crate::client) fn wanted_w(app: &App, kind: SheetKind, screen_w: u16) -> u16 {
+    app.screen.saved.sheet_w.get(kind.key()).copied().unwrap_or_else(|| kind.default_w(screen_w))
+}
+
+/// The widest the sheet can be beside the panes in `col`: they keep `PANES_KEEP` and the gap.
+pub(in crate::client) fn widest(col: Rect, look: Look) -> u16 {
+    col.width.saturating_sub(look.gap + PANES_KEEP)
+}
+
+impl App {
+    /// The open sheet's width set to `w`, held between `SHEET_MIN` and what the panes leave.
+    pub(in crate::client) fn set_sheet_w(&mut self, w: u16) {
+        let Some(kind) = open_sheet(self) else { return };
+        let w = w.clamp(SHEET_MIN, self.screen.sheet_widest.max(SHEET_MIN));
+        self.screen.saved.sheet_w.insert(kind.key().into(), w);
+    }
+
+    /// `[` narrows the open sheet, `]` widens it and `=` puts its default back, while it has
+    /// the keys. Returns whether the key was one of them.
+    pub(in crate::client) fn sheet_size_key(&mut self, k: &KeyEvent) -> bool {
+        let Some(kind) = open_sheet(self) else { return false };
+        if k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) || !matches!(k.code, KeyCode::Char('[' | ']' | '=')) {
+            return false;
+        }
+        // Taking the whole pane column, it has no width of its own to change: the keys do
+        // nothing, and the width you chose for wider screens stays.
+        let widest = self.screen.sheet_widest;
+        if widest < SHEET_MIN {
+            return true;
+        }
+        // From the width it wants as held to this screen, never the drawn one: that may be
+        // mid-slide, or another view's, when keys come before the next frame.
+        let now = wanted_w(self, kind, self.screen.sheet_screen_w).clamp(SHEET_MIN, widest);
+        match k.code {
+            KeyCode::Char('[') => self.set_sheet_w(now.saturating_sub(SHEET_STEP)),
+            KeyCode::Char(']') => self.set_sheet_w(now + SHEET_STEP),
+            KeyCode::Char('=') => {
+                self.screen.saved.sheet_w.remove(kind.key());
+            }
+            _ => return false,
+        }
+        self.screen.save();
+        true
+    }
+}
 
 /// The sheet that's open, if any: the Inbox while you're in it (or writing a follow-up in
 /// one of its rows), else Changes.
@@ -37,11 +110,13 @@ pub(in crate::client) fn open_sheet(app: &App) -> Option<SheetKind> {
 }
 
 /// Where the sheet goes in the pane column `col`, and what's left for the panes, with `frac`
-/// of its width in (it slides in). It docks right, `SHEET_W` wide, the layout's gap from the
-/// panes (Flat: the panes run under its `│` rule, as beside the sidebar); a screen narrower
-/// than `NARROW` gives it the whole column.
-pub(in crate::client) fn split_for_sheet(screen_w: u16, col: Rect, look: Look, frac: f32) -> (Rect, Rect) {
-    let full = if screen_w < NARROW || col.width <= SHEET_W + look.gap + 20 { col.width } else { SHEET_W };
+/// of its width in (it slides in). It docks right, `want` wide (held between `SHEET_MIN` and
+/// what leaves the panes `PANES_KEEP`), the layout's gap from the panes (Flat: the panes run
+/// under its `│` rule, as beside the sidebar). A screen narrower than `NARROW`, or a column
+/// too narrow for both, gives it the whole column.
+pub(in crate::client) fn split_for_sheet(screen_w: u16, col: Rect, look: Look, frac: f32, want: u16) -> (Rect, Rect) {
+    let room = widest(col, look);
+    let full = if screen_w < NARROW || room < SHEET_MIN { col.width } else { want.clamp(SHEET_MIN, room) };
     let w = (full as f32 * frac.clamp(0.0, 1.0)).round() as u16;
     let sheet = Rect { x: col.right() - w, width: w, ..col };
     let beside = if w == 0 || w >= col.width { w } else if look.flat { w - 1 } else { w + look.gap };

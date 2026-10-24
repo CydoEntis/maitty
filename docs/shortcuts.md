@@ -187,6 +187,16 @@ No bare key answers from the sidebar.
 | 3 | No, do it alone |
 | Esc | Later: the row keeps asking |
 
+## Side panel
+
+The panel docked right (Inbox, Changes, checks). Its width is kept for each kind of view.
+
+| Keys | Action |
+| --- | --- |
+| [ , ] | Narrow or widen it by 4 columns (in the Inbox, while its search is empty) |
+| = | Back to its default width |
+| Drag its left edge | Resize it |
+
 ## Inbox
 
 | Keys | Action |

@@ -5,6 +5,9 @@ use super::*;
 impl App {
     /// Keys while a view replaces the pane area (single letters act directly).
     pub(super) fn on_view_key(&mut self, k: &KeyEvent) {
+        if self.sheet_size_key(k) {
+            return;
+        }
         let Some(view) = self.view.take() else { return };
         match view {
             View::Changes(mut v) => {

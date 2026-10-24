@@ -65,6 +65,8 @@ pub(super) struct Saved {
     pub reviewed: HashMap<String, HashMap<String, u64>>,
     /// Commands run from the key overlay, latest first (config spelling), for its RECENT.
     pub recent: Vec<String>,
+    /// The side sheet's width per kind of view (`SheetKind::key`), as you sized it.
+    pub sheet_w: HashMap<String, u16>,
 }
 
 #[derive(Debug, Default)]
@@ -115,6 +117,12 @@ pub(super) struct Screen {
     pub side_scroll: u16,
     pub follow: bool,
     pub side_rect: Rect,
+    /// Where the side sheet was drawn, and the widest it could be there (its edge's drag and
+    /// `[` `]` keep within it).
+    pub sheet_rect: Rect,
+    pub sheet_widest: u16,
+    /// The screen's width when it was drawn (Changes starts at half of it).
+    pub sheet_screen_w: u16,
     /// Drawn this frame: sidebar sessions in order, project keys, worktree and branch rows.
     pub visible: Vec<TermId>,
     pub proj_keys: Vec<String>,
@@ -218,6 +226,8 @@ impl KeyMap {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum Drag {
     Side,
+    /// The side sheet's left edge.
+    Sheet,
     /// A divider between sessions (index into `dividers`).
     Divider(usize),
     /// A pane's scrollbar.
@@ -1001,6 +1011,8 @@ pub(super) enum ScreenHit {
     ViewClose,
     /// The sidebar's edge (drag to resize).
     SideEdge,
+    /// The side sheet's left edge: drag it to resize the sheet.
+    SheetEdge,
     /// The sidebar's empty space: the keys go to it.
     SideFocus,
     ExpandSidebar,

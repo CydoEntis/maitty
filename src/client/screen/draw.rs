@@ -70,8 +70,43 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
     // Collapsed, the sessions are chips on row 0 and the panes (with their tabs) start below it.
     let col = if strip_on(app) { Rect { y: col.y + 1, height: col.height.saturating_sub(1), ..col } } else { col };
     let edge = if side.x > col.x { Rect { x: col.right(), width: gap.max(1), ..area } } else { Rect { x: col.x.saturating_sub(gap), width: gap.max(1), ..area } };
-    let (sheet, panes) = if open_sheet(app).is_some() { split_for_sheet(area.width, col, look, app.sheet_frac) } else { (Rect::default(), col) };
+    let (sheet, panes) = match open_sheet(app) {
+        Some(kind) => split_for_sheet(area.width, col, look, app.sheet_frac, wanted_w(app, kind, area.width)),
+        None => (Rect::default(), col),
+    };
     Grid { side, panes, edge, sheet }
+}
+
+/// Where the side sheet is this frame, the widest it could be, and the screen's width, for its
+/// edge and its `[` `]` keys. A sheet that takes the whole pane column, or none, can't be
+/// sized: its widest is 0.
+fn note_sheet(app: &mut App, g: &Grid, screen_w: u16) {
+    let look = Look::of(&app.cfg.ui);
+    let col = Rect { width: g.sheet.right().saturating_sub(g.panes.x), ..g.panes };
+    let sizable = open_sheet(app).is_some() && screen_w >= NARROW && widest(col, look) >= SHEET_MIN;
+    app.screen.sheet_rect = g.sheet;
+    app.screen.sheet_widest = if sizable { widest(col, look) } else { 0 };
+    app.screen.sheet_screen_w = screen_w;
+}
+
+/// The side sheet's left edge, beside the panes: drag it to resize the sheet. It lights up
+/// while you point at it or drag it. A sheet that takes the whole pane column has none.
+fn draw_sheet_edge(app: &mut App, buf: &mut Buffer, g: &Grid, t: &Theme) {
+    if app.screen.sheet_widest < SHEET_MIN || g.panes.width == 0 {
+        return;
+    }
+    // The gap between them (Floating); the sheet's own line where they touch (Tiled, Compact).
+    let x = g.panes.right().min(g.sheet.x);
+    let edge = Rect { x, width: g.sheet.x.saturating_sub(g.panes.right()).max(1), ..g.sheet };
+    if app.screen.drag == Some(Drag::Sheet) || hovered(app, edge) {
+        let ex = edge.x + edge.width / 2;
+        for yy in g.sheet.top() + 1..g.sheet.bottom().saturating_sub(1) {
+            if let Some(px) = buf.cell_mut((ex, yy)) {
+                px.set_symbol("│").set_style(Style::default().fg(t.accent).bg(t.bg));
+            }
+        }
+    }
+    hit(app, edge, ScreenHit::SheetEdge);
 }
 
 /// The sessions are collapsed into the strip on row 0 (`z`), not hidden (`Z`).
@@ -92,6 +127,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     fill(f.buffer_mut(), area, t.bg);
     let room = framed(app, area);
     let g = grid(app, room);
+    note_sheet(app, &g, room.width);
     // Too narrow mid-slide to draw anything sensible: just the room it takes.
     if g.side.width >= SIDE_DRAWN_FROM {
         draw_side(app, f.buffer_mut(), g.side, &model, t);
@@ -119,6 +155,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     }
     if let Some(kind) = open_sheet(app).filter(|_| g.sheet.width >= SHEET_DRAWN_FROM) {
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
+        draw_sheet_edge(app, f.buffer_mut(), &g, t);
     }
     draw_corner_pill(app, f.buffer_mut(), room, t);
     app.screen.crumb_x = g.panes.x + 1;

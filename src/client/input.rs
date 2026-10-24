@@ -482,6 +482,10 @@ impl App {
                             let w = if self.cfg.ui.sidebar_position == "right" { side.right().saturating_sub(m.column) } else { m.column.saturating_sub(side.x) };
                             self.screen.saved.side_w = Some(w.clamp(screen::SIDE_MIN, screen::SIDE_MAX));
                         }
+                        screen::Drag::Sheet => {
+                            let right = self.screen.sheet_rect.right();
+                            self.set_sheet_w(right.saturating_sub(m.column));
+                        }
                         screen::Drag::Scroll(term) => {
                             if let Some((t, r, total)) = self.screen.bar
                                 && t == term
@@ -835,7 +839,7 @@ impl App {
                 Some(_) => "row-resize",
                 None => "default",
             },
-            Some(Hit::Screen(screen::ScreenHit::SideEdge)) => "col-resize",
+            Some(Hit::Screen(screen::ScreenHit::SideEdge | screen::ScreenHit::SheetEdge)) => "col-resize",
             _ => "default",
         };
         if self.pointer != want {

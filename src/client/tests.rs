@@ -3761,7 +3761,7 @@ second line
         let col = Rect { x: 40, y: 4, width: 118, height: 40 };
         for step in 0..=20 {
             let frac = step as f32 / 20.0;
-            let (sheet, panes) = screen::split_for_sheet(160, col, screen::Look::of(&app.cfg.ui), frac);
+            let (sheet, panes) = screen::split_for_sheet(160, col, screen::Look::of(&app.cfg.ui), frac, 72);
             assert!(panes.width + sheet.width <= col.width, "they share the column at {frac}");
             let mut buf = ratatui::buffer::Buffer::empty(Rect::new(0, 0, 160, 45));
             if sheet.width >= screen::SHEET_DRAWN_FROM {
@@ -7091,5 +7091,156 @@ mod inbox_search_tests {
         app.on_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         assert!(matches!(&app.mode, Mode::GoTo { query, .. } if query.is_empty()), "the Inbox stays open, its search empty");
+    }
+}
+
+mod side_panel_width_tests {
+    use super::*;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    /// The Inbox open in the side sheet on a screen `w` columns wide, drawn once.
+    fn inbox_open(w: u16, h: u16) -> App {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        app.act(Action::Jump);
+        draw(&mut app, w, h);
+        app
+    }
+
+    fn draw(app: &mut App, w: u16, h: u16) {
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+    }
+
+    fn key(app: &mut App, c: char) {
+        app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+    }
+
+    fn edge(app: &App) -> Option<Rect> {
+        app.hits.iter().find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::SheetEdge)).map(|(r, _)| *r)
+    }
+
+    #[test]
+    fn brackets_narrow_and_widen_the_sheet_and_equals_puts_its_default_back() {
+        let mut app = inbox_open(200, 50);
+        assert_eq!(app.screen.sheet_rect.width, 72, "the Inbox starts 72 wide");
+        key(&mut app, '[');
+        draw(&mut app, 200, 50);
+        assert_eq!(app.screen.sheet_rect.width, 68, "[ narrows it 4");
+        key(&mut app, ']');
+        key(&mut app, ']');
+        draw(&mut app, 200, 50);
+        assert_eq!(app.screen.sheet_rect.width, 76, "] widens it 4 each");
+        assert_eq!(app.screen.saved.sheet_w.get("inbox"), Some(&76), "kept in the saved UI state");
+        key(&mut app, '=');
+        draw(&mut app, 200, 50);
+        assert_eq!(app.screen.sheet_rect.width, 72, "= puts the default back");
+        assert!(matches!(&app.mode, Mode::GoTo { query, .. } if query.is_empty()), "the keys sized the sheet, not the search");
+    }
+
+    #[test]
+    fn dragging_the_sheets_edge_resizes_it() {
+        let mut app = inbox_open(200, 50);
+        let at = edge(&app).expect("an edge to drag beside the panes");
+        let mouse = |kind, column| MouseEvent { kind, column, row: at.y + 5, modifiers: KeyModifiers::NONE };
+        app.on_mouse(mouse(MouseEventKind::Down(MouseButton::Left), at.x));
+        app.on_mouse(mouse(MouseEventKind::Drag(MouseButton::Left), at.x - 10));
+        app.on_mouse(mouse(MouseEventKind::Up(MouseButton::Left), at.x - 10));
+        draw(&mut app, 200, 50);
+        assert_eq!(app.screen.sheet_rect.width, app.screen.sheet_rect.right() - (at.x - 10), "the sheet's edge follows the pointer");
+        assert!(app.screen.sheet_rect.width > 72, "wider than before");
+    }
+
+    #[test]
+    fn the_sheet_stays_between_its_least_and_what_leaves_the_panes_their_room() {
+        let mut app = inbox_open(200, 50);
+        app.screen.saved.sheet_w.insert("inbox".into(), 10);
+        draw(&mut app, 200, 50);
+        assert_eq!(app.screen.sheet_rect.width, screen::SHEET_MIN, "never under its least");
+        app.screen.saved.sheet_w.insert("inbox".into(), 500);
+        draw(&mut app, 200, 50);
+        let panes_w = edge(&app).map(|e| e.x).unwrap() - app.screen.side_rect.right();
+        assert!(panes_w >= screen::PANES_KEEP, "the panes keep {} columns, have {panes_w}", screen::PANES_KEEP);
+        // Too narrow for both: the sheet takes the whole pane column, with no edge to drag.
+        let app = inbox_open(80, 24);
+        assert!(edge(&app).is_none() && app.screen.sheet_rect.x <= app.screen.side_rect.right() + 1, "{:?}", app.screen.sheet_rect);
+    }
+
+    #[test]
+    fn changes_starts_half_the_screen_wide_and_an_older_saved_file_still_loads() {
+        let (_, app) = super::design_tests::render_with(200, 50);
+        assert_eq!(screen::wanted_w(&app, screen::SheetKind::Changes, 200), 100);
+        assert_eq!(screen::wanted_w(&app, screen::SheetKind::Check, 200), 72);
+        let old: screen::Saved = serde_json::from_str(r#"{"order":[],"draft":""}"#).expect("a file from before widths were kept");
+        assert!(old.sheet_w.is_empty());
+    }
+
+    #[test]
+    fn on_a_narrow_screen_the_keys_leave_your_width_alone() {
+        let mut app = inbox_open(80, 24);
+        key(&mut app, ']');
+        key(&mut app, '[');
+        assert!(app.screen.saved.sheet_w.is_empty(), "taking the whole column, there is no width to change: {:?}", app.screen.saved.sheet_w);
+    }
+
+    #[test]
+    fn keys_step_from_the_chosen_width_not_the_drawn_one() {
+        let mut app = inbox_open(200, 50);
+        // Mid-slide, or left from another view: the drawn rectangle says nothing about the width.
+        app.screen.sheet_rect.width = 22;
+        key(&mut app, '[');
+        assert_eq!(app.screen.saved.sheet_w.get("inbox"), Some(&68));
+    }
+
+    #[test]
+    fn at_160_columns_the_inbox_leaves_the_panes_their_room() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.cfg.ui.padding = "1".into();
+        app.act(Action::Jump);
+        draw(&mut app, 160, 45);
+        let panes_w = edge(&app).map(|e| e.x).unwrap() - app.screen.side_rect.right();
+        assert!(panes_w >= screen::PANES_KEEP, "{panes_w}");
+        assert!(app.screen.sheet_rect.width < 72 && app.screen.sheet_rect.width >= screen::SHEET_MIN, "{}", app.screen.sheet_rect.width);
+    }
+
+    #[test]
+    fn the_edge_lights_up_while_pointed_at() {
+        let mut app = inbox_open(200, 50);
+        let at = edge(&app).unwrap();
+        app.hover = Some(Position { x: at.x, y: at.y + 5 });
+        let mut term = Terminal::new(TestBackend::new(200, 50)).unwrap();
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        let cell = &term.backend().buffer()[(at.x + at.width / 2, at.y + 5)];
+        assert_eq!((cell.symbol(), cell.fg), ("│", app.theme.accent));
+    }
+
+    #[test]
+    fn widths_survive_a_save_and_load() {
+        let mut saved = screen::Saved::default();
+        saved.sheet_w.insert("changes".into(), 90);
+        let back: screen::Saved = serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+        assert_eq!(back.sheet_w.get("changes"), Some(&90));
+    }
+
+    #[test]
+    fn the_keys_size_changes_too() {
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        app.view = Some(View::Changes(Box::new(views::ChangesView {
+            dir: PathBuf::from("/repo"),
+            review: None,
+            error: None,
+            agent: String::new(),
+            said: String::new(),
+            term: None,
+            ws: None,
+            reviewed: Default::default(),
+            linked: false,
+            confirm: None,
+        })));
+        draw(&mut app, 200, 50);
+        let widest = app.screen.sheet_widest;
+        assert_eq!(app.screen.sheet_rect.width, 100.min(widest), "Changes starts half the screen, held to the room");
+        key(&mut app, '[');
+        assert_eq!(app.screen.saved.sheet_w.get("changes"), Some(&(100.min(widest) - 4)));
     }
 }

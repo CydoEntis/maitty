@@ -65,7 +65,7 @@ const HOVER_TINT: f32 = 0.10;
 /// (they light their own line).
 fn tints(h: &super::Hit) -> bool {
     use super::screen::ScreenHit as S;
-    !matches!(h, super::Hit::Pane(_) | super::Hit::Screen(S::Noop | S::SideFocus | S::SettingsBody | S::Divider(_) | S::SideEdge | S::ScrollBar(_)))
+    !matches!(h, super::Hit::Pane(_) | super::Hit::Screen(S::Noop | S::SideFocus | S::SettingsBody | S::Divider(_) | S::SideEdge | S::SheetEdge | S::ScrollBar(_)))
 }
 
 /// Tint the topmost clickable region under the pointer, the one a click there would hit, once:
