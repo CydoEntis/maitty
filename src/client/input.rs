@@ -418,7 +418,7 @@ impl App {
         if m.kind == MouseEventKind::Down(MouseButton::Left)
             && !self.splash
             && matches!(self.mode, Mode::Normal)
-            && self.view.is_none()
+            && !self.screen.sheet_rect.contains(pos)
             && let Some((term, row, col)) = self.pane_cell(pos)
         {
             let screen_has_mouse = self.parsers.get(&term).is_some_and(|p| p.screen().mouse_protocol_mode() != vt100::MouseProtocolMode::None);
@@ -453,7 +453,7 @@ impl App {
         if self.screen.drag.is_none()
             && !self.splash
             && matches!(self.mode, Mode::Normal)
-            && self.view.is_none()
+            && !self.screen.sheet_rect.contains(pos)
             && !m.modifiers.contains(KeyModifiers::SHIFT)
             && let Some((term, inner)) = self.panes.iter().find(|(_, r)| r.contains(pos)).copied()
             && (self.screen.right_clicks.contains(&term)

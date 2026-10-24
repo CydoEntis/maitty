@@ -7427,4 +7427,111 @@ mod files_panel_tests {
         assert!(o.contains("let line_40 = 40;"), "that line is shown:\n{o}");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    fn click(app: &mut App, at: Rect, modifiers: KeyModifiers) {
+        for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+            app.on_mouse(MouseEvent { kind, column: at.x, row: at.y, modifiers });
+        }
+    }
+
+    /// Where a row of the tree is drawn, by its text.
+    fn row_at(app: &App, frame: &str, name: &str) -> Rect {
+        let y = frame.lines().position(|l| l.contains(name)).expect("the row is drawn") as u16;
+        app.hits.iter().rev().find(|(r, _)| r.y == y && r.x >= app.screen.sheet_rect.x).map(|(r, _)| *r).expect("the row is clickable")
+    }
+
+    #[test]
+    fn ctrl_click_on_a_path_in_a_pane_opens_files_and_again_while_it_is_open() {
+        let dir = project("mouse");
+        let mut app = screen_in(&dir, 160, 45);
+        let mut p = vt100::Parser::new(20, 80, 0);
+        p.process(b"see src/main.rs:40\r\nand notes.txt:1\r\n");
+        app.parsers.insert(1, p);
+        draw(&mut app, 160, 45);
+        let (_, inner) = *app.panes.iter().find(|(t, _)| *t == 1).expect("the pane is drawn");
+        click(&mut app, Rect { x: inner.x + 6, y: inner.y, width: 1, height: 1 }, KeyModifiers::CONTROL);
+        let root = files(&app).root.clone();
+        tree_read(&mut app, &root);
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("let line_40 = 40;"), "Files opened at that line:\n{o}");
+        let (_, inner) = *app.panes.iter().find(|(t, _)| *t == 1).expect("the pane is still beside the panel");
+        click(&mut app, Rect { x: inner.x + 6, y: inner.y + 1, width: 1, height: 1 }, KeyModifiers::CONTROL);
+        tree_read(&mut app, &dir);
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert_eq!(files(&app).preview.as_ref().map(|(p, _)| p.clone()), Some(dir.join("notes.txt")), "retargeted to the second path");
+        assert!(o.contains("remember the milk"), "{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn in_a_narrow_panel_a_click_on_the_selected_file_or_a_double_click_opens_it() {
+        let dir = project("narrowclick");
+        let mut app = screen_in(&dir, 80, 24);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        let o = draw(&mut app, 80, 24);
+        let at = row_at(&app, &o, "main.rs");
+        click(&mut app, at, KeyModifiers::NONE);
+        let o = draw(&mut app, 80, 24);
+        assert!(o.contains("let line_1 = 1;") && app.view.is_some(), "the selected file opens in the panel:\n{o}");
+        key(&mut app, KeyCode::Left);
+        let o = draw(&mut app, 80, 24);
+        let at = row_at(&app, &o, "notes.txt");
+        click(&mut app, at, KeyModifiers::NONE);
+        let o = draw(&mut app, 80, 24);
+        let at = row_at(&app, &o, "notes.txt");
+        click(&mut app, at, KeyModifiers::NONE);
+        let o = draw(&mut app, 80, 24);
+        show(&o);
+        assert!(o.contains("remember the milk") && app.view.is_some(), "a double-click opens it, not inserts it:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_narrow_file_header_keeps_its_hint_clear_of_the_line_count() {
+        let dir = project("header");
+        let mut app = screen_in(&dir, 80, 24);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        key(&mut app, KeyCode::Right);
+        let o = draw(&mut app, 80, 24);
+        let header = o.lines().find(|l| l.contains('‹')).expect("the file's header");
+        assert!(header.contains("i edit") && header.contains("1–17 of 60 "), "{header}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ending_an_edit_in_a_narrow_panel_returns_to_the_file() {
+        let dir = project("editback");
+        let mut app = screen_in(&dir, 80, 24);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        key(&mut app, KeyCode::Right);
+        key(&mut app, KeyCode::Char('i'));
+        assert!(files(&app).edit.is_some(), "editing");
+        key(&mut app, KeyCode::Esc);
+        let o = draw(&mut app, 80, 24);
+        assert!(o.contains("let line_1 = 1;") && o.contains('‹') && !o.contains("notes.txt"), "back on the file:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn at_100_by_30_the_panel_takes_the_pane_column_with_both_sides() {
+        let dir = project("mid");
+        let mut app = screen_in(&dir, 100, 30);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        let o = draw(&mut app, 100, 30);
+        show(&o);
+        assert!(app.panes.is_empty(), "the panel takes the pane column");
+        assert!(app.screen.sheet_rect.width >= 60, "{:?}", app.screen.sheet_rect);
+        assert!(o.lines().any(|l| l.contains("notes.txt") && l.contains("let line_1 = 1;")), "the tree beside the file:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

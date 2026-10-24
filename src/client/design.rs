@@ -502,7 +502,7 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
     let (show_tree, show_file) = if one_side { (!file_open, file_open) } else { (true, true) };
     let fw: u16 = if one_side { body.width } else { 44.min(body.width / 2) };
     if show_tree {
-        draw_files_tree(app, buf, body, fw, t, v);
+        draw_files_tree(app, buf, body, fw, t, v, one_side);
     }
     if !one_side {
         for yy in body.top()..body.bottom() {
@@ -551,9 +551,14 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
             }
             None => {
                 if v.in_preview {
-                    header.push(seg("   ↑↓ PgUp PgDn read · i edit · ← back", Style::default().fg(t.accent)));
+                    // One side shows `‹` for the way back, and has little room.
+                    let hint = if one_side { "   i edit" } else { "   ↑↓ PgUp PgDn read · i edit · ← back" };
+                    header.push(seg(hint, Style::default().fg(t.accent)));
                 }
-                put(buf, px, body.y + 1, &header, body.right());
+                let at = (lines.len() > prect.height as usize)
+                    .then(|| format!(" {}–{} of {} ", v.scroll + 1, (v.scroll + prect.height as usize).min(lines.len()), lines.len()));
+                let at_x = body.right().saturating_sub(at.as_ref().map_or(0, |a| a.width() as u16 + 1));
+                put(buf, px, body.y + 1, &header, at_x);
                 // The side the arrows are on gets the accent line.
                 if v.in_preview && !one_side {
                     for yy in body.top()..body.bottom() {
@@ -568,9 +573,8 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
                     segs.extend(super::views::highlight(l, t));
                     put(buf, px, yy, &segs, prect.right());
                 }
-                if lines.len() > prect.height as usize {
-                    let at = format!(" {}–{} of {} ", v.scroll + 1, (v.scroll + prect.height as usize).min(lines.len()), lines.len());
-                    put(buf, body.right().saturating_sub(at.width() as u16 + 1), body.y + 1, &[seg(at, Style::default().fg(t.muted))], body.right());
+                if let Some(at) = at {
+                    put(buf, at_x, body.y + 1, &[seg(at, Style::default().fg(t.muted))], body.right());
                 }
             }
         }
@@ -595,7 +599,7 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
 }
 
 /// The tree (or the recent files) in the left `fw` columns of `body`.
-fn draw_files_tree(app: &mut App, buf: &mut Buffer, body: Rect, fw: u16, t: &Theme, v: &super::views::FilesTree) {
+fn draw_files_tree(app: &mut App, buf: &mut Buffer, body: Rect, fw: u16, t: &Theme, v: &super::views::FilesTree, one_side: bool) {
     let (green, yellow) = (t.done, Color::Rgb(0xe8, 0xc5, 0x65));
     let rows = v.visible();
     let list_h = body.height.saturating_sub(4) as usize;
@@ -627,7 +631,10 @@ fn draw_files_tree(app: &mut App, buf: &mut Buffer, body: Rect, fw: u16, t: &The
         }
         let mw = segs_width(&marks);
         put(buf, body.x + fw - mw - 1, y, &marks, body.x + fw);
-        app.hits.push((rr, Hit::Button(super::Btn::Row(*i))));
+        // With one side showing, the file isn't beside the tree: a click on the selected file
+        // (the second of a double-click too) opens it rather than inserting its path.
+        let open = one_side && sel && !e.is_dir;
+        app.hits.push((rr, Hit::Button(if open { super::Btn::ViewKey('l') } else { super::Btn::Row(*i) })));
     }
     if rows.is_empty() {
         let msg = if v.loading { "reading files…" } else if v.recent { "Nothing new in Downloads, Desktop, Documents or here lately." } else { "No files match." };

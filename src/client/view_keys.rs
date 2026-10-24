@@ -227,7 +227,8 @@ impl App {
                 _ => {
                     v.in_preview = false;
                     let keep = self.on_files_tree_key(v, k);
-                    if v.edit.is_none() && !matches!(k.code, KeyCode::Enter) {
+                    // Still the file once an edit opened here ends.
+                    if !matches!(k.code, KeyCode::Enter) {
                         v.in_preview = true;
                     }
                     return keep;
@@ -236,7 +237,7 @@ impl App {
             return true;
         }
         match k.code {
-            KeyCode::Right if node.as_ref().is_some_and(|n| !n.is_dir) && lines > 0 => v.in_preview = true,
+            KeyCode::Right | KeyCode::Char('l') if node.as_ref().is_some_and(|n| !n.is_dir) && lines > 0 => v.in_preview = true,
             KeyCode::Esc | KeyCode::Char('f') => return false,
             // Read the preview: page, or a line at a time with Shift.
             KeyCode::PageDown => v.scroll = (v.scroll + page).min(lines.saturating_sub(1)),
