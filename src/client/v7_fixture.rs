@@ -314,7 +314,8 @@ fn without_new_tab_chip(row: &str) -> String {
     }
     // The `+` chip and the cell the app keeps clear before it.
     const CHIP: &str = "  + ";
-    let Some(at) = out.find(CHIP) else {
+    // The chip is followed by the title's fill; ASCII's done mark (`+ done`) is not.
+    let Some(at) = out.match_indices(CHIP).map(|(i, _)| i).find(|&i| out[i + CHIP.len()..].starts_with(['─', ' '])) else {
         let fill = out[cut_at..].chars().next().unwrap_or(' ');
         out.insert_str(cut_at, &fill.to_string().repeat(cut));
         return out;
@@ -322,6 +323,37 @@ fn without_new_tab_chip(row: &str) -> String {
     let rest = &out[at + CHIP.len()..];
     let fill = rest.chars().next().unwrap_or(' ');
     format!("{}{}{rest}", &out[..at], fill.to_string().repeat(CHIP.len() + cut))
+}
+
+/// Row 0 as the handoff draws it, without the mode tag the app keeps in the corner (ADR 0023):
+/// the tag and the room its title leaves for it come out, and that room goes back into the
+/// title's fill, so the top-right card's mark and ✕ keep the handoff's columns. What the room
+/// cost a narrow title (a tab that gave way) stays the app's.
+fn without_mode_tag(row: &[char], app: &App, layout: Layout) -> Vec<char> {
+    let t = app.theme.clone();
+    let reserve = super::screen::corner_reserve(app, row.len() as u16, &t) as usize;
+    let corner = row.len() - 1;
+    let mut out: Vec<char> = row[..corner - reserve].iter().chain(&row[corner..]).copied().collect();
+    let fill = if layout == Layout::Flat { ' ' } else { '─' };
+    let cards = app.pane_frames.iter().map(|(_, r)| *r).chain([app.screen.sheet_rect]);
+    let Some(card) = cards.filter(|r| r.y == 0 && r.right() as usize == row.len()).max_by_key(|r| r.x) else { return row.to_vec() };
+    // The title's fill: its longest run on that card, between the tabs and the mark.
+    let (mut best, mut at, mut run) = ((card.x as usize, 0), 0, 0);
+    for (i, c) in out.iter().enumerate().skip(card.x as usize) {
+        if *c == fill {
+            if run == 0 {
+                at = i;
+            }
+            run += 1;
+            if run > best.1 {
+                best = (at, run);
+            }
+        } else {
+            run = 0;
+        }
+    }
+    out.splice(best.0..best.0, std::iter::repeat_n(fill, reserve));
+    out
 }
 
 /// The sidebar as the handoff's v7 frames draw it, from what v8 draws (ADR 0014). `rows` is the
@@ -427,7 +459,7 @@ pub(super) fn frame(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str)
         .iter()
         .enumerate()
         .map(|(y, row)| {
-            let row: String = row.iter().collect();
+            let row: String = if y == 0 { without_mode_tag(row, app, layout).iter().collect() } else { row.iter().collect() };
             let row = if y == 0 { without_new_tab_chip(&row) } else { row };
             row.trim_end().to_string() + "\n"
         })

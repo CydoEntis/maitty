@@ -1377,6 +1377,11 @@ mod screen_tests {
                                 failures.push(format!("{layout} split {split} {mode} {w}: {row}"));
                             }
                         }
+                        // From the narrowest supported window, typing says so in the corner too.
+                        let row0: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
+                        if mode == "off" && w >= 80 && !row0.contains(" TYPING ") {
+                            failures.push(format!("{layout} split {split} {mode} {w}: no TYPING tag: {row0}"));
+                        }
                     }
                 }
             }
@@ -1935,8 +1940,8 @@ mod screen_tests {
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
         assert_eq!((buf[(159, 0)].symbol(), buf[(159, 0)].fg), ("┐", app.theme.sky()), "the focused border turns sky");
-        let pill: String = (143..159).map(|x| buf[(x, 0)].symbol().to_string()).collect();
-        assert_eq!((pill.as_str(), buf[(144, 0)].bg), (" SHORTCUT · Esc ", app.theme.sky()), "the shortcut pill at the top right, a column in");
+        let pill: String = (135..159).map(|x| buf[(x, 0)].symbol().to_string()).collect();
+        assert_eq!((pill.as_str(), buf[(136, 0)].bg), (" SHORTCUT · Esc to type ", app.theme.sky()), "the shortcut pill at the top right, a column in");
         // The delayed overview groups common commands; ? opens the full reference instead.
         app.open_keymap(None);
         assert!(matches!(app.mode, Mode::KeyMap(_)));
@@ -4129,16 +4134,16 @@ second line
     #[test]
     fn only_the_part_with_the_keys_looks_focused() {
         let (_, mut app) = super::design_tests::render_with(120, 30);
-        // The colour of the focused card's border just right of its ✕, and the sidebar
-        // card's left edge.
+        // The colour of the focused card's top-right corner (the mode tag sits right of its ✕),
+        // and the sidebar card's left edge.
         let borders = |app: &mut App| {
             let mut term = Terminal::new(TestBackend::new(120, 30)).unwrap();
             term.draw(|f| render::draw(app, f)).unwrap();
             let buf = term.backend().buffer().clone();
             let y = (0..30).find(|&y| (0..120).any(|x| buf[(x, y)].symbol() == "✕")).unwrap();
-            let x = (0..120).rev().find(|&x| buf[(x, y)].symbol() == "✕").unwrap();
+            let x = 119;
             let side = (1..29).filter(|&y| buf[(0u16, y)].fg == app.theme.accent).count();
-            (buf[(x + 3, y)].fg, side)
+            (buf[(x, y)].fg, side)
         };
         let (pane, side) = borders(&mut app);
         assert_eq!(pane, app.theme.accent, "the focused pane's border is the accent");
@@ -4159,7 +4164,7 @@ second line
             app.on_key(lead);
             assert!(matches!(app.mode, Mode::Prefix { .. }), "leader waits");
             let o = draw(&mut app, 160, 45);
-            assert!(o.lines().next().unwrap_or_default().trim_end().ends_with(" SHORTCUT · Esc ┐"), "the shortcut pill at the top right: {o}");
+            assert!(o.lines().next().unwrap_or_default().trim_end().ends_with(" SHORTCUT · Esc to type ┐"), "the shortcut pill at the top right: {o}");
             app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
             assert!(!matches!(app.mode, Mode::Normal | Mode::Prefix { .. }), "leader + {c} opens {what}: {:?}", std::mem::discriminant(&app.mode));
         }
@@ -4277,9 +4282,9 @@ second line
     fn the_shortcut_pill_shows_after_the_leader_and_stays_lit_after_an_action() {
         let mut app = shortcut_mode();
         let sky = app.theme.sky();
-        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc".into(), sky)), "after the leader");
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc to type".into(), sky)), "after the leader");
         tap(&mut app, 'z');
-        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc".into(), sky)), "still lit after an action that opens nothing");
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc to type".into(), sky)), "still lit after an action that opens nothing");
     }
 
     #[test]
@@ -4292,7 +4297,7 @@ second line
         assert_eq!(words, "SHORTCUT · paused");
         assert_ne!(ground, sky, "dimmed, not sky");
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc".into(), sky)), "lit again once it closes");
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc to type".into(), sky)), "lit again once it closes");
     }
 
     #[test]
@@ -4314,7 +4319,7 @@ second line
         assert!(matches!(app.view, Some(View::Files(_))), "f opened Files");
         assert_eq!(shortcut_pill(&mut app).map(|(w, _)| w), Some("SHORTCUT · paused".into()));
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc".into(), app.theme.sky())), "Files closed: lit again");
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc to type".into(), app.theme.sky())), "Files closed: lit again");
     }
 
     #[test]
@@ -4338,8 +4343,9 @@ second line
         use crate::config::Rounding;
         use screen::ScreenHit as S;
         type SetUp = fn(&mut App);
-        let states: [(&str, Option<S>, SetUp); 4] = [
-            ("SHORTCUT · Esc", Some(S::Leader), |_| {}),
+        let states: [(&str, Option<S>, SetUp); 5] = [
+            ("TYPING", Some(S::Leader), |app| app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))),
+            ("SHORTCUT · Esc to type", Some(S::Leader), |_| {}),
             ("SHORTCUT · paused", None, |app| tap(app, 'i')),
             ("↑ Update 9.9.9", Some(S::Update), |app| {
                 app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
@@ -4393,7 +4399,7 @@ second line
         assert!(matches!(app.mode, Mode::GoTo { .. }), "the Inbox has the keys");
         close_by_itself(&mut app);
         assert!(matches!(app.mode, Mode::Prefix { acted: true, .. }), "back at once: {:?}", std::mem::discriminant(&app.mode));
-        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc".into(), app.theme.sky())), "and the pill lit");
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc to type".into(), app.theme.sky())), "and the pill lit");
     }
 
     /// Where the top-right card's ✕ and the corner pill sit on row 0.
@@ -4416,6 +4422,110 @@ second line
         tap(&mut app, 'y');
         let (paused, _) = close_and_pill(&mut app);
         assert_eq!(paused, lit, "the ✕ holds still between lit and paused");
+    }
+
+    /// The words of the mode tag in the corner of row 0, its ground, and where the top-right
+    /// pane's ✕ sits left of it.
+    fn mode_tag(app: &mut App, w: u16, h: u16) -> (String, ratatui::style::Color, u16) {
+        let buf = drawn(app, w, h);
+        let row: Vec<&str> = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
+        let end = w as usize - 2;
+        let ground = buf[(end as u16, 0)].bg;
+        let start = (0..=end).rev().take_while(|&x| buf[(x as u16, 0)].bg == ground).last().expect("the tag");
+        let close = (0..start).rev().find(|&x| row[x] == "✕").unwrap_or_else(|| panic!("the ✕ left of the tag: {}", row.concat())) as u16;
+        (row[start..=end].concat().trim().to_string(), buf[(start as u16 + 1, 0)].bg, close)
+    }
+
+    #[test]
+    fn the_mode_tag_says_typing_shortcut_or_paused_and_the_close_holds_still() {
+        let mut app = shortcut_mode();
+        let (sky, btn) = (app.theme.sky(), app.theme.btn);
+        let (lit, lit_bg, lit_close) = mode_tag(&mut app, 160, 45);
+        assert_eq!((lit.as_str(), lit_bg), ("SHORTCUT · Esc to type", sky), "lit");
+        tap(&mut app, 'y');
+        let (paused, paused_bg, paused_close) = mode_tag(&mut app, 160, 45);
+        assert_eq!((paused.as_str(), paused_bg), ("SHORTCUT · paused", btn), "paused");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(app.mode, Mode::Normal, "back to typing");
+        let (typing, typing_bg, typing_close) = mode_tag(&mut app, 160, 45);
+        assert_eq!((typing.as_str(), typing_bg), ("TYPING", btn), "typing, quiet");
+        assert_eq!((paused_close, typing_close), (lit_close, lit_close), "the ✕ holds still in all three");
+    }
+
+    #[test]
+    fn the_mode_reads_at_a_glance_at_the_default_padding() {
+        for layout in ["floating", "compact"] {
+            for (w, h) in [(80, 24), (160, 45)] {
+                for mode in ["typing", "lit", "paused"] {
+                    let (_, mut app) = super::design_tests::render_with(w, h);
+                    (app.cfg.ui.layout, app.cfg.ui.padding, app.cfg.ui.which_key) = (layout.into(), "1".into(), false);
+                    if mode != "typing" {
+                        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+                    }
+                    if mode == "paused" {
+                        tap(&mut app, 'y');
+                    }
+                    let buf = drawn(&mut app, w, h);
+                    let text = buf_text(&buf);
+                    show(&format!("===== {layout} {w}x{h} {mode}\n{text}"));
+                    let words = match (mode, w) {
+                        ("typing", _) => "TYPING",
+                        ("lit", 80) => "SHORTCUT · Esc",
+                        ("lit", _) => "SHORTCUT · Esc to type",
+                        _ => "SHORTCUT · paused",
+                    };
+                    let row1: String = (0..w).map(|x| buf[(x, 1)].symbol()).collect();
+                    assert!(row1.contains(&format!(" {words} ")), "{layout} {w}x{h} {mode}: {row1}");
+                    assert_eq!(buf[(0, h / 2)].symbol() == "█", mode != "typing", "{layout} {w}x{h} {mode}: the frame\n{text}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_click_on_typing_opens_the_key_map_but_not_over_a_popup() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let tag = |app: &App| app.hits.iter().rev().find(|(r, h)| r.y == 0 && *h == Hit::Screen(screen::ScreenHit::Leader)).map(|(r, _)| *r);
+        drawn(&mut app, 160, 45);
+        let r = tag(&app).expect("TYPING takes a click");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: r.x + 1, row: 0, modifiers: KeyModifiers::NONE });
+        assert!(matches!(app.mode, Mode::KeyMap(_)), "it opens the key map: {:?}", std::mem::discriminant(&app.mode));
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        app.act(Action::Settings);
+        drawn(&mut app, 160, 45);
+        assert_eq!(tag(&app), None, "under Settings, typing is only words");
+    }
+
+    #[test]
+    fn a_narrow_window_shortens_the_lit_tag() {
+        let (_, mut app) = super::design_tests::render_with(80, 24);
+        app.cfg.ui.which_key = false;
+        assert_eq!(mode_tag(&mut app, 80, 24).0, "TYPING");
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        assert_eq!(mode_tag(&mut app, 80, 24).0, "SHORTCUT · Esc");
+    }
+
+    #[test]
+    fn update_sits_left_of_the_mode_tag_in_every_mode() {
+        let mut app = shortcut_mode();
+        app.update_available = Some("9.9.9".into());
+        for mode in ["lit", "paused", "typing"] {
+            match mode {
+                "paused" => tap(&mut app, 'y'),
+                "typing" => {
+                    app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                    app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                }
+                _ => {}
+            }
+            let buf = drawn(&mut app, 160, 45);
+            let row: String = (0..160).map(|x| buf[(x, 0)].symbol()).collect();
+            let (update, tag) = (row.find("↑ Update 9.9.9"), row.find(if mode == "typing" { "TYPING" } else { "SHORTCUT" }));
+            assert!(update.is_some() && tag.is_some() && update < tag, "{mode}: Update, then the mode tag in the corner: {row}");
+            let (close, update_x) = (row.rfind('✕'), update.unwrap_or(0));
+            assert!(close < Some(update_x), "{mode}: the pane's ✕ stays left of both: {row}");
+        }
     }
 
     #[test]
@@ -4465,7 +4575,7 @@ second line
         let snap = app.snap.clone();
         app.on_server(ServerMsg::State(snap));
         assert!(matches!(app.mode, Mode::Prefix { acted: true, .. }), "back with the message: {:?}", std::mem::discriminant(&app.mode));
-        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc".into(), app.theme.sky())), "and the pill lit");
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc to type".into(), app.theme.sky())), "and the pill lit");
     }
 
     #[test]
@@ -5684,7 +5794,10 @@ mod check_sheet_tests {
                 let (head, tail) = header.split_once('…').unwrap_or_else(|| panic!("{at}: the title is cut, so it ends in …: {header:?}"));
                 assert!(head.contains("· claude › echo start;"), "{at}: the checkpoint's start follows the session: {header:?}");
                 assert!(!tail.contains('…'), "{at}: one ellipsis: {header:?}");
-                assert!(tail.trim_matches(|c: char| c == ' ' || "─╮┐".contains(c)).trim() == "✕", "{at}: only the close follows the ellipsis, got {tail:?} in {header:?}");
+                // The mode tag sits in the corner past the close (ADR 0023).
+                let edge = |c: char| c == ' ' || "─╮┐".contains(c);
+                let tail = tail.trim_matches(edge).strip_suffix("TYPING").unwrap_or(tail);
+                assert!(tail.trim_matches(edge) == "✕", "{at}: only the close and the mode tag follow the ellipsis, got {tail:?} in {header:?}");
             }
         }
     }

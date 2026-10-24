@@ -55,7 +55,7 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     if super::screen::shortcut_paused(app) {
         super::screen::draw_mode_frame(app, f.buffer_mut(), area, &t);
         let room = super::screen::framed(app, area);
-        super::screen::draw_corner_pill(app, f.buffer_mut(), room, &t);
+        super::screen::draw_corner_pills(app, f.buffer_mut(), room, &t);
     }
     tint_hovered(app, f.buffer_mut(), &t);
     if terminal_bg {

@@ -26,7 +26,9 @@
 //!   commit (the result carries no time for your choice);
 //! - Why (13) does not add "1 of 59 tests failed": the app does not parse a command's output;
 //! - the C2 Inbox's footnote is an annotation, not a screen line;
-//! - pill caps (a Nerd Font option, on by default) are off, so buttons have square ends.
+//! - pill caps (a Nerd Font option, on by default) are off, so buttons have square ends;
+//! - the mode tag in the corner of row 0 (ADR 0023) is not the handoff's: `v7_fixture::frame`
+//!   takes it out with the room the title leaves for it.
 
 use super::screen::{CAP_L, CAP_R, GoRow, goto_rows};
 use super::v7_fixture::{Layout, Stage, cells, frame, world};

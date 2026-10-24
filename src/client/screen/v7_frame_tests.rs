@@ -10,18 +10,20 @@ use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use ratatui::backend::TestBackend;
 
 /// Preset 01 "No check set" from the reference: row 0 from the pane column on, and the last
-/// row (Flat: from the pane column on, the sidebar's foot being its own).
+/// row (Flat: from the pane column on, the sidebar's foot being its own). At 80×24 the second
+/// tab gives way to the room the title leaves for the mode tag (ADR 0023); the tag itself is
+/// taken out by `v7_fixture::frame`.
 const ROWS_01: [(Layout, u16, u16, &str, &str, &str); 10] = [
     (Layout::Floating, 160, 45, "unicode", "┌─ 1  fix-footer  2  add-payments ────────────────────────────────────────────────────────────────────────────── ✓ done  ✕  ┐", "└────────────────────────────────┘ └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"),
     (Layout::Floating, 100, 30, "unicode", "┌─ 1  fix-footer  2  add-payments ────────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘ └───────────────────────────────────────────────────────────────────────┘"),
-    (Layout::Floating, 80, 24, "unicode", "┌─ 1  fix-footer  2  add-payments ────── ✓ done  ✕  ┐", "└────────────────────────┘ └───────────────────────────────────────────────────┘"),
+    (Layout::Floating, 80, 24, "unicode", "┌─ 1  fix-footer ─────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘ └───────────────────────────────────────────────────┘"),
     (Layout::Tiled, 160, 45, "unicode", "┌─ 1  fix-footer  2  add-payments ─────────────────────────────────────────────────────────────────────────────── ✓ done  ✕  ┐", "└────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"),
     (Layout::Tiled, 100, 30, "unicode", "┌─ 1  fix-footer  2  add-payments ─────────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘└────────────────────────────────────────────────────────────────────────┘"),
-    (Layout::Tiled, 80, 24, "unicode", "┌─ 1  fix-footer  2  add-payments ─────── ✓ done  ✕  ┐", "└────────────────────────┘└────────────────────────────────────────────────────┘"),
+    (Layout::Tiled, 80, 24, "unicode", "┌─ 1  fix-footer ──────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘└────────────────────────────────────────────────────┘"),
     (Layout::Flat, 160, 45, "unicode", "│ 1  fix-footer  2  add-payments                                                                                    ✓ done  ✕", "│"),
     (Layout::Flat, 100, 30, "unicode", "│ 1  fix-footer  2  add-payments                                ✓ done  ✕", "│"),
-    (Layout::Flat, 80, 24, "unicode", "│ 1  fix-footer  2  add-payments            ✓ done  ✕", "│"),
-    (Layout::Flat, 80, 24, "ascii", "│ 1  fix-footer  2  add-payments            + done  x", "│"),
+    (Layout::Flat, 80, 24, "unicode", "│ 1  fix-footer                             ✓ done  ✕", "│"),
+    (Layout::Flat, 80, 24, "ascii", "│ 1  fix-footer                             + done  x", "│"),
 ];
 
 /// The modal sizes of presets 12 (Override?), A2 (Approve · read first) and 15 (Settings ·

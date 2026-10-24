@@ -162,7 +162,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         draw_sheet_edge(app, f.buffer_mut(), &g, t);
     }
     draw_mode_frame(app, f.buffer_mut(), area, t);
-    draw_corner_pill(app, f.buffer_mut(), room, t);
+    draw_corner_pills(app, f.buffer_mut(), room, t);
     app.screen.crumb_x = g.panes.x + 1;
     // A popup (`<app> popup`) floats over everything, the rest dimmed.
     match app.mode.clone() {
@@ -183,53 +183,119 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     g.panes
 }
 
-/// The corner pill while shortcut mode is held under a popup, the wider of its two words.
-const SHORTCUT_PAUSED: &str = " SHORTCUT · paused ";
+/// The mode tag's words (ADR 0023), lit, paused and typing, by the least room they are used from:
+/// a narrow window gets shorter words, so a narrow pane keeps its tabs and its mark. Below the
+/// narrowest supported window there is no room to say typing.
+const TAGS: [(u16, ModeWords); 3] = [
+    (100, [" SHORTCUT · Esc to type ", " SHORTCUT · paused ", " TYPING "]),
+    (76, [" SHORTCUT · Esc ", " SHORTCUT · paused ", " TYPING "]),
+    (0, [" SHORTCUT · Esc ", " SHORTCUT · paused ", ""]),
+];
 
-/// The pill at the top right of row 0, capped like every chip when rounded: the caps' ground is
-/// filled in where it is drawn (`draw_corner_pill`).
-pub(super) fn corner_pill(app: &App, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
-    let (segs, h) = corner_words(app, t)?;
-    Some((if Look::of(&app.cfg.ui).round_tabs { round_ends(segs, Color::Reset) } else { segs }, h))
+type ModeWords = [&'static str; 3];
+
+/// From this much room (where the layout stops tightening) the title leaves the widest tag's
+/// room while you type too, so it holds still across all three; narrower, typing keeps only its
+/// own tag's room, so a narrow title keeps its tabs, and only lit and paused hold still.
+const HOLD_TYPING_FROM: u16 = NARROW;
+
+fn tag_words(room_w: u16) -> ModeWords {
+    TAGS.iter().find(|(from, _)| room_w >= *from).map_or(TAGS[TAGS.len() - 1].1, |(_, words)| *words)
 }
 
-/// What the corner pill says: the leader while it's armed, else Update when a newer release is
-/// out, else Restart once a newer one is installed but not running.
-fn corner_words(app: &App, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
-    // Shortcut mode is on (ADR 0016): say so, and how to leave it.
+/// What the mode tag says now: lit while keys are shortcuts, held under a popup or view that
+/// took the keys, else typing.
+fn mode_words(app: &App, room_w: u16) -> &'static str {
+    let [lit, paused, typing] = tag_words(room_w);
     if armed(app) {
-        return Some((vec![seg(" SHORTCUT · Esc ", Style::default().fg(t.bg).bg(t.sky()).add_modifier(Modifier::BOLD))], ScreenHit::Leader));
+        lit
+    } else if shortcut_paused(app) {
+        paused
+    } else {
+        typing
     }
-    // Held under a popup or view it opened: dim, so you still know it comes back.
-    if shortcut_paused(app) {
-        return Some((vec![seg(SHORTCUT_PAUSED, Style::default().fg(t.muted).bg(t.btn))], ScreenHit::Leader));
-    }
+}
+
+/// The pills at the top right of row 0, left to right: Update or Restart when one is waiting,
+/// then the mode tag in the corner. Each is capped like every chip when rounded: the caps'
+/// ground is filled in where they are drawn (`draw_corner_pills`).
+pub(super) fn corner_pills(app: &App, room_w: u16, t: &Theme) -> Vec<(Vec<Seg>, Option<ScreenHit>)> {
+    let round = Look::of(&app.cfg.ui).round_tabs;
+    release_pill(app, t)
+        .map(|(segs, h)| (segs, Some(h)))
+        .into_iter()
+        .chain(mode_tag(app, room_w, t))
+        .map(|(segs, h)| (if round { round_ends(segs, Color::Reset) } else { segs }, h))
+        .collect()
+}
+
+/// The mode, always in view: sky and bold while lit, quiet otherwise. A click on it opens the
+/// key map.
+fn mode_tag(app: &App, room_w: u16, t: &Theme) -> Option<(Vec<Seg>, Option<ScreenHit>)> {
+    let words = mode_words(app, room_w);
+    let style = if armed(app) { Style::default().fg(t.bg).bg(t.sky()).add_modifier(Modifier::BOLD) } else { Style::default().fg(t.muted).bg(t.btn) };
+    // Typing under a popup, the tag is only dimmed words: a click there still reaches the
+    // popup's own outside-click, as it did before the tag was there.
+    let clickable = armed(app) || shortcut_paused(app) || matches!(app.mode, Mode::Normal | Mode::Side);
+    (!words.is_empty()).then(|| (vec![seg(words, style)], clickable.then_some(ScreenHit::Leader)))
+}
+
+/// Update when a newer release is out, else Restart once a newer one is installed but not
+/// running.
+fn release_pill(app: &App, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
+    let style = Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD);
     if let Some(version) = app.update_available.as_ref() {
-        return Some((vec![seg(format!(" ↑ Update {version} "), Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD))], ScreenHit::Update));
+        return Some((vec![seg(format!(" ↑ Update {version} "), style)], ScreenHit::Update));
     }
     // Installed (here or from outside the app), not running yet: one click finishes it.
-    app.restart_needed().then(|| (vec![seg(" ↻ Restart ", Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD))], ScreenHit::Restart))
+    app.restart_needed().then(|| (vec![seg(" ↻ Restart ", style)], ScreenHit::Restart))
 }
 
-pub(in crate::client) fn draw_corner_pill(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
-    let Some((segs, h)) = corner_pill(app, t) else { return };
-    let w = segs_width(&segs);
-    let x = area.right().saturating_sub(w + 1);
-    let r = Rect { x, y: area.y, width: w, height: 1 };
-    let behind = ends_behind(buf, r);
-    put(buf, x, area.y, &segs, area.right());
-    // The caps sit on whatever is there: a border, a header strip, the dimming behind a popup.
-    if Look::of(&app.cfg.ui).round_tabs
-        && let Some(&(bl, br)) = behind.first()
-    {
-        let on = r.intersection(buf.area);
-        buf[(on.x, on.y)].set_bg(bl);
-        buf[(on.right() - 1, on.y)].set_bg(br);
+/// Room the corner pills take from the right of row 0, a cell between them, with the mode tag
+/// at its widest (see `HOLD_TYPING_FROM`), so what sits left of them holds still as it changes.
+pub(in crate::client) fn corner_reserve(app: &App, room_w: u16, t: &Theme) -> u16 {
+    let caps = if Look::of(&app.cfg.ui).round_tabs { 2 } else { 0 };
+    let release = release_pill(app, t).map_or(0, |(segs, _)| segs_width(&segs) + caps + 1);
+    let words = mode_words(app, room_w);
+    let held = armed(app) || shortcut_paused(app) || room_w >= HOLD_TYPING_FROM;
+    let tag = match (words.is_empty(), held) {
+        (true, _) => 0,
+        (false, true) => tag_words(room_w).iter().map(|w| w.width() as u16).max().unwrap_or(0) + caps,
+        (false, false) => words.width() as u16 + caps,
+    };
+    release + tag
+}
+
+pub(in crate::client) fn draw_corner_pills(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
+    let paused = shortcut_paused(app);
+    let mut right = area.right().saturating_sub(1);
+    for (segs, h) in corner_pills(app, area.width, t).into_iter().rev() {
+        let w = segs_width(&segs);
+        let x = right.saturating_sub(w);
+        if x < area.x {
+            break;
+        }
+        let r = Rect { x, y: area.y, width: w, height: 1 };
+        let behind = ends_behind(buf, r);
+        put(buf, x, area.y, &segs, area.right());
+        // The caps sit on whatever is there: a border, a header strip, the dimming behind a popup.
+        if Look::of(&app.cfg.ui).round_tabs
+            && let Some(&(bl, br)) = behind.first()
+        {
+            let on = r.intersection(buf.area);
+            buf[(on.x, on.y)].set_bg(bl);
+            buf[(on.right() - 1, on.y)].set_bg(br);
+        }
+        // Paused, they only say so: the popup has the keys and its own way out, and the key map
+        // opened over it would throw away what was typed there. They still catch the click,
+        // which would otherwise land outside the popup and close it.
+        match (paused, h) {
+            (true, _) => hit(app, r, ScreenHit::Noop),
+            (false, Some(h)) => hit(app, r, h),
+            (false, None) => {}
+        }
+        right = x.saturating_sub(1);
     }
-    // Paused, it only says so: the popup has the keys and its own way out, and the key map
-    // opened over it would throw away what was typed there. It still catches the click, which
-    // would otherwise land outside the popup and close it.
-    hit(app, r, if shortcut_paused(app) { ScreenHit::Noop } else { h });
 }
 
 pub(in crate::client) fn find(model: &[Proj], term: TermId) -> Option<(&Proj, &Wt, &Session)> {
@@ -489,16 +555,12 @@ fn fit_right(look: Look, r: Rect, c: &mut Card, note: Option<Seg>, mark: Option<
 }
 
 /// Room a card in the top-right corner (a pane or the sheet) leaves at the end of its title for
-/// whichever corner pill shows, so its mark and ✕ never sit under it or jump as it changes.
+/// the corner pills, so its mark and ✕ never sit under them or jump as the mode changes.
 pub(in crate::client) fn corner_room(app: &App, r: Rect, screen: Rect, t: &Theme) -> u16 {
     if r.y != screen.y || r.right() != screen.right() {
         return 0;
     }
-    let shown = corner_pill(app, t).map_or(0, |(segs, _)| segs_width(&segs));
-    // Lit and paused differ in width: both keep the wider, so the title holds still between them.
-    let caps = if Look::of(&app.cfg.ui).round_tabs { 2 } else { 0 };
-    let held = if armed(app) || shortcut_paused(app) { SHORTCUT_PAUSED.width() as u16 + caps } else { 0 };
-    shown.max(held)
+    corner_reserve(app, screen.width, t)
 }
 
 /// A pane as a card. Its title: the tabs of the session on screen when it's the top-left pane
