@@ -125,9 +125,15 @@ impl App {
     fn keep_shortcut_mode(&mut self) {
         match self.mode {
             Mode::Prefix { .. } => self.shortcut_held = true,
-            Mode::Normal if self.shortcut_held => self.mode = Mode::Prefix { since: Instant::now(), acted: true },
+            // A view still open has the keys; the mode comes back once it closes.
+            Mode::Normal if self.shortcut_held && self.view.is_none() => self.mode = Mode::Prefix { since: Instant::now(), acted: true },
             _ => {}
         }
+    }
+
+    /// Which kind of view is open, to tell whether an action opened one.
+    fn view_kind(&self) -> Option<std::mem::Discriminant<View>> {
+        self.view.as_ref().map(std::mem::discriminant)
     }
 
     fn handle_key(&mut self, k: KeyEvent) {
@@ -238,10 +244,15 @@ impl App {
                     return;
                 }
                 if let Some(a) = self.keymap.prefixed.get(&spec).cloned() {
+                    let before = self.view_kind();
                     self.mode = Mode::Normal;
                     self.act(a);
+                    // A view it opened (Changes, Files, a check) takes the keys, as a popup
+                    // does: its own k, arrows and Esc must not run leader actions. Closing it
+                    // returns to shortcut mode (`keep_shortcut_mode`).
+                    let opened = self.view.is_some() && self.view_kind() != before;
                     // Nothing opened: the mode holds, the key map stays away.
-                    if self.mode == Mode::Normal {
+                    if self.mode == Mode::Normal && !opened {
                         self.mode = Mode::Prefix { since, acted: true };
                     }
                 } else if !acted

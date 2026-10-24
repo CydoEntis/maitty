@@ -4052,6 +4052,24 @@ second line
     }
 
     #[test]
+    fn a_view_opened_from_shortcut_mode_takes_the_keys_and_closing_it_brings_the_mode_back() {
+        let (mut app, mut rx) = super::check_settings_tests::app_with_channel();
+        app.cfg.ui.which_key = false;
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        tap(&mut app, 'f');
+        assert!(matches!(app.view, Some(View::Files(_))), "f opened Files");
+        assert!(matches!(app.mode, Mode::Normal), "Files has the keys, not shortcut mode: {:?}", std::mem::discriminant(&app.mode));
+        while rx.try_recv().is_ok() {}
+        // k moves in Files; in shortcut mode it would stop the agent (Ctrl+C into its pane).
+        tap(&mut app, 'k');
+        let sent: Vec<ClientMsg> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(!sent.iter().any(|m| matches!(m, ClientMsg::Input { .. })), "nothing typed into a pane: {sent:?}");
+        assert!(matches!(app.view, Some(View::Files(_))), "still in Files");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(app.view.is_none() && matches!(app.mode, Mode::Prefix { .. }), "Esc closed Files and shortcut mode is back");
+    }
+
+    #[test]
     fn shortcut_mode_stays_for_the_next_key() {
         let mut app = shortcut_mode();
         tap(&mut app, 'z');
