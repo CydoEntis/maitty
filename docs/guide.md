@@ -51,13 +51,13 @@ and your configured custom ones; rows click and the wheel scrolls.
   drop a session on another group (its name or one of its sessions) to move it there, within its
   section. Click to fold or open. With the sidebar focused
   (`Ctrl+Space e`), a row's menu letters work directly (a row's menu lists them): `x` (or
-  Delete) asks to close, `r` renames. Settings distinguishes installed, window and daemon versions.
+  Delete) asks to close, `r` renames. Settings › General › UPDATES shows the version; Settings warns at the top when the installed, window and daemon versions differ.
 
 The leader key is `Ctrl+Space`. Press it for **shortcut mode**: a sky-blue `SHORTCUT · Esc`
 pill appears at the top right (the pane you're in turns sky too), each key below runs its
 action, and the mode stays for the next key. `Esc`, `Ctrl+Space` again or a click into a pane
-go back to typing, as does anything that gives you something to type into (a new shell,
-session, tab or split). Wait a moment after the leader for the compact key map: a key runs its
+go back to typing; a new shell, session, tab or split keeps shortcut mode, so press `Esc`
+to type into it, and closing a popup returns to it. Wait a moment after the leader for the compact key map: a key runs its
 command, Tab (or typing a letter that is no key) searches every command, `F1` shows all keys,
 and keys marked `›` open a second step (`g` worktrees: new, switch, merge, delete; Backspace
 goes back). No default needs Shift, and each key does one thing; no letter acts by itself in

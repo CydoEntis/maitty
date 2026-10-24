@@ -685,6 +685,9 @@ pub(super) enum SRow {
     Bind { label: &'static str, acts: Vec<crate::keys::Action> },
     /// A line of the Agents page that is not a setting: what the app can tell about an agent.
     Agent(AgentRow),
+    /// General's UPDATES: which version this is, whether it is current, and the way to check
+    /// again or install what was found.
+    Version,
 }
 
 /// The AGENT STATUS rows of Settings > Agents.
@@ -721,6 +724,7 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
     match row {
         SRow::Bind { label, .. } => key_rows().into_iter().find(|(_, items)| items.iter().any(|(l, _)| l == label)).map(|(g, _)| g).unwrap_or("KEYS"),
         SRow::Agent(_) => AGENT_STATUS_GROUP,
+        SRow::Version => "UPDATES",
         SRow::Setting(s) => match s.path {
             "sessions.agent" | "sessions.where" => "NEW SESSIONS",
             "sessions.helpers" | "sessions.helpers_at_once" => "HELPERS",
@@ -763,6 +767,9 @@ pub(super) fn settings_rows(cat: super::modal::Cat) -> Vec<SRow> {
         rows.extend([AgentRow::Claude, AgentRow::Codex, AgentRow::SetUp].map(SRow::Agent));
     }
     rows.extend(super::modal::in_cat(cat).into_iter().map(SRow::Setting));
+    if cat == super::modal::Cat::General {
+        rows.push(SRow::Version);
+    }
     // Grouped under their headings, in the order the headings first come.
     let order: Vec<&str> = rows.iter().map(settings_group).fold(Vec::new(), |mut v, g| {
         if !v.contains(&g) {
@@ -809,6 +816,7 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
             }
         }
         SRow::Agent(row) => agent_control(app, t, *row),
+        SRow::Version => version_control(app, t),
         SRow::Setting(s) => {
             if s.path == "theme" {
                 let name = if cfg.theme.is_empty() { crate::theme::DEFAULT } else { &cfg.theme };
@@ -855,6 +863,32 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
             }
         }
     }
+}
+
+/// The Version row's value: this version, then what was found and Update now, or `up to date`
+/// and `u check now`; the daemon's version when it differs from this window's.
+fn version_control(app: &App, t: &Theme) -> Vec<Seg> {
+    let (dot, accent) = (Style::default().fg(t.muted), Style::default().fg(t.accent).add_modifier(Modifier::BOLD));
+    let window = env!("CARGO_PKG_VERSION");
+    let mut out = vec![seg(format!("{} {window}", crate::brand::APP_COMMAND), Style::default().fg(t.strong).add_modifier(Modifier::BOLD)), seg("  ·  ", dot)];
+    match (&app.update_available, app.updating, app.update_checking) {
+        (Some(new), updating, _) => {
+            out.push(seg(format!("{new} is out"), accent));
+            out.push(seg("  ·  ", dot));
+            out.push(seg(if updating { "updating…" } else { "Enter to update" }, accent));
+        }
+        (None, _, true) => out.push(seg("checking…", dot)),
+        (None, ..) => {
+            out.push(seg("up to date", dot));
+            out.push(seg("  ·  ", dot));
+            out.extend([seg("u", accent), seg(" check now", dot)]);
+        }
+    }
+    let daemon = &app.snap.daemon_version;
+    if !daemon.is_empty() && daemon != window {
+        out.extend([seg("  ·  ", dot), seg(format!("daemon {daemon}"), Style::default().fg(t.accent))]);
+    }
+    out
 }
 
 /// What the app can tell about an agent, as the value of its AGENT STATUS row.

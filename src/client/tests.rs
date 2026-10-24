@@ -3203,7 +3203,10 @@ second line
         let o = draw(&mut app, 160, 45);
         let tabs = o.lines().find(|l| l.contains("General") && l.contains("Sessions")).expect("the tab strip");
         assert!(!tabs.contains('●'), "the pill and the splash say so; the tabs do not: {tabs}");
-        assert!(o.contains("Update now"), "the Update now button is still on the General page");
+        let version_row = design::settings_rows(modal::Cat::General).iter().position(|r| matches!(r, design::SRow::Version)).unwrap();
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: version_row, editing: None, capturing: false, scroll: 0 }));
+        let o = draw(&mut app, 160, 45);
+        assert!(o.lines().any(|l| l.contains("Version") && l.contains("9.9.9 is out") && l.contains("Enter to update")), "General's Version row offers the update: {o}");
     }
 
     #[test]
@@ -3443,16 +3446,23 @@ second line
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let said = |app: &App| app.notice.as_ref().map(|(m, _, err)| (m.clone(), *err)).unwrap();
         assert!(app.palette_commands().contains(&Action::CheckUpdate), "in the palette");
-        // Settings: beside the version, when no newer one is known.
-        app.act(Action::Settings);
+        // Settings: General's Version row, when no newer one is known; no other tab shows it.
+        let version_row = design::settings_rows(modal::Cat::General).iter().position(|r| matches!(r, design::SRow::Version)).expect("General has a Version row");
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: version_row, editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains(&format!(concat!(env!("APP_COMMAND"), " {}"), env!("CARGO_PKG_VERSION"))) && o.contains("up to date") && o.contains("u check now"));
-        assert!(app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::CheckUpdate)), "it can be clicked");
-        // While it's asking, the button says so and can't be pressed twice.
+        let line = o.lines().find(|l| l.contains("Version")).unwrap_or_else(|| panic!("the Version row
+{o}"));
+        assert!(line.contains(&format!(concat!(env!("APP_COMMAND"), " {}"), env!("CARGO_PKG_VERSION"))) && line.contains("up to date") && line.contains("u check now"), "{line}");
+        assert!(o.contains("UPDATES"), "under UPDATES");
+        let keys = modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Keys).unwrap();
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: keys, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        assert!(!draw(&mut app, 160, 45).contains("up to date"), "not at the top of every tab");
+        // While it's asking, the row says so.
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: version_row, editing: None, capturing: false, scroll: 0 }));
         app.update_checking = true;
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("checking…") && !app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::CheckUpdate)));
+        assert!(o.lines().any(|l| l.contains("Version") && l.contains("checking…")), "{o}");
         // Nothing newer: you asked, so it says so. A check the app made itself stays quiet.
         app.notice = None;
         app.update_checked_now(false, Ok(None), Vec::new());
@@ -3465,7 +3475,8 @@ second line
         app.update_checked_now(true, Ok(Some("9.9.9".into())), vec!["New: something".into()]);
         assert_eq!(app.update_available.as_deref(), Some("9.9.9"));
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("Update now") && !o.contains("Check for updates"));
+        let line = o.lines().find(|l| l.contains("Version")).unwrap_or_else(|| panic!("{o}"));
+        assert!(line.contains("9.9.9 is out") && line.contains("Enter to update") && !line.contains("check now"), "{line}");
     }
 
     #[test]
@@ -3790,12 +3801,19 @@ second line
     }
 
     #[test]
-    fn general_settings_are_in_sections_under_one_version_line() {
+    fn general_settings_are_in_sections_with_the_version_under_updates() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 0, editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("up to date") && o.contains("u check now"), "one version line");
+        let top: String = o.lines().take(6).collect::<Vec<_>>().join("
+");
+        assert!(!top.contains("up to date"), "no version line over the tabs' pages: {top}");
+        let rows_here = design::settings_rows(modal::Cat::General);
+        let version = rows_here.iter().position(|r| matches!(r, design::SRow::Version)).expect("a Version row");
+        assert_eq!(design::settings_group(&rows_here[version]), "UPDATES");
+        let check = rows_here.iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == "ui.update_check")).expect("Check for updates");
+        assert_eq!(version, check + 1, "right under Check for updates");
         assert!(!o.contains("Installed here") && !o.contains("This window"), "the detail lines only show when something differs");
         let rows = design::settings_rows(modal::Cat::General);
         let sections: Vec<(&str, &str)> = rows.iter().filter_map(|r| match r { design::SRow::Setting(s) => Some((design::settings_group(r), s.label)), _ => None }).collect();

@@ -1,7 +1,7 @@
 //! Dialogs: new agent, message an agent, settings, keys.
 
 use super::*;
-use crate::brand::{APP_COMMAND};
+
 
 /// Models to pick from for `agent` ("default" first), or none when it has no choice.
 pub(in crate::client) fn np_models(app: &App, agent: &str) -> Vec<String> {
@@ -281,56 +281,15 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         hit(app, tr, ScreenHit::SetTab(i));
         x += w + 1;
     }
-    // One line: which the app this is, whether it is current, whether the daemon matches, and the
-    // way to ask again (or to install what was found). More only when something is off.
+    // Which version this is and the way to update are General's Version row. Up here only what
+    // is off: the installed or daemon version differs, or a restart is waiting.
     let window = env!("CARGO_PKG_VERSION");
     let daemon = if app.snap.daemon_version.is_empty() { "unknown".to_string() } else { app.snap.daemon_version.clone() };
     let daemon = daemon.as_str();
-    let (action, primary, what) = match (&app.update_available, app.updating, app.update_checking) {
-        (Some(_), true, _) => ("updating…", true, ScreenHit::Update),
-        (Some(_), ..) => ("Update now", true, ScreenHit::Update),
-        (None, _, true) => ("checking…", false, ScreenHit::Noop),
-        (None, ..) => ("check now", false, ScreenHit::CheckUpdate),
-    };
     let dot = c.fg(t.muted);
     let known = daemon != "unknown";
     let mismatch = known && daemon != window;
-    let daemon_note = if mismatch { Some(seg(format!("daemon {daemon}"), c.fg(t.accent))) } else if known { Some(seg("daemon and window match", dot)) } else { None };
-    let mut ver = vec![seg(format!("{APP_COMMAND} {window}"), c.fg(t.strong).add_modifier(Modifier::BOLD)), seg("  ·  ", dot)];
-    let vy = r.y + 4;
-    let mut vx;
-    let act = |app: &mut App, buf: &mut Buffer, vx: u16| -> u16 {
-        let ar = Rect { x: vx, y: vy, width: action.width() as u16 + if primary { 4 } else { 2 }, height: 1 };
-        let end = if primary {
-            let btn = button_pill(look, t, action, "", true, t.card);
-            put(buf, vx, vy, &btn, r.right() - 3)
-        } else if what == ScreenHit::CheckUpdate {
-            put(buf, vx, vy, &[seg("u", c.fg(t.accent).add_modifier(Modifier::BOLD)), seg(" check now", if hovered(app, ar) { c.fg(t.text) } else { dot })], r.right() - 3)
-        } else {
-            put(buf, vx, vy, &[seg(action, dot)], r.right() - 3)
-        };
-        hit(app, Rect { x: ar.x, y: vy, width: end.saturating_sub(ar.x).max(1), height: 1 }, what);
-        end
-    };
-    if let Some(new) = &app.update_available {
-        // What was found, and the way to install it, first; the daemon only if it differs.
-        ver.push(seg(format!("{new} is out"), c.fg(t.accent).add_modifier(Modifier::BOLD)));
-        ver.push(seg("  ·  ", dot));
-        vx = put(buf, r.x + 4, vy, &ver, r.right() - 3);
-        vx = act(app, buf, vx);
-        if mismatch {
-            put(buf, vx, vy, &[seg("  ·  ", dot), seg(format!("daemon {daemon}"), c.fg(t.accent))], r.right() - 3);
-        }
-    } else {
-        ver.push(seg("up to date", dot));
-        ver.push(seg("  ·  ", dot));
-        if let Some(note) = daemon_note {
-            ver.push(note);
-            ver.push(seg("  ·  ", dot));
-        }
-        vx = put(buf, r.x + 4, vy, &ver, r.right() - 3);
-        act(app, buf, vx);
-    }
+    let vy = r.y + 3;
     // Detail lines only when versions differ or something needs saying.
     let host = crate::ipc::remote().map(|h| format!("Remote daemon ({h})")).unwrap_or_else(|| "Running daemon".into());
     let mut lines_used = 0u16;
@@ -365,7 +324,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     hline(buf, r.x + 3, r.y + 3, r.width.saturating_sub(6), t, t.card);
     let cat = Cat::ALL[v.cat.min(Cat::ALL.len() - 1)];
     if cat == Cat::Check {
-        return crate::client::screen::check_settings::draw_page(app, buf, r, r.y + 6 + lines_used, t);
+        return crate::client::screen::check_settings::draw_page(app, buf, r, r.y + 5 + lines_used, t);
     }
     if cat == Cat::Agents && !app.claude_hooks_asked {
         app.claude_hooks_asked = true;
@@ -383,6 +342,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         Some(SRow::Bind { acts, .. }) if acts.len() > 1 => "Several keys; change them in the config file (o).".into(),
         Some(SRow::Bind { .. }) => "Enter, then press the new key.".into(),
         Some(SRow::Agent(row)) => row.help().to_string(),
+        Some(SRow::Version) => concat!("u looks for a newer ", env!("APP_COMMAND"), " now; Enter installs one that was found. The top-right pill says when one is out.").into(),
         None => String::new(),
     };
     // Lines: headings, rows with a blank between them, a wider gap between groups. The
@@ -407,7 +367,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         lines.push(L::Row(i));
         lines.push(L::Blank);
     }
-    let top = r.y + 6 + lines_used;
+    let top = r.y + 5 + lines_used;
     // Appearance keeps room at the foot for its preview.
     let preview = cat == Cat::Appearance && r.height >= 30 && r.width >= 46;
     let h = r.height.saturating_sub(if preview { 19 } else { 14 }) as usize;
@@ -444,6 +404,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                     SRow::Setting(s) => s.label.to_string(),
                     SRow::Bind { label, .. } => label.to_string(),
                     SRow::Agent(row) => row.label().to_string(),
+                    SRow::Version => "Version".into(),
                 };
                 put(buf, lx, y, &[seg(truncate(&label, (vx - lx - 1) as usize), ls)], vx - 1);
                 // Every option as a chip, unless they would not fit beside the label: then the

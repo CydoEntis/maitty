@@ -1006,8 +1006,6 @@ pub(super) enum ScreenHit {
     ExpandSidebar,
     /// Install the newer the app (in Settings › General).
     Update,
-    /// Ask now whether a newer the app is out (the same place, when none is known).
-    CheckUpdate,
     /// Restart the daemon onto the installed version (after an update).
     Restart,
     NewShell,

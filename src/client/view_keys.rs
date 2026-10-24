@@ -460,6 +460,9 @@ impl App {
                 Some(design::SRow::Bind { .. }) => self.notify("that row has several keys: change them in the config file (o)".into(), false),
                 // Claude and Codex rows only report; the last one opens the list of agents.
                 Some(design::SRow::Agent(design::AgentRow::SetUp)) => self.act(Action::AgentStatusSetup),
+                // Version: install what was found, else look again.
+                Some(design::SRow::Version) if self.update_available.is_some() => self.act(Action::Update),
+                Some(design::SRow::Version) => self.act(Action::CheckUpdate),
                 Some(design::SRow::Agent(_)) | None => {}
             },
             _ => {}
