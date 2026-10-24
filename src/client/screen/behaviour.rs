@@ -981,6 +981,12 @@ impl App {
                     self.cmd(Command::MarkSeen { term });
                 }
             }
+            KeyCode::Delete if let Some(GoRow::Quiet(term)) = sel_row => {
+                if let Some(at) = self.snap.terms.get(&term).and_then(|i| i.quiet_since) {
+                    self.screen.quiet_seen.insert(term, at);
+                    self.screen_fresh();
+                }
+            }
             KeyCode::Enter if let Some(t) = sel_row.as_ref().and_then(GoRow::term) && self.approval_waits(t) => {
                 self.open_approval(t);
                 self.screen.inbox_return = Some((query, sel));
@@ -998,7 +1004,7 @@ impl App {
                         self.do_check_key(t, None, 'r');
                         self.mode = Mode::GoTo { query, sel };
                     }
-                    Some(GoRow::Ask(t) | GoRow::Done(t) | GoRow::Sess(_, t)) => {
+                    Some(GoRow::Ask(t) | GoRow::Done(t) | GoRow::Quiet(t) | GoRow::Sess(_, t)) => {
                         self.mode = Mode::Normal;
                         self.screen_focus(t);
                     }

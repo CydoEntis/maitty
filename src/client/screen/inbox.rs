@@ -20,7 +20,12 @@ const COUNTED: [&str; 3] = [NEEDS_HEAD, FAILED_HEAD, NOT_RUN_HEAD];
 pub(super) fn inbox_rows(model: &[Proj], heads: usize) -> Vec<GoRow> {
     let waiting = jump_list(model);
     let asks = waiting.iter().filter(|(s, ..)| s.status == Status::Blocked).map(|(s, ..)| GoRow::Ask(s.term));
-    let needs: Vec<GoRow> = asks.chain(check_inbox::rows(model, |r| matches!(r, GoRow::Approve(_)))).collect();
+    let mut quiet: Vec<&Session> = model.iter().flat_map(Proj::sessions).filter(|s| s.status == Status::Working && s.quiet_since.is_some() && !s.quiet_seen).collect();
+    quiet.sort_by_key(|s| (s.quiet_since, s.term));
+    let needs: Vec<GoRow> = asks
+        .chain(check_inbox::rows(model, |r| matches!(r, GoRow::Approve(_))))
+        .chain(quiet.into_iter().map(|s| GoRow::Quiet(s.term)))
+        .collect();
     // Finished: a session with a check result first, then the newest (checks7.js's order).
     let mut done: Vec<&Session> = waiting.iter().map(|(s, ..)| s).filter(|s| check::finished(s)).collect();
     done.sort_by_key(|s| (s.checks.is_empty(), std::cmp::Reverse(s.since)));
@@ -364,6 +369,50 @@ mod tests {
                 assert_same(&got, &want, &format!("{preset} {layout:?} {w}x{h}"));
             }
         }
+    }
+
+    /// The fixture's working session, gone quiet twelve minutes ago.
+    fn quiet_world() -> (App, TermId) {
+        let mut app = world(Stage::Failed);
+        let term = app.snap.terms.iter().filter(|(_, t)| t.status == Status::Working).map(|(id, _)| *id).min().expect("a working session");
+        app.snap.terms.get_mut(&term).unwrap().quiet_since = Some(now() - 12 * 60);
+        app.screen_fresh();
+        (app, term)
+    }
+
+    #[test]
+    fn a_quiet_agent_is_listed_under_needs_you_after_questions() {
+        let (app, term) = quiet_world();
+        let rows = inbox_rows(&app.screen_model(), 0);
+        let at = |r: &GoRow| rows.iter().position(|x| x == r);
+        let quiet = at(&GoRow::Quiet(term)).expect("listed");
+        let ask = rows.iter().position(|r| matches!(r, GoRow::Ask(_))).expect("a question");
+        let failed = at(&GoRow::Head(FAILED_HEAD)).expect("failed checks");
+        assert!(at(&GoRow::Head(NEEDS_HEAD)) < Some(ask) && ask < quiet && quiet < failed, "{rows:?}");
+        let before = { let (mut a, _) = quiet_world(); a.snap.terms.get_mut(&term).unwrap().quiet_since = None; a.screen_fresh(); inbox_count(&a) };
+        assert_eq!(inbox_count(&app), before + 1, "counted in the title");
+    }
+
+    #[test]
+    fn a_quiet_item_says_how_long_and_opens_its_session() {
+        let (mut app, term) = quiet_world();
+        select(&mut app, term);
+        let page = draw(&mut app, Rect { x: 0, y: 0, width: 100, height: 30 }, 100, 30).join("
+");
+        assert!(page.contains("no output for 12m · may be stuck"), "{page}");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(app.mode, Mode::Normal), "Enter opens the session");
+    }
+
+    #[test]
+    fn delete_hides_a_quiet_agent_until_it_goes_quiet_again() {
+        let (mut app, term) = quiet_world();
+        select(&mut app, term);
+        app.on_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+        assert!(!inbox_rows(&app.screen_model(), 0).contains(&GoRow::Quiet(term)), "seen");
+        app.snap.terms.get_mut(&term).unwrap().quiet_since = Some(now() - 60);
+        app.screen_fresh();
+        assert!(inbox_rows(&app.screen_model(), 0).contains(&GoRow::Quiet(term)), "a new quiet spell is listed again");
     }
 
     #[test]

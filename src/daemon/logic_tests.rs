@@ -3034,3 +3034,15 @@ fn helpers_running_or_a_finished_turn_is_never_quiet() {
     close(&mut d, &[waiting, finished]);
     assert_eq!(quiet, (None, None));
 }
+
+#[test]
+fn going_quiet_rings_no_alert() {
+    let (mut d, _rx) = daemon();
+    let id = silent_working_agent(&mut d, 11 * 60);
+    d.terms.get_mut(&id).unwrap().alert_due = None;
+    d.update_statuses();
+    let (quiet, due, alerted) = (d.terms[&id].quiet_since, d.terms[&id].alert_due, d.terms[&id].alerted);
+    close(&mut d, &[id]);
+    assert!(quiet.is_some());
+    assert_eq!((due, alerted.map(|a| a.0)), (None, None), "quiet is shown, never rung");
+}

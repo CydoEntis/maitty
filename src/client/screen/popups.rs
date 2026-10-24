@@ -444,13 +444,15 @@ pub(in crate::client) enum GoRow {
     NotRun(TermId),
     /// One whose repo-supplied check command waits for you to allow it.
     Approve(TermId),
+    /// A working agent gone silent: it may be stuck.
+    Quiet(TermId),
     Sess(usize, TermId),
 }
 
 impl GoRow {
     pub fn term(&self) -> Option<TermId> {
         match self {
-            GoRow::Ask(t) | GoRow::Done(t) | GoRow::Failed(t) | GoRow::NotRun(t) | GoRow::Approve(t) | GoRow::Sess(_, t) => Some(*t),
+            GoRow::Ask(t) | GoRow::Done(t) | GoRow::Failed(t) | GoRow::NotRun(t) | GoRow::Approve(t) | GoRow::Quiet(t) | GoRow::Sess(_, t) => Some(*t),
             GoRow::Head(_) | GoRow::Heads(_) => None,
         }
     }

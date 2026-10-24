@@ -195,6 +195,7 @@ pub(super) fn item(app: &App, model: &[Proj], row: &GoRow, t: &Theme) -> Option<
     let checks = app.snap.terms.get(&s.term).map(|i| i.checks.clone()).unwrap_or_default();
     let (line, strip) = match (row, info) {
         (GoRow::Ask(_), _) => (vec![(s.question.clone().unwrap_or_else(|| "waiting on you".into()), t.blocked, false)], None),
+        (GoRow::Quiet(_), _) => (vec![(format!("no output for {} · may be stuck", age(s.quiet_since.unwrap_or(s.since))), t.muted, false)], None),
         (_, Some(_)) if checks.len() > 1 => {
             let (full, strip) = checkpoints_lines(g, &checks, t);
             (full, Some(strip))

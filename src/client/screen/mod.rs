@@ -148,6 +148,9 @@ pub(super) struct Screen {
     pub row_y: std::collections::HashMap<TermId, u16>,
     /// What was just sent or queued to each session, shown on its row for a few seconds.
     pub receipts: std::collections::HashMap<TermId, popover::Receipt>,
+    /// Quiet agents you marked seen in the Inbox, by when they went quiet: listed again only
+    /// once they go quiet anew.
+    pub quiet_seen: std::collections::HashMap<TermId, u64>,
     /// A follow-up left unsent with Esc, kept per session until it is sent or cleared.
     pub drafts: std::collections::HashMap<TermId, String>,
     /// What you changed on Settings › Check and have not saved.
@@ -315,6 +318,8 @@ pub(super) struct Session {
     pub since: u64,
     /// Working with no output or report since then (unix seconds): it may be stuck.
     pub quiet_since: Option<u64>,
+    /// You marked this quiet spell seen in the Inbox.
+    pub quiet_seen: bool,
     pub question: Option<String>,
     pub is_agent: bool,
     pub asleep: bool,
@@ -667,6 +672,7 @@ impl App {
                     status: t.status,
                     since: t.since,
                     quiet_since: t.quiet_since,
+                    quiet_seen: t.quiet_since.is_some_and(|at| self.screen.quiet_seen.get(id) == Some(&at)),
                     question,
                     is_agent: t.agent.is_some(),
                     asleep: t.asleep,

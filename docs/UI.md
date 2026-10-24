@@ -322,7 +322,8 @@ with its count. A question is never below a check.
 - A group with no rows is not drawn; with nothing at all it says "Nothing is waiting on you.".
   A project with no check has the groups it always had, FINISHED renamed from JUST FINISHED.
 - NEEDS YOU holds questions, then repo check commands waiting for approval
-  (`approve check command: npm test`).
+  (`approve check command: npm test`), then quiet working agents (`no output for 12m · may be
+  stuck`, no sound; Enter opens the session, Delete hides it until it next goes quiet).
 - FINISHED lists sessions with a check result first, then the newest first.
 - A Done session is finished (`check::finished`) when it has no check, or its check passed, was
   overridden, passed on older code (stale) or you chose never to run it. It is not finished while
