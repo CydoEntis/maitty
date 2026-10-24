@@ -42,3 +42,4 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0016](0016-sticky-shortcut-mode.md) | The leader opens a shortcut mode that stays until you leave it | Accepted |
 | [0017](0017-keys-other-apps-use.md) | Default shortcuts: one key each, no Shift, keys other apps use | Accepted |
 | [0018](0018-rename-to-vibecasso.md) | The app is called Vibecasso | Accepted |
+| [0019](0019-the-name-lives-in-one-place.md) | The app's name lives in one place | Accepted |

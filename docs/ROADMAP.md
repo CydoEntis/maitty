@@ -566,7 +566,7 @@ The keybind system is to be discussed with the user before any key work.
 
 Status 2026-10-23: #153–#155 built on `dev`; the gate passed on the merged tree (819 tests)
 after each. Grid's colours come from `Theme::grid_colors`, which skips a role too like one
-already taken (Vibecasso Walnut's accent and violet are one teal), so every built-in theme gives
+already taken (Walnut's accent and violet are one teal), so every built-in theme gives
 four. Not checked live: Grid in a real terminal at 160×45, 100×30 and 80×24, light themes by
 eye, and an old config file loading under its new name.
 
@@ -603,6 +603,17 @@ renamed to CydoEntis/vibecasso. Tickets are labelled `phase-23`.
 4. #163 a product README and a shortcuts reference under the new name (after #160)
 
 Declined while planning: the Starry Night art background (the user's call).
+
+### 24 — The name in one place · active 2026-10-23
+
+The user asked on 2026-10-23 for a rename to mean changing the name, not the code
+([ADR 0019](adr/0019-the-name-lives-in-one-place.md)): the name is set in `Cargo.toml`, the code
+takes it from `brand`, and a test keeps it so. Tickets are labelled `phase-24`.
+
+1. #164 the name in brand.rs for paths, env, themes and splash
+2. #165 hooks, MCP, shims and adapters take the name from brand (after #164)
+3. #166 no code or text writes the app's name out (after #165)
+4. #167 scripts name the app once, and the docs say how to rename (after #166)
 
 Status 2026-10-23: #160–#163 built on `dev` (834 tests and the rest of the gate passed); the
 repository is now CydoEntis/vibecasso. The v7 design source names the product anew and its
@@ -661,7 +672,7 @@ Everything below is shipped on `main` unless marked.
 
 **Identity**
 - Renamed hydra → Seshi (v0.30.1, ADR-0008), then Seshi → Vibecasso (ADR-0018): command, folders, `VIBECASSO_*`, `.vibecasso.toml`, MCP, releases; one-time move of an old install — `config::migrate_old_names`
-- Vibecasso Walnut (default), Vibecasso Night and Vibecasso Day themes; block VIBECASSO wordmark on the splash — shipped by v0.30.1 — `src/theme.rs`, `src/client/screen/splash.rs`
+- Walnut (default), Night and Day themes; block VIBECASSO wordmark on the splash — shipped by v0.30.1 — `src/theme.rs`, `src/client/screen/splash.rs`
 
 **Extras**
 - Alert when an agent needs you: Vibecasso's two rising notes and an in-app notice; a desktop notification only with no window open. Completions stay quiet — `src/alert.rs`
@@ -701,6 +712,7 @@ Everything below is shipped on `main` unless marked.
 - [ADR-0012](adr/0012-flat-rendering-style.md) — Add a flat rendering style over the shared session layout; Cards stays default.
 - [ADR-0014](adr/0014-v8-cleanup.md) — Bring over the v8 cleanup, keeping what the user already decided. Rules out: bare letters acting in the sidebar; per-state glyphs on session rows; the fleet, the Team tab, the subagent tree and a helper mode.
 - [ADR-0011](adr/0011-keep-seshi-terminal-first.md) — Keep Vibecasso terminal-first. Rules out: adding a separate desktop GUI client to this project.
+- [ADR-0019](adr/0019-the-name-lives-in-one-place.md) — The app's name lives in `Cargo.toml`; code takes it from `brand`. Rules out: writing the app's name out in code, adapters or comments.
 - [ADR-0018](adr/0018-rename-to-vibecasso.md) — The app is called Vibecasso, a clean break; a vibecasso install carries over once. Rules out: a `vibecasso` command, new code or paths under the old name.
 - [ADR-0017](adr/0017-keys-other-apps-use.md) — Default shortcuts are one key each, none needing Shift, keys other apps use. Rules out: capital or Shift-symbol defaults; two keys for one action.
 - [ADR-0016](adr/0016-sticky-shortcut-mode.md) — The leader opens a shortcut mode that stays until Esc, the leader, a click into a pane or a typing action. Rules out: letters acting outside that shown mode.
