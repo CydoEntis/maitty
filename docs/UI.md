@@ -377,22 +377,28 @@ Code lives in `client/screen/splash.rs`.
 
 ## Project-specific: splash
 
-Centred, no bottom bar. The MAITTY wordmark is 7 rows of filled cell backgrounds (never `█`, which
-leaves seams), two columns per pixel from 120 columns and one below, shaded from the accent to the
-sea. Under it: the tagline (short below 100 columns and on a first run), the "while you were away"
-line (or the first-run sentence), choice cards, keycap hints and a faint version. Cards: **Resume
-where you left off** `r` (only while sessions run: project › session › task, then "N sessions still
-running"), **New session** `n` (an instant session, leader `s`) and **Open a project…** `o` (the
-folder finder). The chosen card is lifted with an accent `▌` bar and an accent keycap; a click chooses
-and a second opens. The roomiest spacing that fits wins: gaps 2 → 1, then no second detail lines or
-version, then no spacer between cards. An available update or a pending restart is named under the
-version.
+The design is `docs/design/splash/` (`splash.js` is the spec). Centred, no bottom bar, in the
+theme's colours (`Theme::splash()`: Night has its own wordmark, A-and-I, swell and deep colours;
+other themes take them from their strongest text and accent). Top to bottom: the wordmark in 5-row
+block letters as filled cell backgrounds (never `█`, which leaves seams), two cells per pixel from
+110 columns, the first "AI" in the name in the second colour; a blank row; the swell, one rolling
+`▁▂▃▄▅▄▃▂` line 4 cells wider than the wordmark on each side, fading into the ground over 6 cells
+at each end; a blank row; the tagline from `Cargo.toml` in italic; the "while you were away" counts
+when anything happened; the choice cards, 56 columns or the width less 8; the keycap hints; the
+version faint at the bottom right, or in its place an available update or a pending restart.
 
-The intro plays on the wordmark only, about a second at 50 ms a frame: blocks fall from the top
-column by column, overshoot a row, flash on landing, under a faint glow line; later a light band
-crosses every 5.5 s. Everything else is drawn from the first frame and keys act at once.
-`ui.splash_animation` (Settings › Appearance): `cold start` (default: the first start of a version, or
-nothing left running), `always`, `never`. Motion off, or a remote session, never plays it.
+Cards: **Resume where you left off** `r` (only while sessions run; its second row is project ›
+session), **New session** `n` and **Open a project…** `o`. The chosen card is `card2` with an
+accent `▌` down its edge, a bold strong label and an accent keycap. Arrows or `j` `k`, and a card's
+key, choose; Enter opens the chosen one; a click chooses and a click on the chosen card opens it.
+Below 30 rows Resume loses its second row and the gaps between and above the cards close.
+
+The intro, at 50 ms a frame: letter k rises from the deep colour to its own from frame 3k over 8
+frames (eased out), nothing moving; the swell fades in over 14 frames and rolls a step every 3; the
+tagline fades in over frames 10–20. Cards and hints are drawn from the first frame and keys act at
+once. `ui.splash_animation` (Settings › Appearance): `cold start` (default: the first start of a
+version, or nothing left running), `always`, `never`. Motion off, or a remote session, never plays
+it and holds the swell still.
 
 ## Project-specific: collapsed sidebar
 

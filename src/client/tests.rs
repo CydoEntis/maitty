@@ -688,6 +688,28 @@ mod screen_tests {
         assert!(!o.contains("⣿") && o.contains("New session"));
     }
 
+    /// The splash at the design's three sizes: the tagline, the cards with Resume chosen and its
+    /// last place under it until the window is short, the hints, the version bottom right.
+    #[test]
+    fn the_splash_holds_at_the_designs_sizes() {
+        for (w, h) in [(160u16, 45u16), (120, 34), (80, 24)] {
+            let (_, mut app) = super::design_tests::render_with(w, h);
+            app.splash = true;
+            let o = draw(&mut app, w, h);
+            show(&o);
+            let lines: Vec<&str> = o.lines().collect();
+            let row = |needle: &str| lines.iter().position(|l| l.contains(needle)).unwrap_or_else(|| panic!("{w}x{h}: no {needle:?}"));
+            let tag = row(concat!(env!("APP_TAGLINE"), "."));
+            let (resume, new, open, hints) = (row("Resume where you left off"), row("New session"), row("Open a project…"), row("choose"));
+            assert!(tag < resume && resume < new && new < open && open < hints, "{w}x{h}: top to bottom");
+            let short = h < 30;
+            assert_eq!(new - resume, if short { 1 } else { 3 }, "{w}x{h}: Resume's second line and the gaps go when short");
+            assert!(lines[resume + 1].contains(" › ") != short, "{w}x{h}: where you were, under Resume");
+            let version = concat!(env!("APP_COMMAND"), " ", env!("CARGO_PKG_VERSION"));
+            assert!(lines.last().unwrap().trim_end().ends_with(version), "{w}x{h}: the version, bottom right");
+        }
+    }
+
     #[test]
     fn reported_subagents_make_no_tree_rows_and_no_inspector() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
@@ -1674,7 +1696,7 @@ mod screen_tests {
         assert!(o.contains("THEME") && o.contains("Enter browse"), "then the theme browser control");
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("Themes") && o.contains("Walnut"));
+        assert!(o.contains("Themes") && o.contains("Day"));
         app.on_paste("Monokai".into());
         assert!(draw(&mut app, 160, 45).contains("Monokai"));
         app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));

@@ -969,6 +969,8 @@ pub(super) enum ScreenHit {
     SpinnerPick(usize),
     /// A button on the splash screen.
     SplashKey(char),
+    /// A splash card: a click chooses it, a click on the chosen one opens it.
+    SplashCard(usize),
     /// A right-click menu item.
     MenuPick(usize),
     /// The ✕ of a view in the sheet (Changes): it closes.
