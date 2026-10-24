@@ -6,6 +6,7 @@ use super::*;
 use crate::client::v7_fixture::{self, LAYOUTS, Layout, SIZES, Stage};
 use crate::layout::Node;
 use ratatui::Terminal;
+use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use ratatui::backend::TestBackend;
 
 /// Preset 01 "No check set" from the reference: row 0 from the pane column on, and the last
@@ -362,24 +363,60 @@ fn round_rows_draw_the_selected_session_as_one_softened_block_and_off_leaves_it_
     }
 }
 
+/// The world drawn at 160×45 in `[ui] layout` `layout` (Grid included, which the handoff has not).
+fn drawn_in(app: &mut App, layout: &str) -> Buffer {
+    (app.cfg.ui.layout, app.cfg.ui.panes) = (layout.into(), "floating".into());
+    app.screen_fresh();
+    let mut term = Terminal::new(TestBackend::new(160, 45)).expect("a test terminal");
+    term.draw(|f| crate::client::render::draw(app, f)).expect("a frame");
+    term.backend().buffer().clone()
+}
+
+fn folder_row(app: &App) -> Rect {
+    app.hits.iter().rev().find_map(|(r, h)| matches!(h, super::super::Hit::Screen(ScreenHit::ToggleProj(0))).then_some(*r)).expect("a folder row")
+}
+
+/// A folder row's left cell is its fold button, so with `ui.rounded = full` its highlight and
+/// hover start a cell before it: both ends are caps, the button keeps its column and a click on
+/// it still folds. With `corners` or `off` both ends are square.
 #[test]
-fn round_tabs_end_the_selected_folder_row_in_a_cap_and_off_leaves_it_square() {
-    for layout in LAYOUTS {
-        for on in [false, true] {
-            let mut app = world(Stage::None);
-            app.cfg.ui.rounded = if on { crate::config::Rounding::Full } else { crate::config::Rounding::Off };
-            app.mode = Mode::Side;
-            app.screen.cursor = None;
-            app.screen.cursor_proj = Some(app.screen_model()[0].key.clone());
-            buffer(&mut app, layout, 160, 45);
-            let row = app.hits.iter().find_map(|(r, h)| matches!(h, super::super::Hit::Screen(ScreenHit::ToggleProj(0))).then_some(*r)).expect("a folder row");
-            let buf = buffer(&mut app, layout, 160, 45);
-            let t = app.theme.clone();
-            let last = &buf[(row.right() - 1, row.y)];
-            if on {
-                assert_eq!((last.symbol(), last.fg, last.bg), (CAP_R, t.sel_bg(), buf[(row.right() - 1, row.y + 1)].bg), "cap on the selection's colour over the pane: {layout:?}");
-            } else {
-                assert_ne!(last.symbol(), CAP_R, "{layout:?}");
+fn a_selected_or_hovered_folder_row_ends_in_caps_only_when_rounded_in_full() {
+    use crate::config::Rounding;
+    for layout in ["cards", "tiled", "compact", "grid"] {
+        let mut button_x = None;
+        for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
+            for selected in [true, false] {
+                let at = format!("{layout} {rounded:?} {}", if selected { "selected" } else { "hovered" });
+                let mut app = world(Stage::None);
+                app.cfg.ui.rounded = rounded;
+                if selected {
+                    app.mode = Mode::Side;
+                    app.screen.cursor = None;
+                    app.screen.cursor_proj = Some(app.screen_model()[0].key.clone());
+                }
+                drawn_in(&mut app, layout);
+                let row = folder_row(&app);
+                if !selected {
+                    app.hover = Some(Position::new(row.x + 3, row.y));
+                }
+                let buf = drawn_in(&mut app, layout);
+                let row = folder_row(&app);
+                let (left, right) = (&buf[(row.x, row.y)], &buf[(row.right() - 1, row.y)]);
+                if rounded == Rounding::Full {
+                    assert_eq!((left.symbol(), right.symbol()), (CAP_L, CAP_R), "{at}");
+                    assert_eq!(left.fg, buf[(row.x + 2, row.y)].bg, "the left cap is the row's colour: {at}");
+                    assert_eq!(right.fg, buf[(row.right() - 2, row.y)].bg, "the right cap is the row's colour: {at}");
+                    assert_ne!(left.bg, left.fg, "the cap stands on what is behind the row: {at}");
+                } else {
+                    assert!(left.symbol() != CAP_L && right.symbol() != CAP_R, "square: {at}");
+                }
+                let fold = (row.x..row.right()).find(|&x| buf[(x, row.y)].symbol() == "−").expect("the fold button");
+                assert_eq!(*button_x.get_or_insert(fold), fold, "the fold button keeps its column: {at}");
+                for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+                    app.on_mouse(MouseEvent { kind, column: fold, row: row.y, modifiers: KeyModifiers::NONE });
+                }
+                drawn_in(&mut app, layout);
+                assert!(!app.screen.saved.closed.is_empty(), "a click on the button folds the folder: {at}");
             }
         }
     }

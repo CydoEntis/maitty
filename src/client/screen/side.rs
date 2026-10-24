@@ -214,14 +214,24 @@ struct Cols {
     flat: bool,
     /// Rounded rows end in a cap on the last cell of their tint, so nothing else is drawn there.
     cap: bool,
+    /// A folder row starts a cell before X, so its fold button keeps X and its left end is a
+    /// blank cell that can take a cap: with caps on, unless that cell is a Flat zone's left rule.
+    lead: bool,
 }
 
 impl Cols {
-    fn of(r: Rect, flat: bool, cap: bool) -> Cols {
+    /// `ruled`: the zone is drawn with a `│` rule down its left (Flat, away from the screen's edge).
+    fn of(r: Rect, flat: bool, cap: bool, ruled: bool) -> Cols {
         let (left, right) = if flat { (1, 2) } else { (2, 3) };
         // In Flat the tint ends on RX itself, so right-aligned text steps back a cell for the cap.
         let rx = r.right().saturating_sub(right + u16::from(cap && flat));
-        Cols { x: r.x + left, rx, flat, cap }
+        Cols { x: r.x + left, rx, flat, cap, lead: cap && !(flat && ruled) }
+    }
+
+    /// A folder's row: `row`, a cell longer on the left when it can end in a cap there.
+    fn proj_row(self, y: u16) -> Rect {
+        let lead = u16::from(self.lead);
+        Rect { x: self.x - lead, width: self.row(y).width + lead, ..self.row(y) }
     }
 
     /// The end (exclusive) of a row's tint: a column past RX inside a card; in Flat that
@@ -275,7 +285,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     app.screen.side_rect = r;
     hit(app, r, ScreenHit::SideFocus);
     draw_head(app, buf, r, model, t, focused_side, look.flat);
-    let cols = Cols::of(r, look.flat, look.round_rows);
+    let cols = Cols::of(r, look.flat, look.round_rows, r.x > buf.area.x);
     let screen_w = buf.area.width;
     let lines = fitted_lines(app, model, t, screen_w);
     let shown: Vec<TermId> = app.screen.tabs.get(app.screen.tab).map(|t| t.layout.leaves()).unwrap_or_default();
@@ -723,7 +733,7 @@ fn draw_line(app: &mut App, buf: &mut Buffer, model: &[Proj], line: &Line, cols:
 #[allow(clippy::too_many_arguments)]
 fn draw_proj(app: &mut App, buf: &mut Buffer, model: &[Proj], pi: usize, cols: Cols, y: u16, pb: Color, t: &Theme, small: bool) {
     let p = &model[pi];
-    let row = cols.row(y);
+    let row = cols.proj_row(y);
     let open = !app.screen.saved.closed.contains(&format!("p:{}", p.key));
     let on = side_focused(app) && app.screen.cursor_proj.as_ref() == Some(&p.key);
     let hov = hovered(app, row);
@@ -731,12 +741,15 @@ fn draw_proj(app: &mut App, buf: &mut Buffer, model: &[Proj], pi: usize, cols: C
     if bg != pb {
         fill(buf, row, bg);
     }
-    // A selected folder row is one line, so it can end in a half-circle; the multi-line session
-    // blocks would scallop, so they keep square ends. Text stops a cell short of the cap.
+    // A selected folder row is one line, so it can end in half-circles. Text stops a cell short
+    // of the right cap; the left one has a cell of its own before the fold button.
     let round = on && Look::of(&app.cfg.ui).round_tabs;
     let text_end = if round { row.right() - 1 } else { cols.rx + 1 };
     if round {
         buf[(text_end, y)].set_symbol(CAP_R).set_fg(bg).set_bg(pb);
+        if cols.lead {
+            buf[(row.x, y)].set_symbol(CAP_L).set_fg(bg).set_bg(pb);
+        }
     }
     let st = Style::default().bg(bg);
     if !app.screen.fold_colors.contains_key(&p.key) {
