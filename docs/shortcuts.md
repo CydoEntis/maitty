@@ -53,7 +53,7 @@ one thing (ADR 0017).
 | `/` | Search the code |
 | `d` | Changes |
 | `g` | Worktrees › |
-| `b` | Switch branch |
+| `b` | Branch (in the side panel; its first row switches branch) |
 
 ### Maitty
 
@@ -120,7 +120,7 @@ Every key is a leader key: there is no letter that acts by itself in the sidebar
 The defaults are one key each, none needing Shift, chosen from what other apps use (ADR
 0017): `v` / `h` split side by side / stacked, `c` copy mode, `i` Inbox, `y` why, `k` stop
 the agent, `Enter` message it, `o` session with options, `p` find a file, `g` worktrees, `b`
-branches, `l` what happened, `F1` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image,
+Branch, `l` what happened, `F1` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image,
 `Ctrl`+arrows resize, `1`–`9` go to a tab. Your own `[keys.prefix]` entries still load.
 
 ## Menu
@@ -189,7 +189,7 @@ No bare key answers from the sidebar.
 
 ## Side panel
 
-The panel docked right (Inbox, Changes, Files, checks). Its width is kept for each kind of view.
+The panel docked right (Inbox, Changes, Files, checks, Branch). Its width is kept for each kind of view.
 
 | Keys | Action |
 | --- | --- |
@@ -308,6 +308,18 @@ The panel docked right (Inbox, Changes, Files, checks). Its width is kept for ea
 | r | Run it now (queued while the agent is working) |
 | Delete | Remove your checkpoint; forget your choice for a repo's |
 | Esc | Close and drop the draft |
+
+## Branch view
+
+Leader + `b` opens it for the session you're on; `b` there used to open the branch switcher,
+which is now its first row.
+
+| Keys | Action |
+| --- | --- |
+| Up / k, Down / j | Choose a row: Switch branch…, or a snapshot |
+| Enter on Switch branch… | Open the branch switcher |
+| Enter on a snapshot | Restore it (asks first; refused while the agent works) |
+| b, Esc | Close it |
 
 ## Branches and worktree cleanup
 

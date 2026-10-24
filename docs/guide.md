@@ -153,8 +153,8 @@ into a question the agent is asking); Ctrl+Enter sends it at once. What's waitin
 the row, and the row's menu drops it.
 
 Each time an agent's turn begins, maitty keeps the checkout's files as they are (tracked or
-not; never what git ignores). **Snapshots…** in the agent's menu lists the last nine;
-picking one puts the files back as they were then. What's there now is kept as a snapshot
+not; never what git ignores). **Snapshots…** in the agent's menu lists the last nine, and
+the Branch view (leader + `b`) lists them all; picking one puts the files back as they were then. What's there now is kept as a snapshot
 first, so a restore can be taken back the same way. It is refused while the agent is working,
 since it would keep writing into the files being put back. Snapshots are commits under the
 worktree's own refs (`refs/worktree/maitty/snapshots`): no branch, nothing in your history,
@@ -220,6 +220,7 @@ answer, and return to your other work.
 |---|---|---|
 | `f` | **Files** | *Recent*: files that just appeared in Downloads, Desktop, Documents or the project (docs, zips, screenshots). *Project*: fuzzy search over the project's files. Enter types the path into your prompt; `^O` opens it, `^F` shows it in the file manager, `^Y` copies the path. |
 | `d` | **Changes** | A worktree's changed files and the diff: `c` commit, `m` merge into the base branch, `p` push and open a pull request, `r` go to its agent, `x` throw it away. |
+| `b` | **Branch** | Where the session's checkout stands, in the side panel: its branch, how far it is ahead of and behind its upstream and its base branch, the last 10 commits, the last check result and its snapshots. Its first row, **Switch branch…**, opens the branch switcher; Enter on a snapshot restores it (asked first). `b` again or Esc closes it. |
 
 Typing in a panel filters it; the action keys that would collide with typing use Ctrl.
 

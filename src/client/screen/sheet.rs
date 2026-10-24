@@ -17,6 +17,8 @@ pub(in crate::client) enum SheetKind {
     Check,
     /// The project's files beside the one you picked.
     Files,
+    /// Where a checkout stands: its branch, commits, check and snapshots.
+    Branch,
 }
 
 /// Its width beside the panes, before you size it (Changes takes half the screen).
@@ -41,6 +43,7 @@ impl SheetKind {
             SheetKind::Both => "both",
             SheetKind::Check => "check",
             SheetKind::Files => "files",
+            SheetKind::Branch => "branch",
         }
     }
 
@@ -49,6 +52,7 @@ impl SheetKind {
         match self {
             SheetKind::Changes => screen_w / 2,
             SheetKind::Files => (u32::from(screen_w) * FILES_SHARE / 100) as u16,
+            SheetKind::Branch => screen_w * 3 / 10,
             _ => SHEET_W,
         }
     }
@@ -114,6 +118,8 @@ pub(in crate::client) fn open_sheet(app: &App) -> Option<SheetKind> {
         Some(SheetKind::Check)
     } else if matches!(app.view, Some(crate::client::View::Files(_))) {
         Some(SheetKind::Files)
+    } else if matches!(app.view, Some(crate::client::View::Branch(_))) {
+        Some(SheetKind::Branch)
     } else {
         None
     }
@@ -154,6 +160,7 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
         SheetKind::Changes | SheetKind::Both => ("Changes", String::new(), ScreenHit::ViewClose),
         SheetKind::Files => ("Files", String::new(), ScreenHit::ViewClose),
         SheetKind::Check => ("CHECK", check_title(app), ScreenHit::ViewClose),
+        SheetKind::Branch => ("BRANCH", branch_title(app), ScreenHit::ViewClose),
     };
     let mut c = Card::new(t, title).lit(t.accent);
     // Cut here, so a long name still shows its start rather than being left out.
@@ -192,6 +199,12 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
             if let Some(crate::client::View::Files(v)) = app.view.take() {
                 crate::client::design::draw_files(app, buf, inner, t, &v, r.width < FILES_BOTH_FROM);
                 app.view = Some(crate::client::View::Files(v));
+            }
+        }
+        SheetKind::Branch => {
+            if let Some(crate::client::View::Branch(mut v)) = app.view.take() {
+                draw_branch(app, buf, body, c.bg, t, &mut v);
+                app.view = Some(crate::client::View::Branch(v));
             }
         }
     }

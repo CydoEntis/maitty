@@ -1087,6 +1087,7 @@ pub(super) fn k(app: &App, a: &Action) -> String {
 
 mod rail;
 mod behaviour;
+mod branch_sheet;
 mod card;
 mod check;
 mod check_actions;
@@ -1115,4 +1116,4 @@ mod tidy;
 mod v7_frame_tests;
 #[cfg(test)]
 mod v7_ref;
-pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};
+pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};

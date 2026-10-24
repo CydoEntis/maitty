@@ -278,6 +278,7 @@ impl App {
                     Ok(m) => self.notify(m, false),
                     Err(e) => self.notify(format!("couldn't switch: {e}"), true),
                 }
+                self.branch_sheet_reload();
                 self.screen_fresh();
                 self.dirty = true;
                 return;

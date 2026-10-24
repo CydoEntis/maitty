@@ -28,7 +28,7 @@ impl App {
                 ("Connect Kilo".into(), menu::Act::InstallStatus("kilo".into())),
                 ("Connect Kimi".into(), menu::Act::InstallStatus("kimi".into())),
             ], (3, 3)),
-            Action::Branches => self.open_branches(None),
+            Action::Branches => self.toggle_branch_sheet(),
             Action::History => self.mode = Mode::History { sel: 0 },
             Action::SpawnTab(c) => {
                 if let Some(ws) = ws {

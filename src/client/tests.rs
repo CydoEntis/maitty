@@ -7549,3 +7549,137 @@ mod files_panel_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+
+mod branch_view_tests {
+    use super::*;
+    use super::check_settings_tests::{draw, show};
+    use crate::client::menu::Act;
+    use crate::protocol::{CheckInfo, CheckState};
+
+    fn leader(app: &mut App, c: char) {
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+    }
+
+    fn key(app: &mut App, code: KeyCode) {
+        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    fn sheet(app: &App) -> Option<&screen::BranchSheet> {
+        match &app.view {
+            Some(View::Branch(v)) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// A repo on `main` with a commit, on a feature branch one commit ahead, with a snapshot.
+    fn repo(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("{APP_COMMAND}-branch-view-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let git = |args: &[&str]| crate::proc::git(&dir, args).unwrap();
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.email", "t@t"]);
+        git(&["config", "user.name", "t"]);
+        std::fs::write(dir.join("a.txt"), "1").unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-qm", "start the shop"]);
+        git(&["switch", "-qc", "fix-footer"]);
+        std::fs::write(dir.join("a.txt"), "2").unwrap();
+        git(&["commit", "-qam", "fix the footer links"]);
+        std::fs::write(dir.join("a.txt"), "3").unwrap();
+        crate::snapshot::take(&dir, "before claude's turn").unwrap();
+        dir
+    }
+
+    /// The app with session 1 in `dir`, its Branch view open and git's answer in (the test
+    /// fixture drops background results, so the read is done here).
+    fn opened(dir: &std::path::Path, w: u16, h: u16) -> App {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        app.snap.terms.get_mut(&1).unwrap().top = Some(dir.to_path_buf());
+        leader(&mut app, 'b');
+        key(&mut app, KeyCode::Esc);
+        assert!(sheet(&app).is_some_and(|v| v.dir == dir && v.facts.is_none()), "b opens the Branch view, reading git");
+        let facts = screen::read(dir);
+        app.branch_facts_arrived(dir, facts);
+        app
+    }
+
+    #[test]
+    fn b_opens_branch_in_the_side_panel_and_b_or_esc_closes_it() {
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        leader(&mut app, 'b');
+        assert!(sheet(&app).is_some(), "{:?}", app.mode);
+        let o = draw(&mut app, 200, 50);
+        show(&o);
+        assert!(o.contains("BRANCH") && o.contains("Switch branch…"), "in the side panel");
+        assert_eq!(app.screen.sheet_rect.width, 60, "30% of the screen");
+        // Shortcut mode holds after the leader (ADR 0016): b is the leader's b again.
+        key(&mut app, KeyCode::Char('b'));
+        assert!(sheet(&app).is_none(), "the leader's b again closes it");
+        key(&mut app, KeyCode::Char('b'));
+        key(&mut app, KeyCode::Esc);
+        assert!(sheet(&app).is_some() && app.mode == Mode::Normal, "the first Esc leaves shortcut mode");
+        key(&mut app, KeyCode::Char(']'));
+        assert_eq!(app.screen.saved.sheet_w.get("branch"), Some(&64), "its width is remembered as Branch's");
+        key(&mut app, KeyCode::Char('b'));
+        assert!(sheet(&app).is_none(), "b in the view closes it");
+        leader(&mut app, 'b');
+        key(&mut app, KeyCode::Esc);
+        key(&mut app, KeyCode::Esc);
+        assert!(sheet(&app).is_none(), "Esc closes it");
+    }
+
+    #[test]
+    fn it_shows_the_branch_its_gaps_commits_check_and_snapshots() {
+        let dir = repo("shows");
+        let mut app = opened(&dir, 160, 45);
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        app.snap.terms.get_mut(&1).unwrap().checks =
+            vec![CheckInfo { name: "test".into(), command: "npm test".into(), state: CheckState::Failed, exit_code: Some(1), started_at: now - 60, ..Default::default() }];
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("Branch    fix-footer"), "the branch");
+        assert!(o.contains("Upstream  none"), "no upstream yet");
+        assert!(o.contains("Base      main  ↑1 ↓0"), "one commit ahead of main");
+        assert!(o.contains("fix the footer links") && o.contains("start the shop"), "the commits");
+        let Some(screen::Facts::Repo(r)) = &sheet(&app).unwrap().facts else { panic!("a repo") };
+        assert!(o.contains(&r.commits[0].hash), "with their short hash");
+        assert!(o.contains("Check     failed: test · exit 1"), "the last check");
+        assert!(o.contains("SNAPSHOTS") && o.contains("ago · before claude's turn"), "the snapshots");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn enter_on_its_first_row_opens_the_switcher_and_on_a_snapshot_asks_to_restore() {
+        let dir = repo("enter");
+        let mut app = opened(&dir, 160, 45);
+        draw(&mut app, 160, 45);
+        key(&mut app, KeyCode::Enter);
+        assert!(matches!(&app.mode, Mode::Branch(v) if v.dir == dir), "the switcher: {:?}", app.mode);
+        key(&mut app, KeyCode::Esc);
+        assert!(app.mode == Mode::Normal && sheet(&app).is_some(), "Esc leaves the switcher for the Branch view");
+        key(&mut app, KeyCode::Down);
+        key(&mut app, KeyCode::Enter);
+        let Mode::Confirm(c) = &app.mode else { panic!("a restore asks first: {:?}", app.mode) };
+        let Act::Restore(at, _, when, term) = &c.act else { panic!("{:?}", c.act) };
+        assert!(at == &dir && *term == 1 && when.ends_with("ago · before claude's turn"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_folder_outside_git_says_so() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        leader(&mut app, 'b');
+        key(&mut app, KeyCode::Esc);
+        let dir = sheet(&app).unwrap().dir.clone();
+        app.branch_facts_arrived(&dir, screen::Facts::NotGit);
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("isn't in a git repository."), "it says so");
+        assert!(!o.contains("Switch branch…") && !o.contains("COMMITS") && !o.contains("SNAPSHOTS"), "instead of the lists");
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(app.mode, Mode::Normal, "Enter has nothing to open");
+    }
+}

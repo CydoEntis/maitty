@@ -153,6 +153,8 @@ pub(super) enum View {
     Both(Box<screen::BothView>),
     /// A check's evidence (in the sheet).
     Check(Box<screen::CheckView>),
+    /// Where a checkout stands (in the sheet).
+    Branch(Box<screen::BranchSheet>),
 }
 
 /// Clickable chips and buttons.

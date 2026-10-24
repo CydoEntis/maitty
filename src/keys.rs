@@ -323,7 +323,7 @@ impl Action {
             Action::CloseSplit => "Close the split".into(),
             Action::PasteImage => "Paste the clipboard image".into(),
             Action::AgentStatusSetup => "Connect agents".into(),
-            Action::Branches => "Switch branch".into(),
+            Action::Branches => "Branch".into(),
             Action::ShellHere => "New shell here".into(),
             Action::PrevPrompt => "Previous command in history".into(),
             Action::NextPrompt => "Next command in history".into(),

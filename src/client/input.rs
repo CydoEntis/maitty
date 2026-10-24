@@ -970,6 +970,12 @@ impl App {
                             self.on_view_key(&KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
                         }
                     }
+                    Some(View::Branch(v)) => {
+                        v.sel = i;
+                        if double {
+                            self.on_view_key(&KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                        }
+                    }
                     Some(View::Both(_) | View::Check(_)) | None => {}
                 },
             },

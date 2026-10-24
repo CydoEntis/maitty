@@ -32,6 +32,11 @@ impl App {
                     self.view = Some(View::Check(v));
                 }
             }
+            View::Branch(mut v) => {
+                if self.on_branch_sheet_key(&mut v, k) {
+                    self.view = Some(View::Branch(v));
+                }
+            }
         }
     }
 
