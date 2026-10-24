@@ -25,8 +25,9 @@ reads as Tiled, other `cards` as Floating, and `flat` as Compact. `ui.panes` is 
 that.
 
 Grid is a rendering style, like Compact: each pane is a box in its own colour, chosen by its
-position in the tab (green, pink, violet, cyan, then again) from roles every theme has
-(`done`, `accent`, `violet()`, `cyan()`). The focused pane's border is that colour, bold; the
+position in the tab (green, pink, violet, cyan, then again) from colours every theme has
+(`Theme::grid_colors`: `done`, `accent`, `violet()`, `cyan()`, skipping any too like one
+already taken, then the theme's other colours). The focused pane's border is that colour, bold; the
 others' is the colour faded toward the ground. The top border carries the pane's number and
 its state on the left and its name as a tag on the right. The sidebar, tabs, splits, keys
 and sheets are unchanged.

@@ -379,6 +379,19 @@ fn corner_room(app: &App, r: Rect, screen: Rect, t: &Theme) -> u16 {
 /// of the tab, else one chip with its session's name; on the right, the session's mark (it
 /// opens why) and a ✕ that closes the pane. The terminal sits inside, 3 columns and 2 rows in.
 /// Unfocused cards fade; one that needs you keeps its amber.
+/// How far an unfocused Grid pane's colour fades toward the ground.
+const GRID_UNFOCUSED_FADE: f32 = 0.42;
+
+/// A Grid pane's colour: by its place among the tab's panes, top-left first, left to right
+/// and top to bottom, repeating from the fifth.
+fn grid_color(app: &App, term: TermId, t: &Theme) -> Color {
+    let mut order: Vec<(u16, u16, TermId)> = app.screen.leaf_rects.iter().map(|(id, r)| (r.y, r.x, *id)).collect();
+    order.sort_unstable();
+    let i = order.iter().position(|(.., id)| *id == term).unwrap_or(0);
+    let colors = t.grid_colors();
+    colors[i % colors.len()]
+}
+
 pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, term: TermId, focused: bool, model: &[Proj], t: &Theme) {
     let Some(info) = app.snap.terms.get(&term).cloned() else { return };
     let look = Look::of(&app.cfg.ui);
@@ -387,7 +400,10 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     // Exactly one lit edge: an open sheet has the keys, so the pane gives up its lit border.
     let focused = focused && !side_focused(app) && open_sheet(app).is_none();
     let scrolled = app.parsers.get(&term).map(|p| p.screen().scrollback()).filter(|n| *n > 0);
-    let border = if !focused {
+    let grid_color = look.grid.then(|| grid_color(app, term, t));
+    let border = if let Some(own) = grid_color {
+        if focused { own } else { crate::theme::mix(own, t.bg, GRID_UNFOCUSED_FADE) }
+    } else if !focused {
         t.line
     } else if armed(app) {
         t.sky()
@@ -427,6 +443,8 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     let terminal_bg = c.bg;
     if focused {
         c = c.lit(border);
+    } else if look.grid {
+        c.border = border;
     }
     // The title runs up to two cells before the right-hand segments ("  ✕ " is the close).
     let right_w = segs_width(&c.right) + if c.right.is_empty() { 2 } else { 4 };

@@ -1001,6 +1001,31 @@ impl Theme {
         self.ws.map(|w| w[1]).unwrap_or(Color::Rgb(0x5a, 0xa9, 0xff))
     }
 
+    /// The workspace palette's cyan.
+    pub fn cyan(&self) -> Color {
+        self.ws.map(|w| w[3]).unwrap_or(Color::Rgb(0x4e, 0xe0, 0xfa))
+    }
+
+    /// Grid's pane colours, in pane order (green, pink, violet, cyan in the design), from roles
+    /// every theme has. Identity, not state: they repeat from the fifth pane. A theme whose
+    /// roles share a colour (an accent that is also its violet) moves on to the next role, so
+    /// no two panes in a row look alike.
+    pub fn grid_colors(&self) -> [Color; 4] {
+        let pink = self.ws.map(|w| w[2]);
+        let roles = [Some(self.done), Some(self.accent), Some(self.violet()), Some(self.cyan()), pink, Some(self.sky()), Some(self.working)];
+        let terminal = self.ansi.into_iter().flatten().map(Some);
+        let mut out: Vec<Color> = Vec::with_capacity(4);
+        for c in roles.into_iter().chain(terminal).chain([Some(self.blocked)]).flatten() {
+            if out.len() < 4 && !out.iter().any(|o| colors_alike(*o, c)) {
+                out.push(c);
+            }
+        }
+        while out.len() < 4 {
+            out.push(self.strong);
+        }
+        [out[0], out[1], out[2], out[3]]
+    }
+
     /// A check that could not run, or that you chose never to run: not a failure, so not red.
     /// The theme's violet, moved toward its strongest text where it wouldn't read on the
     /// ground, a card or the selected row (some themes' violet is a dim terminal blue).
@@ -1017,6 +1042,23 @@ impl Theme {
             Done => self.done,
             Idle => self.idle,
             None => self.muted,
+        }
+    }
+}
+
+#[cfg(test)]
+mod grid {
+    use super::{BUILTIN, Theme};
+
+    #[test]
+    fn every_theme_gives_grid_four_different_pane_colours() {
+        for name in BUILTIN {
+            let c = Theme::named(name).grid_colors();
+            for i in 0..c.len() {
+                for j in i + 1..c.len() {
+                    assert_ne!(c[i], c[j], "{name}: Grid colours {i} and {j} are the same");
+                }
+            }
         }
     }
 }

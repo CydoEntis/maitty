@@ -117,7 +117,7 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "scrollback", label: "Scrollback lines", kind: Kind::Int { step: 1000, min: 1000, max: 100_000 }, cat: Cat::Sessions, help: "How much history each session keeps for scrolling and search." },
     // Appearance
     Setting { path: "ui.splash_animation", label: "Splash animation", kind: Kind::Choice(&["cold start", "always", "never"]), cat: Cat::Appearance, help: "The wordmark falls into place. cold start: the first start of a version, or when nothing is running. Off with Motion off." },
-    Setting { path: "ui.layout", label: "Layout", kind: Kind::Choice(&["floating", "tiled", "compact"]), cat: Cat::Appearance, help: "floating: boxes with gaps between them. tiled: boxes edge to edge. compact: no boxes, a header strip and thin rules." },
+    Setting { path: "ui.layout", label: "Layout", kind: Kind::Choice(&["floating", "tiled", "compact", "grid"]), cat: Cat::Appearance, help: "floating: boxes with gaps. tiled: boxes edge to edge. compact: no boxes, thin rules. grid: each pane its own colour." },
     Setting { path: "ui.background", label: "Background", kind: Kind::Choice(&["terminal", "solid"]), cat: Cat::Appearance, help: "terminal: your terminal's background shows through. solid: seshi paints every cell." },
     Setting { path: "ui.sidebar_position", label: "Sidebar side", kind: Kind::Choice(&["left", "right"]), cat: Cat::Appearance, help: "Which edge the sidebar sits on." },
     Setting { path: "ui.motion", label: "Motion", kind: Kind::Bool, cat: Cat::Appearance, help: "Slides, glides and fades (under 150 ms). Always off over SSH." },

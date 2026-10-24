@@ -69,6 +69,8 @@ pub(in crate::client) fn pane_bg(t: &Theme) -> Color {
 #[derive(Clone, Copy)]
 pub(in crate::client) struct Look {
     pub flat: bool,
+    /// Grid: each pane a box in its own colour (ADR 0015).
+    pub grid: bool,
     pub rounded: bool,
     /// Rows between stacked cards, and columns between cards side by side.
     pub gap: u16,
@@ -88,6 +90,7 @@ impl Look {
         let tiled = kind == LayoutKind::Tiled || flat;
         Look {
             flat,
+            grid: kind == LayoutKind::Grid,
             rounded: ui.corners == "rounded",
             gap: if tiled { 0 } else { ui.gap.parse().unwrap_or(1).min(2) },
             dim: if flat { 0.0 } else { match ui.dim.as_str() {
@@ -284,6 +287,7 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
 fn box_frame(buf: &mut Buffer, r: Rect, c: &Card, look: Look) -> Rect {
     fill(buf, Rect { x: r.x + 1, y: r.y + 1, width: r.width - 2, height: r.height - 2 }, c.bg);
     let b = Style::default().fg(c.border);
+    let b = if look.grid && c.bold { b.add_modifier(Modifier::BOLD) } else { b };
     let (x, y, right, bottom) = (r.x, r.y, r.right() - 1, r.bottom() - 1);
     for xx in x + 1..right {
         buf[(xx, y)].set_symbol("─").set_style(b);

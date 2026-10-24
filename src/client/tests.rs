@@ -1180,6 +1180,47 @@ mod screen_tests {
         assert!(o.contains("What happened") && o.contains("needs you") && !o.contains('♪'));
     }
 
+    /// Three panes in one tab, `a` focused: a beside b, c under b.
+    fn three_panes(app: &mut App) -> [TermId; 3] {
+        let a = app.focused().unwrap();
+        let others: Vec<TermId> = app.snap.terms.keys().copied().filter(|t| *t != a).collect();
+        let (b, c) = (others[0], others[1]);
+        app.screen.tabs.clear();
+        app.screen_place(a, None);
+        app.screen.pending_split = Some((a, Instant::now()));
+        app.screen_place(b, Some(a));
+        app.screen.pending_split = Some((b, Instant::now()));
+        app.screen.split_dir = Some(crate::layout::Dir::Down);
+        app.screen_place(c, Some(b));
+        app.screen.tabs[0].focus = a;
+        [a, b, c]
+    }
+
+    #[test]
+    fn grid_draws_each_pane_in_its_own_colour_by_place() {
+        for corners in ["square", "rounded"] {
+            let (_, mut app) = super::design_tests::render_with(200, 50);
+            (app.cfg.ui.layout, app.cfg.ui.corners) = ("grid".into(), corners.into());
+            let [a, b, c] = three_panes(&mut app);
+            app.screen_fresh();
+            let mut term = Terminal::new(TestBackend::new(200, 50)).unwrap();
+            term.draw(|f| render::draw(&mut app, f)).unwrap();
+            let buf = term.backend().buffer().clone();
+            show(&(0..50).map(|y| (0..200).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>()).collect::<Vec<_>>().join("\n"));
+            let card = |id| app.pane_frames.iter().find(|(t, _)| *t == id).unwrap().1;
+            let colours = app.theme.grid_colors();
+            let edge = |id| &buf[(card(id).x, card(id).y + 1)];
+            assert_eq!(edge(a).fg, colours[0], "{corners}: the top-left pane is the first colour, full while focused");
+            assert!(edge(a).modifier.contains(ratatui::style::Modifier::BOLD), "{corners}: focused is bold");
+            assert_eq!(edge(b).fg, crate::theme::mix(colours[1], app.theme.bg, 0.42), "{corners}: the next, faded");
+            assert!(!edge(b).modifier.contains(ratatui::style::Modifier::BOLD));
+            assert_eq!(edge(c).fg, crate::theme::mix(colours[2], app.theme.bg, 0.42), "{corners}: the third");
+            let corner = buf[(card(a).x, card(a).y)].symbol().to_string();
+            assert_eq!(corner, if corners == "rounded" { "╭" } else { "┌" });
+            assert!(card(b).x > card(a).right(), "{corners}: a gap, as in Floating");
+        }
+    }
+
     #[test]
     fn any_number_of_splits_and_tabs() {
         let (_, mut app) = super::design_tests::render_with(200, 50);
@@ -3935,7 +3976,7 @@ mod settings_v8_tests {
     #[test]
     fn one_layout_setting_names_each_look() {
         let layout = modal::SETTINGS.iter().find(|s| s.path == "ui.layout").expect("a Layout row");
-        assert!(matches!(layout.kind, modal::Kind::Choice(c) if c == ["floating", "tiled", "compact"]), "{:?}", layout.kind);
+        assert!(matches!(layout.kind, modal::Kind::Choice(c) if c == ["floating", "tiled", "compact", "grid"]), "{:?}", layout.kind);
         assert!(!modal::SETTINGS.iter().any(|s| s.path == "ui.panes"), "no separate Cards spacing");
     }
 
