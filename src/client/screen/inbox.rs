@@ -397,8 +397,7 @@ mod tests {
     fn a_quiet_item_says_how_long_and_opens_its_session() {
         let (mut app, term) = quiet_world();
         select(&mut app, term);
-        let page = draw(&mut app, Rect { x: 0, y: 0, width: 100, height: 30 }, 100, 30).join("
-");
+        let page = draw(&mut app, Rect { x: 0, y: 0, width: 100, height: 30 }, 100, 30).join("\n");
         assert!(page.contains("no output for 12m · may be stuck"), "{page}");
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::Normal), "Enter opens the session");
