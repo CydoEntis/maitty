@@ -288,7 +288,7 @@ runs a nested server with `MAITTY_SOCKET=<name> maitty`.
 
 ## Project-specific: workflow and tooling
 
-- **Plan:** `docs/ROADMAP.md` (the plan doc: phases, scope, decisions, rules). Design references: the v8 handoff `docs/design/v8/` (the current design; `app8.js` is the spec, ADR 0014 records where the app differs) and the v7 handoff `docs/design/v7/` (the layout and checkpoints; `checks7.js` is the spec, `render-frames.mjs` prints the frames the tests compare against). Older briefs and handoffs are in git history.
+- **Plan:** `docs/ROADMAP.md` (the plan doc: phases, scope, decisions, rules). Design references: the v8 handoff `docs/design/v8/` (the current design; `app8.js` is the spec, ADR 0014 records where the app differs) and the v7 handoff `docs/design/v7/` (the layout and checkpoints; `checks7.js` is the spec, `render-frames.mjs` prints the frames the tests compare against), and the inspector handoff `docs/design/inspector-v1/` (the side-panel drawer, phases 26–28; `theme.js` is the spec). Older briefs and handoffs are in git history.
 - **Branches:** work lands on `dev` at https://github.com/CydoEntis/maitty; one
   commit per logical change, pushed after the gate passes.
 - **Install locally:** `cargo install --path .` (stop a running `maitty` first on

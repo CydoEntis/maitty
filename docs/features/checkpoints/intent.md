@@ -1,7 +1,7 @@
 # Intent: checks that Maitty runs itself
 
 Type: feature
-Author: Cody · Status: accepted
+Author: Cody · Status: done (phase 15 shipped in v0.37.0)
 Date: 2026-10-22 · Plan: [phase 15](../../ROADMAP.md#15--checks-maitty-runs-itself--active-chosen-2026-10-22)
 
 ## Problem

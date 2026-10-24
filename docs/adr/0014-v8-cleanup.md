@@ -1,6 +1,6 @@
 # 0014. Bring over the v8 cleanup, keeping what the user already decided
 
-- **Status:** Proposed
+- **Status:** Accepted (shipped in v0.41.0)
 - **Date:** 2026-10-23
 
 ## Context
