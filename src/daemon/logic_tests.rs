@@ -2352,12 +2352,12 @@ fn desktop_and_phone_alerts_name_the_branch_of_a_worktree() {
     let t = pane(&mut d);
     let p = d.terms.get_mut(&t).unwrap();
     p.head = Some(crate::gitfs::Head {
-        top: std::path::PathBuf::from("/code/maitty-worktrees/grey-wolf"),
+        top: std::path::PathBuf::from("/code/shop-api-worktrees/grey-wolf"),
         branch: "fix/early-alerts".into(),
         linked: true,
-        main_root: std::path::PathBuf::from("/code/maitty"),
+        main_root: std::path::PathBuf::from("/code/shop-api"),
     });
-    assert_eq!(p.alert_place(), "maitty · fix/early-alerts");
+    assert_eq!(p.alert_place(), "shop-api · fix/early-alerts");
     p.head = None;
     p.cwd = std::path::PathBuf::from("/home/me/notes");
     assert_eq!(p.alert_place(), "notes", "no repository: the folder");

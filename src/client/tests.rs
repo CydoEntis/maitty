@@ -4246,8 +4246,8 @@ second line
         {
             let t = app.snap.terms.get_mut(&2).unwrap();
             t.label = "Checkout rewrite".into();
-            t.root = Some(std::path::PathBuf::from("/code/maitty"));
-            t.top = Some(std::path::PathBuf::from("/code/maitty-worktrees/grey-wolf"));
+            t.root = Some(std::path::PathBuf::from("/code/shop-api"));
+            t.top = Some(std::path::PathBuf::from("/code/shop-api-worktrees/grey-wolf"));
             t.branch = Some("fix/early-alerts".into());
             t.status = Status::Done;
         }
@@ -4256,7 +4256,7 @@ second line
         app.settling.get_mut(&2).unwrap().1 = Instant::now() - Duration::from_millis(1);
         app.settle_alerts();
         let said = app.notice.as_ref().map(|(m, ..)| m.clone()).unwrap_or_default();
-        assert_eq!(said, "Checkout rewrite (maitty · fix/early-alerts) finished", "the worktree folder alone wouldn't say which");
+        assert_eq!(said, "Checkout rewrite (shop-api · fix/early-alerts) finished", "the worktree folder alone wouldn't say which");
     }
 
     #[test]
