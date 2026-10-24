@@ -674,6 +674,10 @@ approved after one round of fixes; the gate passed at de25486 (912 tests, clippy
 checks). Also on `dev`: 39a3a2e, a view opened from shortcut mode takes the keys (a phase 25 bug
 the #175 review found: `k` in Changes stopped the agent). Open before the exit holds: the live look.
 Then, at the user's call: a click into a pane gives it the keys beside an open view (07d9fe6).
+Also 2026-10-24, at the user's request: Settings › Appearance › Cursor (terminal, block, underline, bar) and
+Cursor blink, used where a pane's program picks no cursor of its own; a program's choice still wins.
+Declined while planning: a smooth, animated cursor (a terminal app can only place it on whole cells;
+the glide belongs to the terminal, as in Ghostty or kitty).
 
 ### 27 — Radar and sending failures · planned 2026-10-24
 

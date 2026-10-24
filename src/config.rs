@@ -122,6 +122,11 @@ pub struct Ui {
     pub rounded: Rounding,
     /// Show `· N agents` on a working session's row when the agent reports helpers.
     pub subagent_count: bool,
+    /// The cursor's shape when the program in a pane doesn't ask for one: "terminal" (the
+    /// terminal's own), "block", "underline" or "bar" (`CURSOR_SHAPES`).
+    pub cursor: String,
+    /// That cursor blinks.
+    pub cursor_blink: bool,
 }
 
 pub const NEW_AGENTS: &[&str] = &["last used", "claude", "codex", "gemini"];
@@ -226,6 +231,14 @@ fn fold_legacy_corners(value: &mut toml::Table) {
     if !ui.contains_key("rounded") && corners.as_ref().and_then(toml::Value::as_str) == Some("rounded") {
         ui.insert("rounded".into(), toml::Value::String("corners".into()));
     }
+}
+
+/// `ui.cursor`'s choices, in Settings' order.
+pub const CURSOR_SHAPES: &[&str] = &["terminal", "block", "underline", "bar"];
+
+fn validate_cursor(ui: &Ui) -> Result<()> {
+    anyhow::ensure!(CURSOR_SHAPES.contains(&ui.cursor.as_str()), "ui.cursor is \"{}\"; use one of: {}", ui.cursor, CURSOR_SHAPES.join(", "));
+    Ok(())
 }
 
 fn validate_sessions(s: &Sessions) -> Result<()> {
@@ -795,6 +808,8 @@ impl Default for Ui {
             focus_border: "accent".into(),
             rounded: Rounding::Off,
             subagent_count: true,
+            cursor: "terminal".into(),
+            cursor_blink: true,
         }
     }
 }
@@ -1230,6 +1245,7 @@ impl Config {
         validate_spinner(&cfg.ui.spinner)?;
         validate_checks(&cfg.check)?;
         validate_sessions(&cfg.sessions)?;
+        validate_cursor(&cfg.ui)?;
         Ok(cfg)
     }
 
@@ -1651,6 +1667,18 @@ mod tests {
             assert_eq!(c.ui.rounded, read, "{written}");
         }
         assert!(toml::from_str::<super::Config>("[ui]\nrounded = \"very\"\n").is_err(), "an unknown name is refused");
+    }
+
+    #[test]
+    fn the_cursor_defaults_to_the_terminals_own_and_refuses_an_unknown_shape() {
+        let ui = super::Ui::default();
+        assert_eq!((ui.cursor.as_str(), ui.cursor_blink), ("terminal", true));
+        for shape in super::CURSOR_SHAPES {
+            let c: super::Config = toml::from_str(&format!("[ui]\ncursor = \"{shape}\"\ncursor_blink = false\n")).unwrap();
+            assert!(super::validate_cursor(&c.ui).is_ok(), "{shape}");
+        }
+        let c: super::Config = toml::from_str("[ui]\ncursor = \"beam\"\n").unwrap();
+        assert!(super::validate_cursor(&c.ui).is_err(), "an unknown shape is refused, not ignored");
     }
 
     #[test]
