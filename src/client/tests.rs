@@ -674,7 +674,7 @@ mod screen_tests {
         app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 2, sel: 0, editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("Card edges") && o.contains("PREVIEW") && o.contains("focused") && o.contains("dimmed"), "the pane settings, with a preview");
+        assert!(o.contains("Corners") && o.contains("PREVIEW") && o.contains("focused") && o.contains("dimmed"), "the pane settings, with a preview");
         // The splash: the SESHI wordmark, its tagline, what happened, buttons.
         app.mode = Mode::Normal;
         app.splash = true;
@@ -1513,7 +1513,7 @@ mod screen_tests {
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("PANES") && o.contains("Card edges") && o.contains("PREVIEW"), "the pane settings first, with their preview");
+        assert!(o.contains("PANES") && o.contains("Corners") && o.contains("PREVIEW"), "the pane settings first, with their preview");
         let theme_row = design::settings_rows(modal::Cat::Appearance).iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme")).unwrap();
         for _ in 0..theme_row {
             app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
@@ -3930,6 +3930,13 @@ mod settings_v8_tests {
         app.cfg = cfg;
         open(&mut app, Cat::Agents, 0);
         assert!(!draw(&mut app, 160, 45).contains("TEAM"));
+    }
+
+    #[test]
+    fn one_layout_setting_names_each_look() {
+        let layout = modal::SETTINGS.iter().find(|s| s.path == "ui.layout").expect("a Layout row");
+        assert!(matches!(layout.kind, modal::Kind::Choice(c) if c == ["floating", "tiled", "compact"]), "{:?}", layout.kind);
+        assert!(!modal::SETTINGS.iter().any(|s| s.path == "ui.panes"), "no separate Cards spacing");
     }
 
     #[test]

@@ -733,7 +733,7 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "ui.update_check" => "UPDATES",
             "shell" | "editor" | "shell_integration" | "ui.start_dir" => "SHELL",
             "ui.attention_sort" => "SIDEBAR",
-            "ui.panes" | "ui.corners" | "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.rounded" => "PANES",
+            "ui.corners" | "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.rounded" => "PANES",
             p if p.starts_with("notify.") => "ALERTS",
             "worktree.delete_with_last" | "worktree.per_agent" | "worktree.command" => "WORKTREES",
             p if p.starts_with("restore.") => "RESTARTS",

@@ -19,7 +19,7 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
   in the right folders and resumes agents (`claude --resume <id>`, `codex resume --last`, ...).
   Each pane's recent output is kept on disk too, so its history is still there to scroll
   back through, above a line marking the restart.
-- **One screen for everything.** Choose **Cards** or **Flat** in Settings → General → Layout.
+- **One screen for everything.** Choose **Floating**, **Tiled** or **Compact** in Settings → Appearance → Layout.
   Cards (the default) shows a full-height sidebar and pane cards, with a pane's tabs as chips in
   its title. Flat draws those
   same sessions and panes edge to edge, with square edges (Settings → Rounded shapes switches every tab, button and selected row to round ends together, in either layout); Tab, Shift+Tab
@@ -362,7 +362,7 @@ your configured bindings and includes controls for each screen.
 
 `Ctrl+Space ,` opens **Settings** in a right-hand drawer that slides beside the panes
 (on a narrow window it uses the pane column). Sections (Tab cycles): General ? Sessions ? Appearance ? Agents ?
-Keys. Values are chips you click (or ←→ / Enter). General is in sections (INPUT, LAYOUT, SHELL, UPDATES): **Layout** (Cards or Flat) and **Background**
+Keys. Values are chips you click (or ←→ / Enter). General is in sections (INPUT, LAYOUT, SHELL, UPDATES): **Layout** (Floating, Tiled or Compact) and **Background**
 (your terminal's own, so transparency shows through evenly, or solid) are in LAYOUT, and one line at the
 top says which seshi this is and whether it is current (`u` checks now). Appearance has the
 Cards pane controls and a **Theme**

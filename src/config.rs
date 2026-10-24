@@ -97,12 +97,14 @@ pub struct Ui {
     pub start_dir: String,
     /// Sidebar sessions (and worktrees) that need you go first; the rest keep their place.
     pub attention_sort: bool,
-    /// "cards" keeps the standard hydra look; "flat" draws full-bleed zones with square edges (pill ends still follow `pill_caps`).
+    /// The look (ADR 0015): "floating", "tiled", "compact" or "grid". Read with `layout_kind`,
+    /// which also takes older files' "cards" (with `panes`) and "flat"; empty means unset.
     pub layout: String,
     /// "terminal" leaves chrome on the terminal's own background (so transparency and a
     /// background image show through evenly); "solid" paints everything the theme's `bg`.
     pub background: String,
-    /// Panes as cards with gaps between them ("floating"), or packed edge to edge ("tiled").
+    /// Older files' Cards spacing, "floating" or "tiled": read only while `layout` is unset or
+    /// "cards".
     pub panes: String,
     /// Card edges: "square" (lines on the card's edge, its colour right up to them) or "rounded"
     /// (a centred line with rounded corners, a thin strip of desk inside it). "flush", the old
@@ -249,6 +251,41 @@ impl Default for Mcp {
 }
 
 const CORNERS_SQUARE: &str = "square";
+
+/// The four looks over the one session layout (ADR 0015).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutKind {
+    Floating,
+    Tiled,
+    Compact,
+    Grid,
+}
+
+impl LayoutKind {
+    /// Its value in `ui.layout`.
+    pub fn name(self) -> &'static str {
+        match self {
+            LayoutKind::Floating => "floating",
+            LayoutKind::Tiled => "tiled",
+            LayoutKind::Compact => "compact",
+            LayoutKind::Grid => "grid",
+        }
+    }
+}
+
+impl Ui {
+    /// The look chosen, reading older files too: "cards" (or no `layout` at all) with
+    /// `panes = "tiled"` is Tiled, other "cards" Floating, and "flat" Compact.
+    pub fn layout_kind(&self) -> LayoutKind {
+        match self.layout.as_str() {
+            "tiled" => LayoutKind::Tiled,
+            "compact" | "flat" => LayoutKind::Compact,
+            "grid" => LayoutKind::Grid,
+            "" | "cards" if self.panes == "tiled" => LayoutKind::Tiled,
+            _ => LayoutKind::Floating,
+        }
+    }
+}
 
 fn corners_named<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
     let name = String::deserialize(d)?;
@@ -690,7 +727,7 @@ impl Default for Ui {
             alt_arrows: true,
             start_dir: String::new(),
             attention_sort: true,
-            layout: "cards".into(),
+            layout: String::new(),
             background: "terminal".into(),
             panes: "floating".into(),
             corners: CORNERS_SQUARE.into(),
@@ -1117,6 +1154,8 @@ impl Config {
         if cfg.icons.shell == OLD_SHELL_ICON {
             cfg.icons.shell = Icons::default().shell;
         }
+        // Settings shows the look by its name, whatever an older file called it.
+        cfg.ui.layout = cfg.ui.layout_kind().name().into();
         validate_spinner(&cfg.ui.spinner)?;
         validate_checks(&cfg.check)?;
         validate_sessions(&cfg.sessions)?;
@@ -1708,10 +1747,17 @@ shell = \"pwsh\"
     }
 
     #[test]
-    fn older_ui_configs_default_to_cards_layout() {
-        let cfg: Config = toml::from_str("[ui]\npanes = 'tiled'").unwrap();
-        assert_eq!(cfg.ui.layout, "cards");
-        assert_eq!(cfg.ui.panes, "tiled");
+    fn older_ui_configs_keep_their_look_under_its_new_name() {
+        let kind = |toml: &str| toml::from_str::<Config>(toml).unwrap().ui.layout_kind();
+        assert_eq!(kind("[ui]\npanes = 'tiled'"), LayoutKind::Tiled, "no layout line: Cards, tiled");
+        assert_eq!(kind("[ui]\nlayout = 'cards'\npanes = 'tiled'"), LayoutKind::Tiled);
+        assert_eq!(kind("[ui]\nlayout = 'cards'\npanes = 'floating'"), LayoutKind::Floating);
+        assert_eq!(kind("[ui]\nlayout = 'cards'"), LayoutKind::Floating);
+        assert_eq!(kind("[ui]\nlayout = 'flat'\npanes = 'floating'"), LayoutKind::Compact);
+        assert_eq!(kind(""), LayoutKind::Floating, "the default");
+        assert_eq!(kind("[ui]\nlayout = 'floating'\npanes = 'tiled'"), LayoutKind::Floating, "a new name wins over a leftover panes");
+        assert_eq!(kind("[ui]\nlayout = 'compact'"), LayoutKind::Compact);
+        assert_eq!(kind("[ui]\nlayout = 'grid'"), LayoutKind::Grid);
     }
 
     #[test]

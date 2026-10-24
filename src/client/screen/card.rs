@@ -82,8 +82,10 @@ pub(in crate::client) struct Look {
 
 impl Look {
     pub fn of(ui: &crate::config::Ui) -> Look {
-        let flat = ui.layout == "flat";
-        let tiled = ui.panes == "tiled" || flat;
+        use crate::config::LayoutKind;
+        let kind = ui.layout_kind();
+        let flat = kind == LayoutKind::Compact;
+        let tiled = kind == LayoutKind::Tiled || flat;
         Look {
             flat,
             rounded: ui.corners == "rounded",
