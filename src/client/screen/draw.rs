@@ -222,7 +222,10 @@ pub(in crate::client) fn draw_corner_pill(app: &mut App, buf: &mut Buffer, area:
         buf[(on.x, on.y)].set_bg(bl);
         buf[(on.right() - 1, on.y)].set_bg(br);
     }
-    hit(app, r, h);
+    // Paused, it only says so: the popup has the keys and its own way out, and the key map
+    // opened over it would throw away what was typed there. It still catches the click, which
+    // would otherwise land outside the popup and close it.
+    hit(app, r, if shortcut_paused(app) { ScreenHit::Noop } else { h });
 }
 
 pub(in crate::client) fn find(model: &[Proj], term: TermId) -> Option<(&Proj, &Wt, &Session)> {
@@ -433,7 +436,7 @@ fn pane_mark(app: &App, info: &TermInfo, t: &Theme) -> Option<(Seg, u16)> {
 
 /// Room the top-right pane leaves at the end of its title for the Update pill.
 fn corner_room(app: &App, r: Rect, screen: Rect, t: &Theme) -> u16 {
-    if armed(app) || shortcut_paused(app) || r.y != screen.y || r.right() != screen.right() {
+    if armed(app) || r.y != screen.y || r.right() != screen.right() {
         return 0;
     }
     corner_pill(app, t).map_or(0, |(segs, _)| segs_width(&segs))
@@ -488,8 +491,8 @@ fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: 
     let tag = chip(format!(" {} ", session_name(app, model, info.id)));
     let x = title_x(look, r);
     let room = right_end(look, r).saturating_sub(x);
-    // The ✕ and the spaces round the right-hand segments.
-    let rest = segs_width(&c.right) + 4;
+    // The ✕, the spaces round the right-hand segments and the corner pill's room.
+    let rest = segs_width(&c.right) + 4 + c.right_room;
     let (number_w, state_w, tag_w) = (segs_width(&number), state.as_ref().map_or(0, |s| s.0.width() as u16), segs_width(&tag) + 2);
     let with_tag = number_w + state_w + 2 + tag_w + rest <= room;
     if with_tag {
@@ -562,9 +565,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     }
     c.close = Some(ScreenHit::CloseSplit(term));
     let room = corner_room(app, r, framed(app, f.area()), t);
-    if room > 0 {
-        c.right.push(seg(" ".repeat(room as usize), Style::default()));
-    }
+    c.right_room = room;
     if let Some(parser) = app.parsers.get(&term) {
         c.bg = crate::client::render::terminal_surface_bg(parser.screen(), c.bg);
     }
@@ -579,7 +580,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         Some(grid_title(app, model, &info, focused, r, &mut c, t))
     } else {
         // The title runs up to two cells before the right-hand segments ("  ✕ " is the close).
-        let right_w = segs_width(&c.right) + if c.right.is_empty() { 2 } else { 4 };
+        let right_w = segs_width(&c.right) + if c.right.is_empty() { 2 } else { 4 } + room;
         let title_end = right_end(look, r).saturating_sub(right_w + 2);
         c.chips = if top_left {
             tab_strip(app, model, title_x(look, r), r.y, title_end, focused, t)

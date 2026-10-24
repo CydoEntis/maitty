@@ -4295,14 +4295,14 @@ second line
         use crate::config::Rounding;
         use screen::ScreenHit as S;
         type SetUp = fn(&mut App);
-        let states: [(&str, S, SetUp); 4] = [
-            ("SHORTCUT · Esc", S::Leader, |_| {}),
-            ("SHORTCUT · paused", S::Leader, |app| tap(app, 'i')),
-            ("↑ Update", S::Update, |app| {
+        let states: [(&str, Option<S>, SetUp); 4] = [
+            ("SHORTCUT · Esc", Some(S::Leader), |_| {}),
+            ("SHORTCUT · paused", None, |app| tap(app, 'i')),
+            ("↑ Update 9.9.9", Some(S::Update), |app| {
                 app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
                 app.update_available = Some("9.9.9".into());
             }),
-            ("↻ Restart", S::Restart, |app| {
+            ("↻ Restart", Some(S::Restart), |app| {
                 app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
                 app.installed_version = Some(Ok("999.0.0".into()));
             }),
@@ -4316,9 +4316,17 @@ second line
                 let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
                 term.draw(|f| render::draw(&mut app, f)).unwrap();
                 let buf = term.backend().buffer().clone();
-                let r = app.hits.iter().rev().find(|(r, h)| r.y == 0 && *h == Hit::Screen(kind)).unwrap_or_else(|| panic!("the pill takes a click: {at}")).0;
-                let text: String = (r.x..r.right()).map(|x| buf[(x, 0)].symbol()).collect();
-                assert!(text.contains(words), "{text:?}: {at}");
+                let caps = u16::from(rounded == Rounding::Full);
+                let n = words.chars().count() as u16;
+                let start = last_at(&buf, words, 0, 0, 160).unwrap_or_else(|| panic!("the pill: {at}"));
+                let r = Rect { x: start - 1 - caps, y: 0, width: n + 2 + 2 * caps, height: 1 };
+                match kind {
+                    Some(kind) => {
+                        let click = app.hits.iter().rev().find(|(h, k)| h.y == 0 && *k == Hit::Screen(kind)).map(|(h, _)| *h);
+                        assert_eq!(click, Some(r), "the click covers the whole pill: {at}");
+                    }
+                    None => assert!(!app.hits.iter().any(|(h, k)| *k == Hit::Screen(S::Leader) && h.y == 0 && h.intersects(r)), "an indicator, no click: {at}"),
+                }
                 let (l, e, inside) = (&buf[(r.x, 0)], &buf[(r.right() - 1, 0)], buf[(r.x + 1, 0)].bg);
                 if rounded == Rounding::Full {
                     assert_eq!((l.symbol(), l.fg, e.symbol(), e.fg), (screen::CAP_L, inside, screen::CAP_R, inside), "capped, the click on both caps: {at}");
@@ -4363,13 +4371,33 @@ second line
     }
 
     #[test]
-    fn a_click_on_the_paused_pill_opens_the_key_map() {
+    fn a_click_on_the_paused_pill_keeps_the_popup_and_what_was_typed() {
+        let mut app = shortcut_mode();
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(app.mode, Mode::Compose(_)), "Enter opened the message box: {:?}", std::mem::discriminant(&app.mode));
+        for c in "hold on".chars() {
+            tap(&mut app, c);
+        }
+        assert_eq!(shortcut_pill(&mut app).map(|(w, _)| w), Some("SHORTCUT · paused".into()));
+        let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        let x = last_at(term.backend().buffer(), "SHORTCUT", 0, 0, 160).expect("the pill");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x + 2, row: 0, modifiers: KeyModifiers::NONE });
+        assert!(matches!(&app.mode, Mode::Compose(c) if c.text == "hold on"), "the draft survives: {:?}", std::mem::discriminant(&app.mode));
+    }
+
+    #[test]
+    fn the_paused_pill_leaves_the_pane_s_status_and_close_readable() {
         let mut app = shortcut_mode();
         tap(&mut app, 'y');
-        shortcut_pill(&mut app);
-        let (r, _) = *app.hits.iter().rev().find(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::Leader))).expect("the pill takes a click");
-        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: r.x + 1, row: r.y, modifiers: KeyModifiers::NONE });
-        assert!(matches!(app.mode, Mode::KeyMap(_)), "{:?}", std::mem::discriminant(&app.mode));
+        let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let pill = last_at(&buf, "SHORTCUT", 0, 0, 160).expect("the pill");
+        let row: String = (0..160).map(|x| buf[(x, 0)].symbol()).collect();
+        let close = (0..pill).rev().find(|&x| buf[(x, 0)].symbol() == "✕").unwrap_or_else(|| panic!("the ✕ on row 0: {row}"));
+        let pane = app.pane_frames.iter().map(|(_, r)| *r).find(|r| r.y == 0 && r.right() == 160).expect("the top-right pane");
+        assert!(close > pane.x && close < pill - 1, "the ✕ moved left of the pill: ✕ {close}, pill {pill}");
     }
 
     #[test]
