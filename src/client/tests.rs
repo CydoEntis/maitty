@@ -7622,7 +7622,7 @@ mod files_panel_tests {
         key(&mut app, KeyCode::Right);
         let o = draw(&mut app, 80, 24);
         let header = o.lines().find(|l| l.contains('‹')).expect("the file's header");
-        assert!(header.contains("i edit") && header.contains("1–17 of 60 "), "{header}");
+        assert!(header.contains("i edit") && header.contains("1–16 of 60 "), "the tab strip takes a row: {header}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -8109,5 +8109,162 @@ mod leader_key_tests {
         assert_eq!(bound("d"), Some(Action::Changes));
         assert_eq!(bound("f1"), Some(Action::Help));
         assert_eq!(bound("y"), Some(Action::CopyMode));
+    }
+}
+
+mod drawer_tab_tests {
+    use super::*;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
+
+    const W: u16 = 200;
+    const H: u16 = 50;
+
+    /// The main screen with the focused pane in a fresh git repo of its own.
+    fn in_repo(tag: &str) -> (App, PathBuf) {
+        let (_, mut app) = super::design_tests::render_with(W, H);
+        let dir = std::env::temp_dir().join(format!("{APP_COMMAND}-drawer-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::proc::git(&dir, &["init", "-q"]).unwrap();
+        std::fs::write(dir.join("notes.txt"), "remember the milk\n").unwrap();
+        let pane = app.snap.terms.get_mut(&1).expect("the focused pane");
+        pane.cwd = dir.clone();
+        pane.top = Some(dir.clone());
+        pane.root = Some(dir.clone());
+        (app, dir)
+    }
+
+    fn draw(app: &mut App) -> Buffer {
+        app.screen_fresh();
+        let mut term = Terminal::new(TestBackend::new(W, H)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        term.backend().buffer().clone()
+    }
+
+    fn text(buf: &Buffer) -> String {
+        (0..H).map(|y| (0..W).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>() + "\n").collect()
+    }
+
+    /// Where `word` first starts on screen.
+    fn find(buf: &Buffer, word: &str) -> Option<(u16, u16)> {
+        let lines = text(buf);
+        lines.lines().enumerate().find_map(|(y, l)| l.find(word).map(|i| (l[..i].chars().count() as u16, y as u16)))
+    }
+
+    fn open(app: &App) -> Option<screen::SheetKind> {
+        screen::open_sheet(app)
+    }
+
+    fn key(app: &mut App, code: KeyCode, mods: KeyModifiers) {
+        app.on_key(KeyEvent::new(code, mods));
+    }
+
+    fn click_tab(app: &mut App, i: usize) {
+        let r = app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::DrawerTab(i))).then_some(*r)).expect("the tab is clickable");
+        for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+            app.on_mouse(MouseEvent { kind, column: r.x + 1, row: r.y, modifiers: KeyModifiers::NONE });
+        }
+    }
+
+    #[test]
+    fn the_strip_names_each_view_with_its_key_and_lights_the_open_one() {
+        let (mut app, dir) = in_repo("strip");
+        app.act(Action::Files);
+        let buf = draw(&mut app);
+        let o = text(&buf);
+        super::check_settings_tests::show(&o);
+        let row = o.lines().find(|l| l.contains("Files f")).unwrap_or_else(|| panic!("a tab strip:\n{o}"));
+        let (files, changes, branch) = (row.find("Files f").unwrap(), row.find("Changes c").unwrap(), row.find("Branch b").unwrap());
+        assert!(files < changes && changes < branch && row.contains('·'), "in order, a dot apart: {row}");
+        let (fx, fy) = find(&buf, "Files f").unwrap();
+        let (cx, cy) = find(&buf, "Changes c").unwrap();
+        assert_eq!(buf[(fx, fy)].bg, app.theme.accent, "the open tab is lit");
+        assert_ne!(buf[(cx, cy)].bg, app.theme.accent, "the others are not");
+        app.cfg.keys.prefix.insert("c".into(), "none".into());
+        app.cfg.keys.prefix.insert("d".into(), "changes".into());
+        app.keymap = app.cfg.keymap();
+        assert!(find(&draw(&mut app), "Changes d").is_some(), "the keys come from the keymap");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_inbox_has_no_strip() {
+        let (_, mut app) = super::design_tests::render_with(W, H);
+        app.act(Action::Jump);
+        let buf = draw(&mut app);
+        assert_eq!(open(&app), Some(screen::SheetKind::Inbox));
+        assert!(find(&buf, "Branch b").is_none(), "{}", text(&buf));
+    }
+
+    #[test]
+    fn tab_and_shift_tab_cycle_files_changes_and_branch() {
+        let (mut app, dir) = in_repo("cycle");
+        app.act(Action::Files);
+        use screen::SheetKind::{Branch, Changes, Files};
+        for want in [Changes, Branch, Files] {
+            key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+            assert_eq!(open(&app), Some(want), "Tab");
+            assert!(app.view_has_keys(), "the new view has the keys");
+        }
+        for want in [Branch, Changes, Files] {
+            key(&mut app, KeyCode::BackTab, KeyModifiers::SHIFT);
+            assert_eq!(open(&app), Some(want), "Shift+Tab");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tab_is_text_while_files_filters_or_edits() {
+        let (mut app, dir) = in_repo("typing");
+        app.act(Action::Files);
+        let Some(View::Files(v)) = &mut app.view else { panic!("Files is open") };
+        v.filtering = true;
+        key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+        assert_eq!(open(&app), Some(screen::SheetKind::Files), "the filter keeps it");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn r_switches_files_to_recent_files_and_back() {
+        let (mut app, dir) = in_repo("recent");
+        app.act(Action::Files);
+        key(&mut app, KeyCode::Char('r'), KeyModifiers::NONE);
+        assert!(matches!(&app.view, Some(View::Files(v)) if v.recent), "r shows recent files");
+        assert!(text(&draw(&mut app)).contains("r project"), "the hint says r");
+        key(&mut app, KeyCode::Char('r'), KeyModifiers::NONE);
+        assert!(matches!(&app.view, Some(View::Files(v)) if !v.recent), "r again shows the project");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_click_on_a_tab_switches_to_it() {
+        let (mut app, dir) = in_repo("click");
+        app.act(Action::Files);
+        draw(&mut app);
+        click_tab(&mut app, 2);
+        assert_eq!(open(&app), Some(screen::SheetKind::Branch));
+        draw(&mut app);
+        click_tab(&mut app, 1);
+        assert_eq!(open(&app), Some(screen::SheetKind::Changes));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn each_view_keeps_its_own_width_across_switches() {
+        let (mut app, dir) = in_repo("width");
+        app.screen.saved.sheet_w.insert("files".into(), 70);
+        app.screen.saved.sheet_w.insert("changes".into(), 90);
+        app.act(Action::Files);
+        draw(&mut app);
+        assert_eq!(app.screen.sheet_rect.width, 70);
+        key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+        draw(&mut app);
+        assert_eq!(app.screen.sheet_rect.width, 90, "Changes' own width");
+        key(&mut app, KeyCode::BackTab, KeyModifiers::SHIFT);
+        draw(&mut app);
+        assert_eq!(app.screen.sheet_rect.width, 70, "back to Files' width");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

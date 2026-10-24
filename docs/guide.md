@@ -71,7 +71,10 @@ when enabled in Settings. All keys shows changes to these bindings too.
 it (on a narrow panel the file takes the panel, `‹` goes back). `f` again or Esc closes it;
 Ctrl+click on a `path:line` in a pane opens it at that line. In **Files**: Enter puts the
 path in the agent's prompt, `e` opens it in your editor (`editor` in config; nvim, helix …
-open inside maitty), `y` copies the path.
+open inside maitty), `y` copies the path, `r` lists recent files.
+
+Files, Changes and Branch share the side panel: a tab strip at its top names each with its
+key, and Tab / Shift+Tab (or a click on a tab) moves between them for the same checkout.
 
 In **Changes**: `c` commit,
 `p` push and open a PR, `e` editor, `x` mark the file reviewed (it sinks; the mark clears

@@ -5,9 +5,9 @@ use super::*;
 impl App {
     /// Keys while a view replaces the pane area (single letters act directly).
     pub(super) fn on_view_key(&mut self, k: &KeyEvent) {
-        // `[` `]` `=` are text while Files' filter or editor takes it.
+        // `[` `]` `=` and Tab are text while Files' filter or editor takes it.
         let typing = matches!(&self.view, Some(View::Files(v)) if v.filtering || v.edit.is_some());
-        if !typing && self.sheet_size_key(k) {
+        if !typing && (self.sheet_size_key(k) || self.drawer_tab_key(k)) {
             return;
         }
         let Some(view) = self.view.take() else { return };
@@ -83,8 +83,8 @@ impl App {
         };
         match k.code {
             KeyCode::Esc => return false,
-            KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => go(r, (pos + 1).min(order.len().saturating_sub(1))),
-            KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => go(r, pos.saturating_sub(1)),
+            KeyCode::Down | KeyCode::Char('j') => go(r, (pos + 1).min(order.len().saturating_sub(1))),
+            KeyCode::Up | KeyCode::Char('k') => go(r, pos.saturating_sub(1)),
             // Mark reviewed (or not): it sinks, and the next one to look at comes up.
             KeyCode::Char('x') => {
                 let Some(file) = r.files.get(r.sel).map(|f| f.path.clone()) else { return true };
@@ -233,8 +233,8 @@ impl App {
                     v.in_preview = false;
                     let keep = self.on_files_tree_key(v, k);
                     // Still the file once an edit opened here ends; the filter (`/`) and the
-                    // recent list (Tab) show the tree, so they leave the file.
-                    if !matches!(k.code, KeyCode::Enter | KeyCode::Tab | KeyCode::Char('/')) {
+                    // recent list (`r`) show the tree, so they leave the file.
+                    if !matches!(k.code, KeyCode::Enter | KeyCode::Char('r' | '/')) {
                         v.in_preview = true;
                     }
                     return keep;
@@ -276,7 +276,7 @@ impl App {
                 v.filtering = true;
                 v.sel = 0;
             }
-            KeyCode::Tab => {
+            KeyCode::Char('r') => {
                 v.recent = !v.recent;
                 v.sel = 0;
                 if v.recent && v.recent_list.is_none() {

@@ -1301,6 +1301,7 @@ impl App {
                 }
             }
             ScreenHit::ViewClose => self.view = None,
+            ScreenHit::DrawerTab(i) => self.switch_drawer(i),
             ScreenHit::Noop => {}
             ScreenHit::ToastClose => self.dismiss_notice(),
             ScreenHit::SettingsBody => {}

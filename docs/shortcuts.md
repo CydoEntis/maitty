@@ -190,6 +190,8 @@ No bare key answers from the sidebar.
 ## Side panel
 
 The panel docked right (Inbox, Changes, Files, checks, Branch). Its width is kept for each kind of view.
+Files, Changes and Branch show a tab strip at its top, `Files f · Changes c · Branch b` with
+your own leader keys; the Inbox and checks have none.
 
 | Keys | Action |
 | --- | --- |
@@ -198,6 +200,8 @@ The panel docked right (Inbox, Changes, Files, checks, Branch). Its width is kep
 | Drag its left edge | Resize it |
 | Click a pane | Type into that pane; the view stays open, unlit |
 | Click the panel | Give the view the keys again |
+| Tab, Shift+Tab | Files, Changes, Branch: the next or previous tab, for the same checkout (not while Files filters or edits) |
+| Click a tab | Switch to it |
 
 ## Inbox
 
@@ -236,7 +240,7 @@ The panel docked right (Inbox, Changes, Files, checks, Branch). Its width is kep
 | Up / k, Down / j, Home, End | Choose file |
 | Right / l, Left / h, Enter on directory | Expand, collapse / parent, toggle directory |
 | Enter on file | Insert quoted path into agent prompt and close Files |
-| Tab, / | Toggle recent/tree, filter paths; Enter ends filtering, Esc clears filter |
+| r, / | Toggle recent/tree, filter paths; Enter ends filtering, Esc clears filter |
 | e, i, o, y, d | External editor, edit in preview, open outside, copy path, Changes |
 | m on a markdown file | Show it as text or drawn (drawn is the default) |
 | PgUp, PgDn, Shift+Up, Shift+Down | Scroll preview pages or individual lines |
@@ -267,7 +271,7 @@ The panel docked right (Inbox, Changes, Files, checks, Branch). Its width is kep
 
 | Keys | Action |
 | --- | --- |
-| Up / k / Shift+Tab, Down / j / Tab | Previous or next changed file |
+| Up / k, Down / j | Previous or next changed file |
 | PgUp, PgDn, Space | Read diff; Space pages down |
 | x, e, r | Mark reviewed, open editor, return to agent |
 | c, p | Commit; ask to push and open a pull request |

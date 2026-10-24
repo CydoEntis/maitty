@@ -489,7 +489,7 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
         seg(format!("{}{branch}", tilde(&v.root)), Style::default().fg(t.muted)),
     ];
     let filter = if v.filtering || !v.filter.is_empty() { format!("/{}  ", v.filter) } else { "/ filter  ".into() };
-    let mode = if v.recent { "Tab project  " } else { "Tab recent  " };
+    let mode = if v.recent { "r project  " } else { "r recent  " };
     let right = vec![
         seg(mode, Style::default().fg(t.muted)),
         seg(filter, Style::default().fg(if v.filtering { t.accent } else { t.muted })),

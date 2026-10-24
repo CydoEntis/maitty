@@ -1009,6 +1009,8 @@ pub(super) enum ScreenHit {
     MenuPick(usize),
     /// The ✕ of a view in the sheet (Changes): it closes.
     ViewClose,
+    /// A tab of the side panel's strip (Files, Changes, Branch): it switches to that view.
+    DrawerTab(usize),
     /// The sidebar's edge (drag to resize).
     SideEdge,
     /// The side sheet's left edge: drag it to resize the sheet.
