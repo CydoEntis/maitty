@@ -2285,6 +2285,49 @@ fn a_session_with_no_check_announces_its_finish_at_once() {
     close(&mut d, &[t]);
 }
 
+fn claude_reports(d: &mut Daemon, t: TermId) -> impl FnMut(&mut Daemon, HookStatus, &str) + use<> {
+    let secret = d.terms[&t].token.clone();
+    move |d: &mut Daemon, status, event: &str| d.apply_hook(report(t, &secret, 0, status, event), Some(true), Vec::new())
+}
+
+#[test]
+fn a_turn_paused_on_background_work_does_not_ring_finished() {
+    let (mut d, _rx) = daemon();
+    d.cfg.notify.phone_topic = concat!(env!("APP_COMMAND"), "-test-topic").into();
+    d.cfg.notify.phone_done = true;
+    d.cfg.notify.phone_after = 0;
+    let t = pane(&mut d);
+    let mut say = claude_reports(&mut d, t);
+    let mut seen = viewer(&mut d);
+    say(&mut d, HookStatus::Working, "UserPromptSubmit");
+    say(&mut d, HookStatus::Done, crate::protocol::STOP_AWAITING_BACKGROUND);
+    assert_eq!(d.terms[&t].status, Status::Done, "Claude itself shows the turn done, with a shell still running");
+    assert!(!announced(&heard(&mut seen), Status::Done), "no finished sound while it waits on its own work");
+    assert!(d.terms[&t].alert_due.is_none(), "no desktop notification queued");
+    d.phone_alerts();
+    assert_eq!(d.terms[&t].phoned, 0, "no phone alert");
+    // The shell finished and Claude woke by itself to carry on.
+    say(&mut d, HookStatus::Working, "PreToolUse");
+    say(&mut d, HookStatus::Done, "Stop");
+    assert!(announced(&heard(&mut seen), Status::Done), "the real end of the work rings");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_wake_up_that_only_talks_still_rings_when_it_ends() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let mut say = claude_reports(&mut d, t);
+    let mut seen = viewer(&mut d);
+    say(&mut d, HookStatus::Working, "UserPromptSubmit");
+    say(&mut d, HookStatus::Done, crate::protocol::STOP_AWAITING_BACKGROUND);
+    assert!(!announced(&heard(&mut seen), Status::Done));
+    // A wake-up turn with no tool call sends no working report before its stop.
+    say(&mut d, HookStatus::Done, "Stop");
+    assert!(announced(&heard(&mut seen), Status::Done), "finished once nothing is left in flight");
+    close(&mut d, &[t]);
+}
+
 #[test]
 fn the_phone_hears_nothing_while_a_check_runs_or_after_it_fails() {
     let (mut d, _rx) = daemon();

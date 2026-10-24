@@ -279,6 +279,7 @@ impl Daemon {
                 t.hooked_process_seen = false;
                 t.agent = None;
                 t.session = None;
+                t.awaiting_background = false;
                 t.summary.clear();
                 t.status = Status::None;
                 t.status_since = term::unix_now();
@@ -307,11 +308,28 @@ impl Daemon {
         if new != Status::Working {
             t.progress_off = None;
         }
+        // Claude's repeated idle ping is not a turn end.
+        let turn_end = status == HookStatus::Done && !event.starts_with("Notification:");
+        let mut wake_up_ended = false;
+        if new == Status::Working {
+            t.awaiting_background = false;
+        } else if turn_end {
+            let paused = event == crate::protocol::STOP_AWAITING_BACKGROUND;
+            // A wake-up turn with no tool call ends without ever reporting working, so its
+            // status doesn't change: it is still a turn to check and a finish to say.
+            wake_up_ended = std::mem::replace(&mut t.awaiting_background, paused) && !paused && new == Status::Done && t.status == Status::Done;
+            if wake_up_ended {
+                t.turn_end_handled = false;
+            }
+        }
         self.set_status(term, new, &format!("hook: {}", if event.is_empty() { "status report" } else { event }));
         // A turn-end report can arrive when the screen never showed the turn working, so the
-        // status did not change. Claude's repeated idle ping is not a turn end.
-        if status == HookStatus::Done && !event.starts_with("Notification:") {
+        // status did not change.
+        if turn_end {
             self.turn_ended(term);
+        }
+        if wake_up_ended && !self.terms.get(&term).is_some_and(Term::check_running) {
+            self.announce(term, Status::Done);
         }
         self.dirty = true;
     }
@@ -382,6 +400,9 @@ impl Daemon {
 
     /// Tell attached clients `term` needs attention, and queue the desktop alert for it.
     pub(super) fn announce(&mut self, term: TermId, status: Status) {
+        if status == Status::Done && self.terms.get(&term).is_some_and(|t| t.awaiting_background) {
+            return;
+        }
         self.broadcast(|c| c.attach, ServerMsg::Attention { term, status });
         if (status != Status::Done || !self.is_helper(term))
             && let Some(t) = self.terms.get_mut(&term)
@@ -451,7 +472,7 @@ impl Daemon {
         let now = term::unix_now();
         for t in self.terms.values_mut() {
             let Some(agent) = t.agent.clone() else { continue };
-            let wanted = t.status == Status::Blocked || (t.status == Status::Done && n.phone_done && !t.check_holds_done());
+            let wanted = t.status == Status::Blocked || (t.status == Status::Done && n.phone_done && !t.check_holds_done() && !t.awaiting_background);
             if !wanted || t.phoned == t.status_since || now.saturating_sub(t.status_since) < n.phone_after {
                 continue;
             }

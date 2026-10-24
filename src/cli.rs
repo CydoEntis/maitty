@@ -1273,6 +1273,10 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
     {
         event = format!("Notification:{kind}");
     }
+    // Claude lists what is still in flight when it stops; it wakes itself when that finishes.
+    if event == "Stop" && payload_json.get("background_tasks").and_then(Value::as_array).is_some_and(|tasks| !tasks.is_empty()) {
+        event = crate::protocol::STOP_AWAITING_BACKGROUND.into();
+    }
     let said = field(&["last_assistant_message", "last-assistant-message"])
         .or_else(|| transcript.as_deref().and_then(last_assistant_text))
         .map(|s| s.trim().chars().take(2000).collect::<String>())
@@ -2194,6 +2198,19 @@ mod tests {
             assert_eq!(transcript.as_ref(), Some(&file));
         }
         std::fs::remove_file(file).unwrap();
+    }
+
+    #[test]
+    fn a_claude_stop_with_background_work_in_flight_says_so() {
+        let stop = |tasks: Value| {
+            let payload = json!({"hook_event_name":"Stop","background_tasks":tasks,"session_crons":[]});
+            let origin = super::HookOrigin { term: 1, agent: "claude".into(), pid: 0, token: String::new() };
+            let ClientMsg::Hook { status, event, .. } = super::hook_message(origin, &payload, super::status_from_hook(&payload).unwrap()) else { panic!("expected hook report") };
+            (status, event)
+        };
+        let shell = json!([{"id":"b1","type":"shell","status":"running","description":"watch CI","command":"gh pr checks 38 --watch"}]);
+        assert_eq!(stop(shell), (HookStatus::Done, crate::protocol::STOP_AWAITING_BACKGROUND.to_string()), "paused on its background shell");
+        assert_eq!(stop(json!([])), (HookStatus::Done, "Stop".to_string()), "nothing in flight: the turn is over");
     }
 
     #[test]

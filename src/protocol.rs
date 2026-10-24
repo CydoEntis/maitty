@@ -220,6 +220,10 @@ pub enum ApprovalChoice {
     Never,
 }
 
+/// A hook `event` for a turn that stopped with background work (a shell, a helper) still in
+/// flight: the agent wakes itself when that work ends, so the turn is paused, not finished.
+pub const STOP_AWAITING_BACKGROUND: &str = "Stop:background";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HookStatus {
     Working,
