@@ -628,6 +628,57 @@ the detailed feature notes moved to [the guide](guide.md). Not checked live: ins
 real seshi install (migration, Claude hooks, `maitty integrate mcp`), the release workflow
 under the new archive names, and the splash at 80×24 and 160×45 by eye.
 
+### 25 — Rows, rounding and padding · built on grey-wolf 2026-10-24, not merged
+
+The user asked on 2026-10-24 for padding round the screen, one rounding setting with three
+choices, a round hover, shortcut mode that stays until left, and one-line session rows with the
+agent and the uncommitted lines ([ADR 0021](adr/0021-one-line-rows-one-rounding-sticky-mode.md)).
+No protocol change; config keeps reading `corners` and a `true`/`false` `rounded`.
+
+1. `ui.padding` (0, 1, 2) round the screen in every layout
+2. `ui.rounded` is `full`, `corners` or `off`; Corners leaves Settings
+3. the pointer's hover rounds its ends with `full`
+4. shortcut mode ends only on Esc, the leader or a click; closing a popup returns to it
+5. one-line session rows: the agent's mark, `+N −N` uncommitted, the name in its state's colour
+6. the version and update check move to General › UPDATES › Version; no version line over every tab
+
+Status 2026-10-24: built on `grey-wolf`; the gate passed. Not checked live: rows, hover and
+padding in a real terminal at 80×24, 100×30 and 160×45. Also fixed here: Backspace on the last letter of an empty Inbox's search crashed the window
+(the selection outlived the matches), and tests wrote the real clipboard.
+
+### 26 — The inspector drawer · planned 2026-10-24
+
+The user asked on 2026-10-24 for the file tree, branch and diff in a native, resizable drawer,
+after reviewing the [inspector design handoff](design/inspector-v1/README.md). It grows the
+existing side panel rather than adding a second one; the sidebar keeps its state; markdown reads
+pretty with pulldown-cmark. Intent: [inspector-drawer](features/inspector-drawer/intent.md),
+spec: [spec](features/inspector-drawer/spec.md). Tickets are labelled `phase-26`; no protocol
+change.
+
+1. #172 resize the side panel and remember its width per view
+2. #173 Files opens in the side panel (after #172)
+3. #174 markdown previews pretty, `m` shows raw (after #173)
+4. #175 a Branch view in the side panel (after #172)
+5. #176 a row's `+N −N` opens its Changes (after #172; needs phase 25 on `dev`)
+
+Exit: every ticket closed, the gate green on `dev`, and a live look at 80×24, 100×30 and
+160×45 in Floating and Compact.
+
+### 27 — Radar and sending failures · planned 2026-10-24
+
+A session row shows its context as `72%` once past half full (red when nearly full), reversing
+phase 14's "context is left to the agent's status line"; and a failed check's command, exit code
+and last 40 lines can be put into the agent's message box with one key, sent only on Enter.
+Intent: [radar-and-failures](features/radar-and-failures/intent.md). Tickets when phase 26 is
+done. Open: the "nearly full" threshold, and the key.
+
+### 28 — References · planned 2026-10-24
+
+Per project, `.maitty/references/` holds screenshots and design files: a References view in the
+side panel lists, adds (paste or pick), removes and opens them in the system viewer, and an MCP
+tool lists them for agents. Intent: [references](features/references/intent.md). Tickets when
+phase 27 is done. Open: whether the folder is gitignored by default.
+
 ## In scope
 
 Everything below is shipped on `main` unless marked.
@@ -742,7 +793,7 @@ Everything below is shipped on `main` unless marked.
 ## Records
 
 Docs: `AGENTS.md`, `docs/` (architecture, standards, testing, security, UI, API patterns), `docs/stack/rust.md`.
-Design references: the v8 handoff [`design/v8/`](design/v8/README.md) (current) and the v7 handoff [`design/v7/`](design/v7/README.md) (layout and checkpoints; its frames back the tests). Older briefs and handoffs (v1–v6, Flat, wake-up) are in git history.
+Design references: the v8 handoff [`design/v8/`](design/v8/README.md) (current), the inspector handoff [`design/inspector-v1/`](design/inspector-v1/README.md) (the drawer, phases 26–28; `theme.js` is its spec) and the v7 handoff [`design/v7/`](design/v7/README.md) (layout and checkpoints; its frames back the tests). Older briefs and handoffs (v1–v6, Flat, wake-up) are in git history.
 Glossary: none yet.
 Feature docs: `docs/features/`. Each live intent is linked from its phase; shipped or removed intents are in git history.
 
