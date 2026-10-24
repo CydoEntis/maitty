@@ -4739,6 +4739,20 @@ second line
     }
 
     #[test]
+    fn the_paused_frame_leaves_a_popup_on_the_ring_alone() {
+        let mut app = framed_app("floating", "1", "left");
+        tap(&mut app, 'y');
+        let under = drawn(&mut app, 160, 45);
+        let mut buf = under.clone();
+        buf[(0, 20)].set_symbol("│");
+        buf[(5, 0)].set_symbol("╭");
+        let t = app.theme.clone();
+        screen::draw_mode_frame(&app, &mut buf, under.area, &t, Some(&under));
+        assert_eq!((buf[(0, 20)].symbol(), buf[(5, 0)].symbol()), ("│", "╭"), "what a popup drew stays");
+        assert_eq!(buf[(6, 0)].symbol(), "▀", "the rest of the frame is redrawn");
+    }
+
+    #[test]
     fn a_paused_shortcut_mode_keeps_the_frame_faded() {
         for padding in ["0", "1"] {
             let mut app = framed_app("floating", padding, "left");

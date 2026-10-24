@@ -21,8 +21,9 @@ fn frame_color(app: &App, t: &Theme) -> Option<Color> {
 /// Draw the frame on the window's outermost ring. With padding, the ring is empty: a half-row
 /// line along the top and bottom and a full column at each side, so all four read equally thick.
 /// Without padding, only the boxes' own edges on the ring take the colour; chips, words and
-/// strips stay exactly as they are.
-pub(in crate::client) fn draw_mode_frame(app: &App, buf: &mut Buffer, area: Rect, t: &Theme) {
+/// strips stay exactly as they are. Given what was drawn `under` the overlays, a ring cell an
+/// overlay drew over is left to it.
+pub(in crate::client) fn draw_mode_frame(app: &App, buf: &mut Buffer, area: Rect, t: &Theme, under: Option<&Buffer>) {
     let Some(color) = frame_color(app, t) else { return };
     let area = area.intersection(buf.area);
     if area.width < 2 || area.height < 2 {
@@ -31,6 +32,9 @@ pub(in crate::client) fn draw_mode_frame(app: &App, buf: &mut Buffer, area: Rect
     let padded = framed(app, area) != area;
     for (x, y) in ring(area) {
         let cell = &mut buf[(x, y)];
+        if under.is_some_and(|u| u.cell((x, y)).is_none_or(|was| was.symbol() != cell.symbol())) {
+            continue;
+        }
         if padded {
             cell.set_symbol(block(area, x, y)).set_fg(color);
         } else if is_box_line(cell.symbol()) {
