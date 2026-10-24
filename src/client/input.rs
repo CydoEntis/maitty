@@ -122,7 +122,7 @@ impl App {
 
     /// Shortcut mode stays until you leave it (ADR 0016, ADR 0021): an action that opened a
     /// popup hands it the keys, and when the popup closes the mode is back.
-    fn keep_shortcut_mode(&mut self) {
+    pub(super) fn keep_shortcut_mode(&mut self) {
         match self.mode {
             Mode::Prefix { .. } => self.shortcut_held = true,
             // A view still open has the keys; the mode comes back once it closes.

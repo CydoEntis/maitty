@@ -4330,6 +4330,38 @@ second line
         }
     }
 
+    /// Background work closing whatever popup is open, with no key pressed.
+    fn close_by_itself(app: &mut App) {
+        app.on_bg(Bg::Then(Box::new(|app: &mut App| app.mode = Mode::Normal)));
+    }
+
+    #[test]
+    fn shortcut_mode_returns_when_a_popup_closes_by_itself() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'i');
+        assert!(matches!(app.mode, Mode::GoTo { .. }), "the Inbox has the keys");
+        close_by_itself(&mut app);
+        assert!(matches!(app.mode, Mode::Prefix { acted: true, .. }), "back at once: {:?}", std::mem::discriminant(&app.mode));
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc".into(), app.theme.sky())), "and the pill lit");
+    }
+
+    #[test]
+    fn a_popup_closing_by_itself_does_not_bring_back_a_mode_you_left() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'i');
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: 0, row: 0, modifiers: KeyModifiers::NONE });
+        close_by_itself(&mut app);
+        assert_eq!(app.mode, Mode::Normal, "a click left it");
+        let mut app = shortcut_mode();
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        close_by_itself(&mut app);
+        assert_eq!(app.mode, Mode::Normal, "Esc left it");
+        let mut app = shortcut_mode();
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        close_by_itself(&mut app);
+        assert_eq!(app.mode, Mode::Normal, "the leader left it");
+    }
+
     #[test]
     fn a_click_on_the_paused_pill_opens_the_key_map() {
         let mut app = shortcut_mode();
