@@ -4485,6 +4485,95 @@ second line
         assert_eq!(app.mode, Mode::Normal, "the leader left it");
     }
 
+    /// The cells on the window's outermost ring.
+    fn ring(buf: &ratatui::buffer::Buffer) -> Vec<&ratatui::buffer::Cell> {
+        let a = buf.area;
+        let on_ring = |x: u16, y: u16| x == 0 || y == 0 || x == a.right() - 1 || y == a.bottom() - 1;
+        (0..a.height).flat_map(|y| (0..a.width).map(move |x| (x, y))).filter(|&(x, y)| on_ring(x, y)).map(|(x, y)| &buf[(x, y)]).collect()
+    }
+
+    /// The window in one look, padding and sidebar, in shortcut mode, at 160×45.
+    fn framed_app(layout: &str, padding: &str, side: &str) -> App {
+        let mut app = shortcut_mode();
+        (app.cfg.ui.layout, app.cfg.ui.padding, app.cfg.ui.motion) = (layout.into(), padding.into(), false);
+        match side {
+            "right" => app.cfg.ui.sidebar_position = "right".into(),
+            "collapsed" => app.sidebar = false,
+            "hidden" => (app.sidebar, app.side_hidden) = (false, true),
+            _ => {}
+        }
+        app
+    }
+
+    const LOOKS: [&str; 4] = ["floating", "tiled", "compact", "grid"];
+    const SIDES: [&str; 4] = ["left", "right", "collapsed", "hidden"];
+
+    #[test]
+    fn shortcut_mode_fills_the_padding_ring_with_a_sky_frame_in_every_look() {
+        for layout in LOOKS {
+            for padding in ["1", "2"] {
+                for side in SIDES {
+                    let mut app = framed_app(layout, padding, side);
+                    let buf = drawn(&mut app, 160, 45);
+                    let at = format!("{layout} padding {padding} {side}");
+                    let ring = ring(&buf);
+                    assert!(ring.iter().all(|c| ["▀", "▄", "█"].contains(&c.symbol()) && c.fg == app.theme.sky()), "{at}: a solid sky ring");
+                    assert_eq!((buf[(1, 0)].symbol(), buf[(0, 1)].symbol(), buf[(1, 44)].symbol()), ("▀", "█", "▄"), "{at}: half a row at top and bottom, a column at the sides");
+                    if padding == "2" {
+                        assert!((2..158).all(|x| buf[(x, 1)].symbol() == " "), "{at}: only the outermost ring");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn shortcut_mode_without_padding_lights_the_edges_that_touch_the_window() {
+        for layout in LOOKS {
+            for side in SIDES {
+                let mut app = framed_app(layout, "0", side);
+                let buf = drawn(&mut app, 160, 45);
+                let at = format!("{layout} {side}");
+                let ring = ring(&buf);
+                let line = |c: &&&ratatui::buffer::Cell| c.symbol().chars().next().is_some_and(|ch| ('\u{2500}'..='\u{257f}').contains(&ch));
+                assert!(ring.iter().filter(line).all(|c| c.fg == app.theme.sky()), "{at}: every edge on the window's ring is sky");
+                let sides = [0u16, 159].iter().flat_map(|&x| (1..44).map(move |y| (x, y))).filter(|&(x, y)| buf[(x, y)].fg == app.theme.sky()).count();
+                assert!(sides >= 2 * 43 * 3 / 4, "{at}: the sides read as a frame: {sides} of {}\n{}", 2 * 43, buf_text(&buf));
+            }
+        }
+    }
+
+    #[test]
+    fn a_paused_shortcut_mode_keeps_the_frame_faded() {
+        for padding in ["0", "1"] {
+            let mut app = framed_app("floating", padding, "left");
+            tap(&mut app, 'y');
+            let buf = drawn(&mut app, 160, 45);
+            let faded = crate::theme::mix(app.theme.sky(), app.theme.bg, 0.6);
+            assert_eq!(buf[(0, 20)].fg, faded, "padding {padding}: the frame stays, faded like the paused pill");
+        }
+    }
+
+    #[test]
+    fn typing_draws_no_frame() {
+        for layout in LOOKS {
+            for padding in ["0", "1", "2"] {
+                let mut app = framed_app(layout, padding, "left");
+                app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                let buf = drawn(&mut app, 160, 45);
+                let at = format!("{layout} padding {padding}");
+                assert!(ring(&buf).iter().all(|c| c.fg != app.theme.sky()), "{at}: nothing sky on the edge");
+                if padding != "0" {
+                    assert!(ring(&buf).iter().all(|c| c.symbol() == " "), "{at}: the padding stays plain");
+                }
+            }
+        }
+    }
+
+    fn buf_text(buf: &ratatui::buffer::Buffer) -> String {
+        (0..buf.area.height).map(|y| (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect::<String>() + "\n").collect()
+    }
+
     #[test]
     fn a_click_on_the_paused_pill_keeps_the_popup_and_what_was_typed() {
         let mut app = shortcut_mode();

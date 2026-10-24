@@ -1109,6 +1109,7 @@ mod heads;
 mod popover;
 mod helpers_ask;
 mod draw;
+mod mode_frame;
 mod side;
 mod sheet;
 mod inbox;
@@ -1118,4 +1119,4 @@ mod tidy;
 mod v7_frame_tests;
 #[cfg(test)]
 mod v7_ref;
-pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};
+pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_frame::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};
