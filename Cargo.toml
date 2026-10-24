@@ -1,12 +1,12 @@
 [package]
-name = "seshi"
+name = "vibecasso"
 version = "0.41.5"
 edition = "2024"
-description = "Seshi: run many coding agents side by side, see which need you, keep them running when you leave"
+description = "Vibecasso: run many coding agents side by side, see which need you, keep them running when you leave"
 license = "MIT"
 
 [[bin]]
-name = "seshi"
+name = "vibecasso"
 path = "src/main.rs"
 
 [dependencies]

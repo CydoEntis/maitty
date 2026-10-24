@@ -5,7 +5,7 @@
 //! The request is only ever made by a start that came from a pane proving it is that pane
 //! (its secret), and only you can answer it: `AnswerHelpers` is refused from inside a pane and
 //! accepted only for a request the daemon holds. "Always in this project" is kept in
-//! `helper-projects.json` in Seshi's data folder, never in the repo, so an agent that can
+//! `helper-projects.json` in Vibecasso's data folder, never in the repo, so an agent that can
 //! write the repo cannot grant itself helpers.
 
 use super::{Daemon, approvals::write_atomic};
@@ -61,7 +61,7 @@ impl Projects {
 }
 
 /// Add `project` to the file as it is now, not this daemon's copy: every daemon (one per
-/// `SESHI_SOCKET`) shares it. A damaged file is left as it is. Blocks.
+/// `VIBECASSO_SOCKET`) shares it. A damaged file is left as it is. Blocks.
 fn remember(file: &Path, project: &Path) -> Result<()> {
     static WRITING: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _one_at_a_time = WRITING.lock().unwrap_or_else(|e| e.into_inner());
@@ -156,7 +156,7 @@ impl Daemon {
             self.announce(by, crate::protocol::Status::Blocked);
         }
         anyhow::bail!(
-            "Starting helpers needs the user's OK. Their seshi row now says it wants to start {n} helper{}. Call seshi_start for every helper you want so they all show, then try again later; don't start them another way.",
+            "Starting helpers needs the user's OK. Their vibecasso row now says it wants to start {n} helper{}. Call vibecasso_start for every helper you want so they all show, then try again later; don't start them another way.",
             if n == 1 { "" } else { "s" }
         )
     }

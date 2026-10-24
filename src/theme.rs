@@ -2,7 +2,7 @@
 //! colours; the theme only paints hydra's chrome (sidebar, title bars, status line).
 //!
 //! The roles follow the design handoff: `surf` for chrome, `card`/`card2` for panels and
-//! action rows, `btn`/`hov` for buttons and the hovered row, `acc` (teal in Seshi Dark
+//! action rows, `btn`/`hov` for buttons and the hovered row, `acc` (teal in Vibecasso Dark
 //! theme) for focus, `needs` (amber) only for "needs you".
 
 use ratatui::style::Color;
@@ -60,14 +60,14 @@ pub struct Theme {
 pub struct ThemeOverrides(pub BTreeMap<String, String>);
 
 /// The theme when none is chosen.
-pub const DEFAULT: &str = "seshi-dark";
+pub const DEFAULT: &str = "vibecasso-dark";
 
 pub const BUILTIN: &[&str] = &[
-    "seshi-dark",
-    "seshi-light",
-    "seshi-walnut",
-    "seshi-night",
-    "seshi-day",
+    "vibecasso-dark",
+    "vibecasso-light",
+    "vibecasso-walnut",
+    "vibecasso-night",
+    "vibecasso-day",
     "harbor",
     "harbor-day",
     "moss",
@@ -130,13 +130,13 @@ pub const BUILTIN: &[&str] = &[
     "mono",
 ];
 
-/// The themes shown by name in Settings, Seshi's own first.
+/// The themes shown by name in Settings, Vibecasso's own first.
 pub const DESIGN: &[(&str, &str)] = &[
-    ("seshi-dark", "Seshi Dark"),
-    ("seshi-light", "Seshi Light"),
-    ("seshi-walnut", "Seshi Walnut"),
-    ("seshi-night", "Seshi Night"),
-    ("seshi-day", "Seshi Day"),
+    ("vibecasso-dark", "Vibecasso Dark"),
+    ("vibecasso-light", "Vibecasso Light"),
+    ("vibecasso-walnut", "Vibecasso Walnut"),
+    ("vibecasso-night", "Vibecasso Night"),
+    ("vibecasso-day", "Vibecasso Day"),
     ("harbor", "Harbor"),
     ("harbor-day", "Harbor Day"),
     ("moss", "Moss"),
@@ -463,7 +463,7 @@ impl Theme {
 
     pub fn named(name: &str) -> Theme {
         let theme = Theme::base(name);
-        if name == "seshi-dark" || name == "mono" {
+        if name == "vibecasso-dark" || name == "mono" {
             return theme;
         }
         theme.with_distinct_needs()
@@ -471,7 +471,7 @@ impl Theme {
 
     fn base(name: &str) -> Theme {
         match name {
-            "seshi-dark" => Theme::design(
+            "vibecasso-dark" => Theme::design(
                 [
                     "#10141b", "#dce4ee", "#141a23", "#1a222d", "#202a37", "#344252", "#8695a8", "#c1ccda",
                     "#f4f7fb", "#43c7c4", "#0c2022", "#f1ad4f", "#92d477", "#ff6678", "#273443", "#314456",
@@ -481,7 +481,7 @@ impl Theme {
             )
             .with_err("#ff6678")
             .with_amber_needs("#f4c24d"),
-            "seshi-light" => Theme::design(
+            "vibecasso-light" => Theme::design(
                 [
                     "#f5f7fa", "#243244", "#e9eef4", "#ffffff", "#edf2f7", "#c8d2de", "#68788b", "#43546a",
                     "#172536", "#087f86", "#f5ffff", "#915300", "#287844", "#c33343", "#dfe7ef", "#d4e0e9",
@@ -493,7 +493,7 @@ impl Theme {
             // A walnut-cased keyboard with chocolate keys: brown grounds, turquoise for focus,
             // the red, orange and lemon-lime run for needs you, working and done, cream text,
             // lemon (ws[1]) for leader mode.
-            "seshi-walnut" => Theme::design(
+            "vibecasso-walnut" => Theme::design(
                 [
                     "#1f140d", "#f1e4d4", "#281a12", "#2f2017", "#3b291e", "#4a3326", "#a68b77", "#e8d8c4",
                     "#fff4e6", "#3fc6cc", "#0f2427", "#f58a32", "#c6d64c", "#ff5a3c", "#4a3326", "#533a2c",
@@ -504,7 +504,7 @@ impl Theme {
             .with_err("#ff4f6e"),
             // Golden hour after the session: warm driftwood dark, sunset peach for focus, sun
             // for what needs you, sea glass (ws[1]) for leader mode.
-            "seshi-night" => Theme::design(
+            "vibecasso-night" => Theme::design(
                 [
                     "#191411", "#e6d8ca", "#221b17", "#261e19", "#30261f", "#33291f", "#9b8a7c", "#d9cbbd",
                     "#fff6ec", "#ff9e7a", "#2a1208", "#d9cbbd", "#8bd17c", "#ffd25e", "#372b23", "#43352b",
@@ -514,7 +514,7 @@ impl Theme {
             )
             .with_err("#ff5d73"),
             // The same beach in daylight: sand, deep coral for focus, gold for what needs you.
-            "seshi-day" => Theme::design(
+            "vibecasso-day" => Theme::design(
                 [
                     "#fbf3eb", "#4a3c33", "#f4e7da", "#fffaf5", "#f6ebdf", "#e2cfbd", "#8f7b6c", "#5a4a3f",
                     "#2a1f18", "#b8492c", "#fff7f0", "#5a4a3f", "#3f8f45", "#a06a00", "#efdfcf", "#e7d2bf",
@@ -523,7 +523,7 @@ impl Theme {
                 ["#c0392b", "#3f8f45", "#a06a00", "#2f6fb0", "#8e4dbf", "#13867c", "#8f7b6c"],
             )
             .with_err("#c73a55"),
-            // Seshi's other pairs, a dark one and its day, and one loud one.
+            // Vibecasso's other pairs, a dark one and its day, and one loud one.
             // A harbour at night: deep navy, brass for focus.
             "harbor" => Theme::design(
                 [

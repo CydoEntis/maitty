@@ -13,9 +13,9 @@
 │   ● warm-finch              3m │ │                                                  │ │▎✕ fix-footer · affiliate-site                                     2m │
 │     asks: use pnpm or npm?     │ │                                                  │ │▎  failed: test · commits ✓ · test ✕ · approval … · review …          │
 │                                │ │                                                  │ │▎  ✗ legal.test.tsx › footer shows current year                       │
-│  ▾ seshi                 ⎇ dev │ │                                                  │ │                                                                      │
+│  ▾ orbit                 ⎇ dev │ │                                                  │ │                                                                      │
 │   ✓ quick-fox               9h │ │                                                  │ │  FINISHED  1                                                         │
-│     finished                   │ │                                                  │ │ ✓ quick-fox · seshi                                               9h │
+│     finished                   │ │                                                  │ │ ✓ quick-fox · orbit                                               9h │
 │   z old-moth                2d │ │                                                  │ │   finished · not seen                                                │
 │     asleep zzZ                 │ │                                                  │ │                                                                      │
 │                                │ │                                                  │ │ Several checkpoints read as one line: failed, then needs you, then n │
@@ -57,11 +57,11 @@
 │   ● warm-finch      3m │ │                                                                       │
 │     asks: use pnpm or n│ │  FAILED CHECKS  1                                                     │
 │                        │ │▎✕ fix-footer · affiliate-site                                      2m │
-│  ▾ seshi         ⎇ dev │ │▎  failed: test · commits ✓ · test ✕ · approval … · review …           │
+│  ▾ orbit         ⎇ dev │ │▎  failed: test · commits ✓ · test ✕ · approval … · review …           │
 │   ✓ quick-fox       9h │ │▎  ✗ legal.test.tsx › footer shows current year                        │
 │   z old-moth        2d │ │                                                                       │
 │                        │ │  FINISHED  1                                                          │
-│                        │ │ ✓ quick-fox · seshi                                                9h │
+│                        │ │ ✓ quick-fox · orbit                                                9h │
 │                        │ │   finished · not seen                                                 │
 │                        │ │                                                                       │
 │                        │ │ Several checkpoints read as one line: failed, then needs you, then ne │
@@ -88,11 +88,11 @@
 │   ● warm-finch         │ │                                                   │
 │     asks: use pnpm or n│ │  FAILED CHECKS  1                                 │
 │                        │ │▎✕ fix-footer · affiliate-site                  2m │
-│  ▾ seshi         ⎇ dev │ │▎  failed: test ✓✕……                               │
+│  ▾ orbit         ⎇ dev │ │▎  failed: test ✓✕……                               │
 │   ✓ quick-fox          │ │▎  ✗ legal.test.tsx › footer shows current year    │
 │   z old-moth           │ │                                                   │
 │                        │ │  FINISHED  1                                      │
-│                        │ │ ✓ quick-fox · seshi                            9h │
+│                        │ │ ✓ quick-fox · orbit                            9h │
 │                        │ │   finished · not seen                             │
 │                        │ │                                                   │
 │                        │ │                                                   │
@@ -115,9 +115,9 @@
 │   ● warm-finch              3m ││                                                    ││▎✕ fix-footer · affiliate-site                                     2m │
 │     asks: use pnpm or npm?     ││                                                    ││▎  failed: test · commits ✓ · test ✕ · approval … · review …          │
 │                                ││                                                    ││▎  ✗ legal.test.tsx › footer shows current year                       │
-│  ▾ seshi                 ⎇ dev ││                                                    ││                                                                      │
+│  ▾ orbit                 ⎇ dev ││                                                    ││                                                                      │
 │   ✓ quick-fox               9h ││                                                    ││  FINISHED  1                                                         │
-│     finished                   ││                                                    ││ ✓ quick-fox · seshi                                               9h │
+│     finished                   ││                                                    ││ ✓ quick-fox · orbit                                               9h │
 │   z old-moth                2d ││                                                    ││   finished · not seen                                                │
 │     asleep zzZ                 ││                                                    ││                                                                      │
 │                                ││                                                    ││ Several checkpoints read as one line: failed, then needs you, then n │
@@ -159,11 +159,11 @@
 │   ● warm-finch      3m ││                                                                        │
 │     asks: use pnpm or n││  FAILED CHECKS  1                                                      │
 │                        ││▎✕ fix-footer · affiliate-site                                       2m │
-│  ▾ seshi         ⎇ dev ││▎  failed: test · commits ✓ · test ✕ · approval … · review …            │
+│  ▾ orbit         ⎇ dev ││▎  failed: test · commits ✓ · test ✕ · approval … · review …            │
 │   ✓ quick-fox       9h ││▎  ✗ legal.test.tsx › footer shows current year                         │
 │   z old-moth        2d ││                                                                        │
 │                        ││  FINISHED  1                                                           │
-│                        ││ ✓ quick-fox · seshi                                                 9h │
+│                        ││ ✓ quick-fox · orbit                                                 9h │
 │                        ││   finished · not seen                                                  │
 │                        ││                                                                        │
 │                        ││ Several checkpoints read as one line: failed, then needs you, then nex │
@@ -190,11 +190,11 @@
 │   ● warm-finch         ││                                                    │
 │     asks: use pnpm or n││  FAILED CHECKS  1                                  │
 │                        ││▎✕ fix-footer · affiliate-site                   2m │
-│  ▾ seshi         ⎇ dev ││▎  failed: test ✓✕……                                │
+│  ▾ orbit         ⎇ dev ││▎  failed: test ✓✕……                                │
 │   ✓ quick-fox          ││▎  ✗ legal.test.tsx › footer shows current year     │
 │   z old-moth           ││                                                    │
 │                        ││  FINISHED  1                                       │
-│                        ││ ✓ quick-fox · seshi                             9h │
+│                        ││ ✓ quick-fox · orbit                             9h │
 │                        ││   finished · not seen                              │
 │                        ││                                                    │
 │                        ││                                                    │
@@ -217,9 +217,9 @@
    ● warm-finch                3m│                                                      │▎✕ fix-footer · affiliate-site                                     2m
      asks: use pnpm or npm?      │                                                      │▎  failed: test · commits ✓ · test ✕ · approval … · review …
                                  │                                                      │▎  ✗ legal.test.tsx › footer shows current year
-  ▾ seshi                   ⎇ dev│                                                      │
+  ▾ orbit                   ⎇ dev│                                                      │
    ✓ quick-fox                 9h│                                                      │  FINISHED  1
-     finished                    │                                                      │ ✓ quick-fox · seshi                                               9h
+     finished                    │                                                      │ ✓ quick-fox · orbit                                               9h
    z old-moth                  2d│                                                      │   finished · not seen
      asleep zzZ                  │                                                      │
                                  │                                                      │ Several checkpoints read as one line: failed, then needs you, then n
@@ -261,11 +261,11 @@
    ● warm-finch        3m│
      asks: use pnpm or np│  FAILED CHECKS  1
                          │▎✕ fix-footer · affiliate-site                                        2m
-  ▾ seshi           ⎇ dev│▎  failed: test · commits ✓ · test ✕ · approval … · review …
+  ▾ orbit           ⎇ dev│▎  failed: test · commits ✓ · test ✕ · approval … · review …
    ✓ quick-fox         9h│▎  ✗ legal.test.tsx › footer shows current year
    z old-moth          2d│
                          │  FINISHED  1
-                         │ ✓ quick-fox · seshi                                                  9h
+                         │ ✓ quick-fox · orbit                                                  9h
                          │   finished · not seen
                          │
                          │ Several checkpoints read as one line: failed, then needs you, then next
@@ -292,11 +292,11 @@
    ● warm-finch          │
      asks: use pnpm or np│  FAILED CHECKS  1
                          │▎✕ fix-footer · affiliate-site                    2m
-  ▾ seshi           ⎇ dev│▎  failed: test ✓✕……
+  ▾ orbit           ⎇ dev│▎  failed: test ✓✕……
    ✓ quick-fox           │▎  ✗ legal.test.tsx › footer shows current year
    z old-moth            │
                          │  FINISHED  1
-                         │ ✓ quick-fox · seshi                              9h
+                         │ ✓ quick-fox · orbit                              9h
                          │   finished · not seen
                          │
                          │
@@ -317,11 +317,11 @@
    ! warm-finch          │
      asks: use pnpm or np│  FAILED CHECKS  1
                          │|x fix-footer · affiliate-site                    2m
-  v seshi        git: dev│|  failed: test +x..
+  v orbit        git: dev│|  failed: test +x..
    + quick-fox           │|  ✗ legal.test.tsx › footer shows current year
    z old-moth            │
                          │  FINISHED  1
-                         │ + quick-fox · seshi                              9h
+                         │ + quick-fox · orbit                              9h
                          │   finished · not seen
                          │
                          │

@@ -6,13 +6,13 @@
 │ ▎   failed: test · exit 1      │ │                                                  │ │ Command  npm test                                                    │
 │ ▎   footer shows current year  │ │                                                  │ │ Folder   ~\dev\affiliate-site-worktrees\fix-footer                   │
 │   ⣶⡆ add-payments          now │ │                                                  │ │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51         │
-│     claude · working           │ │                                                  │ │ Seen by  Seshi ran this itself. The agent said "tests pass".         │
+│     claude · working           │ │                                                  │ │ Seen by  Vibecasso ran this itself. The agent said "tests pass".     │
 │                                │ │                                                  │ │                                                                      │
 │  ▾ pixls                no git │ │                                                  │ │  OUTPUT  empty                                                       │
 │   ● warm-finch              3m │ │                                                  │ │                                                                      │
 │     asks: use pnpm or npm?     │ │                                                  │ │   (no output)                                                        │
 │                                │ │                                                  │ │   It exited 1 without printing. Run it in the session to see more.   │
-│  ▾ seshi                 ⎇ dev │ │                                                  │ │                                                                      │
+│  ▾ orbit                 ⎇ dev │ │                                                  │ │                                                                      │
 │   ✓ quick-fox               9h │ │                                                  │ │                                                                      │
 │     finished                   │ │                                                  │ │                                                                      │
 │   z old-moth                2d │ │                                                  │ │                                                                      │
@@ -52,11 +52,11 @@
 │ ▎   failed: test · exit│ │ Command  npm test                                                     │
 │   ⣶⡆ add-payments  now │ │ Folder   ~\dev\affiliate-site-worktrees\fix-footer                    │
 │                        │ │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51          │
-│  ▾ pixls        no git │ │ Seen by  Seshi ran this itself. The agent said "tests pass".          │
+│  ▾ pixls        no git │ │ Seen by  Vibecasso ran this itself. The agent said "tests pass".      │
 │   ● warm-finch      3m │ │                                                                       │
 │     asks: use pnpm or n│ │  OUTPUT  empty                                                        │
 │                        │ │                                                                       │
-│  ▾ seshi         ⎇ dev │ │   (no output)                                                         │
+│  ▾ orbit         ⎇ dev │ │   (no output)                                                         │
 │   ✓ quick-fox       9h │ │   It exited 1 without printing. Run it in the session to see more.    │
 │   z old-moth        2d │ │                                                                       │
 │                        │ │                                                                       │
@@ -83,11 +83,11 @@
 │ ▎   failed: test · exit│ │ Command  npm test                                 │
 │   ⣶⡆ add-payments      │ │ Folder   ~\dev\affiliate-site-worktrees\fix-foote │
 │                        │ │ Ran      14:22:05 · took 14.2s · after turn 3 end │
-│  ▾ pixls        no git │ │ Seen by  Seshi ran this itself. The agent said "t │
+│  ▾ pixls        no git │ │ Seen by  Vibecasso ran this itself. The agent sai │
 │   ● warm-finch         │ │                                                   │
 │     asks: use pnpm or n│ │  OUTPUT  empty                                    │
 │                        │ │                                                   │
-│  ▾ seshi         ⎇ dev │ │   (no output)                                     │
+│  ▾ orbit         ⎇ dev │ │   (no output)                                     │
 │   ✓ quick-fox          │ │   It exited 1 without printing. Run it in the s…  │
 │   z old-moth           │ │                                                   │
 │                        │ │                                                   │
@@ -108,13 +108,13 @@
 │ ▎   failed: test · exit 1      ││                                                    ││ Command  npm test                                                    │
 │ ▎   footer shows current year  ││                                                    ││ Folder   ~\dev\affiliate-site-worktrees\fix-footer                   │
 │   ⣶⡆ add-payments          now ││                                                    ││ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51         │
-│     claude · working           ││                                                    ││ Seen by  Seshi ran this itself. The agent said "tests pass".         │
+│     claude · working           ││                                                    ││ Seen by  Vibecasso ran this itself. The agent said "tests pass".     │
 │                                ││                                                    ││                                                                      │
 │  ▾ pixls                no git ││                                                    ││  OUTPUT  empty                                                       │
 │   ● warm-finch              3m ││                                                    ││                                                                      │
 │     asks: use pnpm or npm?     ││                                                    ││   (no output)                                                        │
 │                                ││                                                    ││   It exited 1 without printing. Run it in the session to see more.   │
-│  ▾ seshi                 ⎇ dev ││                                                    ││                                                                      │
+│  ▾ orbit                 ⎇ dev ││                                                    ││                                                                      │
 │   ✓ quick-fox               9h ││                                                    ││                                                                      │
 │     finished                   ││                                                    ││                                                                      │
 │   z old-moth                2d ││                                                    ││                                                                      │
@@ -154,11 +154,11 @@
 │ ▎   failed: test · exit││ Command  npm test                                                      │
 │   ⣶⡆ add-payments  now ││ Folder   ~\dev\affiliate-site-worktrees\fix-footer                     │
 │                        ││ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51           │
-│  ▾ pixls        no git ││ Seen by  Seshi ran this itself. The agent said "tests pass".           │
+│  ▾ pixls        no git ││ Seen by  Vibecasso ran this itself. The agent said "tests pass".       │
 │   ● warm-finch      3m ││                                                                        │
 │     asks: use pnpm or n││  OUTPUT  empty                                                         │
 │                        ││                                                                        │
-│  ▾ seshi         ⎇ dev ││   (no output)                                                          │
+│  ▾ orbit         ⎇ dev ││   (no output)                                                          │
 │   ✓ quick-fox       9h ││   It exited 1 without printing. Run it in the session to see more.     │
 │   z old-moth        2d ││                                                                        │
 │                        ││                                                                        │
@@ -185,11 +185,11 @@
 │ ▎   failed: test · exit││ Command  npm test                                  │
 │   ⣶⡆ add-payments      ││ Folder   ~\dev\affiliate-site-worktrees\fix-footer │
 │                        ││ Ran      14:22:05 · took 14.2s · after turn 3 ende │
-│  ▾ pixls        no git ││ Seen by  Seshi ran this itself. The agent said "te │
+│  ▾ pixls        no git ││ Seen by  Vibecasso ran this itself. The agent said │
 │   ● warm-finch         ││                                                    │
 │     asks: use pnpm or n││  OUTPUT  empty                                     │
 │                        ││                                                    │
-│  ▾ seshi         ⎇ dev ││   (no output)                                      │
+│  ▾ orbit         ⎇ dev ││   (no output)                                      │
 │   ✓ quick-fox          ││   It exited 1 without printing. Run it in the se…  │
 │   z old-moth           ││                                                    │
 │                        ││                                                    │
@@ -210,13 +210,13 @@
  ▎   failed: test · exit 1       │                                                      │ Command  npm test
  ▎   footer shows current year   │                                                      │ Folder   ~\dev\affiliate-site-worktrees\fix-footer
    ⣶⡆ add-payments            now│                                                      │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
-     claude · working            │                                                      │ Seen by  Seshi ran this itself. The agent said "tests pass".
+     claude · working            │                                                      │ Seen by  Vibecasso ran this itself. The agent said "tests pass".
                                  │                                                      │
   ▾ pixls                  no git│                                                      │  OUTPUT  empty
    ● warm-finch                3m│                                                      │
      asks: use pnpm or npm?      │                                                      │   (no output)
                                  │                                                      │   It exited 1 without printing. Run it in the session to see more.
-  ▾ seshi                   ⎇ dev│                                                      │
+  ▾ orbit                   ⎇ dev│                                                      │
    ✓ quick-fox                 9h│                                                      │
      finished                    │                                                      │
    z old-moth                  2d│                                                      │
@@ -256,11 +256,11 @@
  ▎   failed: test · exit │ Command  npm test
    ⣶⡆ add-payments    now│ Folder   ~\dev\affiliate-site-worktrees\fix-footer
                          │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
-  ▾ pixls          no git│ Seen by  Seshi ran this itself. The agent said "tests pass".
+  ▾ pixls          no git│ Seen by  Vibecasso ran this itself. The agent said "tests pass".
    ● warm-finch        3m│
      asks: use pnpm or np│  OUTPUT  empty
                          │
-  ▾ seshi           ⎇ dev│   (no output)
+  ▾ orbit           ⎇ dev│   (no output)
    ✓ quick-fox         9h│   It exited 1 without printing. Run it in the session to see more.
    z old-moth          2d│
                          │
@@ -287,11 +287,11 @@
  ▎   failed: test · exit │ Command  npm test
    ⣶⡆ add-payments       │ Folder   ~\dev\affiliate-site-worktrees\fix-footer
                          │ Ran      14:22:05 · took 14.2s · after turn 3 ended
-  ▾ pixls          no git│ Seen by  Seshi ran this itself. The agent said "tes
+  ▾ pixls          no git│ Seen by  Vibecasso ran this itself. The agent said
    ● warm-finch          │
      asks: use pnpm or np│  OUTPUT  empty
                          │
-  ▾ seshi           ⎇ dev│   (no output)
+  ▾ orbit           ⎇ dev│   (no output)
    ✓ quick-fox           │   It exited 1 without printing. Run it in the ses…
    z old-moth            │
                          │
@@ -312,11 +312,11 @@
  |   failed: test · exit │ Command  npm test
    O  add-payments       │ Folder   ~\dev\affiliate-site-worktrees\fix-footer
                          │ Ran      14:22:05 · took 14.2s · after turn 3 ended
-  v pixls          no git│ Seen by  Seshi ran this itself. The agent said "tes
+  v pixls          no git│ Seen by  Vibecasso ran this itself. The agent said
    ! warm-finch          │
      asks: use pnpm or np│  OUTPUT  empty
                          │
-  v seshi        git: dev│   (no output)
+  v orbit        git: dev│   (no output)
    + quick-fox           │   It exited 1 without printing. Run it in the ses…
    z old-moth            │
                          │

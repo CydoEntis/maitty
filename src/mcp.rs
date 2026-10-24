@@ -1,4 +1,4 @@
-//! `seshi mcp`: seshi as an MCP server (stdio), so an agent can see and steer the others —
+//! `vibecasso mcp`: vibecasso as an MCP server (stdio), so an agent can see and steer the others —
 //! list them, read their screens, message them, answer their prompts (only as allowed), start
 //! new ones in their own worktrees, interrupt them. There is no merge, push or delete.
 //!
@@ -69,17 +69,17 @@ fn tools() -> Value {
     let id = json!({ "type": "integer", "description": "The session id (from the session list)." });
     json!([
         {
-            "name": "seshi_list",
+            "name": "vibecasso_list",
             "description": "List sessions in the caller's project, with their status and current task.",
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
-            "name": "seshi_read",
+            "name": "vibecasso_read",
             "description": "Read the end of a session's screen (what the agent shows right now).",
             "inputSchema": { "type": "object", "properties": { "id": id, "lines": { "type": "integer", "description": "How many lines from the bottom (default 40)." } }, "required": ["id"] }
         },
         {
-            "name": "seshi_send",
+            "name": "vibecasso_send",
             "description": "Type a message into a session's prompt and press Enter, like a person would. With wait, returns once it has finished that turn, with its reply.",
             "inputSchema": { "type": "object", "properties": {
                 "id": id,
@@ -89,7 +89,7 @@ fn tools() -> Value {
             }, "required": ["id", "text"] }
         },
         {
-            "name": "seshi_wait",
+            "name": "vibecasso_wait",
             "description": "Wait until a session finishes its turn (or needs an answer), or until text matching a regex shows on its screen. Returns its reply or the matching line.",
             "inputSchema": { "type": "object", "properties": {
                 "id": id,
@@ -98,16 +98,16 @@ fn tools() -> Value {
             }, "required": ["id"] }
         },
         {
-            "name": "seshi_answer",
-            "description": "Answer a session's numbered prompt (e.g. 1 = Yes, 3 = No). Pass the prompt id seshi_list or seshi_wait gave you; if the prompt on screen has changed since, nothing is sent and you get the current one. Saying yes is only allowed if the user has turned that on in seshi's settings; otherwise ask the user.",
+            "name": "vibecasso_answer",
+            "description": "Answer a session's numbered prompt (e.g. 1 = Yes, 3 = No). Pass the prompt id vibecasso_list or vibecasso_wait gave you; if the prompt on screen has changed since, nothing is sent and you get the current one. Saying yes is only allowed if the user has turned that on in vibecasso's settings; otherwise ask the user.",
             "inputSchema": { "type": "object", "properties": {
                 "id": id,
                 "choice": { "type": "integer", "minimum": 1, "maximum": 9 },
-                "prompt": { "type": "string", "description": "The prompt id from seshi_list or seshi_wait." }
+                "prompt": { "type": "string", "description": "The prompt id from vibecasso_list or vibecasso_wait." }
             }, "required": ["id", "choice", "prompt"] }
         },
         {
-            "name": "seshi_start",
+            "name": "vibecasso_start",
             "description": "Start a helper: a new agent on a task. In a git repo it gets its own worktree and branch, so it never edits the same files as anyone else. Returns its session id. The first time, the user is asked to allow helpers; the error says so. Call it for every helper you want, then try again once they have answered. If the user said no, do the work yourself.",
             "inputSchema": { "type": "object", "properties": {
                 "prompt": { "type": "string", "description": "The task." },
@@ -116,7 +116,7 @@ fn tools() -> Value {
             }, "required": ["prompt"] }
         },
         {
-            "name": "seshi_interrupt",
+            "name": "vibecasso_interrupt",
             "description": "Interrupt what a session is doing (Ctrl+C).",
             "inputSchema": { "type": "object", "properties": { "id": id }, "required": ["id"] }
         }
@@ -184,7 +184,7 @@ impl Server {
         let snap = self.snapshot()?;
         let t = snap.terms.get(&id).cloned().ok_or_else(|| format!("no session {id}"))?;
         if !self.in_scope(&t) {
-            return Err(format!("session {id} is in another project; seshi only lets you reach sessions in {}", self.root.display()));
+            return Err(format!("session {id} is in another project; vibecasso only lets you reach sessions in {}", self.root.display()));
         }
         Ok(t)
     }
@@ -199,16 +199,16 @@ impl Server {
 
     fn call(&self, name: &str, args: &Value) -> Value {
         let r = match name {
-            "seshi_list" => self.list(),
-            "seshi_read" => self.read(args),
-            "seshi_send" => self.send(args),
-            "seshi_wait" => self.session(args).and_then(|t| {
+            "vibecasso_list" => self.list(),
+            "vibecasso_read" => self.read(args),
+            "vibecasso_send" => self.send(args),
+            "vibecasso_wait" => self.session(args).and_then(|t| {
                 let regex = args.get("regex").and_then(Value::as_str).map(str::to_string);
                 self.wait(t.id, regex.as_deref(), args, false)
             }),
-            "seshi_answer" => self.answer(args),
-            "seshi_start" => self.start(args),
-            "seshi_interrupt" => self.session(args).and_then(|t| cli::send(Some(t.id), "\x03".into(), false).map(|_| format!("interrupted {}", t.id)).map_err(|e| format!("{e:#}"))),
+            "vibecasso_answer" => self.answer(args),
+            "vibecasso_start" => self.start(args),
+            "vibecasso_interrupt" => self.session(args).and_then(|t| cli::send(Some(t.id), "\x03".into(), false).map(|_| format!("interrupted {}", t.id)).map_err(|e| format!("{e:#}"))),
             other => Err(format!("no tool {other}")),
         };
         match r {
@@ -250,9 +250,9 @@ impl Server {
         }
         let msg = args.get("text").and_then(Value::as_str).ok_or("give the text")?;
         // Text sent to a session that's waiting on a question would answer it; that goes
-        // through seshi_answer and the user's approval rules instead.
+        // through vibecasso_answer and the user's approval rules instead.
         if t.status == Status::Blocked && self.cfg.mcp.approve != "always" {
-            return Err(format!("session {} is waiting on a question; use seshi_answer (the user's approval rules apply) or ask the user", t.id));
+            return Err(format!("session {} is waiting on a question; use vibecasso_answer (the user's approval rules apply) or ask the user", t.id));
         }
         cli::send(Some(t.id), msg.to_string(), true).map_err(|e| format!("{e:#}"))?;
         if args.get("wait").and_then(Value::as_bool) == Some(true) {
@@ -279,7 +279,7 @@ impl Server {
                     said
                 };
                 let state = match s {
-                    Status::Blocked => "needs an answer (see seshi_read / seshi_answer)",
+                    Status::Blocked => "needs an answer (see vibecasso_read / vibecasso_answer)",
                     _ => "finished",
                 };
                 let checked = check.map(|c| format!("\n{}", cli::check_line(&c))).unwrap_or_default();
@@ -297,7 +297,7 @@ impl Server {
     fn answer(&self, args: &Value) -> Result<String, String> {
         let t = self.session(args)?;
         let choice = args.get("choice").and_then(Value::as_u64).filter(|c| (1..=9).contains(c)).ok_or("choice must be 1-9")? as u32;
-        let seen = args.get("prompt").and_then(Value::as_str).ok_or("call seshi_list first and pass its prompt id")?;
+        let seen = args.get("prompt").and_then(Value::as_str).ok_or("call vibecasso_list first and pass its prompt id")?;
         let (question, opts) = prompt_seen(&self.screen(t.id)?, seen).map_err(|now| format!("the prompt on session {} has changed since you read it; nothing was sent. It now reads:\n{now}", t.id))?;
         let label = opts.iter().find(|(n, _)| *n == choice).map(|(_, l)| l.clone()).unwrap_or_default();
         let saying_no = label.to_lowercase().starts_with("no");
@@ -307,10 +307,10 @@ impl Server {
                 "safe" => {
                     let q = question.to_lowercase();
                     if !self.cfg.mcp.safe.iter().any(|s| !s.is_empty() && q.contains(&s.to_lowercase())) {
-                        return Err(format!("\"{}\" isn't on the user's safe list, so seshi won't approve it. Ask the user.", question.trim()));
+                        return Err(format!("\"{}\" isn't on the user's safe list, so vibecasso won't approve it. Ask the user.", question.trim()));
                     }
                 }
-                _ => return Err("The user hasn't let agents approve prompts (seshi Settings → Agents). Ask the user to answer it.".into()),
+                _ => return Err("The user hasn't let agents approve prompts (vibecasso Settings → Agents). Ask the user to answer it.".into()),
             }
         }
         cli::send(Some(t.id), choice.to_string(), false).map_err(|e| format!("{e:#}"))?;
@@ -327,7 +327,7 @@ impl Server {
         let worktree = args.get("worktree").and_then(Value::as_bool).unwrap_or(true) && crate::gitfs::head(&self.root).is_some();
         let branch = slug(prompt);
         let c = if worktree {
-            let ws = before.active_ws.or_else(|| before.workspaces.first().map(|w| w.id)).ok_or("seshi has nothing open")?;
+            let ws = before.active_ws.or_else(|| before.workspaces.first().map(|w| w.id)).ok_or("vibecasso has nothing open")?;
             let branch = if before.terms.values().any(|t| t.branch.as_deref() == Some(branch.as_str())) { format!("{branch}-{}", had.len()) } else { branch.clone() };
             Command::NewWorktree { ws, branch, base: None, cmd: Some(cmd), split: None, from: Some(self.root.clone()) }
         } else {
@@ -346,11 +346,11 @@ impl Server {
                 return Ok(format!("started {agent} as session {new} in {place}"));
             }
         }
-        Ok(format!("asked seshi to start {agent}; it hasn't appeared yet"))
+        Ok(format!("asked vibecasso to start {agent}; it hasn't appeared yet"))
     }
 }
 
-/// The agent `seshi_start` runs and its command line: the named `agent`, or the user's first.
+/// The agent `vibecasso_start` runs and its command line: the named `agent`, or the user's first.
 fn start_command(cfg: &crate::config::Config, args: &Value, prompt: &str) -> Result<(String, String), String> {
     let agent = args.get("agent").and_then(Value::as_str).map_or_else(|| cfg.default_agent(), String::from);
     let cmd = cfg.agent_command(Some(&agent), None, prompt)?;
@@ -367,7 +367,7 @@ fn slug(s: &str) -> String {
 /// Run the server on stdin / stdout until stdin closes.
 pub fn run() -> Result<()> {
     let (cfg, _) = crate::config::Config::load_or_default();
-    let server = Server { cfg, root: caller_root(), me: std::env::var("SESHI_TERM_ID").ok().and_then(|s| s.parse().ok()) };
+    let server = Server { cfg, root: caller_root(), me: std::env::var("VIBECASSO_TERM_ID").ok().and_then(|s| s.parse().ok()) };
     let stdin = std::io::stdin();
     let mut out = std::io::stdout();
     for line in stdin.lock().lines() {
@@ -383,8 +383,8 @@ pub fn run() -> Result<()> {
             "initialize" => Ok(json!({
                 "protocolVersion": params.get("protocolVersion").cloned().unwrap_or(json!("2025-06-18")),
                 "capabilities": { "tools": {} },
-                "serverInfo": { "name": "seshi", "version": env!("CARGO_PKG_VERSION") },
-                "instructions": "seshi runs your user's coding agents side by side. Use seshi_list/read/send/start for helpers. Don't answer prompts unless the user allows it; when you do, pass seshi_answer the prompt id seshi_list gave you."
+                "serverInfo": { "name": "vibecasso", "version": env!("CARGO_PKG_VERSION") },
+                "instructions": "vibecasso runs your user's coding agents side by side. Use vibecasso_list/read/send/start for helpers. Don't answer prompts unless the user allows it; when you do, pass vibecasso_answer the prompt id vibecasso_list gave you."
             })),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": tools() })),
@@ -464,9 +464,9 @@ mod tests {
     }
 
     #[test]
-    fn seshi_answer_requires_the_prompt_id() {
+    fn vibecasso_answer_requires_the_prompt_id() {
         let tools = tools();
-        let answer = tools.as_array().unwrap().iter().find(|t| t["name"] == "seshi_answer").unwrap();
+        let answer = tools.as_array().unwrap().iter().find(|t| t["name"] == "vibecasso_answer").unwrap();
         assert_eq!(answer["inputSchema"]["required"], json!(["id", "choice", "prompt"]));
     }
 

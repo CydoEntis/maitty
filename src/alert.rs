@@ -1,4 +1,4 @@
-//! Alerts: seshi's needs-you sound, and a desktop notification for when no seshi window is
+//! Alerts: vibecasso's needs-you sound, and a desktop notification for when no vibecasso window is
 //! open to say it. Each system's own tools show and play them, so nothing extra is needed: a
 //! Windows toast through PowerShell, `osascript` on macOS, `notify-send` on Linux; sounds
 //! through PowerShell's media player, `afplay`, or `paplay` / `pw-play`.
@@ -7,7 +7,7 @@
 //! something else already (on Windows, "you can't do that").
 //!
 //! Everything runs on a short-lived thread and failures are ignored: an alert that can't be
-//! shown must never get in the way. A notification can carry a `seshi://` link (see
+//! shown must never get in the way. A notification can carry a `vibecasso://` link (see
 //! `reveal`): clicking it takes you to the session.
 
 use std::path::PathBuf;
@@ -32,8 +32,8 @@ impl Kind {
     fn file_name(self) -> &'static str {
         // The number changes with the sound, so an older file isn't played in its place.
         match self {
-            Kind::Needs => "seshi-needs-you-1.wav",
-            Kind::Done => "seshi-finished-1.wav",
+            Kind::Needs => "vibecasso-needs-you-1.wav",
+            Kind::Done => "vibecasso-finished-1.wav",
         }
     }
 
@@ -88,7 +88,7 @@ pub fn tone(kind: Kind) -> Vec<u8> {
     out
 }
 
-/// `kind`'s sound as a file the system's player can open: written to seshi's data folder the
+/// `kind`'s sound as a file the system's player can open: written to vibecasso's data folder the
 /// first time it's needed.
 pub fn tone_file(kind: Kind) -> Option<PathBuf> {
     let path = crate::config::data_dir().join(kind.file_name());
@@ -129,7 +129,7 @@ pub fn should_alert<S: PartialEq>(status: &S, last_here: Option<(&S, std::time::
     !same_again && !crowded
 }
 
-/// Play seshi's sound for `kind`, unless sounds are off. Returns at once.
+/// Play vibecasso's sound for `kind`, unless sounds are off. Returns at once.
 pub fn ring(cfg: &crate::config::Notify, kind: Kind) {
     // Tests drive real status changes: they must not ring the machine they run on.
     if cfg.sound && !cfg!(test) {
@@ -137,7 +137,7 @@ pub fn ring(cfg: &crate::config::Notify, kind: Kind) {
     }
 }
 
-/// A desktop notification, for when no seshi window is open to say it. `link`: where
+/// A desktop notification, for when no vibecasso window is open to say it. `link`: where
 /// clicking it goes. Returns at once.
 pub fn notify_soon(title: &str, body: &str, link: Option<String>) {
     if cfg!(test) {
@@ -157,7 +157,7 @@ pub fn phone(cfg: &crate::config::Notify, title: &str, body: &str) -> Result<(),
         crate::proc::system_tool("curl")
             .args(["-fsS", "--max-time", "10", "-H"])
             .arg(format!("Title: {}", one_line(title)))
-            .args(["-H", "Tags: seshi", "--data-raw", body])
+            .args(["-H", "Tags: vibecasso", "--data-raw", body])
             .arg(&url),
     )
     .map(|_| ())
@@ -195,15 +195,15 @@ pub fn notify(title: &str, body: &str, link: Option<&str>) {
         const TOAST: &str = "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null; \
 $x = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02); \
 $t = $x.GetElementsByTagName('text'); \
-$t.Item(0).AppendChild($x.CreateTextNode($env:SESHI_TITLE)) > $null; \
-$t.Item(1).AppendChild($x.CreateTextNode($env:SESHI_BODY)) > $null; \
+$t.Item(0).AppendChild($x.CreateTextNode($env:VIBECASSO_TITLE)) > $null; \
+$t.Item(1).AppendChild($x.CreateTextNode($env:VIBECASSO_BODY)) > $null; \
 $a = $x.CreateElement('audio'); $a.SetAttribute('silent', 'true'); $x.DocumentElement.AppendChild($a) > $null; \
-if ($env:SESHI_LINK) { $x.DocumentElement.SetAttribute('activationType', 'protocol'); $x.DocumentElement.SetAttribute('launch', $env:SESHI_LINK) }; \
+if ($env:VIBECASSO_LINK) { $x.DocumentElement.SetAttribute('activationType', 'protocol'); $x.DocumentElement.SetAttribute('launch', $env:VIBECASSO_LINK) }; \
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show([Windows.UI.Notifications.ToastNotification]::new($x))";
         let _ = quiet(Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command", TOAST]))
-            .env("SESHI_TITLE", title)
-            .env("SESHI_BODY", body)
-            .env("SESHI_LINK", link.unwrap_or_default())
+            .env("VIBECASSO_TITLE", title)
+            .env("VIBECASSO_BODY", body)
+            .env("VIBECASSO_LINK", link.unwrap_or_default())
             .status();
     } else if cfg!(target_os = "macos") {
         // macOS's own notifications can't run anything when clicked; terminal-notifier can.
@@ -224,7 +224,7 @@ if ($env:SESHI_LINK) { $x.DocumentElement.SetAttribute('activationType', 'protoc
         // With a link: an action the notification runs when clicked, and wait to hear it.
         // notify-send before 0.7.9 doesn't know --action; then a plain one.
         if let (Some(link), Ok(exe)) = (link, std::env::current_exe()) {
-            let out = crate::proc::quiet(Command::new("notify-send").args(["--app-name=seshi", "--action=default=Open", "--wait", "--", title, body]))
+            let out = crate::proc::quiet(Command::new("notify-send").args(["--app-name=vibecasso", "--action=default=Open", "--wait", "--", title, body]))
                 .stdin(Stdio::null())
                 .stderr(Stdio::null())
                 .output();
@@ -237,7 +237,7 @@ if ($env:SESHI_LINK) { $x.DocumentElement.SetAttribute('activationType', 'protoc
                 return;
             }
         }
-        let _ = quiet(Command::new("notify-send").args(["--app-name=seshi", "--", title, body])).status();
+        let _ = quiet(Command::new("notify-send").args(["--app-name=vibecasso", "--", title, body])).status();
     }
 }
 
@@ -252,9 +252,9 @@ pub fn play(kind: Kind) {
     if cfg!(windows) {
         // MediaPlayer handles wav, mp3 and wma; it plays asynchronously, so wait a moment.
         const PLAY: &str = "Add-Type -AssemblyName PresentationCore; $p = New-Object System.Windows.Media.MediaPlayer; \
-$p.Open([Uri]$env:SESHI_SOUND); $p.Volume = 1; $p.Play(); Start-Sleep -Milliseconds 2500";
+$p.Open([Uri]$env:VIBECASSO_SOUND); $p.Volume = 1; $p.Play(); Start-Sleep -Milliseconds 2500";
         let _ = quiet(Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command", PLAY]))
-            .env("SESHI_SOUND", &file)
+            .env("VIBECASSO_SOUND", &file)
             .status();
     } else if cfg!(target_os = "macos") {
         let _ = quiet(Command::new("afplay").arg(&file)).status();
@@ -313,8 +313,8 @@ mod tests {
 
     #[test]
     fn a_phone_alert_says_who_and_where_and_the_task_only_when_asked() {
-        assert_eq!(phone_url("", "seshi-x7k2").as_deref(), Some("https://ntfy.sh/seshi-x7k2"));
-        assert_eq!(phone_url("https://ntfy.example.com/", " /seshi-x7k2 ").as_deref(), Some("https://ntfy.example.com/seshi-x7k2"));
+        assert_eq!(phone_url("", "vibecasso-x7k2").as_deref(), Some("https://ntfy.sh/vibecasso-x7k2"));
+        assert_eq!(phone_url("https://ntfy.example.com/", " /vibecasso-x7k2 ").as_deref(), Some("https://ntfy.example.com/vibecasso-x7k2"));
         assert_eq!(phone_url("https://ntfy.sh", "  "), None, "no topic: off");
         let m = |text| phone_message("claude", "AeVox", true, "Run npm test?", text);
         assert_eq!(m(false), ("claude needs you".to_string(), "AeVox".to_string()));

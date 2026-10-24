@@ -6,15 +6,15 @@
 │ ▎   not checked: never for this│ │                                                  │ │ Command  npm test                                                    │
 │ ▎   footer shows current year  │ │                                                  │ │ Folder   ~\dev\affiliate-site-worktrees\fix-footer                   │
 │   ⣶⡆ add-payments          now │ │                                                  │ │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51         │
-│     claude · working           │ │                                                  │ │ Source   .seshi/checks.toml · you chose never 14:31                  │
+│     claude · working           │ │                                                  │ │ Source   .vibecasso/checks.toml · you chose never 14:31              │
 │                                │ │                                                  │ │                                                                      │
 │  ▾ pixls                no git │ │                                                  │ │  ? Not checked. You chose never for this repo's command.             │
 │   ● warm-finch              3m │ │                                                  │ │    Done means the agent said so. Change it in Settings › Check.      │
 │     asks: use pnpm or npm?     │ │                                                  │ │                                                                      │
 │                                │ │                                                  │ │  OUTPUT  all 0 lines                                                 │
-│  ▾ seshi                 ⎇ dev │ │                                                  │ │                                                                      │
+│  ▾ orbit                 ⎇ dev │ │                                                  │ │                                                                      │
 │   ✓ quick-fox               9h │ │                                                  │ │   (nothing ran)                                                      │
-│     finished                   │ │                                                  │ │   There is no output because Seshi did not run it.                   │
+│     finished                   │ │                                                  │ │   There is no output because Vibecasso did not run it.               │
 │   z old-moth                2d │ │                                                  │ │                                                                      │
 │     asleep zzZ                 │ │                                                  │ │                                                                      │
 │                                │ │                                                  │ │                                                                      │
@@ -52,15 +52,15 @@
 │ ▎   not checked: never │ │ Command  npm test                                                     │
 │   ⣶⡆ add-payments  now │ │ Folder   ~\dev\affiliate-site-worktrees\fix-footer                    │
 │                        │ │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51          │
-│  ▾ pixls        no git │ │ Source   .seshi/checks.toml · you chose never 14:31                   │
+│  ▾ pixls        no git │ │ Source   .vibecasso/checks.toml · you chose never 14:31               │
 │   ● warm-finch      3m │ │                                                                       │
 │     asks: use pnpm or n│ │  ? Not checked. You chose never for this repo's command.              │
 │                        │ │    Done means the agent said so. Change it in Settings › Check.       │
-│  ▾ seshi         ⎇ dev │ │                                                                       │
+│  ▾ orbit         ⎇ dev │ │                                                                       │
 │   ✓ quick-fox       9h │ │  OUTPUT  all 0 lines                                                  │
 │   z old-moth        2d │ │                                                                       │
 │                        │ │   (nothing ran)                                                       │
-│                        │ │   There is no output because Seshi did not run it.                    │
+│                        │ │   There is no output because Vibecasso did not run it.                │
 │                        │ │                                                                       │
 │                        │ │                                                                       │
 │                        │ │                                                                       │
@@ -83,15 +83,15 @@
 │ ▎   not checked: never │ │ Command  npm test                                 │
 │   ⣶⡆ add-payments      │ │ Folder   ~\dev\affiliate-site-worktrees\fix-foote │
 │                        │ │ Ran      14:22:05 · took 14.2s · after turn 3 end │
-│  ▾ pixls        no git │ │ Source   .seshi/checks.toml · you chose never 14: │
+│  ▾ pixls        no git │ │ Source   .vibecasso/checks.toml · you chose never │
 │   ● warm-finch         │ │                                                   │
 │     asks: use pnpm or n│ │  ? Not checked. You chose never for this repo's c │
 │                        │ │    Done means the agent said so. Change it in Set │
-│  ▾ seshi         ⎇ dev │ │                                                   │
+│  ▾ orbit         ⎇ dev │ │                                                   │
 │   ✓ quick-fox          │ │  OUTPUT  all 0 lines                              │
 │   z old-moth           │ │                                                   │
 │                        │ │   (nothing ran)                                   │
-│                        │ │   There is no output because Seshi did not run …  │
+│                        │ │   There is no output because Vibecasso did not …  │
 │                        │ │                                                   │
 │                        │ │                                                   │
 │                        │ │                                                   │
@@ -108,15 +108,15 @@
 │ ▎   not checked: never for this││                                                    ││ Command  npm test                                                    │
 │ ▎   footer shows current year  ││                                                    ││ Folder   ~\dev\affiliate-site-worktrees\fix-footer                   │
 │   ⣶⡆ add-payments          now ││                                                    ││ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51         │
-│     claude · working           ││                                                    ││ Source   .seshi/checks.toml · you chose never 14:31                  │
+│     claude · working           ││                                                    ││ Source   .vibecasso/checks.toml · you chose never 14:31              │
 │                                ││                                                    ││                                                                      │
 │  ▾ pixls                no git ││                                                    ││  ? Not checked. You chose never for this repo's command.             │
 │   ● warm-finch              3m ││                                                    ││    Done means the agent said so. Change it in Settings › Check.      │
 │     asks: use pnpm or npm?     ││                                                    ││                                                                      │
 │                                ││                                                    ││  OUTPUT  all 0 lines                                                 │
-│  ▾ seshi                 ⎇ dev ││                                                    ││                                                                      │
+│  ▾ orbit                 ⎇ dev ││                                                    ││                                                                      │
 │   ✓ quick-fox               9h ││                                                    ││   (nothing ran)                                                      │
-│     finished                   ││                                                    ││   There is no output because Seshi did not run it.                   │
+│     finished                   ││                                                    ││   There is no output because Vibecasso did not run it.               │
 │   z old-moth                2d ││                                                    ││                                                                      │
 │     asleep zzZ                 ││                                                    ││                                                                      │
 │                                ││                                                    ││                                                                      │
@@ -154,15 +154,15 @@
 │ ▎   not checked: never ││ Command  npm test                                                      │
 │   ⣶⡆ add-payments  now ││ Folder   ~\dev\affiliate-site-worktrees\fix-footer                     │
 │                        ││ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51           │
-│  ▾ pixls        no git ││ Source   .seshi/checks.toml · you chose never 14:31                    │
+│  ▾ pixls        no git ││ Source   .vibecasso/checks.toml · you chose never 14:31                │
 │   ● warm-finch      3m ││                                                                        │
 │     asks: use pnpm or n││  ? Not checked. You chose never for this repo's command.               │
 │                        ││    Done means the agent said so. Change it in Settings › Check.        │
-│  ▾ seshi         ⎇ dev ││                                                                        │
+│  ▾ orbit         ⎇ dev ││                                                                        │
 │   ✓ quick-fox       9h ││  OUTPUT  all 0 lines                                                   │
 │   z old-moth        2d ││                                                                        │
 │                        ││   (nothing ran)                                                        │
-│                        ││   There is no output because Seshi did not run it.                     │
+│                        ││   There is no output because Vibecasso did not run it.                 │
 │                        ││                                                                        │
 │                        ││                                                                        │
 │                        ││                                                                        │
@@ -185,15 +185,15 @@
 │ ▎   not checked: never ││ Command  npm test                                  │
 │   ⣶⡆ add-payments      ││ Folder   ~\dev\affiliate-site-worktrees\fix-footer │
 │                        ││ Ran      14:22:05 · took 14.2s · after turn 3 ende │
-│  ▾ pixls        no git ││ Source   .seshi/checks.toml · you chose never 14:3 │
+│  ▾ pixls        no git ││ Source   .vibecasso/checks.toml · you chose never  │
 │   ● warm-finch         ││                                                    │
 │     asks: use pnpm or n││  ? Not checked. You chose never for this repo's co │
 │                        ││    Done means the agent said so. Change it in Sett │
-│  ▾ seshi         ⎇ dev ││                                                    │
+│  ▾ orbit         ⎇ dev ││                                                    │
 │   ✓ quick-fox          ││  OUTPUT  all 0 lines                               │
 │   z old-moth           ││                                                    │
 │                        ││   (nothing ran)                                    │
-│                        ││   There is no output because Seshi did not run i…  │
+│                        ││   There is no output because Vibecasso did not r…  │
 │                        ││                                                    │
 │                        ││                                                    │
 │                        ││                                                    │
@@ -210,15 +210,15 @@
  ▎   not checked: never for this │                                                      │ Command  npm test
  ▎   footer shows current year   │                                                      │ Folder   ~\dev\affiliate-site-worktrees\fix-footer
    ⣶⡆ add-payments            now│                                                      │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
-     claude · working            │                                                      │ Source   .seshi/checks.toml · you chose never 14:31
+     claude · working            │                                                      │ Source   .vibecasso/checks.toml · you chose never 14:31
                                  │                                                      │
   ▾ pixls                  no git│                                                      │  ? Not checked. You chose never for this repo's command.
    ● warm-finch                3m│                                                      │    Done means the agent said so. Change it in Settings › Check.
      asks: use pnpm or npm?      │                                                      │
                                  │                                                      │  OUTPUT  all 0 lines
-  ▾ seshi                   ⎇ dev│                                                      │
+  ▾ orbit                   ⎇ dev│                                                      │
    ✓ quick-fox                 9h│                                                      │   (nothing ran)
-     finished                    │                                                      │   There is no output because Seshi did not run it.
+     finished                    │                                                      │   There is no output because Vibecasso did not run it.
    z old-moth                  2d│                                                      │
      asleep zzZ                  │                                                      │
                                  │                                                      │
@@ -256,15 +256,15 @@
  ▎   not checked: never f│ Command  npm test
    ⣶⡆ add-payments    now│ Folder   ~\dev\affiliate-site-worktrees\fix-footer
                          │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
-  ▾ pixls          no git│ Source   .seshi/checks.toml · you chose never 14:31
+  ▾ pixls          no git│ Source   .vibecasso/checks.toml · you chose never 14:31
    ● warm-finch        3m│
      asks: use pnpm or np│  ? Not checked. You chose never for this repo's command.
                          │    Done means the agent said so. Change it in Settings › Check.
-  ▾ seshi           ⎇ dev│
+  ▾ orbit           ⎇ dev│
    ✓ quick-fox         9h│  OUTPUT  all 0 lines
    z old-moth          2d│
                          │   (nothing ran)
-                         │   There is no output because Seshi did not run it.
+                         │   There is no output because Vibecasso did not run it.
                          │
                          │
                          │
@@ -287,15 +287,15 @@
  ▎   not checked: never f│ Command  npm test
    ⣶⡆ add-payments       │ Folder   ~\dev\affiliate-site-worktrees\fix-footer
                          │ Ran      14:22:05 · took 14.2s · after turn 3 ended
-  ▾ pixls          no git│ Source   .seshi/checks.toml · you chose never 14:31
+  ▾ pixls          no git│ Source   .vibecasso/checks.toml · you chose never 1
    ● warm-finch          │
      asks: use pnpm or np│  ? Not checked. You chose never for this repo's com
                          │    Done means the agent said so. Change it in Setti
-  ▾ seshi           ⎇ dev│
+  ▾ orbit           ⎇ dev│
    ✓ quick-fox           │  OUTPUT  all 0 lines
    z old-moth            │
                          │   (nothing ran)
-                         │   There is no output because Seshi did not run it.
+                         │   There is no output because Vibecasso did not ru…
                          │
                          │
                          │
@@ -312,15 +312,15 @@
  |   not checked: never f│ Command  npm test
    O  add-payments       │ Folder   ~\dev\affiliate-site-worktrees\fix-footer
                          │ Ran      14:22:05 · took 14.2s · after turn 3 ended
-  v pixls          no git│ Source   .seshi/checks.toml · you chose never 14:31
+  v pixls          no git│ Source   .vibecasso/checks.toml · you chose never 1
    ! warm-finch          │
      asks: use pnpm or np│  ? Not checked. You chose never for this repo's com
                          │    Done means the agent said so. Change it in Setti
-  v seshi        git: dev│
+  v orbit        git: dev│
    + quick-fox           │  OUTPUT  all 0 lines
    z old-moth            │
                          │   (nothing ran)
-                         │   There is no output because Seshi did not run it.
+                         │   There is no output because Vibecasso did not ru…
                          │
                          │
                          │

@@ -1,4 +1,4 @@
-//! Updating seshi from its GitHub releases: `seshi update`, and a quiet check (when the
+//! Updating vibecasso from its GitHub releases: `vibecasso update`, and a quiet check (when the
 //! window opens, then every few hours) that says when a newer version is out. Downloads go through the GitHub CLI while the repo is
 //! private (your sign-in), and straight from GitHub once it's public.
 
@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const REPO: &str = "CydoEntis/seshi";
+const REPO: &str = "CydoEntis/vibecasso";
 
 /// The release build that runs on this machine.
 pub fn target() -> Option<&'static str> {
@@ -27,7 +27,7 @@ pub fn target() -> Option<&'static str> {
 }
 
 fn asset_for(target: &str) -> String {
-    format!("seshi-{target}.{}", if cfg!(windows) { "zip" } else { "tar.gz" })
+    format!("vibecasso-{target}.{}", if cfg!(windows) { "zip" } else { "tar.gz" })
 }
 
 /// `1.2.3` (a leading `v` allowed) as numbers, for comparing.
@@ -48,8 +48,8 @@ pub fn newer_than(tag: &str, current: &str) -> bool {
 /// Updates may have moved the running image aside while replacing this path.
 fn installed_path(exe: &Path) -> PathBuf {
     let name = exe.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-    if name.starts_with("seshi.old") && name.ends_with(".exe") {
-        exe.with_file_name("seshi.exe")
+    if name.starts_with("vibecasso.old") && name.ends_with(".exe") {
+        exe.with_file_name("vibecasso.exe")
     } else if let Some(path) = exe.to_str().and_then(|s| s.strip_suffix(" (deleted)")) {
         PathBuf::from(path)
     } else {
@@ -62,10 +62,10 @@ pub(crate) fn installed_executable() -> Result<PathBuf> {
 }
 
 pub fn installed_version() -> Result<String, String> {
-    let exe = installed_executable().map_err(|e| format!("finding installed Seshi: {e}"))?;
+    let exe = installed_executable().map_err(|e| format!("finding installed Vibecasso: {e}"))?;
     let text = crate::proc::run(Command::new(exe).arg("--version"))?;
-    let value = text.trim().strip_prefix("seshi ").ok_or("installed program did not report a Seshi version")?;
-    if version(value).is_none() || !value.chars().all(|c| c.is_ascii_alphanumeric() || ".-+".contains(c)) { return Err("installed Seshi reported an invalid version".into()); }
+    let value = text.trim().strip_prefix("vibecasso ").ok_or("installed program did not report a Vibecasso version")?;
+    if version(value).is_none() || !value.chars().all(|c| c.is_ascii_alphanumeric() || ".-+".contains(c)) { return Err("installed Vibecasso reported an invalid version".into()); }
     Ok(value.to_string())
 }
 
@@ -115,37 +115,37 @@ fn sha256_hex(path: &Path) -> Result<String> {
     Ok(Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect())
 }
 
-/// `seshi update`: install the newest release over this one. `check` only says whether
+/// `vibecasso update`: install the newest release over this one. `check` only says whether
 /// there is one; `force` reinstalls it even when it's this version.
 pub fn run(check: bool, force: bool) -> Result<()> {
     let current = env!("CARGO_PKG_VERSION");
     let tag = latest_tag().map_err(|e| anyhow::anyhow!(e))?;
     if !is_newer(&tag) && !force {
-        println!("seshi {current} is the latest version.");
+        println!("vibecasso {current} is the latest version.");
         return Ok(());
     }
     if check {
-        println!("seshi {} is out (you have {current}). Run: seshi update", tag.trim_start_matches('v'));
+        println!("vibecasso {} is out (you have {current}). Run: vibecasso update", tag.trim_start_matches('v'));
         return Ok(());
     }
     let Some(target) = target() else { bail!("there's no release build for this machine; build from source") };
     let asset = asset_for(target);
-    let tmp = std::env::temp_dir().join(format!("seshi-update-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("vibecasso-update-{}", std::process::id()));
     std::fs::create_dir_all(&tmp)?;
     let result = install(&tag, target, &asset, &tmp, true);
     let _ = std::fs::remove_dir_all(&tmp);
     let exe = result?;
-    println!("Updated seshi {current} -> {} ({}).", tag.trim_start_matches('v'), exe.display());
+    println!("Updated vibecasso {current} -> {} ({}).", tag.trim_start_matches('v'), exe.display());
     if crate::cli::server_running() {
         offer_restart()?;
     } else {
-        println!("Run seshi to start it.");
+        println!("Run vibecasso to start it.");
     }
     Ok(())
 }
 
 /// The server still runs the old version: say what a restart costs and offer it. Without a
-/// terminal to answer, running seshi does it.
+/// terminal to answer, running vibecasso does it.
 fn offer_restart() -> Result<()> {
     use std::io::{IsTerminal, Write};
     let busy = crate::restart::read().map_or(0, |a| a.busy());
@@ -154,7 +154,7 @@ fn offer_restart() -> Result<()> {
         println!("{busy} {} working or waiting for you; they stop and resume with their conversation.", if busy == 1 { "session is" } else { "sessions are" });
     }
     if !(std::io::stdin().is_terminal() && std::io::stdout().is_terminal()) {
-        println!("Run seshi: it will restart the server itself.");
+        println!("Run vibecasso: it will restart the server itself.");
         return Ok(());
     }
     print!("Restart the server now? [{}] ", if busy == 0 { "Y/n" } else { "y/N" });
@@ -163,9 +163,9 @@ fn offer_restart() -> Result<()> {
     std::io::stdin().read_line(&mut answer)?;
     if wants_restart(&answer, busy == 0) {
         crate::cli::kill_server(false)?;
-        println!("Run seshi: your sessions resume where they left off.");
+        println!("Run vibecasso: your sessions resume where they left off.");
     } else {
-        println!("Run seshi when you are ready: it will restart the server itself.");
+        println!("Run vibecasso when you are ready: it will restart the server itself.");
     }
     Ok(())
 }
@@ -184,7 +184,7 @@ pub fn install_latest() -> Result<(String, PathBuf)> {
     let tag = latest_tag().map_err(|e| anyhow::anyhow!(e))?;
     let Some(target) = target() else { bail!("there's no release build for this machine; build from source") };
     let asset = asset_for(target);
-    let tmp = std::env::temp_dir().join(format!("seshi-update-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("vibecasso-update-{}", std::process::id()));
     std::fs::create_dir_all(&tmp)?;
     let result = install(&tag, target, &asset, &tmp, false);
     let _ = std::fs::remove_dir_all(&tmp);
@@ -193,7 +193,7 @@ pub fn install_latest() -> Result<(String, PathBuf)> {
 
 fn install(tag: &str, target: &str, asset: &str, tmp: &Path, say: bool) -> Result<PathBuf> {
     if say {
-        println!("Downloading seshi {} for {target}...", tag.trim_start_matches('v'));
+        println!("Downloading vibecasso {} for {target}...", tag.trim_start_matches('v'));
     }
     let archive = download(tag, asset, tmp)?;
     let sums = std::fs::read_to_string(download(tag, "sha256sums.txt", tmp)?)?;
@@ -205,12 +205,12 @@ fn install(tag: &str, target: &str, asset: &str, tmp: &Path, say: bool) -> Resul
         bail!("checksum mismatch for {asset}; nothing was changed");
     }
     crate::proc::run(system_tool("tar").arg("-xf").arg(&archive).arg("-C").arg(tmp)).map_err(|e| anyhow::anyhow!("unpacking: {e}"))?;
-    let name = if cfg!(windows) { "seshi.exe" } else { "seshi" };
-    let new = tmp.join(format!("seshi-{target}")).join(name);
+    let name = if cfg!(windows) { "vibecasso.exe" } else { "vibecasso" };
+    let new = tmp.join(format!("vibecasso-{target}")).join(name);
     if !new.is_file() {
         bail!("the download had no {name}");
     }
-    let exe = std::env::current_exe().context("finding this seshi")?;
+    let exe = std::env::current_exe().context("finding this vibecasso")?;
     replace_exe(&new, &exe)?;
     Ok(exe)
 }
@@ -224,29 +224,29 @@ fn replace_exe(new: &Path, exe: &Path) -> Result<()> {
         std::fs::rename(exe, &old).with_context(|| format!("moving the old {} aside", exe.display()))?;
         if let Err(e) = std::fs::copy(new, exe) {
             let _ = std::fs::rename(&old, exe);
-            return Err(e).context("putting the new seshi in place");
+            return Err(e).context("putting the new vibecasso in place");
         }
     } else {
-        let staged = exe.with_file_name(".seshi.new");
-        std::fs::copy(new, &staged).context("staging the new seshi")?;
+        let staged = exe.with_file_name(".vibecasso.new");
+        std::fs::copy(new, &staged).context("staging the new vibecasso")?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755))?;
         }
-        std::fs::rename(&staged, exe).context("putting the new seshi in place")?;
+        std::fs::rename(&staged, exe).context("putting the new vibecasso in place")?;
     }
     Ok(())
 }
 
 /// A name for the old program that's free. An older one moved aside can still be running
-/// (an agent's `seshi mcp` keeps going until its session ends), so it can't always be
+/// (an agent's `vibecasso mcp` keeps going until its session ends), so it can't always be
 /// removed; the next one gets a number.
 fn free_old_path(exe: &Path) -> PathBuf {
-    std::iter::once(exe.with_file_name("seshi.old.exe"))
-        .chain((2..).map(|n| exe.with_file_name(format!("seshi.old-{n}.exe"))))
+    std::iter::once(exe.with_file_name("vibecasso.old.exe"))
+        .chain((2..).map(|n| exe.with_file_name(format!("vibecasso.old-{n}.exe"))))
         .find(|p| !p.exists())
-        .unwrap_or_else(|| exe.with_file_name("seshi.old.exe"))
+        .unwrap_or_else(|| exe.with_file_name("vibecasso.old.exe"))
 }
 
 /// Remove the old programs updates moved aside beside `exe`, the ones nothing runs any more.
@@ -254,7 +254,7 @@ fn tidy_beside(exe: &Path) {
     let Some(dir) = exe.parent() else { return };
     for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
         let name = e.file_name().to_string_lossy().to_lowercase();
-        if name.starts_with("seshi.old") && name.ends_with(".exe") {
+        if name.starts_with("vibecasso.old") && name.ends_with(".exe") {
             let _ = std::fs::remove_file(e.path());
         }
     }
@@ -335,19 +335,19 @@ mod tests {
     #[test]
     fn installed_copy_and_available_release_are_distinct_from_the_running_image() {
         let folder = Path::new("bin");
-        assert_eq!(installed_path(&folder.join("seshi.old.exe")), folder.join("seshi.exe"));
-        assert_eq!(installed_path(&folder.join("seshi.old-2.exe")), folder.join("seshi.exe"));
-        assert_eq!(installed_path(&folder.join("seshi.exe")), folder.join("seshi.exe"));
-        assert_eq!(installed_path(Path::new("bin/seshi (deleted)")), PathBuf::from("bin/seshi"));
+        assert_eq!(installed_path(&folder.join("vibecasso.old.exe")), folder.join("vibecasso.exe"));
+        assert_eq!(installed_path(&folder.join("vibecasso.old-2.exe")), folder.join("vibecasso.exe"));
+        assert_eq!(installed_path(&folder.join("vibecasso.exe")), folder.join("vibecasso.exe"));
+        assert_eq!(installed_path(Path::new("bin/vibecasso (deleted)")), PathBuf::from("bin/vibecasso"));
         assert!(newer_than("v0.30.0", "0.29.1"));
         assert!(!newer_than("v0.30.0", "0.30.0"), "an installed release is not another available update");
     }
 
     #[test]
     fn the_latest_tag_comes_from_where_github_redirects() {
-        assert_eq!(tag_from_url("https://github.com/CydoEntis/seshi/releases/tag/v0.3.1\n").as_deref(), Some("v0.3.1"));
-        assert_eq!(tag_from_url("https://github.com/CydoEntis/seshi/releases"), None, "no release yet");
-        assert_eq!(tag_from_url("https://github.com/CydoEntis/seshi/releases/tag/nightly"), None);
+        assert_eq!(tag_from_url("https://github.com/CydoEntis/vibecasso/releases/tag/v0.3.1\n").as_deref(), Some("v0.3.1"));
+        assert_eq!(tag_from_url("https://github.com/CydoEntis/vibecasso/releases"), None, "no release yet");
+        assert_eq!(tag_from_url("https://github.com/CydoEntis/vibecasso/releases/tag/nightly"), None);
     }
 
     #[test]
@@ -360,47 +360,47 @@ mod tests {
     #[test]
     fn this_machine_has_a_build() {
         let t = target().expect("a release target for the platforms we build");
-        assert!(asset_for(t).starts_with("seshi-"));
+        assert!(asset_for(t).starts_with("vibecasso-"));
     }
 
     #[test]
     fn swapping_the_program_keeps_a_way_back() {
-        let dir = std::env::temp_dir().join(format!("seshi-swap-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("vibecasso-swap-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let exe = dir.join(if cfg!(windows) { "seshi.exe" } else { "seshi" });
+        let exe = dir.join(if cfg!(windows) { "vibecasso.exe" } else { "vibecasso" });
         let new = dir.join("new-build");
         std::fs::write(&exe, "old").unwrap();
         std::fs::write(&new, "new").unwrap();
         replace_exe(&new, &exe).unwrap();
         assert_eq!(std::fs::read_to_string(&exe).unwrap(), "new");
         if cfg!(windows) {
-            assert_eq!(std::fs::read_to_string(exe.with_file_name("seshi.old.exe")).unwrap(), "old", "the old one is moved aside");
+            assert_eq!(std::fs::read_to_string(exe.with_file_name("vibecasso.old.exe")).unwrap(), "old", "the old one is moved aside");
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// An older program moved aside is still running (an agent's `seshi mcp`): the update
+    /// An older program moved aside is still running (an agent's `vibecasso mcp`): the update
     /// steps past it instead of failing.
     #[cfg(windows)]
     #[test]
     fn an_old_program_still_running_doesnt_stop_an_update() {
         use std::os::windows::fs::OpenOptionsExt;
-        let dir = std::env::temp_dir().join(format!("seshi-swap-busy-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("vibecasso-swap-busy-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let exe = dir.join("seshi.exe");
+        let exe = dir.join("vibecasso.exe");
         let new = dir.join("new-build");
         std::fs::write(&exe, "current").unwrap();
         std::fs::write(&new, "new").unwrap();
-        std::fs::write(dir.join("seshi.old.exe"), "running").unwrap();
+        std::fs::write(dir.join("vibecasso.old.exe"), "running").unwrap();
         // Open with no delete sharing, the way a running program holds its file.
         const FILE_SHARE_READ: u32 = 1;
-        let held = std::fs::OpenOptions::new().read(true).share_mode(FILE_SHARE_READ).open(dir.join("seshi.old.exe")).unwrap();
+        let held = std::fs::OpenOptions::new().read(true).share_mode(FILE_SHARE_READ).open(dir.join("vibecasso.old.exe")).unwrap();
         replace_exe(&new, &exe).unwrap();
         assert_eq!(std::fs::read_to_string(&exe).unwrap(), "new");
-        assert_eq!(std::fs::read_to_string(dir.join("seshi.old-2.exe")).unwrap(), "current", "the next free name");
+        assert_eq!(std::fs::read_to_string(dir.join("vibecasso.old-2.exe")).unwrap(), "current", "the next free name");
         drop(held);
         tidy_beside(&exe);
-        assert!(!dir.join("seshi.old.exe").exists() && !dir.join("seshi.old-2.exe").exists(), "both tidied once nothing runs them");
+        assert!(!dir.join("vibecasso.old.exe").exists() && !dir.join("vibecasso.old-2.exe").exists(), "both tidied once nothing runs them");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

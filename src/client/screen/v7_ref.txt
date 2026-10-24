@@ -5,7 +5,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  all 13 lines
  1    > affiliate-site@1.4.0 test
@@ -49,7 +49,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  all 13 lines
  1    > affiliate-site@1.4.0 test
@@ -78,7 +78,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-foote
  Ran      14:22:05 · took 14.2s · after turn 3 end
- Seen by  Seshi ran this itself. The agent said "t
+ Seen by  Vibecasso ran this itself. The agent sai
 
   OUTPUT  last 10 of 13 lines
  4     ✓ src/components/Footer.test.tsx (3)
@@ -101,7 +101,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  all 13 lines
  1    > affiliate-site@1.4.0 test
@@ -145,7 +145,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  all 13 lines
  1    > affiliate-site@1.4.0 test
@@ -174,7 +174,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ende
- Seen by  Seshi ran this itself. The agent said "te
+ Seen by  Vibecasso ran this itself. The agent said
 
   OUTPUT  last 10 of 13 lines
  4     ✓ src/components/Footer.test.tsx (3)
@@ -197,7 +197,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  all 13 lines
  1    > affiliate-site@1.4.0 test
@@ -241,7 +241,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  all 13 lines
  1    > affiliate-site@1.4.0 test
@@ -270,7 +270,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended
- Seen by  Seshi ran this itself. The agent said "tes
+ Seen by  Vibecasso ran this itself. The agent said
 
   OUTPUT  last 10 of 13 lines
  4     ✓ src/components/Footer.test.tsx (3)
@@ -293,7 +293,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  last 13 of 1,284 lines  f full output
  1272 > affiliate-site@1.4.0 test                                   ▲
@@ -337,7 +337,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  last 13 of 1,284 lines  f full output
  1272 > affiliate-site@1.4.0 test                                    ▲
@@ -366,7 +366,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-foote
  Ran      14:22:05 · took 14.2s · after turn 3 end
- Seen by  Seshi ran this itself. The agent said "t
+ Seen by  Vibecasso ran this itself. The agent sai
 
   OUTPUT  last 10 of 1,284 lines  f full output
  1275  ✓ src/components/Footer.test.tsx (3)      ▲
@@ -389,7 +389,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  last 13 of 1,284 lines  f full output
  1272 > affiliate-site@1.4.0 test                                   ▲
@@ -433,7 +433,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  last 13 of 1,284 lines  f full output
  1272 > affiliate-site@1.4.0 test                                     ▲
@@ -462,7 +462,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ende
- Seen by  Seshi ran this itself. The agent said "te
+ Seen by  Vibecasso ran this itself. The agent said
 
   OUTPUT  last 10 of 1,284 lines  f full output
  1275  ✓ src/components/Footer.test.tsx (3)       ▲
@@ -485,7 +485,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  last 13 of 1,284 lines  f full output
  1272 > affiliate-site@1.4.0 test                                   ▲
@@ -529,7 +529,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  last 13 of 1,284 lines  f full output
  1272 > affiliate-site@1.4.0 test                                      ▲
@@ -558,7 +558,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended
- Seen by  Seshi ran this itself. The agent said "tes
+ Seen by  Vibecasso ran this itself. The agent said
 
   OUTPUT  last 10 of 1,284 lines  f full output
  1275  ✓ src/components/Footer.test.tsx (3)        ▲
@@ -581,7 +581,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  empty
 
@@ -625,7 +625,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  empty
 
@@ -654,7 +654,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-foote
  Ran      14:22:05 · took 14.2s · after turn 3 end
- Seen by  Seshi ran this itself. The agent said "t
+ Seen by  Vibecasso ran this itself. The agent sai
 
   OUTPUT  empty
 
@@ -677,7 +677,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  empty
 
@@ -721,7 +721,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  empty
 
@@ -750,7 +750,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ende
- Seen by  Seshi ran this itself. The agent said "te
+ Seen by  Vibecasso ran this itself. The agent said
 
   OUTPUT  empty
 
@@ -773,7 +773,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  empty
 
@@ -817,7 +817,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  empty
 
@@ -846,7 +846,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended
- Seen by  Seshi ran this itself. The agent said "tes
+ Seen by  Vibecasso ran this itself. The agent said
 
   OUTPUT  empty
 
@@ -869,7 +869,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  empty
 
@@ -913,7 +913,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  empty
 
@@ -942,7 +942,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-foote
  Ran      14:22:05 · took 14.2s · after turn 3 end
- Seen by  Seshi ran this itself. The agent said "t
+ Seen by  Vibecasso ran this itself. The agent sai
 
   OUTPUT  empty
 
@@ -965,7 +965,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  empty
 
@@ -1009,7 +1009,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  empty
 
@@ -1038,7 +1038,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ende
- Seen by  Seshi ran this itself. The agent said "te
+ Seen by  Vibecasso ran this itself. The agent said
 
   OUTPUT  empty
 
@@ -1061,7 +1061,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  empty
 
@@ -1105,7 +1105,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   OUTPUT  empty
 
@@ -1134,7 +1134,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended
- Seen by  Seshi ran this itself. The agent said "tes
+ Seen by  Vibecasso ran this itself. The agent said
 
   OUTPUT  empty
 
@@ -1163,7 +1163,7 @@
 ▎   Output ⏎   Re-run r   Override… O
 
   FINISHED  1
- ✓ quick-fox · seshi                                               9h
+ ✓ quick-fox · orbit                                               9h
    finished · not seen
 
 
@@ -1207,7 +1207,7 @@
 ▎   Output ⏎   Re-run r   Override… O
 
   FINISHED  1
- ✓ quick-fox · seshi                                                9h
+ ✓ quick-fox · orbit                                                9h
    finished · not seen
 
 
@@ -1236,7 +1236,7 @@
 ▎   Output ⏎   Re-run r   Override… O
 
   FINISHED  1
- ✓ quick-fox · seshi                            9h
+ ✓ quick-fox · orbit                            9h
    finished · not seen
 
 
@@ -1259,7 +1259,7 @@
 ▎   Output ⏎   Re-run r   Override… O
 
   FINISHED  1
- ✓ quick-fox · seshi                                               9h
+ ✓ quick-fox · orbit                                               9h
    finished · not seen
 
 
@@ -1303,7 +1303,7 @@
 ▎   Output ⏎   Re-run r   Override… O
 
   FINISHED  1
- ✓ quick-fox · seshi                                                 9h
+ ✓ quick-fox · orbit                                                 9h
    finished · not seen
 
 
@@ -1332,7 +1332,7 @@
 ▎   Output ⏎   Re-run r   Override… O
 
   FINISHED  1
- ✓ quick-fox · seshi                             9h
+ ✓ quick-fox · orbit                             9h
    finished · not seen
 
 
@@ -1355,7 +1355,7 @@
 ▎   Output ⏎   Re-run r   Override… O
 
   FINISHED  1
- ✓ quick-fox · seshi                                               9h
+ ✓ quick-fox · orbit                                               9h
    finished · not seen
 
 
@@ -1399,7 +1399,7 @@
 ▎   Output ⏎   Re-run r   Override… O
 
   FINISHED  1
- ✓ quick-fox · seshi                                                  9h
+ ✓ quick-fox · orbit                                                  9h
    finished · not seen
 
 
@@ -1428,7 +1428,7 @@
 ▎   Output ⏎   Re-run r   Override… O
 
   FINISHED  1
- ✓ quick-fox · seshi                              9h
+ ✓ quick-fox · orbit                              9h
    finished · not seen
 
 
@@ -1441,7 +1441,7 @@
 ===== 13 Why? (i) | floating | 160x45 | 36,6 60x7
 
   14:21:51 agent's turn ended · it said "tests pass"
-  14:22:05 Seshi ran npm test in its worktree
+  14:22:05 Vibecasso ran npm test in its worktree
   14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests failed
 
   ⏎ evidence   r re-run   O override   Esc close
@@ -1449,7 +1449,7 @@
 ===== 13 Why? (i) | floating | 100x30 | 28,6 60x7
 
   14:21:51 agent's turn ended · it said "tests pass"
-  14:22:05 Seshi ran npm test in its worktree
+  14:22:05 Vibecasso ran npm test in its worktree
   14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests failed
 
   ⏎ evidence   r re-run   O override   Esc close
@@ -1457,7 +1457,7 @@
 ===== 13 Why? (i) | floating | 80x24 | 28,4 50x7
 
   14:21:51 agent's turn ended · it said "tests pa
-  14:22:05 Seshi ran npm test in its worktree
+  14:22:05 Vibecasso ran npm test in its worktree
   14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests f
 
   ⏎ evidence   r re-run   O override   Esc close
@@ -1465,7 +1465,7 @@
 ===== 13 Why? (i) | tiled | 160x45 | 36,6 60x7
 
   14:21:51 agent's turn ended · it said "tests pass"
-  14:22:05 Seshi ran npm test in its worktree
+  14:22:05 Vibecasso ran npm test in its worktree
   14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests failed
 
   ⏎ evidence   r re-run   O override   Esc close
@@ -1473,7 +1473,7 @@
 ===== 13 Why? (i) | tiled | 100x30 | 28,6 60x7
 
   14:21:51 agent's turn ended · it said "tests pass"
-  14:22:05 Seshi ran npm test in its worktree
+  14:22:05 Vibecasso ran npm test in its worktree
   14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests failed
 
   ⏎ evidence   r re-run   O override   Esc close
@@ -1481,7 +1481,7 @@
 ===== 13 Why? (i) | tiled | 80x24 | 28,4 50x7
 
   14:21:51 agent's turn ended · it said "tests pa
-  14:22:05 Seshi ran npm test in its worktree
+  14:22:05 Vibecasso ran npm test in its worktree
   14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests f
 
   ⏎ evidence   r re-run   O override   Esc close
@@ -1489,7 +1489,7 @@
 ===== 13 Why? (i) | flat | 160x45 | 36,6 60x7
 
   14:21:51 agent's turn ended · it said "tests pass"
-  14:22:05 Seshi ran npm test in its worktree
+  14:22:05 Vibecasso ran npm test in its worktree
   14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests failed
 
   ⏎ evidence   r re-run   O override   Esc close
@@ -1497,7 +1497,7 @@
 ===== 13 Why? (i) | flat | 100x30 | 28,6 60x7
 
   14:21:51 agent's turn ended · it said "tests pass"
-  14:22:05 Seshi ran npm test in its worktree
+  14:22:05 Vibecasso ran npm test in its worktree
   14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests failed
 
   ⏎ evidence   r re-run   O override   Esc close
@@ -1505,7 +1505,7 @@
 ===== 13 Why? (i) | flat | 80x24 | 28,4 50x7
 
   14:21:51 agent's turn ended · it said "tests pa
-  14:22:05 Seshi ran npm test in its worktree
+  14:22:05 Vibecasso ran npm test in its worktree
   14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests f
 
   ⏎ evidence   r re-run   O override   Esc close
@@ -1521,7 +1521,7 @@
 ▎   Read the command ⏎
 
   FINISHED  1
- ✓ quick-fox · seshi                                               9h
+ ✓ quick-fox · orbit                                               9h
    finished · not seen
 
 
@@ -1565,7 +1565,7 @@
 ▎   Read the command ⏎
 
   FINISHED  1
- ✓ quick-fox · seshi                                                9h
+ ✓ quick-fox · orbit                                                9h
    finished · not seen
 
 
@@ -1594,7 +1594,7 @@
 ▎   Read the command ⏎
 
   FINISHED  1
- ✓ quick-fox · seshi                            9h
+ ✓ quick-fox · orbit                            9h
    finished · not seen
 
 
@@ -1617,7 +1617,7 @@
 ▎   Read the command ⏎
 
   FINISHED  1
- ✓ quick-fox · seshi                                               9h
+ ✓ quick-fox · orbit                                               9h
    finished · not seen
 
 
@@ -1661,7 +1661,7 @@
 ▎   Read the command ⏎
 
   FINISHED  1
- ✓ quick-fox · seshi                                                 9h
+ ✓ quick-fox · orbit                                                 9h
    finished · not seen
 
 
@@ -1690,7 +1690,7 @@
 ▎   Read the command ⏎
 
   FINISHED  1
- ✓ quick-fox · seshi                             9h
+ ✓ quick-fox · orbit                             9h
    finished · not seen
 
 
@@ -1713,7 +1713,7 @@
 ▎   Read the command ⏎
 
   FINISHED  1
- ✓ quick-fox · seshi                                               9h
+ ✓ quick-fox · orbit                                               9h
    finished · not seen
 
 
@@ -1757,7 +1757,7 @@
 ▎   Read the command ⏎
 
   FINISHED  1
- ✓ quick-fox · seshi                                                  9h
+ ✓ quick-fox · orbit                                                  9h
    finished · not seen
 
 
@@ -1786,7 +1786,7 @@
 ▎   Read the command ⏎
 
   FINISHED  1
- ✓ quick-fox · seshi                              9h
+ ✓ quick-fox · orbit                              9h
    finished · not seen
 
 
@@ -1805,7 +1805,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Source   .seshi/checks.toml · you chose never 14:31
+ Source   .vibecasso/checks.toml · you chose never 14:31
 
   ? Not checked. You chose never for this repo's command.
     Done means the agent said so. Change it in Settings › Check.
@@ -1813,7 +1813,7 @@
   OUTPUT  all 0 lines
 
    (nothing ran)
-   There is no output because Seshi did not run it.
+   There is no output because Vibecasso did not run it.
 
 
 
@@ -1849,7 +1849,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Source   .seshi/checks.toml · you chose never 14:31
+ Source   .vibecasso/checks.toml · you chose never 14:31
 
   ? Not checked. You chose never for this repo's command.
     Done means the agent said so. Change it in Settings › Check.
@@ -1857,7 +1857,7 @@
   OUTPUT  all 0 lines
 
    (nothing ran)
-   There is no output because Seshi did not run it.
+   There is no output because Vibecasso did not run it.
 
 
 
@@ -1878,7 +1878,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-foote
  Ran      14:22:05 · took 14.2s · after turn 3 end
- Source   .seshi/checks.toml · you chose never 14:
+ Source   .vibecasso/checks.toml · you chose never
 
   ? Not checked. You chose never for this repo's c
     Done means the agent said so. Change it in Set
@@ -1886,7 +1886,7 @@
   OUTPUT  all 0 lines
 
    (nothing ran)
-   There is no output because Seshi did not run …
+   There is no output because Vibecasso did not …
 
 
 
@@ -1901,7 +1901,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Source   .seshi/checks.toml · you chose never 14:31
+ Source   .vibecasso/checks.toml · you chose never 14:31
 
   ? Not checked. You chose never for this repo's command.
     Done means the agent said so. Change it in Settings › Check.
@@ -1909,7 +1909,7 @@
   OUTPUT  all 0 lines
 
    (nothing ran)
-   There is no output because Seshi did not run it.
+   There is no output because Vibecasso did not run it.
 
 
 
@@ -1945,7 +1945,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Source   .seshi/checks.toml · you chose never 14:31
+ Source   .vibecasso/checks.toml · you chose never 14:31
 
   ? Not checked. You chose never for this repo's command.
     Done means the agent said so. Change it in Settings › Check.
@@ -1953,7 +1953,7 @@
   OUTPUT  all 0 lines
 
    (nothing ran)
-   There is no output because Seshi did not run it.
+   There is no output because Vibecasso did not run it.
 
 
 
@@ -1974,7 +1974,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ende
- Source   .seshi/checks.toml · you chose never 14:3
+ Source   .vibecasso/checks.toml · you chose never
 
   ? Not checked. You chose never for this repo's co
     Done means the agent said so. Change it in Sett
@@ -1982,7 +1982,7 @@
   OUTPUT  all 0 lines
 
    (nothing ran)
-   There is no output because Seshi did not run i…
+   There is no output because Vibecasso did not r…
 
 
 
@@ -1997,7 +1997,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Source   .seshi/checks.toml · you chose never 14:31
+ Source   .vibecasso/checks.toml · you chose never 14:31
 
   ? Not checked. You chose never for this repo's command.
     Done means the agent said so. Change it in Settings › Check.
@@ -2005,7 +2005,7 @@
   OUTPUT  all 0 lines
 
    (nothing ran)
-   There is no output because Seshi did not run it.
+   There is no output because Vibecasso did not run it.
 
 
 
@@ -2041,7 +2041,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Source   .seshi/checks.toml · you chose never 14:31
+ Source   .vibecasso/checks.toml · you chose never 14:31
 
   ? Not checked. You chose never for this repo's command.
     Done means the agent said so. Change it in Settings › Check.
@@ -2049,7 +2049,7 @@
   OUTPUT  all 0 lines
 
    (nothing ran)
-   There is no output because Seshi did not run it.
+   There is no output because Vibecasso did not run it.
 
 
 
@@ -2070,7 +2070,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended
- Source   .seshi/checks.toml · you chose never 14:31
+ Source   .vibecasso/checks.toml · you chose never 1
 
   ? Not checked. You chose never for this repo's com
     Done means the agent said so. Change it in Setti
@@ -2078,7 +2078,7 @@
   OUTPUT  all 0 lines
 
    (nothing ran)
-   There is no output because Seshi did not run it.
+   There is no output because Vibecasso did not ru…
 
 
 
@@ -2093,7 +2093,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   ◷ Stale. The agent changed 3 files after this ran (14:24).
     This pass is for older code, not for what is there now.
@@ -2137,7 +2137,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   ◷ Stale. The agent changed 3 files after this ran (14:24).
     This pass is for older code, not for what is there now.
@@ -2166,7 +2166,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-foote
  Ran      14:22:05 · took 14.2s · after turn 3 end
- Seen by  Seshi ran this itself. The agent said "t
+ Seen by  Vibecasso ran this itself. The agent sai
 
   ◷ Stale. The agent changed 3 files after this ra
     This pass is for older code, not for what is t
@@ -2189,7 +2189,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   ◷ Stale. The agent changed 3 files after this ran (14:24).
     This pass is for older code, not for what is there now.
@@ -2233,7 +2233,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   ◷ Stale. The agent changed 3 files after this ran (14:24).
     This pass is for older code, not for what is there now.
@@ -2262,7 +2262,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ende
- Seen by  Seshi ran this itself. The agent said "te
+ Seen by  Vibecasso ran this itself. The agent said
 
   ◷ Stale. The agent changed 3 files after this ran
     This pass is for older code, not for what is th
@@ -2285,7 +2285,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   ◷ Stale. The agent changed 3 files after this ran (14:24).
     This pass is for older code, not for what is there now.
@@ -2329,7 +2329,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
- Seen by  Seshi ran this itself. The agent said "tests pass".
+ Seen by  Vibecasso ran this itself. The agent said "tests pass".
 
   ◷ Stale. The agent changed 3 files after this ran (14:24).
     This pass is for older code, not for what is there now.
@@ -2358,7 +2358,7 @@
  Command  npm test
  Folder   ~\dev\affiliate-site-worktrees\fix-footer
  Ran      14:22:05 · took 14.2s · after turn 3 ended
- Seen by  Seshi ran this itself. The agent said "tes
+ Seen by  Vibecasso ran this itself. The agent said
 
   ◷ Stale. The agent changed 3 files after this ran
     This pass is for older code, not for what is the
@@ -2390,7 +2390,7 @@
 ▎  ✗ legal.test.tsx › footer shows current year
 
   FINISHED  1
- ✓ quick-fox · seshi                                               9h
+ ✓ quick-fox · orbit                                               9h
    finished · not seen
 
  Several checkpoints read as one line: failed, then needs you, then n
@@ -2434,7 +2434,7 @@
 ▎  ✗ legal.test.tsx › footer shows current year
 
   FINISHED  1
- ✓ quick-fox · seshi                                                9h
+ ✓ quick-fox · orbit                                                9h
    finished · not seen
 
  Several checkpoints read as one line: failed, then needs you, then ne
@@ -2463,7 +2463,7 @@
 ▎  ✗ legal.test.tsx › footer shows current year
 
   FINISHED  1
- ✓ quick-fox · seshi                            9h
+ ✓ quick-fox · orbit                            9h
    finished · not seen
 
 
@@ -2486,7 +2486,7 @@
 ▎  ✗ legal.test.tsx › footer shows current year
 
   FINISHED  1
- ✓ quick-fox · seshi                                               9h
+ ✓ quick-fox · orbit                                               9h
    finished · not seen
 
  Several checkpoints read as one line: failed, then needs you, then n
@@ -2530,7 +2530,7 @@
 ▎  ✗ legal.test.tsx › footer shows current year
 
   FINISHED  1
- ✓ quick-fox · seshi                                                 9h
+ ✓ quick-fox · orbit                                                 9h
    finished · not seen
 
  Several checkpoints read as one line: failed, then needs you, then nex
@@ -2559,7 +2559,7 @@
 ▎  ✗ legal.test.tsx › footer shows current year
 
   FINISHED  1
- ✓ quick-fox · seshi                             9h
+ ✓ quick-fox · orbit                             9h
    finished · not seen
 
 
@@ -2582,7 +2582,7 @@
 ▎  ✗ legal.test.tsx › footer shows current year
 
   FINISHED  1
- ✓ quick-fox · seshi                                               9h
+ ✓ quick-fox · orbit                                               9h
    finished · not seen
 
  Several checkpoints read as one line: failed, then needs you, then n
@@ -2626,7 +2626,7 @@
 ▎  ✗ legal.test.tsx › footer shows current year
 
   FINISHED  1
- ✓ quick-fox · seshi                                                  9h
+ ✓ quick-fox · orbit                                                  9h
    finished · not seen
 
  Several checkpoints read as one line: failed, then needs you, then next
@@ -2655,7 +2655,7 @@
 ▎  ✗ legal.test.tsx › footer shows current year
 
   FINISHED  1
- ✓ quick-fox · seshi                              9h
+ ✓ quick-fox · orbit                              9h
    finished · not seen
 
 

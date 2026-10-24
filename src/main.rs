@@ -29,12 +29,12 @@ use std::path::PathBuf;
 
 /// An agent-aware terminal multiplexer.
 #[derive(Parser)]
-#[command(name = "seshi", version, about)]
+#[command(name = "vibecasso", version, about)]
 struct Args {
     /// Directory to open as a workspace (switches to it if already open).
     path: Option<PathBuf>,
     /// Work on another machine over SSH (user@host): the UI here, agents there. Needs
-    /// seshi installed there too.
+    /// vibecasso installed there too.
     #[arg(long, global = true)]
     remote: Option<String>,
     #[command(subcommand)]
@@ -113,17 +113,17 @@ enum Cmd {
     },
     /// Focus a pane (switches workspace and tab).
     Focus { pane: protocol::TermId },
-    /// The program in a pane (default: this one) is an agent: seshi learns it, by its
+    /// The program in a pane (default: this one) is an agent: vibecasso learns it, by its
     /// program (any alias) or, run by node / python, by its script.
     Teach { pane: Option<protocol::TermId> },
     /// Run a command in a floating pane over everything (it closes when the command exits):
-    /// `seshi popup -- fzf`, `seshi popup -- lazygit`.
+    /// `vibecasso popup -- fzf`, `vibecasso popup -- lazygit`.
     Popup {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
         cmd: Vec<String>,
     },
-    /// What a pane's agent may do through seshi: a comma list of read, write, start, respond,
-    /// admin (`seshi grant 4 read,write`), or `default` for the config's ([mcp] grants).
+    /// What a pane's agent may do through vibecasso: a comma list of read, write, start, respond,
+    /// admin (`vibecasso grant 4 read,write`), or `default` for the config's ([mcp] grants).
     Grant { pane: protocol::TermId, grants: String },
     /// Ask the person a question and wait for their answer (printed): from an agent in a
     /// pane. It shows in the Inbox and on the pane, with these answers (default Yes / No).
@@ -133,8 +133,8 @@ enum Cmd {
         #[arg(short = 'o', long = "option")]
         options: Vec<String>,
     },
-    /// Go to a session and bring seshi's window forward: what clicking a notification runs.
-    /// Takes a seshi:// link or a pane number.
+    /// Go to a session and bring vibecasso's window forward: what clicking a notification runs.
+    /// Takes a vibecasso:// link or a pane number.
     Reveal { target: String },
     /// Close a pane.
     Close { pane: Option<protocol::TermId> },
@@ -197,10 +197,10 @@ enum Cmd {
     /// Debugging: print the colours a pane's program draws.
     #[command(hide = true)]
     DebugColors { pane: u32 },
-    /// Check that everything seshi relies on is in place, and how to fix what isn't.
+    /// Check that everything vibecasso relies on is in place, and how to fix what isn't.
     Doctor,
     /// Run a command as one of your accounts: an agent entry in config with an `env` of its
-    /// own (`seshi account "claude work" -- claude`). seshi starts such agents this way.
+    /// own (`vibecasso account "claude work" -- claude`). vibecasso starts such agents this way.
     Account {
         name: String,
         #[arg(last = true)]
@@ -215,12 +215,12 @@ enum Cmd {
         #[arg(long)]
         force: bool,
     },
-    /// Let this repo's .seshi.toml hooks run (they don't until you allow them).
+    /// Let this repo's .vibecasso.toml hooks run (they don't until you allow them).
     Allow {
         /// The repo (default: here).
         dir: Option<PathBuf>,
     },
-    /// (Claude Code's status line) hand what the session used to seshi, then show the
+    /// (Claude Code's status line) hand what the session used to vibecasso, then show the
     /// status line you had before.
     #[command(hide = true)]
     Statusline,
@@ -241,10 +241,10 @@ enum Cmd {
         cmd: Vec<String>,
     },
     /// Run as an MCP server (stdio) so agents can see and steer the others.
-    /// `seshi integrate mcp` registers it with Claude Code.
+    /// `vibecasso integrate mcp` registers it with Claude Code.
     Mcp,
     /// Share your config between machines through a private GitHub repo:
-    /// `seshi sync setup [repo]`, `seshi sync` (pull + push now), `seshi sync off`.
+    /// `vibecasso sync setup [repo]`, `vibecasso sync` (pull + push now), `vibecasso sync off`.
     Sync {
         action: Option<String>,
         name: Option<String>,
@@ -265,17 +265,17 @@ fn main() {
     let args = Args::parse();
     if let Some(r) = &args.remote {
         // SAFETY: set once at startup, before any thread is started.
-        unsafe { std::env::set_var("SESHI_REMOTE", r) };
+        unsafe { std::env::set_var("VIBECASSO_REMOTE", r) };
     }
     config::migrate_old_names();
     update::tidy();
-    // `seshi <dir>` opens a directory; a typo'd subcommand shouldn't silently attach.
+    // `vibecasso <dir>` opens a directory; a typo'd subcommand shouldn't silently attach.
     if let Some(p) = args.path.as_ref().or(match &args.cmd {
         Some(Cmd::Attach { path }) => path.as_ref(),
         _ => None,
     }) && !p.is_dir()
     {
-        eprintln!("seshi: `{}` is not a directory or a command (see `seshi --help`)", p.display());
+        eprintln!("vibecasso: `{}` is not a directory or a command (see `vibecasso --help`)", p.display());
         std::process::exit(2);
     }
     let result = match args.cmd {
@@ -338,16 +338,16 @@ fn main() {
         Some(Cmd::Sync { action, name }) => sync::command(action.as_deref(), name.as_deref()),
         Some(Cmd::TestAlert) => {
             let (cfg, _) = config::Config::load_or_default();
-            println!("notification: the one you get when no seshi window is open");
+            println!("notification: the one you get when no vibecasso window is open");
             // With a server running, clicking it goes to the session you're on.
             let link = cli::focused_pane().map(reveal::link);
             if link.is_some() {
                 println!("click the notification to go to the session you're on");
             }
-            alert::notify("claude needs you", "seshi · this is a test", link.as_deref());
+            alert::notify("claude needs you", "vibecasso · this is a test", link.as_deref());
             match alert::phone_url(&cfg.notify.phone_server, &cfg.notify.phone_topic) {
                 None => println!("phone: off (notify.phone_topic)"),
-                Some(url) => match alert::phone(&cfg.notify, "claude needs you", "seshi · this is a test") {
+                Some(url) => match alert::phone(&cfg.notify, "claude needs you", "vibecasso · this is a test") {
                     Ok(()) => println!("phone: sent to {url}"),
                     Err(e) => println!("phone: didn't go to {url}: {e}"),
                 },
@@ -361,27 +361,27 @@ fn main() {
                         println!("{what} sound: {}", f.display());
                         alert::play(kind);
                     }
-                    None => println!("{what} sound: couldn't be written to seshi's data folder"),
+                    None => println!("{what} sound: couldn't be written to vibecasso's data folder"),
                 }
             }
             Ok(())
         }
     };
     if let Err(e) = result {
-        eprintln!("seshi: {e:#}");
+        eprintln!("vibecasso: {e:#}");
         std::process::exit(1);
     }
 }
 
 /// Open the window. A server of another version is replaced on the way in: without asking
-/// when nothing is mid-turn (it says `Updating seshi…`), after one Enter when something is.
-/// When this window was told to give way to a newly installed seshi, that one opens here.
+/// when nothing is mid-turn (it says `Updating vibecasso…`), after one Enter when something is.
+/// When this window was told to give way to a newly installed vibecasso, that one opens here.
 fn open_client(open: Option<std::path::PathBuf>) -> anyhow::Result<()> {
     run_client(open)?;
     if restart::relaunch_requested() {
-        // The old server is stopping; the installed seshi starts the new one.
+        // The old server is stopping; the installed vibecasso starts the new one.
         let _ = restart::wait_until_server_gone();
-        eprintln!("Restarting seshi…");
+        eprintln!("Restarting vibecasso…");
         restart::relaunch()?;
     }
     Ok(())
@@ -391,7 +391,7 @@ fn run_client(open: Option<std::path::PathBuf>) -> anyhow::Result<()> {
     use std::io::IsTerminal;
     let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
     let local = ipc::remote().is_none();
-    // An older server of a protocol this seshi speaks is replaced at once when it is idle.
+    // An older server of a protocol this vibecasso speaks is replaced at once when it is idle.
     if terminal && local && restart::replace_older_idle_server(restart::read().as_ref(), env!("CARGO_PKG_VERSION")) {
         replace_server()?;
     }
@@ -413,9 +413,9 @@ fn run_client(open: Option<std::path::PathBuf>) -> anyhow::Result<()> {
 }
 
 /// Stop this socket's server (saving its sessions first when it can be asked; one it can't
-/// talk to is stopped by its process, as `seshi kill-server` does) so the next start is
+/// talk to is stopped by its process, as `vibecasso kill-server` does) so the next start is
 /// this version, with the sessions restored.
 fn replace_server() -> anyhow::Result<()> {
-    eprintln!("Updating seshi…");
+    eprintln!("Updating vibecasso…");
     cli::kill_server(false)
 }

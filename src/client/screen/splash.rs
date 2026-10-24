@@ -4,14 +4,18 @@ use super::*;
 
 // ---- splash --------------------------------------------------------------------------------
 
-/// SESHI in 7-row pixel letters; `#` is a lit pixel. One empty column sits between letters.
-const FONT: [(char, [&str; 7]); 4] = [
-    ('S', ["#####", "#....", "#....", "#####", "....#", "....#", "#####"]),
-    ('E', ["#####", "#....", "#....", "####.", "#....", "#....", "#####"]),
-    ('H', ["#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"]),
+/// VIBECASSO in 7-row pixel letters; `#` is a lit pixel. One empty column sits between letters.
+const FONT: [(char, [&str; 7]); 8] = [
+    ('V', ["#...#", "#...#", "#...#", "#...#", ".#.#.", ".#.#.", "..#.."]),
     ('I', ["#", "#", "#", "#", "#", "#", "#"]),
+    ('B', ["####.", "#...#", "#...#", "#####", "#...#", "#...#", "#####"]),
+    ('E', ["#####", "#....", "#....", "####.", "#....", "#....", "#####"]),
+    ('C', ["#####", "#....", "#....", "#....", "#....", "#....", "#####"]),
+    ('A', ["#####", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"]),
+    ('S', ["#####", "#....", "#....", "#####", "....#", "....#", "#####"]),
+    ('O', ["#####", "#...#", "#...#", "#...#", "#...#", "#...#", "#####"]),
 ];
-const WORD: &str = "SESHI";
+const WORD: &str = "VIBECASSO";
 const LOGO_ROWS: u16 = 7;
 
 /// The wordmark as columns of lit rows: `None` is the gap between letters.
@@ -38,69 +42,55 @@ fn logo_width(screen_w: u16) -> u16 {
     logo_columns().len() as u16 * if screen_w >= 120 { 2 } else { 1 }
 }
 
-/// The light band crosses the wordmark every 110 frames (5.5 s), after the blocks land.
+/// The light band crosses the wordmark every 110 frames (5.5 s), after the stroke is done.
 const BAND_EVERY: u64 = 110;
+/// The band's first pass starts on this frame, once the stroke has crossed the word.
+const BAND_FROM: u64 = 40;
+/// Columns the brush crosses per frame (the word's 49 columns in about 1.6 s).
+const STROKE_SPEED: f32 = 1.5;
+/// How many columns behind the brush the paint is still wet (bright).
+const WET: f32 = 3.0;
 /// A frame count that is past every part of the intro: the finished wordmark.
 pub(in crate::client) const SETTLED: u64 = 9999;
 
 /// The wordmark at `(x, y)` as filled cell backgrounds (a `█` leaves seams between rows). `frame` is
-/// the intro's frame: blocks fall in column by column from the top of the screen, overshoot a row,
-/// flash on landing, then a light band passes now and then. `SETTLED` draws it as it ends.
+/// the intro's frame: a brush paints the word left to right, its edge ragged like bristles and the
+/// paint bright where it is still wet, a stroke under the word following it; then a light band
+/// passes now and then. `SETTLED` draws it as it ends.
 pub(in crate::client) fn draw_logo(buf: &mut Buffer, (x, y): (u16, u16), pw: u16, frame: u64, t: &Theme) {
     let cols = logo_columns();
     let sea = t.sky();
     let last = cols.len().saturating_sub(1).max(1) as f32;
-    let f = frame as f32;
-    let band = if frame > 40 { ((frame - 40) % BAND_EVERY) as f32 * 0.8 - 6.0 } else { -99.0 };
+    let brush = frame as f32 * STROKE_SPEED;
+    let band = if frame > BAND_FROM { ((frame - BAND_FROM) % BAND_EVERY) as f32 * 0.8 - 6.0 } else { -99.0 };
     let white = Color::Rgb(255, 255, 255);
     for (c, col) in cols.iter().enumerate() {
         let Some(col) = col else { continue };
         let base = blend(t.accent, sea, c as f32 / last);
         for (r, on) in col.iter().enumerate() {
-            if !*on {
+            // Each bristle reaches a pixel a little later than its neighbours.
+            let behind = brush - c as f32 - ((c * 3 + r * 5) % 4) as f32 * 0.3;
+            if !*on || behind <= 0.0 {
                 continue;
             }
-            let t0 = c as f32 * 0.45 + (6 - r) as f32 * 0.35 + ((c * 7 + r * 3) % 5) as f32 * 0.2;
-            let elapsed = f - t0;
-            if elapsed < 0.0 {
-                continue;
-            }
-            let fall_h = (y as usize + r + 2) as f32;
-            let fall = 0.6 * elapsed * elapsed;
-            let (mut row, mut flash, falling) = (y as f32 + r as f32, 0.0, fall < fall_h);
-            if falling {
-                row = (y as f32 + r as f32 - fall_h + fall).round();
-            } else {
-                let landed = elapsed - (fall_h / 0.6).sqrt();
-                if landed < 1.0 {
-                    row -= 1.0;
-                }
-                flash = (1.0 - landed / 3.0).max(0.0);
-            }
-            if row < buf.area.y as f32 || row >= buf.area.bottom() as f32 {
-                continue;
-            }
-            let mut colour = blend(base, white, flash * 0.7);
+            let wet = (1.0 - behind / WET).max(0.0);
             let near = (c as f32 - band).abs();
-            if flash == 0.0 && near < 1.6 {
-                colour = blend(base, white, 0.45 * (1.0 - near / 1.6));
-            }
-            let (px, py) = (x + c as u16 * pw, row as u16);
+            let shine = if wet == 0.0 && near < 1.6 { 0.45 * (1.0 - near / 1.6) } else { wet * 0.6 };
+            let colour = blend(base, white, shine);
+            let px = x + c as u16 * pw;
             for dx in 0..pw {
-                if let Some(cell) = buf.cell_mut((px + dx, py)) {
+                if let Some(cell) = buf.cell_mut((px + dx, y + r as u16)) {
                     cell.set_symbol(" ").set_bg(colour);
-                }
-                if falling && py > buf.area.y && let Some(cell) = buf.cell_mut((px + dx, py - 1)) {
-                    cell.set_symbol(" ").set_bg(blend(t.bg, base, 0.25));
                 }
             }
         }
     }
-    // A faint line under the wordmark that glows while the blocks land.
-    let dust = ((f - 4.0) / 10.0).clamp(0.0, 1.0) * (1.0 - ((f - 22.0) / 10.0).clamp(0.0, 1.0));
-    if dust > 0.0 {
-        let line = "▔".repeat(cols.len() * pw as usize + 4);
-        put(buf, x.saturating_sub(2), y + LOGO_ROWS, &[seg(line, Style::default().fg(blend(t.bg, sea, dust * 0.5)).bg(t.bg))], buf.area.right());
+    // The brush's stroke under the word: it follows the brush, then fades.
+    let painted = brush.min(cols.len() as f32).max(0.0) as usize * pw as usize;
+    let fade = 1.0 - ((frame as f32 - BAND_FROM as f32) / 10.0).clamp(0.0, 1.0);
+    if painted > 0 && fade > 0.0 {
+        let line = "▔".repeat(painted);
+        put(buf, x, y + LOGO_ROWS, &[seg(line, Style::default().fg(blend(t.bg, sea, fade * 0.6)).bg(t.bg))], buf.area.right());
     }
 }
 
@@ -229,7 +219,7 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
 
     let dim = Style::default().fg(t.muted).bg(t.bg);
     let away: Vec<Seg> = if app.snap.terms.is_empty() {
-        vec![seg("No sessions yet. Start one and it keeps running after you close Seshi.", Style::default().fg(t.text).bg(t.bg))]
+        vec![seg("No sessions yet. Start one and it keeps running after you close Vibecasso.", Style::default().fg(t.text).bg(t.bg))]
     } else if needs + working + finished + check_failed == 0 {
         vec![seg("nothing changed while you were away", dim)]
     } else {
@@ -308,7 +298,7 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     hit(app, Rect { x: center(segs_width(&hints)), y, width: segs_width(&hints), height: 1 }, ScreenHit::SplashKey('?'));
     let mut foot = Vec::new();
     if o.version {
-        foot.push(seg(format!("seshi {}", env!("CARGO_PKG_VERSION")), Style::default().fg(t.line).bg(t.bg)));
+        foot.push(seg(format!("vibecasso {}", env!("CARGO_PKG_VERSION")), Style::default().fg(t.line).bg(t.bg)));
     }
     // An update is the one thing the splash adds beside the version: it is how you hear of one.
     let note = if let Some(v) = &app.update_available {
@@ -374,17 +364,17 @@ mod tests {
     }
 
     fn theme() -> Theme {
-        crate::theme::Theme::named("seshi-dark")
+        crate::theme::Theme::named("vibecasso-dark")
     }
 
     #[test]
     fn the_settled_wordmark_is_every_pixel_as_a_filled_cell_in_a_gradient() {
         let t = theme();
-        let pixels: usize = FONT.iter().map(|(_, g)| g.iter().map(|r| r.matches('#').count()).sum::<usize>()).sum::<usize>();
-        let pixels = pixels + FONT[0].1.iter().map(|r| r.matches('#').count()).sum::<usize>();
+        let glyph = |ch: char| FONT.iter().find(|(c, _)| *c == ch).expect("every letter of the word has a glyph").1;
+        let pixels: usize = WORD.chars().map(|ch| glyph(ch).iter().map(|r| r.matches('#').count()).sum::<usize>()).sum();
         for pw in [1u16, 2] {
-            let mut buf = Buffer::empty(Rect::new(0, 0, 80, 20));
-            fill(&mut buf, Rect::new(0, 0, 80, 20), t.bg);
+            let mut buf = Buffer::empty(Rect::new(0, 0, 120, 20));
+            fill(&mut buf, Rect::new(0, 0, 120, 20), t.bg);
             draw_logo(&mut buf, (10, 4), pw, SETTLED, &t);
             let cells = lit(&buf, t.bg);
             let wordmark: Vec<_> = cells.iter().filter(|(_, y, _)| (4..4 + LOGO_ROWS).contains(y)).collect();
@@ -395,7 +385,30 @@ mod tests {
     }
 
     #[test]
-    fn the_intro_starts_empty_drops_blocks_in_and_ends_where_it_is_settled() {
+    fn the_word_spells_vibecasso_and_fits_eighty_columns() {
+        assert_eq!(WORD, "VIBECASSO");
+        assert!(WORD.chars().all(|ch| FONT.iter().any(|(c, _)| *c == ch)), "a glyph for every letter");
+        assert!(logo_width(80) <= 78 && logo_width(160) <= 158, "{} / {}", logo_width(80), logo_width(160));
+    }
+
+    #[test]
+    fn a_brush_paints_the_word_left_to_right() {
+        let t = theme();
+        let painted = |frame| {
+            let mut buf = Buffer::empty(Rect::new(0, 0, 80, 30));
+            fill(&mut buf, Rect::new(0, 0, 80, 30), t.bg);
+            draw_logo(&mut buf, (10, 10), 1, frame, &t);
+            lit(&buf, t.bg).into_iter().filter(|(_, y, _)| (10..10 + LOGO_ROWS).contains(y)).map(|(x, ..)| x).collect::<Vec<_>>()
+        };
+        let mid = painted(15);
+        assert!(!mid.is_empty() && mid.len() < painted(SETTLED).len(), "part way across");
+        let furthest = *mid.iter().max().unwrap();
+        assert!(furthest < 10 + 49 - 5, "only the left of the word is painted yet: up to column {furthest}");
+        assert!(painted(25).len() > mid.len(), "and it goes on to the right");
+    }
+
+    #[test]
+    fn the_intro_starts_empty_paints_in_and_ends_where_it_is_settled() {
         let t = theme();
         let drawn = |frame| {
             let mut buf = Buffer::empty(Rect::new(0, 0, 80, 30));
@@ -404,7 +417,7 @@ mod tests {
             lit(&buf, t.bg).len()
         };
         assert_eq!(drawn(0), 0, "nothing at frame 0");
-        assert!(drawn(8) > 0 && drawn(8) < drawn(SETTLED), "blocks are falling in");
+        assert!(drawn(8) > 0 && drawn(8) < drawn(SETTLED), "the brush is painting");
         let mut a = Buffer::empty(Rect::new(0, 0, 80, 30));
         let mut b = a.clone();
         for buf in [&mut a, &mut b] {

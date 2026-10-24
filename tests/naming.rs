@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-const RETIRED_NAMES: [&str; 2] = ["hydra", "drover"];
+const RETIRED_NAMES: [&str; 3] = ["seshi", "hydra", "drover"];
 
 /// Files that read or rewrite what an old install left on disk, so they must name it.
 const MIGRATION_FILES: [&str; 5] = ["src/cli.rs", "src/config.rs", "src/project.rs", "src/theme.rs", "src/client/themes.rs"];

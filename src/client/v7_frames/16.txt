@@ -12,7 +12,7 @@
 │   ● warm-finch              3m │ │                                                                                                                           │
 │     asks: use pnpm or npm?     │ │                                                                                                                           │
 │                                │ │      PROJECT · affiliate-site                                           Esc close                                         │
-│  ▾ seshi                 ⎇ dev │ │    │                                                                              │                                       │
+│  ▾ orbit                 ⎇ dev │ │    │                                                                              │                                       │
 │   ✓ quick-fox               9h │ │    │  CHECK                                                                       │                                       │
 │     finished                   │ │    │                                                                              │                                       │
 │   z old-moth                2d │ │    │ Command    npm test                                                          │                                       │
@@ -55,7 +55,7 @@
 │   ● warm│  CHECK                                                                       │         │
 │     asks│                                                                              │         │
 │         │ Command    npm test                                                          │         │
-│  ▾ seshi│                                                                              │         │
+│  ▾ orbit│                                                                              │         │
 │   ✓ quic│ Runs      after each turn ends · in the session's worktree                   │         │
 │   z old-│ Timeout   10 min  ‹ ›                                                        │         │
 │         │ Status    … never run · runs after the next turn ends                        │         │
@@ -114,7 +114,7 @@
 │   ● warm-finch              3m ││                                                                                                                            │
 │     asks: use pnpm or npm?     ││                                                                                                                            │
 │                                ││       PROJECT · affiliate-site                                           Esc close                                         │
-│  ▾ seshi                 ⎇ dev ││     │                                                                              │                                       │
+│  ▾ orbit                 ⎇ dev ││     │                                                                              │                                       │
 │   ✓ quick-fox               9h ││     │  CHECK                                                                       │                                       │
 │     finished                   ││     │                                                                              │                                       │
 │   z old-moth                2d ││     │ Command    npm test                                                          │                                       │
@@ -157,7 +157,7 @@
 │   ● warm│  CHECK                                                                       │         │
 │     asks│                                                                              │         │
 │         │ Command    npm test                                                          │         │
-│  ▾ seshi│                                                                              │         │
+│  ▾ orbit│                                                                              │         │
 │   ✓ quic│ Runs      after each turn ends · in the session's worktree                   │         │
 │   z old-│ Timeout   10 min  ‹ ›                                                        │         │
 │         │ Status    … never run · runs after the next turn ends                        │         │
@@ -216,7 +216,7 @@
    ● warm-finch                3m│
      asks: use pnpm or npm?      │
                                  │        PROJECT · affiliate-site                                           Esc close
-  ▾ seshi                   ⎇ dev│      │                                                                              │
+  ▾ orbit                   ⎇ dev│      │                                                                              │
    ✓ quick-fox                 9h│      │  CHECK                                                                       │
      finished                    │      │                                                                              │
    z old-moth                  2d│      │ Command    npm test                                                          │
@@ -259,7 +259,7 @@
    ● warm-│  CHECK                                                                       │
      asks:│                                                                              │
           │ Command    npm test                                                          │
-  ▾ seshi │                                                                              │
+  ▾ orbit │                                                                              │
    ✓ quick│ Runs      after each turn ends · in the session's worktree                   │
    z old-m│ Timeout   10 min  ‹ ›                                                        │
           │ Status    … never run · runs after the next turn ends                        │

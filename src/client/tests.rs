@@ -199,7 +199,7 @@ mod screen_tests {
     }
 
     fn show(s: &str) {
-        if std::env::var("SESHI_SHOW").is_ok() {
+        if std::env::var("VIBECASSO_SHOW").is_ok() {
             println!("{s}");
         }
     }
@@ -245,7 +245,7 @@ mod screen_tests {
             app.open_keymap(None);
             let o = draw(&mut app, w, h); show(&o);
             assert!(o.contains("goes after the leader") && o.contains("= split") && o.contains("Esc"), "{w}x{h}\n{o}");
-            for g in ["SESSIONS", "PANES", "TABS", "PROJECT", "SESHI"] {
+            for g in ["SESSIONS", "PANES", "TABS", "PROJECT", "VIBECASSO"] {
                 assert!(o.contains(g), "{w}x{h}: the map has {g}");
             }
             assert!(o.contains("run it") && o.contains("show all") && !o.contains("[Esc]"), "{o}");
@@ -284,7 +284,7 @@ mod screen_tests {
             show(&o);
             let overlay: Vec<&str> = o.lines().skip_while(|l| !l.contains("goes after the leader")).collect();
             let x = |heading: &str| overlay.iter().find_map(|l| l.find(heading).map(|i| l[..i].chars().count())).unwrap_or_else(|| panic!("{heading} at {w}x{h}\n{o}"));
-            let mut xs = vec![x("SESSIONS"), x("PANES"), x("TABS"), x("PROJECT"), x("SESHI")];
+            let mut xs = vec![x("SESSIONS"), x("PANES"), x("TABS"), x("PROJECT"), x("VIBECASSO")];
             xs.sort();
             xs.dedup();
             xs.len()
@@ -634,7 +634,7 @@ mod screen_tests {
         let (text, mut app) = super::design_tests::render_with(160, 45);
         show(&text);
         let lines: Vec<&str> = text.lines().collect();
-        assert!(!text.contains(">_ seshi"), "no logo");
+        assert!(!text.contains(">_ vibecasso"), "no logo");
         // The v7 grid: no margin, the sidebar card the full height from the corner, the pane
         // card beside it from row 0 with the tabs in its title.
         assert!(lines[0].starts_with("┌─"), "the sidebar card from the very corner: {}", lines[0]);
@@ -675,7 +675,7 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("Corners") && o.contains("PREVIEW") && o.contains("focused") && o.contains("dimmed"), "the pane settings, with a preview");
-        // The splash: the SESHI wordmark, its tagline, what happened, buttons.
+        // The splash: the VIBECASSO wordmark, its tagline, what happened, buttons.
         app.mode = Mode::Normal;
         app.splash = true;
         let o = draw(&mut app, 160, 45);
@@ -914,7 +914,7 @@ mod screen_tests {
             "explicit ANSI black remains the program's choice"
         );
         // The theme's ground, handed back to the terminal's own background (SGR 49) when
-        // seshi draws on it.
+        // vibecasso draws on it.
         let ground = |bg| bg == app.theme.bg || bg == ratatui::style::Color::Reset;
         assert!(ground(buffer[(inner.x + 1, inner.y)].bg), "the default terminal ground is the zone's body, as checks7.js's panel draws it");
         assert!(ground(buffer[(inner.x + 2, inner.y)].bg), "empty terminal cells keep the same ground");
@@ -926,7 +926,7 @@ mod screen_tests {
     fn wheel_scrolls_history() {
         use crossterm::event::{MouseEvent, MouseEventKind};
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        // The terminal is as big as the card's inside (seshi sizes it so).
+        // The terminal is as big as the card's inside (vibecasso sizes it so).
         let (_, inside) = app.panes[0];
         let mut p = vt100::Parser::new(inside.height, inside.width, 1000);
         for i in 1..=100 {
@@ -956,7 +956,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn back_to_bottom_is_a_click_away_in_seshis_history() {
+    fn back_to_bottom_is_a_click_away_in_vibecassos_history() {
         use crossterm::event::{MouseEvent, MouseEventKind};
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let (_, inside) = app.panes[0];
@@ -1036,7 +1036,7 @@ mod screen_tests {
         for _ in 0..5 {
             app.on_mouse(MouseEvent { kind: MouseEventKind::ScrollUp, column: inner.x + 5, row: inner.y + 5, modifiers: KeyModifiers::NONE });
         }
-        assert_eq!(app.history(1).0, 15, "seshi scrolled its history");
+        assert_eq!(app.history(1).0, 15, "vibecasso scrolled its history");
         // A full-screen program (no history of its own here) gets the wheel itself.
         let mut p = vt100::Parser::new(40, 120, 1000);
         p.process(b"\x1b[?1049h\x1b[?1000h\x1b[?1006h");
@@ -1160,7 +1160,7 @@ mod screen_tests {
 
     #[test]
     fn saves_pasted_images_as_png() {
-        let p = std::env::temp_dir().join(format!("seshi-paste-{}.png", std::process::id()));
+        let p = std::env::temp_dir().join(format!("vibecasso-paste-{}.png", std::process::id()));
         let px: Vec<u8> = (0..4 * 3 * 2).map(|i| i as u8).collect();
         super::write_png(&p, 3, 2, &px).unwrap();
         let bytes = std::fs::read(&p).unwrap();
@@ -1532,7 +1532,7 @@ mod screen_tests {
         assert!(empty.contains("normal screen") && empty.contains("wheel goes to the program") && empty.contains("0 lines of history"), "{empty}");
         app.feed(term, &b"line\r\n".repeat(100));
         let info = app.pane_info(term).unwrap();
-        assert!(info.contains("normal screen") && info.contains("the wheel goes to seshi") && info.contains("61 lines of history"), "{info}");
+        assert!(info.contains("normal screen") && info.contains("the wheel goes to vibecasso") && info.contains("61 lines of history"), "{info}");
         app.feed(term, b"\x1b[?1049h\x1b[?1000h\x1b[?1006h");
         let info = app.pane_info(term).unwrap();
         assert!(info.contains("full-screen") && info.contains("the wheel goes to the program"), "{info}");
@@ -1635,7 +1635,7 @@ mod screen_tests {
     #[test]
     fn changes_outside_git_offers_git_init() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        let dir = std::env::temp_dir().join(format!("seshi-nogit-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("vibecasso-nogit-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         app.open_changes(dir.clone());
         let o = draw(&mut app, 160, 45);
@@ -1673,7 +1673,7 @@ mod screen_tests {
         assert!(o.contains("THEME") && o.contains("Enter browse"), "then the theme browser control");
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("Themes") && o.contains("Seshi Walnut"));
+        assert!(o.contains("Themes") && o.contains("Vibecasso Walnut"));
         app.on_paste("Monokai".into());
         assert!(draw(&mut app, 160, 45).contains("Monokai"));
         app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
@@ -1682,7 +1682,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_program_seshi_doesnt_know_goes_by_its_name_and_can_be_taught() {
+    fn a_program_vibecasso_doesnt_know_goes_by_its_name_and_can_be_taught() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let t = app.snap.terms.get_mut(&3).unwrap();
         (t.process, t.title) = ("dst".into(), "✦ 🐋 deepseek harness".into());
@@ -1804,7 +1804,7 @@ mod screen_tests {
         assert!(matches!(app.mode, Mode::KeyMap(_)));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        for g in ["SESSIONS", "PANES", "TABS", "PROJECT", "SESHI"] {
+        for g in ["SESSIONS", "PANES", "TABS", "PROJECT", "VIBECASSO"] {
             assert!(o.contains(g), "the key map has {g}");
         }
         assert!(o.contains("Inbox") && o.contains("Worktrees ›"), "steps marked");
@@ -3383,18 +3383,18 @@ second line
         app.act(Action::Settings);
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains(&format!("seshi {}", env!("CARGO_PKG_VERSION"))) && o.contains("up to date") && o.contains("u check now"));
+        assert!(o.contains(&format!("vibecasso {}", env!("CARGO_PKG_VERSION"))) && o.contains("up to date") && o.contains("u check now"));
         assert!(app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::CheckUpdate)), "it can be clicked");
         // While it's asking, the button says so and can't be pressed twice.
         app.update_checking = true;
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("checking…") && !app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::CheckUpdate)));
-        // Nothing newer: you asked, so it says so. A check seshi made itself stays quiet.
+        // Nothing newer: you asked, so it says so. A check vibecasso made itself stays quiet.
         app.notice = None;
         app.update_checked_now(false, Ok(None), Vec::new());
         assert!(app.notice.is_none(), "its own checks say nothing when there's nothing new");
         app.update_checked_now(true, Ok(None), Vec::new());
-        assert!(!app.update_checking && said(&app) == (format!("Installed seshi {} is the latest", env!("CARGO_PKG_VERSION")), false));
+        assert!(!app.update_checking && said(&app) == (format!("Installed vibecasso {} is the latest", env!("CARGO_PKG_VERSION")), false));
         app.update_checked_now(true, Err("couldn't reach GitHub: timed out".into()), Vec::new());
         assert!(said(&app).1 && said(&app).0.contains("Couldn't check for updates"), "{:?}", said(&app));
         // A newer one: the Update button takes the place of the check.
@@ -3545,7 +3545,7 @@ second line
         assert!(o.contains("INBOX") && !o.contains("─ 1  claude "), "narrow: the sheet covers the pane column");
         app.mode = Mode::Normal;
         // Changes of a real repo.
-        let repo = std::env::temp_dir().join(format!("seshi-sheet-{}", std::process::id()));
+        let repo = std::env::temp_dir().join(format!("vibecasso-sheet-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&repo);
         std::fs::create_dir_all(&repo).unwrap();
         crate::proc::git(&repo, &["init", "-q"]).unwrap();
@@ -4072,7 +4072,7 @@ second line
             app.act(a);
             let o = draw(&mut app, 120, 34);
             show(&o);
-            assert!(o.contains(title) && o.contains("Esc close"), "{title}: a seshi modal (title in its accent row, Esc to close)");
+            assert!(o.contains(title) && o.contains("Esc close"), "{title}: a vibecasso modal (title in its accent row, Esc to close)");
         }
     }
 
@@ -4108,7 +4108,7 @@ mod settings_splash_tests {
         let settings = draw(&mut app);
         app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 2, sel: design::settings_rows(modal::Cat::Appearance).iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme")).unwrap(), editing: None, capturing: false, scroll: 0 }));
         let keys = draw(&mut app);
-        if std::env::var("SESHI_SHOW").is_ok() {
+        if std::env::var("VIBECASSO_SHOW").is_ok() {
             println!("{splash}\n{settings}\n{keys}");
         }
         assert!(splash.contains("every session, one calm place"));
@@ -4258,7 +4258,7 @@ mod settings_v8_tests {
 
 mod shots {
     //! Not a check: writes the screens the README shows, cell by cell, for the image step.
-    //! `SESHI_SHOTS=<dir> cargo test write_the_readme_screens -- --ignored`
+    //! `VIBECASSO_SHOTS=<dir> cargo test write_the_readme_screens -- --ignored`
     use super::design_tests::render_with;
     use super::*;
     use ratatui::Terminal;
@@ -4289,7 +4289,7 @@ mod shots {
     #[test]
     #[ignore]
     fn write_the_readme_screens() {
-        let dir = std::path::PathBuf::from(std::env::var("SESHI_SHOTS").expect("set SESHI_SHOTS"));
+        let dir = std::path::PathBuf::from(std::env::var("VIBECASSO_SHOTS").expect("set VIBECASSO_SHOTS"));
         std::fs::create_dir_all(&dir).unwrap();
         let (_, mut app) = render_with(160, 45);
         cells(&mut app, 160, 45, "02-main", &dir);
@@ -4395,7 +4395,7 @@ mod check_row_tests {
     }
 
     fn show(buf: &Buffer, title: &str) {
-        if std::env::var("SESHI_SHOW").is_ok() {
+        if std::env::var("VIBECASSO_SHOW").is_ok() {
             println!("--- {title}");
             for y in 0..buf.area.height {
                 println!("{}", (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect::<String>().trim_end());
@@ -4791,7 +4791,7 @@ mod check_why_tests {
     }
 
     fn show(s: &str) {
-        if std::env::var("SESHI_SHOW").is_ok() {
+        if std::env::var("VIBECASSO_SHOW").is_ok() {
             println!("{s}");
         }
     }
@@ -4830,7 +4830,7 @@ mod check_why_tests {
                 for want in [
                     "WHY · claude reads",
                     &ended,
-                    "Seshi ran npm test in its worktree",
+                    "Vibecasso ran npm test in its worktree",
                     "✕ exit 1 after 14.2s",
                     "Esc close",
                 ] {
@@ -4887,7 +4887,7 @@ mod check_why_tests {
         assert!(passed.contains("✓ exit 0 after 14.2s") && passed.contains("⏎  evidence") && passed.contains("r  re-run"));
         assert!(!passed.contains("O  override"), "only a failure can be overridden");
         let running = hints(CheckState::Checking, None);
-        assert!(running.contains("Seshi ran npm test") && running.contains("checking"));
+        assert!(running.contains("Vibecasso ran npm test") && running.contains("checking"));
         assert!(running.contains("⏎  evidence") && !running.contains("r  re-run") && !running.contains("O  override"), "a run can be read, not re-run");
         let missing = hints(CheckState::CouldNotRun, Some(127));
         assert!(missing.contains("? npm test could not run · not found") && missing.contains("r  re-run") && !missing.contains("O  override"));
@@ -4911,7 +4911,7 @@ mod check_why_tests {
             let mut app = app_with(100, 30, layout, None);
             let plain = draw(&mut app, 100, 30);
             assert!(plain.contains("Status uncertain") && plain.contains("most specific source wins"), "{name}");
-            assert!(!plain.contains("evidence") && !plain.contains("Seshi ran"), "{name}: no check text anywhere");
+            assert!(!plain.contains("evidence") && !plain.contains("Vibecasso ran"), "{name}: no check text anywhere");
             app.snap.terms.get_mut(&1).unwrap().checks = vec![check(CheckState::Failed, Some(1))];
             assert_ne!(draw(&mut app, 100, 30), plain, "{name}: a check changes it");
             app.snap.terms.get_mut(&1).unwrap().checks.clear();
@@ -4990,7 +4990,7 @@ mod check_sheet_tests {
 
     fn draw(app: &mut App, w: u16, h: u16) -> String {
         let o = frame(&render(app, w, h));
-        if std::env::var("SESHI_SHOW").is_ok() {
+        if std::env::var("VIBECASSO_SHOW").is_ok() {
             println!("{o}");
         }
         o
@@ -5051,7 +5051,7 @@ mod check_sheet_tests {
                     "Command npm test",
                     "Folder",
                     &ran,
-                    "Seen by Seshi ran this itself.",
+                    "Seen by Vibecasso ran this itself.",
                     "OUTPUT all 4 lines",
                     "1 ✓ renders the footer",
                     "4 Error: expected 3 got 2",
@@ -5409,7 +5409,7 @@ mod check_inbox_tests {
         app.act(Action::Jump);
         let buf = buffer(app, w, h);
         let out = lines(&buf, 0);
-        if std::env::var("SESHI_SHOW").is_ok() {
+        if std::env::var("VIBECASSO_SHOW").is_ok() {
             println!("--- {w}x{h} {}/{}\n{}", app.cfg.ui.layout, app.cfg.ui.panes, out.join("\n"));
         }
         out
@@ -5690,7 +5690,7 @@ mod check_settings_tests {
     }
 
     pub(super) fn show(s: &str) {
-        if std::env::var("SESHI_SHOW").is_ok() {
+        if std::env::var("VIBECASSO_SHOW").is_ok() {
             println!("{s}");
         }
     }
@@ -6033,7 +6033,7 @@ mod check_wiring_tests {
         let buf = term.backend().buffer().clone();
         let frame: String = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>().trim_end().to_string() + "\n").collect();
         let frame = frame.replace(|c| ('\u{e000}'..='\u{f8ff}').contains(&c), "");
-        if std::env::var("SESHI_SHOW").is_ok() {
+        if std::env::var("VIBECASSO_SHOW").is_ok() {
             println!("--- {w}x{h} {}/{}\n{frame}", app.cfg.ui.layout, app.cfg.ui.panes);
         }
         frame
@@ -6661,7 +6661,7 @@ mod restart_tests {
     const OLD_DAEMON: &str = "0.36.11";
     const INSTALLED: &str = "9.9.9";
 
-    /// The shop-api scene (3 sessions, 1 working) whose daemon is older than the installed seshi.
+    /// The shop-api scene (3 sessions, 1 working) whose daemon is older than the installed vibecasso.
     fn scene(w: u16, h: u16, layout: (&str, &str)) -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
         let (_, mut app) = super::design_tests::render_with(w, h);
         (app.cfg.ui.layout, app.cfg.ui.panes) = (layout.0.into(), layout.1.into());
@@ -6679,7 +6679,7 @@ mod restart_tests {
         term.draw(|f| render::draw(app, f)).unwrap();
         let buf = term.backend().buffer().clone();
         let out: String = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>().trim_end().to_string() + "\n").collect();
-        if std::env::var("SESHI_SHOW").is_ok() {
+        if std::env::var("VIBECASSO_SHOW").is_ok() {
             println!("{out}");
         }
         out
@@ -6819,14 +6819,14 @@ mod restart_tests {
     }
 
     #[test]
-    fn an_old_window_gives_way_to_the_installed_seshi_when_the_server_stops() {
+    fn an_old_window_gives_way_to_the_installed_vibecasso_when_the_server_stops() {
         let (mut app, mut rx) = scene(100, 30, LAYOUTS[0]);
         assert!(app.window_stale(), "the installed version is newer than this window");
         app.ask_restart();
         key(&mut app, KeyCode::Enter);
         assert!(matches!(sent(&mut rx).as_slice(), [ClientMsg::Command(Command::KillServer { forget: false })]));
         app.on_server(ServerMsg::Bye);
-        assert!(app.relaunch && app.quit.is_some(), "the window closes so the installed seshi opens in its place");
+        assert!(app.relaunch && app.quit.is_some(), "the window closes so the installed vibecasso opens in its place");
         assert!(!app.daemon_restart_reconnect, "an old window never reconnects to the new server");
     }
 

@@ -43,7 +43,7 @@ pub(in crate::client) fn ns_agents(app: &App) -> Vec<String> {
 
 impl App {
     /// The agent `s` starts: `sessions.agent`, where "last used" is the last one started
-    /// from Seshi (kept in `seshi-ui.json`) and claude before there is one.
+    /// from Vibecasso (kept in `vibecasso-ui.json`) and claude before there is one.
     pub(in crate::client) fn ns_default_agent(&self) -> String {
         let agents = ns_agents(self);
         let pick = match self.cfg.sessions.agent.as_str() {
@@ -190,7 +190,7 @@ pub(in crate::client) fn draw_new_session(app: &mut App, f: &mut Frame, area: Re
             hit(app, cr, ScreenHit::NsOpt(i as u8, j));
         }
     }
-    // The project is one value you step through: `‹ seshi ›   1 of 3`.
+    // The project is one value you step through: `‹ vibecasso ›   1 of 3`.
     let y = r.y + 2 + ROW_PROJECT as u16 * 2;
     let on = ns.row == ROW_PROJECT;
     let bg = if on { t.sel_on(t.card) } else { t.card };

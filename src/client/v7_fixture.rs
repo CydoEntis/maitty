@@ -5,7 +5,7 @@
 //! - affiliate-site ⎇ main: fix-footer (codex, 2m), whose check each stage changes, and
 //!   add-payments (claude, working)
 //! - pixls (no git): warm-finch asking "use pnpm or npm?"
-//! - seshi ⎇ dev: quick-fox done 9h ago, old-moth asleep for 2d
+//! - orbit ⎇ dev: quick-fox done 9h ago, old-moth asleep for 2d
 //!
 //! The clock is pinned (`NOW`, 14:24 local) so ages and clock times read the same every run.
 
@@ -158,7 +158,7 @@ const FIRST_FAILING: &str = "✗ src/pages/legal.test.tsx > footer shows current
 
 /// The repo file a repo-supplied command comes from, added three days ago.
 fn from_repo() -> CheckSource {
-    CheckSource::Repo { file: ".seshi/checks.toml".into(), commit: Some("a1b2c3d".into()), committed_at: Some(now() - 3 * 24 * HOUR), uncommitted: false }
+    CheckSource::Repo { file: ".vibecasso/checks.toml".into(), commit: Some("a1b2c3d".into()), committed_at: Some(now() - 3 * 24 * HOUR), uncommitted: false }
 }
 
 /// fix-footer's checkpoints at `stage`, as `drawEvidence` reads them.
@@ -238,7 +238,7 @@ pub(super) fn world(stage: Stage) -> App {
     let mut app = App::new(Config::default(), tx, None, bg_tx);
     app.splash = false;
     let dev = home();
-    let (site, pixls, seshi) = (dev.join("affiliate-site"), dev.join("pixls"), dev.join("seshi"));
+    let (site, pixls, orbit) = (dev.join("affiliate-site"), dev.join("pixls"), dev.join("orbit"));
     let trees = dev.join("affiliate-site-worktrees");
     let (footer_dir, payments_dir) = (trees.join("fix-footer"), trees.join("add-payments"));
 
@@ -251,15 +251,15 @@ pub(super) fn world(stage: Stage) -> App {
         (payments.status, payments.since, payments.checks) = (Status::Done, now() - 40, vec![build_passed(base), approve]);
     }
     let finch = term(3, "warm-finch", "codex", Status::Blocked, &pixls, now() - 3 * 60);
-    let fox = in_repo(term(4, "quick-fox", "claude", Status::Done, &seshi, now() - 9 * HOUR), &seshi, "dev");
-    let mut moth = in_repo(term(5, "old-moth", "codex", Status::Idle, &seshi, now() - 2 * 24 * HOUR), &seshi, "dev");
+    let fox = in_repo(term(4, "quick-fox", "claude", Status::Done, &orbit, now() - 9 * HOUR), &orbit, "dev");
+    let mut moth = in_repo(term(5, "old-moth", "codex", Status::Idle, &orbit, now() - 2 * 24 * HOUR), &orbit, "dev");
     moth.asleep = true;
 
     let site_trees = vec![entry(&site, "main", true, "affiliate-site"), entry(&footer_dir, "fix-footer", false, "affiliate-site"), entry(&payments_dir, "add-payments", false, "affiliate-site")];
     app.snap.workspaces = vec![
         workspace(10, "affiliate-site", &site, &[1, 2], Some(git(&site, "main", site_trees)), 0),
         workspace(20, "pixls", &pixls, &[3], None, 1),
-        workspace(30, "seshi", &seshi, &[4, 5], Some(git(&seshi, "dev", vec![entry(&seshi, "dev", true, "seshi")])), 2),
+        workspace(30, "orbit", &orbit, &[4, 5], Some(git(&orbit, "dev", vec![entry(&orbit, "dev", true, "orbit")])), 2),
     ];
     app.snap.active_ws = Some(10);
     app.snap.questions = vec![HumanQuestion { id: 1, term: 3, text: "use pnpm or npm?".into(), options: vec!["pnpm".into(), "npm".into()] }];
@@ -283,10 +283,10 @@ pub(super) fn cells(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str)
 }
 
 /// `app` drawn in `layout` at `w`×`h` with the `glyphs` set (`unicode`, `ascii`, `nerd`), as
-/// text: one line per row, trailing spaces trimmed. `SESHI_SHOW=1` prints it under a heading
+/// text: one line per row, trailing spaces trimmed. `VIBECASSO_SHOW=1` prints it under a heading
 /// like the handoff's reference frames.
-/// Row 0 as the handoff draws it: its tabs end without the `✕ ` Seshi gives each, and its frames
-/// have no `+` chip after them (Seshi keeps one, so a tab opens with a click). What Seshi adds
+/// Row 0 as the handoff draws it: its tabs end without the `✕ ` Vibecasso gives each, and its frames
+/// have no `+` chip after them (Vibecasso keeps one, so a tab opens with a click). What Vibecasso adds
 /// reads as the title's own fill, so everything after it keeps its column.
 fn without_new_tab_chip(row: &str) -> String {
     let chars: Vec<char> = row.chars().collect();
@@ -472,7 +472,7 @@ pub(super) fn frame(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str)
             row.trim_end().to_string() + "\n"
         })
         .collect();
-    if std::env::var("SESHI_SHOW").is_ok() {
+    if std::env::var("VIBECASSO_SHOW").is_ok() {
         println!("===== {layout:?} | {w}x{h} | {glyphs}\n{text}");
     }
     text

@@ -104,12 +104,12 @@ pub fn powershell_line(line: &str) -> String {
     if line.starts_with('"') { format!("& {line}") } else { line.to_string() }
 }
 
-/// Put this process ahead of what runs in seshi's panes. Agents' builds and tests take every
+/// Put this process ahead of what runs in vibecasso's panes. Agents' builds and tests take every
 /// core they can; at the same priority the window can't get a turn to switch session or
-/// draw, and seshi looks hung while nothing in it is wrong.
+/// draw, and vibecasso looks hung while nothing in it is wrong.
 ///
 /// Windows only: there a process above normal still starts its children at normal, so the
-/// panes are not raised with it. Elsewhere raising a process needs rights seshi doesn't ask
+/// panes are not raised with it. Elsewhere raising a process needs rights vibecasso doesn't ask
 /// for, and a child would inherit it.
 pub fn ahead_of_the_panes() {
     #[cfg(windows)]
@@ -126,7 +126,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn seshi_runs_ahead_of_its_panes_and_they_stay_normal() {
+    fn vibecasso_runs_ahead_of_its_panes_and_they_stay_normal() {
         use windows_sys::Win32::System::Threading::{ABOVE_NORMAL_PRIORITY_CLASS, GetCurrentProcess, GetPriorityClass};
         ahead_of_the_panes();
         // SAFETY: this process's own pseudo-handle.
@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn errors_are_the_first_thing_it_said() {
         let dir = std::env::temp_dir();
-        let e = git(&dir.join("seshi-no-such-repo"), &["status"]).unwrap_err();
+        let e = git(&dir.join("vibecasso-no-such-repo"), &["status"]).unwrap_err();
         assert!(!e.is_empty() && !e.contains('\n'), "{e}");
     }
 }

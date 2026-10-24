@@ -314,7 +314,7 @@ mod open_tests {
         let opened = std::thread::spawn(|| super::open_default(std::path::Path::new("https://example.com/"))).join().unwrap();
         assert!(opened.is_ok(), "{opened:?}");
         let missing = std::thread::spawn(|| super::open_default(std::path::Path::new(r"C:
-o\suchile-seshi.txt"))).join().unwrap();
+o\suchile-vibecasso.txt"))).join().unwrap();
         assert!(missing.is_err(), "a file that isn't there says so");
     }
 
@@ -329,7 +329,7 @@ o\suchile-seshi.txt"))).join().unwrap();
 mod sniff_tests {
     #[test]
     fn only_the_start_of_a_file_is_read() {
-        let dir = std::env::temp_dir().join(format!("seshi-sniff-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("vibecasso-sniff-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let (text, bin) = (dir.join("a.txt"), dir.join("b.bin"));
         // A NUL past the first 8 KB isn't looked at.

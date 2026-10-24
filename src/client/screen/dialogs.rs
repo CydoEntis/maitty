@@ -38,7 +38,7 @@ pub(in crate::client) fn np_command(app: &App, agent: &str, model: usize, task: 
     if let Some(m) = np_models(app, agent).get(model).filter(|_| model > 0) {
         cmd = app.cfg.with_model(&cmd, q.map_or("", |q| q.model_flag.as_str()), m);
     }
-    // An account runs through `seshi account`, which gives it its own sign-in.
+    // An account runs through `vibecasso account`, which gives it its own sign-in.
     Some(app.cfg.as_account(agent, &cmd))
 }
 
@@ -280,7 +280,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         hit(app, tr, ScreenHit::SetTab(i));
         x += w + 1;
     }
-    // One line: which seshi this is, whether it is current, whether the daemon matches, and the
+    // One line: which vibecasso this is, whether it is current, whether the daemon matches, and the
     // way to ask again (or to install what was found). More only when something is off.
     let window = env!("CARGO_PKG_VERSION");
     let daemon = if app.snap.daemon_version.is_empty() { "unknown".to_string() } else { app.snap.daemon_version.clone() };
@@ -295,7 +295,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     let known = daemon != "unknown";
     let mismatch = known && daemon != window;
     let daemon_note = if mismatch { Some(seg(format!("daemon {daemon}"), c.fg(t.accent))) } else if known { Some(seg("daemon and window match", dot)) } else { None };
-    let mut ver = vec![seg(format!("seshi {window}"), c.fg(t.strong).add_modifier(Modifier::BOLD)), seg("  ·  ", dot)];
+    let mut ver = vec![seg(format!("vibecasso {window}"), c.fg(t.strong).add_modifier(Modifier::BOLD)), seg("  ·  ", dot)];
     let vy = r.y + 4;
     let mut vx;
     let act = |app: &mut App, buf: &mut Buffer, vx: u16| -> u16 {

@@ -1,16 +1,16 @@
-// Written by `seshi integrate omp`: lifecycle adapted from Herdr 143bf5fd4781d164260c63fe28e7dc08054ad32f.
+// Written by `vibecasso integrate omp`: lifecycle adapted from Herdr 143bf5fd4781d164260c63fe28e7dc08054ad32f.
 // SPDX-License-Identifier: Apache-2.0; see vendor/herdr-detection/NOTICE.md.
 // Local changes: authenticated CLI transport, fixed timings and no prompt text forwarding.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const execute = promisify(execFile);
-const executable = __SESHI_EXE__;
+const executable = __VIBECASSO_EXE__;
 const IDLE_DELAY_MS = 250;
 const RETRY_GRACE_MS = 2500;
 const retryable = /overloaded|provider.?returned.?error|rate.?limit|too many requests|429|500|502|503|504|service.?unavailable|server.?error|internal.?error|network.?error|connection.?error|connection.?refused|connection.?lost|websocket.?closed|websocket.?error|other side closed|fetch failed|upstream.?connect|reset before headers|socket hang up|ended without|http2 request did not get a response|timed? out|timeout|terminated|retry delay/i;
 
 export default function (pi) {
-  if (!process.env.SESHI_TERM_ID || process.env.OMPCODE === "1") return;
+  if (!process.env.VIBECASSO_TERM_ID || process.env.OMPCODE === "1") return;
   let root = false, active = false, retrying = false, failed = false, blockers = 0;
   let idleTimer, retryTimer, last, warned = false, ctx, generation = 0;
   let queue = Promise.resolve();
@@ -34,7 +34,7 @@ export default function (pi) {
         warned = false;
       } catch {
         last = undefined;
-        if (!warned) ctx?.ui?.notify?.("Seshi status report failed. Check that Seshi and its daemon are up to date.", "warning");
+        if (!warned) ctx?.ui?.notify?.("Vibecasso status report failed. Check that Vibecasso and its daemon are up to date.", "warning");
         warned = true;
       }
     });

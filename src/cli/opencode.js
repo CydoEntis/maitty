@@ -1,11 +1,11 @@
-// Written by `seshi integrate opencode`: inert outside Seshi.
+// Written by `vibecasso integrate opencode`: inert outside Vibecasso.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execute = promisify(execFile);
-const executable = __SESHI_EXE__;
+const executable = __VIBECASSO_EXE__;
 
-export const Seshi = async ({ directory, client }) => {
+export const Vibecasso = async ({ directory, client }) => {
   const args = process.argv?.slice(2) ?? [];
   if (args.some((arg) => ["serve", "web", "attach"].includes(arg) || arg === "--attach" || arg.startsWith("--attach="))) return {};
   // Interactive sessions report through their own TUI, including shared servers.
@@ -68,14 +68,14 @@ export const Seshi = async ({ directory, client }) => {
   };
   return {
     event: async ({ event }) => {
-      if (!process.env.SESHI_TERM_ID || !relevant.has(event.type)) return;
+      if (!process.env.VIBECASSO_TERM_ID || !relevant.has(event.type)) return;
       // Preserve event order even when the host dispatches several callbacks together.
       queue = queue.then(() => send(event)).catch(async () => {
         if (!warned) {
           try {
-            await client.app.log({ body: { service: "seshi", level: "warn", message: "Status report failed. Check that Seshi and its daemon are up to date." } });
+            await client.app.log({ body: { service: "vibecasso", level: "warn", message: "Status report failed. Check that Vibecasso and its daemon are up to date." } });
           } catch {
-            console.warn("Seshi could not report status or log the failure.");
+            console.warn("Vibecasso could not report status or log the failure.");
           }
         }
         warned = true;

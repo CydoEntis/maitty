@@ -56,7 +56,7 @@ fn restart_summary(sessions: usize, working: usize, waiting: usize) -> String {
 }
 
 /// How often the client looks at its timers (spinners, toasts, pending focus).
-/// How often an open window asks again whether a newer seshi is out.
+/// How often an open window asks again whether a newer vibecasso is out.
 const UPDATE_CHECK_EVERY: Duration = Duration::from_secs(3 * 60 * 60);
 const TICK: Duration = Duration::from_millis(50);
 /// The shortest time between two frames (about 80 a second at most).
@@ -100,19 +100,19 @@ enum Mode {
     Copy(Box<copy::Copy>),
     /// Pick an existing worktree of the repo, or type a branch to create one.
     Worktrees { ws: WsId, cmd: Option<String>, items: Option<Vec<WorktreeEntry>>, query: String, sel: usize },
-    /// Seshi layout: open a folder as a project.
+    /// Vibecasso layout: open a folder as a project.
     Finder(Box<screen::Finder>),
-    /// Seshi layout: new pane (project, worktree, what to run).
+    /// Vibecasso layout: new pane (project, worktree, what to run).
     ScreenPane(screen::NewPaneHy),
-    /// Seshi layout: the new-session dialog (`c`).
+    /// Vibecasso layout: the new-session dialog (`c`).
     NewSession(Box<screen::NewSess>),
-    /// Seshi layout: the settings overlay.
+    /// Vibecasso layout: the settings overlay.
     ScreenSettings(Box<design::SettingsView>),
     Themes { query: String, sel: usize, saving: bool },
     Spinners(Box<spinners::Picker>),
-    /// Seshi layout: keyboard cursor in the sidebar; bare keys act like leader keys.
+    /// Vibecasso layout: keyboard cursor in the sidebar; bare keys act like leader keys.
     Side,
-    /// A right-click menu (seshi layout).
+    /// A right-click menu (vibecasso layout).
     ScreenMenu(Box<menu::ScreenMenu>),
     /// Find a file / search the code.
     Find(Box<find::FindView>),
@@ -291,7 +291,7 @@ enum Hit {
 }
 
 pub struct App {
-    /// A newer release, found when seshi opened or since (the Update button shows).
+    /// A newer release, found when vibecasso opened or since (the Update button shows).
     update_available: Option<String>,
     installed_version: Option<Result<String, String>>,
     /// Whether Claude's hooks are installed, read in the background when Settings > Agents first shows (None until then).
@@ -299,7 +299,7 @@ pub struct App {
     claude_hooks_asked: bool,
     /// What changed in it (and any releases between), for the update dialog.
     update_notes: Vec<String>,
-    /// When seshi last asked whether a newer release is out.
+    /// When vibecasso last asked whether a newer release is out.
     update_checked: Option<Instant>,
     /// An update is downloading.
     updating: bool,
@@ -307,10 +307,10 @@ pub struct App {
     update_installed_this_run: bool,
     daemon_restart_requested: bool,
     daemon_restart_reconnect: bool,
-    /// This window is on an older seshi than the one installed: it closes and the installed
+    /// This window is on an older vibecasso than the one installed: it closes and the installed
     /// one opens in its place (`restart::relaunch`).
     relaunch: bool,
-    /// Asking, because you said to, whether a newer seshi is out.
+    /// Asking, because you said to, whether a newer vibecasso is out.
     update_checking: bool,
     /// When this window last had to attach to the server again.
     reattached: Option<Instant>,
@@ -366,7 +366,7 @@ pub struct App {
     /// When the wheel last paged an agent's full-screen view (see the wheel in input.rs).
     wheel_page: Option<Instant>,
     /// Pages the wheel has sent up to an agent that scrolls itself, less those sent down:
-    /// Seshi can't see where it is, so this is how far "Back to bottom" has to page down.
+    /// Vibecasso can't see where it is, so this is how far "Back to bottom" has to page down.
     paged_up: std::collections::HashMap<TermId, u32>,
     out: mpsc::UnboundedSender<ClientMsg>,
     quit: Option<String>,
@@ -389,7 +389,7 @@ pub struct App {
     last_click: Option<(Hit, Instant)>,
     /// The welcome screen is up; which of its panes is selected.
     splash: bool,
-    /// The seshi layout's own state.
+    /// The vibecasso layout's own state.
     screen: screen::Screen,
     /// The terminal window has focus (for alerts about the session you're looking at).
     window_focused: bool,
@@ -444,7 +444,7 @@ async fn run_async(opts: Options) -> Result<()> {
 
     let mut terminal = ratatui::init();
     // A panic must leave the shell as it found it: ratatui's own hook leaves the alternate
-    // screen and raw mode; this one also turns off what seshi turned on.
+    // screen and raw mode; this one also turns off what vibecasso turned on.
     let earlier = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         restore_terminal();
@@ -468,7 +468,7 @@ async fn run_async(opts: Options) -> Result<()> {
     Ok(())
 }
 
-/// Whether seshi asked the terminal for the kitty keyboard protocol (so it gives it back).
+/// Whether vibecasso asked the terminal for the kitty keyboard protocol (so it gives it back).
 static KEYBOARD_ENHANCED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Without the kitty keyboard protocol a terminal sends Shift+Enter as a plain Enter, which an
@@ -483,7 +483,7 @@ fn enhance_keyboard() {
     }
 }
 
-/// Undo everything seshi turned on in the terminal: mouse, paste and focus reporting, the
+/// Undo everything vibecasso turned on in the terminal: mouse, paste and focus reporting, the
 /// keyboard protocol, its cursor shape and background colour, the alternate screen and raw
 /// mode. Safe to run twice.
 fn restore_terminal() {
@@ -795,9 +795,9 @@ impl App {
         self.update_available = None;
         self.update_notes.clear();
         let message = if crate::ipc::remote().is_some() {
-            format!("Installed seshi {version}. Update the remote daemon on its host after its sessions are closed.")
+            format!("Installed vibecasso {version}. Update the remote daemon on its host after its sessions are closed.")
         } else {
-            format!("Installed seshi {version}. The daemon will restart automatically when no sessions are open.")
+            format!("Installed vibecasso {version}. The daemon will restart automatically when no sessions are open.")
         };
         self.notify(message, false);
         self.notice_restart = self.restart_needed();
@@ -865,7 +865,7 @@ impl App {
         let _ = self.out.send(msg);
     }
 
-    /// Ask (in the background) whether a newer seshi is out: when the window opens, then now
+    /// Ask (in the background) whether a newer vibecasso is out: when the window opens, then now
     /// and then while it stays open, and when you ask (`asked`: that one says what it found
     /// either way, and isn't turned off by the setting). A new one brings up the Update
     /// button.
@@ -902,7 +902,7 @@ impl App {
         });
     }
 
-    /// A local daemon older than the installed seshi, which a restart would replace.
+    /// A local daemon older than the installed vibecasso, which a restart would replace.
     fn daemon_restartable(&self) -> bool {
         crate::ipc::remote().is_none()
             && !self.daemon_restart_requested
@@ -916,7 +916,7 @@ impl App {
         self.notice_restart && self.restart_needed()
     }
 
-    /// This window runs an older seshi than the one installed here (a remote server's
+    /// This window runs an older vibecasso than the one installed here (a remote server's
     /// version is its own business).
     fn window_stale(&self) -> bool {
         crate::ipc::remote().is_none()
@@ -947,7 +947,7 @@ impl App {
             return self.restart_daemon_now();
         }
         self.mode = Mode::Confirm(Box::new(menu::Confirm {
-            title: "Restart seshi".into(),
+            title: "Restart vibecasso".into(),
             sub: String::new(),
             what: restart_summary(sessions, working, waiting),
             detail: String::new(),
@@ -969,15 +969,15 @@ impl App {
         if self.restart_needed() {
             self.ask_restart();
         } else {
-            self.notify("Seshi is already running the installed version".into(), false);
+            self.notify("Vibecasso is already running the installed version".into(), false);
         }
     }
 
-    /// Close this window and open the installed seshi in its place; the server keeps every
+    /// Close this window and open the installed vibecasso in its place; the server keeps every
     /// session meanwhile.
     fn relaunch_window(&mut self) {
         self.relaunch = true;
-        self.quit = Some("restarting seshi".into());
+        self.quit = Some("restarting vibecasso".into());
     }
 
     fn restart_daemon_now(&mut self) {
@@ -998,7 +998,7 @@ impl App {
         })
     }
 
-    /// What a check for a newer seshi found: the newer version, none, or why it couldn't
+    /// What a check for a newer vibecasso found: the newer version, none, or why it couldn't
     /// look. One you asked for always says.
     fn update_checked_now(&mut self, asked: bool, found: Result<Option<String>, String>, notes: Vec<String>) {
         if asked {
@@ -1006,17 +1006,17 @@ impl App {
         }
         match found {
             Ok(Some(v)) if self.update_available.as_ref() != Some(&v) => {
-                self.notify(format!("seshi {v} is out: Update now is in Settings"), false);
+                self.notify(format!("vibecasso {v} is out: Update now is in Settings"), false);
                 self.update_available = Some(v);
                 self.update_notes = notes;
             }
-            Ok(Some(v)) if asked => self.notify(format!("seshi {v} is out: Update now is in Settings"), false),
+            Ok(Some(v)) if asked => self.notify(format!("vibecasso {v} is out: Update now is in Settings"), false),
             Ok(None) => {
                 self.update_available = None;
                 self.update_notes.clear();
                 if asked {
                     let version = self.installed_version.as_ref().and_then(|r| r.as_ref().ok()).map(String::as_str).unwrap_or(env!("CARGO_PKG_VERSION"));
-                    self.notify(format!("Installed seshi {version} is the latest{}", if self.restart_pending() { "; restart pending" } else { "" }), false);
+                    self.notify(format!("Installed vibecasso {version} is the latest{}", if self.restart_pending() { "; restart pending" } else { "" }), false);
                 }
             }
             Err(e) if asked => self.notify(format!("Couldn't check for updates: {e}"), true),
@@ -1031,7 +1031,7 @@ impl App {
         }
         let new = self.update_available.clone().unwrap_or_else(|| "the latest".into());
         self.mode = Mode::Confirm(Box::new(menu::Confirm {
-            title: "Update seshi".into(),
+            title: "Update vibecasso".into(),
             sub: String::new(),
             what: format!("{} → {new}", env!("CARGO_PKG_VERSION")),
             detail: String::new(),
@@ -1098,7 +1098,7 @@ impl App {
         self.active_tab().map(|t| t.focus)
     }
 
-    /// A floating pane (`seshi popup`) open now: it has the keys until it closes.
+    /// A floating pane (`vibecasso popup`) open now: it has the keys until it closes.
     fn popup(&self) -> Option<TermId> {
         self.snap.terms.values().filter(|t| t.popup).map(|t| t.id).max()
     }
@@ -1257,7 +1257,7 @@ impl App {
         {
             "the program"
         } else {
-            "seshi"
+            "vibecasso"
         };
         let full = if s.alternate_screen() { "full-screen (it scrolls itself)" } else { "normal screen" };
         let raw = self.raw.get(&term).map(|r| r.len() / 1024).unwrap_or(0);
@@ -1370,7 +1370,7 @@ impl App {
         (cur, total)
     }
 
-    /// Back to the newest output: Seshi's own history to its end, and an agent that scrolls
+    /// Back to the newest output: Vibecasso's own history to its end, and an agent that scrolls
     /// itself paged down as far as the wheel paged it up.
     pub(super) fn back_to_bottom(&mut self, term: TermId) {
         self.scroll_to(term, 0);

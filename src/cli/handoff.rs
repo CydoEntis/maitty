@@ -1,4 +1,4 @@
-//! `seshi handoff`: the text brief a new agent starts with when another agent's work moves
+//! `vibecasso handoff`: the text brief a new agent starts with when another agent's work moves
 //! to it. Text only: the new agent gets no conversation, memory or tool results.
 
 use crate::config::Config;
@@ -49,7 +49,7 @@ pub fn brief(facts: &Facts) -> String {
 /// Everything but the recent output.
 fn head(f: &Facts) -> String {
     let mut s = format!(
-        "Handoff from {} in seshi pane {}. This is a text summary only: you do not have the previous agent's conversation, memory or tool results, so read the files yourself.\n\n",
+        "Handoff from {} in vibecasso pane {}. This is a text summary only: you do not have the previous agent's conversation, memory or tool results, so read the files yourself.\n\n",
         f.agent, f.pane
     );
     let task = f.task.trim();
@@ -108,7 +108,7 @@ fn cut(s: &str, max: usize) -> String {
 }
 
 /// Whether `pane` can be handed to `to`: it exists, runs an agent, and `to` is an agent
-/// seshi can start. Gives the old agent's name.
+/// vibecasso can start. Gives the old agent's name.
 pub fn check(cfg: &Config, pane: TermId, term: Option<&TermInfo>, to: &str) -> Result<String, String> {
     let term = term.ok_or_else(|| format!("no pane {pane}"))?;
     let agent = term.agent.clone().ok_or_else(|| format!("pane {pane} has no agent to hand off"))?;
@@ -197,7 +197,7 @@ mod tests {
     fn the_brief_opens_by_saying_it_is_text_only() {
         let b = brief(&facts());
         let first = b.lines().next().unwrap();
-        assert!(first.starts_with("Handoff from claude in seshi pane 3."), "{first}");
+        assert!(first.starts_with("Handoff from claude in vibecasso pane 3."), "{first}");
         for words in ["text summary only", "conversation, memory or tool results", "read the files yourself"] {
             assert!(first.contains(words), "{words}: {first}");
         }
@@ -263,7 +263,7 @@ mod tests {
         assert!(b.starts_with("Handoff from claude") && b.contains("changed files:\n- src/a.rs\n"));
         let b = brief(&Facts { task: "t".repeat(MAX_BRIEF_CHARS * 2), ..facts() });
         assert_eq!(b.chars().count(), MAX_BRIEF_CHARS);
-        assert!(b.starts_with("Handoff from claude in seshi pane 3.") && b.ends_with('…'));
+        assert!(b.starts_with("Handoff from claude in vibecasso pane 3.") && b.ends_with('…'));
     }
 
     #[test]
@@ -317,7 +317,7 @@ mod tests {
 
     #[test]
     fn a_worktree_lists_what_it_committed_and_what_it_has_not() {
-        let root = std::env::temp_dir().join(format!("seshi-handoff-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("vibecasso-handoff-{}", std::process::id()));
         let repo = repo(&root);
         let wt = root.join("orders");
         git(&repo, &["worktree", "add", "-q", "-b", "orders", wt.to_str().unwrap()]);
@@ -329,7 +329,7 @@ mod tests {
 
     #[test]
     fn a_branch_in_the_main_checkout_lists_what_it_committed_and_what_it_has_not() {
-        let root = std::env::temp_dir().join(format!("seshi-handoff-branch-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("vibecasso-handoff-branch-{}", std::process::id()));
         let repo = repo(&root);
         git(&repo, &["checkout", "-q", "-b", "feat"]);
         commit_one_edit_another(&repo);

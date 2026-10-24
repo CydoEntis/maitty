@@ -21,7 +21,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -38,7 +38,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -53,7 +53,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -70,7 +70,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -87,7 +87,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -102,7 +102,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -119,7 +119,7 @@
   ● warm-finch                3m
     asks: use pnpm or npm?
 
- ▾ seshi                   ⎇ dev
+ ▾ orbit                   ⎇ dev
   ✓ quick-fox                 9h
     finished · not seen
   z old-moth                  2d
@@ -136,7 +136,7 @@
   ● warm-finch        3m
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox         9h
   z old-moth          2d
 -----  + new         a actions
@@ -151,7 +151,7 @@
   ● warm-finch
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox
   z old-moth
 -----  + new         a actions
@@ -166,7 +166,7 @@
   ! warm-finch
     asks: use pnpm or np
 
- v seshi        git: dev
+ v orbit        git: dev
   + quick-fox
   z old-moth
 -----  + new         a actions
@@ -183,7 +183,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -201,7 +201,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -217,7 +217,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -234,7 +234,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -252,7 +252,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -268,7 +268,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -285,7 +285,7 @@
   ● warm-finch                3m
     asks: use pnpm or npm?
 
- ▾ seshi                   ⎇ dev
+ ▾ orbit                   ⎇ dev
   ✓ quick-fox                 9h
     finished · not seen
   z old-moth                  2d
@@ -303,7 +303,7 @@
   ● warm-finch        3m
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox         9h
   z old-moth          2d
 -----  + new         a actions
@@ -319,7 +319,7 @@
   ● warm-finch
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox
   z old-moth
 -----  + new         a actions
@@ -335,7 +335,7 @@
   ! warm-finch
     asks: use pnpm or np
 
- v seshi        git: dev
+ v orbit        git: dev
   + quick-fox
   z old-moth
 -----  + new         a actions
@@ -352,7 +352,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -370,7 +370,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -386,7 +386,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -403,7 +403,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -421,7 +421,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -437,7 +437,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -454,7 +454,7 @@
   ● warm-finch                3m
     asks: use pnpm or npm?
 
- ▾ seshi                   ⎇ dev
+ ▾ orbit                   ⎇ dev
   ✓ quick-fox                 9h
     finished · not seen
   z old-moth                  2d
@@ -472,7 +472,7 @@
   ● warm-finch        3m
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox         9h
   z old-moth          2d
 -----  + new         a actions
@@ -488,7 +488,7 @@
   ● warm-finch
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox
   z old-moth
 -----  + new         a actions
@@ -504,7 +504,7 @@
   ! warm-finch
     asks: use pnpm or np
 
- v seshi        git: dev
+ v orbit        git: dev
   + quick-fox
   z old-moth
 -----  + new         a actions
@@ -522,7 +522,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -540,7 +540,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -556,7 +556,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -574,7 +574,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -592,7 +592,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -608,7 +608,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -626,7 +626,7 @@
   ● warm-finch                3m
     asks: use pnpm or npm?
 
- ▾ seshi                   ⎇ dev
+ ▾ orbit                   ⎇ dev
   ✓ quick-fox                 9h
     finished · not seen
   z old-moth                  2d
@@ -644,7 +644,7 @@
   ● warm-finch        3m
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox         9h
   z old-moth          2d
 -----  + new         a actions
@@ -660,7 +660,7 @@
   ● warm-finch
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox
   z old-moth
 -----  + new         a actions
@@ -676,7 +676,7 @@
   ! warm-finch
     asks: use pnpm or np
 
- v seshi        git: dev
+ v orbit        git: dev
   + quick-fox
   z old-moth
 -----  + new         a actions
@@ -693,7 +693,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -711,7 +711,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -727,7 +727,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -744,7 +744,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -762,7 +762,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -778,7 +778,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -795,7 +795,7 @@
   ● warm-finch                3m
     asks: use pnpm or npm?
 
- ▾ seshi                   ⎇ dev
+ ▾ orbit                   ⎇ dev
   ✓ quick-fox                 9h
     finished · not seen
   z old-moth                  2d
@@ -813,7 +813,7 @@
   ● warm-finch        3m
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox         9h
   z old-moth          2d
 -----  + new         a actions
@@ -829,7 +829,7 @@
   ● warm-finch
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox
   z old-moth
 -----  + new         a actions
@@ -845,7 +845,7 @@
   ! warm-finch
     asks: use pnpm or np
 
- v seshi        git: dev
+ v orbit        git: dev
   + quick-fox
   z old-moth
 -----  + new         a actions
@@ -862,7 +862,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -880,7 +880,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -896,7 +896,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -913,7 +913,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -931,7 +931,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -947,7 +947,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -964,7 +964,7 @@
   ● warm-finch                3m
     asks: use pnpm or npm?
 
- ▾ seshi                   ⎇ dev
+ ▾ orbit                   ⎇ dev
   ✓ quick-fox                 9h
     finished · not seen
   z old-moth                  2d
@@ -982,7 +982,7 @@
   ● warm-finch        3m
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox         9h
   z old-moth          2d
 -----  + new         a actions
@@ -998,7 +998,7 @@
   ● warm-finch
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox
   z old-moth
 -----  + new         a actions
@@ -1014,7 +1014,7 @@
   ! warm-finch
     asks: use pnpm or np
 
- v seshi        git: dev
+ v orbit        git: dev
   + quick-fox
   z old-moth
 -----  + new         a actions
@@ -1031,7 +1031,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -1049,7 +1049,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -1065,7 +1065,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -1082,7 +1082,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -1100,7 +1100,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -1116,7 +1116,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -1133,7 +1133,7 @@
   ● warm-finch                3m
     asks: use pnpm or npm?
 
- ▾ seshi                   ⎇ dev
+ ▾ orbit                   ⎇ dev
   ✓ quick-fox                 9h
     finished · not seen
   z old-moth                  2d
@@ -1151,7 +1151,7 @@
   ● warm-finch        3m
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox         9h
   z old-moth          2d
 -----  + new         a actions
@@ -1167,7 +1167,7 @@
   ● warm-finch
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox
   z old-moth
 -----  + new         a actions
@@ -1183,7 +1183,7 @@
   ! warm-finch
     asks: use pnpm or np
 
- v seshi        git: dev
+ v orbit        git: dev
   + quick-fox
   z old-moth
 -----  + new         a actions
@@ -1200,7 +1200,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -1218,7 +1218,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -1234,7 +1234,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -1251,7 +1251,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -1269,7 +1269,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -1285,7 +1285,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -1302,7 +1302,7 @@
   ● warm-finch                3m
     asks: use pnpm or npm?
 
- ▾ seshi                   ⎇ dev
+ ▾ orbit                   ⎇ dev
   ✓ quick-fox                 9h
     finished · not seen
   z old-moth                  2d
@@ -1320,7 +1320,7 @@
   ● warm-finch        3m
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox         9h
   z old-moth          2d
 -----  + new         a actions
@@ -1336,7 +1336,7 @@
   ● warm-finch
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox
   z old-moth
 -----  + new         a actions
@@ -1352,7 +1352,7 @@
   ! warm-finch
     asks: use pnpm or np
 
- v seshi        git: dev
+ v orbit        git: dev
   + quick-fox
   z old-moth
 -----  + new         a actions
@@ -1369,7 +1369,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -1387,7 +1387,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -1403,7 +1403,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -1420,7 +1420,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -1438,7 +1438,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -1454,7 +1454,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -1471,7 +1471,7 @@
   ● warm-finch                3m
     asks: use pnpm or npm?
 
- ▾ seshi                   ⎇ dev
+ ▾ orbit                   ⎇ dev
   ✓ quick-fox                 9h
     finished · not seen
   z old-moth                  2d
@@ -1489,7 +1489,7 @@
   ● warm-finch        3m
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox         9h
   z old-moth          2d
 -----  + new         a actions
@@ -1505,7 +1505,7 @@
   ● warm-finch
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox
   z old-moth
 -----  + new         a actions
@@ -1521,7 +1521,7 @@
   ! warm-finch
     asks: use pnpm or np
 
- v seshi        git: dev
+ v orbit        git: dev
   + quick-fox
   z old-moth
 -----  + new         a actions
@@ -1540,7 +1540,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -1559,7 +1559,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -1576,7 +1576,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -1595,7 +1595,7 @@
    ● warm-finch              3m
      asks: use pnpm or npm?
 
-  ▾ seshi                 ⎇ dev
+  ▾ orbit                 ⎇ dev
    ✓ quick-fox               9h
      finished · not seen
    z old-moth                2d
@@ -1614,7 +1614,7 @@
    ● warm-finch      3m
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox       9h
    z old-moth        2d
 -----   + new       a actions
@@ -1631,7 +1631,7 @@
    ● warm-finch
      asks: use pnpm or n
 
-  ▾ seshi         ⎇ dev
+  ▾ orbit         ⎇ dev
    ✓ quick-fox
    z old-moth
 -----   + new       a actions
@@ -1650,7 +1650,7 @@
   ● warm-finch                3m
     asks: use pnpm or npm?
 
- ▾ seshi                   ⎇ dev
+ ▾ orbit                   ⎇ dev
   ✓ quick-fox                 9h
     finished · not seen
   z old-moth                  2d
@@ -1669,7 +1669,7 @@
   ● warm-finch        3m
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox         9h
   z old-moth          2d
 -----  + new         a actions
@@ -1686,7 +1686,7 @@
   ● warm-finch
     asks: use pnpm or np
 
- ▾ seshi           ⎇ dev
+ ▾ orbit           ⎇ dev
   ✓ quick-fox
   z old-moth
 -----  + new         a actions
@@ -1703,7 +1703,7 @@
   ! warm-finch
     asks: use pnpm or np
 
- v seshi        git: dev
+ v orbit        git: dev
   + quick-fox
   z old-moth
 -----  + new         a actions

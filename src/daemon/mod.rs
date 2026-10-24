@@ -99,7 +99,7 @@ pub enum Ev {
     AgentWorktreeMade { client: ClientId, result: Result<PathBuf, String> },
     /// A worktree removed (or kept) after its last pane closed.
     WorktreeAutoRemoved { client: ClientId, path: PathBuf, result: Result<bool, String> },
-    /// The sweep's findings: seshi-made worktrees nothing runs in that are safe to remove,
+    /// The sweep's findings: vibecasso-made worktrees nothing runs in that are safe to remove,
     /// and ones whose folder is already gone.
     WorktreeSwept { safe: Vec<PathBuf>, gone: Vec<PathBuf> },
     /// A clean-up you asked for is done: what went (and whether its merged branch went
@@ -139,7 +139,7 @@ struct Client {
     tx: mpsc::Sender<ServerMsg>,
     attach: bool,
     /// The pane it acts from (its secret checked): what it may do is that pane's grants.
-    /// None: you (seshi's window, or a terminal outside seshi).
+    /// None: you (vibecasso's window, or a terminal outside vibecasso).
     from: Option<TermId>,
     /// Its queue filled up (a stalled terminal, a slow SSH link): it's dropped, and can
     /// attach again for a fresh copy of everything.
@@ -195,7 +195,7 @@ struct Daemon {
     /// The projects where you said sessions may always start helpers, read once at start.
     helper_projects: helpers::Projects,
     helper_projects_file: PathBuf,
-    /// Worktrees seshi created; closing the last thing in one removes it.
+    /// Worktrees vibecasso created; closing the last thing in one removes it.
     made_worktrees: Vec<PathBuf>,
     /// Plan limits by agent, as last reported.
     limits: BTreeMap<String, Vec<Limit>>,
@@ -233,11 +233,11 @@ pub fn run() -> Result<()> {
     rt.block_on(async {
         // Refuse to start a second daemon on the same socket.
         if ipc::connect().await.is_ok() {
-            anyhow::bail!("a seshi daemon is already running on {}", ipc::socket_id());
+            anyhow::bail!("a vibecasso daemon is already running on {}", ipc::socket_id());
         }
         let listener = ipc::listen()?;
         tracing::info!("daemon listening on {}", ipc::socket_id());
-        // Lets `seshi kill-server` from another version stop it (it can't talk to this one).
+        // Lets `vibecasso kill-server` from another version stop it (it can't talk to this one).
         let _ = std::fs::write(ipc::pid_file(), std::process::id().to_string());
         let (tx, rx) = mpsc::channel::<Ev>(4096);
 
@@ -297,7 +297,7 @@ fn init_logging() {
             .with_writer(Mutex::new(file))
             .with_ansi(false)
             .with_env_filter(
-                tracing_subscriber::EnvFilter::try_from_env("SESHI_LOG").unwrap_or_else(|_| "info".into()),
+                tracing_subscriber::EnvFilter::try_from_env("VIBECASSO_LOG").unwrap_or_else(|_| "info".into()),
             )
             .try_init();
     }
@@ -364,7 +364,7 @@ pub(super) fn tidied_note(removed: &[(String, bool)], kept: &[(String, String)])
     if parts.is_empty() { "nothing to clean up".into() } else { parts.join("; ") }
 }
 
-/// What a pane may do through seshi (see `[mcp] grants`).
+/// What a pane may do through vibecasso (see `[mcp] grants`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum Grant {
     Read,
@@ -390,7 +390,7 @@ impl Grant {
             Grant::Write => "type into other panes",
             Grant::Start => "start sessions",
             Grant::Respond => "answer another agent's prompt or question",
-            Grant::Admin => "close other panes or stop seshi",
+            Grant::Admin => "close other panes or stop vibecasso",
         }
     }
 }
@@ -409,7 +409,7 @@ impl Daemon {
         if respond_by_setting || grants.iter().any(|x| x == g.name()) {
             return Ok(());
         }
-        anyhow::bail!("this pane may not {} through seshi (seshi grant {from} {} allows it)", g.says(), g.name())
+        anyhow::bail!("this pane may not {} through vibecasso (vibecasso grant {from} {} allows it)", g.says(), g.name())
     }
 
     /// The grant a command needs.
@@ -450,7 +450,7 @@ impl Daemon {
             }
             // Only you hand out grants.
             Command::Grant { .. } if self.clients.get(&client).is_some_and(|c| c.from.is_some()) => {
-                anyhow::bail!("grants are yours to give: run seshi grant outside seshi's panes, or use the pane's menu")
+                anyhow::bail!("grants are yours to give: run vibecasso grant outside vibecasso's panes, or use the pane's menu")
             }
             // Approving a repo's command is approving what it runs: an agent may not.
             Command::ApproveCheck { .. } | Command::ForgetCheckApproval { .. }
@@ -481,11 +481,11 @@ impl Daemon {
     /// A daemon with no panes yet; its process scanner and hook thread are running.
     fn new(cfg: Config, tx: mpsc::Sender<Ev>) -> Daemon {
         contain::children_die_with_us();
-        // Clicking a notification opens its seshi:// link (Windows needs to be told how).
+        // Clicking a notification opens its vibecasso:// link (Windows needs to be told how).
         if !cfg!(test) {
             crate::reveal::register();
         }
-        // Hooks naming another seshi (an older install) can't reach this server.
+        // Hooks naming another vibecasso (an older install) can't reach this server.
         if !cfg!(test) {
             crate::cli::refresh_claude_hooks();
         }
@@ -609,7 +609,7 @@ impl Daemon {
         }
     }
 
-    /// Note how many sessions are mid-turn, so a newer seshi can decide whether replacing
+    /// Note how many sessions are mid-turn, so a newer vibecasso can decide whether replacing
     /// this server needs asking (it may speak a protocol this one doesn't).
     fn publish_activity(&mut self) {
         let activity = self.activity();
@@ -625,7 +625,7 @@ impl Daemon {
     }
 
     fn should_exit(&self) -> bool {
-        // A window still showing seshi (empty projects, the splash) keeps it open: closing
+        // A window still showing vibecasso (empty projects, the splash) keeps it open: closing
         // the last pane mustn't close the app under you.
         if !self.terms.is_empty() || self.pending_ops > 0 || self.clients.values().any(|c| c.attach) {
             return false;
@@ -1013,7 +1013,7 @@ impl Daemon {
                         self.send(
                             client,
                             ServerMsg::Notice(format!(
-                                "Worktree `{branch}` is ready at {}. Finish this turn; seshi then restarts you there, in this same conversation, and every later edit happens in that folder.",
+                                "Worktree `{branch}` is ready at {}. Finish this turn; vibecasso then restarts you there, in this same conversation, and every later edit happens in that folder.",
                                 path.display()
                             )),
                         );
@@ -1248,7 +1248,7 @@ impl Daemon {
         id
     }
 
-    /// Claude, started by seshi, learns how to move itself into a worktree (and may run
+    /// Claude, started by vibecasso, learns how to move itself into a worktree (and may run
     /// just that command without asking).
     fn teach(&self, cmd: &str) -> String {
         let mut words = cmd.split_whitespace();
@@ -1257,12 +1257,12 @@ impl Daemon {
         if !self.cfg.teach_agents || !is_claude || cmd.contains("--append-system-prompt") {
             return cmd.to_string();
         }
-        let note = "You are running inside Seshi, a terminal where one person runs many coding agents. If the user asks you to do the work in a worktree (or on a separate branch so you don't touch their checkout), run `seshi worktree --move <short-branch-name>` with the Bash tool before editing anything, then end your turn: Seshi creates the worktree and restarts you there in this same conversation.";
+        let note = "You are running inside Vibecasso, a terminal where one person runs many coding agents. If the user asks you to do the work in a worktree (or on a separate branch so you don't touch their checkout), run `vibecasso worktree --move <short-branch-name>` with the Bash tool before editing anything, then end your turn: Vibecasso creates the worktree and restarts you there in this same conversation.";
         let rest = cmd[first.len()..].trim_start();
         format!(
             "{first} --append-system-prompt {} --allowedTools {} {rest}",
             self.cfg.quote_for_shell(note),
-            self.cfg.quote_for_shell("Bash(seshi worktree:*)")
+            self.cfg.quote_for_shell("Bash(vibecasso worktree:*)")
         )
         .trim_end()
         .to_string()
@@ -1432,7 +1432,7 @@ mod logic_tests;
 mod tests {
     #[test]
     fn worktrees_of_trusted_repos_are_trusted() {
-        let dir = std::env::temp_dir().join(format!("seshi-trust-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("vibecasso-trust-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let f = dir.join("claude.json");
         std::fs::write(&f, r#"{"projects":{"c:/code/app":{"hasTrustDialogAccepted":true}},"other":1}"#).unwrap();

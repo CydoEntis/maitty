@@ -23,9 +23,9 @@ pub enum Kind {
     Spinner,
 }
 
-/// Editors seshi offers when they're installed.
+/// Editors vibecasso offers when they're installed.
 pub const EDITORS: &[&str] = &["code", "cursor", "zed", "nvim", "vim", "hx", "micro", "nano", "emacs", "subl", "notepad++", "notepad"];
-/// Shells seshi offers when they're installed.
+/// Shells vibecasso offers when they're installed.
 pub const SHELLS: &[&str] = &["pwsh", "powershell", "cmd", "bash", "zsh", "fish", "nu", "elvish", "xonsh"];
 
 /// The choices for a program setting: "default" first, then the candidates installed here,
@@ -88,29 +88,29 @@ impl Cat {
 pub const SETTINGS: &[Setting] = &[
     // General
     Setting { path: "prefix", label: "Leader key", kind: Kind::Key, cat: Cat::General, help: "Press it, let go, then a key. Enter, then press the new leader." },
-    Setting { path: "ui.splash", label: "Splash screen", kind: Kind::Bool, cat: Cat::General, help: "Show the seshi and what happened while you were away when you start." },
-    Setting { path: "ui.update_check", label: "Check for updates", kind: Kind::Bool, cat: Cat::General, help: "On start, and every few hours while open, look for a newer seshi. The Update button installs it." },
+    Setting { path: "ui.splash", label: "Splash screen", kind: Kind::Bool, cat: Cat::General, help: "Show the vibecasso and what happened while you were away when you start." },
+    Setting { path: "ui.update_check", label: "Check for updates", kind: Kind::Bool, cat: Cat::General, help: "On start, and every few hours while open, look for a newer vibecasso. The Update button installs it." },
     Setting { path: "ui.mouse", label: "Mouse", kind: Kind::Bool, cat: Cat::General, help: "Click, hover, scroll and drag. Hold Shift to select text with your terminal instead." },
     Setting { path: "ui.alt_arrows", label: "Alt+arrows move between panes", kind: Kind::Bool, cat: Cat::General, help: "Without the leader. Turn it off if your shell jumps words with Alt+arrows." },
     Setting { path: "ui.which_key", label: "Leader waits for next key", kind: Kind::Bool, cat: Cat::General, help: "After the leader, list every key if you pause. Off: the Menu and ? list them." },
-    Setting { path: "ui.start_dir", label: "Start folder", kind: Kind::Folder, cat: Cat::General, help: "Where plain `seshi` opens, and the shell after you close everything. Empty: where you run it. ~ is home." },
-    Setting { path: "editor", label: "Editor", kind: Kind::Program(EDITORS), cat: Cat::General, help: "Opens files from seshi. Empty: $VISUAL, $EDITOR, then code. nvim, hx, … open inside seshi." },
+    Setting { path: "ui.start_dir", label: "Start folder", kind: Kind::Folder, cat: Cat::General, help: "Where plain `vibecasso` opens, and the shell after you close everything. Empty: where you run it. ~ is home." },
+    Setting { path: "editor", label: "Editor", kind: Kind::Program(EDITORS), cat: Cat::General, help: "Opens files from vibecasso. Empty: $VISUAL, $EDITOR, then code. nvim, hx, … open inside vibecasso." },
     Setting { path: "shell", label: "Shell", kind: Kind::Program(SHELLS), cat: Cat::General, help: "The shell new sessions run. Empty: pwsh / powershell on Windows, $SHELL elsewhere." },
-    Setting { path: "shell_integration", label: "PowerShell folder tracking", kind: Kind::Bool, cat: Cat::General, help: "Lets seshi see where PowerShell sessions cd to." },
+    Setting { path: "shell_integration", label: "PowerShell folder tracking", kind: Kind::Bool, cat: Cat::General, help: "Lets vibecasso see where PowerShell sessions cd to." },
     // Sessions
-    Setting { path: "sessions.agent", label: "Agent", kind: Kind::Choice(crate::config::NEW_AGENTS), cat: Cat::Sessions, help: "Which agent leader s starts. last used is the last one you started from Seshi." },
+    Setting { path: "sessions.agent", label: "Agent", kind: Kind::Choice(crate::config::NEW_AGENTS), cat: Cat::Sessions, help: "Which agent leader s starts. last used is the last one you started from Vibecasso." },
     Setting { path: "sessions.where", label: "Where", kind: Kind::Choice(crate::config::NEW_WHERE), cat: Cat::Sessions, help: "new worktree: its own branch, so sessions side by side don't collide." },
     Setting { path: "sessions.helpers", label: "Sessions may start helpers", kind: Kind::Choice(crate::config::HELPERS_MAY), cat: Cat::Sessions, help: "ask: the first time, the row asks you once (1 allow · 2 always in this project · 3 no). always and never answer for you." },
     Setting { path: "sessions.helpers_at_once", label: "Helpers at once", kind: Kind::Choice(crate::config::HELPERS_AT_ONCE), cat: Cat::Sessions, help: "Per session. Extra helpers wait their turn." },
     Setting { path: "auto_continue", label: "Continue after a limit", kind: Kind::Bool, cat: Cat::Sessions, help: "An agent stopped by its plan limit is told \"continue\" once the limit resets." },
     Setting { path: "ui.attention_sort", label: "Sort sidebar by attention", kind: Kind::Bool, cat: Cat::Sessions, help: "Sessions that need you float to the top of their group. The rest keep their place." },
     Setting { path: "notify.sound", label: "Alert sounds", kind: Kind::Bool, cat: Cat::Sessions, help: "Two rising notes when an agent needs you, one soft note when a background session finishes." },
-    Setting { path: "notify.phone_topic", label: "Phone alerts (ntfy topic)", kind: Kind::Text, cat: Cat::Sessions, help: "Subscribe to a hard-to-guess topic in the free ntfy app and put it here. Empty is off. seshi test-alert tries it." },
+    Setting { path: "notify.phone_topic", label: "Phone alerts (ntfy topic)", kind: Kind::Text, cat: Cat::Sessions, help: "Subscribe to a hard-to-guess topic in the free ntfy app and put it here. Empty is off. vibecasso test-alert tries it." },
     Setting { path: "notify.phone_after", label: "Phone: after waiting (s)", kind: Kind::Int { step: 30, min: 0, max: 3600 }, cat: Cat::Sessions, help: "Only once an agent has waited this long unanswered, so it stays quiet while you're at your desk." },
     Setting { path: "notify.phone_done", label: "Phone: when one finishes too", kind: Kind::Bool, cat: Cat::Sessions, help: "Also when an agent finishes and nobody has looked (after the same wait)." },
     Setting { path: "notify.phone_text", label: "Phone: say what it's doing", kind: Kind::Bool, cat: Cat::Sessions, help: "Put the agent's task in the alert. Off: just which agent and where. On ntfy.sh the topic is the only secret." },
-    Setting { path: "worktree.delete_with_last", label: "Remove worktree with last agent", kind: Kind::Bool, cat: Cat::Sessions, help: "Closing the last thing in a worktree seshi made removes its folder; the branch stays. Never with changes." },
-    Setting { path: "restore.enabled", label: "Bring sessions back after restart", kind: Kind::Bool, cat: Cat::Sessions, help: "Agents keep going in the background; after a reboot seshi rebuilds your sessions." },
+    Setting { path: "worktree.delete_with_last", label: "Remove worktree with last agent", kind: Kind::Bool, cat: Cat::Sessions, help: "Closing the last thing in a worktree vibecasso made removes its folder; the branch stays. Never with changes." },
+    Setting { path: "restore.enabled", label: "Bring sessions back after restart", kind: Kind::Bool, cat: Cat::Sessions, help: "Agents keep going in the background; after a reboot vibecasso rebuilds your sessions." },
     Setting { path: "restore.agents", label: "Resume agents", kind: Kind::Bool, cat: Cat::Sessions, help: "Restart agents in their last conversation (claude --resume, codex resume)." },
     Setting { path: "restore.commands", label: "Re-run commands", kind: Kind::Bool, cat: Cat::Sessions, help: "Run again the commands sessions were started with (lazygit, a dev server, ...)." },
     Setting { path: "restore.output", label: "Keep each pane's recent output", kind: Kind::Bool, cat: Cat::Sessions, help: "Saved to disk so it's there after a restart. May include secrets shown on screen; off deletes it." },
@@ -118,7 +118,7 @@ pub const SETTINGS: &[Setting] = &[
     // Appearance
     Setting { path: "ui.splash_animation", label: "Splash animation", kind: Kind::Choice(&["cold start", "always", "never"]), cat: Cat::Appearance, help: "The wordmark falls into place. cold start: the first start of a version, or when nothing is running. Off with Motion off." },
     Setting { path: "ui.layout", label: "Layout", kind: Kind::Choice(&["floating", "tiled", "compact", "grid"]), cat: Cat::Appearance, help: "floating: boxes with gaps. tiled: boxes edge to edge. compact: no boxes, thin rules. grid: each pane its own colour." },
-    Setting { path: "ui.background", label: "Background", kind: Kind::Choice(&["terminal", "solid"]), cat: Cat::Appearance, help: "terminal: your terminal's background shows through. solid: seshi paints every cell." },
+    Setting { path: "ui.background", label: "Background", kind: Kind::Choice(&["terminal", "solid"]), cat: Cat::Appearance, help: "terminal: your terminal's background shows through. solid: vibecasso paints every cell." },
     Setting { path: "ui.sidebar_position", label: "Sidebar side", kind: Kind::Choice(&["left", "right"]), cat: Cat::Appearance, help: "Which edge the sidebar sits on." },
     Setting { path: "ui.motion", label: "Motion", kind: Kind::Bool, cat: Cat::Appearance, help: "Slides, glides and fades (under 150 ms). Always off over SSH." },
     Setting { path: "ui.corners", label: "Corners", kind: Kind::Choice(&["square", "rounded"]), cat: Cat::Appearance, help: "square: the line sits on the box's edge. rounded: a centred line, round corners. Compact rounds only popups." },
@@ -133,8 +133,8 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "ui.subagent_count", label: "Count on the session row", kind: Kind::Bool, cat: Cat::Agents, help: "Shows \"· 4 agents\" on a working row only when the agent reports helpers. Claude does; Codex doesn't." },
     Setting { path: "worktree.per_agent", label: "Own worktree per agent", kind: Kind::Bool, cat: Cat::Agents, help: "An agent started in a repo's main folder gets its own branch and folder." },
     Setting { path: "worktree.command", label: "Start in new worktrees", kind: Kind::Text, cat: Cat::Agents, help: "A command to run in every new worktree (e.g. claude). Empty: a shell." },
-    Setting { path: "mcp.approve", label: "Agents may approve prompts", kind: Kind::Choice(&["never", "safe", "always"]), cat: Cat::Agents, help: "Through seshi mcp. safe: only commands on [mcp] safe (tests, lint, git status…). Saying no is always allowed." },
-    Setting { path: "mcp.scope", label: "Agents can reach", kind: Kind::Choice(&["project", "all"]), cat: Cat::Agents, help: "project: only sessions in the calling agent's own repo. Set up with: seshi integrate mcp" },
+    Setting { path: "mcp.approve", label: "Agents may approve prompts", kind: Kind::Choice(&["never", "safe", "always"]), cat: Cat::Agents, help: "Through vibecasso mcp. safe: only commands on [mcp] safe (tests, lint, git status…). Saying no is always allowed." },
+    Setting { path: "mcp.scope", label: "Agents can reach", kind: Kind::Choice(&["project", "all"]), cat: Cat::Agents, help: "project: only sessions in the calling agent's own repo. Set up with: vibecasso integrate mcp" },
     Setting { path: "detection.working_window_ms", label: "Working window (ms)", kind: Kind::Int { step: 250, min: 250, max: 10_000 }, cat: Cat::Agents, help: "For agents without hooks: output this recent counts as working." },
 ];
 
@@ -251,7 +251,7 @@ mod tests {
         assert!(SETTINGS.iter().all(|s| s.path != "sleep_after"), "automatic agent sleep is no longer configurable");
         assert!(SETTINGS.iter().all(|s| s.path != "ui.wake_animation"), "wake animations are no longer configurable");
         for s in SETTINGS.iter().filter(|s| s.path != "shell") {
-            // `shell` is unset by default (seshi picks one), so it has no value yet.
+            // `shell` is unset by default (vibecasso picks one), so it has no value yet.
             assert!(current(&cfg, s.path).is_some(), "missing setting {}", s.path);
         }
         let lines = SETTINGS.iter().find(|s| s.path == "scrollback").unwrap();
@@ -265,12 +265,12 @@ mod tests {
 
     #[test]
     fn write_keeps_comments() {
-        let dir = std::env::temp_dir().join(format!("seshi-settings-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("vibecasso-settings-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("config.toml");
         std::fs::write(&file, "# my notes\ntheme = \"nord\"\n\n[ui]\n# my ui notes\nsidebar = true\n").unwrap();
-        // SAFETY: tests touching SESHI_CONFIG run in this one test only.
-        unsafe { std::env::set_var("SESHI_CONFIG", &file) };
+        // SAFETY: tests touching VIBECASSO_CONFIG run in this one test only.
+        unsafe { std::env::set_var("VIBECASSO_CONFIG", &file) };
         write("ui.which_key_delay_ms", 500.into()).unwrap();
         write("worktree.command", "claude".into()).unwrap();
         let (tx, _) = super::super::mpsc::unbounded_channel();
@@ -288,15 +288,15 @@ mod tests {
         let out = std::fs::read_to_string(&file).unwrap();
         assert!(out.contains("theme = \"zenbones-light\""));
         // A directory cannot be a config file: failed saves retain the browser and applied theme.
-        unsafe { std::env::set_var("SESHI_CONFIG", &dir) };
+        unsafe { std::env::set_var("VIBECASSO_CONFIG", &dir) };
         app.open_themes();
         app.on_paste("solarized dark".into());
         app.on_key(super::super::KeyEvent::new(super::super::KeyCode::Enter, super::super::KeyModifiers::NONE));
         app.on_bg(bg_rx.blocking_recv().unwrap());
         assert_eq!(app.cfg.theme, "zenbones-light");
         assert!(matches!(&app.mode, super::super::Mode::Themes { query, saving: false, .. } if query == "solarized dark"));
-        // SAFETY: this existing config-save test owns SESHI_CONFIG; all prior jobs have completed.
-        unsafe { std::env::set_var("SESHI_CONFIG", &file) };
+        // SAFETY: this existing config-save test owns VIBECASSO_CONFIG; all prior jobs have completed.
+        unsafe { std::env::set_var("VIBECASSO_CONFIG", &file) };
         app.open_spinners();
         app.spinner_pick(2);
         app.on_key(super::super::KeyEvent::new(super::super::KeyCode::Enter, super::super::KeyModifiers::NONE));
@@ -306,7 +306,7 @@ mod tests {
         assert_eq!(Config::load().unwrap().ui.spinner, app.cfg.ui.spinner);
         let saved_spinner = app.cfg.ui.spinner.clone();
         // SAFETY: the spinner save job completed before changing this test's isolated path.
-        unsafe { std::env::set_var("SESHI_CONFIG", &dir) };
+        unsafe { std::env::set_var("VIBECASSO_CONFIG", &dir) };
         app.open_spinners();
         app.on_key(super::super::KeyEvent::new(super::super::KeyCode::End, super::super::KeyModifiers::NONE));
         app.on_key(super::super::KeyEvent::new(super::super::KeyCode::Enter, super::super::KeyModifiers::NONE));
@@ -317,14 +317,14 @@ mod tests {
         assert_eq!(app.cfg.ui.spinner, saved_spinner, "a failed save keeps the applied choice");
         assert!(matches!(&app.mode, super::super::Mode::Spinners(v) if !v.saving));
         // SAFETY: the failed save job completed before restoring the isolated test file.
-        unsafe { std::env::set_var("SESHI_CONFIG", &file) };
+        unsafe { std::env::set_var("VIBECASSO_CONFIG", &file) };
         app.on_key(super::super::KeyEvent::new(super::super::KeyCode::Enter, super::super::KeyModifiers::NONE));
         app.on_bg(bg_rx.blocking_recv().unwrap());
         assert_eq!(app.cfg.ui.spinner, ["a", "b", "c"], "the custom draft survives a failed save");
         let legacy_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"];
         write("ui.spinner", legacy_frames.into_iter().collect::<toml_edit::Array>().into()).unwrap();
         assert_eq!(Config::load().unwrap().ui.spinner, legacy_frames, "custom frames must not be silently migrated");
-        unsafe { std::env::remove_var("SESHI_CONFIG") };
+        unsafe { std::env::remove_var("VIBECASSO_CONFIG") };
         assert!(out.contains("# my notes") && out.contains("# my ui notes"), "{out}");
         assert!(out.contains("which_key_delay_ms = 500"), "{out}");
         assert!(out.contains("[worktree]") && out.contains("command = \"claude\""), "{out}");

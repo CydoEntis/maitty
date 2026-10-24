@@ -253,11 +253,11 @@ pub enum Action {
     PaneInfo,
     SendPrefix,
     KillServer,
-    /// Install the newest seshi without interrupting running sessions.
+    /// Install the newest vibecasso without interrupting running sessions.
     Update,
-    /// Ask now whether a newer seshi is out, without waiting for the next check.
+    /// Ask now whether a newer vibecasso is out, without waiting for the next check.
     CheckUpdate,
-    /// Replace the running server and this window with the installed seshi.
+    /// Replace the running server and this window with the installed vibecasso.
     Restart,
     /// The clean-up list for the worktrees of the project you're in.
     TidyWorktrees,
@@ -348,9 +348,9 @@ impl Action {
             Action::PaneInfo => "Pane info".into(),
             Action::SendPrefix => "Send the leader key to the pane".into(),
             Action::KillServer => "Kill server".into(),
-            Action::Update => "Update seshi".into(),
+            Action::Update => "Update vibecasso".into(),
             Action::CheckUpdate => "Check for updates".into(),
-            Action::Restart => "Restart seshi".into(),
+            Action::Restart => "Restart vibecasso".into(),
             Action::TidyWorktrees => "Clean up worktrees".into(),
             Action::Menu => "Menu".into(),
             Action::Worktrees => "Worktrees…".into(),
@@ -590,7 +590,7 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("d", "changes"),
     ("g", "worktrees"),
     ("b", "switch-branch"),
-    // Seshi
+    // Vibecasso
     ("space", "palette"),
     ("m", "menu"),
     (",", "settings"),

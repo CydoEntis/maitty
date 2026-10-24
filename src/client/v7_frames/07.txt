@@ -6,13 +6,13 @@
 │ ▎   failed: test · exit 1      │ │                                                  │ │ Command  npm test                                                    │
 │ ▎   footer shows current year  │ │                                                  │ │ Folder   ~\dev\affiliate-site-worktrees\fix-footer                   │
 │   ⣶⡆ add-payments          now │ │                                                  │ │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51         │
-│     claude · working           │ │                                                  │ │ Seen by  Seshi ran this itself. The agent said "tests pass".         │
+│     claude · working           │ │                                                  │ │ Seen by  Vibecasso ran this itself. The agent said "tests pass".     │
 │                                │ │                                                  │ │                                                                      │
 │  ▾ pixls                no git │ │                                                  │ │  OUTPUT  all 13 lines                                                │
 │   ● warm-finch              3m │ │                                                  │ │ 1    > affiliate-site@1.4.0 test                                     │
 │     asks: use pnpm or npm?     │ │                                                  │ │ 2    > vitest run                                                    │
 │                                │ │                                                  │ │ 3                                                                    │
-│  ▾ seshi                 ⎇ dev │ │                                                  │ │ 4     ✓ src/components/Footer.test.tsx (3)                           │
+│  ▾ orbit                 ⎇ dev │ │                                                  │ │ 4     ✓ src/components/Footer.test.tsx (3)                           │
 │   ✓ quick-fox               9h │ │                                                  │ │ 5     ✓ src/lib/price.test.ts (9)                                    │
 │     finished                   │ │                                                  │ │ 6     ✗ src/pages/legal.test.tsx > footer shows current year         │
 │   z old-moth                2d │ │                                                  │ │ 7       AssertionError: expected '© 2025 Affiliate Co.'              │
@@ -52,11 +52,11 @@
 │ ▎   failed: test · exit│ │ Command  npm test                                                     │
 │   ⣶⡆ add-payments  now │ │ Folder   ~\dev\affiliate-site-worktrees\fix-footer                    │
 │                        │ │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51          │
-│  ▾ pixls        no git │ │ Seen by  Seshi ran this itself. The agent said "tests pass".          │
+│  ▾ pixls        no git │ │ Seen by  Vibecasso ran this itself. The agent said "tests pass".      │
 │   ● warm-finch      3m │ │                                                                       │
 │     asks: use pnpm or n│ │  OUTPUT  all 13 lines                                                 │
 │                        │ │ 1    > affiliate-site@1.4.0 test                                      │
-│  ▾ seshi         ⎇ dev │ │ 2    > vitest run                                                     │
+│  ▾ orbit         ⎇ dev │ │ 2    > vitest run                                                     │
 │   ✓ quick-fox       9h │ │ 3                                                                     │
 │   z old-moth        2d │ │ 4     ✓ src/components/Footer.test.tsx (3)                            │
 │                        │ │ 5     ✓ src/lib/price.test.ts (9)                                     │
@@ -83,11 +83,11 @@
 │ ▎   failed: test · exit│ │ Command  npm test                                 │
 │   ⣶⡆ add-payments      │ │ Folder   ~\dev\affiliate-site-worktrees\fix-foote │
 │                        │ │ Ran      14:22:05 · took 14.2s · after turn 3 end │
-│  ▾ pixls        no git │ │ Seen by  Seshi ran this itself. The agent said "t │
+│  ▾ pixls        no git │ │ Seen by  Vibecasso ran this itself. The agent sai │
 │   ● warm-finch         │ │                                                   │
 │     asks: use pnpm or n│ │  OUTPUT  last 10 of 13 lines                      │
 │                        │ │ 4     ✓ src/components/Footer.test.tsx (3)        │
-│  ▾ seshi         ⎇ dev │ │ 5     ✓ src/lib/price.test.ts (9)                 │
+│  ▾ orbit         ⎇ dev │ │ 5     ✓ src/lib/price.test.ts (9)                 │
 │   ✓ quick-fox          │ │ 6     ✗ src/pages/legal.test.tsx > footer shows…  │
 │   z old-moth           │ │ 7       AssertionError: expected '© 2025 Affili…  │
 │                        │ │ 8                       to equal '© 2026 Affili…  │
@@ -108,13 +108,13 @@
 │ ▎   failed: test · exit 1      ││                                                    ││ Command  npm test                                                    │
 │ ▎   footer shows current year  ││                                                    ││ Folder   ~\dev\affiliate-site-worktrees\fix-footer                   │
 │   ⣶⡆ add-payments          now ││                                                    ││ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51         │
-│     claude · working           ││                                                    ││ Seen by  Seshi ran this itself. The agent said "tests pass".         │
+│     claude · working           ││                                                    ││ Seen by  Vibecasso ran this itself. The agent said "tests pass".     │
 │                                ││                                                    ││                                                                      │
 │  ▾ pixls                no git ││                                                    ││  OUTPUT  all 13 lines                                                │
 │   ● warm-finch              3m ││                                                    ││ 1    > affiliate-site@1.4.0 test                                     │
 │     asks: use pnpm or npm?     ││                                                    ││ 2    > vitest run                                                    │
 │                                ││                                                    ││ 3                                                                    │
-│  ▾ seshi                 ⎇ dev ││                                                    ││ 4     ✓ src/components/Footer.test.tsx (3)                           │
+│  ▾ orbit                 ⎇ dev ││                                                    ││ 4     ✓ src/components/Footer.test.tsx (3)                           │
 │   ✓ quick-fox               9h ││                                                    ││ 5     ✓ src/lib/price.test.ts (9)                                    │
 │     finished                   ││                                                    ││ 6     ✗ src/pages/legal.test.tsx > footer shows current year         │
 │   z old-moth                2d ││                                                    ││ 7       AssertionError: expected '© 2025 Affiliate Co.'              │
@@ -154,11 +154,11 @@
 │ ▎   failed: test · exit││ Command  npm test                                                      │
 │   ⣶⡆ add-payments  now ││ Folder   ~\dev\affiliate-site-worktrees\fix-footer                     │
 │                        ││ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51           │
-│  ▾ pixls        no git ││ Seen by  Seshi ran this itself. The agent said "tests pass".           │
+│  ▾ pixls        no git ││ Seen by  Vibecasso ran this itself. The agent said "tests pass".       │
 │   ● warm-finch      3m ││                                                                        │
 │     asks: use pnpm or n││  OUTPUT  all 13 lines                                                  │
 │                        ││ 1    > affiliate-site@1.4.0 test                                       │
-│  ▾ seshi         ⎇ dev ││ 2    > vitest run                                                      │
+│  ▾ orbit         ⎇ dev ││ 2    > vitest run                                                      │
 │   ✓ quick-fox       9h ││ 3                                                                      │
 │   z old-moth        2d ││ 4     ✓ src/components/Footer.test.tsx (3)                             │
 │                        ││ 5     ✓ src/lib/price.test.ts (9)                                      │
@@ -185,11 +185,11 @@
 │ ▎   failed: test · exit││ Command  npm test                                  │
 │   ⣶⡆ add-payments      ││ Folder   ~\dev\affiliate-site-worktrees\fix-footer │
 │                        ││ Ran      14:22:05 · took 14.2s · after turn 3 ende │
-│  ▾ pixls        no git ││ Seen by  Seshi ran this itself. The agent said "te │
+│  ▾ pixls        no git ││ Seen by  Vibecasso ran this itself. The agent said │
 │   ● warm-finch         ││                                                    │
 │     asks: use pnpm or n││  OUTPUT  last 10 of 13 lines                       │
 │                        ││ 4     ✓ src/components/Footer.test.tsx (3)         │
-│  ▾ seshi         ⎇ dev ││ 5     ✓ src/lib/price.test.ts (9)                  │
+│  ▾ orbit         ⎇ dev ││ 5     ✓ src/lib/price.test.ts (9)                  │
 │   ✓ quick-fox          ││ 6     ✗ src/pages/legal.test.tsx > footer shows …  │
 │   z old-moth           ││ 7       AssertionError: expected '© 2025 Affilia…  │
 │                        ││ 8                       to equal '© 2026 Affilia…  │
@@ -210,13 +210,13 @@
  ▎   failed: test · exit 1       │                                                      │ Command  npm test
  ▎   footer shows current year   │                                                      │ Folder   ~\dev\affiliate-site-worktrees\fix-footer
    ⣶⡆ add-payments            now│                                                      │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
-     claude · working            │                                                      │ Seen by  Seshi ran this itself. The agent said "tests pass".
+     claude · working            │                                                      │ Seen by  Vibecasso ran this itself. The agent said "tests pass".
                                  │                                                      │
   ▾ pixls                  no git│                                                      │  OUTPUT  all 13 lines
    ● warm-finch                3m│                                                      │ 1    > affiliate-site@1.4.0 test
      asks: use pnpm or npm?      │                                                      │ 2    > vitest run
                                  │                                                      │ 3
-  ▾ seshi                   ⎇ dev│                                                      │ 4     ✓ src/components/Footer.test.tsx (3)
+  ▾ orbit                   ⎇ dev│                                                      │ 4     ✓ src/components/Footer.test.tsx (3)
    ✓ quick-fox                 9h│                                                      │ 5     ✓ src/lib/price.test.ts (9)
      finished                    │                                                      │ 6     ✗ src/pages/legal.test.tsx > footer shows current year
    z old-moth                  2d│                                                      │ 7       AssertionError: expected '© 2025 Affiliate Co.'
@@ -256,11 +256,11 @@
  ▎   failed: test · exit │ Command  npm test
    ⣶⡆ add-payments    now│ Folder   ~\dev\affiliate-site-worktrees\fix-footer
                          │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
-  ▾ pixls          no git│ Seen by  Seshi ran this itself. The agent said "tests pass".
+  ▾ pixls          no git│ Seen by  Vibecasso ran this itself. The agent said "tests pass".
    ● warm-finch        3m│
      asks: use pnpm or np│  OUTPUT  all 13 lines
                          │ 1    > affiliate-site@1.4.0 test
-  ▾ seshi           ⎇ dev│ 2    > vitest run
+  ▾ orbit           ⎇ dev│ 2    > vitest run
    ✓ quick-fox         9h│ 3
    z old-moth          2d│ 4     ✓ src/components/Footer.test.tsx (3)
                          │ 5     ✓ src/lib/price.test.ts (9)
@@ -287,11 +287,11 @@
  ▎   failed: test · exit │ Command  npm test
    ⣶⡆ add-payments       │ Folder   ~\dev\affiliate-site-worktrees\fix-footer
                          │ Ran      14:22:05 · took 14.2s · after turn 3 ended
-  ▾ pixls          no git│ Seen by  Seshi ran this itself. The agent said "tes
+  ▾ pixls          no git│ Seen by  Vibecasso ran this itself. The agent said
    ● warm-finch          │
      asks: use pnpm or np│  OUTPUT  last 10 of 13 lines
                          │ 4     ✓ src/components/Footer.test.tsx (3)
-  ▾ seshi           ⎇ dev│ 5     ✓ src/lib/price.test.ts (9)
+  ▾ orbit           ⎇ dev│ 5     ✓ src/lib/price.test.ts (9)
    ✓ quick-fox           │ 6     ✗ src/pages/legal.test.tsx > footer shows c…
    z old-moth            │ 7       AssertionError: expected '© 2025 Affiliat…
                          │ 8                       to equal '© 2026 Affiliat…
@@ -312,11 +312,11 @@
  |   failed: test · exit │ Command  npm test
    O  add-payments       │ Folder   ~\dev\affiliate-site-worktrees\fix-footer
                          │ Ran      14:22:05 · took 14.2s · after turn 3 ended
-  v pixls          no git│ Seen by  Seshi ran this itself. The agent said "tes
+  v pixls          no git│ Seen by  Vibecasso ran this itself. The agent said
    ! warm-finch          │
      asks: use pnpm or np│  OUTPUT  last 10 of 13 lines
                          │ 4     ✓ src/components/Footer.test.tsx (3)
-  v seshi        git: dev│ 5     ✓ src/lib/price.test.ts (9)
+  v orbit        git: dev│ 5     ✓ src/lib/price.test.ts (9)
    + quick-fox           │ 6     ✗ src/pages/legal.test.tsx > footer shows c…
    z old-moth            │ 7       AssertionError: expected '© 2025 Affiliat…
                          │ 8                       to equal '© 2026 Affiliat…

@@ -12,13 +12,13 @@
 │   ● warm-finch              3m │ │                                                                                                                           │
 │     asks: use pnpm or npm?     │ │                                                                                                                           │
 │                                │ │    A REPO WANTS TO RUN A COMMAND                                          Esc close                                       │
-│  ▾ seshi                 ⎇ dev │ │  │                                                                                  │                                     │
+│  ▾ orbit                 ⎇ dev │ │  │                                                                                  │                                     │
 │   ✓ quick-fox               9h │ │  │ affiliate-site ships its own check. It has never run here.                       │                                     │
 │     finished                   │ │  │                                                                                  │                                     │
 │   z old-moth                2d │ │  │  $ npm test                                                                      │                                     │
 │     asleep zzZ                 │ │  │                                                                                  │                                     │
 │                                │ │  │ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │                                     │
-│                                │ │  │ From     .seshi/checks.toml · added in a1b2c3d, 3 days ago                       │                                     │
+│                                │ │  │ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago                   │                                     │
 │                                │ │  │ When     after every agent turn, with your permissions                           │                                     │
 │                                │ │  │                                                                                  │                                     │
 │                                │ │  │ Read it. It can do anything you can in that folder.                              │                                     │
@@ -56,8 +56,8 @@
 │   ● wa│                                                                                  │       │
 │     as│  $ npm test                                                                      │       │
 │       │                                                                                  │       │
-│  ▾ ses│ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │       │
-│   ✓ qu│ From     .seshi/checks.toml · added in a1b2c3d, 3 days ago                       │       │
+│  ▾ orb│ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │       │
+│   ✓ qu│ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago                   │       │
 │   z ol│ When     after every agent turn, with your permissions                           │       │
 │       │                                                                                  │       │
 │       │ Read it. It can do anything you can in that folder.                              │       │
@@ -84,7 +84,7 @@
 ││                                                                            │
 ││  $ npm test                                                                │
 ││ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                         │
-││ From     .seshi/checks.toml · added in a1b2c3d, 3 days ago                 │
+││ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago             │
 ││ When     after every agent turn, with your permissions                     │
 ││                                                                            │
 ││ Read it. It can do anything you can in that folder.                        │
@@ -114,13 +114,13 @@
 │   ● warm-finch              3m ││                                                                                                                            │
 │     asks: use pnpm or npm?     ││                                                                                                                            │
 │                                ││     A REPO WANTS TO RUN A COMMAND                                          Esc close                                       │
-│  ▾ seshi                 ⎇ dev ││   │                                                                                  │                                     │
+│  ▾ orbit                 ⎇ dev ││   │                                                                                  │                                     │
 │   ✓ quick-fox               9h ││   │ affiliate-site ships its own check. It has never run here.                       │                                     │
 │     finished                   ││   │                                                                                  │                                     │
 │   z old-moth                2d ││   │  $ npm test                                                                      │                                     │
 │     asleep zzZ                 ││   │                                                                                  │                                     │
 │                                ││   │ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │                                     │
-│                                ││   │ From     .seshi/checks.toml · added in a1b2c3d, 3 days ago                       │                                     │
+│                                ││   │ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago                   │                                     │
 │                                ││   │ When     after every agent turn, with your permissions                           │                                     │
 │                                ││   │                                                                                  │                                     │
 │                                ││   │ Read it. It can do anything you can in that folder.                              │                                     │
@@ -158,8 +158,8 @@
 │   ● wa│                                                                                  │       │
 │     as│  $ npm test                                                                      │       │
 │       │                                                                                  │       │
-│  ▾ ses│ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │       │
-│   ✓ qu│ From     .seshi/checks.toml · added in a1b2c3d, 3 days ago                       │       │
+│  ▾ orb│ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │       │
+│   ✓ qu│ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago                   │       │
 │   z ol│ When     after every agent turn, with your permissions                           │       │
 │       │                                                                                  │       │
 │       │ Read it. It can do anything you can in that folder.                              │       │
@@ -186,7 +186,7 @@
 ││                                                                            │
 ││  $ npm test                                                                │
 ││ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                         │
-││ From     .seshi/checks.toml · added in a1b2c3d, 3 days ago                 │
+││ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago             │
 ││ When     after every agent turn, with your permissions                     │
 ││                                                                            │
 ││ Read it. It can do anything you can in that folder.                        │
@@ -216,13 +216,13 @@
    ● warm-finch                3m│
      asks: use pnpm or npm?      │
                                  │      A REPO WANTS TO RUN A COMMAND                                          Esc close
-  ▾ seshi                   ⎇ dev│    │                                                                                  │
+  ▾ orbit                   ⎇ dev│    │                                                                                  │
    ✓ quick-fox                 9h│    │ affiliate-site ships its own check. It has never run here.                       │
      finished                    │    │                                                                                  │
    z old-moth                  2d│    │  $ npm test                                                                      │
      asleep zzZ                  │    │                                                                                  │
                                  │    │ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │
-                                 │    │ From     .seshi/checks.toml · added in a1b2c3d, 3 days ago                       │
+                                 │    │ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago                   │
                                  │    │ When     after every agent turn, with your permissions                           │
                                  │    │                                                                                  │
                                  │    │ Read it. It can do anything you can in that folder.                              │
@@ -260,8 +260,8 @@
    ● war│                                                                                  │
      ask│  $ npm test                                                                      │
         │                                                                                  │
-  ▾ sesh│ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │
-   ✓ qui│ From     .seshi/checks.toml · added in a1b2c3d, 3 days ago                       │
+  ▾ orbi│ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │
+   ✓ qui│ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago                   │
    z old│ When     after every agent turn, with your permissions                           │
         │                                                                                  │
         │ Read it. It can do anything you can in that folder.                              │
@@ -288,7 +288,7 @@
  │                                                                            │
  │  $ npm test                                                                │
  │ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                         │
- │ From     .seshi/checks.toml · added in a1b2c3d, 3 days ago                 │
+ │ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago             │
  │ When     after every agent turn, with your permissions                     │
  │                                                                            │
  │ Read it. It can do anything you can in that folder.                        │
@@ -313,7 +313,7 @@
  │                                                                            │
  │  $ npm test                                                                │
  │ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                         │
- │ From     .seshi/checks.toml · added in a1b2c3d, 3 days ago                 │
+ │ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago             │
  │ When     after every agent turn, with your permissions                     │
  │                                                                            │
  │ Read it. It can do anything you can in that folder.                        │

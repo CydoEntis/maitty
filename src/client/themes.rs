@@ -309,7 +309,7 @@ fn draw_preview(buf: &mut ratatui::buffer::Buffer, area: Rect, name: &str) {
         area.x + 2,
         area.y + 4,
         &[seg(
-            "UI sample; Enter applies across Seshi.",
+            "UI sample; Enter applies across Vibecasso.",
             st.fg(theme.muted),
         )],
         area.right(),
@@ -336,7 +336,7 @@ mod tests {
             .draw(|frame| super::super::render::draw(app, frame))
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
-        if std::env::var("SESHI_SHOW").is_ok() {
+        if std::env::var("VIBECASSO_SHOW").is_ok() {
             for y in 0..height {
                 println!(
                     "{}",

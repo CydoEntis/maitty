@@ -64,7 +64,7 @@ impl App {
             Mode::Prompt { input, .. } | Mode::Worktrees { query: input, .. } => {
                 input.push_str(s.lines().next().unwrap_or(""));
             }
-            // Seshi's own text boxes take the paste, not the pane behind them.
+            // Vibecasso's own text boxes take the paste, not the pane behind them.
             Mode::Find(v) => v.query.push_str(s.lines().next().unwrap_or("")),
             Mode::GoTo { query, .. } => query.push_str(s.lines().next().unwrap_or("").trim()),
             Mode::KeyMap(km) if km.view == screen::KeyView::Search && km.step.is_none() => {
@@ -420,7 +420,7 @@ impl App {
         }
         // Programs that ask for the mouse (Claude Code's full-screen view, vim, lazygit,
         // htop, …) get it, like in any terminal: clicks, wheel, drags. Shift keeps it for
-        // seshi (select text); right-click stays seshi's menu.
+        // vibecasso (select text); right-click stays vibecasso's menu.
         if self.screen.drag.is_none()
             && !self.splash
             && matches!(self.mode, Mode::Normal)
@@ -429,7 +429,7 @@ impl App {
             && let Some((term, inner)) = self.panes.iter().find(|(_, r)| r.contains(pos)).copied()
             && (self.screen.right_clicks.contains(&term)
                 || !matches!(m.kind, MouseEventKind::Down(MouseButton::Right) | MouseEventKind::Up(MouseButton::Right) | MouseEventKind::Drag(MouseButton::Right)))
-            // Full-screen programs own their scrolling. On a normal screen, use Seshi history
+            // Full-screen programs own their scrolling. On a normal screen, use Vibecasso history
             // while it exists; pass the wheel to a mouse-aware program when that history is empty.
             && (!matches!(m.kind, MouseEventKind::ScrollUp | MouseEventKind::ScrollDown)
                 || self.parsers.get(&term).is_some_and(|p| p.screen().alternate_screen())
@@ -734,7 +734,7 @@ impl App {
                 let agent = self.snap.terms.get(&term).is_some_and(|t| t.agent.is_some());
                 let no_history = self.history(term).1 == 0;
                 if (alt || no_history) && agent && !m.modifiers.contains(KeyModifiers::SHIFT) {
-                    // A full-screen view, or a normal-screen agent with no Seshi history:
+                    // A full-screen view, or a normal-screen agent with no Vibecasso history:
                     // arrow keys would walk its prompt history, so page it at most every 150 ms.
                     if self.wheel_page.is_none_or(|at| at.elapsed() >= Duration::from_millis(150)) {
                         self.wheel_page = Some(Instant::now());

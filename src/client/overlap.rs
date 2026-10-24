@@ -104,7 +104,7 @@ mod tests {
 
     /// A repo on `main` with one commit (checkout.ts, shared.ts), and a way to run git in it.
     fn repo(tag: &str) -> (PathBuf, PathBuf, impl Fn(&Path, &[&str]) -> String) {
-        let root = std::env::temp_dir().join(format!("seshi-overlap-{tag}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("vibecasso-overlap-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let repo = root.join("repo");
         std::fs::create_dir_all(&repo).unwrap();
@@ -147,7 +147,7 @@ mod tests {
         git(&repo, &["add", "."]);
         git(&repo, &["commit", "-qm", "dev work"]);
         // Two agents each cut a branch from dev and change one file of their own, plus one
-        // they both touch. The main folder goes back to main, where seshi used to measure from.
+        // they both touch. The main folder goes back to main, where vibecasso used to measure from.
         let (a, b) = (root.join("a"), root.join("b"));
         git(&repo, &["worktree", "add", "-q", "-b", "feat-a", a.to_str().unwrap(), "dev"]);
         git(&repo, &["worktree", "add", "-q", "-b", "feat-b", b.to_str().unwrap(), "dev"]);

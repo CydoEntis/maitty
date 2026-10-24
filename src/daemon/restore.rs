@@ -279,7 +279,7 @@ impl Daemon {
                                     if activity.state.active() {
                                         activity.state = SubagentState::ConnectionLost;
                                         activity.updated_at = now;
-                                        activity.latest_activity = Some("Seshi restarted while the child was active; completion unconfirmed".into());
+                                        activity.latest_activity = Some("Vibecasso restarted while the child was active; completion unconfirmed".into());
                                     }
                                     activity
                                 }).collect();

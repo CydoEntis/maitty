@@ -325,9 +325,9 @@ mod tests {
 
     #[test]
     fn grep_output_and_fuzzy_files() {
-        let h = parse_grep("src/main.rs:12:fn main() {\nREADME.md:3:Seshi: many heads\n");
+        let h = parse_grep("src/main.rs:12:fn main() {\nREADME.md:3:Vibecasso: many heads\n");
         assert_eq!(h[0], GrepHit { path: "src/main.rs".into(), line: 12, text: "fn main() {".into() });
-        assert_eq!(h[1].text, "Seshi: many heads");
+        assert_eq!(h[1].text, "Vibecasso: many heads");
         let mut v = FindView::new(PathBuf::from("."), 0);
         v.files = Some(vec!["src/client/screen.rs".into(), "src/main.rs".into(), "README.md".into()]);
         v.query = "scree".into();

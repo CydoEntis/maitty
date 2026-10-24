@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Adapted from Herdr 143bf5fd4781d164260c63fe28e7dc08054ad32f; see vendor/herdr-detection/NOTICE.md.
-// Local changes: Seshi atomic writes and file validation; omit unused public inspection helpers.
+// Local changes: Vibecasso atomic writes and file validation; omit unused public inspection helpers.
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};

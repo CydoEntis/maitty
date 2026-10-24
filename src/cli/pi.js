@@ -1,12 +1,12 @@
-// Written by `seshi integrate pi`: inert outside Seshi; requires Pi's agent_settled and ui_prompt events.
+// Written by `vibecasso integrate pi`: inert outside Vibecasso; requires Pi's agent_settled and ui_prompt events.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execute = promisify(execFile);
-const executable = __SESHI_EXE__;
+const executable = __VIBECASSO_EXE__;
 
 export default function (pi) {
-  if (!process.env.SESHI_TERM_ID) return;
+  if (!process.env.VIBECASSO_TERM_ID) return;
   let running = false;
   let prompts = 0;
   let warned = false;
@@ -19,7 +19,7 @@ export default function (pi) {
       await execute(executable, args, { timeout: 3000, windowsHide: true });
       warned = false;
     } catch {
-      if (!warned && ctx.hasUI) ctx.ui.notify("Seshi status report failed. Check that Seshi and its daemon are up to date.", "warning");
+      if (!warned && ctx.hasUI) ctx.ui.notify("Vibecasso status report failed. Check that Vibecasso and its daemon are up to date.", "warning");
       warned = true;
     }
   };

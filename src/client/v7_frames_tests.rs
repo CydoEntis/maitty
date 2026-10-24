@@ -200,7 +200,7 @@ fn open(id: &str) -> App {
             let check = &mut app.snap.terms.get_mut(&1).unwrap().checks[0];
             check.previous_command = Some("npm test".into());
             check.command = "npm test && node scripts/seed.js".into();
-            check.source = CheckSource::Repo { file: ".seshi/checks.toml".into(), commit: Some("9f3c2a1".into()), committed_at: Some(super::v7_fixture::now() - 2 * HOUR), uncommitted: false };
+            check.source = CheckSource::Repo { file: ".vibecasso/checks.toml".into(), commit: Some("9f3c2a1".into()), committed_at: Some(super::v7_fixture::now() - 2 * HOUR), uncommitted: false };
         }
         _ => {}
     }
@@ -505,7 +505,7 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
             // file's commit (when you chose is not part of the result).
             if stage == Stage::Never {
                 swap_tail(row, "14:22:05 · took", "did not run · after turn 3 ended 14:21:51", x0, x1);
-                swap_tail(row, ".seshi/checks.toml · you chose never", ".seshi/checks.toml · a1b2c3d · you chose never", x0, x1);
+                swap_tail(row, ".vibecasso/checks.toml · you chose never", ".vibecasso/checks.toml · a1b2c3d · you chose never", x0, x1);
             }
         }
     }
@@ -955,12 +955,12 @@ fn a_working_row_s_mark_is_the_only_working_colour() {
     }
 }
 
-/// Needs you and failed are two colours in seshi-dark, as in the handoff (`needs`, `err`):
+/// Needs you and failed are two colours in vibecasso-dark, as in the handoff (`needs`, `err`):
 /// the Inbox's group chips, the row's glyph and question, and the failed result.
 #[test]
-fn needs_you_is_amber_and_failed_red_in_seshi_dark() {
+fn needs_you_is_amber_and_failed_red_in_vibecasso_dark() {
     let mut app = open("11");
-    app.theme = crate::theme::Theme::named("seshi-dark");
+    app.theme = crate::theme::Theme::named("vibecasso-dark");
     let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
     let t = &app.theme;
     assert_ne!(t.blocked, t.err);
@@ -978,7 +978,7 @@ fn needs_you_is_amber_and_failed_red_in_seshi_dark() {
 #[test]
 fn a_check_that_could_not_run_is_violet_not_red_or_amber() {
     let mut app = open("06");
-    app.theme = crate::theme::Theme::named("seshi-dark");
+    app.theme = crate::theme::Theme::named("vibecasso-dark");
     let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
     let t = &app.theme;
     let (x, y) = at(&buf, "fix-footer        ");

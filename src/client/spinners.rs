@@ -306,7 +306,7 @@ mod tests {
             })
             .collect::<Vec<_>>()
             .join("\n");
-        if std::env::var_os("SESHI_SHOW").is_some() {
+        if std::env::var_os("VIBECASSO_SHOW").is_some() {
             println!("{text}");
         }
         text

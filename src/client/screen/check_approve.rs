@@ -1,4 +1,4 @@
-//! Approving a command a repository ships in its `.seshi/checks.toml`. It never pops up over
+//! Approving a command a repository ships in its `.vibecasso/checks.toml`. It never pops up over
 //! your work: Enter on the waiting Inbox item or sidebar row opens it. It is hard to approve by
 //! reflex: there is no default, Enter, y and Space do nothing, and Always takes 2 twice. You
 //! approve what you read: 1 and 2 answer only once the whole command was on screen, and only

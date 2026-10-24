@@ -111,7 +111,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     }
     draw_corner_pill(app, f.buffer_mut(), area, t);
     app.screen.crumb_x = g.panes.x + 1;
-    // A popup (`seshi popup`) floats over everything, the rest dimmed.
+    // A popup (`vibecasso popup`) floats over everything, the rest dimmed.
     match app.mode.clone() {
         Mode::Compose(c) if c.inbox.is_none() => draw_compose_pop(app, f.buffer_mut(), area, g.side, &c, t),
         Mode::Why { term, .. } => draw_why_pop(app, f.buffer_mut(), area, g.side, term, t),
@@ -157,7 +157,7 @@ pub(super) fn corner_pill(app: &App, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)>
     if let Some(version) = app.update_available.as_ref() {
         return Some((vec![seg(format!(" ↑ Update {version} "), Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD))], ScreenHit::Update));
     }
-    // Installed (here or from outside seshi), not running yet: one click finishes it.
+    // Installed (here or from outside vibecasso), not running yet: one click finishes it.
     app.restart_needed().then(|| (vec![seg(" ↻ Restart ", Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD))], ScreenHit::Restart))
 }
 
@@ -534,7 +534,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     app.pane_frames.push((term, r));
 
     // The terminal: 3 columns in, a row below the title, down to the last row inside.
-    // Answer buttons only for a question asked through seshi (ask-human), which has nowhere
+    // Answer buttons only for a question asked through vibecasso (ask-human), which has nowhere
     // else to be answered: an agent's own question is answered in its own prompt.
     let ask = st == Status::Blocked && info.agent.is_some() && app.pending_question(term).is_some();
     let below = 1 + if ask { 2 } else { 0 };
@@ -587,7 +587,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         hit(app, track, ScreenHit::ScrollBar(term));
     }
 
-    // Scrolled up (in Seshi's history, or an agent that scrolls itself paged up by the wheel):
+    // Scrolled up (in Vibecasso's history, or an agent that scrolls itself paged up by the wheel):
     // a button back to the newest output, where a chat's is, at the bottom right.
     let label = match (scrolled, app.paged_up.get(&term)) {
         (Some(n), _) => Some(format!(" ↓ Back to bottom · {n} lines up ")),
@@ -609,7 +609,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         dim_inside(f.buffer_mut(), inside, look.dim, t);
     }
 
-    // Answer bar: the choices of the question asked through seshi, a full-width pill that
+    // Answer bar: the choices of the question asked through vibecasso, a full-width pill that
     // keeps its amber even when the card is faded.
     if ask && r.height >= 8 {
         let ay = r.bottom() - 3;
@@ -681,7 +681,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     let fade = if on && left < crate::client::motion::TOAST_FADE { 1.0 - left.as_secs_f32() / crate::client::motion::TOAST_FADE.as_secs_f32() } else { 0.0 };
     // The update's own sentence is long; with the button the toast keeps to the news.
     let title = match (restart, &app.installed_version) {
-        (true, Some(Ok(v))) => format!("seshi {v} installed"),
+        (true, Some(Ok(v))) => format!("vibecasso {v} installed"),
         _ => title,
     };
     let card = app.notice_card.clone();

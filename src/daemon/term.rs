@@ -80,7 +80,7 @@ pub struct Term {
     writer: std::sync::mpsc::SyncSender<Vec<u8>>,
     killer: Box<dyn ChildKiller + Send + Sync>,
     pub pid: Option<u32>,
-    /// The daemon's own view of the screen, for status patterns and `seshi read`.
+    /// The daemon's own view of the screen, for status patterns and `vibecasso read`.
     pub parser: vt100::Parser<Callbacks>,
     ring: VecDeque<u8>,
     ring_cap: usize,
@@ -91,7 +91,7 @@ pub struct Term {
     pub process: String,
     /// The machine an ssh-like client in the pane is connected to.
     pub remote: Option<String>,
-    /// A floating pane (`seshi popup`), in no workspace.
+    /// A floating pane (`vibecasso popup`), in no workspace.
     pub popup: bool,
     pub agent: Option<String>,
     pub status: Status,
@@ -135,7 +135,7 @@ pub struct Term {
     pub subagent_activity: Vec<SubagentActivity>,
     /// The shell reports its directory itself (OSC 7 / 9;9); trust that over process scans.
     pub cwd_reported: bool,
-    /// Stopped by an older Seshi version; resumes when focused.
+    /// Stopped by an older Vibecasso version; resumes when focused.
     pub asleep: bool,
     /// Text and background colour answered to OSC 10 / 11 queries.
     colors: ((u8, u8, u8), (u8, u8, u8)),
@@ -163,9 +163,9 @@ pub struct Term {
     pub blocked_at: Option<Instant>,
     /// Processes known to run inside this pane (trusted to report its status).
     pub trusted: std::collections::HashSet<u32>,
-    /// A secret only this pane's processes have (SESHI_PANE_TOKEN).
+    /// A secret only this pane's processes have (VIBECASSO_PANE_TOKEN).
     pub token: String,
-    /// What it may do through seshi, if you set it for this pane (else `[mcp] grants`).
+    /// What it may do through vibecasso, if you set it for this pane (else `[mcp] grants`).
     pub grants: Option<Vec<String>>,
     /// The pane whose agent started this one, if one did.
     pub started_by: Option<TermId>,
@@ -177,7 +177,7 @@ pub struct Term {
     pub pending_input: Option<(Vec<u8>, Instant)>,
     /// Its branch has had commits that were nowhere else: once they are somewhere else,
     /// its work is merged (a branch that never had any is merely new).
-    /// The account it runs as, if its command says one (`seshi account <name> -- …`).
+    /// The account it runs as, if its command says one (`vibecasso account <name> -- …`).
     pub account: Option<String>,
     /// Follow-ups to type into it when its turn is over, next first.
     pub queue: std::collections::VecDeque<String>,
@@ -191,7 +191,7 @@ pub struct Term {
     pub resume_at: Option<u64>,
     /// Its project's checkpoints: their latest results and the failures the user overrode.
     pub checks: super::check::Checks,
-    /// When seshi last said "continue" to it.
+    /// When vibecasso last said "continue" to it.
     pub continued: Option<Instant>,
     /// A worktree this agent moves into when its turn ends.
     pub pending_move: Option<PathBuf>,
@@ -318,12 +318,12 @@ fn from_file_url(url: &str) -> Option<String> {
 /// profile set up so each prompt also reports the directory (OSC 9;9, the Windows Terminal
 /// convention), which keeps the sidebar, splits and restores in the right folder. Runs after
 /// the profile; uses no double quotes so it survives Windows argument quoting.
-const PWSH_CWD_HOOK: &str = "$global:__seshiPrompt = $function:prompt; \
+const PWSH_CWD_HOOK: &str = "$global:__vibecassoPrompt = $function:prompt; \
 function global:prompt { [Console]::Write([char]27 + ']133;A' + [char]7); $l = $executionContext.SessionState.Path.CurrentLocation; \
 if ($l.Provider.Name -eq 'FileSystem') { [Console]::Write([char]27 + ']9;9;' + [char]34 + $l.ProviderPath + [char]34 + [char]7) }; \
-& $global:__seshiPrompt }";
+& $global:__vibecassoPrompt }";
 
-/// The agents Seshi knows by name, which get a worktree even when no quick agent is set up.
+/// The agents Vibecasso knows by name, which get a worktree even when no quick agent is set up.
 const BUILT_IN_AGENTS: [&str; 4] = ["claude", "codex", "gemini", "opencode"];
 
 /// The program a quick agent's command runs, when it is a plain name looked up on `PATH`
@@ -354,10 +354,10 @@ fn worktree_agents(cfg: &Config) -> Vec<String> {
 }
 
 fn own_exe() -> String {
-    std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| "seshi".into())
+    std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| "vibecasso".into())
 }
 
-/// For each agent, a shell function that asks seshi for the folder to start in (`seshi
+/// For each agent, a shell function that asks vibecasso for the folder to start in (`vibecasso
 /// agent-dir`), goes there, then runs the real agent. PowerShell's has no double quotes
 /// (see `PWSH_CWD_HOOK`). The real agent is run with `DONE_VAR` set, so the launcher it
 /// reaches through PATH (`crate::shim`) does not ask a second time; PowerShell's skips the
@@ -392,9 +392,9 @@ fn agent_functions(shell: &str, agents: &[String], exe: &str) -> String {
 /// The rc file a plain bash pane starts with: yours, then the agent functions. Rewritten
 /// when it changes.
 fn bash_rc(agents: &[String]) -> Option<PathBuf> {
-    let path = crate::config::data_dir().join("shell").join("seshi.bashrc");
+    let path = crate::config::data_dir().join("shell").join("vibecasso.bashrc");
     let text = format!(
-        "# Written by seshi for its bash panes: your ~/.bashrc, then agents started in their own worktrees.\n\
+        "# Written by vibecasso for its bash panes: your ~/.bashrc, then agents started in their own worktrees.\n\
 [ -f ~/.bashrc ] && . ~/.bashrc\n{}{}",
         agent_functions("bash", agents, &own_exe()),
         crate::shim::keep_first("bash", &crate::shim::dir())
@@ -406,13 +406,13 @@ fn bash_rc(agents: &[String]) -> Option<PathBuf> {
     Some(path)
 }
 
-/// What seshi's zsh panes read first (as their `$ZDOTDIR/.zshenv`): your own `ZDOTDIR` put
+/// What vibecasso's zsh panes read first (as their `$ZDOTDIR/.zshenv`): your own `ZDOTDIR` put
 /// back (so zsh goes on to your `.zshrc` as usual), your `.zshenv`, then the agent functions.
 fn zsh_env(agents: &[String]) -> String {
     format!(
-        "# Written by seshi for its zsh panes: your own startup files, then agents started in their own worktrees.
-if [ -n \"${{SESHI_ZDOTDIR+x}}\" ]; then ZDOTDIR=\"$SESHI_ZDOTDIR\"; else unset ZDOTDIR; fi
-unset SESHI_ZDOTDIR
+        "# Written by vibecasso for its zsh panes: your own startup files, then agents started in their own worktrees.
+if [ -n \"${{VIBECASSO_ZDOTDIR+x}}\" ]; then ZDOTDIR=\"$VIBECASSO_ZDOTDIR\"; else unset ZDOTDIR; fi
+unset VIBECASSO_ZDOTDIR
 [ -f \"${{ZDOTDIR:-$HOME}}/.zshenv\" ] && . \"${{ZDOTDIR:-$HOME}}/.zshenv\"
 {}{}",
         agent_functions("zsh", agents, &own_exe()),
@@ -510,15 +510,15 @@ impl Term {
         ] {
             cmd.env_remove(k);
         }
-        cmd.env("TERM_PROGRAM", "seshi");
+        cmd.env("TERM_PROGRAM", "vibecasso");
         cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
-        cmd.env("SESHI", "1");
-        cmd.env("SESHI_TERM_ID", spec.id.to_string());
-        cmd.env("SESHI_PANE_TOKEN", &token);
-        if let Ok(sock) = std::env::var("SESHI_SOCKET") {
-            cmd.env("SESHI_SOCKET", sock);
+        cmd.env("VIBECASSO", "1");
+        cmd.env("VIBECASSO_TERM_ID", spec.id.to_string());
+        cmd.env("VIBECASSO_PANE_TOKEN", &token);
+        if let Ok(sock) = std::env::var("VIBECASSO_SOCKET") {
+            cmd.env("VIBECASSO_SOCKET", sock);
         }
-        // zsh has no flag for another rc file: a plain zsh pane starts from seshi's ZDOTDIR,
+        // zsh has no flag for another rc file: a plain zsh pane starts from vibecasso's ZDOTDIR,
         // whose .zshenv hands back to yours and adds the agent functions (as bash's --rcfile).
         let stem = Path::new(&args[0]).file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
         let agents = worktree_agents(cfg);
@@ -528,7 +528,7 @@ impl Term {
             && let Some(dir) = zsh_dir(&agents)
         {
             if let Ok(own) = std::env::var("ZDOTDIR") {
-                cmd.env("SESHI_ZDOTDIR", own);
+                cmd.env("VIBECASSO_ZDOTDIR", own);
             }
             cmd.env("ZDOTDIR", dir);
         }
@@ -768,7 +768,7 @@ impl Term {
         seed.extend_from_slice(b"\x1b[0m\x1b[?1049l\x1b[r\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l\x1b[?25h");
         seed.extend_from_slice(format!("\x1b[{};1H", self.rows).as_bytes());
         seed.extend(std::iter::repeat_n(b"\r\n".as_slice(), self.rows as usize).flatten());
-        seed.extend_from_slice(b"\x1b[2m-- seshi restarted here: what's above is from before --\x1b[0m\r\n");
+        seed.extend_from_slice(b"\x1b[2m-- vibecasso restarted here: what's above is from before --\x1b[0m\r\n");
         seed.extend(self.ring.drain(..));
         let excess = seed.len().saturating_sub(self.ring_cap);
         self.ring = seed.into_iter().skip(excess).collect();
@@ -956,19 +956,19 @@ mod tests {
     #[test]
     fn a_zsh_pane_hands_back_to_your_files_then_wraps_agents() {
         let env = super::zsh_env(&["claude".into()]);
-        assert!(env.contains("preexec_functions+=(__seshi_path)"), "the launchers stay first on PATH: {env}");
-        let restore = env.find("ZDOTDIR=\"$SESHI_ZDOTDIR\"").expect("your ZDOTDIR put back");
+        assert!(env.contains("preexec_functions+=(__vibecasso_path)"), "the launchers stay first on PATH: {env}");
+        let restore = env.find("ZDOTDIR=\"$VIBECASSO_ZDOTDIR\"").expect("your ZDOTDIR put back");
         let yours = env.find(".zshenv\" ] && .").expect("your .zshenv read");
         let wrap = env.find("claude() {").expect("claude wrapped");
         assert!(restore < yours && yours < wrap, "yours first, then the wrapper: {env}");
-        assert!(env.contains("agent-dir claude"), "it asks seshi where to start: {env}");
+        assert!(env.contains("agent-dir claude"), "it asks vibecasso where to start: {env}");
     }
 
     #[test]
-    fn a_pane_shell_starts_agents_through_seshi() {
+    fn a_pane_shell_starts_agents_through_vibecasso() {
         let cfg = crate::config::Config::default();
-        let ps = super::agent_functions("pwsh", &["claude".into()], r"C:\it's\seshi.exe");
-        assert!(ps.contains("function global:claude") && ps.contains("& 'C:\\it''s\\seshi.exe' agent-dir claude @args"), "{ps}");
+        let ps = super::agent_functions("pwsh", &["claude".into()], r"C:\it's\vibecasso.exe");
+        assert!(ps.contains("function global:claude") && ps.contains("& 'C:\\it''s\\vibecasso.exe' agent-dir claude @args"), "{ps}");
         assert!(!ps.contains('"'), "no double quotes: they don't survive Windows argument quoting");
         let names = super::worktree_agents(&cfg);
         assert!(names.contains(&"claude".to_string()) && names.contains(&"codex".to_string()));
@@ -1002,11 +1002,11 @@ mod tests {
         assert_eq!(super::quick_agent_program("/usr/bin/claude x"), None, "a path can't be shadowed by PATH");
     }
 
-    /// The bash function really goes to the folder seshi names, then runs the real agent.
+    /// The bash function really goes to the folder vibecasso names, then runs the real agent.
     #[cfg(unix)]
     #[test]
-    fn the_bash_function_starts_the_agent_where_seshi_says() {
-        let tmp = std::env::temp_dir().join(format!("seshi-fn-{}", std::process::id()));
+    fn the_bash_function_starts_the_agent_where_vibecasso_says() {
+        let tmp = std::env::temp_dir().join(format!("vibecasso-fn-{}", std::process::id()));
         let bin = tmp.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         let fake = |name: &str, body: &str| {
@@ -1016,7 +1016,7 @@ mod tests {
             std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
             p
         };
-        let exe = fake("seshi", &format!("echo {}", tmp.display()));
+        let exe = fake("vibecasso", &format!("echo {}", tmp.display()));
         fake("claude", "echo \"ran in $PWD with $*\"");
         let script = format!("{}claude hi there", super::agent_functions("bash", &["claude".into()], &exe.display().to_string()));
         let out = std::process::Command::new("bash").arg("-c").arg(script).env("PATH", format!("{}:/usr/bin:/bin", bin.display())).output().unwrap();
@@ -1030,12 +1030,12 @@ mod tests {
     #[test]
     fn the_startup_text_for_a_pane_is_valid_shell() {
         let agents = ["claude".to_string(), "codex".to_string()];
-        let text = format!("{}{}", super::agent_functions("bash", &agents, "/it's/seshi"), crate::shim::keep_first("bash", Path::new("/da ta/it's/bin")));
+        let text = format!("{}{}", super::agent_functions("bash", &agents, "/it's/vibecasso"), crate::shim::keep_first("bash", Path::new("/da ta/it's/bin")));
         let out = std::process::Command::new("bash").arg("-n").arg("-c").arg(&text).output();
         if let Ok(out) = out {
             assert!(out.status.success(), "{text}\n{}", String::from_utf8_lossy(&out.stderr));
         }
-        assert!(text.contains("SESHI_AGENT_DIR_DONE=1 command claude"), "{text}");
+        assert!(text.contains("VIBECASSO_AGENT_DIR_DONE=1 command claude"), "{text}");
     }
 
     #[test]
