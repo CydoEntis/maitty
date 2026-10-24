@@ -5,6 +5,10 @@ catalog covers all 25 requested families with 42 palettes. Before this expansion
 Seshi already included Dracula, Gruvbox Dark, Nord, Tokyo Night Night, and
 Catppuccin Mocha/Latte. These are six palettes across five families.
 
+A second pass on 2026-10-23 added 43 palettes from 35 more creator repositories
+(Nightfox through Bluloco in the table). Everviolet was left out: it is an
+Everforest-style green theme that duplicates Everforest.
+
 ## Coverage and primary sources
 
 Source links pin the researched revision. Preserve the existing `gruvbox` and
@@ -37,6 +41,41 @@ Source links pin the researched revision. Preserve the existing `gruvbox` and
 | Gotham | Added | Standard | [whatyouhide/vim-gotham](https://github.com/whatyouhide/vim-gotham/blob/7e7eff411fedada2b6cceb78059ed8a4a26d03ba/colors/gotham.vim) | [MIT](https://github.com/whatyouhide/vim-gotham/blob/7e7eff411fedada2b6cceb78059ed8a4a26d03ba/LICENSE.txt) |
 | Apprentice | Added | Standard | [romainl/Apprentice](https://github.com/romainl/Apprentice/blob/2a4557410fe6b5e3906c5290d42c4e4d8813b0d8/colortemplate/apprentice.colortemplate) | [MIT](https://github.com/romainl/Apprentice/blob/2a4557410fe6b5e3906c5290d42c4e4d8813b0d8/LICENSE) |
 | Zenbones | Added | Dark / Light, default contrast | [zenbones-theme/zenbones.nvim](https://github.com/zenbones-theme/zenbones.nvim/tree/8304d8df9b823ff11e103afa62f38c39f534abe6/extras/alacritty) | [MIT](https://github.com/zenbones-theme/zenbones.nvim/blob/8304d8df9b823ff11e103afa62f38c39f534abe6/LICENSE) |
+| Nightfox | Added | Nightfox / Duskfox / Carbonfox | [EdenEast/nightfox.nvim](https://github.com/EdenEast/nightfox.nvim/blob/4dacd3f0185a2227bdf3b6c0975a8f0bf87cac9a/extra/nightfox/kitty.conf) | [MIT](https://github.com/EdenEast/nightfox.nvim/blob/4dacd3f0185a2227bdf3b6c0975a8f0bf87cac9a/LICENSE) |
+| GitHub | Added | GitHub Dark / GitHub Dark Dimmed / GitHub Light | [projekt0n/github-nvim-theme](https://github.com/projekt0n/github-nvim-theme/blob/c106c9472154d6b2c74b74565616b877ae8ed31d/lua/github-theme/palette/github_dark_default.lua) | [MIT](https://github.com/projekt0n/github-nvim-theme/blob/c106c9472154d6b2c74b74565616b877ae8ed31d/LICENSE) |
+| Gruvbox Material | Added | Standard | [sainnhe/gruvbox-material](https://github.com/sainnhe/gruvbox-material/blob/11d779b26a9ab2b3db8c22c6ac9fb6e8ed4fea79/autoload/gruvbox_material.vim) | [MIT](https://github.com/sainnhe/gruvbox-material/blob/11d779b26a9ab2b3db8c22c6ac9fb6e8ed4fea79/LICENSE) |
+| Gruvbox Baby | Added | Standard | [luisiacc/gruvbox-baby](https://github.com/luisiacc/gruvbox-baby/blob/bd52e62d8134647090108189e69c8b3cd18bdbbf/extras/windwows_terminal/windows_terminal_dark.json) | [MIT](https://github.com/luisiacc/gruvbox-baby/blob/bd52e62d8134647090108189e69c8b3cd18bdbbf/LICENSE) |
+| Oceanic Next | Added | Standard | [mhartington/oceanic-next](https://github.com/mhartington/oceanic-next/blob/09833f72d5ba23de2e8bcae18f479f326f5f677a/colors/OceanicNext.vim) | [Apache-2.0](https://github.com/mhartington/oceanic-next/blob/09833f72d5ba23de2e8bcae18f479f326f5f677a/license.txt) |
+| Tomorrow | Added | Tomorrow / Tomorrow Night / Tomorrow Night Eighties / Tomorrow Night Bright | [chriskempson/tomorrow-theme](https://github.com/chriskempson/tomorrow-theme/blob/ccf6666d888198d341b26b3a99d0bc96500ad503/iTerm2/Tomorrow.itermcolors) | [MIT](https://github.com/chriskempson/tomorrow-theme/blob/ccf6666d888198d341b26b3a99d0bc96500ad503/LICENSE.md) |
+| Base16 | Added | Standard | [tinted-theming/schemes](https://github.com/tinted-theming/schemes/blob/3ac91137e879502c442ab89ba0f1a98077d0da9d/base16/default-dark.yaml) | [MIT](https://github.com/tinted-theming/schemes/blob/3ac91137e879502c442ab89ba0f1a98077d0da9d/LICENSE) |
+| Palenight | Added | Standard | [drewtempelmeyer/palenight.vim](https://github.com/drewtempelmeyer/palenight.vim/blob/9e9b102c54b830b72f51917b6b86c3b3b02dcea2/autoload/palenight.vim) | [MIT](https://github.com/drewtempelmeyer/palenight.vim/blob/9e9b102c54b830b72f51917b6b86c3b3b02dcea2/LICENSE) |
+| One Light | Added | Standard | [rakr/vim-one](https://github.com/rakr/vim-one/blob/187f5c85b682c1933f8780d4d419c55d26a82e24/colors/one.vim) | [MIT](https://github.com/rakr/vim-one/blob/187f5c85b682c1933f8780d4d419c55d26a82e24/LICENSE) |
+| Monokai Pro | Added | Standard | [monokai-pro/zed](https://github.com/monokai-pro/zed/blob/7b4ebf709abe9870a3fc9bafc1e80796e5f0e97c/themes/monokai-pro-ce.json) | [MIT](https://github.com/monokai-pro/zed/blob/7b4ebf709abe9870a3fc9bafc1e80796e5f0e97c/LICENSE.md) |
+| Oxocarbon | Added | Standard | [nyoom-engineering/oxocarbon.nvim](https://github.com/nyoom-engineering/oxocarbon.nvim/blob/cd6523a0836d6e8ee823d343149fd06c7b71fdde/lua/oxocarbon/init.lua) | [MIT](https://github.com/nyoom-engineering/oxocarbon.nvim/blob/cd6523a0836d6e8ee823d343149fd06c7b71fdde/LICENSE) |
+| Cyberdream | Added | Standard | [scottmckendry/cyberdream.nvim](https://github.com/scottmckendry/cyberdream.nvim/blob/81b3e39ceb87db2987255123af3212beeb75bf6d/extras/alacritty/cyberdream.toml) | [MIT](https://github.com/scottmckendry/cyberdream.nvim/blob/81b3e39ceb87db2987255123af3212beeb75bf6d/LICENSE) |
+| Nordic | Added | Standard | [AlexvZyl/nordic.nvim](https://github.com/AlexvZyl/nordic.nvim/blob/9fb62116b891184049c50ca6ffb0d3bc100a1a6e/platforms/kitty/nordic.conf) | [MIT](https://github.com/AlexvZyl/nordic.nvim/blob/9fb62116b891184049c50ca6ffb0d3bc100a1a6e/LICENSE) |
+| OneNord | Added | Standard | [rmehri01/onenord.nvim](https://github.com/rmehri01/onenord.nvim/blob/5240bfb79bcab7e03508626c5283cfc417b79169/extras/kitty/onenord.conf) | [MIT](https://github.com/rmehri01/onenord.nvim/blob/5240bfb79bcab7e03508626c5283cfc417b79169/LICENSE) |
+| Edge | Added | Standard | [sainnhe/edge](https://github.com/sainnhe/edge/blob/7ec78c21bd8f0b2b0b47043bb1e730c561647c72/autoload/edge.vim) | [MIT](https://github.com/sainnhe/edge/blob/7ec78c21bd8f0b2b0b47043bb1e730c561647c72/LICENSE) |
+| VSCode | Added | Standard | [Mofiqul/vscode.nvim](https://github.com/Mofiqul/vscode.nvim/blob/6439ed89d0e10193f07e92268a321d7c6f6e93ee/extra/kitty/vscode-dark.conf) | [MIT](https://github.com/Mofiqul/vscode.nvim/blob/6439ed89d0e10193f07e92268a321d7c6f6e93ee/LICENSE.md) |
+| Code Dark | Added | Standard | [tomasiser/vim-code-dark](https://github.com/tomasiser/vim-code-dark/blob/4624dc223bf574aa9a731c2383c579847303c380/colors/codedark.vim) | [MIT](https://github.com/tomasiser/vim-code-dark/blob/4624dc223bf574aa9a731c2383c579847303c380/LICENSE.md) |
+| Melange | Added | Standard | [savq/melange-nvim](https://github.com/savq/melange-nvim/blob/ce42f6b629beeaa00591ba73a77d3eeac4cf28ce/term/kitty/melange_dark.conf) | [MIT](https://github.com/savq/melange-nvim/blob/ce42f6b629beeaa00591ba73a77d3eeac4cf28ce/LICENSE) |
+| Falcon | Added | Standard | [fenetikm/falcon](https://github.com/fenetikm/falcon/blob/276cd483c73f5389f0bd99b18e2452bd57b77bf6/kitty/kitty.falcon.conf) | [MIT](https://github.com/fenetikm/falcon/blob/276cd483c73f5389f0bd99b18e2452bd57b77bf6/LICENSE) |
+| Embark | Added | Standard | [embark-theme/vim](https://github.com/embark-theme/vim/blob/2331671b548abcade22b0197fde58e11744c99bb/colors/embark.vim) | [MIT](https://github.com/embark-theme/vim/blob/2331671b548abcade22b0197fde58e11744c99bb/LICENSE) |
+| Lackluster | Added | Standard | [slugbyte/lackluster.nvim](https://github.com/slugbyte/lackluster.nvim/blob/70dd682e564784893b984deb51dd5ddd263c8cc7/extra/kitty/lackluster.conf) | [MIT](https://github.com/slugbyte/lackluster.nvim/blob/70dd682e564784893b984deb51dd5ddd263c8cc7/LICENSE.md) |
+| Miasma | Added | Standard | [xero/miasma.nvim](https://github.com/xero/miasma.nvim/blob/627f2e1cac91de0d1d4dd7472b506a30f41b2b7d/extras/miasma.ghostty) | [CC0-1.0](https://github.com/xero/miasma.nvim/blob/627f2e1cac91de0d1d4dd7472b506a30f41b2b7d/LICENSE) |
+| Bamboo | Added | Standard | [ribru17/bamboo.nvim](https://github.com/ribru17/bamboo.nvim/blob/1309bc88bffcf1bedc3e84e7fa9004de93da774a/extras/kitty/bamboo.conf) | [MIT](https://github.com/ribru17/bamboo.nvim/blob/1309bc88bffcf1bedc3e84e7fa9004de93da774a/LICENSE) |
+| Mellifluous | Added | Standard | [ramojus/mellifluous.nvim](https://github.com/ramojus/mellifluous.nvim/blob/ec0575bdb63594c5e7fba6eb9607b009aa1fb74e/lua/mellifluous/colors/colorsets/mellifluous.lua) | [MIT](https://github.com/ramojus/mellifluous.nvim/blob/ec0575bdb63594c5e7fba6eb9607b009aa1fb74e/LICENSE) |
+| Mellow | Added | Standard | [mellow-theme/mellow.nvim](https://github.com/mellow-theme/mellow.nvim/blob/6273b7f0ddf6ac2b75021b3bc0bd8b3305cfeef1/lua/mellow/colors.lua) | [MIT](https://github.com/mellow-theme/mellow.nvim/blob/6273b7f0ddf6ac2b75021b3bc0bd8b3305cfeef1/LICENSE) |
+| Kanagawa Paper | Added | Standard | [thesimonho/kanagawa-paper.nvim](https://github.com/thesimonho/kanagawa-paper.nvim/blob/d6ba194faba511c9b112a13c79b5e123dcb5dd41/extras/alacritty/kanagawa-paper-ink.toml) | [MIT](https://github.com/thesimonho/kanagawa-paper.nvim/blob/d6ba194faba511c9b112a13c79b5e123dcb5dd41/LICENSE) |
+| Zephyr | Added | Standard | [nvimdev/zephyr-nvim](https://github.com/nvimdev/zephyr-nvim/blob/7fd86b7164442d3b5ec2c81b2694d040e716b5cf/lua/zephyr.lua) | [MIT](https://github.com/nvimdev/zephyr-nvim/blob/7fd86b7164442d3b5ec2c81b2694d040e716b5cf/LICENSE) |
+| Koda | Added | Standard | [oskarnurm/koda.nvim](https://github.com/oskarnurm/koda.nvim/blob/25a5c98ca2f6bb0b69f5e2654a78f0d7c7e0721d/extras/ghostty/koda-dark.conf) | [MIT](https://github.com/oskarnurm/koda.nvim/blob/25a5c98ca2f6bb0b69f5e2654a78f0d7c7e0721d/LICENSE) |
+| Aquarium | Added | Standard | [FrenzyExists/aquarium-vim](https://github.com/FrenzyExists/aquarium-vim/blob/d5c4816717e5136278a9148bd19268fcaf514fe9/extras/terminal-themes/wezterm/aquarium-dark.toml) | [MIT](https://github.com/FrenzyExists/aquarium-vim/blob/d5c4816717e5136278a9148bd19268fcaf514fe9/LICENSE) |
+| Fluoromachine | Added | Standard | [maxmx03/fluoromachine.nvim](https://github.com/maxmx03/fluoromachine.nvim/blob/a279f667168e742df059caf1f1f4daf1de24f4f8/lua/fluoromachine/colors/fluoromachine.lua) | [MIT](https://github.com/maxmx03/fluoromachine.nvim/blob/a279f667168e742df059caf1f1f4daf1de24f4f8/LICENSE) |
+| SynthWave '84 | Added | Standard | [robb0wen/synthwave-vscode](https://github.com/robb0wen/synthwave-vscode/blob/ecfa2fe1279f7233663fa3f98a96e6756000567b/themes/synthwave-color-theme.json) | [MIT](https://github.com/robb0wen/synthwave-vscode/blob/ecfa2fe1279f7233663fa3f98a96e6756000567b/LICENSE) |
+| Horizon | Added | Standard | [jolaleye/horizon-theme-vscode](https://github.com/jolaleye/horizon-theme-vscode/blob/5ae91b6d49bf291e0a34c0a1cb277d9738aadd90/themes/horizon.json) | [MIT](https://github.com/jolaleye/horizon-theme-vscode/blob/5ae91b6d49bf291e0a34c0a1cb277d9738aadd90/LICENSE) |
+| Material | Added | Darker | [marko-cerovac/material.nvim](https://github.com/marko-cerovac/material.nvim/blob/92f7366a9315cd386bc4fa4d716fde375dda210f/lua/material/colors/init.lua) | [GPL-2.0](https://github.com/marko-cerovac/material.nvim/blob/92f7366a9315cd386bc4fa4d716fde375dda210f/LICENSE) |
+| Modus | Added | Vivendi / Operandi | [protesilaos/modus-themes](https://github.com/protesilaos/modus-themes/blob/b1647b2980f4f27c3c81ac1531d992a14fefd06a/modus-themes.el) | [GPL-3.0-or-later](https://github.com/protesilaos/modus-themes/blob/b1647b2980f4f27c3c81ac1531d992a14fefd06a/COPYING) |
+| Bluloco | Added | Dark | [uloco/bluloco.nvim](https://github.com/uloco/bluloco.nvim/blob/912227935d63766fe11e4168840063bd2e9a4274/terminal-themes/kitty/BlulocoDark.conf) | [LGPL-3.0](https://github.com/uloco/bluloco.nvim/blob/912227935d63766fe11e4168840063bd2e9a4274/LICENSE) |
 
 ## Mapping to Seshi
 
@@ -79,6 +118,31 @@ may assume dark selected text, so it is not automatically a valid menu fill.
   extras supply explicit dark/light backgrounds; the upstream theme is not
   inherently transparent. Keep Seshi's existing `mono` choice for inherited
   terminal colors.
+- Seshi's gray slot repaints ANSI 8 (bright black), so the second pass takes
+  each source's ANSI 8. Where that grey sits on the background (contrast
+  under 1.5: GitHub Dark and Dark Dimmed, Gruvbox Baby, Nordic, Edge, Falcon,
+  Mellifluous, Mellow, Aquarium), it uses the theme's comment colour instead.
+  Tomorrow's iTerm files set ANSI 8 to black; its Xresources `#666666` is used.
+- Falcon's blue `#635196` barely shows on Seshi's open row, so its accent is
+  the theme's signature orange `#ff761a`.
+- Oxocarbon's own terminal slots are not in ANSI order and it has no yellow;
+  its slots are matched by meaning, with purple `#be95ff` (its warning colour)
+  as yellow. Its greys are computed at load time and were reproduced from its
+  code. Carbonfox's ANSI yellow is teal by the author's choice.
+- GitHub, Gruvbox Material, Oceanic Next, Palenight, One Light, Edge, Code
+  Dark, Embark, Mellow, Zephyr and Fluoromachine ship no terminal file; their
+  slots come from the theme's own `terminal_color_*` settings or, failing that,
+  its editor palette. Fluoromachine has no blue, so blue is its purple.
+- Monokai Pro itself is commercial. These are the MIT-licensed Community
+  Edition colors published by Monokai's own `monokai-pro` organization; it has
+  no blue, so ANSI blue is its orange `#fc9867` as in that port.
+- Mellifluous builds its colors from OkHSL at load time; the values were
+  reproduced from its default dark config with its own conversion code.
+- VS Code JSON themes (SynthWave '84, Horizon) set no ANSI white or bright
+  black; their comment colors stand in, Horizon's composited over `#1c1e26`.
+- Material uses its Darker style. Its own accent there is orange, so the
+  accent is its blue `#82aaff`; its ANSI slots come from its terminal settings.
+- Modus Vivendi's accent is its own accent setting `#00bcff`.
 
 ## Attribution and license notices
 
@@ -110,6 +174,36 @@ The following upstream copyright notices apply to the MIT-licensed palettes:
 - whatyouhide/vim-gotham: Copyright (c) 2014 Andrea Leopardi
 - romainl/Apprentice: Copyright (c) 2016 Romain Lafourcade
 - zenbones-theme/zenbones.nvim: Copyright (c) 2022 Michael Chris Lopez
+- EdenEast/nightfox.nvim: Copyright (c) 2021 James Simpson
+- projekt0n/github-nvim-theme: Copyright (c) 2021 projekt0n
+- sainnhe/gruvbox-material: Copyright (c) 2020 sainnhe
+- luisiacc/gruvbox-baby: Copyright (c) 2021 Luis Carlos Cordero
+- chriskempson/tomorrow-theme: Copyright (C) 2011 Chris Kempson
+- tinted-theming/schemes: Copyright (c) 2022 Tinted Theming
+- drewtempelmeyer/palenight.vim: Copyright (c) 2015 Joshua Dick
+- rakr/vim-one: Copyright (c) 2016 Ramzi Akremi
+- monokai-pro/zed: Copyright (c) 2025 Monokai
+- nyoom-engineering/oxocarbon.nvim: Copyright (c) 2022 Riccardo Mazzarini
+- scottmckendry/cyberdream.nvim: Copyright (c) 2023 Scott McKendry
+- AlexvZyl/nordic.nvim: Copyright (c) 2023 Alexander van Zyl
+- rmehri01/onenord.nvim: Copyright (c) 2021 Ryan Mehri
+- sainnhe/edge: Copyright (c) 2019 Sainnhepark
+- Mofiqul/vscode.nvim: Copyright (c) 2021 Mofiqul Islam
+- tomasiser/vim-code-dark: Copyright (c) 2017 Tomáš Iser
+- savq/melange-nvim: Copyright (c) 2021 Sergio Alejandro Vargas
+- fenetikm/falcon: Copyright (c) 2018 fenetikm
+- embark-theme/vim: Copyright (c) 2020 embark-theme
+- slugbyte/lackluster.nvim: Copyright (c) 2024 Duncan Marsh
+- ribru17/bamboo.nvim: Copyright (c) 2021 Navarasu; Copyright (c) 2023 Riley Bruins
+- ramojus/mellifluous.nvim: Copyright (c) 2024 Ramojus Lapinskas
+- mellow-theme/mellow.nvim: Copyright (c) 2023 Rohit K Viswanath
+- thesimonho/kanagawa-paper.nvim: Copyright (c) 2021 Tommaso Laurenzi; Copyright (c) 2024 Simon Ho
+- nvimdev/zephyr-nvim: Copyright (c) 2020 Raphael
+- oskarnurm/koda.nvim: Copyright (c) 2026 Karl Oskar Joosep Nurm
+- FrenzyExists/aquarium-vim: Copyright (c) 2021 Detective Pikachu
+- maxmx03/fluoromachine.nvim: Copyright (c) 2022 Dracula Theme
+- robb0wen/synthwave-vscode: Copyright (c) 2019 Robb Owen
+- jolaleye/horizon-theme-vscode: Copyright (c) 2018 Jonathan Olaleye
 
 Gruvbox declares MIT/X11 in its README and identifies morhetz as its author in
 its palette source; that revision contains no standalone copyright/license file.
@@ -139,7 +233,17 @@ THE SOFTWARE.
 Tokyo Night by Folke Lemaitre and Ayu by Konstantin Pschera use Apache-2.0.
 Their source palette values are adapted to Seshi UI roles as described above.
 The shared Apache license text follows; see their linked original license files
-for each project's application appendix.
+for each project's application appendix. Oceanic Next by Mike Hartington ships
+Neovim's Apache-2.0 license text without a project copyright line.
+
+Miasma by xero is dedicated to the public domain under CC0-1.0.
+
+Material (marko-cerovac/material.nvim, GPL-2.0), Modus Vivendi and Operandi
+(protesilaos/modus-themes, part of GNU Emacs; Copyright (C) 2019-2026 Free
+Software Foundation, Inc., GPL-3.0-or-later) and Bluloco (uloco/bluloco.nvim,
+LGPL-3.0) use copyleft licenses. Seshi takes only their color values, which
+are adapted to its UI roles as described above, not their code; see the linked
+license files.
 
 <details>
 <summary>Apache License, Version 2.0</summary>

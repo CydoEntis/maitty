@@ -371,7 +371,7 @@ Pulse, Blocks and Static. Choose **Custom** to type or paste space-separated fra
 Each frame must fit one terminal column; up to 64 frames are supported. Enter
 applies the choice, Esc cancels, and the change takes effect immediately.
 
-The Theme control opens a browser of 65 themes. Type a name or flavor to filter, use arrows or
+The Theme control opens a browser of 108 themes. Type a name or flavor to filter, use arrows or
 PgUp/PgDn to move, and preview the palette before pressing Enter to apply it. Click a row
 to preview and click it again to apply; Esc returns without changing your theme.
 
@@ -379,7 +379,12 @@ The catalog includes all four Catppuccin flavors, Gruvbox Dark/Light, Nord, Drac
 Tokyo Night Night/Storm/Moon/Day, Solarized Dark/Light, One Dark, One Half Dark/Light,
 Kanagawa Wave/Dragon/Lotus, Ayu Dark/Mirage/Light, Night Owl, Nightfly, Moonfly,
 Everforest Dark/Light, Rosé Pine/Moon/Dawn, Cobalt2, Jellybeans, Iceberg, Sonokai,
-Shades of Purple, Panda, Lucario, Gotham, Apprentice, and Zenbones Dark/Light, alongside
+Shades of Purple, Panda, Lucario, Gotham, Apprentice, Zenbones Dark/Light, Nightfox/Duskfox/Carbonfox,
+GitHub Dark/Dark Dimmed/Light, Gruvbox Material, Gruvbox Baby, Oceanic Next, Tomorrow/Night/Eighties/Bright,
+Base16 Default Dark, Palenight, One Light, Monokai Pro, Oxocarbon, Cyberdream, Nordic, OneNord, Edge,
+VSCode Dark, Code Dark, Melange, Falcon, Embark, Lackluster, Miasma, Bamboo, Mellifluous, Mellow,
+Kanagawa Paper Ink, Zephyr, Koda, Aquarium, Fluoromachine, SynthWave '84, Horizon, Material Darker,
+Modus Vivendi/Operandi, and Bluloco Dark, alongside
 Seshi Dark (the default) and Seshi Light, Seshi Walnut/Night/Day, Harbor/Day, Moss/Day, Ember/Ash,
 Ink/Paper, Arcade, Hydra, Tinkery/Light, Aurora, Moonlit, and the existing themes. [Palette sources and variant notes](docs/theme-credits.md).
 New palettes theme ANSI agent output; explicit RGB output keeps the program's colors.
