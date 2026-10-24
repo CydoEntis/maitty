@@ -5,6 +5,7 @@ mod copy;
 mod marks;
 mod design;
 mod files;
+mod markdown;
 mod find;
 mod branch;
 mod screen;

@@ -19,6 +19,7 @@ previous = ["vibecasso", "seshi", "hydra", "drover"]
 anyhow = "1"
 arboard = { version = "3", default-features = false, features = ["image-data"] }
 png = "0.17"
+pulldown-cmark = { version = "0.13", default-features = false }
 bytes = "1"
 crossterm = { version = "0.29", features = ["event-stream"] }
 clap = { version = "4", features = ["derive"] }

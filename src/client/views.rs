@@ -151,6 +151,8 @@ pub struct FilesTree {
     pub in_preview: bool,
     /// Once the tree is read: select this file (and scroll to this line).
     pub reveal: Option<(PathBuf, Option<u32>)>,
+    /// The markdown file shown as its text rather than drawn (`m`).
+    pub raw: Option<PathBuf>,
 }
 
 /// A small editor for the file in the preview.
@@ -342,6 +344,7 @@ impl FilesTree {
             edit: None,
             in_preview: false,
             reveal: None,
+            raw: None,
         }
     }
 
@@ -393,6 +396,42 @@ impl FilesTree {
     pub fn editing_by(&self, path: &Path) -> Option<String> {
         let rel = rel_of(&self.root, path)?;
         self.editing.get(&rel).cloned()
+    }
+
+    /// The previewed file is markdown, drawn or shown raw.
+    pub fn markdown(&self) -> bool {
+        self.preview.as_ref().is_some_and(|(p, _)| super::markdown::is_markdown(p))
+    }
+
+    pub fn toggle_raw(&mut self) {
+        let Some((path, _)) = self.preview.as_ref().filter(|_| self.markdown()) else { return };
+        self.raw = if self.raw.as_ref() == Some(path) { None } else { Some(path.clone()) };
+        self.scroll = 0;
+    }
+
+    /// The previewed file is markdown and drawn, not shown raw.
+    pub fn drawn(&self) -> bool {
+        self.preview.as_ref().is_some_and(|(p, _)| super::markdown::is_markdown(p) && self.raw.as_ref() != Some(p))
+    }
+
+    /// The previewed markdown drawn `width` columns wide, unless it is shown raw.
+    pub(super) fn pretty(&self, width: u16, t: &crate::theme::Theme) -> Option<Vec<Vec<super::design::Seg>>> {
+        // A preview that isn't on screen has width 0; laid out that narrow, every character
+        // would take a line of its own.
+        const MIN_WIDTH: u16 = 20;
+        let (_, lines) = self.preview.as_ref().filter(|_| self.drawn())?;
+        Some(super::markdown::render(&lines.join("\n"), width.max(MIN_WIDTH), t))
+    }
+
+    /// How many lines the preview shows at `width`: the edit, the drawn markdown, or the text.
+    pub(super) fn shown_lines(&self, width: u16, t: &crate::theme::Theme) -> usize {
+        if let Some(ed) = &self.edit {
+            return ed.lines.len();
+        }
+        match self.pretty(width, t) {
+            Some(drawn) => drawn.len(),
+            None => self.preview.as_ref().map_or(0, |(_, l)| l.len()),
+        }
     }
 
     pub fn refresh_preview(&mut self) {

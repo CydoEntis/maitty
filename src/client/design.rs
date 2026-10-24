@@ -555,8 +555,9 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
                     let hint = if one_side { "   i edit" } else { "   ↑↓ PgUp PgDn read · i edit · ← back" };
                     header.push(seg(hint, Style::default().fg(t.accent)));
                 }
-                let at = (lines.len() > prect.height as usize)
-                    .then(|| format!(" {}–{} of {} ", v.scroll + 1, (v.scroll + prect.height as usize).min(lines.len()), lines.len()));
+                let pretty = v.pretty(prect.width, t);
+                let shown = pretty.as_ref().map_or(lines.len(), Vec::len);
+                let at = (shown > prect.height as usize).then(|| format!(" {}–{} of {} ", v.scroll + 1, (v.scroll + prect.height as usize).min(shown), shown));
                 let at_x = body.right().saturating_sub(at.as_ref().map_or(0, |a| a.width() as u16 + 1));
                 put(buf, px, body.y + 1, &header, at_x);
                 // The side the arrows are on gets the accent line.
@@ -567,11 +568,21 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
                         }
                     }
                 }
-                for (k, l) in lines.iter().enumerate().skip(v.scroll).take(prect.height as usize) {
-                    let yy = prect.y + (k - v.scroll) as u16;
-                    let mut segs = vec![seg(format!("{:>4}  ", k + 1), Style::default().fg(t.muted))];
-                    segs.extend(super::views::highlight(l, t));
-                    put(buf, px, yy, &segs, prect.right());
+                match &pretty {
+                    // Drawn lines are no lines of the file, so they go without numbers.
+                    Some(pretty) => {
+                        for (k, l) in pretty.iter().skip(v.scroll).take(prect.height as usize).enumerate() {
+                            put(buf, px, prect.y + k as u16, l, prect.right());
+                        }
+                    }
+                    None => {
+                        for (k, l) in lines.iter().enumerate().skip(v.scroll).take(prect.height as usize) {
+                            let yy = prect.y + (k - v.scroll) as u16;
+                            let mut segs = vec![seg(format!("{:>4}  ", k + 1), Style::default().fg(t.muted))];
+                            segs.extend(super::views::highlight(l, t));
+                            put(buf, px, yy, &segs, prect.right());
+                        }
+                    }
                 }
                 if let Some(at) = at {
                     put(buf, at_x, body.y + 1, &[seg(at, Style::default().fg(t.muted))], body.right());
@@ -581,21 +592,18 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
     }
     let who = app.focused().and_then(|id| app.snap.terms.get(&id)).map(pane_name).unwrap_or_else(|| "the pane".into());
     let insert = format!("Insert path into {who}");
-    action_row(
-        app,
-        buf,
-        area,
-        t,
-        &[
-            (&insert, "Enter", BtnKind::Primary, Hit::Button(super::Btn::ViewKey('\n'))),
-            ("Edit here", "i", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('i'))),
-            ("Editor", "e", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('e'))),
-            ("Open", "o", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('o'))),
-            ("Copy path", "y", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('y'))),
-            ("Show diff", "d", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('d'))),
-        ],
-        &[seg("PgUp PgDn / wheel scroll", Style::default().fg(t.muted))],
-    );
+    let mut buttons = vec![(insert.as_str(), "Enter", BtnKind::Primary, Hit::Button(super::Btn::ViewKey('\n')))];
+    if v.markdown() && v.edit.is_none() {
+        buttons.push((if v.drawn() { "Raw" } else { "Pretty" }, "m", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('m'))));
+    }
+    buttons.extend([
+        ("Edit here", "i", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('i'))),
+        ("Editor", "e", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('e'))),
+        ("Open", "o", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('o'))),
+        ("Copy path", "y", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('y'))),
+        ("Show diff", "d", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('d'))),
+    ]);
+    action_row(app, buf, area, t, &buttons, &[seg("PgUp PgDn / wheel scroll", Style::default().fg(t.muted))]);
 }
 
 /// The tree (or the recent files) in the left `fw` columns of `body`.

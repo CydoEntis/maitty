@@ -236,6 +236,7 @@ The panel docked right (Inbox, Changes, Files, checks, Branch). Its width is kep
 | Enter on file | Insert quoted path into agent prompt and close Files |
 | Tab, / | Toggle recent/tree, filter paths; Enter ends filtering, Esc clears filter |
 | e, i, o, y, d | External editor, edit in preview, open outside, copy path, Changes |
+| m on a markdown file | Show it as text or drawn (drawn is the default) |
 | PgUp, PgDn, Shift+Up, Shift+Down | Scroll preview pages or individual lines |
 | Right / l on file | Focus preview; arrows / j / k scroll, Space pages down, g / G or Home / End go to ends |
 | Left / h / Esc in preview, or click ‹ | Return to tree (on a narrow panel the file takes the whole panel) |

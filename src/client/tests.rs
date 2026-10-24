@@ -7548,6 +7548,137 @@ mod files_panel_tests {
         assert!(o.lines().any(|l| l.contains("notes.txt") && l.contains("let line_1 = 1;")), "the tree beside the file:\n{o}");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// Every block markdown has, then a list of 60 so it scrolls and has a line 42.
+    const GUIDE: &str = "# Guide\n\nSome *odd* and **bold** words with `code`.\n\n## Lists\n\n- one\n  - inner\n\n1. first\n2. second\n\n> quoted words\n\n```\nfn main() {}\n```\n\n| name | n |\n|:--|--:|\n| alpha | 1 |\n| b | 200 |\n\nSee [the docs](https://x.dev).\n\n---\n";
+
+    /// `project` plus `GUIDE.md`.
+    fn project_with_guide(name: &str) -> PathBuf {
+        let dir = project(name);
+        let tail: String = (1..=60).map(|i| format!("- para {i}\n")).collect();
+        std::fs::write(dir.join("GUIDE.md"), format!("{GUIDE}\n{tail}")).unwrap();
+        dir
+    }
+
+    fn guide_open(name: &str) -> (PathBuf, App) {
+        let dir = project_with_guide(name);
+        let mut app = screen_in(&dir, 200, 50);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "GUIDE.md");
+        (dir, app)
+    }
+
+    /// The frame as text and its cells, for styles.
+    fn frame(app: &mut App, w: u16, h: u16) -> (String, ratatui::buffer::Buffer) {
+        app.screen_fresh();
+        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let text = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>().trim_end().to_string() + "\n").collect();
+        (text, buf)
+    }
+
+    /// Where `word` starts inside the preview.
+    fn at(app: &App, buf: &ratatui::buffer::Buffer, word: &str) -> (u16, u16) {
+        let r = app.screen.preview_rect;
+        for y in r.top()..r.bottom() {
+            let row: String = (r.left()..r.right()).map(|x| buf[(x, y)].symbol().to_string()).collect();
+            if let Some(i) = row.find(word) {
+                return (r.left() + row[..i].chars().count() as u16, y);
+            }
+        }
+        panic!("{word} is in the preview")
+    }
+
+    fn cell_of<'b>(app: &App, buf: &'b ratatui::buffer::Buffer, word: &str) -> &'b ratatui::buffer::Cell {
+        &buf[at(app, buf, word)]
+    }
+
+    fn hints(frame: &str) -> String {
+        frame.lines().find(|l| l.contains("Insert path into")).map(str::to_string).expect("the key hints")
+    }
+
+    #[test]
+    fn a_markdown_file_previews_pretty_by_default() {
+        let (dir, mut app) = guide_open("mdpretty");
+        let (o, buf) = frame(&mut app, 200, 50);
+        show(&o);
+        use ratatui::style::Modifier;
+        let t = app.theme.clone();
+        let heading = cell_of(&app, &buf, "Guide");
+        assert!(heading.fg == t.strong && heading.modifier.contains(Modifier::BOLD), "the heading is bold and strong");
+        assert!(!o.contains("# Guide") && !o.contains("**bold**") && !o.contains("```"), "no markup:\n{o}");
+        assert!(o.lines().skip_while(|l| !l.contains("Guide")).nth(1).is_some_and(|l| l.contains("────────")), "a rule under the title:\n{o}");
+        assert!(cell_of(&app, &buf, "odd").modifier.contains(Modifier::ITALIC), "emphasis");
+        assert_eq!(cell_of(&app, &buf, "code").bg, t.card2, "inline code");
+        assert!(o.contains("• one") && o.contains("  • inner") && o.contains("1. first") && o.contains("2. second"), "lists:\n{o}");
+        let bar = cell_of(&app, &buf, "│ quoted words");
+        assert_eq!(bar.fg, t.muted, "the quote's bar is muted");
+        assert_eq!(cell_of(&app, &buf, "fn main()").bg, t.card, "fenced code is on the raised ground");
+        assert!(o.contains("name  │   n") && o.contains("alpha │   1") && o.contains("b     │ 200"), "the table's columns line up:\n{o}");
+        assert!(o.contains("the docs (https://x.dev)"), "the link's text and its url:\n{o}");
+        assert_eq!(cell_of(&app, &buf, "(https://x.dev)").fg, t.muted, "the url is muted");
+        assert_eq!(at(&app, &buf, "Guide").0, app.screen.preview_rect.x, "no line numbers on drawn lines:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn m_toggles_a_markdown_file_between_pretty_and_raw_and_the_hints_say_which() {
+        let (dir, mut app) = guide_open("mdtoggle");
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(hints(&o).contains(" m  Raw"), "the key hint offers raw:\n{}", hints(&o));
+        key(&mut app, KeyCode::Char('m'));
+        let (o, _) = frame(&mut app, 200, 50);
+        show(&o);
+        assert!(o.contains("   1  # Guide") && o.contains("**bold**"), "the text as it is, numbered:\n{o}");
+        assert!(hints(&o).contains(" m  Pretty"), "the key hint offers pretty:\n{}", hints(&o));
+        key(&mut app, KeyCode::Right);
+        key(&mut app, KeyCode::Char('m'));
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(!o.contains("# Guide") && files(&app).in_preview, "m in the preview draws it again, still reading it:\n{o}");
+        select(&mut app, "notes.txt");
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(!hints(&o).contains(" m "), "only a markdown file has the hint:\n{}", hints(&o));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_markdown_file_edits_as_its_text_and_scrolls_both_ways() {
+        let (dir, mut app) = guide_open("mdedit");
+        frame(&mut app, 200, 50);
+        key(&mut app, KeyCode::PageDown);
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(files(&app).scroll > 0 && !o.contains("Guide") && o.contains("• para"), "the drawn file pages down:\n{o}");
+        key(&mut app, KeyCode::Char('i'));
+        let ed = files(&app).edit.as_ref().expect("editing in place");
+        assert_eq!(ed.lines[0], "# Guide", "the editor has the text, not the drawing");
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(o.contains("   1  # Guide"), "from the top:\n{o}");
+        key(&mut app, KeyCode::Esc);
+        key(&mut app, KeyCode::Char('m'));
+        key(&mut app, KeyCode::PageDown);
+        let (o, _) = frame(&mut app, 200, 50);
+        assert!(files(&app).scroll > 0 && !o.contains("# Guide"), "the raw text pages down too:\n{o}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ctrl_click_on_a_markdown_path_and_line_opens_it_raw_at_that_line() {
+        let dir = project_with_guide("mdreveal");
+        let mut app = screen_in(&dir, 160, 45);
+        app.open_path_from(1, "GUIDE.md", Some(42));
+        let root = files(&app).root.clone();
+        tree_read(&mut app, &root);
+        let (o, _) = frame(&mut app, 160, 45);
+        show(&o);
+        let source = std::fs::read_to_string(dir.join("GUIDE.md")).unwrap();
+        let want = format!("{:>4}  {}", 42, source.lines().nth(41).unwrap());
+        assert!(want.contains("- para"), "line 42 is a line of the list: {want:?}");
+        assert!(o.contains(&want), "line 42 is shown with its number:\n{o}");
+        assert!(!files(&app).drawn(), "raw, since drawn lines have no numbers");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 

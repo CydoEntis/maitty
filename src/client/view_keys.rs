@@ -217,7 +217,7 @@ impl App {
             return true;
         }
         let node = v.selected();
-        let lines = v.preview.as_ref().map(|(_, l)| l.len()).unwrap_or(0);
+        let lines = v.shown_lines(self.screen.preview_rect.width, &self.theme);
         // In the preview: the arrows read the file; ← (or Esc) goes back to the tree.
         if v.in_preview {
             match k.code {
@@ -255,6 +255,10 @@ impl App {
                 if let Some(n) = node.as_ref().filter(|n| !n.is_dir) {
                     match views::Edit::open(&n.path) {
                         Ok(mut ed) => {
+                            // A drawn line is no line of the text: start at the top.
+                            if v.drawn() {
+                                v.scroll = 0;
+                            }
                             ed.row = v.scroll.min(ed.lines.len().saturating_sub(1));
                             v.edit = Some(ed);
                         }
@@ -262,6 +266,7 @@ impl App {
                     }
                 }
             }
+            KeyCode::Char('m') => v.toggle_raw(),
             KeyCode::Char('/') => {
                 v.filtering = true;
                 v.sel = 0;

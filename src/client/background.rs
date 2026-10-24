@@ -391,6 +391,9 @@ impl App {
                             v.sel = i;
                         }
                         v.refresh_preview();
+                        if line.is_some() && v.markdown() {
+                            v.raw = Some(target);
+                        }
                         v.scroll = line.map(|l| (l as usize).saturating_sub(4)).unwrap_or(0);
                         v.in_preview = true;
                     }
