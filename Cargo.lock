@@ -1025,6 +1025,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "maitty"
+version = "0.41.5"
+dependencies = [
+ "anyhow",
+ "arboard",
+ "bytes",
+ "clap",
+ "crossterm",
+ "directories",
+ "futures-util",
+ "getrandom 0.3.4",
+ "ignore",
+ "interprocess",
+ "jsonc-parser",
+ "libc",
+ "png 0.17.16",
+ "portable-pty",
+ "ratatui",
+ "regex",
+ "rmp-serde",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "sha2",
+ "sysinfo",
+ "tokio",
+ "tokio-util",
+ "toml",
+ "toml_edit",
+ "tracing",
+ "tracing-subscriber",
+ "unicode-width",
+ "vt100",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2457,43 +2494,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "vibecasso"
-version = "0.41.5"
-dependencies = [
- "anyhow",
- "arboard",
- "bytes",
- "clap",
- "crossterm",
- "directories",
- "futures-util",
- "getrandom 0.3.4",
- "ignore",
- "interprocess",
- "jsonc-parser",
- "libc",
- "png 0.17.16",
- "portable-pty",
- "ratatui",
- "regex",
- "rmp-serde",
- "serde",
- "serde_bytes",
- "serde_json",
- "sha2",
- "sysinfo",
- "tokio",
- "tokio-util",
- "toml",
- "toml_edit",
- "tracing",
- "tracing-subscriber",
- "unicode-width",
- "vt100",
- "windows-sys 0.61.2",
-]
 
 [[package]]
 name = "vt100"

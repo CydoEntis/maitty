@@ -249,7 +249,8 @@ arguments of its own. Adapters in `src/cli/*.js` are templates (`__APP_NAME__`,
 fails on the name written out. To rename the app:
 
 1. In `Cargo.toml`, set the package `name` (the command) and `[package.metadata.brand] name`,
-   and put the old command first in `previous`.
+   and put the old command first in `previous`. Build once and commit `Cargo.lock` too (it
+   records the package name; releases build `--locked`).
 2. In `install.sh` and `install.ps1`, set `APP` / `$app` and the repository (a test checks them).
 3. Run `sh src/client/v7_frames/regen.sh` (the reference frames show the name).
 4. Replace the name in the docs (not the ADRs), then rename the GitHub repository.
