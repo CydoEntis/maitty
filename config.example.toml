@@ -120,18 +120,19 @@ pattern_rows = 12
 #   palette menu settings help agent-status-setup pane-info
 #   detach reload-config send-prefix kill-server update check-update restart
 #   spawn-right:<cmd> spawn-down:<cmd> spawn-left:<cmd> spawn-up:<cmd> spawn-tab:<cmd>
+# Examples, commented out so the defaults stay as they are:
 [keys.prefix]
-C = "spawn-right:claude"
-O = "spawn-down:codex"
-g = "spawn-tab:lazygit"
-A = "new-worktree:claude"   # worktree picker; whatever you open or create starts claude
+# C = "spawn-right:claude"   # Shift+C: claude in a split beside you
+# O = "spawn-down:codex"     # Shift+O: codex in a split below
+# A = "new-worktree:claude"  # Shift+A: worktree picker; whatever you open or create starts claude
+# g = "spawn-tab:lazygit"    # lazygit in a new tab; takes `g` from Worktrees
 
 # Bindings that work without the prefix (they're taken from the program in the pane).
 [keys.global]
-"alt+h" = "focus-left"
-"alt+j" = "focus-down"
-"alt+k" = "focus-up"
-"alt+l" = "focus-right"
+# "alt+h" = "focus-left"     # Alt+h/j/k/l move between panes, and programs no longer get them
+# "alt+j" = "focus-down"
+# "alt+k" = "focus-up"
+# "alt+l" = "focus-right"
 
 # Agents are detected from the pane's process tree. Entries here merge over the
 # built-ins (claude, codex, gemini, opencode, pi and the rest in docs/agent-status.md)

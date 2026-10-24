@@ -1868,6 +1868,14 @@ shell = \"pwsh\"
     }
 
     #[test]
+    fn config_init_keeps_every_default_key() {
+        let c: Config = toml::from_str(EXAMPLE).unwrap();
+        let (got, want) = (c.keymap(), Config::default().keymap());
+        assert_eq!(got.prefixed, want.prefixed);
+        assert_eq!(got.global, want.global);
+    }
+
+    #[test]
     fn older_ui_configs_keep_their_look_under_its_new_name() {
         let kind = |toml: &str| toml::from_str::<Config>(toml).unwrap().ui.layout_kind();
         assert_eq!(kind("[ui]\npanes = 'tiled'"), LayoutKind::Tiled, "no layout line: Cards, tiled");
