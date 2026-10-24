@@ -24,9 +24,9 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
   its title. Flat draws those
   same sessions and panes edge to edge, with square edges (Settings → Rounded shapes switches every tab, button and selected row to round ends together, in either layout); Tab, Shift+Tab
   and Esc go to the program in the pane in both layouts. The leader is
-  `Ctrl+Space`: a sky-blue pill says it's armed, a pause shows the key map,
-  and `?` opens **All keys**.
-- **Find anything.** `<leader> j` is the inbox: what needs you first, then type to go to any
+  `Ctrl+Space`: it enters shortcut mode (a sky-blue `SHORTCUT` pill, one key per action until
+  `Esc`), a pause shows the key map, and `F1` opens **All keys**.
+- **Find anything.** `<leader> i` is the inbox: what needs you first, then type to go to any
   project or session. `<leader> Space` searches every command in plain words, with or without a key, and **Menu** at
   the bottom of the sidebar lists the common ones. `<leader> ?` lists every configured
   binding (including aliases), the keys that need no leader and the commands only search finds.
@@ -46,8 +46,8 @@ included). Inspired by [herdr](https://github.com/ogulcancelik/herdr),
 - **Git without leaving.** New agents get their own worktree, including `claude` or `codex`
   typed into a shell in a repo's main folder (turn it off with *Own worktree per agent* in
   Settings; `--continue`/`--resume` stay put). Changes (`d`) shows the diff with
-  review marks, then commit, merge, or open a pull request. Files (`f`), find (`F`), search the
-  code (`/`), switch branch (`B`).
+  review marks, then commit, merge, or open a pull request. Files (`f`), find (`p`), search the
+  code (`/`), switch branch (`b`).
 - **Everything is configurable.** The leader, every binding, commands bound to keys, themes and
   per-colour overrides, icons, the sidebar side, detection patterns and your own agents. Settings
   (`<leader> ,`) save to your config with its comments kept.
@@ -109,8 +109,8 @@ From source (any platform with Rust): `cargo install --git https://github.com/Cy
 ## Start in five minutes
 
 1. Install Seshi, then open a terminal in the repository you want to work on and run `seshi`.
-2. Choose **+ new** (or press `Ctrl+Space`, then `n`) for a shell, and type `claude` yourself. `Ctrl+Space`, then `s`, starts your default agent at once instead; `Ctrl+Space`, then `c`, picks the agent, place and project first.
-   In a Git checkout, a new Claude or Codex (typed in a Seshi shell, or started with `s` or `c`) uses a separate worktree by default; resumes stay
+2. Choose **+ new** (or press `Ctrl+Space`, then `n`) for a shell, and type `claude` yourself. `Ctrl+Space`, then `s`, starts your default agent at once instead; `Ctrl+Space`, then `o`, picks the agent, place and project first.
+   In a Git checkout, a new Claude or Codex (typed in a Seshi shell, or started with `s` or `o`) uses a separate worktree by default; resumes stay
    in their existing checkout. A folder that is not a Git repository gets no worktree.
 3. Read the sidebar state: orange means working, the alert colour means the agent needs you,
    green means its turn finished, and gray means idle. Select a row to return to that session.
@@ -179,35 +179,37 @@ for manual installation, or run `seshi update` to update an existing install.
   (`Ctrl+Space e`), a row's menu letters work directly (a row's menu lists them): `x` (or
   Delete) asks to close, `r` renames. Settings distinguishes installed, window and daemon versions.
 
-The leader key is `Ctrl+Space`. Press it and a sky-blue pill appears at the top right
-(the pane you're in turns sky too); press a key, or wait a moment for the compact key map.
-In that key map a key runs its command, Tab (or typing a letter that is no key) searches every command,
-`?` shows all keys, and keys marked `›` open a second step (`w` worktrees: new, switch, merge,
-delete; Backspace goes back). Every action has a leader key or is found by search; no letter
-acts by itself in the sidebar.
-See [contextual shortcuts](docs/shortcuts.md) for every screen's controls.
-The table below lists the default leader bindings; custom bindings appear in All keys.
+The leader key is `Ctrl+Space`. Press it for **shortcut mode**: a sky-blue `SHORTCUT · Esc`
+pill appears at the top right (the pane you're in turns sky too), each key below runs its
+action, and the mode stays for the next key. `Esc`, `Ctrl+Space` again or a click into a pane
+go back to typing, as does anything that gives you something to type into (a new shell,
+session, tab or split). Wait a moment after the leader for the compact key map: a key runs its
+command, Tab (or typing a letter that is no key) searches every command, `F1` shows all keys,
+and keys marked `›` open a second step (`g` worktrees: new, switch, merge, delete; Backspace
+goes back). No default needs Shift, and each key does one thing; no letter acts by itself in
+the sidebar. See [contextual shortcuts](docs/shortcuts.md) for every screen's controls.
+The table below lists the default bindings; custom bindings appear in All keys.
 
-| keys (after the leader) | action |
+| keys (in shortcut mode) | action |
 |---|---|
-| `j` | **inbox**: what needs you (answer a question with its number, Enter goes there), then every session; type to find one |
-| `M` / `i` / `m` | message the current agent / explain its status / the Menu |
-| `n` / `s` | a plain shell right where you are (cd and run what you like, or type `claude`; it groups itself) / a new session at once (your default agent; you type the task there) |
-| `c` / `S` | new session with options (agent, where, project) / stop the agent (Ctrl+C) |
-| `p` | a shell beside this one |
-| `z` / `Z` / `x` | collapse the sidebar into the top strip / hide the sessions (the same key brings them back) / close |
+| `n` / `s` / `o` | a plain shell right where you are (cd and run what you like, or type `claude`; it groups itself) / a new session at once (your default agent; you type the task there) / new session with options (agent, where, project) |
+| `Enter` / `k` | message the current agent / stop the agent (Ctrl+C) |
+| `i` / `y` / `m` | **inbox**: what needs you (answer a question with its number, Enter goes there), then every session; type to find one / why it shows this status / the Menu |
 | arrows | focus the pane that way (left past the edge: the sidebar). `Alt`+arrows do it without the leader (Settings → General turns that off) |
-| `-` / `H J K L` | split down / resize left, down, up, right (`p` splits right) |
-| `t` / `r` / `]` `[` / `X` | **tabs**: new tab (a shell where you are) / rename it in its pill (or double-click it) / next, previous / close it. `Alt+1`–`9` (no leader) goes to a tab |
-| `w` / `f` / `d` | worktrees › / files / changes |
-| `W` | open the worktree picker directly; choose a worktree or type a new branch |
-| `e` / `Space` | focus the sidebar / search commands |
-| `F` / `/` / `B` | find a file / search the code / switch branch |
-| `R` / `V` | rename a session / paste the clipboard's image |
-| `y` / `{` `}` / `PageUp` `PageDown` | select text with keys / previous, next command in history / scroll half a pane |
-| `,` / `?` / `N` / `q` | settings / All keys / what happened / quit (agents keep running) |
+| `v` / `h` / `x` | split side by side / split stacked / close the pane |
+| `Ctrl`+arrows | resize the pane that way |
+| `c` / `PageUp` `PageDown` | select text with keys (copy mode) / scroll half a pane |
+| `z` | collapse the sidebar into the top strip (again brings it back) |
+| `t` / `Ctrl+W` / `r` / `]` `[` / `1`–`9` | **tabs**: new tab (a shell where you are) / close it / rename it in its pill (or double-click it) / next, previous / go to that tab. `Alt+1`–`9` does it without the leader |
+| `f` / `p` / `/` / `d` | files / find a file / search the code / changes |
+| `g` / `b` / `e` | worktrees › / switch branch / focus the sidebar |
+| `Space` / `,` / `F1` | search commands / settings / All keys |
+| `l` / `Ctrl+V` / `q` | what happened / paste the clipboard's image / quit (agents keep running) |
 | `Ctrl+R` | reload configuration |
-| `Ctrl+Space` | send the configured leader key to the program |
+
+Search commands (`Space`) also finds what has no default key: hide the sessions completely,
+the previous or next command in history, open the worktree picker directly, rename a session,
+and send `Ctrl+Space` itself to the program.
 
 Without the leader: **Alt+1–9** selects tabs; **Alt+arrows** moves pane focus
 when enabled in Settings. All keys shows changes to these bindings too.

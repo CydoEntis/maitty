@@ -162,8 +162,8 @@ impl App {
         let agent = find(&model, term).map(|(_, _, s)| s.agent.clone()).unwrap_or_default();
         let mut items = vec![
             ("Rename pane".to_string(), Act::RenamePane(term)),
-            ("Split right".to_string(), Act::Split(term, crate::layout::Dir::Right)),
-            ("Split down".to_string(), Act::Split(term, crate::layout::Dir::Down)),
+            ("Split side by side".to_string(), Act::Split(term, crate::layout::Dir::Right)),
+            ("Split stacked".to_string(), Act::Split(term, crate::layout::Dir::Down)),
         ];
         items.push((
             if self.screen.right_clicks.contains(&term) { "Stop sending right-clicks to pane" } else { "Send right-clicks to pane" }.to_string(),

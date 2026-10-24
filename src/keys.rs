@@ -289,8 +289,8 @@ impl Action {
             Down => "down",
         };
         match self {
-            Action::SplitRight => "Split right".into(),
-            Action::SplitDown => "Split down".into(),
+            Action::SplitRight => "Split side by side".into(),
+            Action::SplitDown => "Split stacked".into(),
             Action::SplitLeft => "Split left".into(),
             Action::SplitUp => "Split up".into(),
             Action::Spawn(d, c) => format!("Run `{c}` {}", dir(d)),
@@ -539,59 +539,64 @@ impl FromStr for Action {
     }
 }
 
-/// Bindings active after the prefix key.
+/// Bindings in shortcut mode (after the leader), ADR 0017: one key each, none needing Shift,
+/// chosen from what other apps use. Hide sidebar, prompt jumps, new worktree, rename workspace
+/// and send-prefix have no default key; search commands finds them.
 pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     // Sessions
-    ("j", "jump"),
-    ("M", "message"),
-    ("i", "why"),
     ("n", "shell-here"),
     ("s", "start-session"),
-    ("c", "new-pane"),
-    ("S", "stop-agent"),
+    ("o", "new-pane"),
+    ("enter", "message"),
+    ("k", "stop-agent"),
+    ("i", "jump"),
+    ("y", "why"),
     // Panes
-    ("p", "split-right"),
-    ("z", "toggle-sidebar"),
-    ("Z", "hide-sidebar"),
-    ("x", "close-pane"),
     ("left", "focus-left"),
     ("down", "focus-down"),
     ("up", "focus-up"),
     ("right", "focus-right"),
-    ("-", "split-down"),
-    ("H", "resize-left"),
-    ("J", "resize-down"),
-    ("K", "resize-up"),
-    ("L", "resize-right"),
-    ("y", "copy-mode"),
+    ("v", "split-right"),
+    ("h", "split-down"),
+    ("x", "close-pane"),
+    ("ctrl+left", "resize-left"),
+    ("ctrl+down", "resize-down"),
+    ("ctrl+up", "resize-up"),
+    ("ctrl+right", "resize-right"),
+    ("c", "copy-mode"),
     ("pageup", "scroll-up"),
     ("pagedown", "scroll-down"),
-    ("{", "prev-prompt"),
-    ("}", "next-prompt"),
+    ("z", "toggle-sidebar"),
     // Tabs
     ("t", "new-tab"),
+    ("ctrl+w", "close-tab"),
     ("r", "rename-tab"),
     ("]", "next-tab"),
     ("[", "prev-tab"),
-    ("X", "close-tab"),
+    ("1", "select-tab-1"),
+    ("2", "select-tab-2"),
+    ("3", "select-tab-3"),
+    ("4", "select-tab-4"),
+    ("5", "select-tab-5"),
+    ("6", "select-tab-6"),
+    ("7", "select-tab-7"),
+    ("8", "select-tab-8"),
+    ("9", "select-tab-9"),
     // Project
-    ("w", "worktrees"),
     ("f", "files"),
-    ("d", "changes"),
-    ("F", "find-file"),
-    ("/", "search-code"),
-    ("B", "switch-branch"),
-    ("W", "new-worktree"),
-    // Getting around
     ("e", "browse-tree"),
+    ("p", "find-file"),
+    ("/", "search-code"),
+    ("d", "changes"),
+    ("g", "worktrees"),
+    ("b", "switch-branch"),
+    // Seshi
     ("space", "palette"),
     ("m", "menu"),
-    ("R", "rename-workspace"),
-    ("V", "paste-image"),
-    // Seshi
     (",", "settings"),
-    ("?", "help"),
-    ("N", "history"),
+    ("f1", "help"),
+    ("l", "history"),
+    ("ctrl+v", "paste-image"),
     ("q", "detach"),
     ("ctrl+r", "reload-config"),
 ];
@@ -884,6 +889,24 @@ pub fn encode(ev: &KeyEvent, app_cursor: bool) -> Vec<u8> {
 mod tests {
     use super::*;
     use ratatui::crossterm::event::{KeyEventKind, KeyEventState};
+
+    /// Characters a US keyboard types only with Shift.
+    const SHIFTED: &str = "~!@#$%^&*()_+{}|:\"<>?";
+
+    #[test]
+    fn default_shortcuts_are_one_key_each_and_none_needs_shift() {
+        let mut keys = std::collections::HashSet::new();
+        let mut actions = std::collections::HashSet::new();
+        for (key, action) in DEFAULT_PREFIX_KEYS {
+            let spec: KeySpec = key.parse().unwrap();
+            assert!(keys.insert(spec), "{key} is bound twice");
+            assert!(actions.insert(*action), "{action} has two keys");
+            assert!(!spec.mods.contains(KeyModifiers::SHIFT), "{key} needs Shift");
+            if let KeyCode::Char(c) = spec.code {
+                assert!(!c.is_uppercase() && !SHIFTED.contains(c), "{key} needs Shift");
+            }
+        }
+    }
 
     fn ev(code: KeyCode, mods: KeyModifiers) -> KeyEvent {
         KeyEvent { code, modifiers: mods, kind: KeyEventKind::Press, state: KeyEventState::NONE }

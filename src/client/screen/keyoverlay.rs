@@ -64,8 +64,8 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
         (
             "PANES",
             vec![
-                r("Split right", vec![A::SplitRight], true),
-                r("Split down", vec![A::SplitDown], true),
+                r("Split side by side", vec![A::SplitRight], true),
+                r("Split stacked", vec![A::SplitDown], true),
                 r("Close pane", vec![A::ClosePane], true),
                 r("Move focus", vec![A::Focus(Dir::Left), A::Focus(Dir::Up), A::Focus(Dir::Down), A::Focus(Dir::Right)], true),
                 r("Collapse sidebar", vec![A::ToggleSidebar], true),
@@ -439,7 +439,7 @@ fn draw_grid(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, km: &KeyMap
             banner.extend(keycap(t, &lead));
             banner.push(seg(format!("{gap}then{gap}"), cs.fg(t.muted)));
             banner.extend(keycap(t, &k(app, &Action::SplitRight)));
-            banner.push(seg(format!("{gap}= split right"), cs.fg(t.muted)));
+            banner.push(seg(format!("{gap}= split"), cs.fg(t.muted)));
             banner
         };
         let room = r.width.saturating_sub(6);

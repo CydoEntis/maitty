@@ -217,7 +217,7 @@ mod screen_tests {
             assert!(keys > 0 || matches!(action, Action::None | Action::SendPrefix), "leader {key} is listed ({})", action.describe());
         }
         // Duplicate keys are gone: one key per action.
-        for dropped in ["v", "|", "b", ":"] {
+        for dropped in ["M", "S", "Z", "H", "J", "K", "L", "X", "F", "B", "W", "R", "V", "N", "?", "{", "}", "|", ":"] {
             let spec: crate::keys::KeySpec = dropped.parse().unwrap();
             assert!(!app.keymap.prefixed.contains_key(&spec), "{dropped} is no longer a leader key");
         }
@@ -244,13 +244,13 @@ mod screen_tests {
             // Ctrl+Space, then a pause: the map, with its banner and groups.
             app.open_keymap(None);
             let o = draw(&mut app, w, h); show(&o);
-            assert!(o.contains("goes after the leader") && o.contains("= split right") && o.contains("Esc"), "{w}x{h}\n{o}");
+            assert!(o.contains("goes after the leader") && o.contains("= split") && o.contains("Esc"), "{w}x{h}\n{o}");
             for g in ["SESSIONS", "PANES", "TABS", "PROJECT", "SESHI"] {
                 assert!(o.contains(g), "{w}x{h}: the map has {g}");
             }
             assert!(o.contains("run it") && o.contains("show all") && !o.contains("[Esc]"), "{o}");
             // ? lists every key, with the keys that need no leader and the commands with none.
-            key(&mut app, KeyCode::Char('?'));
+            key(&mut app, KeyCode::F(1));
             assert!(matches!(&app.mode, Mode::KeyMap(km) if km.view == screen::KeyView::All));
             let mut seen = String::new();
             for _ in 0..80 {
@@ -330,7 +330,7 @@ mod screen_tests {
         terminal.draw(|frame| render::draw(&mut app, frame)).unwrap();
         let buffer = terminal.backend().buffer();
         let find = |sym: &str| (0..45).flat_map(|y| (0..160).map(move |x| (x, y))).filter(|&(x, y)| buffer[(x, y)].symbol() == sym).collect::<Vec<_>>();
-        let cap = find("j").into_iter().any(|(x, y)| buffer[(x, y)].bg == app.theme.btn && buffer[(x, y)].fg == app.theme.strong);
+        let cap = find("i").into_iter().any(|(x, y)| buffer[(x, y)].bg == app.theme.btn && buffer[(x, y)].fg == app.theme.strong);
         assert!(cap, "the Inbox binding is on a raised keycap, strong text");
         // Ctrl+Space in the banner: two caps, and a + in the dim colour between them.
         let plus = find("+").into_iter().any(|(x, y)| buffer[(x, y)].fg == app.theme.muted);
@@ -825,7 +825,7 @@ mod screen_tests {
         app.menu_for_pane(1, (40, 10));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        for item in ["Rename pane", "Split right", "Split down", "Send right-clicks to pane", "Close pane"] {
+        for item in ["Rename pane", "Split side by side", "Split stacked", "Send right-clicks to pane", "Close pane"] {
             assert!(o.contains(item), "pane menu has {item}");
         }
         let Mode::ScreenMenu(m) = &app.mode else { panic!("a menu") };
@@ -1749,10 +1749,10 @@ mod screen_tests {
         // A key with › opens its second step; Backspace goes back.
         app.mode = Mode::Normal;
         app.on_key(lead);
-        key(&mut app, KeyCode::Char('w'));
+        key(&mut app, KeyCode::Char('g'));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(matches!(&app.mode, Mode::KeyMap(km) if km.step == Some(screen::Step::Worktrees)), "w opens the worktrees step");
+        assert!(matches!(&app.mode, Mode::KeyMap(km) if km.step == Some(screen::Step::Worktrees)), "g opens the worktrees step");
         assert!(o.contains("WORKTREES IN SHOP-API") && o.contains("New worktree") && o.contains("Merge into main") && o.contains("the path so far"));
         key(&mut app, KeyCode::Backspace);
         assert!(matches!(&app.mode, Mode::KeyMap(km) if km.step.is_none()), "back to the key map");
@@ -1775,10 +1775,10 @@ mod screen_tests {
         }
         assert!(o.contains("─ Menu ") && o.contains("Session with options…") && o.contains("Pane beside this") && o.contains("Inbox ● 1") && o.contains("Search commands") && o.contains("then a key works anywhere"), "{o}");
         assert!(!o.contains("Start a fleet") && !o.contains("All commands"), "the fleet row and the old palette row are gone");
-        // The leader key shown beside a row runs it here: Z hides the sidebar.
+        // The leader key shown beside a row runs it here: z collapses the sidebar.
         assert!(app.sidebar);
-        app.on_key(KeyEvent::new(KeyCode::Char('Z'), KeyModifiers::SHIFT));
-        assert!(!app.sidebar && app.side_hidden && app.mode == Mode::Normal, "Z: the sidebar hides");
+        app.on_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE));
+        assert!(!app.sidebar && app.mode == Mode::Normal, "z: the sidebar collapses");
     }
 
     #[test]
@@ -1895,11 +1895,11 @@ mod screen_tests {
     }
 
     #[test]
-    fn c_opens_the_new_session_dialog_with_its_rows_keys_and_buttons() {
+    fn o_opens_the_new_session_dialog_with_its_rows_keys_and_buttons() {
         let (_, mut app) = super::design_tests::render_with(100, 30);
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
-        leader(&mut app, 'c');
+        leader(&mut app, 'o');
         assert!(matches!(&app.mode, Mode::NewSession(ns) if ns.row == 0), "opens on the Agent row");
         let o = draw(&mut app, 100, 30);
         show(&o);
@@ -1920,7 +1920,7 @@ mod screen_tests {
         assert_eq!(app.mode, Mode::Normal);
         assert!(sent(&mut rx).is_empty());
         // Enter starts what it shows.
-        leader(&mut app, 'c');
+        leader(&mut app, 'o');
         app.on_key(plain(KeyCode::Right));
         app.on_key(plain(KeyCode::Down));
         app.on_key(plain(KeyCode::Right));
@@ -1929,13 +1929,13 @@ mod screen_tests {
         let cmds = sent(&mut rx);
         assert!(matches!(cmds.as_slice(), [Command::NewWorkspace { cwd: Some(cwd), cmd: Some(cmd), .. }] if cmd == "codex" && cwd.ends_with("shop-api")), "{cmds:?}");
         // The Start button does the same.
-        leader(&mut app, 'c');
+        leader(&mut app, 'o');
         let _ = draw(&mut app, 100, 30);
         let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::NsStart)).then_some((r.x + 1, r.y))).expect("Start is clickable");
         app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
         assert!(matches!(sent(&mut rx).as_slice(), [Command::NewWorktree { cmd: Some(_), .. }]));
         // Its options take clicks too.
-        leader(&mut app, 'c');
+        leader(&mut app, 'o');
         let _ = draw(&mut app, 100, 30);
         let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::NsOpt(1, 1))).then_some((r.x + 1, r.y))).expect("an option is clickable");
         app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
@@ -1953,7 +1953,7 @@ mod screen_tests {
         let (_, app) = super::design_tests::render_with(100, 30);
         assert_eq!(app.keymap.prefixed.get(&key("n")), Some(&Action::ShellHere));
         assert_eq!(app.keymap.prefixed.get(&key("s")), Some(&Action::StartSession));
-        assert_eq!(app.keymap.prefixed.get(&key("c")), Some(&Action::NewPane));
+        assert_eq!(app.keymap.prefixed.get(&key("o")), Some(&Action::NewPane));
         let (_, mut app) = super::design_tests::render_with(100, 30);
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
@@ -3410,7 +3410,7 @@ second line
         }
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains(" matches") && o.contains("Split right") && o.contains("Split down") && o.contains("Panes") && !o.contains("Settings"), "typing narrows it, each with its group");
+        assert!(o.contains(" matches") && o.contains("Split side by side") && o.contains("Split stacked") && o.contains("Panes") && !o.contains("Settings"), "typing narrows it, each with its group");
         app.mode = Mode::KeyMap(Box::new(screen::KeyMap::new(screen::KeyView::Map, None)));
         let o = draw(&mut app, 160, 45);
         show(&o);
@@ -3860,7 +3860,7 @@ second line
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.cfg.ui.which_key = false;
         let lead = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL);
-        for (c, what) in [('j', "inbox"), ('w', "worktrees"), ('?', "keys"), (',', "settings")] {
+        for (c, what) in [('i', "inbox"), ('g', "worktrees"), (',', "settings")] {
             app.mode = Mode::Normal;
             app.on_key(lead);
             assert!(matches!(app.mode, Mode::Prefix { .. }), "leader waits");
@@ -3907,7 +3907,7 @@ second line
         assert!(matches!(app.mode, Mode::Prefix { acted: true, .. }), "still in shortcut mode after one");
         tap(&mut app, 'z');
         assert!(matches!(app.mode, Mode::Prefix { .. }), "and after two, with one leader press");
-        tap(&mut app, 'g');
+        tap(&mut app, 'u');
         assert!(matches!(app.mode, Mode::Prefix { .. }), "a key with no action does nothing and the mode stays");
     }
 
@@ -3923,7 +3923,7 @@ second line
 
     #[test]
     fn something_to_type_into_ends_shortcut_mode() {
-        for c in ['n', 'p', '-', 't'] {
+        for c in ['n', 'v', 'h', 't'] {
             let mut app = shortcut_mode();
             tap(&mut app, c);
             assert!(!matches!(app.mode, Mode::Prefix { .. }), "{c} gives something to type into: {:?}", std::mem::discriminant(&app.mode));
@@ -3933,7 +3933,7 @@ second line
     #[test]
     fn a_popup_takes_the_keys_and_closing_it_goes_back_to_typing() {
         let mut app = shortcut_mode();
-        tap(&mut app, 'j');
+        tap(&mut app, 'i');
         assert!(matches!(app.mode, Mode::GoTo { .. }), "the Inbox has the keys");
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::Normal));
@@ -3944,10 +3944,10 @@ second line
         let mut app = shortcut_mode();
         app.cfg.ui.which_key = true;
         app.mode = Mode::Prefix { since: crate::clock::ago(std::time::Duration::from_secs(10)), acted: false };
-        tap(&mut app, 'g');
+        tap(&mut app, 'u');
         assert!(matches!(app.mode, Mode::KeyMap(_)), "before any shortcut, a letter with the map up searches it");
         app.mode = Mode::Prefix { since: crate::clock::ago(std::time::Duration::from_secs(10)), acted: true };
-        tap(&mut app, 'g');
+        tap(&mut app, 'u');
         assert!(matches!(app.mode, Mode::Prefix { .. }), "after one, the mode just stays");
         assert!(!draw(&mut app, 160, 45).contains("SEARCH"), "and no key map covers the screen");
     }

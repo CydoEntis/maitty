@@ -586,6 +586,11 @@ Status 2026-10-23: #156–#157 built on `dev`; the gate passed (826 tests). Ctrl
 leader now leaves shortcut mode, so `send-prefix` lost its default key; it is in search
 commands and can be bound. Not checked live: the mode in a real terminal with a working agent.
 
+Also 2026-10-23, at the user's request: new default keys (ADR 0017), one per action with no
+Shift (`v` / `h` splits, `i` Inbox, `y` why, `k` stop, `Enter` message, `o` session with
+options, `c` copy mode, `p` find file, `g` worktrees, `b` branches, `l` history, `F1` all keys,
+`Ctrl+W` close tab, `Ctrl+V` paste image, `Ctrl`+arrows resize, `1`–`9` tabs).
+
 ## In scope
 
 Everything below is shipped on `main` unless marked.
@@ -676,6 +681,7 @@ Everything below is shipped on `main` unless marked.
 - [ADR-0012](adr/0012-flat-rendering-style.md) — Add a flat rendering style over the shared session layout; Cards stays default.
 - [ADR-0014](adr/0014-v8-cleanup.md) — Bring over the v8 cleanup, keeping what the user already decided. Rules out: bare letters acting in the sidebar; per-state glyphs on session rows; the fleet, the Team tab, the subagent tree and a helper mode.
 - [ADR-0011](adr/0011-keep-seshi-terminal-first.md) — Keep Seshi terminal-first. Rules out: adding a separate desktop GUI client to this project.
+- [ADR-0017](adr/0017-keys-other-apps-use.md) — Default shortcuts are one key each, none needing Shift, keys other apps use. Rules out: capital or Shift-symbol defaults; two keys for one action.
 - [ADR-0016](adr/0016-sticky-shortcut-mode.md) — The leader opens a shortcut mode that stays until Esc, the leader, a click into a pane or a typing action. Rules out: letters acting outside that shown mode.
 - [ADR-0015](adr/0015-four-named-layouts-and-grid.md) — One Layout setting: Floating, Tiled, Compact, Grid; Grid is a look over the shared layout. Rules out: Grid's own sidebar, top bar, fixed grid, zoom and bare keys.
 
