@@ -28,9 +28,10 @@ Grid is a rendering style, like Compact: each pane is a box in its own colour, c
 position in the tab (green, pink, violet, cyan, then again) from colours every theme has
 (`Theme::grid_colors`: `done`, `accent`, `violet()`, `cyan()`, skipping any too like one
 already taken, then the theme's other colours). The focused pane's border is that colour, bold; the
-others' is the colour faded toward the ground. The top border carries the pane's number and
-its state on the left and its name as a tag on the right. The sidebar, tabs, splits, keys
-and sheets are unchanged.
+others' is the colour faded toward the ground. The top border carries the pane's number, then
+the chip that names it (the current tab on the top-left pane), with the state only as a glyph
+at that chip's front: no state words, and the name is not repeated on the right (the user
+found both redundant, 2026-10-24). The sidebar, tabs, splits, keys and sheets are unchanged.
 
 ## Alternatives considered
 

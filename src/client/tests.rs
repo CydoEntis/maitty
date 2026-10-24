@@ -1332,20 +1332,119 @@ mod screen_tests {
         rows[r.y as usize].chars().skip(r.x as usize).take(r.width as usize).collect()
     }
 
+    /// Where `term`'s box is drawn.
+    fn card_of(app: &App, term: TermId) -> Rect {
+        app.pane_frames.iter().find(|(t, _)| *t == term).unwrap().1
+    }
+
+    /// The hits of kind `want` on `term`'s top border.
+    fn border_hits(app: &App, term: TermId, want: Hit) -> Vec<Rect> {
+        let card = card_of(app, term);
+        app.hits.iter().filter(|(r, h)| *h == want && r.y == card.y && r.x >= card.x && r.right() <= card.right()).map(|(r, _)| *r).collect()
+    }
+
     #[test]
-    fn grid_numbers_each_pane_and_says_its_state_on_the_left_and_its_name_on_the_right() {
+    fn grid_numbers_each_pane_and_names_it_once_with_its_state_glyph_inside() {
         let (app, [a, b, c], rows) = grid_frame(200, 50);
         let (ta, tb, tc) = (top_border(&app, &rows, a), top_border(&app, &rows, b), top_border(&app, &rows, c));
-        assert!(ta.starts_with("┌─ 1  ▲ needs you "), "the number is a chip: {ta}");
-        assert_eq!(ta.matches("needs you").count(), 1, "the state is not repeated on the right: {ta}");
-        assert!(ta.contains("  claude   ✕"), "the name tag before the close: {ta}");
-        assert!(ta.contains("1  claude   + "), "the top-left pane keeps its tabs: {ta}");
-        assert!(tb.starts_with("┌─ 2  ") && tb.contains(" working ") && tb.contains(" codex "), "{tb}");
-        assert!(tc.starts_with("┌─ 3 ─") && tc.contains(" shell "), "no state for a shell: {tc}");
-        let card = app.pane_frames.iter().find(|(t, _)| *t == a).unwrap().1;
-        let on_border = |r: &Rect| r.y == card.y && r.x >= card.x && r.right() <= card.right();
-        let why: Vec<Rect> = app.hits.iter().filter(|(r, h)| *h == Hit::Screen(screen::ScreenHit::Why(a)) && on_border(r)).map(|(r, _)| *r).collect();
-        assert_eq!(why.iter().map(|r| r.x).collect::<Vec<_>>(), [card.x + 2], "one, on the left of the border");
+        let spinner = crate::client::design::glyph(&app, Status::Working);
+        assert!(ta.starts_with("┌─ 1   ▲  1  claude   + ─"), "the number, then needs you inside the current tab: {ta}");
+        assert!(tb.starts_with(&format!("┌─ 2   {spinner} codex ─")), "one name chip, the spinner inside it: {tb}");
+        assert!(tc.starts_with("┌─ 3   shell ─"), "no state for a shell: {tc}");
+        for (top, name) in [(&ta, "claude"), (&tb, "codex"), (&tc, "shell")] {
+            assert!(!top.contains("needs you") && !top.contains("working"), "no state words: {top}");
+            assert_eq!(top.matches(name).count(), 1, "the name is not repeated on the right: {top}");
+            let before_close = top.rsplit_once(" ✕ ").map(|(l, _)| l.to_string()).unwrap_or_default();
+            assert!(before_close.ends_with('─'), "only the ✕ on the right: {top}");
+        }
+        let why = |term| border_hits(&app, term, Hit::Screen(screen::ScreenHit::Why(term))).iter().map(|r| r.x).collect::<Vec<_>>();
+        let (ca, cb) = (card_of(&app, a), card_of(&app, b));
+        assert_eq!(why(a), [ca.x + 2, ca.x + 6], "the number chip and the glyph in the tab open why");
+        assert_eq!(why(b), [cb.x + 2, cb.x + 6], "the number chip and the glyph in the name open why");
+        assert_eq!(why(c), [card_of(&app, c).x + 2], "a shell: the number alone");
+    }
+
+    #[test]
+    fn grid_shows_the_top_left_pane_s_state_only_as_a_glyph_in_its_current_tab() {
+        for (w, h) in [(160, 45), (80, 24)] {
+            for status in [Status::Working, Status::Blocked, Status::Done] {
+                let (_, mut app) = super::design_tests::render_with(w, h);
+                app.cfg.ui.layout = "grid".into();
+                let [a, ..] = three_panes(&mut app);
+                app.snap.terms.get_mut(&a).unwrap().status = status;
+                let buf = drawn(&mut app, w, h);
+                let card = card_of(&app, a);
+                let top: String = (card.x..card.right()).map(|x| buf[(x, card.y)].symbol()).collect();
+                let at = format!("{w}x{h} {status:?}: {top}");
+                for words in ["working", "needs you", "done"] {
+                    assert!(!top.contains(words), "no state words: {at}");
+                }
+                assert!(top.matches("cl").count() <= 1, "the name is not repeated on the right: {at}");
+                let tab = border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab)));
+                assert_eq!(tab.len(), 1, "the current tab is drawn: {at}");
+                let inside: Vec<Rect> = border_hits(&app, a, Hit::Screen(screen::ScreenHit::Why(a))).into_iter().filter(|r| r.x >= tab[0].x && r.right() <= tab[0].right()).collect();
+                let want = match status {
+                    Status::Working => Some(crate::client::design::glyph(&app, Status::Working)),
+                    Status::Blocked => Some("▲".to_string()),
+                    _ => None,
+                };
+                match want {
+                    Some(g) => {
+                        assert_eq!(inside.len(), 1, "the glyph sits inside the current tab: {at}");
+                        assert_eq!(buf[(inside[0].x + 1, card.y)].symbol(), g, "{at}");
+                        assert_eq!(inside[0].x, tab[0].x, "at the front of the tab: {at}");
+                    }
+                    None => assert!(inside.is_empty() && !top.contains('▲'), "done shows no glyph in Grid: {at}"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_grid_tab_shows_working_needs_you_and_done_as_glyphs_only() {
+        for (w, h) in [(160, 45), (80, 24)] {
+            let (_, mut app) = super::design_tests::render_with(w, h);
+            app.cfg.ui.layout = "grid".into();
+            let [a, b, c] = three_panes(&mut app);
+            for (term, status) in [(a, Status::Working), (b, Status::Blocked), (c, Status::Done)] {
+                let info = app.snap.terms.get_mut(&term).unwrap();
+                info.status = status;
+                info.agent.get_or_insert_with(|| "opencode".into());
+            }
+            let o = draw(&mut app, w, h);
+            show(&o);
+            let rows: Vec<String> = o.lines().map(str::to_string).collect();
+            let (ta, tb, tc) = (top_border(&app, &rows, a), top_border(&app, &rows, b), top_border(&app, &rows, c));
+            let spinner = crate::client::design::glyph(&app, Status::Working);
+            assert!(ta.starts_with(&format!("┌─ 1   {spinner} 1  ")), "{w}x{h}: working, in the current tab: {ta}");
+            assert!(tb.starts_with("┌─ 2   ▲  "), "{w}x{h}: needs you, in the name chip: {tb}");
+            assert!(tc.starts_with("┌─ 3   ") && !tc.contains('▲') && !tc.contains(&spinner), "{w}x{h}: done shows no glyph: {tc}");
+            for top in [&ta, &tb, &tc] {
+                assert!(!["working", "needs you", "done"].iter().any(|word| top.contains(word)), "{w}x{h}: no state words: {top}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_click_on_a_grid_state_glyph_opens_why_and_the_tab_still_picks() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.cfg.ui.layout = "grid".into();
+        let [a, b, _] = three_panes(&mut app);
+        app.snap.terms.get_mut(&b).unwrap().status = Status::Working;
+        let press = |app: &mut App, x: u16, y: u16| app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x, row: y, modifiers: KeyModifiers::NONE });
+        for term in [a, b] {
+            drawn(&mut app, 160, 45);
+            let glyph = *border_hits(&app, term, Hit::Screen(screen::ScreenHit::Why(term))).last().unwrap();
+            press(&mut app, glyph.x + 1, glyph.y);
+            assert!(matches!(app.mode, Mode::Why { term: t, .. } if t == term), "the glyph opens why");
+            app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        }
+        drawn(&mut app, 160, 45);
+        let pick = Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab));
+        let tab = border_hits(&app, a, pick)[0];
+        let name = ratatui::layout::Position::new(tab.right() - 2, tab.y);
+        let hit = app.hits.iter().rev().find(|(r, _)| r.contains(name)).map(|(_, h)| *h);
+        assert_eq!(hit, Some(pick), "the rest of the tab still picks it");
     }
 
     #[test]
@@ -1377,6 +1476,11 @@ mod screen_tests {
                             if !row.contains('▲') && !row.contains('●') {
                                 failures.push(format!("{layout} split {split} {mode} update {update} {w}: {row}"));
                             }
+                            // Grid draws it in a chip, on its own amber, with no words.
+                            let amber = (r.x..r.right()).any(|x| buf[(x, r.y)].symbol() == "▲" && buf[(x, r.y)].bg == app.theme.blocked);
+                            if layout == "grid" && mode == "off" && (!amber || row.contains("needs you")) {
+                                failures.push(format!("{layout} split {split} {mode} update {update} {w}: not a glyph on its chip: {row}"));
+                            }
                         }
                         // From the narrowest supported window, typing says so in the corner too.
                         let row0: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
@@ -1391,16 +1495,25 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_narrow_grid_pane_drops_its_name_tag_before_its_state() {
-        let (app, [a, ..], rows) = grid_frame(60, 20);
-        let ta = top_border(&app, &rows, a);
-        assert!(ta.starts_with("┌─ 1  ▲ ") && !ta.contains("needs you") && !ta.contains("claude   ✕"), "the tag, then the state's words go: {ta}");
-        // Narrowing step by step: the tag goes before the words, and the current tab stays.
+    fn a_narrow_grid_pane_shortens_its_name_and_keeps_its_glyph_in_the_chip() {
+        let mut shortened = false;
+        // Narrowing step by step: the current tab stays, with the glyph at its front.
         for w in 60..=110 {
+            let (app, [a, b, _], rows) = grid_frame(w, 20);
+            let (ta, tb) = (top_border(&app, &rows, a), top_border(&app, &rows, b));
+            let tab = border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab)));
+            assert!(tab.len() == 1 && ta.contains("▲  1 "), "{w}: the current tab, its glyph inside: {ta}");
+            assert!(!ta.contains("needs you") && ta.matches("claude").count() <= 1, "{w}: {ta}");
+            let spinner = crate::client::design::glyph(&app, Status::Working);
+            assert!(tb.contains(&format!("{spinner} c")) && tb.matches("codex").count() <= 1, "{w}: the name chip carries the spinner: {tb}");
+            shortened |= tb.contains(&format!("{spinner} cod…"));
+        }
+        assert!(shortened, "somewhere a name chip shortens its name and keeps its glyph");
+        // Narrower still, a tab that cannot fit at its shortest gives way to its glyph alone.
+        for w in 44..60 {
             let (app, [a, ..], rows) = grid_frame(w, 20);
             let ta = top_border(&app, &rows, a);
-            assert!(!ta.contains("claude   ✕") || ta.contains("needs you"), "{w}: {ta}");
-            assert!(app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab))), "{w}: the current tab: {ta}");
+            assert!(ta.starts_with("┌─ 1   ▲ "), "{w}: {ta}");
         }
     }
 
@@ -1443,35 +1556,62 @@ mod screen_tests {
     }
 
     #[test]
-    fn grid_draws_the_pane_number_and_name_tag_as_chips_in_the_pane_s_colour() {
+    fn grid_draws_the_pane_number_and_name_chips_in_the_pane_s_colour_with_a_readable_glyph() {
         use crate::config::Rounding;
-        for rounded in [Rounding::Off, Rounding::Full] {
-            let (_, mut app) = super::design_tests::render_with(200, 50);
-            (app.cfg.ui.layout, app.cfg.ui.rounded) = ("grid".into(), rounded);
-            let [a, b, _] = three_panes(&mut app);
-            let buf = drawn(&mut app, 200, 50);
-            let t = app.theme.clone();
-            let colours = t.grid_colors();
-            for (term, name, chip) in [(a, "claude", colours[0]), (b, "codex", crate::theme::mix(colours[1], t.bg, 0.28))] {
-                let at = format!("{name} {rounded:?}");
-                let card = app.pane_frames.iter().find(|(id, _)| *id == term).unwrap().1;
-                let ink = if term == a { t.ink_on(chip) } else { t.strong };
-                let digit = (card.x..card.right()).find(|&x| buf[(x, card.y)].symbol().chars().all(|c| c.is_ascii_digit())).expect("the number");
-                let tag = last_at(&buf, name, card.y, card.x, card.right()).expect("the name tag");
-                for (x, what) in [(digit, "number"), (tag, "tag")] {
-                    let cell = &buf[(x, card.y)];
-                    assert_eq!((cell.fg, cell.bg), (ink, chip), "the {what} on the pane's colour: {at}");
-                    let pad = &buf[(x - 1, card.y)];
-                    assert_eq!((pad.symbol(), pad.bg), (" ", chip), "the {what} is padded on its chip: {at}");
-                    let end = &buf[(x - 2, card.y)];
+        for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
+            for focus_b in [false, true] {
+                let (_, mut app) = super::design_tests::render_with(200, 50);
+                (app.cfg.ui.layout, app.cfg.ui.rounded) = ("grid".into(), rounded);
+                let [a, b, _] = three_panes(&mut app);
+                if focus_b {
+                    (app.screen.tabs[0].focus, app.snap.workspaces[0].tabs[0].focus) = (b, b);
+                }
+                let buf = drawn(&mut app, 200, 50);
+                let t = app.theme.clone();
+                let colours = t.grid_colors();
+                let chip = |own, focused| if focused { (t.ink_on(own), own) } else { (t.strong, crate::theme::mix(own, t.bg, 0.28)) };
+                let at = format!("{rounded:?} focus on b {focus_b}");
+                let y = card_of(&app, a).y;
+                let why = |term| border_hits(&app, term, Hit::Screen(screen::ScreenHit::Why(term)));
+                let (wa, wb) = (why(a), why(b));
+                let digit = |r: &Rect| r.x + if rounded == Rounding::Full { 2 } else { 1 };
+                // Each number chip, and b's name chip with the spinner at its front, on the pane's colour.
+                let (a_ink, a_chip) = chip(colours[0], !focus_b);
+                let (b_ink, b_chip) = chip(colours[1], focus_b);
+                let starts = [(digit(&wa[0]), a_ink, a_chip, "a's number"), (digit(&wb[0]), b_ink, b_chip, "b's number"), (wb[1].x + 1, b_ink, b_chip, "b's spinner")];
+                for (x, ink, bg, what) in starts {
+                    let cell = &buf[(x, y)];
+                    assert_eq!((cell.fg, cell.bg), (ink, bg), "{what} on the pane's colour: {at}");
+                    assert_eq!(buf[(x - 1, y)].bg, bg, "{what} is padded on its chip: {at}");
+                    let end = &buf[(x - 2, y)];
                     if rounded == Rounding::Full {
-                        assert_eq!((end.symbol(), end.fg), (screen::CAP_L, chip), "the {what} is capped: {at}");
+                        assert_eq!((end.symbol(), end.fg), (screen::CAP_L, bg), "{what} is capped: {at}");
                     } else {
-                        assert_ne!(end.bg, chip, "the {what} is square: {at}");
+                        assert_ne!(end.bg, bg, "{what} is square: {at}");
                     }
                 }
+                let name = &buf[(wb[1].right() + 1, y)];
+                assert_eq!((name.symbol(), name.fg, name.bg), ("c", b_ink, b_chip), "b's name after its spinner, one chip: {at}");
+                // Needs you, at the front of the current tab: on its own amber, whatever the chip.
+                let glyph = &buf[(wa[1].x + 1, y)];
+                assert_eq!(glyph.symbol(), "▲", "{at}");
+                assert_eq!((glyph.fg, glyph.bg), (t.ink_on(t.blocked), t.blocked), "needs you stands out: {at}");
+                assert!(glyph.modifier.contains(ratatui::style::Modifier::BOLD), "{at}");
             }
         }
+    }
+
+    #[test]
+    fn a_working_glyph_in_the_current_tab_takes_the_tab_s_ink() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.cfg.ui.layout = "grid".into();
+        let [a, ..] = three_panes(&mut app);
+        app.snap.terms.get_mut(&a).unwrap().status = Status::Working;
+        let buf = drawn(&mut app, 160, 45);
+        let t = app.theme.clone();
+        let glyph = *border_hits(&app, a, Hit::Screen(screen::ScreenHit::Why(a))).last().unwrap();
+        let cell = &buf[(glyph.x + 1, glyph.y)];
+        assert_eq!((cell.fg, cell.bg), (t.acc_ink, t.accent), "the spinner reads on the tab's accent");
     }
 
     #[test]
