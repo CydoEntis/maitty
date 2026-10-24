@@ -4,24 +4,58 @@ use super::*;
 
 // ---- splash --------------------------------------------------------------------------------
 
-/// <APP> in 7-row pixel letters; `#` is a lit pixel. One empty column sits between letters.
-const FONT: [(char, [&str; 7]); 8] = [
-    ('V', ["#...#", "#...#", "#...#", "#...#", ".#.#.", ".#.#.", "..#.."]),
-    ('I', ["#", "#", "#", "#", "#", "#", "#"]),
-    ('B', ["####.", "#...#", "#...#", "#####", "#...#", "#...#", "#####"]),
-    ('E', ["#####", "#....", "#....", "####.", "#....", "#....", "#####"]),
-    ('C', ["#####", "#....", "#....", "#....", "#....", "#....", "#####"]),
+/// 7-row pixel letters for the app's name, whatever it is (ADR 0019): A–Z, 0–9 and a space;
+/// `#` is a lit pixel. One empty column sits between letters; anything else is left out.
+const FONT: [(char, [&str; 7]); 37] = [
     ('A', ["#####", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"]),
-    ('S', ["#####", "#....", "#....", "#####", "....#", "....#", "#####"]),
+    ('B', ["####.", "#...#", "#...#", "#####", "#...#", "#...#", "#####"]),
+    ('C', ["#####", "#....", "#....", "#....", "#....", "#....", "#####"]),
+    ('D', ["####.", "#...#", "#...#", "#...#", "#...#", "#...#", "####."]),
+    ('E', ["#####", "#....", "#....", "####.", "#....", "#....", "#####"]),
+    ('F', ["#####", "#....", "#....", "####.", "#....", "#....", "#...."]),
+    ('G', ["#####", "#....", "#....", "#.###", "#...#", "#...#", "#####"]),
+    ('H', ["#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"]),
+    ('I', ["#", "#", "#", "#", "#", "#", "#"]),
+    ('J', ["....#", "....#", "....#", "....#", "#...#", "#...#", "#####"]),
+    ('K', ["#...#", "#..#.", "#.#..", "##...", "#.#..", "#..#.", "#...#"]),
+    ('L', ["#....", "#....", "#....", "#....", "#....", "#....", "#####"]),
+    ('M', ["#...#", "##.##", "#.#.#", "#...#", "#...#", "#...#", "#...#"]),
+    ('N', ["#...#", "##..#", "#.#.#", "#..##", "#...#", "#...#", "#...#"]),
     ('O', ["#####", "#...#", "#...#", "#...#", "#...#", "#...#", "#####"]),
+    ('P', ["#####", "#...#", "#...#", "#####", "#....", "#....", "#...."]),
+    ('Q', ["#####", "#...#", "#...#", "#...#", "#...#", "#..##", "#####"]),
+    ('R', ["#####", "#...#", "#...#", "#####", "#.#..", "#..#.", "#...#"]),
+    ('S', ["#####", "#....", "#....", "#####", "....#", "....#", "#####"]),
+    ('T', ["#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.."]),
+    ('U', ["#...#", "#...#", "#...#", "#...#", "#...#", "#...#", "#####"]),
+    ('V', ["#...#", "#...#", "#...#", "#...#", ".#.#.", ".#.#.", "..#.."]),
+    ('W', ["#...#", "#...#", "#...#", "#...#", "#.#.#", "##.##", "#...#"]),
+    ('X', ["#...#", "#...#", ".#.#.", "..#..", ".#.#.", "#...#", "#...#"]),
+    ('Y', ["#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#.."]),
+    ('Z', ["#####", "....#", "...#.", "..#..", ".#...", "#....", "#####"]),
+    ('0', ["#####", "#...#", "#..##", "#.#.#", "##..#", "#...#", "#####"]),
+    ('1', ["..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".###."]),
+    ('2', ["#####", "....#", "....#", "#####", "#....", "#....", "#####"]),
+    ('3', ["#####", "....#", "....#", ".####", "....#", "....#", "#####"]),
+    ('4', ["#...#", "#...#", "#...#", "#####", "....#", "....#", "....#"]),
+    ('5', ["#####", "#....", "#....", "#####", "....#", "....#", "#####"]),
+    ('6', ["#####", "#....", "#....", "#####", "#...#", "#...#", "#####"]),
+    ('7', ["#####", "....#", "...#.", "..#..", "..#..", "..#..", "..#.."]),
+    ('8', ["#####", "#...#", "#...#", "#####", "#...#", "#...#", "#####"]),
+    ('9', ["#####", "#...#", "#...#", "#####", "....#", "....#", "#####"]),
+    (' ', ["..", "..", "..", "..", "..", "..", ".."]),
 ];
-const WORD: &str = env!("APP_ENV");
 const LOGO_ROWS: u16 = 7;
+
+/// The word the splash spells: the app's name in capitals.
+fn word() -> String {
+    crate::brand::APP_NAME.to_uppercase()
+}
 
 /// The wordmark as columns of lit rows: `None` is the gap between letters.
 fn logo_columns() -> Vec<Option<[bool; 7]>> {
     let mut cols = Vec::new();
-    for (i, ch) in WORD.chars().enumerate() {
+    for (i, ch) in word().chars().enumerate() {
         if i > 0 {
             cols.push(None);
         }
@@ -37,9 +71,20 @@ fn logo_columns() -> Vec<Option<[bool; 7]>> {
     cols
 }
 
-/// Width of the wordmark: two columns per pixel from 120 columns up, one below.
+/// Columns per pixel: two from 120 columns up when the word still fits with a margin, else one.
+fn pixel_width(screen_w: u16) -> u16 {
+    let cols = logo_columns().len() as u16;
+    if screen_w >= 120 && cols * 2 + 4 <= screen_w { 2 } else { 1 }
+}
+
+/// Width of the wordmark at `screen_w`.
 fn logo_width(screen_w: u16) -> u16 {
-    logo_columns().len() as u16 * if screen_w >= 120 { 2 } else { 1 }
+    logo_columns().len() as u16 * pixel_width(screen_w)
+}
+
+/// Whether the wordmark fits at all; a name too long for the window is written out instead.
+fn logo_fits(screen_w: u16) -> bool {
+    logo_width(screen_w) + 2 <= screen_w
 }
 
 /// The light band crosses the wordmark every 110 frames (5.5 s), after the stroke is done.
@@ -209,8 +254,13 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     let center = |w: u16| area.x + area.width.saturating_sub(w) / 2;
     fill(f.buffer_mut(), area, t.bg);
 
-    let pw = if area.width >= 120 { 2 } else { 1 };
-    draw_logo(f.buffer_mut(), (center(logo_width(area.width)), y), pw, frame, t);
+    if logo_fits(area.width) {
+        draw_logo(f.buffer_mut(), (center(logo_width(area.width)), y), pixel_width(area.width), frame, t);
+    } else {
+        let name = crate::brand::APP_NAME;
+        let style = Style::default().fg(t.accent).bg(t.bg).add_modifier(Modifier::BOLD);
+        put(f.buffer_mut(), center(name.width() as u16), y + LOGO_ROWS / 2, &[seg(name, style)], area.right());
+    }
     y += LOGO_ROWS + 1;
     let tag = if area.width < NARROW || app.snap.terms.is_empty() { TAG_SHORT } else { TAG };
     let buf = f.buffer_mut();
@@ -370,11 +420,11 @@ mod tests {
     #[test]
     fn the_settled_wordmark_is_every_pixel_as_a_filled_cell_in_a_gradient() {
         let t = theme();
-        let glyph = |ch: char| FONT.iter().find(|(c, _)| *c == ch).expect("every letter of the word has a glyph").1;
-        let pixels: usize = WORD.chars().map(|ch| glyph(ch).iter().map(|r| r.matches('#').count()).sum::<usize>()).sum();
+        let pixels: usize = word().chars().filter_map(|ch| FONT.iter().find(|(c, _)| *c == ch)).map(|(_, g)| g.iter().map(|r| r.matches('#').count()).sum::<usize>()).sum();
+        let width = logo_columns().len() as u16 * 2 + 20;
         for pw in [1u16, 2] {
-            let mut buf = Buffer::empty(Rect::new(0, 0, 120, 20));
-            fill(&mut buf, Rect::new(0, 0, 120, 20), t.bg);
+            let mut buf = Buffer::empty(Rect::new(0, 0, width, 20));
+            fill(&mut buf, Rect::new(0, 0, width, 20), t.bg);
             draw_logo(&mut buf, (10, 4), pw, SETTLED, &t);
             let cells = lit(&buf, t.bg);
             let wordmark: Vec<_> = cells.iter().filter(|(_, y, _)| (4..4 + LOGO_ROWS).contains(y)).collect();
@@ -385,10 +435,18 @@ mod tests {
     }
 
     #[test]
-    fn the_word_spells_app_and_fits_eighty_columns() {
-        assert_eq!(WORD, env!("APP_ENV"));
-        assert!(WORD.chars().all(|ch| FONT.iter().any(|(c, _)| *c == ch)), "a glyph for every letter");
-        assert!(logo_width(80) <= 78 && logo_width(160) <= 158, "{} / {}", logo_width(80), logo_width(160));
+    fn the_font_spells_any_name_and_the_wordmark_never_overflows() {
+        assert_eq!(word(), crate::brand::APP_NAME.to_uppercase());
+        for ch in ('A'..='Z').chain('0'..='9') {
+            let (_, glyph) = FONT.iter().find(|(c, _)| *c == ch).unwrap_or_else(|| panic!("no glyph for {ch}"));
+            assert!(glyph.iter().all(|row| row.len() == glyph[0].len()), "{ch}: every row the same width");
+        }
+        for w in [60, 80, 100, 120, 160, 200] {
+            if logo_fits(w) {
+                assert!(logo_width(w) + 2 <= w, "{w} columns: the wordmark fits with a margin");
+            }
+            assert!(pixel_width(w) == 1 || logo_columns().len() as u16 * 2 + 4 <= w, "{w}: double pixels only when they fit");
+        }
     }
 
     #[test]

@@ -4831,7 +4831,7 @@ mod check_why_tests {
                 for want in [
                     "WHY · claude reads",
                     &ended,
-                    concat!(env!("APP_NAME"), " ran npm test in its worktree"),
+                    concat!(env!("APP_NAME"), " ran npm test"),
                     "✕ exit 1 after 14.2s",
                     "Esc close",
                 ] {

@@ -505,7 +505,7 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
             // file's commit (when you chose is not part of the result).
             if stage == Stage::Never {
                 swap_tail(row, "14:22:05 · took", "did not run · after turn 3 ended 14:21:51", x0, x1);
-                swap_tail(row, concat!(".", env!("APP_COMMAND"), "/checks.toml · you chose never"), concat!(".", env!("APP_COMMAND"), "/checks.toml · a1b2c3d · you chose never"), x0, x1);
+                swap_tail(row, concat!(".", env!("APP_COMMAND"), "/checks.toml · "), concat!(".", env!("APP_COMMAND"), "/checks.toml · a1b2c3d · you chose never"), x0, x1);
             }
         }
     }
