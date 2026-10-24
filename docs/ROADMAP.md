@@ -790,11 +790,12 @@ Everything below is shipped on `main` unless marked.
 - [ADR-0020](adr/0020-rename-to-maitty.md) — The app is called Maitty, "All agents on deck"; a vibecasso or seshi install carries over once.
 - [ADR-0019](adr/0019-the-name-lives-in-one-place.md) — The app's name lives in `Cargo.toml`; code takes it from `brand`. Rules out: writing the app's name out in code, adapters or comments.
 - [ADR-0018](adr/0018-rename-to-vibecasso.md) — The app was called Vibecasso (the name superseded by ADR-0020), a clean break; a vibecasso install carries over once. Rules out: a `vibecasso` command, new code or paths under the old name.
-- [ADR-0017](adr/0017-keys-other-apps-use.md) — Default shortcuts are one key each, none needing Shift, keys other apps use. Rules out: capital or Shift-symbol defaults; two keys for one action.
+- [ADR-0017](adr/0017-keys-other-apps-use.md) — Default shortcuts are one key each, none needing Shift, keys other apps use. Rules out: capital or Shift-symbol defaults (but `?`, ADR-0022); two keys for one action.
 - [ADR-0016](adr/0016-sticky-shortcut-mode.md) — The leader opens a shortcut mode that stays until Esc, the leader, a click into a pane or a typing action. Rules out: letters acting outside that shown mode.
 - [ADR-0013](adr/0013-v7-frame.md) — Draw the v7 frame: tabs in the pane title (the "no margin" part replaced by `ui.padding`, ADR-0021). Rules out: a separate tab row.
 - [ADR-0015](adr/0015-four-named-layouts-and-grid.md) — One Layout setting: Floating, Tiled, Compact, Grid; Grid is a look over the shared layout. Rules out: Grid's own sidebar, top bar, fixed grid, zoom and bare keys.
 - [ADR-0021](adr/0021-one-line-rows-one-rounding-sticky-mode.md) — One-line session rows, one rounding setting (full, corners, off), padding round the screen, and shortcut mode that stays until Esc, the leader or a click (amends ADR-0016). Rules out: a second line that only names the state; separate corner and pill-end switches.
+- [ADR-0022](adr/0022-question-mark-all-keys-c-changes.md) — `?` after the leader lists all keys, `c` opens Changes, copy mode has no default key (amends ADR-0017). Rules out: `F1` and `d` as defaults.
 
 ## Rules
 

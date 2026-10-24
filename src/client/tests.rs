@@ -220,7 +220,7 @@ mod screen_tests {
             assert!(keys > 0 || matches!(action, Action::None | Action::SendPrefix), "leader {key} is listed ({})", action.describe());
         }
         // Duplicate keys are gone: one key per action.
-        for dropped in ["M", "S", "Z", "H", "J", "K", "L", "X", "F", "B", "W", "R", "V", "N", "?", "{", "}", "|", ":"] {
+        for dropped in ["M", "S", "Z", "H", "J", "K", "L", "X", "F", "B", "W", "R", "V", "N", "{", "}", "|", ":"] {
             let spec: crate::keys::KeySpec = dropped.parse().unwrap();
             assert!(!app.keymap.prefixed.contains_key(&spec), "{dropped} is no longer a leader key");
         }
@@ -253,7 +253,7 @@ mod screen_tests {
             }
             assert!(o.contains("run it") && o.contains("show all") && !o.contains("[Esc]"), "{o}");
             // ? lists every key, with the keys that need no leader and the commands with none.
-            key(&mut app, KeyCode::F(1));
+            key(&mut app, KeyCode::Char('?'));
             assert!(matches!(&app.mode, Mode::KeyMap(km) if km.view == screen::KeyView::All));
             let mut seen = String::new();
             for _ in 0..80 {
@@ -8040,5 +8040,74 @@ mod branch_view_tests {
         assert!(!o.contains("Switch branch…") && !o.contains("COMMITS") && !o.contains("SNAPSHOTS"), "instead of the lists");
         key(&mut app, KeyCode::Enter);
         assert_eq!(app.mode, Mode::Normal, "Enter has nothing to open");
+    }
+}
+
+mod leader_key_tests {
+    use super::*;
+
+    fn leader(app: &mut App, code: KeyCode, mods: KeyModifiers) {
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        app.on_key(KeyEvent::new(code, mods));
+    }
+
+    /// A fresh git repo the focused pane runs in.
+    fn in_repo(app: &mut App, tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("{APP_COMMAND}-leader-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::proc::git(&dir, &["init", "-q"]).unwrap();
+        let pane = app.snap.terms.get_mut(&1).expect("the focused pane");
+        pane.cwd = dir.clone();
+        pane.top = Some(dir.clone());
+        dir
+    }
+
+    #[test]
+    fn leader_c_opens_changes() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let dir = in_repo(&mut app, "c");
+        leader(&mut app, KeyCode::Char('c'), KeyModifiers::NONE);
+        assert!(matches!(app.view, Some(View::Changes(_))), "c opens Changes: {:?}", app.mode);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn leader_question_mark_opens_all_keys_however_shift_is_reported() {
+        for mods in [KeyModifiers::SHIFT, KeyModifiers::NONE] {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            leader(&mut app, KeyCode::Char('?'), mods);
+            assert!(matches!(&app.mode, Mode::KeyMap(km) if km.view == screen::KeyView::All), "{mods:?}: {:?}", app.mode);
+        }
+    }
+
+    #[test]
+    fn f1_and_d_do_nothing_after_the_leader_by_default() {
+        for code in [KeyCode::F(1), KeyCode::Char('d')] {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            leader(&mut app, code, KeyModifiers::NONE);
+            assert!(app.view.is_none() && matches!(app.mode, Mode::Prefix { .. }), "{code:?} is unbound: {:?}", app.mode);
+        }
+    }
+
+    #[test]
+    fn copy_mode_has_no_key_and_search_commands_finds_it() {
+        let (_, app) = super::design_tests::render_with(160, 45);
+        assert!(!app.keymap.prefixed.values().any(|a| *a == Action::CopyMode), "no default key");
+        let km = screen::KeyMap { query: "select text".into(), ..screen::KeyMap::new(screen::KeyView::Search, None) };
+        assert!(screen::keymap_actions(&app, &km).contains(&Some(Action::CopyMode)), "Search commands lists it");
+    }
+
+    #[test]
+    fn an_old_config_binding_keys_by_action_name_still_loads() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        for (key, action) in [("d", "changes"), ("f1", "help"), ("y", "copy-mode")] {
+            app.cfg.keys.prefix.insert(key.into(), action.into());
+        }
+        app.keymap = app.cfg.keymap();
+        let bound = |k: &str| app.keymap.prefixed.get(&k.parse().unwrap()).cloned();
+        assert_eq!(bound("d"), Some(Action::Changes));
+        assert_eq!(bound("f1"), Some(Action::Help));
+        assert_eq!(bound("y"), Some(Action::CopyMode));
     }
 }

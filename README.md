@@ -80,10 +80,10 @@ Shift needed. Pause after `Ctrl+Space` to see them all.
 | | |
 |---|---|
 | **Sessions** | `n` new shell · `s` new session · `o` session with options · `Enter` message the agent · `k` stop it · `i` inbox · `y` why this status |
-| **Panes** | arrows move · `v` split side by side · `h` split stacked · `x` close · `Ctrl`+arrows resize · `c` copy mode · `z` collapse the sidebar |
+| **Panes** | arrows move · `v` split side by side · `h` split stacked · `x` close · `Ctrl`+arrows resize · `z` collapse the sidebar |
 | **Tabs** | `t` new · `Ctrl+W` close · `r` rename · `]` / `[` next / previous · `1`–`9` go to tab |
 | **Project** | `f` files · `p` find a file · `/` search code · `d` changes · `g` worktrees · `b` branches · `e` the sidebar |
-| **Maitty** | `Space` search commands · `m` menu · `,` settings · `F1` all keys · `l` history · `Ctrl+V` paste an image · `q` step away |
+| **Maitty** | `Space` search commands · `m` menu · `,` settings · `?` all keys · `l` history · `Ctrl+V` paste an image · `q` step away |
 
 Scrolled up in a pane? Click **↓ Back to bottom**. Every screen's own keys are in
 [shortcuts](docs/shortcuts.md).

@@ -58,9 +58,9 @@ pill appears at the top right (the pane you're in turns sky too), each key below
 action, and the mode stays for the next key. `Esc`, `Ctrl+Space` again or a click into a pane
 go back to typing; a new shell, session, tab or split keeps shortcut mode, so press `Esc`
 to type into it, and closing a popup returns to it. Wait a moment after the leader for the compact key map: a key runs its
-command, Tab (or typing a letter that is no key) searches every command, `F1` shows all keys,
+command, Tab (or typing a letter that is no key) searches every command, `?` shows all keys,
 and keys marked `›` open a second step (`g` worktrees: new, switch, merge, delete; Backspace
-goes back). No default needs Shift, and each key does one thing; no letter acts by itself in
+goes back). No default but `?` needs Shift, and each key does one thing; no letter acts by itself in
 the sidebar. Every default shortcut, and every screen's own keys, are in
 [shortcuts](shortcuts.md).
 
@@ -219,7 +219,7 @@ answer, and return to your other work.
 | Leader + | Panel | What it does |
 |---|---|---|
 | `f` | **Files** | *Recent*: files that just appeared in Downloads, Desktop, Documents or the project (docs, zips, screenshots). *Project*: fuzzy search over the project's files. Enter types the path into your prompt; `^O` opens it, `^F` shows it in the file manager, `^Y` copies the path. |
-| `d` | **Changes** | A worktree's changed files and the diff: `c` commit, `m` merge into the base branch, `p` push and open a pull request, `r` go to its agent, `x` throw it away. |
+| `c` | **Changes** | A worktree's changed files and the diff: `c` commit, `m` merge into the base branch, `p` push and open a pull request, `r` go to its agent, `x` throw it away. |
 | `b` | **Branch** | Where the session's checkout stands, in the side panel: its branch, how far it is ahead of and behind its upstream and its base branch, the last 10 commits, the last check result and its snapshots. Its first row, **Switch branch…**, opens the branch switcher; Enter on a snapshot restores it (asked first). `b` again or Esc closes it. |
 
 Typing in a panel filters it; the action keys that would collide with typing use Ctrl.
@@ -311,6 +311,9 @@ when it last committed). The safe ones come ticked; tick any others, and one con
 them. It says so first when ticked ones hold uncommitted changes, which would be lost.
 
 ## Copy mode
+
+Copy mode has no default key: open it from search commands (leader, then `Space`) as
+**Select text**, or bind `copy-mode` under `[keys.prefix]`.
 
 | key | |
 |---|---|

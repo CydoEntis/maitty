@@ -529,9 +529,10 @@ impl FromStr for Action {
     }
 }
 
-/// Bindings in shortcut mode (after the leader), ADR 0017: one key each, none needing Shift,
-/// chosen from what other apps use. Hide sidebar, prompt jumps, new worktree, rename workspace
-/// and send-prefix have no default key; search commands finds them.
+/// Bindings in shortcut mode (after the leader), ADR 0017: one key each, none needing Shift
+/// but `?` for all keys (ADR 0022), chosen from what other apps use. Copy mode, hide sidebar,
+/// prompt jumps, new worktree, rename workspace and send-prefix have no default key; search
+/// commands finds them.
 pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     // Sessions
     ("n", "shell-here"),
@@ -553,7 +554,6 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("ctrl+down", "resize-down"),
     ("ctrl+up", "resize-up"),
     ("ctrl+right", "resize-right"),
-    ("c", "copy-mode"),
     ("pageup", "scroll-up"),
     ("pagedown", "scroll-down"),
     ("z", "toggle-sidebar"),
@@ -577,14 +577,14 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("e", "browse-tree"),
     ("p", "find-file"),
     ("/", "search-code"),
-    ("d", "changes"),
+    ("c", "changes"),
     ("g", "worktrees"),
     ("b", "branch"),
     // The app
     ("space", "palette"),
     ("m", "menu"),
     (",", "settings"),
-    ("f1", "help"),
+    ("?", "help"),
     ("l", "history"),
     ("ctrl+v", "paste-image"),
     ("q", "detach"),
@@ -883,8 +883,11 @@ mod tests {
     /// Characters a US keyboard types only with Shift.
     const SHIFTED: &str = "~!@#$%^&*()_+{}|:\"<>?";
 
+    /// The one default that needs Shift, at the user's request (ADR 0022).
+    const SHIFTED_ALLOWED: &[(&str, &str)] = &[("?", "help")];
+
     #[test]
-    fn default_shortcuts_are_one_key_each_and_none_needs_shift() {
+    fn default_shortcuts_are_one_key_each_and_none_but_all_keys_needs_shift() {
         let mut keys = std::collections::HashSet::new();
         let mut actions = std::collections::HashSet::new();
         for (key, action) in DEFAULT_PREFIX_KEYS {
@@ -892,10 +895,19 @@ mod tests {
             assert!(keys.insert(spec), "{key} is bound twice");
             assert!(actions.insert(*action), "{action} has two keys");
             assert!(!spec.mods.contains(KeyModifiers::SHIFT), "{key} needs Shift");
-            if let KeyCode::Char(c) = spec.code {
+            if let KeyCode::Char(c) = spec.code
+                && !SHIFTED_ALLOWED.contains(&(*key, *action))
+            {
                 assert!(!c.is_uppercase() && !SHIFTED.contains(c), "{key} needs Shift");
             }
         }
+    }
+
+    #[test]
+    fn question_mark_matches_with_or_without_shift_reported() {
+        let spec: KeySpec = "?".parse().unwrap();
+        assert_eq!(spec, KeySpec::from_event(&ev(KeyCode::Char('?'), KeyModifiers::SHIFT)), "Windows and most terminals report Shift");
+        assert_eq!(spec, KeySpec::from_event(&ev(KeyCode::Char('?'), KeyModifiers::NONE)));
     }
 
     fn ev(code: KeyCode, mods: KeyModifiers) -> KeyEvent {

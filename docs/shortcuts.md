@@ -29,7 +29,6 @@ one thing (ADR 0017).
 | `h` | Split stacked |
 | `x` | Close the pane |
 | `Ctrl`+arrows | Resize the pane |
-| `c` | Copy mode: select text with keys |
 | `PgUp` / `PgDn` | Scroll half a pane |
 | `z` | Collapse the sidebar (again brings it back) |
 
@@ -51,7 +50,7 @@ one thing (ADR 0017).
 | `e` | The sidebar |
 | `p` | Find a file |
 | `/` | Search the code |
-| `d` | Changes |
+| `c` | Changes |
 | `g` | Worktrees › |
 | `b` | Branch (in the side panel; its first row switches branch) |
 
@@ -62,7 +61,7 @@ one thing (ADR 0017).
 | `Space` | Search commands |
 | `m` | Menu |
 | `,` | Settings |
-| `F1` | All keys |
+| `?` | All keys |
 | `l` | What happened (history) |
 | `Ctrl+V` | Paste the clipboard's image |
 | `q` | Step away (agents keep running) |
@@ -88,11 +87,12 @@ reference; it is not a second palette:
 - **Search commands** (`Space` after the leader, `Tab` from the map, or typing a letter
   that is not a key): every command, including ones with no key. With nothing typed it
   lists the ones you ran last.
-- **All keys** (`F1` after the leader, or Menu → All keys): the map in full, the keys that
+- **All keys** (`?` after the leader, or Menu → All keys): the map in full, the keys that
   need no leader, and the commands that only search finds.
 
 Keys are drawn as keycaps; `Ctrl+Space` is two caps joined by a dim `+`. On Windows,
-Caps Lock does not change shortcut meaning, and no default needs Shift (ADR 0017). The
+Caps Lock does not change shortcut meaning, and no default but `?` needs Shift (ADR 0017,
+0022). The
 [README](../README.md#use) lists the defaults.
 
 Mouse entry: **Menu** has a chip in the collapsed strip (row 0); with the sessions hidden
@@ -117,17 +117,17 @@ or another program follow that program's own help.
 | Esc | Close; no command runs while reading |
 
 Every key is a leader key: there is no letter that acts by itself in the sidebar.
-The defaults are one key each, none needing Shift, chosen from what other apps use (ADR
-0017): `v` / `h` split side by side / stacked, `c` copy mode, `i` Inbox, `y` why, `k` stop
+The defaults are one key each, none but `?` needing Shift, chosen from what other apps use
+(ADR 0017, 0022): `v` / `h` split side by side / stacked, `c` Changes, `i` Inbox, `y` why, `k` stop
 the agent, `Enter` message it, `o` session with options, `p` find a file, `g` worktrees, `b`
-Branch, `l` what happened, `F1` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image,
+Branch, `l` what happened, `?` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image,
 `Ctrl`+arrows resize, `1`–`9` go to a tab. Your own `[keys.prefix]` entries still load.
 
 ## Menu
 
 | Keys | Action |
 | --- | --- |
-| The key shown beside a row | Run it (the same leader key works anywhere): `n` Shell here, `s` Session, `o` Session with options…, `v` Pane beside this, `t` Tab, `i` Inbox, `Space` Search commands, `F1` All keys, `z` Collapse sidebar, `,` Settings |
+| The key shown beside a row | Run it (the same leader key works anywhere): `n` Shell here, `s` Session, `o` Session with options…, `v` Pane beside this, `t` Tab, `i` Inbox, `Space` Search commands, `?` All keys, `z` Collapse sidebar, `,` Settings |
 | Up, Down, Enter | Choose and run a row |
 | Esc | Close the Menu |
 
@@ -357,6 +357,8 @@ loads). It has the keys while open; closing it returns to shortcut mode.
 | Esc in settings | Close Settings |
 
 ## Copy mode
+
+No default key: search commands (leader, then `Space`) opens it as **Select text**.
 
 | Keys | Action |
 | --- | --- |
