@@ -128,7 +128,7 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "ui.rounded", label: "Rounded shapes", kind: Kind::Bool, cat: Cat::Appearance, help: "Round ends on every tab, button, selected row and menu row. Needs a Nerd Font. Off keeps everything square." },
     Setting { path: "theme", label: "Theme", kind: Kind::Choice(crate::theme::BUILTIN), cat: Cat::Appearance, help: "Enter to search and preview themes. Enter in the browser applies your choice." },
     Setting { path: "ui.glyphs", label: "Status glyphs", kind: Kind::Choice(&["auto", "dots", "unicode", "ascii", "nerd"]), cat: Cat::Appearance, help: "dots: a coloured dot and a word per session. unicode, ascii, nerd: a shape per state. auto: dots, or ascii if your icons are." },
-    Setting { path: "ui.spinner", label: "Working spinner", kind: Kind::Spinner, cat: Cat::Appearance, help: "An animated working indicator, a static icon, or custom frames. Other status icons keep their meaning." },
+    Setting { path: "ui.spinner", label: "Working spinner", kind: Kind::Spinner, cat: Cat::Appearance, help: "How a working agent's mark moves: Snake, Pulse, Braille and more. Other status icons keep their meaning." },
     // Agents
     Setting { path: "ui.subagent_count", label: "Count on the session row", kind: Kind::Bool, cat: Cat::Agents, help: "Shows \"· 4 agents\" on a working row only when the agent reports helpers. Claude does; Codex doesn't." },
     Setting { path: "worktree.per_agent", label: "Own worktree per agent", kind: Kind::Bool, cat: Cat::Agents, help: "An agent started in a repo's main folder gets its own branch and folder." },
@@ -310,9 +310,6 @@ mod tests {
         app.open_spinners();
         app.on_key(super::super::KeyEvent::new(super::super::KeyCode::End, super::super::KeyModifiers::NONE));
         app.on_key(super::super::KeyEvent::new(super::super::KeyCode::Enter, super::super::KeyModifiers::NONE));
-        app.on_key(super::super::KeyEvent::new(super::super::KeyCode::Char('u'), super::super::KeyModifiers::CONTROL));
-        app.on_paste("a b c".into());
-        app.on_key(super::super::KeyEvent::new(super::super::KeyCode::Enter, super::super::KeyModifiers::NONE));
         app.on_bg(bg_rx.blocking_recv().unwrap());
         assert_eq!(app.cfg.ui.spinner, saved_spinner, "a failed save keeps the applied choice");
         assert!(matches!(&app.mode, super::super::Mode::Spinners(v) if !v.saving));
@@ -320,7 +317,7 @@ mod tests {
         unsafe { std::env::set_var("VIBECASSO_CONFIG", &file) };
         app.on_key(super::super::KeyEvent::new(super::super::KeyCode::Enter, super::super::KeyModifiers::NONE));
         app.on_bg(bg_rx.blocking_recv().unwrap());
-        assert_eq!(app.cfg.ui.spinner, ["a", "b", "c"], "the custom draft survives a failed save");
+        assert_eq!(app.cfg.ui.spinner, crate::config::BARS_FRAMES, "the picked style survives a failed save and applies on retry");
         let legacy_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"];
         write("ui.spinner", legacy_frames.into_iter().collect::<toml_edit::Array>().into()).unwrap();
         assert_eq!(Config::load().unwrap().ui.spinner, legacy_frames, "custom frames must not be silently migrated");

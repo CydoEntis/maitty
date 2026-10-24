@@ -90,7 +90,6 @@ impl App {
                 *sel = 0;
             }
             Mode::Themes { saving: true, .. } => {}
-            Mode::Spinners(view) => view.paste(&s),
             Mode::Branch(v) => v.query.push_str(s.lines().next().unwrap_or("").trim()),
             Mode::Finder(fd) => {
                 fd.q.push_str(s.lines().next().unwrap_or("").trim());

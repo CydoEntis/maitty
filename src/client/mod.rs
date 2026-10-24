@@ -16,7 +16,6 @@ mod pick;
 mod recipes;
 mod render;
 mod tasks;
-mod text_input;
 mod views;
 mod actions;
 mod background;

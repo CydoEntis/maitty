@@ -193,12 +193,14 @@ See [theme sources](theme-credits.md) for upstream palettes and local UI adaptat
 ## Project-specific: working spinner picker
 
 Appearance's Working spinner opens a mouse/keyboard picker with animated preset
-previews, an applied marker, Static and Custom. Preview leaves the active config
-unchanged. Enter or a repeated row click applies; Esc/close returns to the same
-settings row. Custom accepts space-separated frames, cursor editing, paste and
-Ctrl+U. Retain invalid drafts and show inline errors. Save in a background task;
-disable duplicate saves and retain the draft on failure. Choices affect only the
-working glyph; blocked/done/idle status colors and icons keep their meaning.
+previews and an applied marker: Braille, Dots, Line (ASCII), Snake, Pulse (each frame held
+twice, so it breathes at half pace), Fill, Orbit, Bounce, Pair, Arc, Moon, Star (the last
+seven from ratatui-spinner's flux frames), Blocks and Bars. There is no custom or static
+row; frames set by hand in `ui.spinner` still load and work. Preview leaves the active config
+unchanged. Enter or a repeated row click applies; Esc/close returns to the same settings row.
+Save in a background task; disable duplicate saves and keep the applied choice on failure.
+Choices affect only the working glyph; blocked/done/idle status colors and icons keep their
+meaning.
 
 The **Bars** preset is the v7 handoff's 3-bar Braille spinner. A frame is one column, or
 two when every character is Braille; a two-column mark moves the sidebar row's name one

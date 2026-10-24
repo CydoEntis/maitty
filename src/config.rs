@@ -787,12 +787,20 @@ pub const SPINNERS: &[(&str, &[&str])] = &[
     ("Braille", &["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]),
     ("Dots", &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
     ("Line (ASCII)", &["|", "/", "-", "\\"]),
-    ("Circle", &["◴", "◷", "◶", "◵"]),
-    ("Arrows", &["←", "↖", "↑", "↗", "→", "↘", "↓", "↙"]),
-    ("Pulse", &["·", "•", "●", "•"]),
+    // Three dots chasing round the cell's edge.
+    ("Snake", &["⠇", "⠋", "⠙", "⠸", "⢰", "⣠", "⣄", "⡆"]),
+    // Each frame held twice: the pulse breathes at half the other styles' pace.
+    ("Pulse", &["·", "·", "•", "•", "●", "●", "•", "•"]),
+    // From ratatui-spinner's FluxFrames (MIT): Fill is its PULSE.
+    ("Fill", &["⣀", "⣤", "⣶", "⣾", "⣿", "⣾", "⣶", "⣤"]),
+    ("Orbit", &["⠁", "⠈", "⠐", "⠠", "⢀", "⡀", "⠄", "⠂"]),
+    ("Bounce", &["⠉", "⠒", "⣀", "⠒"]),
+    ("Pair", &["⠉", "⠘", "⠰", "⢠", "⣀", "⡄", "⠆", "⠃"]),
+    ("Arc", &["◜", "◝", "◞", "◟"]),
+    ("Moon", &["◓", "◑", "◒", "◐"]),
+    ("Star", &["✶", "✷", "✸", "✹"]),
     ("Blocks", &["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃", "▂"]),
     ("Bars", BARS_FRAMES),
-    ("Static", &[]),
 ];
 /// The v7 handoff's working spinner: three Braille bars, two columns wide. The ASCII glyph set
 /// swaps it for `BARS_ASCII` (see `client::render::status_icon`).
@@ -822,13 +830,6 @@ pub fn validate_spinner(frames: &[String]) -> Result<()> {
     Ok(())
 }
 
-pub fn parse_spinner(text: &str) -> Result<Vec<String>> {
-    anyhow::ensure!(!text.chars().any(|c| c.is_control() && !c.is_whitespace()), "spinner frames cannot contain control characters");
-    let frames = text.split_whitespace().map(String::from).collect::<Vec<_>>();
-    validate_spinner(&frames)?;
-    Ok(frames)
-}
-
 #[cfg(test)]
 mod spinner_tests {
     use super::*;
@@ -840,12 +841,9 @@ mod spinner_tests {
             validate_spinner(&frames).unwrap();
             assert_eq!(spinner_name(&frames), *name);
         }
-        assert_eq!(parse_spinner("| / - \\").unwrap(), ["|", "/", "-", "\\"]);
-        assert_eq!(parse_spinner("e\u{301} x").unwrap(), ["e\u{301}", "x"]);
         for frames in [vec!["".into()], vec![" ".into()], vec!["🌈".into()], vec!["\x1b[31m".into()], vec!["a".into(); MAX_SPINNER_FRAMES+1]] {
             assert!(validate_spinner(&frames).is_err());
         }
-        assert!(parse_spinner("\x1b[31m").is_err());
     }
 
     #[test]
@@ -854,9 +852,8 @@ mod spinner_tests {
         assert_eq!(BARS_FRAMES.len(), 10);
         assert!(BARS_FRAMES.iter().all(|f| f.width() == 2 && f.chars().count() == 2));
         assert!(BARS_ASCII.iter().all(|f| f.is_ascii() && f.width() == 2));
-        assert_eq!(parse_spinner("⣰⡄ ⣼⡀").unwrap(), ["⣰⡄", "⣼⡀"]);
         for bad in ["ab", "🌈", "⣰a", "⣰⡄⣰"] {
-            assert!(parse_spinner(bad).is_err(), "{bad}");
+            assert!(validate_spinner(&[bad.to_string()]).is_err(), "{bad}");
         }
     }
 }
