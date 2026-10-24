@@ -437,15 +437,54 @@ fn tab_strip(app: &mut App, model: &[Proj], x: u16, y: u16, max_x: u16, lit: boo
 
 /// A session's mark on its pane: glyph and word, bold in its colour (working is the
 /// Appearance spinner). A shell has none.
-fn pane_mark(app: &App, info: &TermInfo, t: &Theme) -> Option<(Seg, u16)> {
+fn pane_mark(app: &App, info: &TermInfo, t: &Theme) -> Option<PaneMark> {
     info.agent.as_ref()?;
     let set = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons);
     let spinner = glyph(app, Status::Working);
     let step = if app.motion_on() { check::ring_step(app.spinner_frame(), set.ring.len()) } else { 0 };
     let m = Kind::of(info.status, info.check(), info.asleep).mark(set, t, step, &spinner);
-    let text = format!("{} {}", m.glyph, m.word);
-    let w = text.width() as u16;
-    Some((seg(text, Style::default().fg(m.color).add_modifier(Modifier::BOLD)), w))
+    Some(PaneMark { glyph: m.glyph.to_string(), word: m.word.to_string(), style: Style::default().fg(m.color).add_modifier(Modifier::BOLD) })
+}
+
+/// A session's mark on its pane, whose word can go while its glyph stays.
+struct PaneMark {
+    glyph: String,
+    word: String,
+    style: Style,
+}
+
+/// How wide the card's ✕ is drawn: with its gap after other right-hand segments.
+fn close_width(c: &Card) -> u16 {
+    match (c.close.is_some(), c.right.is_empty()) {
+        (false, _) => 0,
+        (true, true) => 2,
+        (true, false) => 4,
+    }
+}
+
+/// The right of a pane's title in a narrow card: the load note goes first, then the mark's
+/// word, then the ✕; the mark's glyph is the last thing to go, since status must stay in view.
+/// Returns where the mark sits (a click opens why).
+fn fit_right(look: Look, r: Rect, c: &mut Card, note: Option<Seg>, mark: Option<PaneMark>) -> Option<Rect> {
+    let end = right_end(look, r).saturating_sub(c.right_room);
+    // The card draws its right-hand segments only with two cells to spare after the title's start.
+    let avail = end.saturating_sub(title_x(look, r) + 2);
+    let full = mark.as_ref().map(|m| seg(format!("{} {}", m.glyph, m.word), m.style));
+    let short = mark.as_ref().map(|m| seg(m.glyph.clone(), m.style));
+    let tries = [(note.clone(), full.clone(), true), (None, full, true), (None, short.clone(), true), (None, short, false)];
+    let close = c.close;
+    for (note, mark, closes) in tries {
+        c.right = note.into_iter().chain(mark.clone()).collect();
+        c.close = if closes { close } else { None };
+        if segs_width(&c.right) + close_width(c) <= avail {
+            return mark.map(|m| {
+                let w = m.0.width() as u16;
+                Rect { x: end.saturating_sub(close_width(c) + w), y: r.y, width: w, height: 1 }
+            });
+        }
+    }
+    c.right.clear();
+    None
 }
 
 /// Room a card in the top-right corner (a pane or the sheet) leaves at the end of its title for
@@ -473,6 +512,9 @@ const GRID_TAG_FADE: f32 = 0.28;
 
 /// The narrowest a tab chip pair gets before it drops: ` 1 ` and ` x… `.
 const SHORTEST_TAB: u16 = 7;
+
+/// The ✕ at the end of a title and the spaces round the right-hand segments.
+const CLOSE_W: u16 = 4;
 
 /// A pane's place among the tab's panes (0 first): top-left first, left to right and top to
 /// bottom. Grid numbers and colours panes by it.
@@ -513,29 +555,49 @@ fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: 
     let tag = chip(format!(" {} ", session_name(app, model, info.id)));
     let x = title_x(look, r);
     let room = right_end(look, r).saturating_sub(x);
-    // The ✕, the spaces round the right-hand segments and the corner pill's room.
-    let rest = segs_width(&c.right) + 4 + c.right_room;
-    let (number_w, state_w, tag_w) = (segs_width(&number), state.as_ref().map_or(0, |(g, words, _)| (1 + g.width() + words.width()) as u16), segs_width(&tag) + 2);
-    // The top-left pane keeps room for its current tab at its shortest: the tag and then the
-    // state's words drop before it does.
+    let corner = c.right_room;
+    let (number_w, note_w, tag_w) = (segs_width(&number), segs_width(&c.right), segs_width(&tag) + 2);
+    let (words_w, glyph_w) = state.as_ref().map_or((0, 0), |(g, words, _)| ((1 + g.width() + words.width()) as u16, (1 + g.width()) as u16));
+    // The top-left pane keeps room for its current tab at its shortest: the tag, the load note
+    // and the state's words drop before it does.
     let top_left = app.screen.leaf_rects.iter().min_by_key(|(_, lr)| (lr.y, lr.x)).is_some_and(|(id, _)| *id == info.id);
     let caps = if look.round_tabs { 2 } else { 0 };
-    let close = if app.session_tabs().len() > 1 { 2 } else { 0 };
-    let tabs_min = if top_left { SHORTEST_TAB + caps + close + 2 } else { 0 };
-    let with_tag = number_w + state_w + 2 + tag_w + rest + tabs_min <= room;
+    let tab_close = if app.session_tabs().len() > 1 { 2 } else { 0 };
+    let tabs_min = if top_left { SHORTEST_TAB + caps + tab_close + 2 } else { 0 };
+    // Number, state, the gaps round them, what is on the right, the ✕ and the tabs' share.
+    let fits = |number: u16, state: u16, right: u16, close: u16, tabs: u16| number + state + 2 + right + close + corner + tabs <= room;
+    let with_tag = fits(number_w, words_w, note_w + tag_w, CLOSE_W, tabs_min);
     if with_tag {
         // A gap only when something (a load note) follows it; the ✕ brings its own.
         let gap = (!c.right.is_empty()).then(|| seg("  ", Style::default()));
         c.right.splice(0..0, tag.into_iter().chain(gap));
     }
-    let rest = rest + if with_tag { tag_w } else { 0 };
-    let mut left = number;
-    // The state in words, else its glyph alone, else nothing.
-    let fits = |s: &String| number_w + s.width() as u16 + 2 + rest + tabs_min <= room;
-    let state = state.and_then(|(g, words, st)| [format!(" {g}{words}"), format!(" {g}")].into_iter().find(fits).map(|s| seg(s, st)));
-    if let Some(state) = state {
-        left.extend([state, seg(" ", Style::default())]);
+    let right_w = if fits(number_w, words_w, note_w, CLOSE_W, tabs_min) {
+        note_w + if with_tag { tag_w } else { 0 }
+    } else {
+        c.right.clear();
+        0
+    };
+    // Then the words, then the ✕, then the number: the state's glyph is the last to go, since
+    // status must stay in view. The tabs only get what is left after the ✕.
+    let (words, close, keep_number) = if fits(number_w, words_w, right_w, CLOSE_W, tabs_min) {
+        (true, true, true)
+    } else if fits(number_w, glyph_w, right_w, CLOSE_W, 0) {
+        (false, true, true)
+    } else if fits(number_w, glyph_w, right_w, 0, 0) {
+        (false, false, true)
+    } else {
+        (false, false, false)
+    };
+    if !close {
+        c.close = None;
     }
+    let mut left = if keep_number { number } else { Vec::new() };
+    if let Some((g, w, st)) = state {
+        let text = if words { format!(" {g}{w}") } else { format!(" {g}") };
+        left.extend([seg(text, st), seg(" ", Style::default())]);
+    }
+    let rest = right_w + if close { CLOSE_W } else { 0 } + corner;
     let left_w = segs_width(&left);
     if top_left {
         let title_end = right_end(look, r).saturating_sub(rest + 2);
@@ -584,18 +646,17 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         Some(at) => Some((format!("⏸ limit · continues in {}", until(at)), t.muted)),
         None => load_note(info.cpu, info.mem).map(|(load, heavy)| (load, if heavy { t.err } else { t.muted })),
     };
-    if let Some((note, colour)) = note {
-        c.right.push(seg(format!("{note}  "), Style::default().fg(colour)));
-    }
-    // Grid says the state on the left of the border instead.
-    if let Some((m, _)) = &mark
-        && !look.grid
-    {
-        c.right.push(m.clone());
-    }
+    let note = note.map(|(note, colour)| seg(format!("{note}  "), Style::default().fg(colour)));
     c.close = Some(ScreenHit::CloseSplit(term));
     let room = corner_room(app, r, framed(app, f.area()), t);
     c.right_room = room;
+    // Grid says the state on the left of the border instead.
+    let mark_at = if look.grid {
+        c.right.extend(note);
+        None
+    } else {
+        fit_right(look, r, &mut c, note, mark)
+    };
     if let Some(parser) = app.parsers.get(&term) {
         c.bg = crate::client::render::terminal_surface_bg(parser.screen(), c.bg);
     }
@@ -609,8 +670,8 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     let why_at = if look.grid {
         Some(grid_title(app, model, &info, focused, r, &mut c, t))
     } else {
-        // The title runs up to two cells before the right-hand segments ("  ✕ " is the close).
-        let right_w = segs_width(&c.right) + if c.right.is_empty() { 2 } else { 4 } + room;
+        // The title runs up to two cells before the right-hand segments and the ✕.
+        let right_w = segs_width(&c.right) + close_width(&c) + room;
         let title_end = right_end(look, r).saturating_sub(right_w + 2);
         c.chips = if top_left {
             tab_strip(app, model, title_x(look, r), r.y, title_end, focused, t)
@@ -620,7 +681,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
             let chip = vec![name_chip(&name, focused, t)];
             if look.round_tabs { round_ends(chip, title_ground(look, t)) } else { chip }
         };
-        mark.map(|(_, w)| Rect { x: right_end(look, r).saturating_sub(room + 4 + w), y: r.y, width: w, height: 1 })
+        mark_at
     };
     let buf = f.buffer_mut();
     let inside = card(app, buf, r, &c, t);

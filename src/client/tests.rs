@@ -1349,6 +1349,42 @@ mod screen_tests {
     }
 
     #[test]
+    fn a_narrow_title_keeps_its_status_glyph_last_in_every_look() {
+        let mut failures = Vec::new();
+        for layout in ["grid", "floating", "compact"] {
+            for split in [false, true] {
+                for mode in ["off", "lit", "paused"] {
+                    for w in 56..=110u16 {
+                        let (_, mut app) = super::design_tests::render_with(w, 24);
+                        (app.cfg.ui.layout, app.cfg.ui.rounded, app.cfg.ui.which_key) = (layout.into(), crate::config::Rounding::Full, false);
+                        if split {
+                            let [_, b, _] = three_panes(&mut app);
+                            app.snap.terms.get_mut(&b).unwrap().status = Status::Blocked;
+                        }
+                        if mode != "off" {
+                            app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+                        }
+                        if mode == "paused" {
+                            tap(&mut app, ',');
+                        }
+                        let buf = drawn(&mut app, w, 24);
+                        // The panes along the top: the modal covers any below.
+                        let blocked: Vec<Rect> = app.pane_frames.iter().filter(|(id, r)| r.y == 0 && app.snap.terms[id].status == Status::Blocked).map(|(_, r)| *r).collect();
+                        assert!(!blocked.is_empty(), "{layout} {w}: a blocked pane is drawn");
+                        for r in blocked {
+                            let row: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
+                            if !row.contains('▲') && !row.contains('●') {
+                                failures.push(format!("{layout} split {split} {mode} {w}: {row}"));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(failures.is_empty(), "the status glyph is on the title:\n{}", failures.join("\n"));
+    }
+
+    #[test]
     fn a_narrow_grid_pane_drops_its_name_tag_before_its_state() {
         let (app, [a, ..], rows) = grid_frame(60, 20);
         let ta = top_border(&app, &rows, a);
