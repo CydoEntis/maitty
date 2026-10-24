@@ -10,8 +10,8 @@
 $ErrorActionPreference = 'Stop'
 
 # The app's command and where it is released: the only place this script names it (ADR 0019).
-$app = 'vibecasso'
-$repo = 'CydoEntis/vibecasso'
+$app = 'maitty'
+$repo = 'CydoEntis/maitty'
 
 $envPrefix = $app.ToUpper().Replace('-', '_')
 function Setting($name) { [Environment]::GetEnvironmentVariable("$($envPrefix)_$name") }

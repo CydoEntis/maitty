@@ -18,7 +18,7 @@
 │   z old-moth                2d │ │  │  $ npm test                                                                      │                                     │
 │     asleep zzZ                 │ │  │                                                                                  │                                     │
 │                                │ │  │ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │                                     │
-│                                │ │  │ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago                   │                                     │
+│                                │ │  │ From     .maitty/checks.toml · added in a1b2c3d, 3 days ago                      │                                     │
 │                                │ │  │ When     after every agent turn, with your permissions                           │                                     │
 │                                │ │  │                                                                                  │                                     │
 │                                │ │  │ Read it. It can do anything you can in that folder.                              │                                     │
@@ -57,7 +57,7 @@
 │     as│  $ npm test                                                                      │       │
 │       │                                                                                  │       │
 │  ▾ orb│ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │       │
-│   ✓ qu│ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago                   │       │
+│   ✓ qu│ From     .maitty/checks.toml · added in a1b2c3d, 3 days ago                      │       │
 │   z ol│ When     after every agent turn, with your permissions                           │       │
 │       │                                                                                  │       │
 │       │ Read it. It can do anything you can in that folder.                              │       │
@@ -84,7 +84,7 @@
 ││                                                                            │
 ││  $ npm test                                                                │
 ││ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                         │
-││ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago             │
+││ From     .maitty/checks.toml · added in a1b2c3d, 3 days ago                │
 ││ When     after every agent turn, with your permissions                     │
 ││                                                                            │
 ││ Read it. It can do anything you can in that folder.                        │
@@ -120,7 +120,7 @@
 │   z old-moth                2d ││   │  $ npm test                                                                      │                                     │
 │     asleep zzZ                 ││   │                                                                                  │                                     │
 │                                ││   │ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │                                     │
-│                                ││   │ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago                   │                                     │
+│                                ││   │ From     .maitty/checks.toml · added in a1b2c3d, 3 days ago                      │                                     │
 │                                ││   │ When     after every agent turn, with your permissions                           │                                     │
 │                                ││   │                                                                                  │                                     │
 │                                ││   │ Read it. It can do anything you can in that folder.                              │                                     │
@@ -159,7 +159,7 @@
 │     as│  $ npm test                                                                      │       │
 │       │                                                                                  │       │
 │  ▾ orb│ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │       │
-│   ✓ qu│ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago                   │       │
+│   ✓ qu│ From     .maitty/checks.toml · added in a1b2c3d, 3 days ago                      │       │
 │   z ol│ When     after every agent turn, with your permissions                           │       │
 │       │                                                                                  │       │
 │       │ Read it. It can do anything you can in that folder.                              │       │
@@ -186,7 +186,7 @@
 ││                                                                            │
 ││  $ npm test                                                                │
 ││ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                         │
-││ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago             │
+││ From     .maitty/checks.toml · added in a1b2c3d, 3 days ago                │
 ││ When     after every agent turn, with your permissions                     │
 ││                                                                            │
 ││ Read it. It can do anything you can in that folder.                        │
@@ -222,7 +222,7 @@
    z old-moth                  2d│    │  $ npm test                                                                      │
      asleep zzZ                  │    │                                                                                  │
                                  │    │ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │
-                                 │    │ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago                   │
+                                 │    │ From     .maitty/checks.toml · added in a1b2c3d, 3 days ago                      │
                                  │    │ When     after every agent turn, with your permissions                           │
                                  │    │                                                                                  │
                                  │    │ Read it. It can do anything you can in that folder.                              │
@@ -261,7 +261,7 @@
      ask│  $ npm test                                                                      │
         │                                                                                  │
   ▾ orbi│ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                               │
-   ✓ qui│ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago                   │
+   ✓ qui│ From     .maitty/checks.toml · added in a1b2c3d, 3 days ago                      │
    z old│ When     after every agent turn, with your permissions                           │
         │                                                                                  │
         │ Read it. It can do anything you can in that folder.                              │
@@ -288,7 +288,7 @@
  │                                                                            │
  │  $ npm test                                                                │
  │ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                         │
- │ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago             │
+ │ From     .maitty/checks.toml · added in a1b2c3d, 3 days ago                │
  │ When     after every agent turn, with your permissions                     │
  │                                                                            │
  │ Read it. It can do anything you can in that folder.                        │
@@ -313,7 +313,7 @@
  │                                                                            │
  │  $ npm test                                                                │
  │ Runs in  ~\dev\affiliate-site-worktrees\fix-footer                         │
- │ From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago             │
+ │ From     .maitty/checks.toml · added in a1b2c3d, 3 days ago                │
  │ When     after every agent turn, with your permissions                     │
  │                                                                            │
  │ Read it. It can do anything you can in that folder.                        │

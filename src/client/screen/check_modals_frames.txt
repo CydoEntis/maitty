@@ -44,7 +44,7 @@
 
   CHECK
 
- No check set. Vibecasso can run one command itself when an agent's
+ No check set. Maitty can run one command itself when an agent's
  turn ends; the session isn't done until it passes. Agents keep working.
 
  Command    e.g. npm test
@@ -63,7 +63,7 @@
 
   CHECK
 
- No check set. Vibecasso can run one command itself when an agent's
+ No check set. Maitty can run one command itself when an agent's
  turn ends; the session isn't done until it passes. Agents keep working.
 
  Command    e.g. npm test
@@ -82,7 +82,7 @@
 
   CHECK
 
- No check set. Vibecasso can run one command itself when an agent's
+ No check set. Maitty can run one command itself when an agent's
  turn ends; the session isn't done until it passes. Agents keep working.
 
  Command    e.g. npm test
@@ -275,7 +275,7 @@
   $ npm test
 
  Runs in  ~\dev\affiliate-site-worktrees\fix-footer
- From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago
+ From     .maitty/checks.toml · added in a1b2c3d, 3 days ago
  When     after every agent turn, with your permissions
 
  Read it. It can do anything you can in that folder.
@@ -294,7 +294,7 @@
   $ npm test
 
  Runs in  ~\dev\affiliate-site-worktrees\fix-footer
- From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago
+ From     .maitty/checks.toml · added in a1b2c3d, 3 days ago
  When     after every agent turn, with your permissions
 
  Read it. It can do anything you can in that folder.
@@ -312,7 +312,7 @@
 
   $ npm test
  Runs in  ~\dev\affiliate-site-worktrees\fix-footer
- From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago
+ From     .maitty/checks.toml · added in a1b2c3d, 3 days ago
  When     after every agent turn, with your permissions
 
  Read it. It can do anything you can in that folder.
@@ -331,7 +331,7 @@
   $ npm test
 
  Runs in  ~\dev\affiliate-site-worktrees\fix-footer
- From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago
+ From     .maitty/checks.toml · added in a1b2c3d, 3 days ago
  When     after every agent turn, with your permissions
 
  Read it. It can do anything you can in that folder.
@@ -350,7 +350,7 @@
   $ npm test
 
  Runs in  ~\dev\affiliate-site-worktrees\fix-footer
- From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago
+ From     .maitty/checks.toml · added in a1b2c3d, 3 days ago
  When     after every agent turn, with your permissions
 
  Read it. It can do anything you can in that folder.
@@ -368,7 +368,7 @@
 
   $ npm test
  Runs in  ~\dev\affiliate-site-worktrees\fix-footer
- From     .vibecasso/checks.toml · added in a1b2c3d, 3 days ago
+ From     .maitty/checks.toml · added in a1b2c3d, 3 days ago
  When     after every agent turn, with your permissions
 
  Read it. It can do anything you can in that folder.
@@ -388,7 +388,7 @@
   + npm test && node scripts/seed.js
 
  Runs in  ~\dev\affiliate-site-worktrees\fix-footer
- From     .vibecasso/checks.toml · changed in 9f3c2a1, 2h ago
+ From     .maitty/checks.toml · changed in 9f3c2a1, 2h ago
  When     after every agent turn, with your permissions
 
  Read it. It can do anything you can in that folder.
@@ -407,7 +407,7 @@
   + npm test && node scripts/seed.js
 
  Runs in  ~\dev\affiliate-site-worktrees\fix-footer
- From     .vibecasso/checks.toml · changed in 9f3c2a1, 2h ago
+ From     .maitty/checks.toml · changed in 9f3c2a1, 2h ago
  When     after every agent turn, with your permissions
 
  Read it. It can do anything you can in that folder.
@@ -425,7 +425,7 @@
   - npm test
   + npm test && node scripts/seed.js
  Runs in  ~\dev\affiliate-site-worktrees\fix-footer
- From     .vibecasso/checks.toml · changed in 9f3c2a1, 2h ago
+ From     .maitty/checks.toml · changed in 9f3c2a1, 2h ago
  When     after every agent turn, with your permissions
 
  Read it. It can do anything you can in that folder.

@@ -7,7 +7,7 @@
 │ ▎   footer shows current year  │ │  WHY · fix-footer reads failed                                                                                            │
 │   ⣶⡆ add-payments          now │ │                                                                                                                           │
 │     claude · working           │ │  14:21:51 agent's turn ended · it said "tests pass"                                                                       │
-│                                │ │  14:22:05 Vibecasso ran npm test in its worktree                                                                          │
+│                                │ │  14:22:05 Maitty ran npm test in its worktree                                                                             │
 │  ▾ pixls                no git │ │  14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests failed                                                                     │
 │   ● warm-finch              3m │ │                                                                                                                           │
 │     asks: use pnpm or npm?     │ │  ⏎ evidence   r re-run   O override   Esc close                                                                           │
@@ -53,7 +53,7 @@
 │   ⣶⡆ add-payments  now │ │  WHY · fix-footer reads failed                                        │
 │                        │ │                                                                       │
 │  ▾ pixls        no git │ │  14:21:51 agent's turn ended · it said "tests pass"                   │
-│   ● warm-finch      3m │ │  14:22:05 Vibecasso ran npm test in its worktree                      │
+│   ● warm-finch      3m │ │  14:22:05 Maitty ran npm test in its worktree                         │
 │     asks: use pnpm or n│ │  14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests failed                 │
 │                        │ │                                                                       │
 │  ▾ orbit         ⎇ dev │ │  ⏎ evidence   r re-run   O override   Esc close                       │
@@ -82,7 +82,7 @@
 │ ▎ ✕ fix-footer         │ │  WHY · fix-footer reads failed                    │
 │ ▎   failed: test · exit│ │                                                   │
 │   ⣶⡆ add-payments      │ │  14:21:51 agent's turn ended · it said "tests pa  │
-│                        │ │  14:22:05 Vibecasso ran npm test in its worktree  │
+│                        │ │  14:22:05 Maitty ran npm test in its worktree     │
 │  ▾ pixls        no git │ │  14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests f  │
 │   ● warm-finch         │ │                                                   │
 │     asks: use pnpm or n│ │  ⏎ evidence   r re-run   O override   Esc close   │
@@ -109,7 +109,7 @@
 │ ▎   footer shows current year  ││   WHY · fix-footer reads failed                                                                                            │
 │   ⣶⡆ add-payments          now ││                                                                                                                            │
 │     claude · working           ││   14:21:51 agent's turn ended · it said "tests pass"                                                                       │
-│                                ││   14:22:05 Vibecasso ran npm test in its worktree                                                                          │
+│                                ││   14:22:05 Maitty ran npm test in its worktree                                                                             │
 │  ▾ pixls                no git ││   14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests failed                                                                     │
 │   ● warm-finch              3m ││                                                                                                                            │
 │     asks: use pnpm or npm?     ││   ⏎ evidence   r re-run   O override   Esc close                                                                           │
@@ -155,7 +155,7 @@
 │   ⣶⡆ add-payments  now ││   WHY · fix-footer reads failed                                        │
 │                        ││                                                                        │
 │  ▾ pixls        no git ││   14:21:51 agent's turn ended · it said "tests pass"                   │
-│   ● warm-finch      3m ││   14:22:05 Vibecasso ran npm test in its worktree                      │
+│   ● warm-finch      3m ││   14:22:05 Maitty ran npm test in its worktree                         │
 │     asks: use pnpm or n││   14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests failed                 │
 │                        ││                                                                        │
 │  ▾ orbit         ⎇ dev ││   ⏎ evidence   r re-run   O override   Esc close                       │
@@ -184,7 +184,7 @@
 │ ▎ ✕ fix-footer         ││   WHY · fix-footer reads failed                    │
 │ ▎   failed: test · exit││                                                    │
 │   ⣶⡆ add-payments      ││   14:21:51 agent's turn ended · it said "tests pa  │
-│                        ││   14:22:05 Vibecasso ran npm test in its worktree  │
+│                        ││   14:22:05 Maitty ran npm test in its worktree     │
 │  ▾ pixls        no git ││   14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests f  │
 │   ● warm-finch         ││                                                    │
 │     asks: use pnpm or n││   ⏎ evidence   r re-run   O override   Esc close   │
@@ -211,7 +211,7 @@
  ▎   footer shows current year   │    WHY · fix-footer reads failed
    ⣶⡆ add-payments            now│
      claude · working            │    14:21:51 agent's turn ended · it said "tests pass"
-                                 │    14:22:05 Vibecasso ran npm test in its worktree
+                                 │    14:22:05 Maitty ran npm test in its worktree
   ▾ pixls                  no git│    14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests failed
    ● warm-finch                3m│
      asks: use pnpm or npm?      │    ⏎ evidence   r re-run   O override   Esc close
@@ -257,7 +257,7 @@
    ⣶⡆ add-payments    now│    WHY · fix-footer reads failed
                          │
   ▾ pixls          no git│    14:21:51 agent's turn ended · it said "tests pass"
-   ● warm-finch        3m│    14:22:05 Vibecasso ran npm test in its worktree
+   ● warm-finch        3m│    14:22:05 Maitty ran npm test in its worktree
      asks: use pnpm or np│    14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests failed
                          │
   ▾ orbit           ⎇ dev│    ⏎ evidence   r re-run   O override   Esc close
@@ -286,7 +286,7 @@
  ▎ ✕ fix-footer          │    WHY · fix-footer reads failed
  ▎   failed: test · exit │
    ⣶⡆ add-payments       │    14:21:51 agent's turn ended · it said "tests pa
-                         │    14:22:05 Vibecasso ran npm test in its worktree
+                         │    14:22:05 Maitty ran npm test in its worktree
   ▾ pixls          no git│    14:22:19 ✕ exit 1 after 14.2s · 1 of 59 tests f
    ● warm-finch          │
      asks: use pnpm or np│    ⏎ evidence   r re-run   O override   Esc close
@@ -311,7 +311,7 @@
  | x fix-footer          │    WHY · fix-footer reads failed
  |   failed: test · exit │
    O  add-payments       │    14:21:51 agent's turn ended · it said "tests pa
-                         │    14:22:05 Vibecasso ran npm test in its worktree
+                         │    14:22:05 Maitty ran npm test in its worktree
   v pixls          no git│    14:22:19 x exit 1 after 14.2s · 1 of 59 tests f
    ! warm-finch          │
      asks: use pnpm or np│    ⏎ evidence   r re-run   O override   Esc close

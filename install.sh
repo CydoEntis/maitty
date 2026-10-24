@@ -10,8 +10,8 @@
 set -eu
 
 # The app's command and where it is released: the only place this script names it (ADR 0019).
-APP="vibecasso"
-REPO="CydoEntis/vibecasso"
+APP="maitty"
+REPO="CydoEntis/maitty"
 
 ENV_PREFIX="$(printf '%s' "$APP" | tr 'a-z-' 'A-Z_')"
 eval "VERSION=\${${ENV_PREFIX}_VERSION:-}"

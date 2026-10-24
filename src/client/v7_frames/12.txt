@@ -6,7 +6,7 @@
 │ ▎   failed: test · exit 1      │ │                                                  │ │ Command  npm test                                                    │
 │ ▎   footer shows current year  │ │                                                  │ │ Folder   ~\dev\affiliate-site-worktrees\fix-footer                   │
 │   ⣶⡆ add-payments          now │ │                                                  │ │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51         │
-│     claude · working           │ │                                                  │ │ Seen by  Vibecasso ran this itself. The agent said "tests pass".     │
+│     claude · working           │ │                                                  │ │ Seen by  Maitty ran this itself. The agent said "tests pass".        │
 │                                │ │                                                  │ │                                                                      │
 │  ▾ pixls                no git │ │                                                  │ │  OUTPUT  all 13 lines                                                │
 │   ● warm-finch              3m │ │                                                  │ │ 1    > affiliate-site@1.4.0 test                                     │
@@ -52,7 +52,7 @@
 │ ▎   failed: test · exit│ │ Command  npm test                                                     │
 │   ⣶⡆ add-payments  now │ │ Folder   ~\dev\affiliate-site-worktrees\fix-footer                    │
 │                        │ │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51          │
-│  ▾ pixls       OVERRIDE A FAILED CHECK                                  Esc close  s pass".      │
+│  ▾ pixls       OVERRIDE A FAILED CHECK                                  Esc close  ass".         │
 │   ● warm-finc│                                                                    │              │
 │     asks: use│ fix-footer will read done (overridden) though test failed          │              │
 │              │ (exit 1 at 14:22).                                                 │              │
@@ -83,7 +83,7 @@
 │ ▎    OVERRIDE A FAILED CHECK                                  Esc close      │
 │   ⣶│                                                                    │ te │
 │    │ fix-footer will read done (overridden) though test failed          │ nd │
-│  ▾ │ (exit 1 at 14:22).                                                 │ ai │
+│  ▾ │ (exit 1 at 14:22).                                                 │  " │
 │   ●│                                                                    │    │
 │    │ This hides a failure. It stays visible:                            │    │
 │    │   ⊘ on the row, in the Inbox history and in the evidence           │    │
@@ -108,7 +108,7 @@
 │ ▎   failed: test · exit 1      ││                                                    ││ Command  npm test                                                    │
 │ ▎   footer shows current year  ││                                                    ││ Folder   ~\dev\affiliate-site-worktrees\fix-footer                   │
 │   ⣶⡆ add-payments          now ││                                                    ││ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51         │
-│     claude · working           ││                                                    ││ Seen by  Vibecasso ran this itself. The agent said "tests pass".     │
+│     claude · working           ││                                                    ││ Seen by  Maitty ran this itself. The agent said "tests pass".        │
 │                                ││                                                    ││                                                                      │
 │  ▾ pixls                no git ││                                                    ││  OUTPUT  all 13 lines                                                │
 │   ● warm-finch              3m ││                                                    ││ 1    > affiliate-site@1.4.0 test                                     │
@@ -154,7 +154,7 @@
 │ ▎   failed: test · exit││ Command  npm test                                                      │
 │   ⣶⡆ add-payments  now ││ Folder   ~\dev\affiliate-site-worktrees\fix-footer                     │
 │                        ││ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51           │
-│  ▾ pixls       OVERRIDE A FAILED CHECK                                  Esc close   pass".       │
+│  ▾ pixls       OVERRIDE A FAILED CHECK                                  Esc close  ss".          │
 │   ● warm-finc│                                                                    │              │
 │     asks: use│ fix-footer will read done (overridden) though test failed          │              │
 │              │ (exit 1 at 14:22).                                                 │              │
@@ -185,7 +185,7 @@
 │ ▎    OVERRIDE A FAILED CHECK                                  Esc close      │
 │   ⣶│                                                                    │ er │
 │    │ fix-footer will read done (overridden) though test failed          │ de │
-│  ▾ │ (exit 1 at 14:22).                                                 │ id │
+│  ▾ │ (exit 1 at 14:22).                                                 │ "t │
 │   ●│                                                                    │    │
 │    │ This hides a failure. It stays visible:                            │    │
 │    │   ⊘ on the row, in the Inbox history and in the evidence           │    │
@@ -210,7 +210,7 @@
  ▎   failed: test · exit 1       │                                                      │ Command  npm test
  ▎   footer shows current year   │                                                      │ Folder   ~\dev\affiliate-site-worktrees\fix-footer
    ⣶⡆ add-payments            now│                                                      │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
-     claude · working            │                                                      │ Seen by  Vibecasso ran this itself. The agent said "tests pass".
+     claude · working            │                                                      │ Seen by  Maitty ran this itself. The agent said "tests pass".
                                  │                                                      │
   ▾ pixls                  no git│                                                      │  OUTPUT  all 13 lines
    ● warm-finch                3m│                                                      │ 1    > affiliate-site@1.4.0 test
@@ -256,7 +256,7 @@
  ▎   failed: test · exit │ Command  npm test
    ⣶⡆ add-payments    now│ Folder   ~\dev\affiliate-site-worktrees\fix-footer
                          │ Ran      14:22:05 · took 14.2s · after turn 3 ended 14:21:51
-  ▾ pixls        OVERRIDE A FAILED CHECK                                  Esc close  pass".
+  ▾ pixls        OVERRIDE A FAILED CHECK                                  Esc close  s".
    ● warm-finch│                                                                    │
      asks: use │ fix-footer will read done (overridden) though test failed          │
                │ (exit 1 at 14:22).                                                 │
@@ -287,7 +287,7 @@
  ▎     OVERRIDE A FAILED CHECK                                  Esc close
    ⣶⡆│                                                                    │ r
      │ fix-footer will read done (overridden) though test failed          │ ed
-  ▾ p│ (exit 1 at 14:22).                                                 │ d
+  ▾ p│ (exit 1 at 14:22).                                                 │ te
    ● │                                                                    │
      │ This hides a failure. It stays visible:                            │
      │   ⊘ on the row, in the Inbox history and in the evidence           │
@@ -312,7 +312,7 @@
  |     OVERRIDE A FAILED CHECK                                  Esc close
    O │                                                                    │ r
      │ fix-footer will read done (overridden) though test failed          │ ed
-  v p│ (exit 1 at 14:22).                                                 │ d
+  v p│ (exit 1 at 14:22).                                                 │ te
    ! │                                                                    │
      │ This hides a failure. It stays visible:                            │
      │   / on the row, in the Inbox history and in the evidence           │

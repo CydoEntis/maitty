@@ -1,6 +1,6 @@
 //! Hands the app's name from Cargo.toml to the code (ADR 0019): `APP_COMMAND` is the package
-//! name, `APP_ENV` its environment-variable prefix, `APP_NAME` and `APP_PREVIOUS` come from
-//! `[package.metadata.brand]`.
+//! name, `APP_ENV` its environment-variable prefix, `APP_NAME`, `APP_TAGLINE` and `APP_PREVIOUS`
+//! come from `[package.metadata.brand]`.
 
 use std::fs;
 
@@ -10,9 +10,11 @@ fn main() {
     let manifest = fs::read_to_string("Cargo.toml").expect("Cargo.toml is readable");
     let brand = section(&manifest, "[package.metadata.brand]");
     let name = value(&brand, "name").unwrap_or_else(|| panic!("[package.metadata.brand] needs a name"));
+    let tagline = value(&brand, "tagline").unwrap_or_default();
     let previous = value(&brand, "previous").unwrap_or_default();
     let previous: Vec<&str> = previous.trim_matches(['[', ']']).split(',').map(|p| p.trim().trim_matches('"')).filter(|p| !p.is_empty()).collect();
     println!("cargo:rustc-env=APP_NAME={name}");
+    println!("cargo:rustc-env=APP_TAGLINE={tagline}");
     println!("cargo:rustc-env=APP_COMMAND={command}");
     println!("cargo:rustc-env=APP_ENV={}", command.to_ascii_uppercase().replace('-', "_"));
     println!("cargo:rustc-env=APP_PREVIOUS={}", previous.join(","));

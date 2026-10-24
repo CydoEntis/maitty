@@ -681,7 +681,7 @@ mod screen_tests {
         app.splash = true;
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("every session, one calm place") && !o.contains("⣿"), "the tagline, no art");
+        assert!(o.contains(env!("APP_TAGLINE")) && !o.contains("⣿"), "the tagline, no art");
         assert!(o.contains("while you were away") && o.contains("1 need you") && o.contains("Resume where you left off") && o.contains("New session") && o.contains("Open a project…"));
         // Small windows keep it all.
         let o = draw(&mut app, 100, 30);
@@ -4112,7 +4112,7 @@ mod settings_splash_tests {
         if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
             println!("{splash}\n{settings}\n{keys}");
         }
-        assert!(splash.contains("every session, one calm place"));
+        assert!(splash.contains(env!("APP_TAGLINE")));
         assert!(splash.contains("Resume where you left off") && splash.contains("New session") && splash.contains("Open a project…"));
         for page in ["General", "Sessions", "Appearance", "Agents", "Keys"] {
             assert!(settings.contains(page), "page {page}");

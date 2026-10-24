@@ -140,8 +140,8 @@ pub(in crate::client) fn draw_logo(buf: &mut Buffer, (x, y): (u16, u16), pw: u16
 }
 
 /// The tagline under the wordmark, and its short form for narrow windows.
-const TAG: &str = "every session, one calm place · your agents keep going when you leave";
-const TAG_SHORT: &str = "every session, one calm place";
+const TAG: &str = concat!(env!("APP_TAGLINE"), " · your agents keep going when you leave");
+const TAG_SHORT: &str = env!("APP_TAGLINE");
 /// Narrower than this, the short tagline and no "while you were away" lead-in.
 const NARROW: u16 = 100;
 /// The widest a choice card gets.
