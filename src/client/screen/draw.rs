@@ -189,6 +189,10 @@ pub(super) fn corner_pill(app: &App, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)>
     if armed(app) {
         return Some((vec![seg(" SHORTCUT · Esc ", Style::default().fg(t.bg).bg(t.sky()).add_modifier(Modifier::BOLD))], ScreenHit::Leader));
     }
+    // Held under a popup or view it opened: dim, so you still know it comes back.
+    if shortcut_paused(app) {
+        return Some((vec![seg(" SHORTCUT · paused ", Style::default().fg(t.muted).bg(t.btn))], ScreenHit::Leader));
+    }
     if let Some(version) = app.update_available.as_ref() {
         return Some((vec![seg(format!(" ↑ Update {version} "), Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD))], ScreenHit::Update));
     }
@@ -196,7 +200,7 @@ pub(super) fn corner_pill(app: &App, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)>
     app.restart_needed().then(|| (vec![seg(" ↻ Restart ", Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD))], ScreenHit::Restart))
 }
 
-fn draw_corner_pill(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
+pub(in crate::client) fn draw_corner_pill(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
     let Some((segs, h)) = corner_pill(app, t) else { return };
     let w = segs_width(&segs);
     let x = area.right().saturating_sub(w + 1);
@@ -316,6 +320,12 @@ pub(in crate::client) fn armed(app: &App) -> bool {
     matches!(app.mode, Mode::Prefix { .. } | Mode::KeyMap(_))
 }
 
+/// Shortcut mode is held while a popup or view it opened has the keys (ADR 0021). Normal with
+/// no view is the moment before it comes back, when keys still reach the pane.
+pub(in crate::client) fn shortcut_paused(app: &App) -> bool {
+    app.shortcut_held && !armed(app) && (app.mode != Mode::Normal || app.view_has_keys())
+}
+
 /// What a session is called on its pane: its sidebar name, else (a pane in another's tab or
 /// split has no row) your name for it or what runs in it.
 fn session_name(app: &App, model: &[Proj], term: TermId) -> String {
@@ -404,7 +414,7 @@ fn pane_mark(app: &App, info: &TermInfo, t: &Theme) -> Option<(Seg, u16)> {
 
 /// Room the top-right pane leaves at the end of its title for the Update pill.
 fn corner_room(app: &App, r: Rect, screen: Rect, t: &Theme) -> u16 {
-    if armed(app) || r.y != screen.y || r.right() != screen.right() {
+    if armed(app) || shortcut_paused(app) || r.y != screen.y || r.right() != screen.right() {
         return 0;
     }
     corner_pill(app, t).map_or(0, |(segs, _)| segs_width(&segs))

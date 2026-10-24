@@ -4119,6 +4119,87 @@ second line
         assert!(matches!(app.mode, Mode::Normal), "after a click, closing the popup goes back to typing");
     }
 
+    /// The corner pill's words and the ground under its first letter, as drawn on row 0.
+    fn shortcut_pill(app: &mut App) -> Option<(String, ratatui::style::Color)> {
+        let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let row: Vec<&str> = (0..160).map(|x| buf[(x, 0)].symbol()).collect();
+        let at = (0..160 - 8).find(|&x| row[x..x + 8].concat() == "SHORTCUT")?;
+        let end = (at..160).find(|&x| matches!(row[x], "┐" | "╮") || (row[x] == " " && row.get(x + 1) == Some(&" "))).unwrap_or(160);
+        Some((row[at..end].concat().trim_end().to_string(), buf[(at as u16, 0)].bg))
+    }
+
+    #[test]
+    fn the_shortcut_pill_shows_after_the_leader_and_stays_lit_after_an_action() {
+        let mut app = shortcut_mode();
+        let sky = app.theme.sky();
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc".into(), sky)), "after the leader");
+        tap(&mut app, 'z');
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc".into(), sky)), "still lit after an action that opens nothing");
+    }
+
+    #[test]
+    fn the_shortcut_pill_reads_paused_under_a_popup_and_lights_again_when_it_closes() {
+        let mut app = shortcut_mode();
+        let sky = app.theme.sky();
+        tap(&mut app, 'y');
+        assert!(matches!(app.mode, Mode::Why { .. }), "y opened why: {:?}", std::mem::discriminant(&app.mode));
+        let (words, ground) = shortcut_pill(&mut app).expect("the pill stays under the popup");
+        assert_eq!(words, "SHORTCUT · paused");
+        assert_ne!(ground, sky, "dimmed, not sky");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc".into(), sky)), "lit again once it closes");
+    }
+
+    #[test]
+    fn the_focused_border_is_sky_only_while_shortcut_mode_is_active() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'i');
+        let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        let r = app.pane_frames.first().expect("a pane").1;
+        assert_ne!(term.backend().buffer()[(r.x, r.y + 1)].fg, app.theme.sky(), "paused under the Inbox: no sky border");
+    }
+
+    #[test]
+    fn the_shortcut_pill_reads_paused_while_a_view_it_opened_has_the_keys() {
+        let (mut app, _rx) = super::check_settings_tests::app_with_channel();
+        app.cfg.ui.which_key = false;
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        tap(&mut app, 'f');
+        assert!(matches!(app.view, Some(View::Files(_))), "f opened Files");
+        assert_eq!(shortcut_pill(&mut app).map(|(w, _)| w), Some("SHORTCUT · paused".into()));
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc".into(), app.theme.sky())), "Files closed: lit again");
+    }
+
+    #[test]
+    fn the_shortcut_pill_goes_after_esc_the_leader_or_a_click() {
+        let mut app = shortcut_mode();
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(shortcut_pill(&mut app), None, "Esc");
+        let mut app = shortcut_mode();
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        assert_eq!(shortcut_pill(&mut app), None, "the leader again");
+        let mut app = shortcut_mode();
+        tap(&mut app, 'y');
+        shortcut_pill(&mut app);
+        let (_, inner) = *app.panes.first().expect("a pane on screen");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: inner.x + 2, row: inner.y + 2, modifiers: KeyModifiers::NONE });
+        assert_eq!(shortcut_pill(&mut app), None, "a click, even under a popup");
+    }
+
+    #[test]
+    fn a_click_on_the_paused_pill_opens_the_key_map() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'y');
+        shortcut_pill(&mut app);
+        let (r, _) = *app.hits.iter().rev().find(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::Leader))).expect("the pill takes a click");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: r.x + 1, row: r.y, modifiers: KeyModifiers::NONE });
+        assert!(matches!(app.mode, Mode::KeyMap(_)), "{:?}", std::mem::discriminant(&app.mode));
+    }
+
     #[test]
     fn the_key_map_opens_on_a_pause_only_before_the_first_shortcut() {
         let mut app = shortcut_mode();

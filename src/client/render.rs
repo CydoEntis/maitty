@@ -51,6 +51,11 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     }
     super::screen::draw(app, f, area, &t);
     draw_overlays(app, f, area, &t);
+    // Held under a popup, shortcut mode stays readable above the dimming behind it.
+    if super::screen::shortcut_paused(app) {
+        let room = super::screen::framed(app, area);
+        super::screen::draw_corner_pill(app, f.buffer_mut(), room, &t);
+    }
     tint_hovered(app, f.buffer_mut(), &t);
     if terminal_bg {
         use_terminal_background(f.buffer_mut(), t.bg);
