@@ -93,7 +93,9 @@ pub struct Options {
 #[derive(Debug, Clone, PartialEq)]
 enum Mode {
     Normal,
-    Prefix { since: Instant },
+    /// Shortcut mode (ADR 0016): each key runs its leader action and the mode stays.
+    /// `acted`: a shortcut has run, so the key map no longer opens on a pause.
+    Prefix { since: Instant, acted: bool },
     Prompt { kind: PromptKind, input: String },
     Copy(Box<copy::Copy>),
     /// Pick an existing worktree of the repo, or type a branch to create one.

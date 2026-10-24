@@ -1528,13 +1528,13 @@ mod screen_tests {
         assert!(!matches!(&app.mode, Mode::Confirm(_)), "x closes nothing");
         app.screen_side_set(screen::SideItem::Sess(first));
         // The leader's x asks to close it.
-        app.mode = Mode::Prefix { since: std::time::Instant::now() };
+        app.mode = Mode::Prefix { since: std::time::Instant::now(), acted: false };
         app.act(Action::ClosePane);
         assert!(matches!(&app.mode, Mode::Confirm(c) if c.title == "Close pane"), "leader x closes (after asking)");
         app.on_key(key(KeyCode::Esc));
         assert!(matches!(app.mode, Mode::Side) && app.screen.cursor == Some(first), "saying no goes back to the sidebar");
         let next = app.side_after_close();
-        app.mode = Mode::Prefix { since: std::time::Instant::now() };
+        app.mode = Mode::Prefix { since: std::time::Instant::now(), acted: false };
         app.act(Action::ClosePane);
         app.on_key(key(KeyCode::Enter));
         assert!(matches!(app.mode, Mode::Side), "after closing, the keys stay in the sidebar");
@@ -1542,7 +1542,7 @@ mod screen_tests {
         // The leader key's close, from the sidebar: the cursor's row, and the keys stay too.
         let on = app.screen.cursor.or_else(|| app.screen.side_items.iter().find_map(|i| match i { screen::SideItem::Sess(t) => Some(*t), _ => None })).unwrap();
         app.screen_side_set(screen::SideItem::Sess(on));
-        app.mode = Mode::Prefix { since: std::time::Instant::now() };
+        app.mode = Mode::Prefix { since: std::time::Instant::now(), acted: false };
         app.act(Action::ClosePane);
         assert!(matches!(&app.mode, Mode::Confirm(c) if c.act == crate::client::menu::Act::End(vec![on])), "it asks about the row the cursor is on");
         app.on_key(key(KeyCode::Enter));
@@ -3869,6 +3869,78 @@ second line
             app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
             assert!(!matches!(app.mode, Mode::Normal | Mode::Prefix { .. }), "leader + {c} opens {what}: {:?}", std::mem::discriminant(&app.mode));
         }
+    }
+
+    fn shortcut_mode() -> App {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.cfg.ui.which_key = false;
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        app
+    }
+
+    fn tap(app: &mut App, c: char) {
+        app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+    }
+
+    #[test]
+    fn shortcut_mode_stays_for_the_next_key() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'z');
+        assert!(matches!(app.mode, Mode::Prefix { acted: true, .. }), "still in shortcut mode after one");
+        tap(&mut app, 'z');
+        assert!(matches!(app.mode, Mode::Prefix { .. }), "and after two, with one leader press");
+        tap(&mut app, 'g');
+        assert!(matches!(app.mode, Mode::Prefix { .. }), "a key with no action does nothing and the mode stays");
+    }
+
+    #[test]
+    fn esc_or_the_leader_again_goes_back_to_typing() {
+        let mut app = shortcut_mode();
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(matches!(app.mode, Mode::Normal), "Esc");
+        let mut app = shortcut_mode();
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        assert!(matches!(app.mode, Mode::Normal), "the leader again");
+    }
+
+    #[test]
+    fn something_to_type_into_ends_shortcut_mode() {
+        for c in ['n', 'p', '-', 't'] {
+            let mut app = shortcut_mode();
+            tap(&mut app, c);
+            assert!(!matches!(app.mode, Mode::Prefix { .. }), "{c} gives something to type into: {:?}", std::mem::discriminant(&app.mode));
+        }
+    }
+
+    #[test]
+    fn a_popup_takes_the_keys_and_closing_it_goes_back_to_typing() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'j');
+        assert!(matches!(app.mode, Mode::GoTo { .. }), "the Inbox has the keys");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(matches!(app.mode, Mode::Normal));
+    }
+
+    #[test]
+    fn the_key_map_opens_on_a_pause_only_before_the_first_shortcut() {
+        let mut app = shortcut_mode();
+        app.cfg.ui.which_key = true;
+        app.mode = Mode::Prefix { since: crate::clock::ago(std::time::Duration::from_secs(10)), acted: false };
+        tap(&mut app, 'g');
+        assert!(matches!(app.mode, Mode::KeyMap(_)), "before any shortcut, a letter with the map up searches it");
+        app.mode = Mode::Prefix { since: crate::clock::ago(std::time::Duration::from_secs(10)), acted: true };
+        tap(&mut app, 'g');
+        assert!(matches!(app.mode, Mode::Prefix { .. }), "after one, the mode just stays");
+        assert!(!draw(&mut app, 160, 45).contains("SEARCH"), "and no key map covers the screen");
+    }
+
+    #[test]
+    fn a_click_into_a_pane_goes_back_to_typing() {
+        let mut app = shortcut_mode();
+        draw(&mut app, 160, 45);
+        let (_, inner) = *app.panes.first().expect("a pane on screen");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: inner.x + 2, row: inner.y + 2, modifiers: KeyModifiers::NONE });
+        assert!(matches!(app.mode, Mode::Normal), "{:?}", std::mem::discriminant(&app.mode));
     }
 
     #[test]

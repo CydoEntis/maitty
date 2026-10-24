@@ -229,6 +229,7 @@ impl App {
             Action::Restart,
             Action::TidyWorktrees,
             Action::Detach,
+            Action::SendPrefix,
         ];
         let mut bound: Vec<_> = self.keymap.prefixed.iter().chain(self.keymap.global.iter()).collect();
         bound.sort_by_key(|(key, _)| key.to_config());

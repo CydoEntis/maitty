@@ -1,6 +1,13 @@
 # Contextual shortcuts
 
-The leader is `Ctrl+Space`. Press it, release, then a key. One overlay holds every key
+The leader is `Ctrl+Space`. Press it and you are in **shortcut mode**: each key runs its
+action, and the mode stays for the next, so a run of actions is one key each. `Esc`, the
+leader again or a click into a pane go back to **input mode**, where keys type into the pane;
+so does an action that gives you something to type into (a new shell, session, tab, split,
+pane or worktree). An action that opens a popup or sheet hands it the keys, and closing it
+returns to input mode. While shortcut mode is on, a `SHORTCUT` pill sits at the top right and
+the focused pane's border is sky blue. To send `Ctrl+Space` itself to the pane, search
+commands for "Send the leader key" or bind `send-prefix` to a key. One overlay holds every key
 reference; it is not a second palette:
 
 - **Key map** (`Ctrl+Space`, then a pause): the keys by group, Sessions, Panes, Tabs,

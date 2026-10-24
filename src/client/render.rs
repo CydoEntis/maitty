@@ -107,8 +107,8 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
     let t = t.clone();
     // Copy mode holds the whole history; match by reference and clone only small fields.
     match &app.mode {
-        Mode::Prefix { since } => {
-            if app.keymap_shown(*since) {
+        Mode::Prefix { since, acted } => {
+            if !*acted && app.keymap_shown(*since) {
                 let km = super::screen::KeyMap::new(super::screen::KeyView::Map, None);
                 super::screen::draw_keymap(app, f, area, &t, &km);
             }

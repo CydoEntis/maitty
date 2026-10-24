@@ -270,9 +270,14 @@ pub enum Action {
 }
 
 impl Action {
-    /// Actions that keep prefix mode armed so they can be repeated (like tmux `-r`).
-    pub fn repeats(&self) -> bool {
-        matches!(self, Action::Resize(_) | Action::NextTab | Action::PrevTab | Action::ScrollUp | Action::ScrollDown)
+    /// Actions that give you something to type into, so shortcut mode ends with them.
+    pub fn leaves_shortcut_mode(&self) -> bool {
+        matches!(
+            self,
+            Action::SplitRight | Action::SplitDown | Action::SplitLeft | Action::SplitUp | Action::Spawn(..) | Action::SpawnTab(_)
+                | Action::NewTab | Action::NewWorkspace | Action::NewWorktree(_) | Action::NewPane | Action::StartSession
+                | Action::NewSession | Action::ShellHere | Action::SendPrefix
+        )
     }
 
     pub fn describe(&self) -> String {
@@ -589,7 +594,6 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("N", "history"),
     ("q", "detach"),
     ("ctrl+r", "reload-config"),
-    ("ctrl+space", "send-prefix"),
 ];
 
 /// Bindings active without the prefix: Alt+1–9 go to a tab. Nothing else is taken from

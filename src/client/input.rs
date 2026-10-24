@@ -167,7 +167,7 @@ impl App {
         match self.mode.clone() {
             Mode::Normal => {
                 if spec == self.keymap.prefix {
-                    self.mode = Mode::Prefix { since: Instant::now() };
+                    self.mode = Mode::Prefix { since: Instant::now(), acted: false };
                 } else if let Some(a) = self.keymap.global.get(&spec).cloned() {
                     self.act(a);
                 } else if self.view.is_some() {
@@ -216,18 +216,22 @@ impl App {
                 }
                 _ => self.mode = Mode::Confirm(c),
             },
-            Mode::Prefix { since } => {
-                self.mode = Mode::Normal;
-                if k.code == KeyCode::Esc {
+            Mode::Prefix { since, acted } => {
+                // Esc or the leader again: back to typing.
+                if k.code == KeyCode::Esc || spec == self.keymap.prefix {
+                    self.mode = Mode::Normal;
                     return;
                 }
                 if let Some(a) = self.keymap.prefixed.get(&spec).cloned() {
-                    let repeat = a.repeats();
+                    let typing = a.leaves_shortcut_mode();
+                    self.mode = Mode::Normal;
                     self.act(a);
-                    if repeat && self.mode == Mode::Normal {
-                        self.mode = Mode::Prefix { since: crate::clock::ago(Duration::from_secs(60)) };
+                    // Still here (nothing opened, nothing to type into): the mode holds.
+                    if !typing && self.mode == Mode::Normal {
+                        self.mode = Mode::Prefix { since, acted: true };
                     }
-                } else if self.keymap_shown(since)
+                } else if !acted
+                    && self.keymap_shown(since)
                     && let KeyCode::Char(c) = k.code
                 {
                     // The key map is up and this key does nothing: it starts a search.

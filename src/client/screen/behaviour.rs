@@ -563,7 +563,7 @@ impl App {
         let proj = self.screen.cursor_proj.clone();
         let model = self.screen_model();
         if spec == self.keymap.prefix {
-            self.mode = Mode::Prefix { since: Instant::now() };
+            self.mode = Mode::Prefix { since: Instant::now(), acted: false };
             return;
         }
         let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
@@ -624,7 +624,7 @@ impl App {
                 }
             },
             KeyCode::Esc => self.screen_side_leave(),
-            _ if spec == self.keymap.prefix => self.mode = Mode::Prefix { since: Instant::now() },
+            _ if spec == self.keymap.prefix => self.mode = Mode::Prefix { since: Instant::now(), acted: false },
             // Nothing else acts from the sidebar: an action is the leader and its key (ADR 0014).
             // Anything else is typing: leave the sidebar and hand the key over.
             _ => {
