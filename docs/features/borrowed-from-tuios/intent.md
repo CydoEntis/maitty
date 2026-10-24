@@ -2,7 +2,7 @@
 
 Type: feature
 Author: Cody · Status: draft
-Date: 2026-10-23 · Plan: [Phase 20](../../ROADMAP.md#20--borrowed-from-tuios--queued-2026-10-23)
+Date: 2026-10-23 · Plan: [Phase 20](../../ROADMAP.md#20--borrowed-from-tuios--built-on-dev-2026-10-23-live-checks-open)
 
 ## Problem
 

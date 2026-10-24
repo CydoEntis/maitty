@@ -224,7 +224,7 @@ Active phase: **15 — checks Seshi runs itself** (chosen 2026-10-22)
 Next: three follow-ups the user approved on 2026-10-23: `a` on a sidebar row opens the row menu, an
 amber for needs-you in every theme (built), and `seshi wait` reporting a check waiting for approval or that could
 not run. Then the Phase 17 live trial and the Phase 18 live checks. Then
-[Phase 20](#20--borrowed-from-tuios--queued-2026-10-23), borrowed from TUIOS (approved 2026-10-23).
+[Phase 20](#20--borrowed-from-tuios--built-on-dev-2026-10-23-live-checks-open), borrowed from TUIOS (approved 2026-10-23).
 
 Current user-requested work: expand the built-in themes to cover the 25 requested
 families and add a searchable preview browser in Appearance. Acceptance: all
@@ -521,7 +521,7 @@ Windows (never built), zsh, fish and PowerShell launchers, and the old-binary to
 end. Open: the live check of the helper flow with a real agent over `seshi mcp`; whether check re-run and
 override want leader keys (they work from the check sheet).
 
-### 20 — Borrowed from TUIOS · queued 2026-10-23
+### 20 — Borrowed from TUIOS · built on dev 2026-10-23, live checks open
 
 The user asked on 2026-10-23 for the parts of TUIOS (tuios.dev) that Seshi lacks, after a
 check showed ranked status sources, evidence times, box-only screen rules, saved scrollback,
@@ -539,6 +539,12 @@ One protocol bump for the phase: 45 to 46. Tickets are labelled `phase-20`.
 9. #150 UI: refuse to restore a checkpoint while its agent works
 
 Declined while planning: a fifth "unknown" status (a quiet agent stays working).
+
+Status 2026-10-23: #142–#150 built on `dev` (protocol 45 to 46); the gate passed on the merged
+tree (814 tests) after each ticket. `ls --json` and `seshi_list` add `quiet_since` only for a
+quiet agent rather than `null` on every pane, so other panes' output is unchanged. Not checked
+live: a real agent going quiet, an MCP answer refused for a changed prompt, the output setting
+in Settings, and the unix file modes (tested on Linux in CI only).
 
 ## In scope
 
