@@ -47,9 +47,21 @@ pub(in crate::client) fn load_note(cpu: f32, mem: u64) -> Option<(String, bool)>
     Some((format!("▲ {cpu:.0}% CPU · {gb:.1} GB"), cpu >= LOAD_HEAVY_CPU || mem >= LOAD_HEAVY_MEM))
 }
 
-/// A session has a second line: an agent always does, a plain shell only for a check result.
-fn has_detail(s: &Session) -> bool {
-    s.is_agent || s.asleep || check::shown(s).is_some() || s.question.is_some()
+/// A session has a second line only when it says more than the row does: the mark and the
+/// name's colour already say working, needs you, done or idle. What is left: a question, a check
+/// result, helpers it asks for, a wait for a plan limit, a new agent's first step, asleep, a
+/// quiet spell, its helpers at work, or a message just sent.
+fn has_detail(app: &App, s: &Session) -> bool {
+    let helpers_at_work = app.cfg.ui.subagent_count && s.status == Status::Working && agent_count(s) > 0;
+    s.asleep
+        || is_new(s)
+        || check::shown(s).is_some()
+        || s.question.is_some()
+        || s.resume_at.is_some()
+        || s.helpers_wanted > 0
+        || (s.status == Status::Working && s.quiet_since.is_some())
+        || helpers_at_work
+        || app.screen.receipts.contains_key(&s.term)
 }
 
 /// A finished agent with nothing to say: its row is one line, since its `○` already says idle.
@@ -81,9 +93,9 @@ fn has_third(s: &Session) -> bool {
     check::reported(s).len() > 1 || check::shown(s).is_some_and(|c| check::failed(c) && !c.first_failing_line.is_empty())
 }
 
-pub(in crate::client) fn session_lines(s: &Session, t: &Theme, out: &mut Vec<Line>) {
+pub(in crate::client) fn session_lines(app: &App, s: &Session, t: &Theme, out: &mut Vec<Line>) {
     let notes_c = t.muted;
-    if has_detail(s) {
+    if has_detail(app, s) {
         out.push(Line::Detail(s.term));
     }
     if has_third(s) {
@@ -153,7 +165,7 @@ pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec
             any = true;
             out.push(Line::Sess(pi, wi, si, depth));
             let s = &p.wts[wi].sessions[si];
-            session_lines(s, t, &mut out);
+            session_lines(app, s, t, &mut out);
         }
         if !any {
             out.push(Line::Empty(pi));
@@ -315,7 +327,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
         let indent = indents[i];
         let row = cols.row(y);
         if let Some(term) = row_term(model, line)
-            && let Some((.., s)) = find(model, term)
+            && let Some((_, wt, s)) = find(model, term)
         {
             let rl = *looks.entry(term).or_insert_with(|| {
                 let picked = if focused_side { app.screen.cursor == Some(term) } else { Some(term) == focus };
@@ -345,7 +357,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     if keyboard && Some(term) != focus && let Some(gy) = app.motion.glide("side", u64::from(term), y, on) {
                         gliding = Some(gy);
                     }
-                    draw_session(app, buf, s, cols, y, indent, rl, t, screen_w >= AGES_FROM);
+                    draw_session(app, buf, s, app.screen.lines_changed.get(&wt.path).copied(), cols, y, indent, rl, t, screen_w >= AGES_FROM);
                 }
                 Line::Detail(_) => {
                     put(buf, x, y, &quiet(app, s, detail(app, s, rl, t, cols.end().saturating_sub(x) as usize), t), cols.end());
@@ -443,9 +455,57 @@ pub(super) fn plain_shell(s: &Session) -> bool {
     !s.is_agent && !s.asleep && s.status == Status::None && check::shown(s).is_none()
 }
 
-/// A session's first line: its mark, its name and how long ago its state began.
+/// The mark for the agent a session runs, so a row tells Claude from Codex at a glance: a shape,
+/// or a letter with the ASCII glyph set. An agent with no mark of its own shows its first letter.
+fn agent_mark(agent: &str, ascii: bool) -> String {
+    let (shape, letter) = match agent {
+        "claude" => ("✻", "C"),
+        "codex" => ("◆", "X"),
+        "gemini" => ("✦", "G"),
+        "opencode" => ("◇", "O"),
+        other => return other.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_default(),
+    };
+    (if ascii { letter } else { shape }).into()
+}
+
+/// The least room a name keeps before the row's right-hand marks give way.
+const NAME_MIN: usize = 8;
+
+/// The right of a session's row, at most `room` wide: its agent's mark, its checkout's
+/// uncommitted lines (`+N −N`) and its age. The lines give way first, then the mark.
+fn row_meta(s: &Session, ascii: bool, changed: Option<(i64, i64)>, when: &str, room: usize, st: Style, t: &Theme) -> Vec<Seg> {
+    let mark = if s.is_agent { agent_mark(&s.agent, ascii) } else { String::new() };
+    let lines: Vec<Seg> = match changed {
+        Some((a, r)) if a > 0 || r > 0 => vec![seg(format!("+{a}"), st.fg(t.done)), seg(format!(" −{r}"), st.fg(t.err))],
+        _ => Vec::new(),
+    };
+    let gap = |v: &mut Vec<Seg>| {
+        if !v.is_empty() {
+            v.push(seg("  ", st));
+        }
+    };
+    let build = |with_mark: bool, with_lines: bool| {
+        let mut v: Vec<Seg> = Vec::new();
+        if with_mark && !mark.is_empty() {
+            v.push(seg(mark.clone(), st.fg(t.muted)));
+        }
+        if with_lines && !lines.is_empty() {
+            gap(&mut v);
+            v.extend(lines.iter().cloned());
+        }
+        if !when.is_empty() {
+            gap(&mut v);
+            v.push(seg(when.to_string(), st.fg(t.muted)));
+        }
+        v
+    };
+    [(true, true), (true, false), (false, false)].into_iter().map(|(m, l)| build(m, l)).find(|v| segs_width(v) as usize <= room).unwrap_or_default()
+}
+
+/// A session's first line: its mark, its name in its state's colour, and at the right its
+/// agent, its uncommitted lines and how long ago its state began.
 #[allow(clippy::too_many_arguments)]
-fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, cols: Cols, y: u16, indent: u16, rl: RowLook, t: &Theme, ages: bool) {
+fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, changed: Option<(i64, i64)>, cols: Cols, y: u16, indent: u16, rl: RowLook, t: &Theme, ages: bool) {
     let spinner = glyph(app, Status::Working);
     let mark = check::mark(app, s, t, &spinner);
     let state = check::kind(s);
@@ -466,19 +526,24 @@ fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, cols: Cols, y: u16
     let menu = hovered(app, cols.row(y)) && !rl.picked;
     let when = if ages && s.is_agent && !menu { age(s.since) } else { String::new() };
     let nx = gx + gw + 1;
-    let room = cols.rx.saturating_sub(nx).saturating_sub(when.width() as u16) as usize;
+    // The hovered row's ⋯ takes the last column, a space before it.
+    let meta_end = if menu { cols.rx.saturating_sub(1) } else { cols.rx + 1 };
+    let free = meta_end.saturating_sub(nx) as usize;
+    let ascii = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).needs.is_ascii();
+    let meta = row_meta(s, ascii, changed, &when, free.saturating_sub(NAME_MIN + 1), st, t);
+    let mw = segs_width(&meta);
+    let room = free.saturating_sub(if mw > 0 { mw as usize + 1 } else { 0 });
     let name = truncate(&s.name, room);
-    // Name: `strong` and bold when the row wants a look, plain `text` once it is done and seen.
-    // Only the mark carries the state's colour.
-    let colour = if rl.picked || (hot && !plain_shell(s)) { t.strong } else { t.text };
+    // A name in a state worth a look (working, checking, finished and unseen, needs you) takes
+    // the state's colour, and moves with motion on; a calm one is `text`, or `strong` when picked.
+    let coloured = !plain_shell(s) && NameMotion::of(s, state) != NameMotion::Still;
+    let colour = if coloured { gc } else if rl.picked || (hot && !plain_shell(s)) { t.strong } else { t.text };
     let ns = if hot && !plain_shell(s) { st.add_modifier(Modifier::BOLD) } else { st };
-    let anim = if plain_shell(s) || !app.motion_on() { NameMotion::Still } else { NameMotion::of(s, state) };
-    // A moving name runs from `text` up to `strong`, so it stays white rather than coloured.
-    let base = if anim == NameMotion::Still { colour } else { t.text };
-    let left = name_segs(&name, anim, app.spinner_frame(), base, t.strong, ns);
+    let anim = if coloured && app.motion_on() { NameMotion::of(s, state) } else { NameMotion::Still };
+    let left = name_segs(&name, anim, app.spinner_frame(), colour, t.strong, ns);
     put(buf, nx, y, &left, cols.rx + 1);
-    if !when.is_empty() {
-        put(buf, (cols.rx + 1).saturating_sub(when.width() as u16), y, &[seg(when, st.fg(t.muted))], cols.rx + 1);
+    if mw > 0 {
+        put(buf, meta_end.saturating_sub(mw), y, &meta, meta_end);
     }
     if menu {
         row_menu_button(app, buf, Rect { x: cols.rx, y, width: 1, height: 1 }, rl.bg, t, ScreenHit::RowMenuSess(s.term));
@@ -524,16 +589,6 @@ fn name_segs(text: &str, motion: NameMotion, frame: u64, base: Color, bright: Co
     }
 }
 
-/// A working agent's name or word: the working colour, with a bright band sweeping across it
-/// while motion is on and standing still without.
-fn working_text(app: &App, text: &str, base: Color, t: &Theme, st: Style) -> Vec<Seg> {
-    if app.motion_on() {
-        shimmer(text, app.spinner_frame(), base, blend(base, t.strong, 0.6), st)
-    } else {
-        vec![seg(text.to_string(), st.fg(base))]
-    }
-}
-
 /// A session's second line, in `room` columns. With several checkpoints it is the headline
 /// word, then a glyph per checkpoint; the glyphs give way, never the word.
 fn detail(app: &App, s: &Session, rl: RowLook, t: &Theme, room: usize) -> Vec<Seg> {
@@ -571,17 +626,19 @@ fn status_words(app: &App, s: &Session, t: &Theme) -> Vec<Seg> {
         return muted(&format!("⏸ resumes in {}", until(at)));
     }
     match s.status {
+        // The spinner and the name's colour already say working: only its helpers and a quiet
+        // spell are left to say.
         Status::Working => {
-            // The agent is in the pane's title and the row's menu; the state leads here.
-            let mut words = working_text(app, "working", t.accent, t, Style::default());
+            let mut words: Vec<Seg> = Vec::new();
             // Only an agent that reports helpers has a count (Codex reports none).
             match agent_count(s) {
                 0 => {}
                 _ if !app.cfg.ui.subagent_count => {}
-                n => words.push(seg(format!(" · {n} agent{}", if n == 1 { "" } else { "s" }), Style::default().fg(t.text))),
+                n => words.push(seg(format!("{n} agent{}", if n == 1 { "" } else { "s" }), Style::default().fg(t.text))),
             }
             if let Some(at) = s.quiet_since {
-                words.push(seg(format!(" · quiet {}", age(at)), Style::default().fg(t.muted)));
+                let sep = if words.is_empty() { "" } else { " · " };
+                words.push(seg(format!("{sep}quiet {}", age(at)), Style::default().fg(t.muted)));
             }
             words
         }
@@ -865,7 +922,10 @@ mod frame_tests {
         let text = frame(&mut app, layout, size.0, size.1, glyphs);
         let got = inner(&text, app.screen.side_rect, layout == Layout::Flat);
         // The app leaves the agent's name off a working line; it is in the pane's title.
-        let rows: Vec<String> = want.rows.iter().map(|r| without_agent_on_working(r)).collect();
+        let rows: Vec<Vec<char>> = want.rows.iter().map(|r| without_agent_on_working(r).chars().collect()).collect();
+        // Sessions are one line now, each with its agent's mark (ADR 0021).
+        let rows = crate::client::v7_fixture::as_one_line_rows(rows, glyphs == "ascii", ANY);
+        let rows: Vec<String> = rows.iter().map(|r| r.iter().collect::<String>().trim_end().to_string()).collect();
         let want = Want { rows: in_app_order(&rows, &got), ..want };
         let n = want.rows.len();
         let ok = got.len() > n
@@ -904,15 +964,15 @@ mod frame_tests {
     }
 
     #[test]
-    fn rows_give_way_in_order_meta_age_third_line_then_quiet_second_lines() {
+    fn rows_give_way_in_order_meta_age_then_third_line() {
         let at = |w| rows_at(Stage::Failed, Layout::Floating, w, 30);
         let wide = at(160);
-        assert!(has(&wide, "⎇ main · ch…") && has(&wide, "2m") && has(&wide, "✗ src/pages") && has(&wide, "working"), "{wide:#?}");
+        assert!(has(&wide, "⎇ main · ch…") && has(&wide, "2m") && has(&wide, "✗ src/pages"), "{wide:#?}");
         let narrow = at(140);
-        assert!(has(&narrow, "✗ src/pages") && has(&narrow, "working"), "140 columns are still wide: {narrow:#?}");
+        assert!(has(&narrow, "✗ src/pages"), "140 columns are still wide: {narrow:#?}");
         let slim = at(139);
         assert!(!has(&slim, "⎇ main") && has(&slim, "2m"), "the meta goes first, the age stays: {slim:#?}");
-        assert!(!has(&slim, "✗ src/pages") && !has(&slim, "working"), "then line 3 and quiet second lines: {slim:#?}");
+        assert!(!has(&slim, "✗ src/pages"), "then line 3: {slim:#?}");
         assert!(has(&slim, "failed: test · exit") && has(&slim, "asks: use pnpm"), "a result and a question keep theirs: {slim:#?}");
         assert!(has(&at(100), "2m") && !has(&at(99), "2m"), "the age goes below 100 columns");
     }
@@ -946,7 +1006,7 @@ mod frame_tests {
     fn the_bars_spinner_marks_a_working_row_and_the_name_steps_right_for_it() {
         let (first, second) = working_rows(crate::config::BARS_FRAMES, "unicode", Layout::Floating);
         assert!(first.starts_with("⣶⡆ add-payments"), "motion off holds the third frame: {first:?}");
-        assert_eq!(second, "working");
+        assert_ne!(second, "working", "the spinner says working: there is no line for it");
         let (one_cell, _) = working_rows(&["|"], "unicode", Layout::Floating);
         assert!(one_cell.starts_with("| add-payments"), "a one-column choice keeps the name where it was: {one_cell:?}");
         let (flat, _) = working_rows(crate::config::BARS_FRAMES, "unicode", Layout::Flat);
@@ -1026,25 +1086,24 @@ mod v8_tests {
         assert!(!before.iter().any(|r| r.contains("quiet")), "{before:#?}");
         app.snap.terms.get_mut(&2).unwrap().quiet_since = Some(crate::client::screen::now_secs() - 12 * 60);
         let rows = side_rows(&mut app, Layout::Floating, 160, 45);
-        assert!(has(&rows, "working · quiet 12m"), "{rows:#?}");
+        assert!(has(&rows, "quiet 12m") && !has(&rows, "working"), "the quiet spell, not the state: {rows:#?}");
     }
 
     #[test]
-    fn line_two_says_what_each_state_is_doing() {
+    fn line_two_says_only_what_the_row_does_not() {
         let mut app = world(Stage::None);
         app.snap.terms.get_mut(&2).unwrap().subagents = vec!["a".into(), "b".into()];
         let rows = side_rows(&mut app, Layout::Floating, 160, 45);
-        assert!(has(&rows, "working · 2 agents"), "a count when the agent reports helpers: {rows:#?}");
+        assert!(rows.iter().any(|r| said(r) == "2 agents"), "a count when the agent reports helpers: {rows:#?}");
         app.cfg.ui.subagent_count = false;
         let rows = side_rows(&mut app, Layout::Floating, 160, 45);
-        assert!(has(&rows, "working") && !has(&rows, "· 2 agents"), "Settings > Agents can turn the count off: {rows:#?}");
+        assert!(!has(&rows, "agents"), "Settings > Agents can turn the count off: {rows:#?}");
         app.cfg.ui.subagent_count = true;
-        assert!(has(&rows, "done · not seen"), "{rows:#?}");
+        for state_only in ["working", "done · not seen", "needs you"] {
+            assert!(!rows.iter().any(|r| said(r) == state_only), "the mark and the name say {state_only:?}: {rows:#?}");
+        }
         assert!(has(&rows, "asks: use pnpm or npm?"), "{rows:#?}");
-        app.snap.terms.get_mut(&2).unwrap().subagents.clear();
-        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
-        assert!(has(&rows, "working") && !has(&rows, "agents"), "no count when none is reported: {rows:#?}");
-        // Seen and finished reads `done`; one that has been told nothing is new.
+        // Seen and finished is one line; one that has been told nothing is new.
         app.snap.terms.get_mut(&4).unwrap().status = Status::Idle;
         let new = app.snap.terms.get_mut(&5).unwrap();
         (new.asleep, new.status, new.label) = (false, Status::Idle, String::new());
@@ -1054,17 +1113,44 @@ mod v8_tests {
     }
 
     #[test]
+    fn a_row_ends_in_its_agent_s_mark_its_uncommitted_lines_and_its_age() {
+        let mut app = world(Stage::None);
+        let path = app.screen_model().iter().flat_map(|p| p.wts.iter()).find(|w| w.sessions.iter().any(|s| s.term == 2)).expect("add-payments' checkout").path.clone();
+        app.screen.lines_changed.insert(path, (12, 3));
+        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
+        let row = rows.iter().find(|r| r.contains("add-payments")).expect("the row");
+        assert!(row.contains("✻  +12 −3  0s"), "{row:?}");
+        assert!(rows.iter().any(|r| r.contains("warm-finch") && r.contains("◆  3m")), "no lines counted: the mark and the age: {rows:#?}");
+        let ascii = raw_text(&mut app, Layout::Floating, 160, 45, "ascii");
+        assert!(ascii.lines().any(|l| l.contains("warm-finch") && l.contains("X  3m")), "the ASCII set marks Codex with a letter");
+    }
+
+    #[test]
+    fn with_full_rounding_the_open_row_has_round_ends() {
+        use crate::client::screen::{CAP_L, CAP_R};
+        let mut app = world(Stage::None);
+        app.cfg.ui.rounded = crate::config::Rounding::Full;
+        let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
+        let (x, y) = find(&buf, &app, "fix-footer");
+        let r = app.screen.side_rect;
+        let row: Vec<String> = (r.x..r.right()).map(|xx| buf[(xx, y)].symbol().to_string()).collect();
+        let first = row.iter().position(|c| c == CAP_L).expect("a round left end");
+        let last = row.iter().rposition(|c| c == CAP_R).expect("a round right end");
+        assert!(r.x + (first as u16) < x && r.x + (last as u16) > x, "round ends either side of the name: {row:?}");
+    }
+
+    #[test]
     fn a_finished_seen_row_is_one_line_at_every_width() {
         let mut app = world(Stage::None);
         app.snap.terms.get_mut(&4).unwrap().status = Status::Idle;
         for layout in LAYOUTS {
             let rows = side_rows(&mut app, layout, 100, 30);
-            assert!(has(&rows, "working"), "{layout:?}: a working row keeps its line: {rows:#?}");
+            assert!(!rows.iter().any(|r| said(r) == "working"), "{layout:?}: a working row is one line: {rows:#?}");
             assert!(has(&rows, "asks: use pnpm"), "{layout:?}: {rows:#?}");
             assert!(!rows.iter().any(|r| said(r) == "idle"), "{layout:?}: a plain idle row is one line: {rows:#?}");
             let rows = side_rows(&mut app, layout, 160, 45);
             assert!(!rows.iter().any(|r| said(r) == "idle"), "{layout:?}: wide, it is one line too: {rows:#?}");
-            assert!(has(&rows, "working"), "{layout:?}: a working row keeps its line: {rows:#?}");
+            assert!(!rows.iter().any(|r| said(r) == "working"), "{layout:?}: wide too: {rows:#?}");
         }
     }
 
@@ -1093,7 +1179,7 @@ mod v8_tests {
     }
 
     #[test]
-    fn a_row_that_wants_a_look_is_bold_white_and_its_words_quiet() {
+    fn a_row_that_wants_a_look_is_bold_in_its_state_s_colour_and_its_words_quiet() {
         let mut app = world(Stage::None);
         app.snap.terms.get_mut(&5).unwrap().asleep = false;
         app.snap.terms.get_mut(&5).unwrap().status = Status::Idle;
@@ -1103,15 +1189,16 @@ mod v8_tests {
             let (x, y) = find(&buf, &app, name);
             (buf[(x, y)].modifier.contains(Modifier::BOLD), buf[(x, y)].fg)
         };
-        assert_eq!(style("warm-finch"), (true, t.strong), "needs you: white and bold");
-        assert_eq!(style("quick-fox"), (true, t.strong), "done, not seen: white and bold");
-        assert_eq!(style("old-moth"), (false, t.text), "done: text, not bold");
-        let (x, y) = find(&buf, &app, "done · not seen");
-        assert_eq!((buf[(x, y)].fg, buf[(x, y)].modifier.contains(Modifier::BOLD)), (t.muted, false), "line two is muted, whatever the state");
+        let glyph = |name: &str| {
+            let (x, y) = find(&buf, &app, name);
+            buf[(x - 2, y)].fg
+        };
+        assert_eq!(style("warm-finch"), (true, t.blocked), "needs you: bold, in the amber");
+        assert_eq!(style("quick-fox"), (true, glyph("quick-fox")), "done, not seen: bold, in its mark's colour");
+        assert_eq!(style("old-moth"), (false, t.text), "done and seen: text, not bold");
         let (x, y) = find(&buf, &app, "asks:");
-        assert_eq!(buf[(x, y)].fg, t.muted, "the question too: its glyph is the amber");
-        let (x, y) = find(&buf, &app, "warm-finch");
-        assert_eq!(buf[(x - 2, y)].fg, t.blocked, "the glyph keeps the state's colour");
+        assert_eq!(buf[(x, y)].fg, t.muted, "line two is muted: its glyph is the amber");
+        assert_eq!(glyph("warm-finch"), t.blocked, "the glyph keeps the state's colour");
     }
 
     #[test]

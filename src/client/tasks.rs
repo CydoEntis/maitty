@@ -75,11 +75,10 @@ impl Review {
     }
 }
 
-/// Everything the task changed since it branched: commits plus uncommitted and new files.
-pub fn load_review(task: TaskRow) -> Result<Review, String> {
-    let dir = &task.dir;
-    let merge_base = git(dir, &["merge-base", "HEAD", &task.base])?.trim().to_string();
-    let mut files: Vec<Changed> = git(dir, &["diff", "--numstat", &merge_base])?
+/// Files changed in `dir` since commit `from`, with their line counts, and the new files git
+/// doesn't ignore (each counted as all added).
+fn changed_since(dir: &std::path::Path, from: &str) -> Result<Vec<Changed>, String> {
+    let mut files: Vec<Changed> = git(dir, &["diff", "--numstat", from])?
         .lines()
         .filter_map(|l| {
             let mut it = l.splitn(3, '\t');
@@ -92,6 +91,21 @@ pub fn load_review(task: TaskRow) -> Result<Review, String> {
         let added = read_head(&dir.join(path), UNTRACKED_READ_CAP).map(|s| s.lines().count() as i64).unwrap_or(0);
         files.push(Changed { path: path.to_string(), added, removed: 0, untracked: true });
     }
+    Ok(files)
+}
+
+/// Lines added and removed in `dir` and not committed yet, new files included: what the sidebar
+/// shows as `+N −N`.
+pub fn uncommitted_lines(dir: &std::path::Path) -> Result<(i64, i64), String> {
+    let files = changed_since(dir, "HEAD")?;
+    Ok(files.iter().fold((0, 0), |(a, r), f| (a + f.added, r + f.removed)))
+}
+
+/// Everything the task changed since it branched: commits plus uncommitted and new files.
+pub fn load_review(task: TaskRow) -> Result<Review, String> {
+    let dir = &task.dir;
+    let merge_base = git(dir, &["merge-base", "HEAD", &task.base])?.trim().to_string();
+    let files = changed_since(dir, &merge_base)?;
     let mut r = Review { task, merge_base, files, sel: 0, diff: Vec::new(), diff_sel: Some(0), scroll: 0, confirm: None };
     r.diff = file_diff(&r);
     Ok(r)
@@ -158,4 +172,29 @@ pub fn pull_request(t: &TaskRow) -> Result<String, String> {
         return Err(String::from_utf8_lossy(&out.stderr).lines().next().unwrap_or("gh pr create failed").to_string());
     }
     Ok(format!("opened {}", text.lines().last().unwrap_or("the pull request")))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::brand::APP_COMMAND;
+
+    #[test]
+    fn uncommitted_lines_count_edits_and_new_files_but_not_commits() {
+        let repo = std::env::temp_dir().join(format!("{APP_COMMAND}-lines-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&repo);
+        std::fs::create_dir_all(&repo).unwrap();
+        let git = |args: &[&str]| crate::proc::git(&repo, args).unwrap();
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.email", "t@t"]);
+        git(&["config", "user.name", "t"]);
+        std::fs::write(repo.join("a.txt"), "one\ntwo\nthree\n").unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-qm", "one"]);
+        assert_eq!(super::uncommitted_lines(&repo), Ok((0, 0)), "all committed");
+        std::fs::write(repo.join("a.txt"), "one\n2\n").unwrap();
+        std::fs::write(repo.join("new.txt"), "x\ny\n").unwrap();
+        assert_eq!(super::uncommitted_lines(&repo), Ok((3, 2)), "one line changed and one removed, plus a new file's two");
+        assert!(super::uncommitted_lines(&repo.join("missing")).is_err(), "no checkout there");
+        let _ = std::fs::remove_dir_all(&repo);
+    }
 }

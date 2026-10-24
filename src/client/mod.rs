@@ -180,6 +180,9 @@ pub(super) enum Bg {
     BothDiff(PathBuf, Vec<(String, String)>),
     /// Files more than one checkout of a repo changed (by the repo's folder).
     Overlaps(PathBuf, Vec<overlap::Overlap>),
+    /// A checkout's uncommitted lines, added and removed.
+    /// None: they could not be counted (git failed there), so the rows show none.
+    LinesChanged(PathBuf, Option<(i64, i64)>),
     /// Pulled a shared setup from another machine.
     Synced(bool),
     /// Every file under a folder (Find).

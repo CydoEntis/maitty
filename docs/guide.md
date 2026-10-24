@@ -14,19 +14,17 @@ and your configured custom ones; rows click and the wheel scrolls.
 ┌─ SESSIONS 5 ──────────── ●1 ✕1 ┐
 │                                │
 │  ▾ affiliate-site ⎇ main · ch… │
-│ ▎ ✕ fix-footer              2m │
+│ ▎ ✕ fix-footer    ◆  +8 −2  2m │
 │ ▎   failed: test · exit 1      │
 │ ▎   footer shows current year  │
-│   ⣶ add-payments           now │
-│     claude · working           │
+│   ⣶ add-payments  ✻ +40 −3 now │
 │                                │
 │  ▾ pixls                no git │
-│   ● warm-finch              3m │
+│   ● warm-finch           ◆  3m │
 │     asks: use pnpm or npm?     │
 │                                │
 │  ▾ orbit                 ⎇ dev │
-│   ✓ quick-fox               9h │
-│     finished                   │
+│   ✓ quick-fox            ✻  9h │
 └────────────────────────────────┘
 ```
 

@@ -95,7 +95,7 @@ outcome.
 A terminal UI (ratatui). Colours come only from the theme (`theme.rs`): semantic
 slots `bg`, `card`, `card2`, `hov`, `accent`/`acc_ink`, `text`/`strong`/`muted`,
 and status colours (`working`, `blocked` = needs you, `done`, `idle`, `err`).
-A working row is one colour, `accent`, across its glyph, the word `working` and its name's shimmer. Needs you (`blocked`) is amber and failed (`err`) red in every theme, so they never read alike. `dark` sets its amber by hand; `mono` uses named yellow and red; every other theme keeps an amber of its own that stands apart from its other statuses, or gets one derived from its yellow (`with_distinct_needs` in `theme.rs`, darker on light themes). The audit in `theme.rs` asserts needs you looks unlike every other status, on the row and lit. A theme's amber `working` slot stays out of the sidebar. Chips on the check sheet, the Inbox's group heads and the approval tint use the same slots (`client/v7_frames_tests.rs` asserts the roles).
+A working row is one colour, `accent`, across its glyph and its name (shimmering with motion on). Needs you (`blocked`) is amber and failed (`err`) red in every theme, so they never read alike. `dark` sets its amber by hand; `mono` uses named yellow and red; every other theme keeps an amber of its own that stands apart from its other statuses, or gets one derived from its yellow (`with_distinct_needs` in `theme.rs`, darker on light themes). The audit in `theme.rs` asserts needs you looks unlike every other status, on the row and lit. A theme's amber `working` slot stays out of the sidebar. Chips on the check sheet, the Inbox's group heads and the approval tint use the same slots (`client/v7_frames_tests.rs` asserts the roles).
 Every built-in theme passes a WCAG contrast audit test. Shared primitives in
 `client/design.rs` and `client/screen/`: `panel()` (popup), `fill`, `put`/`seg`
 (text runs), `keycap`/`keycaps`, `hints`, `button`, `dim_all`. Icons come from
@@ -205,15 +205,17 @@ meaning.
 The **Bars** preset is the v7 handoff's 3-bar Braille spinner. A frame is one column, or
 two when every character is Braille; a two-column mark moves the sidebar row's name one
 column right. The ASCII glyph set draws Bars as `. o O o`; other choices are never
-rewritten. Working also shimmers its sidebar name and the word `working` on line 2. With
+rewritten. Working also shimmers its sidebar name in the working colour. With
 motion off (`app.motion_on()`) the spinner rests on its third frame and the shimmer stands
 still, so nothing depends on motion.
 
 ## Project-specific: sidebar check result
 <!-- local: the user chose on 2026-10-23 to drop the `idle` line on a plain idle row at every width (v7 drew it from 140 columns) -->
+<!-- local: the user chose on 2026-10-24 one-line session rows with the agent's mark and uncommitted lines, names in their state's colour (ADR 0021) -->
 
 The sidebar is the v7 handoff's `drawSide` (`docs/design/v7/checks7.js`); its rows are
-tested cell for cell against the reference frames (`client/screen/side_frames.txt`).
+tested cell for cell against the reference frames (`client/screen/side_frames.txt`), read
+through `v7_fixture::as_one_line_rows`, which applies ADR 0021's one-line rows.
 
 - **Title:** `SESSIONS` bold and the count, then right-aligned `●n` (`blocked`, bold:
   asking or waiting for check approval) and `✕n` (`err`, bold: failed checks), each only
@@ -223,19 +225,31 @@ tested cell for cell against the reference frames (`client/screen/side_frames.tx
   or `no git`. The meta shows only with 6 or more columns free, cut with `…`. A blank row
   follows each folder.
 - **Row line 1:** the session's mark (`client/screen/glyphs.rs` `Kind`; bold for failed,
-  needs you and approve; a new session's `○` is `accent`, bold), the name, the age
-  right-aligned in `muted`. A row that wants a look (working, needs you, failed, done and
-  not seen, new, any check result other than a plain pass) has a `strong` bold name; a done,
-  seen or asleep row has a `text` name, not bold, `strong` only while selected. **Only the
-  marks carry colour**: the session glyph and a checkpoint's own `✓`/`✕`. With motion on, a
-  working, checking or done-and-not-seen name shimmers from `text` up to `strong` and a
-  needs-you name pulses between them (`side.rs` `NameMotion`). Only the selected row carries
-  a `▎` edge bar, in `accent`, on each of its lines.
+  needs you and approve; a new session's `○` is `accent`, bold), the name, then
+  right-aligned the agent's mark (`muted`: `✻` Claude, `◆` Codex, `✦` Gemini, `◇` OpenCode,
+  else its first letter; `C`, `X`, `G`, `O` with the ASCII glyph set), the checkout's
+  uncommitted lines (`+N` in `done`, `−N` in `err`; shown only when there are any) and the
+  age (`muted`), two spaces apart (`side.rs` `row_meta`). The lines give way first, then the
+  agent's mark, so the name keeps 8 columns. A name in a state worth a look (working,
+  checking, done and not seen, needs you) is drawn in its state's colour, the glyph's, and
+  bold; with motion on it shimmers up toward `strong` (working, checking, not seen) or pulses
+  (needs you) (`side.rs` `NameMotion`). Another row that wants a look (failed, new, a check
+  result other than a plain pass) has a `strong` bold name; a done, seen or asleep row a
+  `text` name, not bold, `strong` only while selected. Only the selected row carries a `▎`
+  edge bar, in `accent`, on each of its lines; with `ui.rounded = "full"` a one-line
+  selected row has half-circle ends instead.
+- **Uncommitted lines** are counted off the UI thread every 5 s for each checkout with a
+  session (`tasks::uncommitted_lines`: `git diff --numstat HEAD` plus untracked files' lines),
+  kept in `Screen::lines_changed`. A checkout git cannot read shows none.
 - **Row lines 2 and 3** are `muted` and never bold (`side.rs` `quiet`), whatever they say.
-- **Row line 2:** the headline check's result (`TermInfo::check()`) by checkpoint name, or
-  the question, or what the session is doing. While the agent works or asks, its last
-  result is about an older turn and is not shown. A quiet working agent (`TermInfo::quiet_since`) adds ` · quiet 12m` in `muted`.
-- **A plain idle row** (seen, no check result, no question) is one line at every width: its `○` already says idle, so it has no `idle` line. Working, needs-you, not-seen, new and checked rows keep line 2. An asleep row keeps `asleep zzZ` from 140 columns.
+- **Row line 2** shows only when it says more than line 1 (`side.rs` `has_detail`): the
+  headline check's result (`TermInfo::check()`) by checkpoint name, the question, helpers it
+  asks for, a plan-limit wait, a new agent's first step, `asleep zzZ`, a message just sent,
+  or for a working agent its helpers (`2 agents`, `ui.subagent_count`) and a quiet spell
+  (`quiet 12m`, `TermInfo::quiet_since`). It never names the state alone (`working`,
+  `needs you`, `done · not seen`, `idle`): the mark and the name's colour say it. While the
+  agent works or asks, its last result is about an older turn and is not shown. An asleep
+  row keeps `asleep zzZ` from 140 columns.
 - **Below 140 columns** line 3 goes, and an asleep row is one line too.
 - **Row line 3** (140 columns and up): a failed check's first failing line (`muted`), or
   every checkpoint by name: `build ✓ · test ✕` (a failed name in `err`).
@@ -249,9 +263,9 @@ The colour slot is the glyph's; line 2 is always `muted` (see above).
 
 | State | Glyph (Unicode / ASCII) | Colour slot | Line 2 |
 | --- | --- | --- | --- |
-| working | the spinner you chose (Bars is 3-bar), bold | `accent` | `working` (the agent is in the pane title and row menu), then ` · 4 agents` only when the agent reports helpers |
-| needs you | `●` / `!` | `blocked` | `asks: <question>` |
-| done, not seen / seen | `✓` / `+`; `○` / `o` | `done`; `muted` | `done · not seen` / none: the row is one line |
+| working | the spinner you chose (Bars is 3-bar), bold | `accent` | none; `4 agents` only when the agent reports helpers, `quiet 12m` when it has gone quiet |
+| needs you | `●` / `!` | `blocked` | `asks: <question>`, else none |
+| done, not seen / seen | `✓` / `+`; `○` / `o` | `done`; `muted` | none: the row is one line |
 | new (an agent told nothing yet) | `○` / `o`, bold | `accent` | `claude · new · type to begin` |
 | asleep | `z` | `muted` | `asleep zzZ` |
 | checking | `◜◝◞◟` / `- \ \| /` | `sky()` | `checking test · 6s` |

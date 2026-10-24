@@ -135,6 +135,10 @@ pub(super) struct Screen {
     /// it: Esc goes back there.
     pub inbox_return: Option<(String, usize)>,
     pub overlap_at: HashMap<PathBuf, Instant>,
+    /// Each checkout's lines added and removed and not committed (`+N −N` on its rows), and
+    /// when they were last counted.
+    pub lines_changed: HashMap<PathBuf, (i64, i64)>,
+    pub lines_at: HashMap<PathBuf, Instant>,
     /// Dragging the sidebar edge or the split divider.
     pub drag: Option<Drag>,
     /// The group being dragged in the sidebar (its key).
@@ -842,6 +846,7 @@ impl App {
         self.recipe_followup();
         if !cfg!(test) {
             self.check_overlaps(&model);
+            self.count_changed_lines(&model);
         }
     }
 
@@ -866,7 +871,26 @@ impl App {
             });
         }
     }
+
+    /// Every few seconds per checkout with a session in it: its uncommitted lines, for the
+    /// `+N −N` on its rows (off the UI thread; the answer comes back as `Bg::LinesChanged`).
+    fn count_changed_lines(&mut self, model: &[Proj]) {
+        let dirs: Vec<PathBuf> = model.iter().filter(|p| p.git).flat_map(|p| p.wts.iter()).filter(|w| !w.sessions.is_empty()).map(|w| w.path.clone()).collect();
+        for dir in dirs {
+            if self.screen.lines_at.get(&dir).is_some_and(|t| t.elapsed() < LINES_EVERY) {
+                continue;
+            }
+            self.screen.lines_at.insert(dir.clone(), Instant::now());
+            self.spawn_bg(move || {
+                let counts = crate::client::tasks::uncommitted_lines(&dir).ok();
+                super::Bg::LinesChanged(dir, counts)
+            });
+        }
+    }
 }
+
+/// How often a checkout's uncommitted lines are counted again.
+const LINES_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// How often a repo's checkouts are compared for files changed in more than one.
 const OVERLAP_EVERY: std::time::Duration = std::time::Duration::from_secs(60);

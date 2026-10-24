@@ -867,7 +867,7 @@ mod screen_tests {
         // The sidebar: sessions right under their project, worktree sessions tagged.
         let o = draw(&mut app, 160, 45);
         assert!(!o.contains("WORKTREES") && !o.contains("BRANCHES"), "no folder headings");
-        assert!(o.contains("rate") && o.contains(" 2m") && o.contains("working"), "a worktree session is named after it, with its age and what its agent is doing");
+        assert!(o.contains("rate") && o.contains(" 2m") && !o.contains("working"), "a worktree session is named after it, with its age; its spinner says it is working");
 
         // Resizing the sidebar, within its limits.
         let before = app.screen.side_rect.width;
@@ -2251,7 +2251,7 @@ mod screen_tests {
         // A 26-column sidebar card, no right-hand meta or question lines.
         assert!(lines[0].starts_with('┌') && lines[0].chars().nth(25) == Some('┐'), "a slim sidebar: {}", lines[0]);
         let side: String = lines.iter().map(|l| l.chars().take(30).collect::<String>() + "\n").collect();
-        assert!(side.contains("working"), "a working row keeps its second line below 140 columns: {side}");
+        assert!(!side.contains("working"), "a working row is one line: {side}");
         assert!(side.contains("asks: Run npm"), "a question keeps its line: {side}");
         assert!(o.contains("+ New") && o.contains("Menu"), "both controls fit at the sidebar foot");
         assert!(!o.contains("? keys") && !o.contains("inbox"), "there is no full-width status footer");
@@ -5482,7 +5482,8 @@ mod check_inbox_tests {
     fn inbox(app: &mut App, w: u16, h: u16) -> Vec<String> {
         app.act(Action::Jump);
         let buf = buffer(app, w, h);
-        let out = lines(&buf, 0);
+        // The Inbox only: the sidebar beside it lists the same sessions.
+        let out = lines(&buf, app.screen.side_rect.right());
         if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
             println!("--- {w}x{h} {}/{}\n{}", app.cfg.ui.layout, app.cfg.ui.panes, out.join("\n"));
         }

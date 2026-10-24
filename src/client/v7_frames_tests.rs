@@ -381,12 +381,15 @@ fn app_sidebar(id: &str, stage: Stage, rows: Vec<Vec<char>>, inner_w: usize, asc
             rows.insert(rows.len() - 1, vec![' '; inner_w]);
         }
     }
-    // quick-fox: finished and unseen.
-    if let Some(i) = rows.iter().position(|r| text(r).contains("quick-fox"))
-        && rows.get(i + 1).is_some_and(|r| text(r).trim() == "finished")
-    {
-        swap(&mut rows[i + 1], "finished", "finished · not seen", 0, end);
+    // Sessions are one line now, each with its agent's mark (ADR 0021).
+    let n = rows.len();
+    let foot_row = rows.pop().expect("the foot");
+    let mut rows = super::v7_fixture::as_one_line_rows(rows, ascii, ANY);
+    for r in &mut rows {
+        r.resize(inner_w, ' ');
     }
+    rows.resize(n - 1, vec![' '; inner_w]);
+    rows.push(foot_row);
     // Folders: the one with a session asking you goes first.
     let foot = rows.len() - 1;
     let mut groups: Vec<Vec<Vec<char>>> = Vec::new();
@@ -940,9 +943,9 @@ fn overriding_from_the_inbox_opens_the_evidence() {
     assert!(frame(&mut app, Layout::Floating, 160, 45, "unicode").contains("CHECK · fix-footer › test"));
 }
 
-/// Only the working glyph carries the working colour; the name is white and the word quiet.
+/// A working row speaks in the working colour: its spinner and its name, in every theme.
 #[test]
-fn a_working_row_s_mark_is_the_only_working_colour() {
+fn a_working_row_s_mark_and_name_are_the_working_colour() {
     for &name in crate::theme::BUILTIN {
         let mut app = open("01");
         app.theme = crate::theme::Theme::named(name);
@@ -950,8 +953,7 @@ fn a_working_row_s_mark_is_the_only_working_colour() {
         let work = app.theme.accent;
         let (x, y) = at(&buf, "add-payments");
         assert_eq!(buf[(x - 2, y)].fg, work, "{name}: the spinner");
-        let (x, y) = at(&buf, "   working");
-        assert_eq!(buf[(x + 3, y)].fg, app.theme.muted, "{name}: the word");
+        assert_eq!(buf[(x, y)].fg, work, "{name}: the name (motion off holds it still)");
     }
 }
 

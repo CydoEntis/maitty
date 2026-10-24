@@ -412,6 +412,12 @@ impl App {
                     v.parts = Some(parts);
                 }
             }
+            (Bg::LinesChanged(dir, Some(counts)), _) => {
+                self.screen.lines_changed.insert(dir, counts);
+            }
+            (Bg::LinesChanged(dir, None), _) => {
+                self.screen.lines_changed.remove(&dir);
+            }
             (Bg::Overlaps(repo, found), _) => {
                 // Say each overlap once, when it first shows up.
                 let seen = self.screen.overlaps.get(&repo).cloned().unwrap_or_default();
