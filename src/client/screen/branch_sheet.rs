@@ -34,12 +34,23 @@ pub(crate) struct Gap {
     pub behind: u32,
 }
 
+/// The branch it tracks.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Upstream {
+    None,
+    /// Set, but the remote branch is no longer there.
+    Gone(String),
+    At(Gap),
+}
+
+/// Each part is read on its own, so one git error shows in its place and not over the rest.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Repo {
     pub branch: String,
-    pub upstream: Option<Gap>,
-    pub base: Option<Gap>,
-    pub commits: Vec<Commit>,
+    pub upstream: Result<Upstream, String>,
+    /// None on the base branch itself.
+    pub base: Result<Option<Gap>, String>,
+    pub commits: Result<Vec<Commit>, String>,
     pub snapshots: Vec<Snapshot>,
 }
 
@@ -85,21 +96,52 @@ pub(crate) fn read(dir: &Path) -> Facts {
     if let Err(e) = git(dir, &["rev-parse", "--show-toplevel"]) {
         return if e.contains("not a git repository") { Facts::NotGit } else { Facts::Failed(e) };
     }
-    let branch = current_branch(dir);
-    let upstream = git(dir, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]).ok().and_then(|u| gap(dir, u.trim()));
-    let base = base_branch(dir, &branch).and_then(|b| gap(dir, &b));
-    Facts::Repo(Box::new(Repo { branch, upstream, base, commits: commits(dir), snapshots: crate::snapshot::list(dir) }))
+    match read_repo(dir) {
+        Ok(r) => Facts::Repo(Box::new(r)),
+        Err(e) => Facts::Failed(e),
+    }
 }
 
-fn current_branch(dir: &Path) -> String {
-    let name = git(dir, &["branch", "--show-current"]).unwrap_or_default().trim().to_string();
-    if !name.is_empty() {
-        return name;
+fn read_repo(dir: &Path) -> Result<Repo, String> {
+    let name = git(dir, &["branch", "--show-current"])?.trim().to_string();
+    let (branch, upstream) = if name.is_empty() {
+        (format!("detached at {}", git(dir, &["rev-parse", "--short", "HEAD"])?.trim()), Ok(Upstream::None))
+    } else {
+        (name.clone(), upstream(dir, &name))
+    };
+    let base = base_branch(dir, &branch).map(|b| gap(dir, &b)).transpose();
+    Ok(Repo { branch, upstream, base, commits: commits(dir), snapshots: crate::snapshot::list(dir) })
+}
+
+/// What `branch` tracks, read from its ref so an upstream that is gone reads as gone.
+fn upstream(dir: &Path, branch: &str) -> Result<Upstream, String> {
+    let out = git(dir, &["for-each-ref", "--format=%(upstream:short)%09%(upstream:track)", &format!("refs/heads/{branch}")])?;
+    let (name, track) = out.trim_end().split_once('\t').unwrap_or((out.trim(), ""));
+    if name.is_empty() {
+        return Ok(Upstream::None);
     }
-    match git(dir, &["rev-parse", "--short", "HEAD"]) {
-        Ok(at) => format!("detached at {}", at.trim()),
-        Err(e) => format!("unknown ({e})"),
+    if track == "[gone]" {
+        return Ok(Upstream::Gone(name.to_string()));
     }
+    let (ahead, behind) = parse_track(track)?;
+    Ok(Upstream::At(Gap { name: name.to_string(), ahead, behind }))
+}
+
+/// `[ahead 1, behind 2]`, `[behind 3]`, or nothing when level.
+fn parse_track(track: &str) -> Result<(u32, u32), String> {
+    let (mut ahead, mut behind) = (0, 0);
+    let inner = track.trim_start_matches('[').trim_end_matches(']');
+    for part in inner.split(", ").filter(|p| !p.is_empty()) {
+        let bad = || format!("git said {track:?} about the upstream");
+        let (word, n) = part.split_once(' ').ok_or_else(bad)?;
+        let n: u32 = n.parse().map_err(|_| bad())?;
+        match word {
+            "ahead" => ahead = n,
+            "behind" => behind = n,
+            _ => return Err(bad()),
+        }
+    }
+    Ok((ahead, behind))
 }
 
 /// The branch this one would merge into: the main checkout's, else `main`, else `master`.
@@ -113,25 +155,31 @@ fn base_branch(dir: &Path, current: &str) -> Option<String> {
         .find(|b| git(dir, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{b}")]).is_ok())
 }
 
-/// How far HEAD is from `other`; None when git can't compare them.
-fn gap(dir: &Path, other: &str) -> Option<Gap> {
-    let out = git(dir, &["rev-list", "--left-right", "--count", &format!("HEAD...{other}")]).ok()?;
+/// How far HEAD is from `other`.
+fn gap(dir: &Path, other: &str) -> Result<Gap, String> {
+    let out = git(dir, &["rev-list", "--left-right", "--count", &format!("HEAD...{other}")])?;
     let mut n = out.split_whitespace().map(str::parse::<u32>);
-    Some(Gap { name: other.to_string(), ahead: n.next()?.ok()?, behind: n.next()?.ok()? })
+    match (n.next(), n.next()) {
+        (Some(Ok(ahead)), Some(Ok(behind))) => Ok(Gap { name: other.to_string(), ahead, behind }),
+        _ => Err(format!("git said {:?} comparing with {other}", out.trim())),
+    }
 }
 
-fn commits(dir: &Path) -> Vec<Commit> {
-    let count = format!("-{COMMITS_SHOWN}");
-    // A branch with no commits yet makes git log fail: that is an empty list, not an error.
-    let Ok(out) = git(dir, &["log", &count, "--format=%h%x09%ct%x09%s"]) else { return Vec::new() };
-    out.lines()
+fn commits(dir: &Path) -> Result<Vec<Commit>, String> {
+    // A branch with no commits yet has no HEAD to log: an empty list, not an error.
+    if git(dir, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_err() {
+        return Ok(Vec::new());
+    }
+    let out = git(dir, &["log", &format!("-{COMMITS_SHOWN}"), "--format=%h%x09%ct%x09%s"])?;
+    Ok(out
+        .lines()
         .filter_map(|l| {
             let mut parts = l.splitn(3, '\t');
             let hash = parts.next()?.to_string();
             let at = parts.next()?.parse().ok()?;
             Some(Commit { hash, at, subject: parts.next().unwrap_or("").to_string() })
         })
-        .collect()
+        .collect())
 }
 
 /// "2m ago · before claude's turn", as the row menu's Snapshots… list says it.
@@ -233,16 +281,27 @@ fn gap_words(g: &Gap, c: Style, t: &Theme) -> Vec<Seg> {
     out
 }
 
+fn git_error(e: &str, c: Style, t: &Theme) -> Vec<Seg> {
+    vec![seg(format!("couldn't read: {e}"), c.fg(t.err))]
+}
+
 fn heading(name: &str, c: Style, t: &Theme) -> Line {
     text(vec![seg(name, c.fg(t.muted).add_modifier(Modifier::BOLD))])
 }
 
 fn repo_lines(app: &App, v: &BranchSheet, r: &Repo, c: Style, t: &Theme) -> Vec<Line> {
     let mut out = vec![labelled("Branch", vec![seg(r.branch.clone(), c.fg(t.strong).add_modifier(Modifier::BOLD))], c, t)];
-    let upstream = r.upstream.as_ref().map_or_else(|| vec![seg("none", c.fg(t.muted))], |g| gap_words(g, c, t));
+    let upstream = match &r.upstream {
+        Ok(Upstream::None) => vec![seg("none", c.fg(t.muted))],
+        Ok(Upstream::Gone(name)) => vec![seg(name.clone(), c.fg(t.text)), seg("  gone from the remote", c.fg(t.err))],
+        Ok(Upstream::At(g)) => gap_words(g, c, t),
+        Err(e) => git_error(e, c, t),
+    };
     out.push(labelled("Upstream", upstream, c, t));
-    if let Some(g) = &r.base {
-        out.push(labelled("Base", gap_words(g, c, t), c, t));
+    match &r.base {
+        Ok(Some(g)) => out.push(labelled("Base", gap_words(g, c, t), c, t)),
+        Ok(None) => {}
+        Err(e) => out.push(labelled("Base", git_error(e, c, t), c, t)),
     }
     let check = match app.snap.terms.get(&v.term).and_then(|s| s.check()) {
         Some(info) => check::result_words(info, t).into_iter().map(|(s, st)| (s, st.bg(c.bg.unwrap_or(t.bg)))).collect(),
@@ -251,15 +310,14 @@ fn repo_lines(app: &App, v: &BranchSheet, r: &Repo, c: Style, t: &Theme) -> Vec<
     out.push(labelled("Check", check, c, t));
     out.push(Line::default());
     out.push(heading("COMMITS", c, t));
-    if r.commits.is_empty() {
-        out.push(text(vec![seg("no commits yet", c.fg(t.muted))]));
-    }
-    for cm in &r.commits {
-        out.push(Line {
+    match &r.commits {
+        Err(e) => out.push(text(git_error(e, c, t))),
+        Ok(list) if list.is_empty() => out.push(text(vec![seg("no commits yet", c.fg(t.muted))])),
+        Ok(list) => out.extend(list.iter().map(|cm| Line {
             segs: vec![seg(cm.hash.clone(), c.fg(t.accent)), seg(format!("  {}", cm.subject), c.fg(t.text))],
             right: vec![seg(age(cm.at), c.fg(t.muted))],
             row: None,
-        });
+        })),
     }
     out.push(Line::default());
     out.push(heading("SNAPSHOTS", c, t));
@@ -280,7 +338,7 @@ fn lines(app: &App, v: &BranchSheet, c: Style, t: &Theme) -> Vec<Line> {
                 text(vec![seg("No branch, commits or snapshots to show.", c.fg(t.muted))]),
             ];
         }
-        Some(Facts::Failed(e)) => return vec![text(vec![seg(format!("couldn't read git: {e}"), c.fg(t.err))])],
+        Some(Facts::Failed(e)) => return vec![text(git_error(e, c, t))],
         _ => {}
     }
     let mut out = vec![Line { segs: vec![seg(SWITCH_ROW, c.fg(t.accent).add_modifier(Modifier::BOLD))], right: Vec::new(), row: Some(0) }, Line::default()];
@@ -362,13 +420,33 @@ mod tests {
         git(&clone, &["commit", "-qm", "feature work"]);
         let Facts::Repo(r) = read(&clone) else { panic!("a repo") };
         assert_eq!(r.branch, "feature");
-        assert_eq!(r.upstream, Some(Gap { name: "origin/main".into(), ahead: 1, behind: 0 }));
-        let base = r.base.as_ref().expect("main is its base");
-        assert_eq!((base.name.as_str(), base.ahead, base.behind), ("main", 1, 0));
-        assert_eq!(r.commits.iter().map(|c| c.subject.as_str()).collect::<Vec<_>>(), ["feature work", "second", "first"], "newest first");
-        assert!(r.commits.iter().all(|c| c.hash.len() >= 7 && c.at > 0));
+        assert_eq!(r.upstream, Ok(Upstream::At(Gap { name: "origin/main".into(), ahead: 1, behind: 0 })));
+        assert_eq!(r.base, Ok(Some(Gap { name: "main".into(), ahead: 1, behind: 0 })), "main is its base");
+        let commits = r.commits.as_ref().unwrap();
+        assert_eq!(commits.iter().map(|c| c.subject.as_str()).collect::<Vec<_>>(), ["feature work", "second", "first"], "newest first");
+        assert!(commits.iter().all(|c| c.hash.len() >= 7 && c.at > 0));
+        // The branch it tracks goes from the remote: gone, not "none".
+        git(&clone, &["config", "branch.feature.merge", "refs/heads/deleted"]);
+        let Facts::Repo(r) = read(&clone) else { panic!("a repo") };
+        assert_eq!(r.upstream, Ok(Upstream::Gone("origin/deleted".into())));
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&clone);
+    }
+
+    #[test]
+    fn the_upstream_track_is_read_or_refused() {
+        assert_eq!(parse_track(""), Ok((0, 0)), "level");
+        assert_eq!(parse_track("[ahead 1, behind 2]"), Ok((1, 2)));
+        assert_eq!(parse_track("[behind 3]"), Ok((0, 3)));
+        assert!(parse_track("[sideways 1]").is_err(), "words it doesn't know are an error, not zero");
+    }
+
+    #[test]
+    fn a_git_error_is_shown_not_dropped() {
+        let (root, _) = repo("err");
+        let Err(e) = gap(&root, "no-such-branch") else { panic!("an error") };
+        assert!(!e.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -378,9 +456,10 @@ mod tests {
             git(&root, &["commit", "-q", "--allow-empty", "-m", &format!("c{i}")]);
         }
         let Facts::Repo(r) = read(&root) else { panic!("a repo") };
-        assert_eq!(r.commits.len(), COMMITS_SHOWN);
-        assert_eq!(r.commits[0].subject, "c11");
-        assert_eq!((r.upstream, r.base), (None, None), "main with no remote: nothing to measure against");
+        let commits = r.commits.as_ref().unwrap();
+        assert_eq!(commits.len(), COMMITS_SHOWN);
+        assert_eq!(commits[0].subject, "c11");
+        assert_eq!((r.upstream, r.base), (Ok(Upstream::None), Ok(None)), "main with no remote: nothing to measure against");
         let _ = std::fs::remove_dir_all(&root);
     }
 

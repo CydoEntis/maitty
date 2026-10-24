@@ -7593,48 +7593,100 @@ mod branch_view_tests {
         dir
     }
 
-    /// The app with session 1 in `dir`, its Branch view open and git's answer in (the test
-    /// fixture drops background results, so the read is done here).
-    fn opened(dir: &std::path::Path, w: u16, h: u16) -> App {
+    /// Background work the app queues comes here instead of being dropped.
+    fn catch_bg(app: &mut App) -> mpsc::UnboundedReceiver<Bg> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        app.bg = tx;
+        rx
+    }
+
+    /// The next background result, once its thread is done.
+    fn next_bg(rx: &mut mpsc::UnboundedReceiver<Bg>) -> Bg {
+        let until = Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            if let Ok(b) = rx.try_recv() {
+                return b;
+            }
+            assert!(Instant::now() < until, "no background work was queued");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    /// The app with session 1 in `dir` and its Branch view open, git's answer landed from the
+    /// background task.
+    fn opened(dir: &std::path::Path, w: u16, h: u16) -> (App, mpsc::UnboundedReceiver<Bg>) {
         let (_, mut app) = super::design_tests::render_with(w, h);
+        let mut rx = catch_bg(&mut app);
         app.snap.terms.get_mut(&1).unwrap().top = Some(dir.to_path_buf());
         leader(&mut app, 'b');
-        key(&mut app, KeyCode::Esc);
         assert!(sheet(&app).is_some_and(|v| v.dir == dir && v.facts.is_none()), "b opens the Branch view, reading git");
-        let facts = screen::read(dir);
-        app.branch_facts_arrived(dir, facts);
-        app
+        let b = next_bg(&mut rx);
+        app.on_bg(b);
+        assert!(matches!(sheet(&app).and_then(|v| v.facts.as_ref()), Some(screen::Facts::Repo(_))), "git's answer landed");
+        (app, rx)
     }
 
     #[test]
     fn b_opens_branch_in_the_side_panel_and_b_or_esc_closes_it() {
         let (_, mut app) = super::design_tests::render_with(200, 50);
         leader(&mut app, 'b');
-        assert!(sheet(&app).is_some(), "{:?}", app.mode);
+        assert!(sheet(&app).is_some() && app.mode == Mode::Normal, "the view has the keys: {:?}", app.mode);
         let o = draw(&mut app, 200, 50);
         show(&o);
         assert!(o.contains("BRANCH") && o.contains("Switch branch…"), "in the side panel");
         assert_eq!(app.screen.sheet_rect.width, 60, "30% of the screen");
-        // Shortcut mode holds after the leader (ADR 0016): b is the leader's b again.
-        key(&mut app, KeyCode::Char('b'));
-        assert!(sheet(&app).is_none(), "the leader's b again closes it");
-        key(&mut app, KeyCode::Char('b'));
-        key(&mut app, KeyCode::Esc);
-        assert!(sheet(&app).is_some() && app.mode == Mode::Normal, "the first Esc leaves shortcut mode");
         key(&mut app, KeyCode::Char(']'));
         assert_eq!(app.screen.saved.sheet_w.get("branch"), Some(&64), "its width is remembered as Branch's");
         key(&mut app, KeyCode::Char('b'));
-        assert!(sheet(&app).is_none(), "b in the view closes it");
+        assert!(sheet(&app).is_none() && matches!(app.mode, Mode::Prefix { .. }), "b closes it, back to shortcut mode");
+        key(&mut app, KeyCode::Char('b'));
+        assert!(sheet(&app).is_some(), "the leader's b opens it again");
+        key(&mut app, KeyCode::Esc);
+        assert!(sheet(&app).is_none() && matches!(app.mode, Mode::Prefix { .. }), "Esc closes it, back to shortcut mode");
+    }
+
+    #[test]
+    fn opened_from_shortcut_mode_its_keys_reach_it_and_k_types_nothing() {
+        let (mut app, mut out) = super::check_settings_tests::app_with_channel();
         leader(&mut app, 'b');
-        key(&mut app, KeyCode::Esc);
-        key(&mut app, KeyCode::Esc);
-        assert!(sheet(&app).is_none(), "Esc closes it");
+        while out.try_recv().is_ok() {}
+        // k is the leader's stop-the-agent: here it moves up, and nothing goes to a pane.
+        key(&mut app, KeyCode::Char('k'));
+        let sent: Vec<ClientMsg> = std::iter::from_fn(|| out.try_recv().ok()).collect();
+        assert!(!sent.iter().any(|m| matches!(m, ClientMsg::Input { .. })), "nothing typed into a pane: {sent:?}");
+        key(&mut app, KeyCode::Down);
+        key(&mut app, KeyCode::Enter);
+        assert!(matches!(app.mode, Mode::Branch(_)), "Enter on Switch branch… opens the switcher: {:?}", std::mem::discriminant(&app.mode));
+    }
+
+    #[test]
+    fn an_answer_for_another_folder_is_dropped_and_a_switch_or_restore_reads_again() {
+        let dir = repo("reload");
+        let (mut app, mut rx) = opened(&dir, 160, 45);
+        let before = sheet(&app).unwrap().facts.clone();
+        app.branch_facts_arrived(&dir.join("elsewhere"), screen::Facts::NotGit);
+        assert_eq!(sheet(&app).unwrap().facts, before, "not this view's folder");
+        app.on_bg(Bg::Switched(Ok("now on main".into())));
+        let b = next_bg(&mut rx);
+        app.on_bg(b);
+        let Some(screen::Facts::Repo(r)) = &sheet(&app).unwrap().facts else { panic!("a repo") };
+        assert_eq!(r.branch, "fix-footer", "read again after the switch");
+        let s = r.snapshots[0].clone();
+        std::fs::write(dir.join("a.txt"), "4").unwrap();
+        app.menu_do(Act::Restore(dir.clone(), s.commit, "now".into(), 1));
+        let restored = next_bg(&mut rx);
+        app.on_bg(restored);
+        let b = next_bg(&mut rx);
+        app.on_bg(b);
+        let Some(screen::Facts::Repo(r)) = &sheet(&app).unwrap().facts else { panic!("a repo") };
+        assert_eq!(r.snapshots.len(), 2, "read again after the restore: it kept one before it");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn it_shows_the_branch_its_gaps_commits_check_and_snapshots() {
         let dir = repo("shows");
-        let mut app = opened(&dir, 160, 45);
+        let (mut app, _rx) = opened(&dir, 160, 45);
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
         app.snap.terms.get_mut(&1).unwrap().checks =
             vec![CheckInfo { name: "test".into(), command: "npm test".into(), state: CheckState::Failed, exit_code: Some(1), started_at: now - 60, ..Default::default() }];
@@ -7645,7 +7697,7 @@ mod branch_view_tests {
         assert!(o.contains("Base      main  ↑1 ↓0"), "one commit ahead of main");
         assert!(o.contains("fix the footer links") && o.contains("start the shop"), "the commits");
         let Some(screen::Facts::Repo(r)) = &sheet(&app).unwrap().facts else { panic!("a repo") };
-        assert!(o.contains(&r.commits[0].hash), "with their short hash");
+        assert!(o.contains(&r.commits.as_ref().unwrap()[0].hash), "with their short hash");
         assert!(o.contains("Check     failed: test · exit 1"), "the last check");
         assert!(o.contains("SNAPSHOTS") && o.contains("ago · before claude's turn"), "the snapshots");
         let _ = std::fs::remove_dir_all(&dir);
@@ -7654,7 +7706,7 @@ mod branch_view_tests {
     #[test]
     fn enter_on_its_first_row_opens_the_switcher_and_on_a_snapshot_asks_to_restore() {
         let dir = repo("enter");
-        let mut app = opened(&dir, 160, 45);
+        let (mut app, _rx) = opened(&dir, 160, 45);
         draw(&mut app, 160, 45);
         key(&mut app, KeyCode::Enter);
         assert!(matches!(&app.mode, Mode::Branch(v) if v.dir == dir), "the switcher: {:?}", app.mode);
@@ -7672,7 +7724,6 @@ mod branch_view_tests {
     fn a_folder_outside_git_says_so() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         leader(&mut app, 'b');
-        key(&mut app, KeyCode::Esc);
         let dir = sheet(&app).unwrap().dir.clone();
         app.branch_facts_arrived(&dir, screen::Facts::NotGit);
         let o = draw(&mut app, 160, 45);

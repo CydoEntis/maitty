@@ -312,7 +312,8 @@ The panel docked right (Inbox, Changes, Files, checks, Branch). Its width is kep
 ## Branch view
 
 Leader + `b` opens it for the session you're on; `b` there used to open the branch switcher,
-which is now its first row.
+which is now its first row. In `[keys.prefix]` its action is `branch` (`switch-branch` still
+loads). It has the keys while open; closing it returns to shortcut mode.
 
 | Keys | Action |
 | --- | --- |

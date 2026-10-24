@@ -400,7 +400,7 @@ impl Action {
             Action::CloseSplit => "close-split".into(),
             Action::PasteImage => "paste-image".into(),
             Action::AgentStatusSetup => "agent-status-setup".into(),
-            Action::Branches => "switch-branch".into(),
+            Action::Branches => "branch".into(),
             Action::ShellHere => "shell-here".into(),
             Action::PrevPrompt => "prev-prompt".into(),
             Action::NextPrompt => "next-prompt".into(),
@@ -497,7 +497,7 @@ impl FromStr for Action {
             // them to the command palette so stale config never prevents startup.
             "profiles" | "workflows" | "workflow-runs" => Action::Palette,
             "agent-status-setup" => Action::AgentStatusSetup,
-            "switch-branch" => Action::Branches,
+            "branch" | "switch-branch" => Action::Branches,
             "shell-here" => Action::ShellHere,
             "prev-prompt" => Action::PrevPrompt,
             "next-prompt" => Action::NextPrompt,
@@ -579,7 +579,7 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("/", "search-code"),
     ("d", "changes"),
     ("g", "worktrees"),
-    ("b", "switch-branch"),
+    ("b", "branch"),
     // The app
     ("space", "palette"),
     ("m", "menu"),
