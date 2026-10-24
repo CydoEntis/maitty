@@ -574,6 +574,9 @@ fn status_words(app: &App, s: &Session, t: &Theme) -> Vec<Seg> {
                 _ if !app.cfg.ui.subagent_count => {}
                 n => words.push(seg(format!(" · {n} agent{}", if n == 1 { "" } else { "s" }), Style::default().fg(t.text))),
             }
+            if let Some(at) = s.quiet_since {
+                words.push(seg(format!(" · quiet {}", age(at)), Style::default().fg(t.muted)));
+            }
             words
         }
         Status::Blocked => vec![seg("needs you", Style::default().fg(t.blocked))],
@@ -1010,6 +1013,16 @@ mod v8_tests {
                 row.find(needle).map(|at| (r.x + row[..at].chars().count() as u16, y))
             })
             .unwrap_or_else(|| panic!("{needle:?} is not in the sidebar"))
+    }
+
+    #[test]
+    fn a_quiet_agent_says_how_long_on_its_row() {
+        let mut app = world(Stage::None);
+        let before = side_rows(&mut app, Layout::Floating, 160, 45);
+        assert!(!before.iter().any(|r| r.contains("quiet")), "{before:#?}");
+        app.snap.terms.get_mut(&2).unwrap().quiet_since = Some(crate::client::screen::now_secs() - 12 * 60);
+        let rows = side_rows(&mut app, Layout::Floating, 160, 45);
+        assert!(has(&rows, "working · quiet 12m"), "{rows:#?}");
     }
 
     #[test]

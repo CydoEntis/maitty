@@ -232,7 +232,7 @@ tested cell for cell against the reference frames (`client/screen/side_frames.tx
 - **Row lines 2 and 3** are `muted` and never bold (`side.rs` `quiet`), whatever they say.
 - **Row line 2:** the headline check's result (`TermInfo::check()`) by checkpoint name, or
   the question, or what the session is doing. While the agent works or asks, its last
-  result is about an older turn and is not shown.
+  result is about an older turn and is not shown. A quiet working agent (`TermInfo::quiet_since`) adds ` · quiet 12m` in `muted`.
 - **A plain idle row** (seen, no check result, no question) is one line at every width: its `○` already says idle, so it has no `idle` line. Working, needs-you, not-seen, new and checked rows keep line 2. An asleep row keeps `asleep zzZ` from 140 columns.
 - **Below 140 columns** line 3 goes, and an asleep row is one line too.
 - **Row line 3** (140 columns and up): a failed check's first failing line (`muted`), or
@@ -300,7 +300,7 @@ The row menu of a session with a check adds Check output (any result), Re-run ch
 
 ## Project-specific: why popover
 
-The evidence popover (`i`, or a click on a status) explains a session's status from its hook, screen and process reports. For a session with a check it follows v7 (`drawWhy`): the title ` WHY · <session> reads <word> ` (the session's word: `failed`, `done · stale`, `not checked`, …), then one line each with its local clock time: `agent's turn ended · it said "<said>"`, `Seshi ran <command> in its worktree`, and what came of it in the state's colour, bold: `✕ exit 1 after 14.2s` for a pass or failure, the row's words for the rest (`⊘ failed, overridden: test`, `◷ stale pass: test · 3 files changed`, `? not checked: never for this repo`, `● approve check: npm test`). A line whose time is unknown leaves the time blank. Its hints list only the keys that act, in v7's style: `⏎ evidence` always, `r re-run` once there is a result, `O override` for a failed one, `Esc close`. A key the popover does not show closes it and is not passed to the pane. A session without a check keeps the source rows. The frame and placement are the v7 frame's.
+The evidence popover (`i`, or a click on a status) explains a session's status from its hook, screen and process reports. For a session with a check it follows v7 (`drawWhy`): the title ` WHY · <session> reads <word> ` (the session's word: `failed`, `done · stale`, `not checked`, …), then one line each with its local clock time: `agent's turn ended · it said "<said>"`, `Seshi ran <command> in its worktree`, and what came of it in the state's colour, bold: `✕ exit 1 after 14.2s` for a pass or failure, the row's words for the rest (`⊘ failed, overridden: test`, `◷ stale pass: test · 3 files changed`, `? not checked: never for this repo`, `● approve check: npm test`). A line whose time is unknown leaves the time blank. Its hints list only the keys that act, in v7's style: `⏎ evidence` always, `r re-run` once there is a result, `O override` for a failed one, `Esc close`. A key the popover does not show closes it and is not passed to the pane. A session without a check keeps the source rows; a quiet working one opens with `No output or report for 12m — it may be stuck.` The frame and placement are the v7 frame's.
 
 ## Project-specific: check modals and settings
 

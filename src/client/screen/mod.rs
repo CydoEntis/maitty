@@ -313,6 +313,8 @@ pub(super) struct Session {
     pub agent: String,
     pub status: Status,
     pub since: u64,
+    /// Working with no output or report since then (unix seconds): it may be stuck.
+    pub quiet_since: Option<u64>,
     pub question: Option<String>,
     pub is_agent: bool,
     pub asleep: bool,
@@ -664,6 +666,7 @@ impl App {
                     },
                     status: t.status,
                     since: t.since,
+                    quiet_since: t.quiet_since,
                     question,
                     is_agent: t.agent.is_some(),
                     asleep: t.asleep,

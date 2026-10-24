@@ -527,6 +527,19 @@ mod screen_tests {
     }
 
     #[test]
+    fn the_why_popover_says_a_quiet_agent_may_be_stuck() {
+        let (_, mut app) = super::design_tests::render_with(120, 30);
+        let t = app.snap.terms.get_mut(&1).unwrap();
+        (t.status, t.quiet_since) = (Status::Working, Some(screen::now_secs() - 12 * 60));
+        app.mode = Mode::Side;
+        draw(&mut app, 120, 30);
+        let at = app.hits.iter().filter_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::Why(1))).then_some(*r)).next_back().expect("the status is clickable");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.x, row: at.y, modifiers: KeyModifiers::NONE });
+        let output = draw(&mut app, 120, 30); show(&output);
+        assert!(output.contains("No output or report for 12m — it may be stuck."), "{output}");
+    }
+
+    #[test]
     fn clicking_status_opens_plain_language_evidence() {
         let (_, mut app) = super::design_tests::render_with(120, 30);
         for pane_tag in [false, true] {

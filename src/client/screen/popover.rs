@@ -372,8 +372,10 @@ pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: R
     ];
     let c = Style::default().bg(t.card);
     let confirmed = info.why_hook_at.max(info.why_screen_at);
-    let summary = if info.agent.is_some() && confirmed == 0 && info.status_why.is_empty() {
-        "Status uncertain — no report or screen confirmation."
+    let summary = if let (Status::Working, Some(at)) = (info.status, info.quiet_since) {
+        format!("No output or report for {} — it may be stuck.", age(at))
+    } else if info.agent.is_some() && confirmed == 0 && info.status_why.is_empty() {
+        "Status uncertain — no report or screen confirmation.".into()
     } else {
         match info.status {
             Status::Blocked => "Waiting for your answer or permission.",
@@ -385,6 +387,7 @@ pub(in crate::client) fn draw_why_pop(app: &mut App, buf: &mut Buffer, screen: R
             Status::Working => "Working — estimated from the screen.",
             Status::None => "No agent status is available for this terminal.",
         }
+        .into()
     };
     put(buf, r.x + 3, r.y + 2, &[seg(summary, c.fg(t.text))], r.right() - 2);
     let confirmation = if confirmed == 0 { "Last confirmation: none".into() } else { format!("Last confirmation: {}", ago(confirmed)) };
