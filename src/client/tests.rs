@@ -4716,23 +4716,66 @@ second line
 
     #[test]
     fn without_padding_the_frame_changes_no_words_on_the_edge() {
-        // The tag's slot at the right of row 0: its widest, capped.
+        // The tag's slot on row 0, left of where the corner pills end: its widest, capped.
         const TAG_SLOT: u16 = 26;
-        let edge = |buf: &ratatui::buffer::Buffer| -> Vec<String> {
+        let edge = |app: &App, buf: &ratatui::buffer::Buffer| -> Vec<String> {
             let (w, h) = (buf.area.width, buf.area.height);
-            let row = |y: u16, upto: u16| (0..upto).map(|x| buf[(x, y)].symbol()).collect::<String>();
+            let end = screen::corner_right(app, buf.area) - 1;
+            let row = |y: u16, skip: std::ops::Range<u16>| (0..w).filter(|x| !skip.contains(x)).map(|x| buf[(x, y)].symbol()).collect::<String>();
             let col = |x: u16| (0..h).map(|y| buf[(x, y)].symbol()).collect::<String>();
-            vec![row(0, w - 1 - TAG_SLOT), row(h - 1, w), col(0), col(w - 1)]
+            vec![row(0, end - TAG_SLOT..end), row(h - 1, 0..0), col(0), col(w - 1)]
         };
         for layout in LOOKS {
             for side in SIDES {
                 for rounded in [crate::config::Rounding::Off, crate::config::Rounding::Full] {
                     let mut app = framed_app(layout, "0", side);
                     app.cfg.ui.rounded = rounded;
-                    let lit = edge(&drawn(&mut app, 160, 45));
+                    let buf = drawn(&mut app, 160, 45);
+                    let lit = edge(&app, &buf);
                     app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-                    let typing = edge(&drawn(&mut app, 160, 45));
+                    let buf = drawn(&mut app, 160, 45);
+                    let typing = edge(&app, &buf);
                     assert_eq!(lit, typing, "{layout} {side} {rounded:?}: the frame only recolours");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_right_hand_sidebar_keeps_its_title_and_counts_beside_the_corner_pills() {
+        for (w, h) in [(80, 24), (140, 40), (160, 45)] {
+            for release in ["none", "update", "restart"] {
+                for mode in ["typing", "lit", "paused"] {
+                    let (_, mut app) = super::design_tests::render_with(w, h);
+                    (app.cfg.ui.sidebar_position, app.cfg.ui.which_key, app.cfg.ui.motion) = ("right".into(), false, false);
+                    match release {
+                        "update" => app.update_available = Some("0.44.0".into()),
+                        "restart" => app.installed_version = Some(Ok("999.0.0".into())),
+                        _ => {}
+                    }
+                    if mode != "typing" {
+                        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+                    }
+                    if mode == "paused" {
+                        tap(&mut app, 'y');
+                    }
+                    let buf = drawn(&mut app, w, h);
+                    let at = format!("{w}x{h} {release} {mode}");
+                    let row: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
+                    let side = app.screen.side_rect;
+                    let title: String = (side.x..side.right()).map(|x| buf[(x, 0)].symbol()).collect();
+                    assert!(title.contains("SESSIONS") && title.contains("●1"), "{at}: the sidebar's title and count: {row}");
+                    let tag = if mode == "typing" { "TYPING" } else { "SHORTCUT" };
+                    let tag_at = last_at(&buf, tag, 0, 0, side.x).unwrap_or_else(|| panic!("{at}: the tag left of the sidebar: {row}"));
+                    let pane = app.pane_frames.iter().map(|(_, r)| *r).find(|r| r.y == 0 && r.right() <= side.x && r.right() > tag_at).expect("the pane under the tag");
+                    let words: String = (pane.x..tag_at).map(|x| buf[(x, 0)].symbol()).collect();
+                    assert!(words.contains('●'), "{at}: the pane's status stays left of the pills: {row}");
+                    if release != "none" {
+                        let pill = if release == "update" { "↑" } else { "↻" };
+                        let x = (pane.x..tag_at).find(|&x| buf[(x, 0)].symbol() == pill).unwrap_or_else(|| panic!("{at}: {pill} beside the tag: {row}"));
+                        let status = (pane.x..tag_at).rev().find(|&x| buf[(x, 0)].symbol() == "●").unwrap_or(0);
+                        assert!(status < x, "{at}: the pill sits after the pane's status: {row}");
+                    }
                 }
             }
         }

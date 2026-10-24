@@ -27,7 +27,9 @@ stay hard to miss. The user asked for the mode to be unmistakable before the nex
   in input mode, ` SHORTCUT · Esc to type ` (sky, bold) in shortcut mode, ` SHORTCUT ·
   paused ` (dimmed) while held. Under 100 columns of room the lit tag reads ` SHORTCUT · Esc `;
   under 76 (narrower than any supported window) input mode shows no tag. **Update** or
-  **Restart** sits a cell left of the tag, which keeps the corner. A click on the tag opens
+  **Restart** sits a cell left of the tag, which keeps the corner. With the sidebar on the
+  right, the pills sit at the right of the pane column beside it, so the sidebar keeps its
+  title and counts. A click on the tag opens
   the key map, as the leader's pause does; it changes nothing risky. Typing under a popup,
   the tag takes no click, so the popup's outside-click still works.
 - **The top-right title holds still.** From 140 columns of room it leaves the widest tag's

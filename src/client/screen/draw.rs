@@ -268,11 +268,13 @@ pub(in crate::client) fn corner_reserve(app: &App, room_w: u16, t: &Theme) -> u1
 
 pub(in crate::client) fn draw_corner_pills(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
     let paused = shortcut_paused(app);
-    let mut right = area.right().saturating_sub(1);
+    let mut right = corner_right(app, area).saturating_sub(1);
+    // Never past the room the corner card's title left for them.
+    let limit = right.saturating_sub(corner_reserve(app, area.width, t)).max(area.x);
     for (segs, h) in corner_pills(app, area.width, t).into_iter().rev() {
         let w = segs_width(&segs);
         let x = right.saturating_sub(w);
-        if x < area.x {
+        if x < limit || w > right {
             break;
         }
         let r = Rect { x, y: area.y, width: w, height: 1 };
@@ -557,10 +559,21 @@ fn fit_right(look: Look, r: Rect, c: &mut Card, note: Option<Seg>, mark: Option<
 /// Room a card in the top-right corner (a pane or the sheet) leaves at the end of its title for
 /// the corner pills, so its mark and ✕ never sit under them or jump as the mode changes.
 pub(in crate::client) fn corner_room(app: &App, r: Rect, screen: Rect, t: &Theme) -> u16 {
-    if r.y != screen.y || r.right() != screen.right() {
+    if r.y != screen.y || r.right() != corner_right(app, screen) {
         return 0;
     }
     corner_reserve(app, screen.width, t)
+}
+
+/// Where the corner pills end on row 0: the right of the room inside the padding, or, with the
+/// sidebar drawn on the right, the right of the pane column beside it, so they sit on a pane or
+/// the sheet and never over the sidebar's title and counts.
+pub(in crate::client) fn corner_right(app: &App, room: Rect) -> u16 {
+    let g = grid(app, room);
+    if app.cfg.ui.sidebar_position != "right" || g.side.width < SIDE_DRAWN_FROM {
+        return room.right();
+    }
+    g.panes.right().max(g.sheet.right()).min(g.side.x)
 }
 
 /// A pane as a card. Its title: the tabs of the session on screen when it's the top-left pane
