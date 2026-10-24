@@ -227,8 +227,9 @@ impl App {
                 _ => {
                     v.in_preview = false;
                     let keep = self.on_files_tree_key(v, k);
-                    // Still the file once an edit opened here ends.
-                    if !matches!(k.code, KeyCode::Enter) {
+                    // Still the file once an edit opened here ends; the filter (`/`) and the
+                    // recent list (Tab) show the tree, so they leave the file.
+                    if !matches!(k.code, KeyCode::Enter | KeyCode::Tab | KeyCode::Char('/')) {
                         v.in_preview = true;
                     }
                     return keep;

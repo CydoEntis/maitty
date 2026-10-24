@@ -7521,6 +7521,20 @@ mod files_panel_tests {
     }
 
     #[test]
+    fn filtering_from_a_file_in_a_narrow_panel_shows_the_tree() {
+        let dir = project("filterback");
+        let mut app = screen_in(&dir, 80, 24);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        key(&mut app, KeyCode::Right);
+        assert!(files(&app).in_preview, "reading the file");
+        key(&mut app, KeyCode::Char('/'));
+        assert!(files(&app).filtering && !files(&app).in_preview, "the filter shows the tree, not the file");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn at_100_by_30_the_panel_takes_the_pane_column_with_both_sides() {
         let dir = project("mid");
         let mut app = screen_in(&dir, 100, 30);
