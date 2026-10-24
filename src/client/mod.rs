@@ -376,6 +376,8 @@ pub struct App {
     notice_term: Option<TermId>,
     /// The toast offers Restart now (the update just installed, the daemon still old).
     notice_restart: bool,
+    /// The toast is a hint about keys, not news: it is marked `i`, not ✓.
+    notice_hint: bool,
     /// The toast's second and third rows, when the notice has them.
     notice_card: Option<NoticeCard>,
     /// The selection just copied, glowing for a moment after copy mode closed.
@@ -603,6 +605,7 @@ impl App {
             notice: None,
             notice_term: None,
             notice_restart: false,
+            notice_hint: false,
             notice_card: None,
             copy_flash: None,
             history: Default::default(),
@@ -896,6 +899,7 @@ impl App {
         self.notice = Some((msg, Instant::now(), error));
         self.notice_term = None;
         self.notice_restart = false;
+        self.notice_hint = false;
         self.notice_card = None;
         self.dirty = true;
     }

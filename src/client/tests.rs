@@ -4472,7 +4472,13 @@ second line
         assert_eq!(notice(&app).as_deref(), Some("Shortcut mode — Esc to type"));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("Shortcut mode — Esc to type"), "the toast is on screen: {o}");
+        assert!(o.contains("i Shortcut mode — Esc to type"), "the toast is on screen, marked as information: {o}");
+        let buf = drawn(&mut app, 160, 45);
+        let y = (0..45).find(|&y| (0..160).map(|x| buf[(x, y)].symbol()).collect::<String>().contains("Shortcut mode")).expect("the toast row");
+        let x = (0..160).find(|&x| buf[(x, y)].symbol() == "i" && buf[(x + 2, y)].symbol() == "S").expect("its mark");
+        assert_eq!(buf[(x, y)].fg, app.theme.sky(), "the info mark is sky, not the ✓ of a success");
+        app.notify("worktree created".into(), false);
+        assert!(draw(&mut app, 160, 45).contains("✓ worktree created"), "news keeps its ✓");
     }
 
     #[test]

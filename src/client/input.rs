@@ -147,7 +147,7 @@ impl App {
         self.dead_key_hint = Some(Instant::now());
         // Not `notify`: a hint about keys is not news for the notification history.
         self.notice = Some((DEAD_KEY_HINT.to_string(), Instant::now(), false));
-        (self.notice_term, self.notice_restart, self.notice_card) = (None, false, None);
+        (self.notice_term, self.notice_restart, self.notice_card, self.notice_hint) = (None, false, None, true);
         self.dirty = true;
     }
 
