@@ -45,7 +45,7 @@ rounded = "off"             # full (needs a Nerd Font) | corners | off (older `c
 # cursor_blink = true
 glyphs = "auto"             # auto | dots | unicode | ascii | nerd: session and check marks (auto: dots, or ascii when [icons] are)
 which_key = false         # Settings: "Leader waits for next key"; list every key if you pause after the leader (? always shows them)
-which_key_delay_ms = 350
+which_key_delay_ms = 600
 mouse = true
 subagent_count = true       # show "· N agents" on a working session row when the agent reports helpers
 # Working spinner: Settings > Appearance > Working spinner has animated previews.
@@ -135,8 +135,9 @@ pattern_rows = 12
 # "alt+l" = "focus-right"
 
 # Agents are detected from the pane's process tree. Entries here merge over the
-# built-ins (claude, codex, gemini, opencode, pi and the rest in docs/agent-status.md)
-# by name. Patterns are case-insensitive regexes
+# built-ins by name: claude, codex, gemini, opencode, cursor, copilot, amp, qwen, aider,
+# goose, crush, droid, pi, kiro, grok, auggie, kimi, deepseek, devin, agy, cline, omp,
+# mastracode, hermes, kilo, qodercli, letta, maki, muse. Patterns are case-insensitive regexes
 # matched against the bottom of the screen; hooks (`maitty integrate claude`)
 # override them with exact lifecycle events.
 # [[agents]]
