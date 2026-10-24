@@ -224,7 +224,8 @@ Active phase: **15 — checks Seshi runs itself** (chosen 2026-10-22)
 Next: three follow-ups the user approved on 2026-10-23: `a` on a sidebar row opens the row menu, an
 amber for needs-you in every theme (built), and `seshi wait` reporting a check waiting for approval or that could
 not run. Then the Phase 17 live trial and the Phase 18 live checks. Then
-[Phase 20](#20--borrowed-from-tuios--built-on-dev-2026-10-23-live-checks-open), borrowed from TUIOS (approved 2026-10-23).
+[Phase 20](#20--borrowed-from-tuios--built-on-dev-2026-10-23-live-checks-open), borrowed from TUIOS (approved 2026-10-23), and
+[Phase 21](#21--layout-names-and-the-grid-style--active-2026-10-23), layout names and the Grid style.
 
 Current user-requested work: expand the built-in themes to cover the 25 requested
 families and add a searchable preview browser in Appearance. Acceptance: all
@@ -546,6 +547,22 @@ quiet agent rather than `null` on every pane, so other panes' output is unchange
 live: a real agent going quiet, an MCP answer refused for a changed prompt, the output setting
 in Settings, and the unix file modes (tested on Linux in CI only).
 
+### 21 — Layout names and the Grid style · active 2026-10-23
+
+The user asked on 2026-10-23 for clearer layout names and the window look from their "Windows"
+handoff, without replacing the existing looks. One Layout setting: Floating, Tiled, Compact and
+Grid ([ADR 0015](adr/0015-four-named-layouts-and-grid.md)); Corners applies to each look that
+draws boxes; Floating stays the default. Grid colours each pane by its position from theme
+roles. Tickets are labelled `phase-21`; no protocol change.
+
+1. #153 config: one Layout setting named floating, tiled and compact
+2. #154 UI: the Grid layout, each pane a box in its own colour (after #153)
+3. #155 UI: Grid's top border, number and state left, name tag right (after #154)
+
+Declined while planning: the handoff's top bar, right-hand sidebar, fixed 2×2 grid, zoom and
+bare keys (ADR 0015). Later: its scratch shell, as its own proposal (needs a daemon-owned shell).
+The keybind system is to be discussed with the user before any key work.
+
 ## In scope
 
 Everything below is shipped on `main` unless marked.
@@ -636,6 +653,7 @@ Everything below is shipped on `main` unless marked.
 - [ADR-0012](adr/0012-flat-rendering-style.md) — Add a flat rendering style over the shared session layout; Cards stays default.
 - [ADR-0014](adr/0014-v8-cleanup.md) — Bring over the v8 cleanup, keeping what the user already decided. Rules out: bare letters acting in the sidebar; per-state glyphs on session rows; the fleet, the Team tab, the subagent tree and a helper mode.
 - [ADR-0011](adr/0011-keep-seshi-terminal-first.md) — Keep Seshi terminal-first. Rules out: adding a separate desktop GUI client to this project.
+- [ADR-0015](adr/0015-four-named-layouts-and-grid.md) — One Layout setting: Floating, Tiled, Compact, Grid; Grid is a look over the shared layout. Rules out: Grid's own sidebar, top bar, fixed grid, zoom and bare keys.
 
 ## Rules
 

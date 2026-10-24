@@ -38,3 +38,4 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0012](0012-flat-rendering-style.md) | Add a flat rendering style | Accepted |
 | [0013](0013-v7-frame.md) | Draw the v7 frame: tabs in the pane title, no margin | Proposed |
 | [0014](0014-v8-cleanup.md) | Bring over the v8 cleanup, keeping what the user already decided | Proposed |
+| [0015](0015-four-named-layouts-and-grid.md) | Four named layouts, one setting, and the Grid style | Accepted |
