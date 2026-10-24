@@ -4,7 +4,7 @@ use super::*;
 
 // ---- splash --------------------------------------------------------------------------------
 
-/// VIBECASSO in 7-row pixel letters; `#` is a lit pixel. One empty column sits between letters.
+/// <APP> in 7-row pixel letters; `#` is a lit pixel. One empty column sits between letters.
 const FONT: [(char, [&str; 7]); 8] = [
     ('V', ["#...#", "#...#", "#...#", "#...#", ".#.#.", ".#.#.", "..#.."]),
     ('I', ["#", "#", "#", "#", "#", "#", "#"]),
@@ -15,7 +15,7 @@ const FONT: [(char, [&str; 7]); 8] = [
     ('S', ["#####", "#....", "#....", "#####", "....#", "....#", "#####"]),
     ('O', ["#####", "#...#", "#...#", "#...#", "#...#", "#...#", "#####"]),
 ];
-const WORD: &str = "VIBECASSO";
+const WORD: &str = env!("APP_ENV");
 const LOGO_ROWS: u16 = 7;
 
 /// The wordmark as columns of lit rows: `None` is the gap between letters.
@@ -219,7 +219,7 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
 
     let dim = Style::default().fg(t.muted).bg(t.bg);
     let away: Vec<Seg> = if app.snap.terms.is_empty() {
-        vec![seg("No sessions yet. Start one and it keeps running after you close Vibecasso.", Style::default().fg(t.text).bg(t.bg))]
+        vec![seg(concat!("No sessions yet. Start one and it keeps running after you close ", env!("APP_NAME"), "."), Style::default().fg(t.text).bg(t.bg))]
     } else if needs + working + finished + check_failed == 0 {
         vec![seg("nothing changed while you were away", dim)]
     } else {
@@ -298,7 +298,7 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     hit(app, Rect { x: center(segs_width(&hints)), y, width: segs_width(&hints), height: 1 }, ScreenHit::SplashKey('?'));
     let mut foot = Vec::new();
     if o.version {
-        foot.push(seg(format!("vibecasso {}", env!("CARGO_PKG_VERSION")), Style::default().fg(t.line).bg(t.bg)));
+        foot.push(seg(format!(concat!(env!("APP_COMMAND"), " {}"), env!("CARGO_PKG_VERSION")), Style::default().fg(t.line).bg(t.bg)));
     }
     // An update is the one thing the splash adds beside the version: it is how you hear of one.
     let note = if let Some(v) = &app.update_available {
@@ -364,7 +364,7 @@ mod tests {
     }
 
     fn theme() -> Theme {
-        crate::theme::Theme::named("vibecasso-dark")
+        crate::theme::Theme::named("dark")
     }
 
     #[test]
@@ -385,8 +385,8 @@ mod tests {
     }
 
     #[test]
-    fn the_word_spells_vibecasso_and_fits_eighty_columns() {
-        assert_eq!(WORD, "VIBECASSO");
+    fn the_word_spells_app_and_fits_eighty_columns() {
+        assert_eq!(WORD, env!("APP_ENV"));
         assert!(WORD.chars().all(|ch| FONT.iter().any(|(c, _)| *c == ch)), "a glyph for every letter");
         assert!(logo_width(80) <= 78 && logo_width(160) <= 158, "{} / {}", logo_width(80), logo_width(160));
     }

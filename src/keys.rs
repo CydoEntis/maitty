@@ -253,11 +253,11 @@ pub enum Action {
     PaneInfo,
     SendPrefix,
     KillServer,
-    /// Install the newest vibecasso without interrupting running sessions.
+    /// Install the newest the app without interrupting running sessions.
     Update,
-    /// Ask now whether a newer vibecasso is out, without waiting for the next check.
+    /// Ask now whether a newer the app is out, without waiting for the next check.
     CheckUpdate,
-    /// Replace the running server and this window with the installed vibecasso.
+    /// Replace the running server and this window with the installed the app.
     Restart,
     /// The clean-up list for the worktrees of the project you're in.
     TidyWorktrees,
@@ -348,9 +348,9 @@ impl Action {
             Action::PaneInfo => "Pane info".into(),
             Action::SendPrefix => "Send the leader key to the pane".into(),
             Action::KillServer => "Kill server".into(),
-            Action::Update => "Update vibecasso".into(),
+            Action::Update => concat!("Update ", env!("APP_COMMAND")).into(),
             Action::CheckUpdate => "Check for updates".into(),
-            Action::Restart => "Restart vibecasso".into(),
+            Action::Restart => concat!("Restart ", env!("APP_COMMAND")).into(),
             Action::TidyWorktrees => "Clean up worktrees".into(),
             Action::Menu => "Menu".into(),
             Action::Worktrees => "Worktrees…".into(),
@@ -590,7 +590,7 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("d", "changes"),
     ("g", "worktrees"),
     ("b", "switch-branch"),
-    // Vibecasso
+    // The app
     ("space", "palette"),
     ("m", "menu"),
     (",", "settings"),

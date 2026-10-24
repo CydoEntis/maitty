@@ -56,7 +56,7 @@ mod tests {
 
     #[test]
     fn a_worktree_is_safe_to_remove_only_when_nothing_lives_only_there() {
-        let root = std::env::temp_dir().join(format!("vibecasso-tidy-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-tidy-{}"), std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let repo = root.join("repo");
         std::fs::create_dir_all(&repo).unwrap();

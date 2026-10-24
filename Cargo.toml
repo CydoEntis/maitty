@@ -2,12 +2,15 @@
 name = "vibecasso"
 version = "0.41.5"
 edition = "2024"
-description = "Vibecasso: run many coding agents side by side, see which need you, keep them running when you leave"
+description = "Run many coding agents side by side, see which need you, keep them running when you leave"
 license = "MIT"
 
-[[bin]]
-name = "vibecasso"
-path = "src/main.rs"
+# The app's name lives here and nowhere else (ADR 0019): the package name above is the command,
+# and build.rs hands these to the code as APP_NAME, APP_COMMAND, APP_ENV and APP_PREVIOUS.
+[package.metadata.brand]
+name = "Vibecasso"
+# Commands the app had before, newest first: what an old install left is carried over.
+previous = ["seshi", "hydra", "drover"]
 
 [dependencies]
 anyhow = "1"

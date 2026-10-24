@@ -1,11 +1,11 @@
-// Written by `vibecasso integrate opencode`: adapted from Herdr commit 143bf5fd4781d164260c63fe28e7dc08054ad32f.
+// Written by `__APP_COMMAND__ integrate opencode`: adapted from Herdr commit 143bf5fd4781d164260c63fe28e7dc08054ad32f.
 // SPDX-License-Identifier: Apache-2.0; see vendor/herdr-detection/LICENSE and NOTICE.md.
-// Local changes: authenticated Vibecasso CLI transport, session identity, completion evidence, and environment guards.
+// Local changes: authenticated __APP_NAME__ CLI transport, session identity, completion evidence, and environment guards.
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const execute = promisify(execFile);
-const executable = __VIBECASSO_EXE__;
+const executable = __APP_EXE__;
 const worked = new Set();
 const OPENCODE_HELPER_LABEL = "OpenCode subagent";
 
@@ -13,7 +13,7 @@ const ROUTE_POLL_INTERVAL_MS = 100;
 const SELECTION_RETRY_DELAYS_MS = [100, 400, 1_000];
 
 async function requestOnce(sessionID, state, _seq, isCurrent = () => true) {
-  if (!process.env.VIBECASSO_TERM_ID || !sessionID || !isCurrent()) return true;
+  if (!process.env.__APP_ENV___TERM_ID || !sessionID || !isCurrent()) return true;
   const status = state === undefined ? "same" : state === "idle" ? (worked.has(sessionID) ? "done" : "idle") : state;
   if (state === "working") worked.add(sessionID);
   const payload = JSON.stringify({ hook_event_name: "opencode.tui", session_id: sessionID });
@@ -28,7 +28,7 @@ async function requestOnce(sessionID, state, _seq, isCurrent = () => true) {
 }
 
 async function requestHelperOnce(sessionID, id, name, start, isCurrent = () => true) {
-  if (!process.env.VIBECASSO_TERM_ID || !sessionID || !id || !isCurrent()) return true;
+  if (!process.env.__APP_ENV___TERM_ID || !sessionID || !id || !isCurrent()) return true;
   const event = start ? "SubagentStart" : "SubagentStop";
   const payload = JSON.stringify({
     hook_event_name: event, session_id: sessionID, agent_id: id,
@@ -43,7 +43,7 @@ async function requestHelperOnce(sessionID, id, name, start, isCurrent = () => t
   }
 }
 export default {
-  id: "vibecasso.opencode.session-selection",
+  id: "__APP_COMMAND__.opencode.session-selection",
   // Keep this plain object dependency-free: V1 and V2 expose different SDK
   // packages, but both loaders accept their own lifecycle entry on this object.
   setup,
@@ -51,7 +51,7 @@ export default {
 };
 
 async function tui(api) {
-  if (!process.env.VIBECASSO_TERM_ID) return;
+  if (!process.env.__APP_ENV___TERM_ID) return;
 
   let disposed = false;
   let context;
@@ -412,7 +412,7 @@ async function tui(api) {
 }
 
 function setup(api) {
-  if (!process.env.VIBECASSO_TERM_ID) return;
+  if (!process.env.__APP_ENV___TERM_ID) return;
 
   let disposed = false;
   let selected;

@@ -1,7 +1,8 @@
-//! State for the vibecasso-native views that replace the pane area: Changes (a worktree's
+//! State for the app's own views that replace the pane area: Changes (a worktree's
 //! git review) and Files (the worktree's file tree with a preview).
 
 use super::files::FileEntry;
+use crate::brand::{APP_COMMAND};
 use super::tasks::Review;
 use crate::protocol::{TermId, WsId};
 use crate::theme::Theme;
@@ -191,7 +192,7 @@ impl Edit {
     pub fn open(path: &Path) -> Result<Edit, String> {
         let bytes = std::fs::read(path).map_err(|e| format!("can't read it: {e}"))?;
         if bytes.len() > 4 * 1024 * 1024 || bytes.contains(&0) {
-            return Err("not a text file vibecasso can edit (too big or binary); press e for your editor".into());
+            return Err(concat!("not a text file ", env!("APP_COMMAND"), " can edit (too big or binary); press e for your editor").into());
         }
         let seen = fingerprint_bytes(&bytes);
         let text = String::from_utf8(bytes).map_err(|_| "not UTF-8 text; press e for your editor".to_string())?;
@@ -224,7 +225,7 @@ impl Edit {
             text.push_str(nl);
         }
         let name = self.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let tmp = self.path.with_file_name(format!(".{name}.vibecasso-save"));
+        let tmp = self.path.with_file_name(format!(".{name}.{APP_COMMAND}-save"));
         std::fs::write(&tmp, &text).map_err(|e| format!("couldn't save: {e}"))?;
         if let Err(e) = std::fs::rename(&tmp, &self.path) {
             let _ = std::fs::remove_file(&tmp);
@@ -564,7 +565,7 @@ mod tests {
 
     #[test]
     fn edit_a_file_in_place() {
-        let dir = std::env::temp_dir().join(format!("vibecasso-edit-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-edit-{}"), std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let f = dir.join("a.ts");
         std::fs::write(&f, "const a = 1;\r\n  if (x) {\r\n").unwrap();
@@ -602,7 +603,7 @@ mod tests {
 
     #[test]
     fn a_review_mark_clears_when_the_file_changes() {
-        let dir = std::env::temp_dir().join(format!("vibecasso-review-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-review-{}"), std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("a.rs"), "one").unwrap();
         std::fs::write(dir.join("b.rs"), "two").unwrap();

@@ -1,4 +1,4 @@
-//! Right-click menus for the vibecasso layout: a pane, an agent row, a project, a branch or a
+//! Right-click menus for the app's layout: a pane, an agent row, a project, a branch or a
 //! worktree. Short, hoverable, and every item does something.
 
 use super::design::{BtnKind, button, put, seg, segs_width};
@@ -22,7 +22,7 @@ pub(super) const RESTORE_WHILE_WORKING: &str = "Its agent is working; stop it or
 #[derive(Debug, Clone, PartialEq)]
 pub enum Act {
     Beside(TermId),
-    /// The program in this pane is an agent: vibecasso learns it.
+    /// The program in this pane is an agent: the app learns it.
     TeachAgent(TermId),
     /// End these (stops what runs in them).
     End(Vec<TermId>),
@@ -47,7 +47,7 @@ pub enum Act {
     TidyOpen(usize),
     /// Remove these worktrees (each: its folder, and whether to lose uncommitted changes).
     Tidy(Vec<(PathBuf, bool)>),
-    /// Install the newest vibecasso without interrupting the running sessions.
+    /// Install the newest the app without interrupting the running sessions.
     Update,
     /// Stop the daemon so the window reconnects to the installed version.
     RestartDaemon,
@@ -169,7 +169,7 @@ impl App {
             if self.screen.right_clicks.contains(&term) { "Stop sending right-clicks to pane" } else { "Send right-clicks to pane" }.to_string(),
             Act::RightClicks(term),
         ));
-        // A program vibecasso doesn't know (an agent started by an alias, say): teach it.
+        // A program the app doesn't know (an agent started by an alias, say): teach it.
         if let Some(t) = self.snap.terms.get(&term).filter(|t| t.agent.is_none() && !t.is_shell() && !t.process.is_empty() && t.remote.is_none()) {
             items.push((format!("{} is an agent…", t.process), Act::TeachAgent(term)));
         }
@@ -192,7 +192,7 @@ impl App {
         let agent = s.agent.clone();
         let dir = find(&model, term).map(|(_, w, _)| w.path.clone());
         let info = self.snap.terms.get(&term);
-        // A program vibecasso doesn't know can be taught.
+        // A program the app doesn't know can be taught.
         let mut items = Vec::new();
         if let Some(t) = info.filter(|t| t.agent.is_none() && !t.is_shell() && !t.process.is_empty() && t.remote.is_none()) {
             items.push((format!("{} is an agent…", t.process), Act::TeachAgent(term)));
@@ -484,7 +484,7 @@ impl App {
             Act::RightClicks(t) => {
                 if !self.screen.right_clicks.remove(&t) {
                     self.screen.right_clicks.insert(t);
-                    self.notify("right-clicks go to this pane now (Shift+right-click for vibecasso's menu)".into(), false);
+                    self.notify(concat!("right-clicks go to this pane now (Shift+right-click for ", env!("APP_COMMAND"), "'s menu)").into(), false);
                 }
             }
             Act::RenameProject(key, name) => self.mode = Mode::Prompt { kind: super::PromptKind::RenameProject(key), input: name },

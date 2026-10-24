@@ -449,7 +449,7 @@ fn check_keys(state: CheckState) -> Vec<(&'static str, &'static str)> {
     keys
 }
 
-/// Why a session with a check reads as it does: the turn that ended, Vibecasso running the
+/// Why a session with a check reads as it does: the turn that ended, the app running the
 /// command, and what came of it, one line each with its time, inside the popover `r`.
 fn draw_check_why(app: &App, buf: &mut Buffer, r: Rect, info: &TermInfo, check: &CheckInfo, t: &Theme) {
     let c = Style::default().bg(t.card);
@@ -462,7 +462,7 @@ fn draw_check_why(app: &App, buf: &mut Buffer, r: Rect, info: &TermInfo, check: 
         lines.push((check.after_turn_ended_at, vec![seg(format!("agent's turn ended{quote}"), c.fg(t.text))]));
     }
     if check.started_at > 0 {
-        lines.push((check.started_at, vec![seg("Vibecasso ran ", c.fg(t.text)), seg(check.command.clone(), c.fg(t.strong).add_modifier(Modifier::BOLD)), seg(" in its worktree", c.fg(t.text))]));
+        lines.push((check.started_at, vec![seg(concat!(env!("APP_NAME"), " ran "), c.fg(t.text)), seg(check.command.clone(), c.fg(t.strong).add_modifier(Modifier::BOLD)), seg(" in its worktree", c.fg(t.text))]));
     }
     let (result, color) = check_result(app, check, t);
     let finished = if check.state == CheckState::Checking || check.started_at == 0 { 0 } else { check.started_at + check.duration_ms / 1000 };

@@ -90,6 +90,7 @@ pub fn say(overlaps: &[Overlap]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::brand::APP_COMMAND;
 
     fn o(file: &str, checkouts: &[&str]) -> Overlap {
         Overlap { file: file.into(), checkouts: checkouts.iter().map(|c| c.to_string()).collect() }
@@ -104,7 +105,7 @@ mod tests {
 
     /// A repo on `main` with one commit (checkout.ts, shared.ts), and a way to run git in it.
     fn repo(tag: &str) -> (PathBuf, PathBuf, impl Fn(&Path, &[&str]) -> String) {
-        let root = std::env::temp_dir().join(format!("vibecasso-overlap-{tag}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("{APP_COMMAND}-overlap-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let repo = root.join("repo");
         std::fs::create_dir_all(&repo).unwrap();
@@ -147,7 +148,7 @@ mod tests {
         git(&repo, &["add", "."]);
         git(&repo, &["commit", "-qm", "dev work"]);
         // Two agents each cut a branch from dev and change one file of their own, plus one
-        // they both touch. The main folder goes back to main, where vibecasso used to measure from.
+        // they both touch. The main folder goes back to main, where the app used to measure from.
         let (a, b) = (root.join("a"), root.join("b"));
         git(&repo, &["worktree", "add", "-q", "-b", "feat-a", a.to_str().unwrap(), "dev"]);
         git(&repo, &["worktree", "add", "-q", "-b", "feat-b", b.to_str().unwrap(), "dev"]);

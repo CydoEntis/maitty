@@ -6,7 +6,7 @@ prefix = "ctrl+space"
 
 # Browse all built-in names in Settings > Appearance > Theme.
 # Families and variants: docs/theme-credits.md (gruvbox is Dark; tokyo-night is Night).
-theme = "vibecasso-dark"
+theme = "dark"
 
 # Shell for new panes. Default: pwsh / powershell on Windows, $SHELL elsewhere.
 # shell = "pwsh.exe"

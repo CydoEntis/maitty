@@ -1,8 +1,8 @@
-//! Settings › Check: the checkpoints Vibecasso runs when an agent's turn ends in a project, each with
+//! Settings › Check: the checkpoints the app runs when an agent's turn ends in a project, each with
 //! its command, timeout, latest result and where it comes from. One renderer and one set of keys,
 //! two hosts: the `PROJECT · <name>` modal (`,` from the evidence sheet or the Inbox) and the
 //! Check page of Settings. Your checkpoints are `[[check]]` tables in config.toml; a repo's own
-//! come from its `.vibecasso/checks.toml` and are read-only here.
+//! come from its `.<app>/checks.toml` and are read-only here.
 use super::check;
 use super::*;
 use crate::client::{Bg, modal};
@@ -24,7 +24,7 @@ const COMMAND_PLACEHOLDER: &str = "e.g. npm test";
 const NO_CHECK: &str = "No check set.";
 /// The empty state's words as the handoff breaks them; a narrower host wraps them.
 const EMPTY_LINES: [&str; 2] = [
-    "No check set. Vibecasso can run one command itself when an agent's",
+    concat!("No check set. ", env!("APP_NAME"), " can run one command itself when an agent's"),
     "turn ends; the session isn't done until it passes. Agents keep working.",
 ];
 const NOT_A_LIST: &str = "`check` in config.toml is not a list of [[check]] tables";
@@ -738,7 +738,7 @@ mod tests {
     fn ctrl_s_says_why_when_there_is_nothing_to_write() {
         let d = |command: Option<&str>| CheckDraft { command: command.map(String::from), ..CheckDraft::new("/a".into()) };
         let unit = point("unit", "npm test", CheckSource::User);
-        let repo = point("test", "npm test", CheckSource::Repo { file: ".vibecasso/checks.toml".into(), commit: None, committed_at: None, uncommitted: true });
+        let repo = point("test", "npm test", CheckSource::Repo { file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(), commit: None, committed_at: None, uncommitted: true });
         assert_eq!(draft_edit(&d(None), Some(&unit)).err(), Some("nothing changed"));
         assert_eq!(draft_edit(&d(Some("npm test")), Some(&unit)).err(), Some("nothing changed"));
         assert_eq!(draft_edit(&d(Some("  ")), Some(&unit)).err(), Some("a check needs a command; Del removes it"));

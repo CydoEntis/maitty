@@ -100,7 +100,7 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
             ],
         ),
         (
-            "VIBECASSO",
+            env!("APP_ENV"),
             vec![
                 r("Search commands", vec![A::Palette], true),
                 r("Settings", vec![A::Settings], true),
@@ -124,7 +124,7 @@ fn group_of(a: &Action) -> &'static str {
         A::SplitLeft | A::SplitUp | A::FocusNext | A::FocusPrev | A::CloseSplit | A::Search | A::PaneInfo | A::Spawn(..) | A::SideMove(_) => "PANES",
         A::SpawnTab(_) | A::SelectTab(_) => "TABS",
         A::RemoveWorktree | A::TidyWorktrees | A::NewWorktree(_) => "PROJECT",
-        _ => "VIBECASSO",
+        _ => env!("APP_ENV"),
     }
 }
 

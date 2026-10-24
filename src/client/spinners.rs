@@ -151,7 +151,7 @@ mod tests {
         terminal.draw(|f| super::super::render::draw(app, f)).unwrap();
         let buffer = terminal.backend().buffer();
         let text = (0..height).map(|y| (0..width).map(|x| buffer[(x, y)].symbol()).collect::<String>()).collect::<Vec<_>>().join("\n");
-        if std::env::var_os("VIBECASSO_SHOW").is_some() {
+        if std::env::var_os(concat!(env!("APP_ENV"), "_SHOW")).is_some() {
             println!("{text}");
         }
         text

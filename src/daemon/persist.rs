@@ -14,7 +14,7 @@ pub struct Saved {
     pub workspaces: Vec<SavedWs>,
     /// Index into `workspaces`.
     pub active: usize,
-    /// Worktrees vibecasso created (the only ones it may remove by itself).
+    /// Worktrees the app created (the only ones it may remove by itself).
     #[serde(default)]
     pub made_worktrees: Vec<PathBuf>,
 }
@@ -87,7 +87,7 @@ pub struct SavedPane {
 }
 
 pub fn path() -> PathBuf {
-    let label = std::env::var("VIBECASSO_SOCKET").unwrap_or_else(|_| "default".into());
+    let label = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
     crate::config::data_dir().join(format!("session-{label}.json"))
 }
 
@@ -138,7 +138,7 @@ fn private_dir(dir: &Path) -> std::io::Result<()> {
 }
 
 /// A new file only you can read on unix, for saved output. Set again after opening, so a
-/// leftover file from an older vibecasso is fixed too; the rename that follows carries it over.
+/// leftover file from an older the app is fixed too; the rename that follows carries it over.
 fn create_private(path: &Path) -> std::io::Result<std::fs::File> {
     let mut open = std::fs::OpenOptions::new();
     open.write(true).create(true).truncate(true);
@@ -165,9 +165,9 @@ pub fn forget_outputs() -> std::io::Result<()> {
 /// restarts (an update, a reboot): one file per pane, named by its id.
 pub fn output_dir() -> PathBuf {
     if cfg!(test) {
-        return std::env::temp_dir().join(format!("vibecasso-test-output-{}", std::process::id()));
+        return std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-test-output-{}"), std::process::id()));
     }
-    let label = std::env::var("VIBECASSO_SOCKET").unwrap_or_else(|_| "default".into());
+    let label = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
     crate::config::data_dir().join(format!("output-{label}"))
 }
 
@@ -195,9 +195,9 @@ impl CheckSlot {
 /// file in it as a pane's output.
 pub fn check_output_dir() -> PathBuf {
     if cfg!(test) {
-        return std::env::temp_dir().join(format!("vibecasso-test-check-output-{}", std::process::id()));
+        return std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-test-check-output-{}"), std::process::id()));
     }
-    let label = std::env::var("VIBECASSO_SOCKET").unwrap_or_else(|_| "default".into());
+    let label = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
     crate::config::data_dir().join(format!("check-output-{label}"))
 }
 
@@ -417,7 +417,7 @@ impl Drop for ScratchDir {
 pub(super) fn scratch_dir() -> ScratchDir {
     static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    ScratchDir(std::env::temp_dir().join(format!("vibecasso-test-scratch-{}-{n}", std::process::id())))
+    ScratchDir(std::env::temp_dir().join(format!("{}-test-scratch-{}-{n}", crate::brand::APP_COMMAND, std::process::id())))
 }
 
 #[cfg(test)]
@@ -437,7 +437,7 @@ mod tests {
         let dir = scratch_dir();
         let old = check_output_file(dir.path(), 7, "test", CheckSlot::Latest);
         std::fs::create_dir_all(dir.path()).unwrap();
-        std::fs::write(&old, "from an older vibecasso").unwrap();
+        std::fs::write(&old, concat!("from an older ", env!("APP_COMMAND"))).unwrap();
         std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o644)).unwrap();
         assert!(save_check_outputs(dir.path(), save_ticket(), &[tail(7, "test", CheckSlot::Latest, "tail")], &[7]).is_empty());
         assert_eq!((mode(dir.path()), mode(&old)), (0o700, 0o600), "a check tail, and the older file it replaced");

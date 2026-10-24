@@ -2,6 +2,7 @@
 //! name, and say what happens to uncommitted changes.
 
 use super::design::{fill, put, seg, tilde};
+use crate::brand::{APP_COMMAND};
 use super::screen::{ScreenHit, dim_all, hit, hovered, panel, panel_bar};
 use super::render::truncate;
 use super::{App, Bg, Mode, files};
@@ -137,7 +138,7 @@ pub fn switch(dir: &Path, name: &str, create: bool, carry: Option<Carry>, messag
     let mut note = String::new();
     match carry {
         Some(Carry::Stash) => {
-            git(dir, &["stash", "push", "-u", "-m", &format!("vibecasso: before switching to {name}")])?;
+            git(dir, &["stash", "push", "-u", "-m", &format!("{APP_COMMAND}: before switching to {name}")])?;
             note = " (your changes are stashed: `git stash pop` brings them back)".into();
         }
         Some(Carry::Commit) => {
@@ -404,7 +405,7 @@ mod tests {
 
     #[test]
     fn switching_with_changes_stashed_or_brought_along() {
-        let dir = std::env::temp_dir().join(format!("vibecasso-branch-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-branch-{}"), std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         run(&dir, &["init", "-q", "-b", "main"]);

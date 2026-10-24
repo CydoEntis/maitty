@@ -97,7 +97,7 @@ fn changed_command(app: &mut App) {
     let check = &mut app.snap.terms.get_mut(&1).unwrap().checks[0];
     check.previous_command = Some("npm test".into());
     check.command = "npm test && node scripts/seed.js".into();
-    check.source = CheckSource::Repo { file: ".vibecasso/checks.toml".into(), commit: Some("9f3c2a1".into()), committed_at: Some(now() - 2 * HOUR), uncommitted: false };
+    check.source = CheckSource::Repo { file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(), commit: Some("9f3c2a1".into()), committed_at: Some(now() - 2 * HOUR), uncommitted: false };
 }
 
 /// Each preset's world with its modal open.
@@ -455,7 +455,7 @@ fn a_repo_s_checkpoint_is_read_only_and_del_forgets_your_choice() {
     let mut rx = listening(&mut app);
     app.open_project_check(1);
     let text = frame(&mut app, crate::client::v7_fixture::Layout::Floating, 160, 45, "unicode");
-    assert!(text.contains("Source    .vibecasso/checks.toml · a1b2c3d · never") && text.contains("Forget choice Del"), "{text}");
+    assert!(text.contains(concat!("Source    .", env!("APP_COMMAND"), "/checks.toml · a1b2c3d · never")) && text.contains("Forget choice Del"), "{text}");
     key(&mut app, KeyCode::Char('x'));
     assert!(matches!(&app.mode, Mode::ProjectCheck(d) if !d.editing && d.command.is_none()), "its command is not yours to type");
     key(&mut app, KeyCode::Delete);

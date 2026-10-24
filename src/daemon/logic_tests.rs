@@ -8,7 +8,7 @@ use std::time::Duration;
 fn own_data_folder() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
-        let dir = std::env::temp_dir().join(format!("vibecasso-test-data-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-test-data-{}"), std::process::id()));
         // SAFETY: first thing a daemon test does, before the panes it starts read the environment.
         unsafe { std::env::set_var("XDG_DATA_HOME", dir) };
     });
@@ -241,7 +241,7 @@ fn a_session_keeps_its_account_through_sleep_and_restart() {
         (p.agent, p.session) = (Some("claude".into()), Some("abc123".into()));
     }
     let resume = d.resume_cmd(&d.terms[&t]).expect("claude can be resumed");
-    assert!(resume.starts_with("vibecasso account ") && resume.contains("claude work") && resume.contains("abc123"), "{resume}");
+    assert!(resume.starts_with(concat!(env!("APP_COMMAND"), " account ")) && resume.contains("claude work") && resume.contains("abc123"), "{resume}");
     // And after the server restarts.
     let saved = d.saved();
     assert!(saved.workspaces.is_empty(), "these panes are in no workspace");
@@ -249,7 +249,7 @@ fn a_session_keeps_its_account_through_sleep_and_restart() {
     let again = d.restore_cmd(&pane).expect("restored as a resume");
     assert_eq!(again, resume);
     let old: persist::SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":"claude","session":"abc123","aside":0}"#).unwrap();
-    assert!(!d.restore_cmd(&old).unwrap().starts_with("vibecasso account"), "one saved before accounts resumes as itself");
+    assert!(!d.restore_cmd(&old).unwrap().starts_with(concat!(env!("APP_COMMAND"), " account")), "one saved before accounts resumes as itself");
     close(&mut d, &[t, plain]);
 }
 
@@ -461,7 +461,7 @@ fn with_no_window_open_finished_waits_and_a_helper_stays_quiet() {
 #[test]
 fn a_clean_up_only_takes_worktrees_nothing_runs_in() {
     let (mut d, _rx) = daemon();
-    let root = std::env::temp_dir().join(format!("vibecasso-tidy-plan-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-tidy-plan-{}"), std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let repo = root.join("repo");
     std::fs::create_dir_all(&repo).unwrap();
@@ -535,7 +535,7 @@ fn explicit_idle_screen_evidence_recovers_missed_turn_ends_across_agents() {
     for (agent, title) in [
         ("claude", "✳ project"),
         ("codex", "project"),
-        ("amp", "vibecasso - amp - project"),
+        ("amp", concat!(env!("APP_COMMAND"), " - amp - project")),
         ("grok", "grok"),
     ] {
         let (mut d, _rx) = daemon();
@@ -630,7 +630,7 @@ fn waking_a_sleeping_session_keeps_what_you_called_it() {
     close(&mut d, &[new]);
 }
 
-/// A connection acting from `term`, as its agent's `vibecasso` commands do.
+/// A connection acting from `term`, as its agent's `<app>` commands do.
 fn from_pane(d: &mut Daemon, client: ClientId, term: TermId, token: &str) -> mpsc::Receiver<ServerMsg> {
     let (tx, rx) = mpsc::channel(64);
     d.handle(Ev::Connected(client, tx, false));
@@ -683,7 +683,7 @@ fn only_the_pane_itself_can_be_named_as_the_starter() {
 fn a_worktree_start_keeps_its_starter_after_the_caller_has_gone() {
     let (mut d, _rx) = daemon();
     let starter = pane(&mut d);
-    let dir = std::env::temp_dir().join(format!("vibecasso-started-by-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-started-by-{}"), std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     // The worktree was asked for from the starter's pane; that connection closed while git ran.
     d.pending_ops += 1;
@@ -751,7 +751,7 @@ fn detaching_and_closing_prune_tabs_and_workspaces() {
 fn a_spare_fits_only_its_repo_and_its_agent() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
-    let repo = std::env::temp_dir().join("vibecasso-spare-repo");
+    let repo = std::env::temp_dir().join(concat!(env!("APP_COMMAND"), "-spare-repo"));
     d.cfg.worktree.prewarm = "claude".into();
     d.spare = Some((repo.clone(), repo.join("wt"), t));
     assert_eq!(d.spare_fits(&repo, "claude").as_deref(), Some(""), "the agent alone");
@@ -890,7 +890,7 @@ fn worktree_names_that_look_like_options_are_refused() {
 
 #[test]
 fn an_agent_typed_into_a_shell_gets_its_own_worktree() {
-    let tmp = std::env::temp_dir().join(format!("vibecasso-agent-wt-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-agent-wt-{}"), std::process::id()));
     let repo = tmp.join("shop");
     std::fs::create_dir_all(repo.join("web")).unwrap();
     let git = |args: &[&str]| assert!(std::process::Command::new("git").arg("-C").arg(&repo).args(args).output().unwrap().status.success(), "git {args:?}");
@@ -1014,7 +1014,7 @@ fn a_panes_history_survives_the_server_restarting() {
     d2.restore(saved);
     let new = *d2.terms.keys().next().unwrap();
     let replay = String::from_utf8_lossy(&d2.terms[&new].replay()).into_owned();
-    assert!(replay.contains("line from before the restart") && replay.contains("vibecasso restarted here"), "{replay}");
+    assert!(replay.contains("line from before the restart") && replay.contains(concat!(env!("APP_COMMAND"), " restarted here")), "{replay}");
     let mut p = vt100::Parser::new(24, 80, 1000);
     p.process(&d2.terms[&new].replay());
     p.screen_mut().set_scrollback(usize::MAX);
@@ -1031,7 +1031,7 @@ fn closing_the_last_pane_keeps_an_open_window() {
     let (tx, _crx) = mpsc::channel(64);
     d.handle(Ev::Connected(1, tx, true));
     d.close_term(t);
-    assert!(!d.should_exit(), "a window is still showing vibecasso");
+    assert!(!d.should_exit(), concat!("a window is still showing ", env!("APP_COMMAND")));
     d.handle(Ev::Disconnected(1));
     assert!(d.should_exit(), "everything closed and nobody's looking: exit");
 }
@@ -1111,7 +1111,7 @@ fn a_stop_for_an_unknown_helper_leaves_the_running_ones_alone() {
     };
     d.apply_hook(hook(HookStatus::Working, "SubagentStart", "a1", true), Some(true), Vec::new());
     d.apply_hook(hook(HookStatus::Working, "SubagentStart", "a2", true), Some(true), Vec::new());
-    // One that began before vibecasso was listening stops: nobody listed has finished.
+    // One that began before the app was listening stops: nobody listed has finished.
     d.apply_hook(hook(HookStatus::Same, "SubagentStop", "never-seen", false), Some(true), Vec::new());
     assert_eq!(d.terms[&t].subagents.len(), 2, "both still listed");
     d.apply_hook(hook(HookStatus::Same, "SubagentStop", "a1", false), Some(true), Vec::new());
@@ -1171,7 +1171,7 @@ fn delayed_child_start_does_not_undo_its_completion() {
 fn an_agent_asks_you_and_gets_your_answer() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
-    // The agent's `vibecasso ask-human` is a client waiting for the reply.
+    // The agent's `<app> ask-human` is a client waiting for the reply.
     let (tx, mut asker) = mpsc::channel(8);
     d.handle(Ev::Connected(5, tx, false));
     let ask = Command::AskHuman { term: t, text: "Deploy to staging?".into(), options: vec!["Yes".into(), "No".into()] };
@@ -1244,7 +1244,7 @@ fn an_agent_stays_in_the_folder_it_started_in() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
     let secret = d.terms[&t].token.clone();
-    let base = std::env::temp_dir().join(format!("vibecasso-pin-{}", std::process::id()));
+    let base = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-pin-{}"), std::process::id()));
     let (home, other) = (base.join("home"), base.join("other"));
     std::fs::create_dir_all(&home).unwrap();
     std::fs::create_dir_all(&other).unwrap();
@@ -1728,7 +1728,7 @@ fn a_check_that_outruns_its_timeout_reads_as_not_run() {
 fn a_check_whose_command_is_not_found_reads_as_not_run() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
-    let t = checked_agent(&mut d, "vibecasso-no-such-command-xyz", LONG_CHECK_S);
+    let t = checked_agent(&mut d, concat!(env!("APP_COMMAND"), "-no-such-command-xyz"), LONG_CHECK_S);
     end_turn(&mut d, t);
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     assert_eq!(check_of(&d, t).state, CheckState::CouldNotRun);
@@ -1740,7 +1740,7 @@ fn a_shell_that_cannot_start_leaves_the_check_not_run() {
     let (rt, (mut d, mut rx)) = (runtime(), daemon());
     let _in_rt = rt.enter();
     let t = checked_agent(&mut d, "exit 0", LONG_CHECK_S);
-    d.cfg.shell = Some("/no/such/shell-for-vibecasso".into());
+    d.cfg.shell = Some(concat!("/no/such/shell-for-", env!("APP_COMMAND")).into());
     end_turn(&mut d, t);
     assert!(finish_check(&mut d, &mut rx, SLOW_CHECK_WAIT));
     assert_eq!(check_of(&d, t).state, CheckState::CouldNotRun, "never stuck checking");
@@ -1944,7 +1944,7 @@ fn a_repo_checks_file_is_only_noticed_once_the_worktree_was_looked_at() {
     let (rt, (mut d, mut rx, _file)) = (runtime(), approving_daemon());
     let _in_rt = rt.enter();
     let repo = temp_repo();
-    std::fs::create_dir_all(repo.path().join(".vibecasso")).unwrap();
+    std::fs::create_dir_all(repo.path().join(concat!(".", env!("APP_COMMAND")))).unwrap();
     std::fs::write(repo.path().join(crate::config::REPO_CHECKS_FILE), "[[check]]
 name = \"test\"
 command = \"echo tested\"
@@ -2288,7 +2288,7 @@ fn a_session_with_no_check_announces_its_finish_at_once() {
 #[test]
 fn the_phone_hears_nothing_while_a_check_runs_or_after_it_fails() {
     let (mut d, _rx) = daemon();
-    d.cfg.notify.phone_topic = "vibecasso-test-topic".into();
+    d.cfg.notify.phone_topic = concat!(env!("APP_COMMAND"), "-test-topic").into();
     d.cfg.notify.phone_done = true;
     d.cfg.notify.phone_after = 0;
     let t = working_agent(&mut d);
@@ -2556,8 +2556,8 @@ fn a_checkpoint_never_sees_the_panes_token() {
     let _in_rt = rt.enter();
     // SAFETY: the daemon's own environment, as when it was started from inside a pane; the
     // panes it spawns set their own token.
-    unsafe { std::env::set_var("VIBECASSO_PANE_TOKEN", "vibecasso-test-secret") };
-    let print = if cfg!(windows) { "echo \"token=$env:VIBECASSO_PANE_TOKEN\"" } else { "echo \"token=$VIBECASSO_PANE_TOKEN\"" };
+    unsafe { std::env::set_var(concat!(env!("APP_ENV"), "_PANE_TOKEN"), concat!(env!("APP_COMMAND"), "-test-secret")) };
+    let print = if cfg!(windows) { concat!("echo \"token=$env:", env!("APP_ENV"), "_PANE_TOKEN\"") } else { concat!("echo \"token=$", env!("APP_ENV"), "_PANE_TOKEN\"") };
     let t = agent_with_checkpoints(&mut d, &std::env::temp_dir(), &[("env", print)]);
     end_turn(&mut d, t);
     finish_run(&mut d, &mut rx, t);
@@ -2679,7 +2679,7 @@ fn waiting_for_approval(d: &mut Daemon, command: &str) -> TermId {
     let t = pane(d);
     let p = d.terms.get_mut(&t).unwrap();
     (p.agent, p.hooked, p.status) = (Some("claude".into()), true, Status::Done);
-    let source = CheckSource::Repo { file: ".vibecasso/checks.toml".into(), commit: None, committed_at: None, uncommitted: true };
+    let source = CheckSource::Repo { file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(), commit: None, committed_at: None, uncommitted: true };
     let info = CheckInfo { name: "test".into(), command: command.into(), state: CheckState::NeedsApproval, source, ..Default::default() };
     p.checks.points = vec![check::CheckRecord::new(info, "").into()];
     t
@@ -2712,7 +2712,7 @@ fn only_a_checkpoint_waiting_for_approval_can_be_approved() {
 }
 
 #[test]
-fn always_and_never_are_kept_by_the_exact_command_in_vibecasso_s_data_folder() {
+fn always_and_never_are_kept_by_the_exact_command_in_app_s_data_folder() {
     let rt = runtime();
     let _in_rt = rt.enter();
     for (choice, decision) in [(ApprovalChoice::Always, approvals::Decision::Always), (ApprovalChoice::Never, approvals::Decision::Never)] {
@@ -2727,7 +2727,7 @@ fn always_and_never_are_kept_by_the_exact_command_in_vibecasso_s_data_folder() {
         close(&mut d, &[t]);
     }
     let (d, _rx) = daemon();
-    assert_eq!(d.approvals_file, approvals::path(), "outside every repo: Vibecasso's own data folder");
+    assert_eq!(d.approvals_file, approvals::path(), concat!("outside every repo: ", env!("APP_NAME"), "'s own data folder"));
     assert!(d.approvals_file.starts_with(crate::config::data_dir()));
 }
 
@@ -2764,7 +2764,7 @@ fn a_repo_checkpoint_waits_at_the_turn_end_and_once_runs_it_one_time() {
     let (rt, (mut d, mut rx, _file)) = (runtime(), approving_daemon());
     let _in_rt = rt.enter();
     let repo = temp_repo();
-    std::fs::create_dir_all(repo.path().join(".vibecasso")).unwrap();
+    std::fs::create_dir_all(repo.path().join(concat!(".", env!("APP_COMMAND")))).unwrap();
     std::fs::write(repo.path().join(crate::config::REPO_CHECKS_FILE), "[[check]]\nname = \"test\"\ncommand = \"echo tested\"\n").unwrap();
     let t = agent_with_checkpoints(&mut d, repo.path(), &[]);
     look_for_repo_checks(&mut d, &mut rx, t);
@@ -2789,7 +2789,7 @@ fn approving_one_checkpoint_while_another_runs_runs_it_after_in_the_same_turn() 
     let (rt, (mut d, mut rx, _file)) = (runtime(), approving_daemon());
     let _in_rt = rt.enter();
     let repo = temp_repo();
-    std::fs::create_dir_all(repo.path().join(".vibecasso")).unwrap();
+    std::fs::create_dir_all(repo.path().join(concat!(".", env!("APP_COMMAND")))).unwrap();
     let file = "[[check]]\nname = \"build\"\ncommand = \"echo built\"\n\n[[check]]\nname = \"test\"\ncommand = \"echo tested\"\n";
     std::fs::write(repo.path().join(crate::config::REPO_CHECKS_FILE), file).unwrap();
     let t = agent_with_checkpoints(&mut d, repo.path(), &[]);
@@ -2959,7 +2959,7 @@ fn an_asking_session_alerts_you_once_even_though_its_own_status_is_not_blocked()
 }
 
 #[test]
-fn the_activity_a_newer_vibecasso_reads_counts_working_and_waiting_sessions() {
+fn the_activity_a_newer_app_reads_counts_working_and_waiting_sessions() {
     let (mut d, _rx) = daemon();
     let (a, b, c) = (pane(&mut d), pane(&mut d), pane(&mut d));
     d.terms.get_mut(&a).unwrap().status = Status::Working;
@@ -3076,5 +3076,5 @@ fn with_output_off_nothing_is_saved_and_what_was_saved_goes() {
     let replay = String::from_utf8_lossy(&d2.terms[&new].replay()).into_owned();
     close(&mut d, &[t]);
     close(&mut d2, &[new]);
-    assert!(!replay.contains("vibecasso restarted here") && !replay.contains("hunter2"), "{replay}");
+    assert!(!replay.contains(concat!(env!("APP_COMMAND"), " restarted here")) && !replay.contains("hunter2"), "{replay}");
 }

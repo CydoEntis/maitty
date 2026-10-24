@@ -1,6 +1,7 @@
 //! Commands from clients and the CLI.
 
 use super::*;
+use crate::brand::{APP_COMMAND};
 
 impl Daemon {
     /// Apply a command. `Ok(false)` means the reply is sent later (background git work).
@@ -424,7 +425,7 @@ impl Daemon {
                 crate::config::add_agent(&def)?;
                 let name = def.name.clone();
                 self.command(client, Command::ReloadConfig)?;
-                self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{name} is an agent now: vibecasso shows when it's working, needs you or done")));
+                self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{name} is an agent now: {APP_COMMAND} shows when it's working, needs you or done")));
             }
             Command::AskHuman { term, text, options } => {
                 let options = if options.is_empty() { vec!["Yes".to_string(), "No".to_string()] } else { options };
@@ -432,7 +433,7 @@ impl Daemon {
                 let before = self.terms.get(&term).map(|t| t.status).ok_or_else(|| anyhow::anyhow!("no pane {term}"))?;
                 self.questions.push((HumanQuestion { id, term, text, options }, client, before));
                 // It needs you: the sidebar, a notification, the Inbox.
-                self.set_status(term, Status::Blocked, "it asked you (vibecasso ask)");
+                self.set_status(term, Status::Blocked, concat!("it asked you (", env!("APP_COMMAND"), " ask)"));
                 self.dirty = true;
                 return Ok(false);
             }

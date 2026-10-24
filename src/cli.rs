@@ -1,6 +1,7 @@
 //! One-shot commands: scripting the multiplexer from a shell (or from an agent inside it).
 
 use crate::ipc;
+use crate::brand::{APP_COMMAND};
 pub(crate) mod handoff;
 pub(crate) mod integrations;
 use crate::layout::Dir;
@@ -21,7 +22,7 @@ pub(crate) fn block_on<T>(f: impl std::future::Future<Output = Result<T>>) -> Re
 
 /// Send one message and wait for the reply.
 pub(crate) async fn request(msg: ClientMsg) -> Result<Reply> {
-    let (mut r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() { "over ssh" } else { "couldn't reach the vibecasso server" })?;
+    let (mut r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() { "over ssh" } else { concat!("couldn't reach the ", env!("APP_COMMAND"), " server") })?;
     ipc::send(&mut w, &msg).await?;
     loop {
         match ipc::recv_server(&mut r).await? {
@@ -52,7 +53,7 @@ fn resolve_pane(pane: Option<TermId>) -> Result<TermId> {
     if let Some(p) = pane {
         return Ok(p);
     }
-    if let Some(p) = std::env::var("VIBECASSO_TERM_ID").ok().and_then(|s| s.parse().ok()) {
+    if let Some(p) = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID")).ok().and_then(|s| s.parse().ok()) {
         return Ok(p);
     }
     let snap = snapshot()?;
@@ -113,7 +114,7 @@ fn codex_starts_new_work(args: &[String]) -> bool {
     true
 }
 
-/// `vibecasso agent-dir <agent> [args…]`, run by a pane's shell just before it starts an agent:
+/// `<app> agent-dir <agent> [args…]`, run by a pane's shell just before it starts an agent:
 /// prints the folder to start in (a new worktree), or nothing to start where it is. Never
 /// fails: the agent starts either way.
 pub fn agent_dir(cmd: &[String]) {
@@ -127,24 +128,24 @@ pub fn agent_dir(cmd: &[String]) {
 /// asking and what for.
 fn agent_worktree(cmd: &[String]) -> Option<PathBuf> {
     let agent = cmd.first().map(String::as_str).unwrap_or_default();
-    if std::env::var_os("VIBECASSO_TERM_ID").is_none() || !starts_new_work(agent, cmd.get(1..).unwrap_or_default()) {
+    if std::env::var_os(concat!(env!("APP_ENV"), "_TERM_ID")).is_none() || !starts_new_work(agent, cmd.get(1..).unwrap_or_default()) {
         return None;
     }
     let dir = std::env::current_dir().ok()?;
     match block_on(request(ClientMsg::Command(Command::AgentWorktree { dir }))) {
         Ok(Reply::Text(path)) if !path.is_empty() => {
-            eprintln!("vibecasso: {agent} gets its own worktree: {path}");
+            eprintln!("{APP_COMMAND}: {agent} gets its own worktree: {path}");
             Some(PathBuf::from(path))
         }
         Ok(_) => None,
         Err(e) => {
-            eprintln!("vibecasso: no worktree for it ({e:#}), so it starts here");
+            eprintln!("{APP_COMMAND}: no worktree for it ({e:#}), so it starts here");
             None
         }
     }
 }
 
-/// `vibecasso agent-launch <agent> [args…]`, what the Windows launchers (`shim.rs`) run: the
+/// `<app> agent-launch <agent> [args…]`, what the Windows launchers (`shim.rs`) run: the
 /// work of the PATH launcher on Unix. Starts the next `<agent>` on PATH after the launchers'
 /// folder, in the folder `agent-dir` names, and returns its exit code.
 pub fn agent_launch(cmd: &[String]) -> i32 {
@@ -167,7 +168,7 @@ pub fn agent_launch(cmd: &[String]) -> i32 {
     match run.status() {
         Ok(status) => status.code().unwrap_or(1),
         Err(e) => {
-            eprintln!("vibecasso: could not start {agent}: {e}");
+            eprintln!("{APP_COMMAND}: could not start {agent}: {e}");
             1
         }
     }
@@ -291,7 +292,7 @@ pub enum Waited {
     TimedOut { quiet: Option<u64> },
 }
 
-/// `vibecasso wait` exits with this when the turn ended but its check failed (2: timed out;
+/// `<app> wait` exits with this when the turn ended but its check failed (2: timed out;
 /// 3: needs you).
 const EXIT_CHECK_FAILED: i32 = 4;
 
@@ -314,7 +315,7 @@ fn turn_over(status: Status, said: &str, checks: &[CheckInfo], seen_working: boo
     Some(Waited::Turn(status, said, headline(checks).cloned().map(Box::new)))
 }
 
-/// How `vibecasso wait` exits once the turn is over, when not 0: 3 when the agent needs you, 4
+/// How `<app> wait` exits once the turn is over, when not 0: 3 when the agent needs you, 4
 /// when a checkpoint failed (`headline` is the worst). Every other result, a stale pass or a
 /// check that did not run included, says nothing against the work.
 fn turn_exit(status: Status, headline: Option<&CheckInfo>) -> Option<i32> {
@@ -339,7 +340,7 @@ pub fn check_line(c: &CheckInfo) -> String {
     }
 }
 
-/// What a check adds beside the status in `vibecasso ls` and `vibecasso_list`: `check failed (exit 1)`.
+/// What a check adds beside the status in `<app> ls` and `<app>_list`: `check failed (exit 1)`.
 pub fn check_note(c: &CheckInfo) -> String {
     match (c.state, c.exit_code) {
         (CheckState::Checking, _) => "checking".into(),
@@ -396,7 +397,7 @@ pub fn quiet_for(at: u64) -> String {
     }
 }
 
-/// One pane in `vibecasso ls --json`.
+/// One pane in `<app> ls --json`.
 fn pane_json(p: &TermInfo) -> Value {
     let mut v = json!({
         "id": p.id, "process": p.process, "title": p.title, "agent": p.agent, "asleep": p.asleep, "status_why": p.status_why, "win32_input": p.win32_input, "model": p.model, "name": p.name, "mem_mb": p.mem >> 20, "bell": p.bell,
@@ -415,7 +416,7 @@ fn pane_json(p: &TermInfo) -> Value {
     v
 }
 
-/// One checkpoint in `vibecasso ls --json`'s `checks`.
+/// One checkpoint in `<app> ls --json`'s `checks`.
 fn checkpoint_json(c: &CheckInfo) -> Value {
     json!({
         "name": c.name, "state": c.state.label(), "command": c.command, "exit_code": c.exit_code, "duration_ms": c.duration_ms,
@@ -467,7 +468,7 @@ pub fn wait(pane: Option<TermId>, regex: Option<String>, timeout: u64) -> Result
     wait_print(resolve_pane(pane)?, regex, timeout, false)
 }
 
-/// `vibecasso wait` / `vibecasso send --wait`: wait, then print the reply (or the screen's end).
+/// `<app> wait` / `<app> send --wait`: wait, then print the reply (or the screen's end).
 fn wait_print(term: TermId, regex: Option<String>, timeout: u64, just_sent: bool) -> Result<()> {
     match wait_on(term, regex.as_deref(), Duration::from_secs(timeout), just_sent)? {
         Waited::Matched(l) => println!("{l}"),
@@ -505,7 +506,7 @@ pub fn send(pane: Option<TermId>, text: String, enter: bool) -> Result<()> {
     crate::hidden::check(&text).map_err(|e| anyhow!(e))?;
     let term = resolve_pane(pane)?;
     block_on(async move {
-        let (_r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() { "over ssh" } else { "couldn't reach the vibecasso server" })?;
+        let (_r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() { "over ssh" } else { concat!("couldn't reach the ", env!("APP_COMMAND"), " server") })?;
         let data = if text.contains('\n') { format!("\x1b[200~{text}\x1b[201~") } else { text };
         ipc::send(&mut w, &ClientMsg::Input { term, data: data.into_bytes() }).await?;
         if enter {
@@ -528,7 +529,7 @@ pub fn send_keys(pane: Option<TermId>, keys: Vec<String>) -> Result<()> {
         chunks.push(crate::keys::encode(&ev, false));
     }
     block_on(async move {
-        let (_r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() { "over ssh" } else { "couldn't reach the vibecasso server" })?;
+        let (_r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() { "over ssh" } else { concat!("couldn't reach the ", env!("APP_COMMAND"), " server") })?;
         for data in chunks {
             ipc::send(&mut w, &ClientMsg::Input { term, data }).await?;
             // One key per beat, like a person typing; lets modes change between keys.
@@ -548,7 +549,7 @@ pub fn split(pane: Option<TermId>, down: bool, command: Vec<String>) -> Result<(
     self::command(Command::Split { term, dir, cmd: join_command(command), cwd: None })
 }
 
-/// `vibecasso handoff <pane> --to <agent>`: start `to` beside `pane`, in its checkout, with a
+/// `<app> handoff <pane> --to <agent>`: start `to` beside `pane`, in its checkout, with a
 /// text brief of what the pane was doing as its first prompt. The old pane is left alone.
 pub fn handoff(pane: TermId, to: String) -> Result<()> {
     let (cfg, _) = crate::config::Config::load_or_default();
@@ -577,7 +578,7 @@ pub fn handoff(pane: TermId, to: String) -> Result<()> {
             return Ok(());
         }
     }
-    println!("asked vibecasso to start {to}; it hasn't appeared yet");
+    println!("asked {APP_COMMAND} to start {to}; it hasn't appeared yet");
     Ok(())
 }
 
@@ -596,27 +597,27 @@ pub fn focused_pane() -> Option<TermId> {
     s.workspaces.iter().find(|w| Some(w.id) == s.active_ws)?.tab().map(|t| t.focus)
 }
 
-/// `vibecasso popup -- <command>`: a floating pane in the folder you're in.
+/// `<app> popup -- <command>`: a floating pane in the folder you're in.
 pub fn popup(cmd: Vec<String>) -> Result<()> {
-    let cmd = join_command(cmd).ok_or_else(|| anyhow!("what to run: vibecasso popup -- fzf"))?;
+    let cmd = join_command(cmd).ok_or_else(|| anyhow!(concat!("what to run: ", env!("APP_COMMAND"), " popup -- fzf")))?;
     command(Command::Popup { cmd, cwd: std::env::current_dir().ok() })
 }
 
-/// `vibecasso grant <pane> read,write,…|default`.
+/// `<app> grant <pane> read,write,…|default`.
 pub fn grant(term: TermId, grants: &str) -> Result<()> {
     let list = (grants.trim() != "default").then(|| grants.split(',').map(|g| g.trim().to_lowercase()).filter(|g| !g.is_empty()).collect::<Vec<_>>());
     command(Command::Grant { term, grants: list.clone() })?;
     match list {
-        Some(l) if l.is_empty() => println!("pane {term} may do nothing through vibecasso but its own work"),
+        Some(l) if l.is_empty() => println!("pane {term} may do nothing through {APP_COMMAND} but its own work"),
         Some(l) => println!("pane {term} may: {}", l.join(", ")),
         None => println!("pane {term} is back to the default grants ([mcp] grants in config)"),
     }
     Ok(())
 }
 
-/// `vibecasso ask-human "…?" -o Yes -o No`: ask the person, wait, print the answer.
+/// `<app> ask-human "…?" -o Yes -o No`: ask the person, wait, print the answer.
 pub fn ask_human(text: String, options: Vec<String>) -> Result<()> {
-    let term = resolve_pane(None).context("run it in a vibecasso pane (the question shows there)")?;
+    let term = resolve_pane(None).context(concat!("run it in a ", env!("APP_COMMAND"), " pane (the question shows there)"))?;
     match block_on(request(ClientMsg::Command(Command::AskHuman { term, text, options })))? {
         Reply::Text(answer) => {
             println!("{answer}");
@@ -626,15 +627,15 @@ pub fn ask_human(text: String, options: Vec<String>) -> Result<()> {
     }
 }
 
-/// `vibecasso teach [pane]`: the program running there is an agent.
+/// `<app> teach [pane]`: the program running there is an agent.
 pub fn teach(pane: Option<TermId>) -> Result<()> {
     let term = resolve_pane(pane)?;
     command(Command::TeachAgent { term })?;
-    println!("vibecasso knows it as an agent now (see [[agents]] in {})", crate::config::config_path().display());
+    println!(concat!(env!("APP_COMMAND"), " knows it as an agent now (see [[agents]] in {})"), crate::config::config_path().display());
     Ok(())
 }
 
-/// Focus a pane and bring vibecasso's window forward (what clicking a notification does).
+/// Focus a pane and bring the app's window forward (what clicking a notification does).
 pub fn reveal(pane: TermId) -> Result<()> {
     command(Command::Reveal { term: pane })
 }
@@ -643,7 +644,7 @@ pub fn close(pane: Option<TermId>) -> Result<()> {
     command(Command::ClosePane { term: resolve_pane(pane)? })
 }
 
-/// Whether a vibecasso server is running (for this socket).
+/// Whether the app's server is running (for this socket).
 pub(crate) fn server_running() -> bool {
     block_on(async { ipc::connect().await.map(|_| ()) }).is_ok()
 }
@@ -653,7 +654,7 @@ pub fn kill_server(forget: bool) -> Result<()> {
         if forget {
             crate::daemon::forget_session();
         }
-        println!("no vibecasso server is running; nothing to stop");
+        println!(concat!("no ", env!("APP_COMMAND"), " server is running; nothing to stop"));
         return Ok(());
     }
     match command(Command::KillServer { forget }) {
@@ -663,7 +664,7 @@ pub fn kill_server(forget: bool) -> Result<()> {
             if forget {
                 crate::daemon::forget_session();
             }
-            println!("stopped the server (another vibecasso version, process {pid})");
+            println!("stopped the server (another {APP_COMMAND} version, process {pid})");
             Ok(())
         }
         // It answers, then lets go of its socket a moment later: a server started right
@@ -676,8 +677,8 @@ pub fn kill_server(forget: bool) -> Result<()> {
 /// Stop this socket's server by its process, for when it's a version that can't be talked
 /// to. Its saved session stays, as with `kill-server`.
 fn stop_server_process() -> Result<u32> {
-    let pid = server_pid().filter(|pid| is_vibecasso_daemon(*pid)).ok_or_else(|| {
-        anyhow!("couldn't find the server's process; stop it yourself (on Linux/macOS: pkill -f \"vibecasso daemon\"; on Windows: end vibecasso.exe in Task Manager)")
+    let pid = server_pid().filter(|pid| is_app_daemon(*pid)).ok_or_else(|| {
+        anyhow!(concat!("couldn't find the server's process; stop it yourself (on Linux/macOS: pkill -f \"", env!("APP_COMMAND"), " daemon\"; on Windows: end ", env!("APP_COMMAND"), ".exe in Task Manager)"))
     })?;
     let killed = if cfg!(windows) {
         crate::proc::run(std::process::Command::new("taskkill").args(["/PID", &pid.to_string(), "/F"]))
@@ -696,15 +697,15 @@ fn stop_server_process() -> Result<u32> {
     Ok(pid)
 }
 
-/// Whether `pid` is a `vibecasso daemon` process, so a stale pid file can't point a stop at
+/// Whether `pid` is a `<app> daemon` process, so a stale pid file can't point a stop at
 /// something else that took the number. Where the process list can't be read, the pid
 /// file's word stands.
-fn is_vibecasso_daemon(pid: u32) -> bool {
+fn is_app_daemon(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
         let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else { return false };
         let args: Vec<&[u8]> = cmdline.split(|b| *b == 0).collect();
-        args.first().is_some_and(|a| a.ends_with(b"vibecasso")) && args.get(1) == Some(&b"daemon".as_slice())
+        args.first().is_some_and(|a| a.ends_with(crate::brand::APP_COMMAND.as_bytes())) && args.get(1) == Some(&b"daemon".as_slice())
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -714,14 +715,14 @@ fn is_vibecasso_daemon(pid: u32) -> bool {
 }
 
 /// This socket's server process: from the id it noted, or (servers too old to note it) the
-/// one running `vibecasso daemon` for this socket.
+/// one running `<app> daemon` for this socket.
 fn server_pid() -> Option<u32> {
     if let Some(pid) = std::fs::read_to_string(ipc::pid_file()).ok().and_then(|s| s.trim().parse().ok()) {
         return Some(pid);
     }
     #[cfg(target_os = "linux")]
     {
-        let label = std::env::var("VIBECASSO_SOCKET").unwrap_or_else(|_| "default".into());
+        let label = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
         let me = std::process::id();
         for entry in std::fs::read_dir("/proc").ok()?.flatten() {
             let Some(pid) = entry.file_name().to_str().and_then(|s| s.parse::<u32>().ok()) else { continue };
@@ -730,15 +731,15 @@ fn server_pid() -> Option<u32> {
             }
             let Ok(cmdline) = std::fs::read(entry.path().join("cmdline")) else { continue };
             let args: Vec<&[u8]> = cmdline.split(|b| *b == 0).collect();
-            let is_daemon = args.first().is_some_and(|a| a.ends_with(b"vibecasso")) && args.get(1) == Some(&b"daemon".as_slice());
+            let is_daemon = args.first().is_some_and(|a| a.ends_with(crate::brand::APP_COMMAND.as_bytes())) && args.get(1) == Some(&b"daemon".as_slice());
             if !is_daemon {
                 continue;
             }
-            // Its socket: VIBECASSO_SOCKET in its environment, else the default one.
+            // Its socket: <APP>_SOCKET in its environment, else the default one.
             let env = std::fs::read(entry.path().join("environ")).unwrap_or_default();
             let theirs = env
                 .split(|b| *b == 0)
-                .find_map(|kv| kv.strip_prefix(b"VIBECASSO_SOCKET="))
+                .find_map(|kv| kv.strip_prefix(concat!(env!("APP_ENV"), "_SOCKET=").as_bytes()))
                 .map(|v| String::from_utf8_lossy(v).into_owned())
                 .unwrap_or_else(|| "default".into());
             if theirs == label {
@@ -749,16 +750,16 @@ fn server_pid() -> Option<u32> {
     // Elsewhere a server's socket can't be read off its process: only when there's exactly
     // one, and it's the default server you mean.
     #[cfg(not(target_os = "linux"))]
-    if std::env::var("VIBECASSO_SOCKET").is_err() {
+    if std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).is_err() {
         let list = if cfg!(windows) {
             crate::proc::run(std::process::Command::new("powershell").args([
                 "-NoProfile",
                 "-NonInteractive",
                 "-Command",
-                "Get-CimInstance Win32_Process -Filter \"Name='vibecasso.exe'\" | Where-Object { $_.CommandLine -match '\\sdaemon\\s*$' } | ForEach-Object { $_.ProcessId }",
+                concat!("Get-CimInstance Win32_Process -Filter \"Name='", env!("APP_COMMAND"), ".exe'\" | Where-Object { $_.CommandLine -match '\\sdaemon\\s*$' } | ForEach-Object { $_.ProcessId }"),
             ]))
         } else {
-            crate::proc::run(std::process::Command::new("pgrep").args(["-f", "vibecasso daemon$"]))
+            crate::proc::run(std::process::Command::new("pgrep").args(["-f", concat!(env!("APP_COMMAND"), " daemon$")]))
         };
         let pids: Vec<u32> = list.unwrap_or_default().split_whitespace().filter_map(|p| p.parse().ok()).filter(|p| *p != std::process::id()).collect();
         if let [pid] = pids[..] {
@@ -774,7 +775,7 @@ fn resolve_ws(ws: Option<WsId>) -> Result<WsId> {
         return Ok(ws);
     }
     let snap = snapshot()?;
-    let here = std::env::var("VIBECASSO_TERM_ID").ok().and_then(|s| s.parse().ok());
+    let here = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID")).ok().and_then(|s| s.parse().ok());
     here.and_then(|t| snap.locate(t).map(|(w, _)| w.id))
         .or(snap.active_ws)
         .ok_or_else(|| anyhow!("no workspace to target"))
@@ -831,7 +832,7 @@ fn codex_status_hooks_installed(text: &str, windows: bool) -> bool {
 }
 
 
-/// `vibecasso doctor`: each thing vibecasso relies on, ✓ or what to do about it.
+/// `<app> doctor`: each thing the app relies on, ✓ or what to do about it.
 pub fn doctor() -> Result<()> {
     let mut bad = 0;
     let mut line = |ok: Option<bool>, what: &str, detail: String| {
@@ -858,13 +859,13 @@ pub fn doctor() -> Result<()> {
         })
     };
 
-    println!("vibecasso {}  (protocol {})\n", env!("CARGO_PKG_VERSION"), PROTOCOL_VERSION);
+    println!(concat!(env!("APP_COMMAND"), " {}  (protocol {})\n"), env!("CARGO_PKG_VERSION"), PROTOCOL_VERSION);
 
     // Config
     let path = crate::config::config_path();
     match crate::config::Config::load() {
         Ok(_) if path.exists() => line(Some(true), "config", path.display().to_string()),
-        Ok(_) => line(None, "config", format!("none yet (defaults); `vibecasso config init` writes one at {}", path.display())),
+        Ok(_) => line(None, "config", format!(concat!("none yet (defaults); `", env!("APP_COMMAND"), " config init` writes one at {}"), path.display())),
         Err(e) => line(Some(false), "config", format!("{e:#}  ({})", path.display())),
     }
     let (cfg, _) = crate::config::Config::load_or_default();
@@ -875,9 +876,9 @@ pub fn doctor() -> Result<()> {
         Ok(_) => line(Some(true), "server", format!("running ({})", ipc::socket_id())),
         Err(e) if format!("{e:#}").contains("protocol") => {
             line(Some(false), "server", format!("{e:#}"));
-            println!("{:27}fix: run vibecasso; it restarts the server itself (or `vibecasso kill-server`)", "");
+            println!(concat!("{:27}fix: run ", env!("APP_COMMAND"), "; it restarts the server itself (or `", env!("APP_COMMAND"), " kill-server`)"), "");
         }
-        Err(_) => line(None, "server", "not running (it starts with `vibecasso`)".into()),
+        Err(_) => line(None, "server", concat!("not running (it starts with `", env!("APP_COMMAND"), "`)").into()),
     }
 
     // Tools
@@ -913,11 +914,11 @@ pub fn doctor() -> Result<()> {
                 line(Some(true), "codex subagent hooks", "installed".into());
             }
             Ok(text) if text.parse::<toml_edit::DocumentMut>().is_err() => {
-                line(Some(false), "codex subagent hooks", format!("{} is invalid TOML; repair it before `vibecasso integrate codex`", path.display()));
+                line(Some(false), "codex subagent hooks", format!(concat!("{} is invalid TOML; repair it before `", env!("APP_COMMAND"), " integrate codex`"), path.display()));
             }
-            Ok(_) => line(Some(false), "codex subagent hooks", "missing: `vibecasso integrate codex` (restart Codex to load them)".into()),
+            Ok(_) => line(Some(false), "codex subagent hooks", concat!("missing: `", env!("APP_COMMAND"), " integrate codex` (restart Codex to load them)").into()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                line(Some(false), "codex subagent hooks", "missing: `vibecasso integrate codex` (restart Codex to load them)".into());
+                line(Some(false), "codex subagent hooks", concat!("missing: `", env!("APP_COMMAND"), " integrate codex` (restart Codex to load them)").into());
             }
             Err(error) => line(Some(false), "codex subagent hooks", format!("couldn't read {}: {error}", path.display())),
         }
@@ -953,7 +954,7 @@ pub fn doctor() -> Result<()> {
             line(
                 None,
                 &format!("{agent} status adapter"),
-                format!("not installed; fallback detection remains active; run `vibecasso integrate {agent}`"),
+                format!("not installed; fallback detection remains active; run `{APP_COMMAND} integrate {agent}`"),
             );
         }
     }
@@ -964,9 +965,9 @@ pub fn doctor() -> Result<()> {
         let hooked = settings.contains("hook claude");
         let stale = stale_claude_hooks();
         match (hooked, stale.first()) {
-            (false, _) => line(Some(false), "claude status hooks", "missing: `vibecasso integrate claude` (exact working / needs-you / done)".into()),
-            // Another vibecasso can't talk to this one's server: every agent would look idle.
-            (true, Some(other)) => line(Some(false), "claude status hooks", format!("they run another vibecasso ({other}); `vibecasso integrate claude` (or restart the server) fixes it")),
+            (false, _) => line(Some(false), "claude status hooks", concat!("missing: `", env!("APP_COMMAND"), " integrate claude` (exact working / needs-you / done)").into()),
+            // Another the app can't talk to this one's server: every agent would look idle.
+            (true, Some(other)) => line(Some(false), "claude status hooks", format!("they run another {APP_COMMAND} ({other}); `{APP_COMMAND} integrate claude` (or restart the server) fixes it")),
             (true, None) => line(Some(true), "claude status hooks", "installed".into()),
         }
         // Any hook whose program is gone (often an old hydra's): Claude shows "hook error" on
@@ -983,16 +984,16 @@ pub fn doctor() -> Result<()> {
             Some(first) => line(
                 Some(false),
                 "claude hooks run",
-                format!("{} missing ({first}{}); `vibecasso integrate claude` fixes vibecasso's own, remove the rest", broken.len(), if broken.len() > 1 { ", …" } else { "" }),
+                format!("{} missing ({first}{}); `{APP_COMMAND} integrate claude` fixes {APP_COMMAND}'s own, remove the rest", broken.len(), if broken.len() > 1 { ", …" } else { "" }),
             ),
         }
         let claude_json = std::fs::read_to_string(claude_json()).unwrap_or_default();
-        let mcp = claude_json.contains("\"vibecasso\"") && claude_json.contains("\"mcp\"");
+        let mcp = claude_json.contains(concat!("\"", env!("APP_COMMAND"), "\"")) && claude_json.contains("\"mcp\"");
         let old = serde_json::from_str::<Value>(&claude_json).map(|root| old_mcp_names(&root)).unwrap_or_default();
         match old.first() {
             // Claude names the server in every call it shows ("Called hydra"), and may run an old program.
-            Some(name) => line(Some(false), "vibecasso MCP for claude", format!("still registered as `{name}`: `vibecasso integrate mcp` renames it")),
-            None => line(if mcp { Some(true) } else { None }, "vibecasso MCP for claude", if mcp { "registered".into() } else { "not set up: `vibecasso integrate mcp` lets agents see each other (optional)".into() }),
+            Some(name) => line(Some(false), concat!(env!("APP_COMMAND"), " MCP for claude"), format!("still registered as `{name}`: `{APP_COMMAND} integrate mcp` renames it")),
+            None => line(if mcp { Some(true) } else { None }, concat!(env!("APP_COMMAND"), " MCP for claude"), if mcp { "registered".into() } else { concat!("not set up: `", env!("APP_COMMAND"), " integrate mcp` lets agents see each other (optional)").into() }),
         }
     }
 
@@ -1001,7 +1002,7 @@ pub fn doctor() -> Result<()> {
     let truecolor = std::env::var("COLORTERM").is_ok_and(|c| c.contains("truecolor") || c.contains("24bit")) || std::env::var("WT_SESSION").is_ok();
     line(if truecolor { Some(true) } else { None }, "terminal", format!("{term}{}", if truecolor { ", true colour" } else { " (colours may look off without true colour)" }));
     if let Ok((w, h)) = crossterm::terminal::size() {
-        line(Some(w >= 100 && h >= 30), "window size", format!("{w}×{h}{}", if w < 100 || h < 30 { " (vibecasso wants at least 100×30)" } else { "" }));
+        line(Some(w >= 100 && h >= 30), "window size", format!("{w}×{h}{}", if w < 100 || h < 30 { concat!(" (", env!("APP_COMMAND"), " wants at least 100×30)") } else { "" }));
     }
 
     // Data and sync
@@ -1009,7 +1010,7 @@ pub fn doctor() -> Result<()> {
     let writable = std::fs::create_dir_all(&data).is_ok() && std::fs::write(data.join(".doctor"), b"ok").is_ok();
     let _ = std::fs::remove_file(data.join(".doctor"));
     line(Some(writable), "data folder", data.display().to_string());
-    line(None, "sync", if crate::sync::enabled() { format!("on ({})", crate::sync::dir().display()) } else { "off (`vibecasso sync setup` shares config and ideas)".into() });
+    line(None, "sync", if crate::sync::enabled() { format!("on ({})", crate::sync::dir().display()) } else { concat!("off (`", env!("APP_COMMAND"), " sync setup` shares config and ideas)").into() });
     if let Some(ed) = Some(cfg.editor.clone()).filter(|e| !e.is_empty()).or_else(|| std::env::var("VISUAL").ok()).or_else(|| std::env::var("EDITOR").ok()) {
         line(Some(true), "editor", ed);
     } else {
@@ -1028,13 +1029,13 @@ pub fn doctor() -> Result<()> {
 
 /// Run by an agent inside a pane: make a worktree and move this agent into it.
 pub fn move_to_worktree(branch: String) -> Result<()> {
-    let term: TermId = std::env::var("VIBECASSO_TERM_ID")
+    let term: TermId = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID"))
         .ok()
         .and_then(|s| s.parse().ok())
-        .ok_or_else(|| anyhow!("run this from inside a vibecasso pane (an agent running in vibecasso)"))?;
+        .ok_or_else(|| anyhow!(concat!("run this from inside a ", env!("APP_COMMAND"), " pane (an agent running in ", env!("APP_COMMAND"), ")")))?;
     let branch = Some(branch.trim().to_string()).filter(|b| !b.is_empty());
     block_on(async move {
-        let (mut r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() { "over ssh" } else { "couldn't reach the vibecasso server" })?;
+        let (mut r, mut w) = ipc::open(false).await.context(if ipc::remote().is_some() { "over ssh" } else { concat!("couldn't reach the ", env!("APP_COMMAND"), " server") })?;
         ipc::send(&mut w, &ClientMsg::Command(Command::MoveToWorktree { term, branch })).await?;
         loop {
             match ipc::recv_server(&mut r).await? {
@@ -1167,8 +1168,8 @@ fn parse_status(s: &str) -> Option<HookStatus> {
 }
 
 pub fn hook(agent: &str, status: Option<&str>, payload: Option<&str>) -> Result<()> {
-    // Inert outside vibecasso, so global hooks don't bother other terminals.
-    let Some(term) = std::env::var("VIBECASSO_TERM_ID").ok().and_then(|s| s.parse::<TermId>().ok()) else {
+    // Inert outside the app, so global hooks don't bother other terminals.
+    let Some(term) = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID")).ok().and_then(|s| s.parse::<TermId>().ok()) else {
         return Ok(());
     };
     let mut payload_json = payload.and_then(|raw| serde_json::from_str(raw).ok()).unwrap_or(Value::Null);
@@ -1198,7 +1199,7 @@ pub fn hook(agent: &str, status: Option<&str>, payload: Option<&str>) -> Result<
         sys.refresh_processes_specifics(ProcessesToUpdate::Some(&[me]), true, ProcessRefreshKind::nothing());
         sys.process(me).and_then(|p| p.parent()).map(|p| p.as_u32()).unwrap_or(0)
     };
-    let token = std::env::var("VIBECASSO_PANE_TOKEN").unwrap_or_default();
+    let token = std::env::var(concat!(env!("APP_ENV"), "_PANE_TOKEN")).unwrap_or_default();
     let message = hook_message(HookOrigin { term, agent: agent.to_string(), pid, token }, &payload_json, status);
     block_on(async move {
         tokio::time::timeout(Duration::from_secs(2), async {
@@ -1301,7 +1302,7 @@ fn home_settings(env: &str, dir: &str) -> PathBuf {
         .join("settings.json")
 }
 
-/// opencode has no command hooks: a plugin hands each event to `vibecasso hook opencode`.
+/// opencode has no command hooks: a plugin hands each event to `<app> hook opencode`.
 fn opencode_plugin(uninstall: bool) -> Result<PathBuf> {
     let exe = this_exe()?;
     integrations::install_opencode(&exe, uninstall)
@@ -1320,10 +1321,16 @@ const CLAUDE_EVENTS: &[(&str, Option<&str>)] = &[
     ("SessionEnd", None),
 ];
 
-/// A hook group vibecasso put there: tagged, or (from installs before the tag) one that runs
-/// `vibecasso hook …` under any of the app's names.
+/// A hook group the app put there: tagged, or (from installs before the tag) one that runs
+/// The app's command, or one it had before.
+fn is_our_name(program: &str) -> bool {
+    program == crate::brand::APP_COMMAND || crate::brand::previous().any(|p| p == program)
+}
+
+/// `<app> hook …` under any of the app's names.
 fn is_ours(group: &Value) -> bool {
-    ["_vibecasso", "_seshi", "_hydra", "_drover"].iter().any(|tag| group.get(*tag).and_then(Value::as_bool) == Some(true))
+    let tagged = |name: &str| group.get(format!("_{name}").as_str()).and_then(Value::as_bool) == Some(true);
+    (tagged(crate::brand::APP_COMMAND) || crate::brand::previous().any(tagged))
         || group.get("hooks").and_then(Value::as_array).into_iter().flatten().filter_map(|h| h.get("command").and_then(Value::as_str)).any(runs_our_hook)
 }
 
@@ -1342,11 +1349,11 @@ fn program_of(cmd: &str) -> &str {
     split_command(cmd).0
 }
 
-/// `"<…/vibecasso>" hook claude`, or the same from a seshi, hydra or drover install.
+/// `"<…/<app>>" hook claude`, or the same from a seshi, hydra or drover install.
 fn runs_our_hook(cmd: &str) -> bool {
     let (prog, args) = split_command(cmd);
     let stem = std::path::Path::new(prog).file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-    matches!(stem.as_str(), "vibecasso" | "seshi" | "hydra" | "drover") && args.starts_with("hook ")
+    is_our_name(&stem) && args.starts_with("hook ")
 }
 
 /// Hook commands in Claude settings `root` whose program isn't there (a removed install, a
@@ -1371,7 +1378,7 @@ fn broken_hooks_in(root: &Value, exists: impl Fn(&std::path::Path) -> bool, on_p
             if prog.contains('/') || prog.contains('\\') {
                 !exists(std::path::Path::new(prog))
             } else {
-                matches!(prog, "vibecasso" | "seshi" | "hydra" | "drover") && !on_path(prog)
+                is_our_name(prog) && !on_path(prog)
             }
         })
         .map(String::from)
@@ -1396,7 +1403,7 @@ fn old_mcp_names(root: &Value) -> Vec<String> {
             let prog = server.get("command").and_then(Value::as_str).unwrap_or_default();
             let stem = std::path::Path::new(prog).file_stem().map(|s| s.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
             let serves = server.get("args").and_then(Value::as_array).is_some_and(|a| a.iter().any(|x| x.as_str() == Some("mcp")));
-            matches!(stem.as_str(), "seshi" | "hydra" | "drover") && serves
+            crate::brand::previous().any(|p| p == stem) && serves
         })
         .map(|(name, _)| name.clone())
         .collect()
@@ -1426,7 +1433,7 @@ fn claude_settings() -> PathBuf {
         .join("settings.json")
 }
 
-/// This vibecasso, as hook commands name it.
+/// This the app, as hook commands name it.
 fn this_exe() -> Result<String> {
     Ok(std::env::current_exe()?.to_string_lossy().replace('\\', "/"))
 }
@@ -1445,18 +1452,18 @@ pub(crate) fn statusline_facts(json: &str) -> (Usage, Vec<Limit>) {
     (usage, limits)
 }
 
-/// Where the status line you had before vibecasso's is kept (vibecasso's runs it after its own).
+/// Where the status line you had before the app's is kept (the app's runs it after its own).
 fn statusline_before() -> PathBuf {
     crate::config::data_dir().join("claude-statusline.txt")
 }
 
-/// Whether a status line command is vibecasso's (or the seshi's or hydra's it was renamed from).
+/// Whether a status line command is the app's (or the seshi's or hydra's it was renamed from).
 fn is_our_statusline(cmd: &str) -> bool {
-    (cmd.contains("vibecasso") || cmd.contains("seshi") || cmd.contains("hydra")) && cmd.trim_end().ends_with(" statusline")
+    (cmd.contains(crate::brand::APP_COMMAND) || crate::brand::previous().any(|p| cmd.contains(p))) && cmd.trim_end().ends_with(" statusline")
 }
 
-/// Make Claude's status line vibecasso's (or with `uninstall`, put yours back). Yours keeps
-/// showing: vibecasso's runs it with the same input and prints what it prints.
+/// Make Claude's status line the app's (or with `uninstall`, put yours back). Yours keeps
+/// showing: the app's runs it with the same input and prints what it prints.
 fn statusline_setting(root: &mut Value, exe: &str, uninstall: bool, kept: &std::path::Path) -> Result<()> {
     let cur = root.get("statusLine").and_then(|s| s.get("command")).and_then(Value::as_str).map(String::from);
     let ours = cur.as_deref().is_some_and(is_our_statusline);
@@ -1488,14 +1495,14 @@ fn statusline_setting(root: &mut Value, exe: &str, uninstall: bool, kept: &std::
     Ok(())
 }
 
-/// `vibecasso statusline`, Claude Code's status line command: hands what the session has used
-/// to vibecasso (inside a vibecasso pane), then shows the status line you had before, if any.
+/// `<app> statusline`, Claude Code's status line command: hands what the session has used
+/// to the app (inside one of its panes), then shows the status line you had before, if any.
 pub fn statusline() {
     use std::io::Write;
     let mut input = String::new();
     let _ = std::io::stdin().read_to_string(&mut input);
-    let term = std::env::var("VIBECASSO_TERM_ID").ok().and_then(|s| s.parse::<TermId>().ok());
-    if let (Some(term), Ok(token)) = (term, std::env::var("VIBECASSO_PANE_TOKEN")) {
+    let term = std::env::var(concat!(env!("APP_ENV"), "_TERM_ID")).ok().and_then(|s| s.parse::<TermId>().ok());
+    if let (Some(term), Ok(token)) = (term, std::env::var(concat!(env!("APP_ENV"), "_PANE_TOKEN"))) {
         let (usage, limits) = statusline_facts(&input);
         let msg = ClientMsg::Usage { term, token, usage, limits };
         // Never hold up Claude's screen for it; a report that doesn't get there is skipped.
@@ -1552,13 +1559,13 @@ fn shell_line(line: &str) -> std::process::Command {
     }
 }
 
-/// Add (or with `uninstall`, remove) vibecasso's hooks in Claude Code's settings.
+/// Add (or with `uninstall`, remove) the app's hooks in Claude Code's settings.
 fn claude_hooks(uninstall: bool) -> Result<PathBuf> {
     json_hooks(&claude_settings(), "claude", CLAUDE_EVENTS, 5, uninstall)
 }
 
-/// Add (or remove) vibecasso's hooks in a Claude-style settings.json (Claude Code, Gemini CLI,
-/// Qwen Code): one tagged group per event running `vibecasso hook <agent>`, `timeout` in the
+/// Add (or remove) the app's hooks in a Claude-style settings.json (Claude Code, Gemini CLI,
+/// Qwen Code): one tagged group per event running `<app> hook <agent>`, `timeout` in the
 /// tool's own unit. The rest of the file is kept, with a backup beside it.
 fn json_hooks(path: &std::path::Path, agent: &str, events: &[(&str, Option<&str>)], timeout: u64, uninstall: bool) -> Result<PathBuf> {
     let exe = this_exe()?;
@@ -1570,7 +1577,7 @@ fn json_hooks(path: &std::path::Path, agent: &str, events: &[(&str, Option<&str>
         Err(e) => return Err(e.into()),
     };
     if path.exists() {
-        std::fs::copy(&path, path.with_extension("json.vibecasso-bak"))?;
+        std::fs::copy(&path, path.with_extension(concat!("json.", env!("APP_COMMAND"), "-bak")))?;
     }
     let hooks = root
         .as_object_mut()
@@ -1584,7 +1591,7 @@ fn json_hooks(path: &std::path::Path, agent: &str, events: &[(&str, Option<&str>
         arr.retain(|g| !is_ours(g));
         if !uninstall {
             let mut g = json!({
-                "_vibecasso": true,
+                concat!("_", env!("APP_COMMAND")): true,
                 "hooks": [{ "type": "command", "command": format!("\"{exe}\" hook {agent}"), "timeout": timeout }],
             });
             if let Some(m) = matcher {
@@ -1604,7 +1611,7 @@ fn json_hooks(path: &std::path::Path, agent: &str, events: &[(&str, Option<&str>
     Ok(path)
 }
 
-/// The commands vibecasso's Claude hooks run that aren't this vibecasso (an older install, a copy
+/// The commands the app's Claude hooks run that aren't this the app (an older install, a copy
 /// that moved). Empty when they're right, or when there are none.
 pub fn stale_claude_hooks() -> Vec<String> {
     let (Ok(exe), Ok(text)) = (this_exe(), std::fs::read_to_string(claude_settings())) else { return Vec::new() };
@@ -1612,13 +1619,13 @@ pub fn stale_claude_hooks() -> Vec<String> {
     stale_in(&root, &format!("\"{exe}\" hook claude"))
 }
 
-/// Vibecasso's Claude hooks are in and run this vibecasso (the check `vibecasso doctor` makes). Reads a
+/// The app's Claude hooks are in and run this the app (the check `<app> doctor` makes). Reads a
 /// file: call it off the UI thread.
 pub fn claude_status_hooks_installed() -> bool {
     std::fs::read_to_string(claude_settings()).is_ok_and(|s| s.contains("hook claude")) && stale_claude_hooks().is_empty()
 }
 
-/// Vibecasso's hook commands in Claude settings `root` other than `want`.
+/// The app's hook commands in Claude settings `root` other than `want`.
 fn stale_in(root: &Value, want: &str) -> Vec<String> {
     let mut stale: Vec<String> = root
         .get("hooks")
@@ -1639,7 +1646,7 @@ fn stale_in(root: &Value, want: &str) -> Vec<String> {
     stale
 }
 
-/// Vibecasso's Claude hooks are in, but not its status line (installed before there was one).
+/// The app's Claude hooks are in, but not its status line (installed before there was one).
 fn needs_statusline() -> bool {
     let Ok(text) = std::fs::read_to_string(claude_settings()) else { return false };
     let Ok(root) = serde_json::from_str::<Value>(&text) else { return false };
@@ -1648,21 +1655,21 @@ fn needs_statusline() -> bool {
     hooked && !is_our_statusline(cmd)
 }
 
-/// Point vibecasso's Claude hooks at this vibecasso if they name another one. A hook from a
+/// Point the app's Claude hooks at this the app if they name another one. A hook from a
 /// different version can't talk to this server, and hooks fail silently by design, so
 /// every agent would look idle. Run when the server starts.
 pub fn refresh_claude_hooks() {
-    // A side server (VIBECASSO_SOCKET) or a build in a source checkout mustn't take your
-    // hooks from the vibecasso you use.
-    let side = std::env::var("VIBECASSO_SOCKET").is_ok_and(|s| s != "default");
+    // A side server (<APP>_SOCKET) or a build in a source checkout mustn't take your
+    // hooks from the copy of the app you use.
+    let side = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).is_ok_and(|s| s != "default");
     let dev_build = this_exe().is_ok_and(|e| e.contains("/target/debug/") || e.contains("/target/release/"));
     if side || dev_build {
         return;
     }
     if !stale_claude_hooks().is_empty() || needs_statusline() {
         match claude_hooks(false) {
-            Ok(p) => tracing::info!("pointed vibecasso's Claude hooks in {} at this vibecasso", p.display()),
-            Err(e) => tracing::warn!("couldn't update vibecasso's Claude hooks: {e:#}"),
+            Ok(p) => tracing::info!(concat!("pointed ", env!("APP_COMMAND"), "'s Claude hooks in {} at this ", env!("APP_COMMAND")), p.display()),
+            Err(e) => tracing::warn!("couldn't update {APP_COMMAND}'s Claude hooks: {e:#}"),
         }
     }
 }
@@ -1682,7 +1689,7 @@ enum CodexNotify {
     Theirs(String),
 }
 
-/// Point Codex's top-level `notify` at vibecasso (or take vibecasso's out), keeping the rest of the
+/// Point Codex's top-level `notify` at the app (or take the app's out), keeping the rest of the
 /// file. Another program's notify is left alone.
 fn codex_notify(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<CodexNotify> {
     let text = match std::fs::read_to_string(path) {
@@ -1691,7 +1698,7 @@ fn codex_notify(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<Co
         Err(e) => return Err(e.into()),
     };
     let mut doc: toml_edit::DocumentMut = text.parse().with_context(|| format!("{} has a syntax error; not touching it", path.display()))?;
-    let ours = |v: &toml_edit::Item| v.as_array().is_some_and(|a| a.iter().any(|x| x.as_str() == Some("hook")) && a.iter().any(|x| x.as_str().is_some_and(|s| s.contains("vibecasso") || s.contains("seshi") || s.contains("hydra"))));
+    let ours = |v: &toml_edit::Item| v.as_array().is_some_and(|a| a.iter().any(|x| x.as_str() == Some("hook")) && a.iter().any(|x| x.as_str().is_some_and(|s| s.contains(crate::brand::APP_COMMAND) || crate::brand::previous().any(|p| s.contains(p)))));
     if let Some(cur) = doc.get("notify")
         && !ours(cur)
     {
@@ -1708,7 +1715,7 @@ fn codex_notify(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<Co
         doc.insert("notify", toml_edit::value(a));
     }
     if path.exists() {
-        std::fs::copy(path, path.with_extension("toml.vibecasso-bak"))?;
+        std::fs::copy(path, path.with_extension(concat!("toml.", env!("APP_COMMAND"), "-bak")))?;
     }
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
@@ -1733,10 +1740,10 @@ pub fn integrate(agent: &str, uninstall: bool) -> Result<()> {
         "claude" => {
             let path = claude_hooks(uninstall)?;
             if uninstall {
-                println!("removed vibecasso hooks from {}", path.display());
+                println!(concat!("removed ", env!("APP_COMMAND"), " hooks from {}"), path.display());
             } else {
-                println!("installed vibecasso hooks into {}", path.display());
-                println!("they only act inside vibecasso panes (VIBECASSO_TERM_ID), so other terminals are unaffected.");
+                println!(concat!("installed ", env!("APP_COMMAND"), " hooks into {}"), path.display());
+                println!(concat!("they only act inside ", env!("APP_COMMAND"), " panes (", env!("APP_ENV"), "_TERM_ID), so other terminals are unaffected."));
             }
             Ok(())
         }
@@ -1749,13 +1756,13 @@ pub fn integrate(agent: &str, uninstall: bool) -> Result<()> {
                     _ => println!("Claude Code: run  claude mcp remove --scope user {name}"),
                 }
             }
-            match run_claude(&["mcp", "add", "--scope", "user", "vibecasso", "--", exe.as_str(), "mcp"]) {
-                Ok(s) if s.success() => println!("added the vibecasso MCP server to Claude Code (all projects)"),
-                _ => println!("Claude Code: run  claude mcp add --scope user vibecasso -- \"{exe}\" mcp"),
+            match run_claude(&["mcp", "add", "--scope", "user", env!("APP_COMMAND"), "--", exe.as_str(), "mcp"]) {
+                Ok(s) if s.success() => println!(concat!("added the ", env!("APP_COMMAND"), " MCP server to Claude Code (all projects)")),
+                _ => println!("Claude Code: run  claude mcp add --scope user {APP_COMMAND} -- \"{exe}\" mcp"),
             }
-            println!("\nCodex: add to ~/.codex/config.toml\n\n[mcp_servers.vibecasso]\ncommand = \"{exe}\"\nargs = [\"mcp\"]\n");
+            println!("\nCodex: add to ~/.codex/config.toml\n\n[mcp_servers.{APP_COMMAND}]\ncommand = \"{exe}\"\nargs = [\"mcp\"]\n");
             println!("Agents can then list, read, message and start sessions. Whether they may approve");
-            println!("prompts is up to you: vibecasso Settings → Agents (never, by default).");
+            println!(concat!("prompts is up to you: ", env!("APP_COMMAND"), " Settings → Agents (never, by default)."));
             Ok(())
         }
         "gemini" | "qwen" => {
@@ -1767,12 +1774,12 @@ pub fn integrate(agent: &str, uninstall: bool) -> Result<()> {
                 (home_settings("QWEN_HOME", ".qwen"), CLAUDE_EVENTS, 10)
             };
             let path = json_hooks(&path, agent, events, timeout, uninstall)?;
-            println!("{} vibecasso hooks {} {}", if uninstall { "removed" } else { "installed" }, if uninstall { "from" } else { "into" }, path.display());
+            println!(concat!("{} ", env!("APP_COMMAND"), " hooks {} {}"), if uninstall { "removed" } else { "installed" }, if uninstall { "from" } else { "into" }, path.display());
             Ok(())
         }
         "opencode" => {
             let path = opencode_plugin(uninstall)?;
-            println!("{} vibecasso's opencode plugin: {}", if uninstall { "removed" } else { "wrote" }, path.display());
+            println!(concat!("{} ", env!("APP_COMMAND"), "'s opencode plugin: {}"), if uninstall { "removed" } else { "wrote" }, path.display());
             Ok(())
         }
         "pi" | "omp" | "mastracode" | "kilo" | "kimi" => {
@@ -1784,24 +1791,24 @@ pub fn integrate(agent: &str, uninstall: bool) -> Result<()> {
                 "kimi" => integrations::install_kimi(&exe, uninstall)?,
                 _ => unreachable!(),
             };
-            println!("{} vibecasso's {agent} status integration: {}", if uninstall { "removed" } else { "wrote" }, path.display());
+            println!("{} {APP_COMMAND}'s {agent} status integration: {}", if uninstall { "removed" } else { "wrote" }, path.display());
             println!("Restart {agent} to load it. Status follows the session, including z.ai and DeepSeek models.");
             Ok(())
         }
         "codex" => {
             let path = install_codex_status(&exe, uninstall)?;
-            println!("{} Vibecasso's Codex status hooks in {}", if uninstall { "removed" } else { "installed" }, path.display());
+            println!(concat!("{} ", env!("APP_NAME"), "'s Codex status hooks in {}"), if uninstall { "removed" } else { "installed" }, path.display());
             println!("Live subagent events are tracked; any other Codex notify command is preserved.");
             Ok(())
         }
-        other => bail!("no integration for `{other}`; any agent can call `vibecasso hook {other} --status <working|blocked|done|idle>`"),
+        other => bail!("no integration for `{other}`; any agent can call `{APP_COMMAND} hook {other} --status <working|blocked|done|idle>`"),
     }
 }
 
 /// Debugging: the colours a pane's program is drawing (rows with a background colour).
 pub fn debug_colors(pane: TermId) -> Result<()> {
     block_on(async move {
-        let (mut r, _w) = ipc::open(true).await.context("couldn't reach the vibecasso server")?;
+        let (mut r, _w) = ipc::open(true).await.context(concat!("couldn't reach the ", env!("APP_COMMAND"), " server"))?;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
         while let Ok(Ok(Some(msg))) = tokio::time::timeout_at(deadline, ipc::recv_server(&mut r)).await {
             if let ServerMsg::Replay { term, cols, rows, data } = msg
@@ -1839,7 +1846,7 @@ pub fn debug_colors(pane: TermId) -> Result<()> {
     })
 }
 
-/// `vibecasso allow`: show the repo's hook commands and let them run from now on.
+/// `<app> allow`: show the repo's hook commands and let them run from now on.
 /// A `~` at the start of a value is your home folder.
 fn home_in(value: &str) -> String {
     match (value.strip_prefix('~'), directories::BaseDirs::new()) {
@@ -1848,14 +1855,14 @@ fn home_in(value: &str) -> String {
     }
 }
 
-/// The command line `vibecasso account` runs for `command`: the program as typed, each argument
+/// The command line `<app> account` runs for `command`: the program as typed, each argument
 /// quoted again for the shell that will run it.
 pub fn account_line(cfg: &crate::config::Config, command: &[String]) -> Option<String> {
     let (program, args) = command.split_first()?;
     Some(std::iter::once(program.clone()).chain(args.iter().map(|a| cfg.quote_for_shell(a))).collect::<Vec<_>>().join(" "))
 }
 
-/// `vibecasso account <name> -- <command>`: run it with that account's environment, in this
+/// `<app> account <name> -- <command>`: run it with that account's environment, in this
 /// terminal, and leave with its exit code.
 pub fn account(name: &str, command: &[String]) -> Result<()> {
     let (cfg, _) = crate::config::Config::load_or_default();
@@ -1865,7 +1872,7 @@ pub fn account(name: &str, command: &[String]) -> Result<()> {
         anyhow::bail!("no account named \"{name}\" (accounts: {known})");
     };
     let Some(line) = account_line(&cfg, command) else {
-        anyhow::bail!("give the command to run: vibecasso account \"{name}\" -- claude");
+        anyhow::bail!("give the command to run: {APP_COMMAND} account \"{name}\" -- claude");
     };
     let status = crate::proc::shell(&cfg.shell_command(), &line, true).envs(a.env.iter().map(|(k, v)| (k.clone(), home_in(v)))).status()?;
     std::process::exit(status.code().unwrap_or(1));
@@ -2068,47 +2075,47 @@ mod tests {
 
     #[test]
     fn codex_status_setup_requires_root_thread_and_subagent_hooks_for_each_platform() {
-        let linux = r#"
+        let linux = concat!(r#"
             [[hooks.SessionStart]]
             [[hooks.SessionStart.hooks]]
             type = "command"
-            command = '"/usr/local/bin/vibecasso" hook codex --status same'
+            command = '"/usr/local/bin/"#, env!("APP_COMMAND"), r#"" hook codex --status same'
             [[hooks.SubagentStart]]
             [[hooks.SubagentStart.hooks]]
             type = "command"
-            command = '"/usr/local/bin/vibecasso" hook codex'
+            command = '"/usr/local/bin/"#, env!("APP_COMMAND"), r#"" hook codex'
             [[hooks.SubagentStop]]
             [[hooks.SubagentStop.hooks]]
             type = "command"
-            command = '"/usr/local/bin/vibecasso" hook codex'
-        "#;
-        let windows = r#"
+            command = '"/usr/local/bin/"#, env!("APP_COMMAND"), r#"" hook codex'
+        "#);
+        let windows = concat!(r#"
             [[hooks.SessionStart]]
             [[hooks.SessionStart.hooks]]
             type = "command"
-            command = '"/usr/local/bin/vibecasso" hook codex --status same'
-            commandWindows = '& "C:\\\\vibecasso.exe" hook codex --status same'
+            command = '"/usr/local/bin/"#, env!("APP_COMMAND"), r#"" hook codex --status same'
+            commandWindows = '& "C:\\\\"#, env!("APP_COMMAND"), r#".exe" hook codex --status same'
             [[hooks.SubagentStart]]
             [[hooks.SubagentStart.hooks]]
             type = "command"
-            command = '"/usr/local/bin/vibecasso" hook codex'
-            commandWindows = '& "C:\\\\vibecasso.exe" hook codex'
+            command = '"/usr/local/bin/"#, env!("APP_COMMAND"), r#"" hook codex'
+            commandWindows = '& "C:\\\\"#, env!("APP_COMMAND"), r#".exe" hook codex'
             [[hooks.SubagentStop]]
             [[hooks.SubagentStop.hooks]]
             type = "command"
-            command = '"/usr/local/bin/vibecasso" hook codex'
-            commandWindows = '& "C:\\\\vibecasso.exe" hook codex'
-        "#;
-        let missing_stop = r#"
+            command = '"/usr/local/bin/"#, env!("APP_COMMAND"), r#"" hook codex'
+            commandWindows = '& "C:\\\\"#, env!("APP_COMMAND"), r#".exe" hook codex'
+        "#);
+        let missing_stop = concat!(r#"
             [[hooks.SessionStart]]
             [[hooks.SessionStart.hooks]]
             type = "command"
-            command = '"/usr/local/bin/vibecasso" hook codex --status same'
+            command = '"/usr/local/bin/"#, env!("APP_COMMAND"), r#"" hook codex --status same'
             [[hooks.SubagentStart]]
             [[hooks.SubagentStart.hooks]]
             type = "command"
-            command = '"/usr/local/bin/vibecasso" hook codex'
-        "#;
+            command = '"/usr/local/bin/"#, env!("APP_COMMAND"), r#"" hook codex'
+        "#);
 
         assert!(super::codex_status_hooks_installed(linux, false));
         assert!(!super::codex_status_hooks_installed(linux, true));
@@ -2119,19 +2126,19 @@ mod tests {
 
     #[test]
     fn hydras_status_line_keeps_yours() {
-        let kept = std::env::temp_dir().join(format!("vibecasso-statusline-{}.txt", std::process::id()));
+        let kept = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-statusline-{}.txt"), std::process::id()));
         let mut root = serde_json::json!({ "statusLine": { "type": "command", "command": "chm statusline", "padding": 1 } });
-        super::statusline_setting(&mut root, "C:/x/vibecasso.exe", false, &kept).unwrap();
-        assert_eq!(root["statusLine"]["command"], "\"C:/x/vibecasso.exe\" statusline");
+        super::statusline_setting(&mut root, concat!("C:/x/", env!("APP_COMMAND"), ".exe"), false, &kept).unwrap();
+        assert_eq!(root["statusLine"]["command"], concat!("\"C:/x/", env!("APP_COMMAND"), ".exe\" statusline"));
         assert_eq!(root["statusLine"]["padding"], 1, "your settings for it stay");
-        assert_eq!(std::fs::read_to_string(&kept).unwrap(), "chm statusline", "and yours still runs after vibecasso's");
-        super::statusline_setting(&mut root, "C:/y/vibecasso.exe", false, &kept).unwrap();
+        assert_eq!(std::fs::read_to_string(&kept).unwrap(), "chm statusline", concat!("and yours still runs after ", env!("APP_COMMAND"), "'s"));
+        super::statusline_setting(&mut root, concat!("C:/y/", env!("APP_COMMAND"), ".exe"), false, &kept).unwrap();
         assert_eq!(std::fs::read_to_string(&kept).unwrap(), "chm statusline", "installing again doesn't lose yours");
-        super::statusline_setting(&mut root, "C:/y/vibecasso.exe", true, &kept).unwrap();
+        super::statusline_setting(&mut root, concat!("C:/y/", env!("APP_COMMAND"), ".exe"), true, &kept).unwrap();
         assert_eq!(root["statusLine"]["command"], "chm statusline", "uninstalling puts yours back");
         let mut none = serde_json::json!({});
-        super::statusline_setting(&mut none, "C:/x/vibecasso.exe", false, &kept).unwrap();
-        super::statusline_setting(&mut none, "C:/x/vibecasso.exe", true, &kept).unwrap();
+        super::statusline_setting(&mut none, concat!("C:/x/", env!("APP_COMMAND"), ".exe"), false, &kept).unwrap();
+        super::statusline_setting(&mut none, concat!("C:/x/", env!("APP_COMMAND"), ".exe"), true, &kept).unwrap();
         assert!(none.get("statusLine").is_none(), "none before: none after");
     }
 
@@ -2170,7 +2177,7 @@ mod tests {
 
     #[test]
     fn a_finished_turn_is_done_even_when_its_transcript_has_background_work() {
-        let file = std::env::temp_dir().join(format!("vibecasso-background-turn-{}.jsonl", std::process::id()));
+        let file = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-background-turn-{}.jsonl"), std::process::id()));
         let transcript = [
             json!({"type":"user","message":{"content":"start the game server"}}),
             json!({"type":"user","message":{"content":[{"type":"tool_result","content":"Command running in background with ID: server1. Output is being written to: x"}]}}),
@@ -2191,7 +2198,7 @@ mod tests {
 
     #[test]
     fn claude_subagent_task_comes_from_its_meta_file() {
-        let dir = std::env::temp_dir().join(format!("vibecasso-meta-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-meta-{}"), std::process::id()));
         let subagents = dir.join("sess").join("subagents");
         std::fs::create_dir_all(&subagents).unwrap();
         std::fs::write(subagents.join("agent-abc.meta.json"), r#"{"agentType":"general-purpose","description":"Debugging Go back test failure"}"#).unwrap();
@@ -2298,28 +2305,28 @@ mod tests {
 
     #[test]
     fn codex_notify_is_set_and_others_kept() {
-        let file = std::env::temp_dir().join(format!("vibecasso-codex-{}.toml", std::process::id()));
+        let file = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-codex-{}.toml"), std::process::id()));
         std::fs::write(&file, "model = \"gpt-5\"\n\n[tui]\nnotifications = true\n").unwrap();
-        assert!(matches!(super::codex_notify(&file, "/bin/vibecasso", false).unwrap(), super::CodexNotify::Set));
+        assert!(matches!(super::codex_notify(&file, concat!("/bin/", env!("APP_COMMAND")), false).unwrap(), super::CodexNotify::Set));
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains(r#"notify = ["/bin/vibecasso", "hook", "codex"]"#) && text.contains("[tui]") && text.contains("gpt-5"), "{text}");
+        assert!(text.contains(concat!(r#"notify = ["/bin/"#, env!("APP_COMMAND"), r#"", "hook", "codex"]"#)) && text.contains("[tui]") && text.contains("gpt-5"), "{text}");
         assert!(text.find("notify") < text.find("[tui]"), "a top-level key, before the tables: {text}");
-        // Run again with vibecasso elsewhere: replaced (it's ours).
-        super::codex_notify(&file, "/usr/local/bin/vibecasso", false).unwrap();
-        assert!(std::fs::read_to_string(&file).unwrap().contains("/usr/local/bin/vibecasso"));
+        // Run again with the app elsewhere: replaced (it's ours).
+        super::codex_notify(&file, concat!("/usr/local/bin/", env!("APP_COMMAND")), false).unwrap();
+        assert!(std::fs::read_to_string(&file).unwrap().contains(concat!("/usr/local/bin/", env!("APP_COMMAND"))));
         // Someone else's notify stays.
         std::fs::write(&file, "notify = [\"my-notifier\"]\n").unwrap();
-        assert!(matches!(super::codex_notify(&file, "/bin/vibecasso", false).unwrap(), super::CodexNotify::Theirs(_)));
+        assert!(matches!(super::codex_notify(&file, concat!("/bin/", env!("APP_COMMAND")), false).unwrap(), super::CodexNotify::Theirs(_)));
         assert!(std::fs::read_to_string(&file).unwrap().contains("my-notifier"));
         let _ = std::fs::remove_file(&file);
-        let _ = std::fs::remove_file(file.with_extension("toml.vibecasso-bak"));
+        let _ = std::fs::remove_file(file.with_extension(concat!("toml.", env!("APP_COMMAND"), "-bak")));
     }
 
     #[test]
     fn an_mcp_server_left_under_an_old_name_is_found() {
         let root = serde_json::json!({ "mcpServers": {
             "hydra": { "command": "C:/Programs/hydra/hydra.exe", "args": ["mcp"] },
-            "vibecasso": { "command": "C:/Programs/vibecasso/vibecasso.exe", "args": ["mcp"] },
+            env!("APP_COMMAND"): { "command": concat!("C:/Programs/", env!("APP_COMMAND"), "/", env!("APP_COMMAND"), ".exe"), "args": ["mcp"] },
             "plane": { "command": "npx", "args": ["plane-mcp"] },
         }});
         assert_eq!(super::old_mcp_names(&root), vec!["hydra".to_string()], "only the old install's");
@@ -2330,7 +2337,7 @@ mod tests {
     fn a_seshi_install_left_behind_is_recognised_and_moved_over() {
         let root = serde_json::json!({ "mcpServers": {
             "seshi": { "command": "C:/Users/me/AppData/Local/Programs/seshi/seshi.exe", "args": ["mcp"] },
-            "vibecasso": { "command": "C:/Programs/vibecasso/vibecasso.exe", "args": ["mcp"] },
+            env!("APP_COMMAND"): { "command": concat!("C:/Programs/", env!("APP_COMMAND"), "/", env!("APP_COMMAND"), ".exe"), "args": ["mcp"] },
         }});
         assert_eq!(super::old_mcp_names(&root), vec!["seshi".to_string()], "the seshi MCP entry is the old one");
         assert!(super::runs_our_hook("\"C:/Users/me/AppData/Local/Programs/seshi/seshi.exe\" hook claude"), "its hooks are ours to rewrite");
@@ -2339,7 +2346,7 @@ mod tests {
 
     #[test]
     fn hooks_from_another_hydra_are_found() {
-        let want = "\"/home/me/.local/bin/vibecasso\" hook claude";
+        let want = concat!("\"/home/me/.local/bin/", env!("APP_COMMAND"), "\" hook claude");
         let settings = |cmd: &str| {
             serde_json::json!({ "hooks": {
                 "Stop": [
@@ -2348,8 +2355,8 @@ mod tests {
                 ],
             }})
         };
-        assert!(super::stale_in(&settings(want), want).is_empty(), "this vibecasso's hooks are fine; others' aren't ours to judge");
-        let old = "\"/home/me/.cargo/bin/vibecasso\" hook claude";
+        assert!(super::stale_in(&settings(want), want).is_empty(), concat!("this ", env!("APP_COMMAND"), "'s hooks are fine; others' aren't ours to judge"));
+        let old = concat!("\"/home/me/.cargo/bin/", env!("APP_COMMAND"), "\" hook claude");
         assert_eq!(super::stale_in(&settings(old), want), vec![old.to_string()]);
         // An old install's hook without the tag is still ours (so it gets repointed).
         let untagged = serde_json::json!({ "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "/home/me/.local/bin/hydra hook claude" }] }] } });

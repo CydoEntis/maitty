@@ -5,7 +5,17 @@ use std::path::PathBuf;
 #[path = "opencode_config.rs"]
 mod opencode_config;
 
-const OWNED_HEADER: &str = "// Written by `vibecasso integrate";
+const OWNED_HEADER: &str = concat!("// Written by `", env!("APP_COMMAND"), " integrate");
+
+/// An adapter template with the app's name and its program's path filled in: the templates say
+/// `__APP_NAME__`, `__APP_COMMAND__`, `__APP_ENV__` and `__APP_EXE__` (ADR 0019).
+fn fill(template: &str, exe: &str) -> Result<String> {
+    Ok(template
+        .replace("__APP_EXE__", &serde_json::to_string(exe)?)
+        .replace("__APP_ENV__", crate::brand::APP_ENV)
+        .replace("__APP_NAME__", crate::brand::APP_NAME)
+        .replace("__APP_COMMAND__", crate::brand::APP_COMMAND))
+}
 
 fn install(path: PathBuf, source: &str, exe: &str, uninstall: bool) -> Result<PathBuf> {
     regular_target(&path)?;
@@ -15,7 +25,7 @@ fn install(path: PathBuf, source: &str, exe: &str, uninstall: bool) -> Result<Pa
             path.display()
         ),
         Ok(_) if uninstall => {
-            std::fs::remove_file(&path).context("remove vibecasso's status extension")?;
+            std::fs::remove_file(&path).context(concat!("remove ", env!("APP_COMMAND"), "'s status extension"))?;
             return Ok(path);
         }
         Ok(_) => {}
@@ -24,10 +34,10 @@ fn install(path: PathBuf, source: &str, exe: &str, uninstall: bool) -> Result<Pa
                 return Ok(path);
             }
         }
-        Err(e) => return Err(e).context("read vibecasso's status extension"),
+        Err(e) => return Err(e).context(concat!("read ", env!("APP_COMMAND"), "'s status extension")),
     }
-    let source = source.replace("__VIBECASSO_EXE__", &serde_json::to_string(exe)?);
-    crate::config::write_atomic(&path, source).context("write vibecasso's status extension")?;
+    let source = fill(source, exe)?;
+    crate::config::write_atomic(&path, source).context(concat!("write ", env!("APP_COMMAND"), "'s status extension"))?;
     Ok(path)
 }
 
@@ -48,7 +58,7 @@ pub(super) fn install_pi(exe: &str, uninstall: bool) -> Result<PathBuf> {
         .or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().join(".pi/agent")))
         .context("locate Pi's configuration directory")?;
     install(
-        dir.join("extensions/vibecasso.js"),
+        dir.join(concat!("extensions/", env!("APP_COMMAND"), ".js")),
         include_str!("pi.js"),
         exe,
         uninstall,
@@ -75,7 +85,7 @@ pub(super) fn install_omp(exe: &str, uninstall: bool) -> Result<PathBuf> {
         );
     }
     install(
-        dir.join("extensions/vibecasso.js"),
+        dir.join(concat!("extensions/", env!("APP_COMMAND"), ".js")),
         include_str!("omp.js"),
         exe,
         uninstall,
@@ -88,7 +98,7 @@ pub(super) fn install_kilo(exe: &str, uninstall: bool) -> Result<PathBuf> {
         .or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().join(".config")))
         .context("locate Kilo configuration")?;
     install(
-        dir.join("kilo/plugin/vibecasso.js"),
+        dir.join(concat!("kilo/plugin/", env!("APP_COMMAND"), ".js")),
         include_str!("kilo.js"),
         exe,
         uninstall,
@@ -139,14 +149,14 @@ fn mastracode_at(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<P
             .or_insert_with(|| serde_json::json!([]))
             .as_array_mut()
             .with_context(|| format!("Mastracode {event} must be a flat array; preserved"))?;
-        entries.retain(|v| v.get("_vibecasso") != Some(&serde_json::Value::Bool(true)));
+        entries.retain(|v| v.get(concat!("_", env!("APP_COMMAND"))) != Some(&serde_json::Value::Bool(true)));
         if !uninstall {
-            entries.push(serde_json::json!({"_vibecasso":true,"type":"command","command":format!("\"{exe}\" hook mastracode --status {status}"),"timeout":10000}));
+            entries.push(serde_json::json!({concat!("_", env!("APP_COMMAND")):true,"type":"command","command":format!("\"{exe}\" hook mastracode --status {status}"),"timeout":10000}));
         }
     }
     hooks.retain(|_, value| value.as_array().is_none_or(|a| !a.is_empty()));
     if path.exists() {
-        std::fs::copy(path, path.with_extension("json.vibecasso-bak"))?;
+        std::fs::copy(path, path.with_extension(concat!("json.", env!("APP_COMMAND"), "-bak")))?;
     }
     crate::config::write_atomic(path, serde_json::to_string_pretty(&root)? + "\n")?;
     Ok(path.to_path_buf())
@@ -247,7 +257,7 @@ fn codex_hooks_at_for_platform(path: &std::path::Path, exe: &str, uninstall: boo
         doc.remove("hooks");
     }
     if path.exists() {
-        std::fs::copy(path, path.with_extension("toml.vibecasso-bak"))
+        std::fs::copy(path, path.with_extension(concat!("toml.", env!("APP_COMMAND"), "-bak")))
             .context("back up Codex configuration before updating hooks")?;
     }
     if let Some(dir) = path.parent() {
@@ -276,7 +286,7 @@ fn kimi_at(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<PathBuf
     let hooks = doc["hooks"]
         .as_array_of_tables_mut()
         .context("Kimi hooks must be an array of tables; preserved")?;
-    hooks.retain(|table| table.get("_vibecasso").and_then(toml_edit::Item::as_bool) != Some(true));
+    hooks.retain(|table| table.get(concat!("_", env!("APP_COMMAND"))).and_then(toml_edit::Item::as_bool) != Some(true));
     if !uninstall {
         for (event, status) in [
             ("SessionStart", "same"),
@@ -293,7 +303,7 @@ fn kimi_at(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<PathBuf
             ("PreCompact", "working"),
         ] {
             let mut table = toml_edit::Table::new();
-            table["_vibecasso"] = toml_edit::value(true);
+            table[concat!("_", env!("APP_COMMAND"))] = toml_edit::value(true);
             table["event"] = toml_edit::value(event);
             // AskUserQuestion must be blocked before the tool's permission event exists.
             if event == "PreToolUse" {
@@ -311,12 +321,12 @@ fn kimi_at(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<PathBuf
         ] {
             ask[key] = toml_edit::value(value);
         }
-        ask["_vibecasso"] = toml_edit::value(true);
+        ask[concat!("_", env!("APP_COMMAND"))] = toml_edit::value(true);
         ask["timeout"] = toml_edit::value(10);
         hooks.push(ask);
     }
     if path.exists() {
-        std::fs::copy(path, path.with_extension("toml.vibecasso-bak"))?;
+        std::fs::copy(path, path.with_extension(concat!("toml.", env!("APP_COMMAND"), "-bak")))?;
     }
     crate::config::write_atomic(path, doc.to_string())?;
     Ok(path.to_path_buf())
@@ -347,14 +357,14 @@ fn install_opencode_at(
 ) -> Result<PathBuf> {
     opencode_config::validate_tui_plugin_config(dir)?;
     let assets = [
-        (dir.join("plugins/vibecasso.js"), include_str!("opencode.js")),
+        (dir.join(concat!("plugins/", env!("APP_COMMAND"), ".js")), include_str!("opencode.js")),
         (
-            dir.join("vibecasso-tui-session.js"),
+            dir.join(concat!(env!("APP_COMMAND"), "-tui-session.js")),
             include_str!("opencode-tui.js"),
         ),
         (
-            dir.join("vibecasso-opencode/tui.js"),
-            "// Written by `vibecasso integrate opencode`: TUI v2 entrypoint.\nexport { default } from '../vibecasso-tui-session.js';\n",
+            dir.join(concat!(env!("APP_COMMAND"), "-opencode/tui.js")),
+            concat!("// Written by `", env!("APP_COMMAND"), " integrate opencode`: TUI v2 entrypoint.\nexport { default } from '../", env!("APP_COMMAND"), "-tui-session.js';\n"),
         ),
     ];
     for (path, _) in &assets {
@@ -369,17 +379,17 @@ fn install_opencode_at(
         }
     }
     if uninstall {
-        opencode_config::remove_tui_plugin(dir, "./vibecasso-tui-session.js")?;
-        opencode_config::remove_cli_plugin(dir, "./vibecasso-opencode")?;
+        opencode_config::remove_tui_plugin(dir, concat!("./", env!("APP_COMMAND"), "-tui-session.js"))?;
+        opencode_config::remove_cli_plugin(dir, concat!("./", env!("APP_COMMAND"), "-opencode"))?;
     }
     for (path, source) in assets {
         install(path, source, exe, uninstall)?;
     }
     if !uninstall {
-        opencode_config::add_tui_plugin(dir, "./vibecasso-tui-session.js")?;
-        opencode_config::add_cli_plugin(dir, state, "./vibecasso-opencode")?;
+        opencode_config::add_tui_plugin(dir, concat!("./", env!("APP_COMMAND"), "-tui-session.js"))?;
+        opencode_config::add_cli_plugin(dir, state, concat!("./", env!("APP_COMMAND"), "-opencode"))?;
     }
-    Ok(dir.join("plugins/vibecasso.js"))
+    Ok(dir.join(concat!("plugins/", env!("APP_COMMAND"), ".js")))
 }
 
 pub(crate) fn install_status(agent: &str) -> Result<PathBuf> {
@@ -396,7 +406,7 @@ pub(crate) fn install_status(agent: &str) -> Result<PathBuf> {
     }
 }
 
-/// The primary file whose Vibecasso-owned contents enable each native adapter.
+/// The primary file whose the app-owned contents enable each native adapter.
 /// Existence alone is not reported as live: the provider must reload it and
 /// send an event before the running session can confirm native status.
 pub(crate) fn status_adapter_path(agent: &str) -> Result<PathBuf> {
@@ -408,7 +418,7 @@ pub(crate) fn status_adapter_path(agent: &str) -> Result<PathBuf> {
         "pi" => std::env::var_os("PI_CODING_AGENT_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| home.join(".pi/agent"))
-            .join("extensions/vibecasso.js"),
+            .join(concat!("extensions/", env!("APP_COMMAND"), ".js")),
         "omp" => {
             let dir = std::env::var_os("PI_CODING_AGENT_DIR")
                 .map(PathBuf::from)
@@ -416,12 +426,12 @@ pub(crate) fn status_adapter_path(agent: &str) -> Result<PathBuf> {
                     home.join(std::env::var_os("PI_CONFIG_DIR").unwrap_or_else(|| ".omp".into()))
                         .join("agent")
                 });
-            dir.join("extensions/vibecasso.js")
+            dir.join(concat!("extensions/", env!("APP_COMMAND"), ".js"))
         }
         "kilo" => std::env::var_os("XDG_CONFIG_HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|| home.join(".config"))
-            .join("kilo/plugin/vibecasso.js"),
+            .join(concat!("kilo/plugin/", env!("APP_COMMAND"), ".js")),
         "mastracode" => home.join(".mastracode/hooks.json"),
         "kimi" => std::env::var_os("KIMI_CODE_HOME")
             .map(PathBuf::from)
@@ -430,7 +440,7 @@ pub(crate) fn status_adapter_path(agent: &str) -> Result<PathBuf> {
         "opencode" => std::env::var_os("XDG_CONFIG_HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|| home.join(".config"))
-            .join("opencode/plugins/vibecasso.js"),
+            .join(concat!("opencode/plugins/", env!("APP_COMMAND"), ".js")),
         _ => bail!("unsupported status adapter: {agent}"),
     };
     Ok(path)
@@ -450,7 +460,7 @@ pub(crate) fn status_adapter_installed(agent: &str, path: &std::path::Path) -> b
                 hooks.values().any(|entries| {
                     entries.as_array().is_some_and(|entries| {
                         entries.iter().any(|entry| {
-                            entry.get("_vibecasso").and_then(serde_json::Value::as_bool) == Some(true)
+                            entry.get(concat!("_", env!("APP_COMMAND"))).and_then(serde_json::Value::as_bool) == Some(true)
                         })
                     })
                 })
@@ -461,7 +471,7 @@ pub(crate) fn status_adapter_installed(agent: &str, path: &std::path::Path) -> b
             .and_then(|hooks| hooks.as_array().cloned())
             .is_some_and(|hooks| {
                 hooks.iter().any(|hook| {
-                    hook.get("_vibecasso").and_then(toml::Value::as_bool) == Some(true)
+                    hook.get(concat!("_", env!("APP_COMMAND"))).and_then(toml::Value::as_bool) == Some(true)
                 })
             }),
         _ => false,
@@ -473,26 +483,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn native_adapter_diagnostics_only_recognize_vibecasso_owned_installations() {
+    fn native_adapter_diagnostics_only_recognize_app_owned_installations() {
         let dir = std::env::temp_dir().join(format!(
-            "vibecasso-doctor-adapters-{}",
+            concat!(env!("APP_COMMAND"), "-doctor-adapters-{}"),
             std::process::id()
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        let plugin = dir.join("vibecasso.js");
-        std::fs::write(&plugin, "// Written by `vibecasso integrate pi`\n").unwrap();
+        let plugin = dir.join(concat!(env!("APP_COMMAND"), ".js"));
+        std::fs::write(&plugin, concat!("// Written by `", env!("APP_COMMAND"), " integrate pi`\n")).unwrap();
         assert!(status_adapter_installed("pi", &plugin));
         std::fs::write(&plugin, "// a different extension\n").unwrap();
         assert!(!status_adapter_installed("pi", &plugin));
 
         let mastra = dir.join("hooks.json");
-        std::fs::write(&mastra, r#"{"hooks":{"Stop":[{"_vibecasso":true}]}}"#).unwrap();
+        std::fs::write(&mastra, concat!(r#"{"hooks":{"Stop":[{"_"#, env!("APP_COMMAND"), r#"":true}]}}"#)).unwrap();
         assert!(status_adapter_installed("mastracode", &mastra));
         std::fs::write(&mastra, r#"{"hooks":{"Stop":[{"command":"mine"}]}}"#).unwrap();
         assert!(!status_adapter_installed("mastracode", &mastra));
 
         let kimi = dir.join("config.toml");
-        std::fs::write(&kimi, "[[hooks]]\n_vibecasso = true\n").unwrap();
+        std::fs::write(&kimi, concat!("[[hooks]]\n_", env!("APP_COMMAND"), " = true\n")).unwrap();
         assert!(status_adapter_installed("kimi", &kimi));
         std::fs::remove_dir_all(dir).unwrap();
     }
@@ -500,7 +510,7 @@ mod tests {
     #[test]
     fn opencode_setup_preserves_jsonc_and_migration_then_removes_only_our_entries() {
         let dir =
-            std::env::temp_dir().join(format!("vibecasso-opencode-config-{}", std::process::id()));
+            std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-opencode-config-{}"), std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let state = dir.join("state");
         let config = dir.join("tui.jsonc");
@@ -509,7 +519,7 @@ mod tests {
             "{\n// keep my theme\n\"theme\":\"dark\",\"plugin\":[\"my-plugin\"],\n}\n",
         )
         .unwrap();
-        install_opencode_at(&dir, &state, "/bin/vibecasso", false).unwrap();
+        install_opencode_at(&dir, &state, concat!("/bin/", env!("APP_COMMAND")), false).unwrap();
         let once = std::fs::read_to_string(&config).unwrap();
         assert!(
             once.contains("// keep my theme")
@@ -518,25 +528,25 @@ mod tests {
         );
         assert!(!dir.join("tui.json").exists());
         assert!(dir.join("cli.json").exists());
-        install_opencode_at(&dir, &state, "/bin/vibecasso", false).unwrap();
+        install_opencode_at(&dir, &state, concat!("/bin/", env!("APP_COMMAND")), false).unwrap();
         assert_eq!(std::fs::read_to_string(&config).unwrap(), once);
-        install_opencode_at(&dir, &state, "/bin/vibecasso", true).unwrap();
+        install_opencode_at(&dir, &state, concat!("/bin/", env!("APP_COMMAND")), true).unwrap();
         let removed = std::fs::read_to_string(&config).unwrap();
         assert!(removed.contains("my-plugin") && removed.contains("// keep my theme"));
-        assert!(!removed.contains("vibecasso-tui-session"));
-        assert!(!dir.join("plugins/vibecasso.js").exists());
+        assert!(!removed.contains(concat!(env!("APP_COMMAND"), "-tui-session")));
+        assert!(!dir.join(concat!("plugins/", env!("APP_COMMAND"), ".js")).exists());
         std::fs::write(dir.join("tui.json"), "{\"theme\":\"keep-for-migration\"}").unwrap();
         std::fs::remove_file(dir.join("cli.json")).unwrap();
-        install_opencode_at(&dir, &state, "/bin/vibecasso", false).unwrap();
+        install_opencode_at(&dir, &state, concat!("/bin/", env!("APP_COMMAND")), false).unwrap();
         assert!(
             !dir.join("cli.json").exists(),
             "do not prevent OpenCode importing V1 settings"
         );
-        install_opencode_at(&dir, &state, "/bin/vibecasso", true).unwrap();
+        install_opencode_at(&dir, &state, concat!("/bin/", env!("APP_COMMAND")), true).unwrap();
         std::fs::write(&config, "{\"plugin\":false}").unwrap();
-        assert!(install_opencode_at(&dir, &state, "/bin/vibecasso", false).is_err());
+        assert!(install_opencode_at(&dir, &state, concat!("/bin/", env!("APP_COMMAND")), false).is_err());
         assert!(
-            !dir.join("plugins/vibecasso.js").exists(),
+            !dir.join(concat!("plugins/", env!("APP_COMMAND"), ".js")).exists(),
             "invalid config must fail before writing assets"
         );
         std::fs::remove_dir_all(dir).unwrap();
@@ -544,7 +554,7 @@ mod tests {
 
     #[test]
     fn native_hook_configs_preserve_custom_hooks_and_use_each_apps_schema() {
-        let dir = std::env::temp_dir().join(format!("vibecasso-native-config-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-native-config-{}"), std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let mastra = dir.join("hooks.json");
         std::fs::write(
@@ -553,7 +563,7 @@ mod tests {
         )
         .unwrap();
         for _ in 0..2 {
-            mastracode_at(&mastra, "/bin/vibecasso", false).unwrap();
+            mastracode_at(&mastra, concat!("/bin/", env!("APP_COMMAND")), false).unwrap();
         }
         let root: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&mastra).unwrap()).unwrap();
@@ -565,7 +575,7 @@ mod tests {
             root["hooks"]["PermissionRequest"][0].get("hooks").is_none(),
             "Mastracode uses flat command arrays"
         );
-        mastracode_at(&mastra, "/bin/vibecasso", true).unwrap();
+        mastracode_at(&mastra, concat!("/bin/", env!("APP_COMMAND")), true).unwrap();
         let root: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&mastra).unwrap()).unwrap();
         assert_eq!(root["hooks"]["Stop"][0]["command"], "my hook");
@@ -573,14 +583,14 @@ mod tests {
         let kimi = dir.join("config.toml");
         std::fs::write(&kimi, "# keep my config\nmodel = \"my-model\"\n[[hooks]]\nevent = \"Stop\"\ncommand = \"my hook\"\n").unwrap();
         for _ in 0..2 {
-            kimi_at(&kimi, "/bin/vibecasso", false).unwrap();
+            kimi_at(&kimi, concat!("/bin/", env!("APP_COMMAND")), false).unwrap();
         }
         let text = std::fs::read_to_string(&kimi).unwrap();
         assert!(text.contains("# keep my config"));
         let root: toml::Value = toml::from_str(&text).unwrap();
         assert!(root["hooks"].as_array().unwrap().iter().any(|hook| hook["event"].as_str() == Some("SubagentStart")));
         assert!(root["hooks"].as_array().unwrap().iter().any(|hook| hook["event"].as_str() == Some("SubagentStop")));
-        kimi_at(&kimi, "/bin/vibecasso", true).unwrap();
+        kimi_at(&kimi, concat!("/bin/", env!("APP_COMMAND")), true).unwrap();
         let root: toml::Value = toml::from_str(&std::fs::read_to_string(&kimi).unwrap()).unwrap();
         assert_eq!(root["hooks"].as_array().unwrap().len(), 1);
         assert_eq!(root["hooks"][0]["command"].as_str(), Some("my hook"));
@@ -589,58 +599,58 @@ mod tests {
 
     #[test]
     fn codex_subagent_hooks_are_live_idempotent_and_leave_other_hooks_intact() {
-        let dir = std::env::temp_dir().join(format!("vibecasso-codex-hooks-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-codex-hooks-{}"), std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
         std::fs::write(&path, "# keep my settings\nmodel = \"gpt-5\"\nnotify = [\"my-notifier\"]\n[[hooks.SubagentStart]]\nmatcher = \"reviewer\"\n[[hooks.SubagentStart.hooks]]\ntype = \"command\"\ncommand = \"my-start-hook\"\n").unwrap();
 
-        codex_hooks_at_for_platform(&path, r#"C:\Program Files\Vibecasso\vibecasso.exe"#, false, true).unwrap();
+        codex_hooks_at_for_platform(&path, concat!(r#"C:\Program Files\"#, env!("APP_NAME"), r#"\"#, env!("APP_COMMAND"), r#".exe"#), false, true).unwrap();
         let first = std::fs::read_to_string(&path).unwrap();
-        codex_hooks_at_for_platform(&path, r#"C:\Program Files\Vibecasso\vibecasso.exe"#, false, true).unwrap();
+        codex_hooks_at_for_platform(&path, concat!(r#"C:\Program Files\"#, env!("APP_NAME"), r#"\"#, env!("APP_COMMAND"), r#".exe"#), false, true).unwrap();
         let second = std::fs::read_to_string(&path).unwrap();
         assert_eq!(first, second, "setup is idempotent");
         assert!(second.contains("# keep my settings") && second.contains("my-notifier"));
         let config: toml::Value = toml::from_str(&second).unwrap();
         for event in ["SessionStart", "SubagentStart", "SubagentStop"] {
             let entries = config["hooks"][event].as_array().unwrap();
-            let vibecasso_handlers: Vec<_> = entries.iter().flat_map(|entry| {
+            let app_handlers: Vec<_> = entries.iter().flat_map(|entry| {
                 entry["hooks"].as_array().into_iter().flatten()
             }).filter(|handler| {
                 handler["command"].as_str().is_some_and(|command| command.contains("hook codex"))
             }).collect();
-            assert_eq!(vibecasso_handlers.len(), 1, "one live handler for {event}");
-            let command = vibecasso_handlers[0]["command"].as_str().unwrap();
+            assert_eq!(app_handlers.len(), 1, "one live handler for {event}");
+            let command = app_handlers[0]["command"].as_str().unwrap();
             if event == "SessionStart" {
                 assert!(command.ends_with("hook codex --status same"));
-                assert_eq!(vibecasso_handlers[0]["commandWindows"].as_str(), Some(r#"& "C:\Program Files\Vibecasso\vibecasso.exe" hook codex --status same"#));
+                assert_eq!(app_handlers[0]["commandWindows"].as_str(), Some(concat!(r#"& "C:\Program Files\"#, env!("APP_NAME"), r#"\"#, env!("APP_COMMAND"), r#".exe" hook codex --status same"#)));
             } else {
                 assert!(command.ends_with("hook codex"));
-                assert_eq!(vibecasso_handlers[0]["commandWindows"].as_str(), Some(r#"& "C:\Program Files\Vibecasso\vibecasso.exe" hook codex"#));
+                assert_eq!(app_handlers[0]["commandWindows"].as_str(), Some(concat!(r#"& "C:\Program Files\"#, env!("APP_NAME"), r#"\"#, env!("APP_COMMAND"), r#".exe" hook codex"#)));
             }
         }
         assert_eq!(config["hooks"]["SubagentStart"][0]["matcher"].as_str(), Some("reviewer"));
         assert_eq!(config["hooks"]["SubagentStart"][0]["hooks"][0]["command"].as_str(), Some("my-start-hook"));
 
-        codex_hooks_at(&path, r#"C:\Program Files\Vibecasso\vibecasso.exe"#, true).unwrap();
+        codex_hooks_at(&path, concat!(r#"C:\Program Files\"#, env!("APP_NAME"), r#"\"#, env!("APP_COMMAND"), r#".exe"#), true).unwrap();
         let removed = std::fs::read_to_string(&path).unwrap();
         assert!(removed.contains("# keep my settings") && removed.contains("my-notifier") && removed.contains("my-start-hook"));
-        assert!(!removed.contains("hook codex"), "only vibecasso's hooks are removed");
+        assert!(!removed.contains("hook codex"), concat!("only ", env!("APP_COMMAND"), "'s hooks are removed"));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn codex_linux_hooks_keep_the_bash_command_and_capture_the_root_thread() {
-        let dir = std::env::temp_dir().join(format!("vibecasso-codex-linux-hooks-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-codex-linux-hooks-{}"), std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
-        codex_hooks_at_for_platform(&path, "/home/test/.local/bin/vibecasso", false, false).unwrap();
+        codex_hooks_at_for_platform(&path, concat!("/home/test/.local/bin/", env!("APP_COMMAND")), false, false).unwrap();
         let config: toml::Value = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         let start = &config["hooks"]["SessionStart"][0]["hooks"][0];
-        assert_eq!(start["command"].as_str(), Some("\"/home/test/.local/bin/vibecasso\" hook codex --status same"));
+        assert_eq!(start["command"].as_str(), Some(concat!("\"/home/test/.local/bin/", env!("APP_COMMAND"), "\" hook codex --status same")));
         assert!(start.get("commandWindows").is_none(), "Linux config must not contain a PowerShell command");
         assert!(config["hooks"].get("SubagentStart").is_some());
         assert!(config["hooks"].get("SubagentStop").is_some());
-        codex_hooks_at_for_platform(&path, "/home/test/.local/bin/vibecasso", true, false).unwrap();
+        codex_hooks_at_for_platform(&path, concat!("/home/test/.local/bin/", env!("APP_COMMAND")), true, false).unwrap();
         assert!(!std::fs::read_to_string(&path).unwrap().contains("hook codex"));
         std::fs::remove_dir_all(dir).unwrap();
     }
@@ -648,14 +658,14 @@ mod tests {
     #[test]
     fn status_extensions_preserve_other_files_and_quote_executable_paths() {
         let dir =
-            std::env::temp_dir().join(format!("vibecasso-status-extension-{}", std::process::id()));
-        let path = dir.join("extensions/vibecasso.js");
-        let exe = r#"C:\Program Files\vibecasso\vibecasso.exe"#;
+            std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-status-extension-{}"), std::process::id()));
+        let path = dir.join(concat!("extensions/", env!("APP_COMMAND"), ".js"));
+        let exe = concat!(r#"C:\Program Files\"#, env!("APP_COMMAND"), r#"\"#, env!("APP_COMMAND"), r#".exe"#);
         let source = include_str!("pi.js");
         install(path.clone(), source, exe, false).unwrap();
         let written = std::fs::read_to_string(&path).unwrap();
         assert!(written.contains(&serde_json::to_string(exe).unwrap()));
-        assert!(!written.contains("__VIBECASSO_EXE__"));
+        assert!(!written.contains("__APP_"), "every placeholder filled in");
         install(path.clone(), source, exe, false).unwrap();
         install(path.clone(), source, exe, true).unwrap();
         assert!(!path.exists());

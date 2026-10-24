@@ -1,7 +1,8 @@
-//! What a new vibecasso shows when the server already running is another version: a full-screen
+//! What a new the app shows when the server already running is another version: a full-screen
 //! choice instead of an error, so one click replaces the old server.
 
 use super::design::{BtnKind, button, fill, put, seg, segs_width};
+use crate::brand::{APP_NAME};
 use crate::config::Config;
 use crate::theme::Theme;
 use anyhow::Result;
@@ -86,8 +87,8 @@ impl Prompt {
         let age = if self.daemon < this { "older" } else { "newer" };
         let cost = self.cost();
         let lines = [
-            (0, "Vibecasso".to_string(), ground.fg(t.strong).add_modifier(Modifier::BOLD)),
-            (2, format!("The running Vibecasso server is {age} (protocol v{}; this one is v{this}).", self.daemon), ground.fg(t.text)),
+            (0, env!("APP_NAME").to_string(), ground.fg(t.strong).add_modifier(Modifier::BOLD)),
+            (2, format!("The running {APP_NAME} server is {age} (protocol v{}; this one is v{this}).", self.daemon), ground.fg(t.text)),
             (3, cost, ground.fg(t.muted)),
         ];
         let top = area.y + area.height.saturating_sub(BLOCK_HEIGHT) / 2;
@@ -177,7 +178,7 @@ mod tests {
         term.draw(|f| prompt.draw(f)).unwrap();
         let buf = term.backend().buffer().clone();
         let out: String = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>().trim_end().to_string() + "\n").collect();
-        if std::env::var("VIBECASSO_SHOW").is_ok() {
+        if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
             println!("{out}");
         }
         out

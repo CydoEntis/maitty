@@ -158,7 +158,7 @@ const FIRST_FAILING: &str = "✗ src/pages/legal.test.tsx > footer shows current
 
 /// The repo file a repo-supplied command comes from, added three days ago.
 fn from_repo() -> CheckSource {
-    CheckSource::Repo { file: ".vibecasso/checks.toml".into(), commit: Some("a1b2c3d".into()), committed_at: Some(now() - 3 * 24 * HOUR), uncommitted: false }
+    CheckSource::Repo { file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(), commit: Some("a1b2c3d".into()), committed_at: Some(now() - 3 * 24 * HOUR), uncommitted: false }
 }
 
 /// fix-footer's checkpoints at `stage`, as `drawEvidence` reads them.
@@ -283,10 +283,10 @@ pub(super) fn cells(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str)
 }
 
 /// `app` drawn in `layout` at `w`×`h` with the `glyphs` set (`unicode`, `ascii`, `nerd`), as
-/// text: one line per row, trailing spaces trimmed. `VIBECASSO_SHOW=1` prints it under a heading
+/// text: one line per row, trailing spaces trimmed. `<APP>_SHOW=1` prints it under a heading
 /// like the handoff's reference frames.
-/// Row 0 as the handoff draws it: its tabs end without the `✕ ` Vibecasso gives each, and its frames
-/// have no `+` chip after them (Vibecasso keeps one, so a tab opens with a click). What Vibecasso adds
+/// Row 0 as the handoff draws it: its tabs end without the `✕ ` the app gives each, and its frames
+/// have no `+` chip after them (the app keeps one, so a tab opens with a click). What the app adds
 /// reads as the title's own fill, so everything after it keeps its column.
 fn without_new_tab_chip(row: &str) -> String {
     let chars: Vec<char> = row.chars().collect();
@@ -472,7 +472,7 @@ pub(super) fn frame(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str)
             row.trim_end().to_string() + "\n"
         })
         .collect();
-    if std::env::var("VIBECASSO_SHOW").is_ok() {
+    if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
         println!("===== {layout:?} | {w}x{h} | {glyphs}\n{text}");
     }
     text

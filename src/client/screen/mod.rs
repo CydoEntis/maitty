@@ -1,4 +1,4 @@
-//! The Vibecasso layout, from the design handoff: projects (git repos) in the sidebar, each
+//! The app's layout, from the design handoff: projects (git repos) in the sidebar, each
 //! project's worktrees with the sessions running in them, and the focused session full size
 //! (optionally split with a second). Most tools are centred overlays over a dimmed
 //! screen: jump, new pane, talk and keys. Settings uses a centred modal; review uses a right-hand sheet
@@ -13,6 +13,7 @@ use super::design::{
     question, seg, segs_width, state_label, tilde,
 };
 use super::render::{blend, render_screen, truncate};
+use crate::brand::{APP_COMMAND};
 use super::{App, Hit, Mode};
 use crate::keys::Action;
 use crate::protocol::{CheckInfo, Status, SubagentActivity, TermId, TermInfo};
@@ -35,7 +36,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 // ---- state ---------------------------------------------------------------------------------
 
 /// What the user chose that the daemon doesn't track: the colour order, folded rows.
-/// Saved to `vibecasso-ui.json` in the data folder.
+/// Saved to `<app>-ui.json` in the data folder.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub(super) struct Saved {
@@ -56,7 +57,7 @@ pub(super) struct Saved {
     pub split: Option<f32>,
     /// A task typed into + New and not started yet.
     pub draft: String,
-    /// The agent last started from Vibecasso (what `sessions.agent = last used` starts).
+    /// The agent last started from the app (what `sessions.agent = last used` starts).
     pub last_agent: String,
     /// Projects you renamed: key -> name.
     pub names: HashMap<String, String>,
@@ -79,7 +80,7 @@ pub(super) struct Screen {
     /// Two sessions side by side: (left, right). One of them is the focused one.
     /// Tabs: each shows one session or any number side by side.
     pub tabs: Vec<ScreenTab>,
-    /// Panes whose program gets right-clicks (no vibecasso menu there; Shift+right-click for it).
+    /// Panes whose program gets right-clicks (no the app menu there; Shift+right-click for it).
     pub right_clicks: HashSet<TermId>,
     /// Which way the next "split" goes.
     pub split_dir: Option<crate::layout::Dir>,
@@ -232,10 +233,10 @@ pub(super) const SIDE_MIN: u16 = 24;
 pub(super) const SIDE_MAX: u16 = 60;
 
 fn saved_path() -> PathBuf {
-    // Per server, like the saved session: a test server (VIBECASSO_SOCKET) keeps its own.
-    let name = match std::env::var("VIBECASSO_SOCKET") {
-        Ok(l) if l != "default" => format!("vibecasso-ui-{l}.json"),
-        _ => "vibecasso-ui.json".into(),
+    // Per server, like the saved session: a test server (<APP>_SOCKET) keeps its own.
+    let name = match std::env::var(concat!(env!("APP_ENV"), "_SOCKET")) {
+        Ok(l) if l != "default" => format!("{APP_COMMAND}-ui-{l}.json"),
+        _ => concat!(env!("APP_COMMAND"), "-ui.json").into(),
     };
     crate::config::data_dir().join(name)
 }
@@ -257,7 +258,7 @@ impl Screen {
         if let Ok(s) = serde_json::to_string_pretty(&self.saved)
             && let Err(e) = crate::config::write_atomic(&saved_path(), s)
         {
-            tracing::warn!("couldn't save vibecasso's state: {e}");
+            tracing::warn!("couldn't save {APP_COMMAND}'s state: {e}");
         }
     }
 }
@@ -326,7 +327,7 @@ pub(super) struct Session {
     /// Subagents it's running right now.
     pub subagents: Vec<String>,
     pub subagent_activity: Vec<SubagentActivity>,
-    /// Stopped by a plan limit: vibecasso says "continue" then (unix seconds).
+    /// Stopped by a plan limit: the app says "continue" then (unix seconds).
     pub resume_at: Option<u64>,
     /// The session whose agent started this one, if one did.
     pub started_by: Option<TermId>,
@@ -334,7 +335,7 @@ pub(super) struct Session {
     pub helpers_wanted: usize,
     /// Follow-ups waiting for its turn to end, next first.
     pub queued: Vec<String>,
-    /// The latest check Vibecasso ran after its turn: the headline of `checks`.
+    /// The latest check the app ran after its turn: the headline of `checks`.
     pub check: Option<CheckInfo>,
     /// Every checkpoint, in the project's order.
     pub checks: Vec<CheckInfo>,
@@ -887,7 +888,7 @@ fn row_name(t: &TermInfo, root: &Path, top: &Path, main: bool, git: bool) -> Str
         return folder_name(top);
     }
     let cwd = if t.cwd.as_os_str().is_empty() { top } else { t.cwd.as_path() };
-    // An agent by its name; a program (vim, a harness vibecasso doesn't know) by its own.
+    // An agent by its name; a program (vim, a harness the app doesn't know) by its own.
     let kind = t.agent.clone().unwrap_or_else(|| if t.is_shell() || t.process.is_empty() { "shell".into() } else { t.process.clone() });
     match cwd.strip_prefix(root) {
         Ok(rel) if !rel.as_os_str().is_empty() => rel.display().to_string().replace('\\', "/"),
@@ -977,9 +978,9 @@ pub(super) enum ScreenHit {
     /// The sidebar's empty space: the keys go to it.
     SideFocus,
     ExpandSidebar,
-    /// Install the newer vibecasso (in Settings › General).
+    /// Install the newer the app (in Settings › General).
     Update,
-    /// Ask now whether a newer vibecasso is out (the same place, when none is known).
+    /// Ask now whether a newer the app is out (the same place, when none is known).
     CheckUpdate,
     /// Restart the daemon onto the installed version (after an update).
     Restart,

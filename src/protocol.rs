@@ -30,7 +30,7 @@ pub enum ClientMsg {
     Command(Command),
     Input { term: TermId, #[serde(with = "serde_bytes")] data: Vec<u8> },
     Resize { term: TermId, cols: u16, rows: u16 },
-    /// Lifecycle event reported by an agent's hook (`vibecasso hook ...`).
+    /// Lifecycle event reported by an agent's hook (`<app> hook ...`).
     Hook {
         term: TermId,
         agent: String,
@@ -47,7 +47,7 @@ pub enum ClientMsg {
         event: String,
         /// The reporting process; only reports from inside the pane's own process tree count.
         pid: u32,
-        /// The pane's secret (VIBECASSO_PANE_TOKEN), for when the process chain can't be traced
+        /// The pane's secret (<APP>_PANE_TOKEN), for when the process chain can't be traced
         /// (Git Bash on Windows hands each command to a fresh process).
         #[serde(default)]
         token: String,
@@ -101,7 +101,7 @@ pub enum Command {
     ClosePane { term: TermId },
     /// Focus a pane anywhere: switches workspace and tab as needed.
     FocusPane { term: TermId },
-    /// Focus a pane and bring the windows showing vibecasso to the front (a notification for it
+    /// Focus a pane and bring the windows showing the app to the front (a notification for it
     /// was clicked).
     Reveal { term: TermId },
     /// You've seen a finished agent (the cursor rested on it): done → idle.
@@ -109,7 +109,7 @@ pub enum Command {
     /// Name a pane yourself (empty: back to the automatic name).
     RenamePane { term: TermId, name: String },
     /// The agent in `term` moves into a new worktree of its repo: made now, and when its turn
-    /// ends it restarts there, resumed (the agent runs `vibecasso worktree --move`).
+    /// ends it restarts there, resumed (the agent runs `<app> worktree --move`).
     MoveToWorktree { term: TermId, branch: Option<String> },
     /// Grow (positive) or shrink the pane along `dir`'s axis by `delta` (fraction of parent).
     ResizePane { term: TermId, dir: Dir, delta: f32 },
@@ -160,7 +160,7 @@ pub enum Command {
     AskHuman { term: TermId, text: String, options: Vec<String> },
     /// Your answer (index into its options) to question `id`.
     AnswerHuman { id: u64, choice: usize },
-    /// What a pane may do through vibecasso (read, write, start, respond, admin); None goes back
+    /// What a pane may do through the app (read, write, start, respond, admin); None goes back
     /// to the default from config. Only you can (not from inside a pane).
     Grant { term: TermId, grants: Option<Vec<String>> },
     /// A follow-up for an agent that's working: typed into it when its turn is over.
@@ -364,13 +364,13 @@ pub struct Snapshot {
     pub workspaces: Vec<WorkspaceInfo>,
     pub active_ws: Option<WsId>,
     pub terms: BTreeMap<TermId, TermInfo>,
-    /// Questions agents asked you (`vibecasso ask-human`), waiting for an answer.
+    /// Questions agents asked you (`<app> ask-human`), waiting for an answer.
     #[serde(default)]
     pub questions: Vec<HumanQuestion>,
     /// Plan limits by agent ("claude", "codex"), as last reported.
     #[serde(default)]
     pub limits: Vec<(String, Vec<Limit>)>,
-    /// What Claude sessions in vibecasso have cost over the last day, at list price.
+    /// What Claude sessions in the app have cost over the last day, at list price.
     #[serde(default)]
     pub spent_today: f64,
     /// What each agent got done over the last day, by agent and folder.
@@ -406,7 +406,7 @@ pub struct WorkspaceInfo {
     pub tabs: Vec<TabInfo>,
     pub active_tab: TabId,
     pub git: Option<GitInfo>,
-    /// A worktree vibecasso created; offered for removal when closed.
+    /// A worktree the app created; offered for removal when closed.
     pub worktree: bool,
     /// Palette index for this workspace's colour (tint, borders, sidebar marker).
     pub color: u8,
@@ -426,7 +426,7 @@ pub struct GitInfo {
     pub linked: bool,
     /// The repository's main checkout; workspaces sharing it are one repo.
     pub root: PathBuf,
-    /// Every worktree of the repository, open in vibecasso or not.
+    /// Every worktree of the repository, open in the app or not.
     pub worktrees: Vec<WorktreeEntry>,
     /// For a linked worktree: commits on its branch that the main checkout's branch lacks.
     pub ahead: u32,
@@ -454,7 +454,7 @@ pub struct TermInfo {
     /// The machine an ssh (or mosh, …) client in the pane is connected to.
     #[serde(default)]
     pub remote: Option<String>,
-    /// A floating pane over everything (`vibecasso popup`); gone when its command exits.
+    /// A floating pane over everything (`<app> popup`); gone when its command exits.
     #[serde(default)]
     pub popup: bool,
     /// Detected or hook-reported agent name.
@@ -465,7 +465,7 @@ pub struct TermInfo {
     pub summary: String,
     /// What to call it: the name you gave it in the agent (/rename), else its first prompt.
     pub name: String,
-    /// The name you gave the pane in vibecasso (Rename pane), which wins over everything.
+    /// The name you gave the pane in the app (Rename pane), which wins over everything.
     #[serde(default)]
     pub label: String,
     /// The model it's using, short ("opus 4.5"), if known.
@@ -539,10 +539,10 @@ pub struct TermInfo {
     /// Context and cost, when the agent reports them.
     #[serde(default)]
     pub usage: Usage,
-    /// It hit a plan limit; vibecasso says "continue" at this time (unix seconds).
+    /// It hit a plan limit; the app says "continue" at this time (unix seconds).
     #[serde(default)]
     pub resume_at: Option<u64>,
-    /// The latest result of each checkpoint Vibecasso runs after its turn ends, in project order.
+    /// The latest result of each checkpoint the app runs after its turn ends, in project order.
     /// The output stays on the daemon. An older peer's single `check` reads as one checkpoint.
     #[serde(default, alias = "check", deserialize_with = "one_or_many_checks")]
     pub checks: Vec<CheckInfo>,
@@ -591,7 +591,7 @@ pub enum CheckState {
 }
 
 impl CheckState {
-    /// The name scripts read in `vibecasso ls --json`.
+    /// The name scripts read in `<app> ls --json`.
     pub fn label(self) -> &'static str {
         match self {
             CheckState::Checking => "checking",
@@ -625,10 +625,10 @@ impl CheckState {
 /// Who named a check command.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CheckSource {
-    /// You, in Vibecasso's settings.
+    /// You, in the app's settings.
     #[default]
     User,
-    /// The repository's own file (`.vibecasso/checks.toml`), as of `commit` when it is committed.
+    /// The repository's own file (`.<app>/checks.toml`), as of `commit` when it is committed.
     Repo { file: String, commit: Option<String>, committed_at: Option<u64>, uncommitted: bool },
 }
 
@@ -906,7 +906,7 @@ mod tests {
             stale_since: Some(140),
             changed_files: vec![ChangedFile { kind: 'M', path: "src/a.rs".into() }, ChangedFile { kind: 'A', path: "tests/b.rs".into() }],
             overridden_by: "you".into(),
-            source: CheckSource::Repo { file: ".vibecasso/checks.toml".into(), commit: Some("a1b2c3d".into()), committed_at: Some(80), uncommitted: true },
+            source: CheckSource::Repo { file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(), commit: Some("a1b2c3d".into()), committed_at: Some(80), uncommitted: true },
             previous_command: Some("npm t".into()),
         }
     }

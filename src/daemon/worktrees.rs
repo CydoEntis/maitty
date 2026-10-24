@@ -1,6 +1,7 @@
 //! Worktrees: making and trusting them, spares kept warm, hooks, cleanup.
 
 use super::*;
+use crate::brand::{APP_COMMAND};
 
 /// The repository a folder belongs to: its main checkout (worktrees resolve to the repo
 /// they were made from). `None` outside git.
@@ -19,7 +20,7 @@ pub(super) fn repo_of(dir: &std::path::Path) -> Option<PathBuf> {
 
 /// Where the spare worktree is noted, so one left behind by a crash is cleaned up.
 pub(super) fn spare_file() -> PathBuf {
-    let label = std::env::var("VIBECASSO_SOCKET").unwrap_or_else(|_| "default".into());
+    let label = std::env::var(concat!(env!("APP_ENV"), "_SOCKET")).unwrap_or_else(|_| "default".into());
     crate::config::data_dir().join(format!("spare-{label}.txt"))
 }
 
@@ -121,7 +122,7 @@ pub(super) fn trust_once(file: &std::path::Path, repo: &std::path::Path, worktre
     }
     // Write beside and swap, so a reader never sees half a file; check it's still the
     // version we read right before swapping.
-    let tmp = file.with_extension("json.vibecasso-tmp");
+    let tmp = file.with_extension(concat!("json.", env!("APP_COMMAND"), "-tmp"));
     let Ok(s) = serde_json::to_string_pretty(&v) else { return Trust::Done };
     if std::fs::write(&tmp, s).is_err() {
         return Trust::Done;
@@ -204,7 +205,7 @@ impl Daemon {
     }
 
 
-    /// A worktree hook (`on_create` / `on_remove` in the repo's .vibecasso.toml) as a job to run.
+    /// A worktree hook (`on_create` / `on_remove` in the repo's .the app.toml) as a job to run.
     pub(super) fn hook_job(&self, dir: &std::path::Path, create: bool) -> Option<impl FnOnce() -> String + Send + 'static + use<>> {
         let proj = crate::project::load(dir);
         let cmd = if create { proj.hooks.on_create } else { proj.hooks.on_remove };
@@ -217,12 +218,12 @@ impl Daemon {
         Some(move || {
             let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             if !allowed {
-                return format!("{name}: this repo's {} wants to run `{cmd}`; run `vibecasso allow` in the repo to let it", crate::project::FILE);
+                return format!("{name}: this repo's {} wants to run `{cmd}`; run `{APP_COMMAND} allow` in the repo to let it", crate::project::FILE);
             }
-            let mut vars = vec![("VIBECASSO_WORKTREE", dir.display().to_string())];
+            let mut vars = vec![(concat!(env!("APP_ENV"), "_WORKTREE"), dir.display().to_string())];
             if let Some(h) = crate::gitfs::head(&dir) {
-                vars.push(("VIBECASSO_BRANCH", h.branch.clone()));
-                vars.push(("VIBECASSO_REPO", h.main_root.display().to_string()));
+                vars.push((concat!(env!("APP_ENV"), "_BRANCH"), h.branch.clone()));
+                vars.push((concat!(env!("APP_ENV"), "_REPO"), h.main_root.display().to_string()));
             }
             let what = if create { "on_create" } else { "on_remove" };
             match crate::project::run_hook(&shell, &dir, &cmd, &vars) {
@@ -251,7 +252,7 @@ impl Daemon {
             .collect()
     }
 
-    /// Now and then: worktrees vibecasso made that nothing runs in any more (their session
+    /// Now and then: worktrees the app made that nothing runs in any more (their session
     /// crashed, or ended some way other than you closing it) and that hold nothing of their
     /// own go, as they would have when you closed their last session.
     pub(super) fn sweep_worktrees(&mut self) {
@@ -299,7 +300,7 @@ impl Daemon {
         (go, stay)
     }
 
-    /// After you close something: remove worktrees vibecasso made that nothing runs in any
+    /// After you close something: remove worktrees the app made that nothing runs in any
     /// more. Git refuses if there are uncommitted changes, and the branch is always kept.
     pub(super) fn cleanup_worktrees(&mut self, client: ClientId, tops: Vec<PathBuf>) {
         if !self.cfg.worktree.delete_with_last {

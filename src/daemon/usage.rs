@@ -57,7 +57,7 @@ impl Daemon {
         }
     }
 
-    /// What sessions in vibecasso have cost over the last day.
+    /// What sessions in the app have cost over the last day.
     pub(super) fn spent_today(&self) -> f64 {
         let now = term::unix_now();
         self.spent.iter().filter(|(at, ..)| now.saturating_sub(*at) < DAY).map(|(_, c, ..)| c).sum()
@@ -529,7 +529,7 @@ mod tests {
         assert_eq!(codex_running("{\"type\":\"response_item\"}"), None, "no task line in what was read");
         assert!(codex_goal_turn(&format!("{started}\n{done}\n{by_goal}")) && !codex_goal_turn(&format!("{by_goal}\n{done}\n{started}")), "the last turn's trigger");
         // On disk: a root working toward a goal, one subagent still going, one finished.
-        let dir = std::env::temp_dir().join(format!("vibecasso-codex-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-codex-{}"), std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let file = |name: &str, body: &str| {

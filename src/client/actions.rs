@@ -393,7 +393,7 @@ impl App {
     }
 
 
-    /// Open a file in your editor: terminal editors inside vibecasso beside what you're on,
+    /// Open a file in your editor: terminal editors inside the app beside what you're on,
     /// others (VS Code, …) as their own window.
     pub(super) fn open_in_editor(&mut self, path: &std::path::Path) {
         self.open_in_editor_at(path, None);

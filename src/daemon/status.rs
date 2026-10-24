@@ -108,7 +108,7 @@ impl Daemon {
                         });
                         if sa.start {
                             // Its start, or news from one already running (listed once; one
-                            // missed while vibecasso was away joins the list here).
+                            // missed while the app was away joins the list here).
                             if event_is_current && (sa.id.is_empty() || !t.subagents.iter().any(|(id, _)| *id == sa.id)) {
                                 t.subagents.push((sa.id.clone(), sa.kind.clone()));
                             }
@@ -143,7 +143,7 @@ impl Daemon {
                             // A stop with no id can only be for the last one started.
                             t.subagents.pop();
                         }
-                        // A stop for an id we never saw start (it began before vibecasso was
+                        // A stop for an id we never saw start (it began before the app was
                         // listening) must not remove a different helper that is still running.
                         tracing::debug!("pane {term}: {} helper(s) running after {event}", t.subagents.len());
                         if !sa.start && !sa.id.is_empty() && event_is_current

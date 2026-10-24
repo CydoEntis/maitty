@@ -1,4 +1,4 @@
-//! Per-project settings that live in the repo, `.vibecasso.toml`: commands to run when a
+//! Per-project settings that live in the repo, `.<app>.toml`: commands to run when a
 //! worktree is made or removed.
 //!
 //! ```toml
@@ -23,15 +23,13 @@ pub struct Hooks {
     pub on_remove: String,
 }
 
-pub const FILE: &str = ".vibecasso.toml";
-/// What the file was called before each rename, newest first; still read when there's no `FILE`.
-const OLD_FILES: [&str; 2] = [".seshi.toml", ".hydra.toml"];
+pub const FILE: &str = concat!(".", env!("APP_COMMAND"), ".toml");
 
 /// Longest a worktree hook may run before it's stopped.
 pub const HOOK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
 
-/// A repo's hook commands run only once the user has allowed them (`vibecasso allow`, like
-/// direnv): a cloned repo's `.vibecasso.toml` can't run code by itself. Approvals are kept per
+/// A repo's hook commands run only once the user has allowed them (`<app> allow`, like
+/// direnv): a cloned repo's `.<app>.toml` can't run code by itself. Approvals are kept per
 /// repo and command, in a file beside the config that is never synced.
 fn allowed_path() -> PathBuf {
     crate::config::config_path().with_file_name("allowed-hooks.json")
@@ -80,12 +78,13 @@ fn allow_in(file: &Path, dir: &Path, cmds: &[&str]) -> anyhow::Result<()> {
     std::fs::rename(&tmp, file).with_context(|| format!("saving {}", file.display()))
 }
 
-/// The settings for a checkout: its own `.vibecasso.toml` (or an older name), else the main
+/// The settings for a checkout: its own `.<app>.toml` (or an older name), else the main
 /// checkout's.
 pub fn load(dir: &Path) -> Project {
     let main = crate::gitfs::head(dir).map(|h| h.main_root);
     for d in std::iter::once(dir.to_path_buf()).chain(main) {
-        for name in std::iter::once(FILE).chain(OLD_FILES) {
+        let names = std::iter::once(FILE.to_string()).chain(crate::brand::previous().map(|p| format!(".{p}.toml")));
+        for name in names {
             if let Ok(text) = std::fs::read_to_string(d.join(name)) {
                 return toml::from_str(&text).unwrap_or_default();
             }
@@ -143,7 +142,7 @@ mod tests {
 
     #[test]
     fn a_repo_still_using_the_seshi_file_names_keeps_its_settings_and_checks() {
-        let dir = std::env::temp_dir().join(format!("vibecasso-old-files-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-old-files-{}"), std::process::id()));
         std::fs::create_dir_all(dir.join(".seshi")).unwrap();
         std::fs::write(dir.join(".seshi.toml"), "[hooks]\non_create = \"npm install\"\n").unwrap();
         std::fs::write(dir.join(".seshi/checks.toml"), "").unwrap();
@@ -165,7 +164,7 @@ mod tests {
 
     #[test]
     fn hooks_run_only_once_allowed() {
-        let dir = std::env::temp_dir().join(format!("vibecasso-allow-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-allow-{}"), std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("allowed-hooks.json");
         assert!(!allowed_in(&file, &dir, "npm install"), "nothing is allowed at first");
