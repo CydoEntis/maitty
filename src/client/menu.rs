@@ -104,10 +104,9 @@ pub(super) fn draw_confirm(app: &mut App, f: &mut ratatui::Frame, area: ratatui:
     let shown = c.list.len().min(CONFIRM_LIST_MAX);
     let more = c.list.len() - shown;
     let list_h = if c.list.is_empty() { 0 } else { 2 + shown as u16 + u16::from(more > 0) };
-    let r = panel(app, buf, area, w, 9 + list_h, &c.title, &[], t);
-    if !c.sub.is_empty() {
-        put(buf, r.x + 3 + c.title.chars().count() as u16, r.y, &[seg(format!("  {}", c.sub), Style::default().bg(t.accent).fg(t.acc_ink))], r.right().saturating_sub(12));
-    }
+    // The sub reads as part of the title, so it is cut first when the header runs out of room.
+    let title = if c.sub.is_empty() { c.title.clone() } else { format!("{} · {}", c.title, c.sub) };
+    let r = panel(app, buf, area, w, 9 + list_h, &title, &[], t);
     let card = Style::default().bg(t.card);
     put(buf, r.x + 3, r.y + 2, &[seg(c.what.clone(), card.fg(t.strong).add_modifier(Modifier::BOLD)), seg(format!("   {}", c.detail), card.fg(t.muted))], r.right() - 2);
     put(buf, r.x + 3, r.y + 3, &[seg(c.note.clone(), card.fg(t.text))], r.right() - 2);
@@ -128,8 +127,6 @@ pub(super) fn draw_confirm(app: &mut App, f: &mut ratatui::Frame, area: ratatui:
     put(buf, yr.x, yr.y, &yes, r.right());
     let nr = Rect { x: yr.right() + 2, y: buttons_y, width: 12, height: 1 };
     put(buf, nr.x, nr.y, &button(t, "Cancel", "Esc", BtnKind::Normal), r.right());
-    hit(app, area, ScreenHit::ConfirmNo);
-    hit(app, r, ScreenHit::Noop);
     hit(app, yr, ScreenHit::ConfirmYes);
     hit(app, nr, ScreenHit::ConfirmNo);
 }

@@ -1291,7 +1291,11 @@ impl App {
                 }
             }
             ScreenHit::Close => {
-                if matches!(self.mode, Mode::Spinners(_)) {
+                // A confirm's Esc chip, or a click outside it, answers no, as Esc does.
+                if matches!(&self.mode, Mode::Confirm(c) if !matches!(c.act, crate::client::menu::Act::OverrideCheck(..))) {
+                    self.mode = Mode::Normal;
+                    self.confirm_done(None);
+                } else if matches!(self.mode, Mode::Spinners(_)) {
                     if let Mode::Spinners(view) = &self.mode && view.saving { return; }
                     self.back_to_setting("ui.spinner");
                 } else if let Mode::Themes { query, sel, saving } = self.mode.clone() {

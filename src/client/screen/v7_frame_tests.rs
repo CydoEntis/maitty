@@ -230,6 +230,61 @@ fn a_popover_sits_beside_the_sidebar_with_a_raised_title_and_no_shadow() {
     }
 }
 
+/// A confirm's sub (the folder `changes` found no repo in) is part of its title chip, cut before
+/// the Esc chip, which stays whole and closes it.
+#[test]
+fn a_confirm_s_long_sub_is_cut_inside_its_title_chip() {
+    use crate::config::Rounding;
+    for rounded in [Rounding::Full, Rounding::Corners, Rounding::Off] {
+        let at = format!("{rounded:?}");
+        let mut app = world(Stage::None);
+        app.cfg.ui.rounded = rounded;
+        app.mode = Mode::Confirm(Box::new(super::super::menu::Confirm {
+            title: "changes".into(),
+            sub: "a-folder-with-a-very-long-name-that-runs-far-past-the-header-of-this-confirm".into(),
+            what: "Not a git repository".into(),
+            detail: String::new(),
+            note: String::new(),
+            list: Vec::new(),
+            yes: "Init".into(),
+            key: '\n',
+            danger: false,
+            act: super::super::menu::Act::RestartDaemon,
+        }));
+        let buf = drawn_in(&mut app, "cards");
+        let close = app.hits.iter().rev().find(|(_, h)| *h == Hit::Screen(ScreenHit::Close)).map(|(r, _)| *r).expect("the Esc chip");
+        let (x0, x1) = ((160 - 58) / 2, (160 - 58) / 2 + 58);
+        let row: Vec<String> = (x0..x1).map(|x| buf[(x, close.y)].symbol().to_string()).collect();
+        let [l, e] = if rounded == Rounding::Full { [CAP_L, CAP_R] } else { ["", ""] };
+        let last = if rounded == Rounding::Full { CAP_R } else { " " };
+        let (tl, tr) = if rounded == Rounding::Off { ("┌", "┐") } else { ("╭", "╮") };
+        let text = row.concat();
+        assert!(text.starts_with(&format!("{tl}─{l} changes · a-folder")), "{at}: {text}");
+        assert!(text.ends_with(&format!("─{l} Esc close {e}─{tr}")), "{at}: {text}");
+        let esc = close.x - x0;
+        assert_eq!((row[esc as usize - 3].as_str(), row[esc as usize - 2].as_str()), (last, "─"), "{at}: the title chip ends whole before the Esc chip: {text}");
+        assert!(text.contains('…'), "{at}: the sub is cut: {text}");
+        for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+            app.on_mouse(MouseEvent { kind, column: close.x + 2, row: close.y, modifiers: KeyModifiers::NONE });
+        }
+        assert!(!matches!(app.mode, Mode::Confirm(_)), "{at}: the Esc chip closes it");
+    }
+}
+
+/// A modal too narrow for the Esc chip beside its title drops the chip rather than draw it
+/// over the corner and the title.
+#[test]
+fn a_modal_too_narrow_for_its_esc_chip_keeps_its_corner_and_title() {
+    let mut app = world(Stage::None);
+    app.cfg.ui.rounded = crate::config::Rounding::Full;
+    let t = app.theme.clone();
+    let mut buf = Buffer::empty(Rect::new(0, 0, 20, 6));
+    let r = panel_at(&mut app, &mut buf, Rect::new(2, 1, 12, 4), "NEW", &[], &t);
+    let row: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol().to_string()).collect();
+    assert!(row.starts_with(&format!("╭─{CAP_L} NEW {CAP_R}")) && row.ends_with("─╮") && !row.contains("Esc"), "{row}");
+    assert!(!app.hits.iter().any(|(_, h)| *h == Hit::Screen(ScreenHit::Close)), "nothing to click: Esc closes it");
+}
+
 /// Which hit a case points at.
 type Pick = fn(&super::super::Hit) -> bool;
 

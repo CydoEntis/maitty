@@ -59,8 +59,12 @@ pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, titl
     let lit = Style::default().bg(t.btn).add_modifier(Modifier::BOLD);
     let esc = header_chip(look, vec![seg(" Esc", lit.fg(t.accent)), seg(" close ", lit.fg(t.strong))], t.card);
     let esc_w = segs_width(&esc);
-    let esc_x = r.right().saturating_sub(esc_w + 2);
-    put(buf, esc_x, r.y, &esc, r.right() - 2);
+    // Too narrow for the chip beside the corner: Esc and a click outside still close it.
+    let shows_esc = r.width >= esc_w + 4;
+    let esc_x = if shows_esc { r.right() - esc_w - 2 } else { r.right() - 1 };
+    if shows_esc {
+        put(buf, esc_x, r.y, &esc, r.right() - 2);
+    }
     let segs: Vec<Seg> = right.iter().map(|(s, st)| (s.clone(), st.bg(t.card))).collect();
     let rx = esc_x.saturating_sub(segs_width(&segs) + 1);
     put(buf, rx, r.y, &segs, esc_x.saturating_sub(1));
@@ -71,7 +75,9 @@ pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, titl
     let chip = header_chip(look, vec![seg(format!(" {} ", truncate(title, text_room)), ink)], t.card);
     put(buf, chip_x, r.y, &chip, rx.saturating_sub(1));
     hit(app, r, ScreenHit::Noop);
-    hit(app, Rect { x: esc_x, y: r.y, width: esc_w, height: 1 }, ScreenHit::Close);
+    if shows_esc {
+        hit(app, Rect { x: esc_x, y: r.y, width: esc_w, height: 1 }, ScreenHit::Close);
+    }
     r
 }
 
