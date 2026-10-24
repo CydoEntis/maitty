@@ -10,26 +10,33 @@ command-line agents. Start as many as you like, see at a glance which are workin
 are waiting for you and which have finished, and jump to any of them in a keystroke. Close
 the window and they keep running; open it again and everything is where you left it.
 
-It runs natively on Windows, macOS and Linux.
+It is built for developers who run several agents across several projects, and it runs
+natively on Windows, macOS and Linux.
 
 ## Highlights
 
 - **Status you can trust.** Every session shows whether its agent is working, needs you,
   has finished or is idle, from the agent's own hooks where available and from its process
   and screen otherwise. An agent that has gone silent for ten minutes is flagged as quiet.
-- **Nothing is lost.** A background service owns every session. Closing the window, a crash
-  or a reboot doesn't stop your agents: Maitty reopens them in the right folders and
-  resumes their conversations.
+- **One line per session.** Each row shows the agent's state, which agent it is and the
+  lines it has changed but not committed (`+40 −3`). Click the numbers to see the diff.
+- **Nothing is lost.** A background service owns every session, so closing the window
+  doesn't stop your agents. After a crash or a reboot, Maitty reopens them in the right
+  folders and resumes their conversations.
 - **One inbox.** Questions, failed checks and finished work collect in one place, most
   urgent first. A sound and an optional phone notification tell you when an agent needs you.
 - **Each agent in its own branch.** New agents get their own Git worktree, so they never
   edit the same files. Review the diff, commit, merge or open a pull request without leaving.
+- **A side panel for the code.** Files, Changes and Branch open beside your panes as tabs:
+  browse the tree, read markdown drawn or raw, review each file's diff, and see where the
+  branch stands. Drag or press `[` `]` to resize it.
 - **Checks you can rely on.** Name a command, such as your tests, and Maitty runs it after
   each agent turn. A session whose check fails reads *failed*, not *done*.
 - **Agents that work together.** Agents can list, read, message and start other sessions
   through MCP tools, within limits you set.
-- **Your look.** Four layouts (Floating, Tiled, Compact and Grid), square or rounded shapes,
-  62 themes, and every key and colour configurable.
+- **Your look.** Four layouts (Floating, Tiled, Compact and Grid), rounded or square shapes,
+  padding round the screen, your cursor's shape, 62 themes, and every key and colour
+  configurable.
 
 ## Install
 
@@ -51,7 +58,7 @@ administrator rights. You can also download an archive from
 `cargo install --git https://github.com/CydoEntis/maitty`.
 
 Maitty tells you when an update is out; one click installs it and restarts without
-losing your sessions.
+losing your sessions. **Settings › General › UPDATES** shows the version you have.
 
 **Coming from Vibecasso or Seshi?** Maitty is the new name. Install Maitty as above. The
 first time it starts, it brings over your config, saved sessions and history, and points your
@@ -65,8 +72,8 @@ name, such as the MCP server (`maitty integrate mcp` renames it) or another agen
 1. Open a terminal in your project and run `maitty`.
 2. Click **+ new** for a shell and type `claude` (or any agent), or press `Ctrl+Space`, then
    `s` to start your default agent straight away.
-3. Watch the sidebar: orange is working, the alert colour means it needs you, green means
-   it finished, gray is idle. Click a row to go to that session.
+3. Watch the sidebar. In the default theme, teal means working, amber means it needs you,
+   green means it finished and dim means idle. Click a row to go to that session.
 4. Press `Ctrl+Space`, then `q` to step away. Your agents keep running; run `maitty`
    to come back.
 5. Run `maitty doctor` to check your setup and connect agents for exact status.
@@ -74,15 +81,15 @@ name, such as the MCP server (`maitty integrate mcp` renames it) or another agen
 ## Shortcuts
 
 Press `Ctrl+Space` to enter **shortcut mode**: a `SHORTCUT` label appears and each key runs
-an action, until you press `Esc` or click into a pane. Every key is a single key, with no
-Shift needed. Pause after `Ctrl+Space` to see them all.
+an action, until you press `Esc` or click into a pane. Every key is a single key, and only
+`?` needs Shift. Press `?` to see them all.
 
 | | |
 |---|---|
 | **Sessions** | `n` new shell · `s` new session · `o` session with options · `Enter` message the agent · `k` stop it · `i` inbox · `y` why this status |
 | **Panes** | arrows move · `v` split side by side · `h` split stacked · `x` close · `Ctrl`+arrows resize · `z` collapse the sidebar |
 | **Tabs** | `t` new · `Ctrl+W` close · `r` rename · `]` / `[` next / previous · `1`–`9` go to tab |
-| **Project** | `f` files · `p` find a file · `/` search code · `d` changes · `g` worktrees · `b` branches · `e` the sidebar |
+| **Project** | `f` files · `p` find a file · `/` search code · `c` changes · `g` worktrees · `b` branches · `e` the sidebar |
 | **Maitty** | `Space` search commands · `m` menu · `,` settings · `?` all keys · `l` history · `Ctrl+V` paste an image · `q` step away |
 
 Scrolled up in a pane? Click **↓ Back to bottom**. Every screen's own keys are in
@@ -140,6 +147,7 @@ padding = "1"              # 0 | 1 | 2: space round the screen
 "ctrl+l" = "spawn-tab:lazygit"   # any command, in a split or a new tab
 
 [[check]]                  # run after every agent turn
+project = "/home/me/code/my-app"   # the repo's main checkout
 name = "test"
 command = "cargo test"
 ```
