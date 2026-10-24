@@ -270,16 +270,6 @@ pub enum Action {
 }
 
 impl Action {
-    /// Actions that give you something to type into, so shortcut mode ends with them.
-    pub fn leaves_shortcut_mode(&self) -> bool {
-        matches!(
-            self,
-            Action::SplitRight | Action::SplitDown | Action::SplitLeft | Action::SplitUp | Action::Spawn(..) | Action::SpawnTab(_)
-                | Action::NewTab | Action::NewWorkspace | Action::NewWorktree(_) | Action::NewPane | Action::StartSession
-                | Action::NewSession | Action::ShellHere | Action::SendPrefix
-        )
-    }
-
     pub fn describe(&self) -> String {
         use crate::layout::Dir::*;
         let dir = |d: &crate::layout::Dir| match d {

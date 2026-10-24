@@ -1,6 +1,6 @@
 # 0016. The leader opens a shortcut mode that stays until you leave it
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by [ADR 0021](0021-one-line-rows-one-rounding-sticky-mode.md))
 - **Date:** 2026-10-23
 
 ## Context

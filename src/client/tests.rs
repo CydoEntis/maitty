@@ -1649,7 +1649,7 @@ mod screen_tests {
         app.act(Action::BrowseTree);
         app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
         assert!(matches!(app.mode, Mode::Prefix { .. }), "Ctrl+Space waits for a key: {:?}", std::mem::discriminant(&app.mode));
-        app.mode = Mode::Normal;
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         // Typing in the sidebar goes to the pane instead.
         app.act(Action::BrowseTree);
         assert!(matches!(app.mode, Mode::Side));
@@ -1953,7 +1953,7 @@ mod screen_tests {
                 } else {
                     leader(&mut app, 'n');
                 }
-                assert_eq!(app.mode, Mode::Normal, "new opens no form");
+                assert!(matches!(app.mode, Mode::Normal | Mode::Prefix { .. }), "new opens no form: {:?}", app.mode);
                 let commands = sent(&mut rx);
                 assert!(matches!(commands.as_slice(), [Command::NewWorkspace { cwd: Some(_), name: None, cmd: None }]), "one plain shell, no agent and no worktree: {commands:?}");
             }
@@ -2011,7 +2011,8 @@ mod screen_tests {
         assert!(draw(&mut app, 100, 30).contains("Opens codex in the folder of shop-api"));
         // Esc cancels, nothing starts.
         app.on_key(plain(KeyCode::Esc));
-        assert_eq!(app.mode, Mode::Normal);
+        assert!(matches!(app.mode, Mode::Prefix { .. }), "back to shortcut mode, where the dialog was opened from");
+        app.on_key(plain(KeyCode::Esc));
         assert!(sent(&mut rx).is_empty());
         // Enter starts what it shows.
         leader(&mut app, 'o');
@@ -2019,7 +2020,8 @@ mod screen_tests {
         app.on_key(plain(KeyCode::Down));
         app.on_key(plain(KeyCode::Right));
         app.on_key(plain(KeyCode::Enter));
-        assert_eq!(app.mode, Mode::Normal);
+        assert!(matches!(app.mode, Mode::Prefix { .. }), "started: still in shortcut mode");
+        app.on_key(plain(KeyCode::Esc));
         let cmds = sent(&mut rx);
         assert!(matches!(cmds.as_slice(), [Command::NewWorkspace { cwd: Some(cwd), cmd: Some(cmd), .. }] if cmd == "codex" && cwd.ends_with("shop-api")), "{cmds:?}");
         // The Start button does the same.
@@ -2095,7 +2097,7 @@ mod screen_tests {
             caps_state,
         ));
 
-        assert_eq!(app.mode, Mode::Normal, "Caps Lock must not open What happened");
+        assert!(matches!(app.mode, Mode::Prefix { .. }), "Caps Lock must not open What happened: {:?}", app.mode);
         assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|message| matches!(
             message,
             ClientMsg::Command(Command::NewWorkspace { cmd: None, .. })
@@ -4052,21 +4054,32 @@ second line
     }
 
     #[test]
-    fn something_to_type_into_ends_shortcut_mode() {
+    fn shortcut_mode_stays_after_something_to_type_into() {
         for c in ['n', 'v', 'h', 't'] {
             let mut app = shortcut_mode();
             tap(&mut app, c);
-            assert!(!matches!(app.mode, Mode::Prefix { .. }), "{c} gives something to type into: {:?}", std::mem::discriminant(&app.mode));
+            assert!(matches!(app.mode, Mode::Prefix { .. }), "{c} keeps shortcut mode: {:?}", std::mem::discriminant(&app.mode));
         }
     }
 
     #[test]
-    fn a_popup_takes_the_keys_and_closing_it_goes_back_to_typing() {
+    fn a_popup_takes_the_keys_and_closing_it_goes_back_to_shortcut_mode() {
         let mut app = shortcut_mode();
         tap(&mut app, 'i');
         assert!(matches!(app.mode, Mode::GoTo { .. }), "the Inbox has the keys");
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(matches!(app.mode, Mode::Normal));
+        assert!(matches!(app.mode, Mode::Prefix { acted: true, .. }), "closed: shortcut mode is back");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(matches!(app.mode, Mode::Normal), "a second Esc goes back to typing");
+    }
+
+    #[test]
+    fn a_click_leaves_shortcut_mode_even_under_a_popup() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'i');
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: 0, row: 0, modifiers: KeyModifiers::NONE });
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(matches!(app.mode, Mode::Normal), "after a click, closing the popup goes back to typing");
     }
 
     #[test]

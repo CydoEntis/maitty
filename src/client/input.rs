@@ -116,6 +116,21 @@ impl App {
     }
 
     pub(super) fn on_key(&mut self, k: KeyEvent) {
+        self.handle_key(k);
+        self.keep_shortcut_mode();
+    }
+
+    /// Shortcut mode stays until you leave it (ADR 0016, ADR 0021): an action that opened a
+    /// popup hands it the keys, and when the popup closes the mode is back.
+    fn keep_shortcut_mode(&mut self) {
+        match self.mode {
+            Mode::Prefix { .. } => self.shortcut_held = true,
+            Mode::Normal if self.shortcut_held => self.mode = Mode::Prefix { since: Instant::now(), acted: true },
+            _ => {}
+        }
+    }
+
+    fn handle_key(&mut self, k: KeyEvent) {
         self.screen_fresh();
         let spec = KeySpec::from_event(&k);
         if k.code == KeyCode::Esc && !matches!(self.mode, Mode::Copy(_)) {
@@ -219,14 +234,14 @@ impl App {
                 // Esc or the leader again: back to typing.
                 if k.code == KeyCode::Esc || spec == self.keymap.prefix {
                     self.mode = Mode::Normal;
+                    self.shortcut_held = false;
                     return;
                 }
                 if let Some(a) = self.keymap.prefixed.get(&spec).cloned() {
-                    let typing = a.leaves_shortcut_mode();
                     self.mode = Mode::Normal;
                     self.act(a);
-                    // Still here (nothing opened, nothing to type into): the mode holds.
-                    if !typing && self.mode == Mode::Normal {
+                    // Nothing opened: the mode holds, the key map stays away.
+                    if self.mode == Mode::Normal {
                         self.mode = Mode::Prefix { since, acted: true };
                     }
                 } else if !acted
@@ -383,6 +398,10 @@ impl App {
 
     pub(super) fn on_mouse(&mut self, m: MouseEvent) {
         let pos = Position::new(m.column, m.row);
+        // A click leaves shortcut mode for good, not just the popup it lands in.
+        if matches!(m.kind, MouseEventKind::Down(_)) {
+            self.shortcut_held = false;
+        }
         self.screen_fresh();
         // Ctrl+click opens a link; double-click copies a word (or a path, or a link).
         if m.kind == MouseEventKind::Down(MouseButton::Left)

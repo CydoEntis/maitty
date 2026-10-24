@@ -669,8 +669,10 @@ impl App {
             _ => None,
         };
         match k.code {
+            // The key map is shortcut mode's own overlay: Esc leaves both.
             KeyCode::Esc => {
                 self.mode = Mode::Normal;
+                self.shortcut_held = false;
                 return;
             }
             KeyCode::Tab if km.step.is_none() => {

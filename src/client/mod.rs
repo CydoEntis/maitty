@@ -387,6 +387,8 @@ pub struct App {
     undo_hint: bool,
     /// The last click, for double-click detection.
     last_click: Option<(Hit, Instant)>,
+    /// Shortcut mode was on when the open popup took the keys; it comes back when that closes.
+    shortcut_held: bool,
     /// The welcome screen is up; which of its panes is selected.
     splash: bool,
     /// The app layout's own state.
@@ -571,6 +573,7 @@ impl App {
             hover: None,
             undo_hint: false,
             last_click: None,
+            shortcut_held: false,
             splash: false,
             screen: screen::Screen::load(),
             window_focused: true,
