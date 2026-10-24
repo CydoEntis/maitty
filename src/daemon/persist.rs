@@ -125,6 +125,14 @@ pub fn forget() {
     let _ = std::fs::remove_dir_all(check_output_dir());
 }
 
+/// Delete every pane's saved output (none saved is fine).
+pub fn forget_outputs() -> std::io::Result<()> {
+    match std::fs::remove_dir_all(output_dir()) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        r => r,
+    }
+}
+
 /// Where each pane's recent output is kept, so its history is still there after the server
 /// restarts (an update, a reboot): one file per pane, named by its id.
 pub fn output_dir() -> PathBuf {

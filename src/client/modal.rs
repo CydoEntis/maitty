@@ -113,6 +113,7 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "restore.enabled", label: "Bring sessions back after restart", kind: Kind::Bool, cat: Cat::Sessions, help: "Agents keep going in the background; after a reboot seshi rebuilds your sessions." },
     Setting { path: "restore.agents", label: "Resume agents", kind: Kind::Bool, cat: Cat::Sessions, help: "Restart agents in their last conversation (claude --resume, codex resume)." },
     Setting { path: "restore.commands", label: "Re-run commands", kind: Kind::Bool, cat: Cat::Sessions, help: "Run again the commands sessions were started with (lazygit, a dev server, ...)." },
+    Setting { path: "restore.output", label: "Keep each pane's recent output", kind: Kind::Bool, cat: Cat::Sessions, help: "Saved to disk so it's there after a restart. May include secrets shown on screen; off deletes it." },
     Setting { path: "scrollback", label: "Scrollback lines", kind: Kind::Int { step: 1000, min: 1000, max: 100_000 }, cat: Cat::Sessions, help: "How much history each session keeps for scrolling and search." },
     // Appearance
     Setting { path: "ui.splash_animation", label: "Splash animation", kind: Kind::Choice(&["cold start", "always", "never"]), cat: Cat::Appearance, help: "The wordmark falls into place. cold start: the first start of a version, or when nothing is running. Off with Motion off." },

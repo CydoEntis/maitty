@@ -995,8 +995,12 @@ fn claude_reports_what_its_session_used() {
 
 
 
+/// Tests that write or delete saved pane output share one folder per test run: one at a time.
+static SAVED_OUTPUT: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn a_panes_history_survives_the_server_restarting() {
+    let _one_at_a_time = SAVED_OUTPUT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let (mut d, _rx) = daemon();
     d.cfg.restore.enabled = true;
     d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();
@@ -3045,4 +3049,32 @@ fn going_quiet_rings_no_alert() {
     close(&mut d, &[id]);
     assert!(quiet.is_some());
     assert_eq!((due, alerted.map(|a| a.0)), (None, None), "quiet is shown, never rung");
+}
+
+#[test]
+fn with_output_off_nothing_is_saved_and_what_was_saved_goes() {
+    let _one_at_a_time = SAVED_OUTPUT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let (mut d, _rx) = daemon();
+    d.cfg.restore.enabled = true;
+    d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();
+    let t = *d.terms.keys().next().unwrap();
+    let file = persist::output_dir().join(format!("{t}.bin"));
+    d.terms.get_mut(&t).unwrap().ring_push_for_test(b"secret=hunter2\r\n");
+    d.save_outputs(true);
+    assert!(file.exists(), "on: saved");
+    d.cfg.restore.output = false;
+    d.drop_saved_outputs();
+    assert!(!file.exists(), "turned off: what was saved is deleted");
+    d.terms.get_mut(&t).unwrap().ring_push_for_test(b"more\r\n");
+    let saved = d.saved();
+    d.save_outputs(true);
+    assert!(!file.exists(), "off: nothing new is saved");
+    let (mut d2, _rx2) = daemon();
+    (d2.cfg.restore.enabled, d2.cfg.restore.output) = (true, false);
+    d2.restore(saved);
+    let new = *d2.terms.keys().next().expect("the pane still comes back");
+    let replay = String::from_utf8_lossy(&d2.terms[&new].replay()).into_owned();
+    close(&mut d, &[t]);
+    close(&mut d2, &[new]);
+    assert!(!replay.contains("seshi restarted here") && !replay.contains("hunter2"), "{replay}");
 }

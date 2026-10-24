@@ -277,6 +277,7 @@ pub fn run() -> Result<()> {
             Ok(p) => d.helper_projects = p,
             Err(e) => tracing::warn!("helper projects: {e:#}; every project asks again"),
         }
+        d.drop_saved_outputs();
         if d.cfg.restore.enabled
             && let Some(saved) = persist::load()
         {

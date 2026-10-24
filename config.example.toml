@@ -65,6 +65,7 @@ helpers_at_once = "3"       # 2 | 3 | 4
 enabled = true              # rebuild workspaces / tabs / panes when the server starts
 agents = true               # resume agents (claude --resume <id>, codex resume --last, ...)
 commands = true             # re-run commands panes were started with
+output = true               # keep each pane's recent output on disk (may hold secrets; false deletes it)
 
 [quick]
 place = "worktree"          # right | down | tab | worktree | here

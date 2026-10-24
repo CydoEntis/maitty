@@ -190,6 +190,9 @@ pub struct Restore {
     pub agents: bool,
     /// Re-run commands panes were started with (`spawn-right:lazygit`, `seshi split -- x`).
     pub commands: bool,
+    /// Keep each pane's recent output on disk so it is there after a restart. It can hold
+    /// secrets that were on screen; off deletes what is saved.
+    pub output: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -718,7 +721,7 @@ impl Default for Quick {
 
 impl Default for Restore {
     fn default() -> Self {
-        Restore { enabled: true, agents: true, commands: true }
+        Restore { enabled: true, agents: true, commands: true, output: true }
     }
 }
 

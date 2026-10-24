@@ -481,6 +481,7 @@ impl Daemon {
             }
             Command::ReloadConfig => {
                 self.cfg = Config::load()?;
+                self.drop_saved_outputs();
                 self.agents = self.cfg.agent_defs();
                 let mut s = self.scan.lock().unwrap();
                 s.agents = self.agents.clone();
