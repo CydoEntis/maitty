@@ -55,7 +55,7 @@ one thing (ADR 0017).
 | `g` | Worktrees › |
 | `b` | Switch branch |
 
-### Vibecasso
+### Maitty
 
 | Key | Action |
 |---|---|
@@ -84,7 +84,7 @@ commands for "Send the leader key" or bind `send-prefix` to a key. One overlay h
 reference; it is not a second palette:
 
 - **Key map** (`Ctrl+Space`, then a pause): the keys by group, Sessions, Panes, Tabs,
-  Project and Vibecasso, built from your real bindings. Pressing a key runs it.
+  Project and Maitty, built from your real bindings. Pressing a key runs it.
 - **Search commands** (`Space` after the leader, `Tab` from the map, or typing a letter
   that is not a key): every command, including ones with no key. With nothing typed it
   lists the ones you ran last.
@@ -316,7 +316,7 @@ No bare key answers from the sidebar.
 | --- | --- |
 | Tab, Shift+Tab, Up / k, Down / j | Change settings category; choose row |
 | Left / h, Right / l, Enter, Space | Change value; Enter edits text or captures binding; theme opens browser |
-| o | Open configuration file outside Vibecasso |
+| o | Open configuration file outside Maitty |
 | R | Restart the daemon after an update (when the Restart now button shows) |
 | Keys on the Check page | As in `PROJECT · <name>` (see Check modals); Tab, Esc and o stay Settings' |
 | Enter, Esc when editing | Save field / cancel; when capturing press the new key or Esc |
@@ -349,7 +349,7 @@ No bare key answers from the sidebar.
 ## Terminal scrolling and mouse
 
 Scrolled up, a pane shows **↓ Back to bottom** at its bottom right (with how many lines up,
-in Vibecasso's own history); a click goes back to the newest output. An agent that scrolls itself
+in Maitty's own history); a click goes back to the newest output. An agent that scrolls itself
 (a full-screen one, which the wheel pages) shows it too, and the click pages it back down as
 far as the wheel paged it up; typing to the agent clears it, since the agent scrolls to its
 prompt itself.
@@ -362,9 +362,9 @@ sessions. "Hide sidebar" (search commands) hides the sessions completely; `z` br
 | --- | --- |
 | PageUp, PageDown at a prompt | Scroll history; full-screen programs keep these keys |
 | Shift+PageUp, Shift+PageDown, Ctrl+Shift+Up, Ctrl+Shift+Down | Scroll half-pages or individual lines outside full-screen mode |
-| Shift with mouse | Keep selection/scrolling in Vibecasso when program captures the mouse |
+| Shift with mouse | Keep selection/scrolling in Maitty when program captures the mouse |
 | Ctrl+click | Open a path or link |
-| Shift+right-click | Vibecasso menu even when program handles right-click |
+| Shift+right-click | Maitty menu even when program handles right-click |
 | Double-click, drag | Copy word/path/link, select and copy text |
 
 ## Menus, history, splash and confirmations

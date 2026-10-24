@@ -1,6 +1,6 @@
 # Database
 
-> **Not applicable:** Vibecasso has no database. Its state is small files: `config.toml`
+> **Not applicable:** Maitty has no database. Its state is small files: `config.toml`
 > (settings), a JSON session snapshot written by the daemon (`daemon/persist.rs`), and
 > the client's saved projects list. Add a pack if a database ever arrives.
 

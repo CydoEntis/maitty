@@ -6,12 +6,12 @@ Date: 2026-10-23 · Plan: [Phase 20](../../ROADMAP.md#20--borrowed-from-tuios--b
 
 ## Problem
 
-A read of TUIOS (tuios.dev, v0.10.1) turned up five places where Vibecasso can still lose
+A read of TUIOS (tuios.dev, v0.10.1) turned up five places where Maitty can still lose
 track of an agent or let one do something unsafe:
 
 - An agent whose hooks said "working" and then hung shows a spinner forever. Nothing
   tells you it has stopped making progress.
-- An agent answering another session's prompt with `vibecasso_answer` may be approving a
+- An agent answering another session's prompt with `maitty_answer` may be approving a
   different prompt from the one it read: the screen can change between its read and
   its answer.
 - Text an agent sends to another agent can carry invisible characters that hide
@@ -26,11 +26,11 @@ track of an agent or let one do something unsafe:
 
 - A hooked agent that has said "working" but printed nothing and reported nothing for
   10 minutes is marked as quiet. It shows on its row, in the why popover, in the
-  Inbox's NEEDS YOU (with no sound), and in `vibecasso ls` / `vibecasso_list` / `vibecasso wait`.
+  Inbox's NEEDS YOU (with no sound), and in `maitty ls` / `maitty_list` / `maitty wait`.
   Its status stays "working".
-- `vibecasso_answer` answers only the prompt the caller saw, identified by an id from
-  `vibecasso_list`. If the prompt has changed, it refuses and shows the current one.
-- Text that `vibecasso send`, `vibecasso_send` and `vibecasso_start` would send to an agent is
+- `maitty_answer` answers only the prompt the caller saw, identified by an id from
+  `maitty_list`. If the prompt has changed, it refuses and shows the current one.
+- Text that `maitty send`, `maitty_send` and `maitty_start` would send to an agent is
   refused when it contains invisible characters. The error names each character and
   where it is.
 - A Restore setting stops saving pane output and deletes what is already saved. Saved
@@ -40,10 +40,10 @@ track of an agent or let one do something unsafe:
 ## Affected users and systems
 
 Anyone running hooked agents (Claude, Codex, Pi, OpenCode and the others with
-`vibecasso integrate`); agents that drive other agents over MCP or `vibecasso send`; anyone
+`maitty integrate`); agents that drive other agents over MCP or `maitty send`; anyone
 who restores checkpoints.
 Daemon status (`src/daemon/status.rs`), protocol (`TermInfo`), sidebar, why popover,
-Inbox, `vibecasso ls`, MCP (`src/mcp.rs`), `cli::send`, persistence (`src/daemon/persist.rs`,
+Inbox, `maitty ls`, MCP (`src/mcp.rs`), `cli::send`, persistence (`src/daemon/persist.rs`,
 `src/daemon/restore.rs`), Settings › Sessions, the checkpoint menu.
 
 ## Constraints

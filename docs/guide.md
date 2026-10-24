@@ -1,6 +1,6 @@
-# Vibecasso guide
+# Maitty guide
 
-How each part of Vibecasso works, in more depth than the [README](../README.md). Shortcuts are
+How each part of Maitty works, in more depth than the [README](../README.md). Shortcuts are
 in [shortcuts](shortcuts.md); every setting is in [`config.example.toml`](../config.example.toml).
 
 ## Using it
@@ -70,7 +70,7 @@ Without the leader: **Alt+1–9** selects tabs; **Alt+arrows** moves pane focus
 when enabled in Settings. All keys shows changes to these bindings too.
 
 In **Files**: Enter puts the path in the agent's prompt, `e` opens it in your editor (`editor`
-in config; nvim, helix … open inside vibecasso), `y` copies the path. In **Changes**: `c` commit,
+in config; nvim, helix … open inside maitty), `y` copies the path. In **Changes**: `c` commit,
 `p` push and open a PR, `e` editor, `x` mark the file reviewed (it sinks; the mark clears
 if the file changes again), `r` goes to its agent.
 
@@ -78,8 +78,8 @@ Everything also works with the mouse. Hold Shift to select text with your termin
 
 ### Helpers
 
-Any session may start helpers: other agents in their own worktrees, through `vibecasso mcp`
-(`vibecasso_start`). The first time one tries, its row turns **needs you** and says `wants to
+Any session may start helpers: other agents in their own worktrees, through `maitty mcp`
+(`maitty_start`). The first time one tries, its row turns **needs you** and says `wants to
 start 4 helpers`. Press Enter on the row (or click the line) to see the tasks, then
 **1** Allow, **2** Always in this project, **3** No, do it alone, or Esc to decide later.
 Their permission prompts come to your Inbox, and nothing merges.
@@ -87,7 +87,7 @@ Their permission prompts come to your Inbox, and nothing merges.
 Settings › Sessions sets the rest: **Sessions may start helpers** (`ask`, `always` or
 `never`; `never` refuses with a clear error to the agent) and **Helpers at once** (2, 3 or 4
 per session; an extra one is told to wait). "Always in this project" is kept in
-`helper-projects.json` in Vibecasso's data folder, not in the repo, so an agent cannot give itself
+`helper-projects.json` in Maitty's data folder, not in the repo, so an agent cannot give itself
 helpers. An older `[mcp] helpers_at_once` in `config.toml` still counts until `[sessions]
 helpers_at_once` is set. The commander and `[team]` jobs are gone; an old `config.toml` that
 still has them loads, and they are ignored.
@@ -115,9 +115,9 @@ still has them loads, and they are ignored.
 Needs-you alerts ring even in the focused pane and use two rising notes. A background
 session's completion uses one soft note; the session you're viewing stays quiet. Other panes get an in-app completion notice. A needs-you alert is delayed briefly
 to ignore transient prompts and is cancelled if the agent resumes work. Sessions started
-by another agent do not alert when they finish. With no vibecasso window open, the server
+by another agent do not alert when they finish. With no maitty window open, the server
 plays the needs-you sound and shows a desktop notification. `[notify] sound = false`
-(Settings → Alert sounds) turns sounds off; `vibecasso test-alert` plays both sample tones.
+(Settings → Alert sounds) turns sounds off; `maitty test-alert` plays both sample tones.
 
 **On your phone** (off until you set it up): install the free [ntfy](https://ntfy.sh) app (no
 account), subscribe to a topic name nobody would guess, and put it in Settings → Phone alerts
@@ -125,17 +125,17 @@ account), subscribe to a topic name nobody would guess, and put it in Settings �
 answering (`phone_after`), so it stays quiet while you're at your desk; `phone_done` adds
 finished ones. Alerts say which agent and where; `phone_text` adds what it's doing. On the
 public server the topic name is all that keeps them private (`phone_server` for your own).
-`vibecasso test-alert` sends a test.
+`maitty test-alert` sends a test.
 
-Click a notification to go to its session: vibecasso comes to the front on it (its split too).
-That works for the note inside vibecasso and the desktop notification on Windows and Linux (on
+Click a notification to go to its session: maitty comes to the front on it (its split too).
+That works for the note inside maitty and the desktop notification on Windows and Linux (on
 Omarchy / Hyprland the window is brought forward too); on macOS, install
 `terminal-notifier` for clickable ones.
 
 ## Sessions from older versions
 
-Vibecasso no longer stops idle agents automatically; they keep running until you close them or
-their own agent process exits. Sessions saved while sleeping by an older version recover when you open them. Vibecasso does not
+Maitty no longer stops idle agents automatically; they keep running until you close them or
+their own agent process exits. Sessions saved while sleeping by an older version recover when you open them. Maitty does not
 show a separate sleep screen or wake animation.
 
 ## Session visibility
@@ -145,29 +145,29 @@ Sessions stay visible in the sidebar until you close them. Idle, completed, and 
 ## Follow-ups and snapshots
 
 `Enter` in shortcut mode (or **Message** in the row's menu) writes an agent a follow-up without leaving where you are. While the agent is
-working, Enter leaves the message with vibecasso and it's typed in when the turn is over (never
+working, Enter leaves the message with maitty and it's typed in when the turn is over (never
 into a question the agent is asking); Ctrl+Enter sends it at once. What's waiting shows under
 the row, and the row's menu drops it.
 
-Each time an agent's turn begins, vibecasso keeps the checkout's files as they are (tracked or
+Each time an agent's turn begins, maitty keeps the checkout's files as they are (tracked or
 not; never what git ignores). **Snapshots…** in the agent's menu lists the last nine;
 picking one puts the files back as they were then. What's there now is kept as a snapshot
 first, so a restore can be taken back the same way. It is refused while the agent is working,
 since it would keep writing into the files being put back. Snapshots are commits under the
-worktree's own refs (`refs/worktree/vibecasso/snapshots`): no branch, nothing in your history,
+worktree's own refs (`refs/worktree/maitty/snapshots`): no branch, nothing in your history,
 your staging untouched, the newest 30 kept. `[snapshots] enabled = false` turns them off.
 
 ## Checks
 
-A check is a command Vibecasso runs after each agent turn, such as your tests: a session whose
+A check is a command Maitty runs after each agent turn, such as your tests: a session whose
 check fails reads **failed**, not done, until the check passes or you override it. Name one
 or more per project as `[[check]]` tables in config.toml (`build`, `test`, …; each is a
-checkpoint), or let a repo ship its own in `.vibecasso/checks.toml`.
+checkpoint), or let a repo ship its own in `.maitty/checks.toml`.
 
 - A repo's command never runs until you approve it: Enter on its row opens the approval.
   Enter, `y` and Space do nothing there; `1` runs it once, `2` twice always runs this exact
   command, `3` never runs it (the session reads **not checked**). A changed command asks again.
-  Your answers live in Vibecasso's data folder, never in the repo.
+  Your answers live in Maitty's data folder, never in the repo.
 - Enter on a failed row opens its evidence: the command, where and when it ran, and its output.
   `r` re-runs, `O` overrides with a reason (the failure stays visible), `u` undoes that, Tab
   moves between checkpoints.
@@ -178,7 +178,7 @@ checkpoint), or let a repo ship its own in `.vibecasso/checks.toml`.
 
 In Changes, `m` merges a worktree's branch into the main one, then closes its
 sessions and removes the worktree and the branch. Closing the last session in a worktree
-vibecasso made removes the folder; its branch goes too when it's already merged.
+maitty made removes the folder; its branch goes too when it's already merged.
 
 ## Recipes
 
@@ -194,8 +194,8 @@ They show up in + New as `⚙ feature`.
 ## Agents that steer agents (MCP)
 
 ```sh
-vibecasso                 # open the current directory
-vibecasso ~/code/my-app   # open a project
+maitty                 # open the current directory
+maitty ~/code/my-app   # open a project
 ```
 
 Use **+ new** or **Menu** at the bottom of the sidebar to start a session,
@@ -203,15 +203,15 @@ open a shell, split a pane, or reach Settings. For example, the CLI can start an
 agent directly:
 
 ```sh
-vibecasso new ~/code/my-app -- claude
-vibecasso worktree feature/login -- codex
+maitty new ~/code/my-app -- claude
+maitty worktree feature/login -- codex
 ```
 
 The worktree command creates or opens a separate checkout for the task. When an
 agent asks for input, its status turns red and it appears in the Inbox. Select it,
 answer, and return to your other work.
 
-## Never leave vibecasso
+## Never leave maitty
 
 | Leader + | Panel | What it does |
 |---|---|---|
@@ -247,9 +247,9 @@ command = "claude {prompt}"
 env = { CLAUDE_CONFIG_DIR = "~/.claude-work" }
 ```
 
-Set one up once, from any terminal: `vibecasso account "claude work" -- claude` to sign in, and
-`vibecasso account "claude work" -- vibecasso integrate claude` so that account reports its status
-to vibecasso too. When one account hits its limit, start the next session on the other.
+Set one up once, from any terminal: `maitty account "claude work" -- claude` to sign in, and
+`maitty account "claude work" -- maitty integrate claude` so that account reports its status
+to maitty too. When one account hits its limit, start the next session on the other.
 
 ## Restarts
 
@@ -258,13 +258,13 @@ saved to the data directory a couple of seconds after it changes. On the next st
 
 - Panes reopen in their last known directory. For PowerShell, that requires your prompt to report it
   via OSC 7 or OSC 9;9, as oh-my-posh and starship can. Other shells are tracked automatically.
-- Agents resume. With hooks installed, vibecasso knows the exact session (`claude --resume <id>`).
+- Agents resume. With hooks installed, maitty knows the exact session (`claude --resume <id>`).
   Otherwise it uses the agent's "most recent" form (`claude --continue`, `codex resume --last`).
-- Panes started with a command (`spawn-right:lazygit`, `vibecasso split -- x`) run it again, except
+- Panes started with a command (`spawn-right:lazygit`, `maitty split -- x`) run it again, except
   an agent's: `codex "<task>"` would start the task over, so an agent that can't be resumed
   opens as a shell.
 
-`vibecasso kill-server` keeps the session for next time, and `vibecasso kill-server --forget` discards it.
+`maitty kill-server` keeps the session for next time, and `maitty kill-server --forget` discards it.
 Closing every pane yourself also starts fresh. A burst of panes dying at once, as at logoff or a
 crash, is not recorded, so the last good layout survives. Configure all of this under `[restore]`,
 and per agent with `resume` / `resume_last`. Each pane's recent output is kept on disk so it is
@@ -274,9 +274,9 @@ Sessions › Keep each pane's recent output) stops saving it and deletes what wa
 ## Worktrees
 
 ```sh
-vibecasso worktree feat/login -- claude      # new branch from HEAD, opened with claude running
-vibecasso worktree fix-123 --base origin/main
-vibecasso worktree-remove [--force]          # closes the workspace and removes the checkout
+maitty worktree feat/login -- claude      # new branch from HEAD, opened with claude running
+maitty worktree fix-123 --base origin/main
+maitty worktree-remove [--force]          # closes the workspace and removes the checkout
 ```
 
 New worktrees go to `{repo_parent}/{repo}-worktrees/{branch}` (set `[worktree] dir`). An existing
@@ -284,21 +284,21 @@ local or `origin/` branch is checked out instead of created. Set `[worktree] com
 to start an agent in every new worktree.
 
 With **Own worktree per agent** enabled (the default), typing `claude`, `codex`, `gemini`,
-`opencode` (or a quick agent's name) in a Vibecasso shell in a Git repository's main checkout
+`opencode` (or a quick agent's name) in a Maitty shell in a Git repository's main checkout
 creates a worktree and starts the agent in it, including with `-c` configuration
 or `-p` profile options. `codex resume` and `codex fork` stay in the current folder;
 explicit `--cd` and Codex's own `--worktree` are honored. Starting inside an existing
 linked worktree reuses it, and a folder that is not a Git repository gets no worktree and no
-error. This applies to shells opened by Vibecasso, whatever shell they run (bash, zsh, fish,
-PowerShell, nu, cmd, or a `shell` setting with arguments): each has Vibecasso's small launcher for
+error. This applies to shells opened by Maitty, whatever shell they run (bash, zsh, fish,
+PowerShell, nu, cmd, or a `shell` setting with arguments): each has Maitty's small launcher for
 each agent first on its `PATH`, so an alias or function of your own, a shim manager, `command
 claude`, or a shell started inside the pane (tmux, `bash -l`) still reaches it. The launcher
-asks Vibecasso, which checks the pane's own secret, so only a plain shell in that pane can ask. Two
+asks Maitty, which checks the pane's own secret, so only a plain shell in that pane can ask. Two
 cases it cannot cover: an alias that runs another command or an absolute path (`alias
 claude=~/bin/claude`), and a shell that rebuilds `PATH` without the launcher folder and never
 puts it back.
 
-**Cleaning up.** Closing the last session in a worktree vibecasso made removes its folder (never
+**Cleaning up.** Closing the last session in a worktree maitty made removes its folder (never
 with uncommitted changes; the branch is kept unless it's merged). One left behind by a session
 that crashed is removed the same way a few minutes later, once nothing in it exists only there.
 For everything else there is **Clean up worktrees** (a project's menu, or search):
@@ -326,19 +326,19 @@ Copies go to the system clipboard and, through OSC 52, to your outer terminal (w
 
 ## Agent status
 
-Vibecasso detects common command-line agents automatically and combines process,
+Maitty detects common command-line agents automatically and combines process,
 terminal-screen and native lifecycle evidence where available. Status means:
 
-1. **Native hooks** report lifecycle events. `vibecasso integrate claude` adds hooks to `~/.claude/settings.json`.
-   They stay inert outside vibecasso panes and are tagged so a re-run or `--uninstall` replaces them cleanly.
-   Any tool can report its own state with `vibecasso hook <name> --status working|blocked|done|idle`.
-   `vibecasso integrate gemini` and `vibecasso integrate qwen` do the same for Gemini CLI and Qwen Code;
-   `vibecasso integrate opencode` writes a small OpenCode plugin that tells vibecasso what it's doing.
-   `vibecasso integrate pi` installs Pi's native extension. These, and Codex's hooks, can also
+1. **Native hooks** report lifecycle events. `maitty integrate claude` adds hooks to `~/.claude/settings.json`.
+   They stay inert outside maitty panes and are tagged so a re-run or `--uninstall` replaces them cleanly.
+   Any tool can report its own state with `maitty hook <name> --status working|blocked|done|idle`.
+   `maitty integrate gemini` and `maitty integrate qwen` do the same for Gemini CLI and Qwen Code;
+   `maitty integrate opencode` writes a small OpenCode plugin that tells maitty what it's doing.
+   `maitty integrate pi` installs Pi's native extension. These, and Codex's hooks, can also
    be installed with the mouse through **Settings › Agents → Set up another agent…** (or search for Connect agents). Restart Codex or
    OpenCode after setup, or reload Pi. Status follows the app with any provider, including
    z.ai and DeepSeek; see [status setup and requirements](agent-status.md).
-   For Codex, `vibecasso integrate codex` adds native `SubagentStart` / `SubagentStop`
+   For Codex, `maitty integrate codex` adds native `SubagentStart` / `SubagentStop`
    hooks in `~/.codex/config.toml`, so helper events carry their parent session ID;
    it also configures `notify` when free, preserving another program's notify.
 2. **Screen evidence**: 22 pinned Herdr manifests match live screen regions, OSC
@@ -349,13 +349,13 @@ terminal-screen and native lifecycle evidence where available. Status means:
 A turn that finishes while you're looking elsewhere is **done** until you focus that pane.
 An unanswered Codex queued or expanded question takes priority over its working spinner and shows
 **needs you**. Finished prose that mentions the interrupt shortcut does not count as active
-work. Codex reports turn completion through its notify hook; Vibecasso detects the next
+work. Codex reports turn completion through its notify hook; Maitty detects the next
 turn's activity footer, including soft wraps and background-terminal details. New
 input after a finished turn allows work detection immediately or after a delayed start.
 An advancing footer also detects automatic follow-up work without keyboard input.
 Native Codex subagent hooks attach every helper to its parent pane as soon as it
 starts and remove it when it stops.
-Hook authority ends when a recognized agent's process exits. Vibecasso recognizes
+Hook authority ends when a recognized agent's process exits. Maitty recognizes
 Herdr's 24 agent identities plus its five additional existing agents; OMP,
 Mastracode, Kilo and Kimi native status setup is also available through the Menu.
 See [status setup and its limits](agent-status.md).

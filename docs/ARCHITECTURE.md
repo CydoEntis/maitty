@@ -73,10 +73,10 @@ src/
     worktrees.rs making and trusting worktrees, spares, hooks, cleanup
     restore.rs   saving sessions and recovering agents left asleep by older versions
     check.rs     a pane's check result, and the runner: the project's check command run in the session's worktree when a turn ends
-    check_source.rs which checks a project has (yours, else the repo's .vibecasso/checks.toml), where each comes from, whether it may run
+    check_source.rs which checks a project has (yours, else the repo's .maitty/checks.toml), where each comes from, whether it may run
     check_stale.rs  a pass gone stale: the worktree's tree when a run starts, compared on the git poll
     helpers.rs   sessions starting helpers: the ask / always / never rule, the request a session's row shows, and the projects you said Always for (helper-projects.json)
-    approvals.rs your Always / Never / Once for repo-supplied check commands (kept in Vibecasso's data folder, read at start), and the ApproveCheck / ForgetCheckApproval commands
+    approvals.rs your Always / Never / Once for repo-supplied check commands (kept in Maitty's data folder, read at start), and the ApproveCheck / ForgetCheckApproval commands
     term.rs      one pane: PTY, input thread, vt100 emulator
     scan.rs, git.rs, persist.rs
   client/        the UI
@@ -97,7 +97,7 @@ src/
     motion.rs (slides and glides), …
     tests.rs     rendering and behaviour tests
   mcp.rs, project.rs, gitfs.rs, alert.rs, reveal.rs, update.rs, restart.rs, sync.rs
-  shim.rs        the per-agent launchers on a shell pane's PATH, and the PATH code `vibecasso agent-launch` shares
+  shim.rs        the per-agent launchers on a shell pane's PATH, and the PATH code `maitty agent-launch` shares
 docs/            these docs, the roadmap, design briefs
 config.example.toml
 ```
@@ -156,22 +156,22 @@ monorepo split.
 
 ## Project-specific: system context
 
-Vibecasso is one binary that runs in two roles:
+Maitty is one binary that runs in two roles:
 
-- **Daemon (server):** started on demand, one per user (or per `VIBECASSO_SOCKET`
+- **Daemon (server):** started on demand, one per user (or per `MAITTY_SOCKET`
   name). Owns every pane: spawns shells and agents in pseudo-terminals
   (ConPTY on Windows), parses their output with `vt100`, detects agent status,
   manages worktrees, persists sessions, and restores them after a restart.
 - **Client (UI):** the full-screen TUI. Connects over a local socket (named pipe
   on Windows, Unix socket elsewhere), receives snapshots and pane output, sends
   commands and keystrokes. Many clients can attach; any can detach.
-- **CLI subcommands** (`vibecasso send`, `vibecasso read`, `vibecasso wait`, `vibecasso worktree`,
-  `vibecasso handoff`, `vibecasso doctor`, `vibecasso mcp`, `vibecasso proxy`, …) talk to the same daemon.
+- **CLI subcommands** (`maitty send`, `maitty read`, `maitty wait`, `maitty worktree`,
+  `maitty handoff`, `maitty doctor`, `maitty mcp`, `maitty proxy`, …) talk to the same daemon.
 
 External systems: the agent CLIs it runs (claude, codex, …) and their hook
-callbacks (`vibecasso hook`), `git` and `gh`, `ssh`
-for remote machines (`--remote host` runs `ssh host vibecasso proxy`), the OS
-clipboard and notifications, and an MCP server (`vibecasso mcp`) agents use to talk to
+callbacks (`maitty hook`), `git` and `gh`, `ssh`
+for remote machines (`--remote host` runs `ssh host maitty proxy`), the OS
+clipboard and notifications, and an MCP server (`maitty mcp`) agents use to talk to
 each other.
 
 ## Project-specific: stack
@@ -184,7 +184,7 @@ format) over `tokio-util` length-delimited frames, `serde`/`toml`/`toml_edit`
 `arboard` (clipboard), `clap` (CLI), `anyhow` (errors), `tracing` (logs).
 `jsonc-parser` 0.33.1 with CST/serde support edits OpenCode's native JSONC plugin
 lists while retaining comments and settings; serde_json alone cannot preserve them.
-`vt100` is a patched copy in `vendor/vt100` (see its `VIBECASSO.md`; wired in with
+`vt100` is a patched copy in `vendor/vt100` (see its `MAITTY.md`; wired in with
 `[patch.crates-io]`): keep its changes there and listed in that file.
 Rules for the language live in `docs/stack/rust.md`.
 
@@ -217,7 +217,7 @@ The client never touches a PTY; the daemon never draws. They meet only through
 src/
   main.rs        argument parsing, picks client / daemon / CLI role
   cli.rs         one-shot subcommands (send, read, wait, hook, doctor, …)
-  cli/handoff.rs `vibecasso handoff`: the text brief, and the files a checkout changed
+  cli/handoff.rs `maitty handoff`: the text brief, and the files a checkout changed
   tidy.rs        what removing a worktree would lose (shared by the server's sweep and the clean-up list)
   snapshot.rs    a checkout's files kept before each agent turn, and put back (the server takes them, the client lists and restores)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
@@ -260,20 +260,20 @@ opens the search, `Action::Help` opens All keys). The Menu and tab renaming are 
 `client/screen/leader.rs`. `docs/shortcuts.md` is documentation only; the app does not embed it.
 
 **Agent launchers.** A plain shell pane (no command, not a popup) starts with a launcher per
-agent first on its `PATH` (`shim.rs`, written to `<data>/shell/bin/`; only files vibecasso wrote are
-replaced or removed): `claude` there runs `vibecasso agent-dir claude …`, goes to the folder it
+agent first on its `PATH` (`shim.rs`, written to `<data>/shell/bin/`; only files maitty wrote are
+replaced or removed): `claude` there runs `maitty agent-dir claude …`, goes to the folder it
 prints, and execs the next `claude` on `PATH` with the launcher folder taken off (a `.cmd`
-calling `vibecasso agent-launch` on Windows). The agents are the built-in four plus the programs the quick
+calling `maitty agent-launch` on Windows). The agents are the built-in four plus the programs the quick
 agents run (the first word of a plain-named `command`, so an agent named `work` that runs `claude` adds nothing), and only when `worktree.per_agent` is on. `daemon/term.rs` also defines a shell
 function per agent (bash `--rcfile`, zsh `ZDOTDIR`, fish `-C`, PowerShell's startup script) and
 keeps the launcher folder first on `PATH` before each prompt or command, since a manager like
-mise puts its own shims in front. The function sets `VIBECASSO_AGENT_DIR_DONE` for the one command
+mise puts its own shims in front. The function sets `MAITTY_AGENT_DIR_DONE` for the one command
 so the launcher does not ask a second time. The daemon decides (`Command::AgentWorktree`): only
 a pane with no agent yet, only in a git repo's main checkout, and a caller without the pane's
 secret gets an empty answer.
 
 `client/restart_prompt.rs` is the one screen outside the app loop: before a window opens, it
-asks once to replace a running server of another version that has agents working or waiting (`main.rs` calls it). `restart.rs` owns the rest of the one-step update: the activity file a server publishes beside its pid file (`Activity`, so a newer vibecasso can decide without asking an older server anything), the plan for a mismatch (`plan_for_mismatch`), waiting for the old server's socket to close, and re-opening the window on the installed vibecasso (`relaunch`). The stop itself is `cli::kill_server`, which reaches servers of any version by process and only ever the server of this `VIBECASSO_SOCKET`.
+asks once to replace a running server of another version that has agents working or waiting (`main.rs` calls it). `restart.rs` owns the rest of the one-step update: the activity file a server publishes beside its pid file (`Activity`, so a newer maitty can decide without asking an older server anything), the plan for a mismatch (`plan_for_mismatch`), waiting for the old server's socket to close, and re-opening the window on the installed maitty (`relaunch`). The stop itself is `cli::kill_server`, which reaches servers of any version by process and only ever the server of this `MAITTY_SOCKET`.
 offers to replace a running server of another version (`main.rs` calls it; the restart itself is
 `cli::kill_server`, which reaches servers of any version).
 
@@ -287,8 +287,8 @@ Source provenance and redistribution terms are in the vendor NOTICE and LICENSE.
 Kilo's plugin and native Kimi/Mastracode hook configurations. OpenCode configuration
 editing lives in `cli/opencode_config.rs` and preserves its V1-to-V2 migration.
 Actions invokes installation through
-`spawn_bg`; adapters send authenticated `vibecasso hook` reports and remain inert
-outside Vibecasso. No provider-specific status adapter is needed.
+`spawn_bg`; adapters send authenticated `maitty hook` reports and remain inert
+outside Maitty. No provider-specific status adapter is needed.
 
 - **Commands and snapshots.** The client sends `Command`s; the daemon answers
   with full `Snapshot`s plus per-pane output. The client derives its view model
@@ -316,4 +316,4 @@ Decisions: [0001 daemon owns sessions](adr/0001-daemon-owns-sessions.md),
 [0003 msgpack over local sockets](adr/0003-msgpack-over-local-sockets.md),
 [0004 one layout](adr/0004-one-layout.md),
 [0005 herdr-compatible keys](adr/0005-herdr-compatible-keys.md),
-[0011 keep Vibecasso terminal-first](adr/0011-keep-seshi-terminal-first.md).
+[0011 keep Maitty terminal-first](adr/0011-keep-seshi-terminal-first.md).

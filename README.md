@@ -1,10 +1,11 @@
-<h1 align="center">Vibecasso</h1>
+<h1 align="center">Maitty</h1>
 
-<p align="center"><strong>Run your coding agents side by side, and always know which one needs you.</strong></p>
+<p align="center"><strong>All agents on deck.</strong><br>
+Run your coding agents side by side, and always know which one needs you.</p>
 
-<p align="center"><a href="#install">Install</a> · <a href="#quick-start">Quick start</a> · <a href="#shortcuts">Shortcuts</a> · <a href="docs/guide.md">Guide</a> · <a href="https://github.com/CydoEntis/vibecasso/releases">Releases</a></p>
+<p align="center"><a href="#install">Install</a> · <a href="#quick-start">Quick start</a> · <a href="#shortcuts">Shortcuts</a> · <a href="docs/guide.md">Guide</a> · <a href="https://github.com/CydoEntis/maitty/releases">Releases</a></p>
 
-Vibecasso is a terminal workspace for Claude Code, Codex, Gemini, OpenCode and other
+Maitty is a terminal workspace for Claude Code, Codex, Gemini, OpenCode and other
 command-line agents. Start as many as you like, see at a glance which are working, which
 are waiting for you and which have finished, and jump to any of them in a keystroke. Close
 the window and they keep running; open it again and everything is where you left it.
@@ -17,13 +18,13 @@ It runs natively on Windows, macOS and Linux.
   has finished or is idle, from the agent's own hooks where available and from its process
   and screen otherwise. An agent that has gone silent for ten minutes is flagged as quiet.
 - **Nothing is lost.** A background service owns every session. Closing the window, a crash
-  or a reboot doesn't stop your agents: Vibecasso reopens them in the right folders and
+  or a reboot doesn't stop your agents: Maitty reopens them in the right folders and
   resumes their conversations.
 - **One inbox.** Questions, failed checks and finished work collect in one place, most
   urgent first. A sound and an optional phone notification tell you when an agent needs you.
 - **Each agent in its own branch.** New agents get their own Git worktree, so they never
   edit the same files. Review the diff, commit, merge or open a pull request without leaving.
-- **Checks you can rely on.** Name a command, such as your tests, and Vibecasso runs it after
+- **Checks you can rely on.** Name a command, such as your tests, and Maitty runs it after
   each agent turn. A session whose check fails reads *failed*, not *done*.
 - **Agents that work together.** Agents can list, read, message and start other sessions
   through MCP tools, within limits you set.
@@ -35,40 +36,40 @@ It runs natively on Windows, macOS and Linux.
 **Windows** (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/CydoEntis/vibecasso/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/CydoEntis/maitty/main/install.ps1 | iex
 ```
 
 **macOS and Linux:**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/CydoEntis/vibecasso/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/CydoEntis/maitty/main/install.sh | sh
 ```
 
 The installer picks the build for your machine, verifies its checksum and needs no
 administrator rights. You can also download an archive from
-[Releases](https://github.com/CydoEntis/vibecasso/releases), or build from source with
-`cargo install --git https://github.com/CydoEntis/vibecasso`.
+[Releases](https://github.com/CydoEntis/maitty/releases), or build from source with
+`cargo install --git https://github.com/CydoEntis/maitty`.
 
-Vibecasso tells you when an update is out; one click installs it and restarts without
+Maitty tells you when an update is out; one click installs it and restarts without
 losing your sessions.
 
-**Coming from Seshi?** Vibecasso is its new name. Install Vibecasso as above. The first time
-it starts, it brings over your config, saved sessions and history, and points your Claude
-hooks at Vibecasso. Run `vibecasso doctor`: it names anything still set up for Seshi, such as
-the MCP server (`vibecasso integrate mcp` renames it) or another agent's integration
-(`vibecasso integrate <agent>`). Projects keep working with their `.seshi.toml` and
-`.seshi/checks.toml` until you rename them. Uninstall Seshi when you're happy.
+**Coming from Vibecasso or Seshi?** Maitty is the new name. Install Maitty as above. The
+first time it starts, it brings over your config, saved sessions and history, and points your
+Claude hooks at Maitty. Run `maitty doctor`: it names anything still set up under the old
+name, such as the MCP server (`maitty integrate mcp` renames it) or another agent's integration
+(`maitty integrate <agent>`). Projects keep working with their `.vibecasso.toml` or
+`.seshi.toml` and checks files until you rename them. Uninstall the old app when you're happy.
 
 ## Quick start
 
-1. Open a terminal in your project and run `vibecasso`.
+1. Open a terminal in your project and run `maitty`.
 2. Click **+ new** for a shell and type `claude` (or any agent), or press `Ctrl+Space`, then
    `s` to start your default agent straight away.
 3. Watch the sidebar: orange is working, the alert colour means it needs you, green means
    it finished, gray is idle. Click a row to go to that session.
-4. Press `Ctrl+Space`, then `q` to step away. Your agents keep running; run `vibecasso`
+4. Press `Ctrl+Space`, then `q` to step away. Your agents keep running; run `maitty`
    to come back.
-5. Run `vibecasso doctor` to check your setup and connect agents for exact status.
+5. Run `maitty doctor` to check your setup and connect agents for exact status.
 
 ## Shortcuts
 
@@ -82,20 +83,20 @@ Shift needed. Pause after `Ctrl+Space` to see them all.
 | **Panes** | arrows move · `v` split side by side · `h` split stacked · `x` close · `Ctrl`+arrows resize · `c` copy mode · `z` collapse the sidebar |
 | **Tabs** | `t` new · `Ctrl+W` close · `r` rename · `]` / `[` next / previous · `1`–`9` go to tab |
 | **Project** | `f` files · `p` find a file · `/` search code · `d` changes · `g` worktrees · `b` branches · `e` the sidebar |
-| **Vibecasso** | `Space` search commands · `m` menu · `,` settings · `F1` all keys · `l` history · `Ctrl+V` paste an image · `q` step away |
+| **Maitty** | `Space` search commands · `m` menu · `,` settings · `F1` all keys · `l` history · `Ctrl+V` paste an image · `q` step away |
 
 Scrolled up in a pane? Click **↓ Back to bottom**. Every screen's own keys are in
 [shortcuts](docs/shortcuts.md).
 
 ## Connect your agents
 
-Vibecasso recognises common agents with no setup, from their process and screen. For exact
+Maitty recognises common agents with no setup, from their process and screen. For exact
 status, connect them once on each machine:
 
 ```sh
-vibecasso integrate claude     # also: codex, gemini, qwen, opencode, pi, omp, kilo, kimi, mastracode
-vibecasso integrate mcp        # lets agents see and steer other sessions
-vibecasso doctor               # checks what's connected
+maitty integrate claude     # also: codex, gemini, qwen, opencode, pi, omp, kilo, kimi, mastracode
+maitty integrate mcp        # lets agents see and steer other sessions
+maitty doctor               # checks what's connected
 ```
 
 Or use **Settings › Agents › Set up another agent…**. See [agent status](docs/agent-status.md)
@@ -103,16 +104,16 @@ for what each integration reports.
 
 ## From the command line
 
-Everything works from any shell, including from an agent running inside Vibecasso:
+Everything works from any shell, including from an agent running inside Maitty:
 
 ```sh
-vibecasso ~/code/my-app                   # open a project
-vibecasso new ~/code/my-app -- claude     # start an agent there
-vibecasso worktree feat/login -- codex    # a new branch in its own worktree, with codex
-vibecasso ls --json                       # every session and its status
-vibecasso send -p 3 "run the tests"       # message a session
-vibecasso read 3                          # read its screen
-vibecasso handoff 3 --to codex            # hand a task to another agent
+maitty ~/code/my-app                   # open a project
+maitty new ~/code/my-app -- claude     # start an agent there
+maitty worktree feat/login -- codex    # a new branch in its own worktree, with codex
+maitty ls --json                       # every session and its status
+maitty send -p 3 "run the tests"       # message a session
+maitty read 3                          # read its screen
+maitty handoff 3 --to codex            # hand a task to another agent
 ```
 
 ## Configure
@@ -121,8 +122,8 @@ Open **Settings** with `Ctrl+Space`, then `,`. Changes save to your config file 
 comments kept.
 
 ```sh
-vibecasso config init    # write a commented config file
-vibecasso config path    # where it lives
+maitty config init    # write a commented config file
+maitty config path    # where it lives
 ```
 
 A few examples:

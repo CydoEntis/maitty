@@ -54,19 +54,19 @@ agent CLIs you want to run, a Nerd Font for icons.
 ## Project-specific: setup
 
 ```sh
-git clone https://github.com/CydoEntis/vibecasso && cd vibecasso
+git clone https://github.com/CydoEntis/maitty && cd maitty
 cargo build
 cargo test
-cargo install --path .   # then run: vibecasso
+cargo install --path .   # then run: maitty
 ```
 
-Settings live in `config.toml` (`%APPDATA%\vibecasso\` on Windows,
-`~/.config/vibecasso/` elsewhere), with `config.local.toml` beside it for
+Settings live in `config.toml` (`%APPDATA%\maitty\` on Windows,
+`~/.config/maitty/` elsewhere), with `config.local.toml` beside it for
 machine-only values. `config.example.toml` documents every key.
 
-Your Always / Never answers to a repo's `.vibecasso/checks.toml` commands live in
-`check-approvals.json` in Vibecasso's data folder (`%LOCALAPPDATA%\vibecasso\data\` on
-Windows, `~/.local/share/vibecasso/` on Linux, `~/Library/Application Support/vibecasso/`
+Your Always / Never answers to a repo's `.maitty/checks.toml` commands live in
+`check-approvals.json` in Maitty's data folder (`%LOCALAPPDATA%\maitty\data\` on
+Windows, `~/.local/share/maitty/` on Linux, `~/Library/Application Support/maitty/`
 on macOS), never in the repo and never synced. The daemon reads it once when it
 starts; Settings › Check forgets an answer.
 
@@ -76,17 +76,17 @@ offers presets and a custom editor. Preserve explicit custom frames on reload.
 
 ## Project-specific: variables
 
-No `.env` file: Vibecasso is configured through `config.toml`. Environment variables
+No `.env` file: Maitty is configured through `config.toml`. Environment variables
 it reads:
 
 | Variable | Purpose | Set by |
 | --- | --- | --- |
-| `VIBECASSO_CONFIG` | use this config file instead of the default | user |
-| `VIBECASSO_SOCKET` | name of a separate server (like `tmux -L`); used for nested test servers | user |
-| `VIBECASSO_REMOTE` | the SSH host this client works on (from `--remote`) | vibecasso |
-| `VIBECASSO_SSH`, `VIBECASSO_REMOTE_CMD` | replace `ssh` / the remote `vibecasso` command | user |
-| `VIBECASSO_TERM_ID`, `VIBECASSO_PANE_TOKEN` | the pane's id and secret, set inside every pane | daemon |
-| `VIBECASSO_SHOW` | tests print rendered frames | developer |
+| `MAITTY_CONFIG` | use this config file instead of the default | user |
+| `MAITTY_SOCKET` | name of a separate server (like `tmux -L`); used for nested test servers | user |
+| `MAITTY_REMOTE` | the SSH host this client works on (from `--remote`) | maitty |
+| `MAITTY_SSH`, `MAITTY_REMOTE_CMD` | replace `ssh` / the remote `maitty` command | user |
+| `MAITTY_TERM_ID`, `MAITTY_PANE_TOKEN` | the pane's id and secret, set inside every pane | daemon |
+| `MAITTY_SHOW` | tests print rendered frames | developer |
 | `PI_CODING_AGENT_DIR` | Pi/OMP native agent configuration directory; do not share between the two apps | user / agent app |
 | `PI_CONFIG_DIR` | OMP config folder below the user's home, default `.omp` | user / OMP |
 | `KIMI_CODE_HOME` | Kimi config directory, default `~/.kimi-code` | user / Kimi |
@@ -95,6 +95,6 @@ it reads:
 
 ## Project-specific: environments
 
-Local only: Vibecasso is a desktop tool. Development builds use `cargo install --path .`;
+Local only: Maitty is a desktop tool. Development builds use `cargo install --path .`;
 release archives and installers are published through the GitHub release workflow.
 `dev` is the working branch.
