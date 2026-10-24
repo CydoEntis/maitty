@@ -35,8 +35,9 @@ the message box.
 
 ## Open questions
 
-Decided 2026-10-24: "nearly full" is 85%. Open until phase 27 is ticketed: the key for send failure
-(recommended: `m` on a failed check, which already opens the message box, pre-fills the failure).
+Decided 2026-10-24: "nearly full" is 85%; the key is `m` on a failed check (its Inbox row or its
+check view), which opens the message box with the failure in it, as `m` already messages the agent
+on question and finished rows. It was free there (on a failed Inbox row it only started a search).
 
 ## Tickets
 

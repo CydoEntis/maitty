@@ -202,6 +202,51 @@ pub(super) enum Bg {
 }
 
 
+/// The cursor to show, as DECSCUSR's number (0 is the terminal's own): what the focused pane's
+/// program asked for, else the user's `ui.cursor` and `ui.cursor_blink`. A program asking for 0
+/// ("your default") gets the user's setting too.
+fn cursor_code(program: Option<u8>, ui: &crate::config::Ui) -> u8 {
+    if let Some(asked) = program.filter(|c| *c != 0) {
+        return asked;
+    }
+    let blinking = match ui.cursor.as_str() {
+        "block" => 1,
+        "underline" => 3,
+        "bar" => 5,
+        _ => return 0,
+    };
+    // DECSCUSR's odd numbers blink and the even ones after them hold still.
+    if ui.cursor_blink { blinking } else { blinking + 1 }
+}
+
+#[cfg(test)]
+mod cursor_tests {
+    use super::cursor_code;
+    use crate::config::Ui;
+
+    fn ui(shape: &str, blink: bool) -> Ui {
+        Ui { cursor: shape.into(), cursor_blink: blink, ..Default::default() }
+    }
+
+    #[test]
+    fn your_cursor_shows_where_the_program_asks_for_none() {
+        assert_eq!(cursor_code(None, &ui("terminal", true)), 0, "the terminal's own by default");
+        assert_eq!(cursor_code(None, &ui("block", true)), 1);
+        assert_eq!(cursor_code(None, &ui("block", false)), 2);
+        assert_eq!(cursor_code(None, &ui("underline", true)), 3);
+        assert_eq!(cursor_code(None, &ui("underline", false)), 4);
+        assert_eq!(cursor_code(None, &ui("bar", true)), 5);
+        assert_eq!(cursor_code(None, &ui("bar", false)), 6);
+        assert_eq!(cursor_code(Some(0), &ui("bar", false)), 6, "a program asking for the default gets yours");
+    }
+
+    #[test]
+    fn a_program_that_asks_for_its_own_cursor_gets_it() {
+        assert_eq!(cursor_code(Some(5), &ui("block", false)), 5, "vim's insert-mode bar wins over your block");
+        assert_eq!(cursor_code(Some(2), &ui("terminal", true)), 2);
+    }
+}
+
 /// Save the clipboard image as a PNG under the data folder; old pastes (a week) are
 /// cleared out. Returns (path, width, height).
 fn clipboard_image_to_file() -> Result<(PathBuf, usize, usize), String> {
@@ -1302,7 +1347,7 @@ impl App {
     /// Show the focused program's cursor style (bar, block, underline) in the real terminal.
     fn sync_cursor_style(&mut self) {
         use crossterm::cursor::SetCursorStyle as S;
-        let want = self.focused().and_then(|t| self.cursor_style.get(&t).copied()).unwrap_or(0);
+        let want = cursor_code(self.focused().and_then(|t| self.cursor_style.get(&t).copied()), &self.cfg.ui);
         if want == self.cursor_sent {
             return;
         }
