@@ -1221,6 +1221,46 @@ mod screen_tests {
         }
     }
 
+    /// The Grid frame with three panes at `w`x`h`: its rows, and where each pane's box is.
+    fn grid_frame(w: u16, h: u16) -> (App, [TermId; 3], Vec<String>) {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        app.cfg.ui.layout = "grid".into();
+        let panes = three_panes(&mut app);
+        let o = draw(&mut app, w, h);
+        show(&o);
+        let rows = o.lines().map(str::to_string).collect();
+        (app, panes, rows)
+    }
+
+    /// A pane's top border as text.
+    fn top_border(app: &App, rows: &[String], term: TermId) -> String {
+        let r = app.pane_frames.iter().find(|(t, _)| *t == term).unwrap().1;
+        rows[r.y as usize].chars().skip(r.x as usize).take(r.width as usize).collect()
+    }
+
+    #[test]
+    fn grid_numbers_each_pane_and_says_its_state_on_the_left_and_its_name_on_the_right() {
+        let (app, [a, b, c], rows) = grid_frame(200, 50);
+        let (ta, tb, tc) = (top_border(&app, &rows, a), top_border(&app, &rows, b), top_border(&app, &rows, c));
+        assert!(ta.starts_with("┌─ 1 ▲ needs you "), "{ta}");
+        assert_eq!(ta.matches("needs you").count(), 1, "the state is not repeated on the right: {ta}");
+        assert!(ta.contains("  claude   ✕"), "the name tag before the close: {ta}");
+        assert!(ta.contains("1  claude  +"), "the top-left pane keeps its tabs: {ta}");
+        assert!(tb.starts_with("┌─ 2 ") && tb.contains(" working ") && tb.contains(" codex "), "{tb}");
+        assert!(tc.starts_with("┌─ 3 ─") && tc.contains(" shell "), "no state for a shell: {tc}");
+        let card = app.pane_frames.iter().find(|(t, _)| *t == a).unwrap().1;
+        let on_border = |r: &Rect| r.y == card.y && r.x >= card.x && r.right() <= card.right();
+        let why: Vec<Rect> = app.hits.iter().filter(|(r, h)| *h == Hit::Screen(screen::ScreenHit::Why(a)) && on_border(r)).map(|(r, _)| *r).collect();
+        assert_eq!(why.iter().map(|r| r.x).collect::<Vec<_>>(), [card.x + 2], "one, on the left of the border");
+    }
+
+    #[test]
+    fn a_narrow_grid_pane_drops_its_name_tag_before_its_state() {
+        let (app, [a, ..], rows) = grid_frame(60, 20);
+        let ta = top_border(&app, &rows, a);
+        assert!(ta.starts_with("┌─ 1 ▲ needs you ") && !ta.contains("claude"), "{ta}");
+    }
+
     #[test]
     fn any_number_of_splits_and_tabs() {
         let (_, mut app) = super::design_tests::render_with(200, 50);
