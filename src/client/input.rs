@@ -962,7 +962,8 @@ impl App {
                 } else if pos.y >= area.bottom() {
                     line += 1;
                 }
-                let at = (line.min(v.shown_count().saturating_sub(1)), col);
+                // Past the last line: its end, so the drag takes all of it.
+                let at = if line >= v.shown_count() { v.end() } else { (line, col) };
                 match v.edit.as_mut() {
                     Some(ed) => ed.move_to(at, true),
                     None => v.pick = v.pick.map(|(from, _)| (from, at)),

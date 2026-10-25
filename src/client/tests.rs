@@ -9209,6 +9209,27 @@ mod files_panel_tests {
     }
 
     #[test]
+    fn below_the_last_line_the_pointer_means_the_end_of_the_file() {
+        let dir = project("pastend");
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "notes.txt");
+        key(&mut app, KeyCode::Char('i'));
+        let (_, buf) = frame(&mut app, 160, 45);
+        let below = (app.screen.preview_rect.x + 2, app.screen.preview_rect.y + 5);
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), below);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), below);
+        assert_eq!((edit(&app).row, edit(&app).col), (0, "remember the milk".len()), "a click below a short file: its end");
+        let word = at(&app, &buf, "the milk");
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), word);
+        let past = (word.0, app.screen.preview_rect.bottom() + 1);
+        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), past);
+        assert_eq!(edit(&app).selection(), Some(((0, 9), (0, 17))), "a drag past the end takes the rest of the last line");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_double_click_on_drawn_markdown_takes_a_word() {
         let (dir, mut app) = guide_open("mdword");
         let (_, buf) = frame(&mut app, 200, 50);

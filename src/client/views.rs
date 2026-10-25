@@ -770,8 +770,14 @@ impl FilesTree {
     pub fn text_at(&self, area: ratatui::layout::Rect, x: u16, y: u16) -> Pos {
         let y = y.clamp(area.y, area.bottom().saturating_sub(1));
         let line = self.scroll + (y - area.y) as usize;
-        let text = self.shown_text(line).unwrap_or_default();
+        let Some(text) = self.shown_text(line) else { return self.end() };
         (line, col_at(&text, x.saturating_sub(area.x + self.gutter()) as usize))
+    }
+
+    /// The end of the preview's last line.
+    pub fn end(&self) -> Pos {
+        let last = self.shown_count().saturating_sub(1);
+        (last, self.shown_text(last).map_or(0, |t| t.chars().count()))
     }
 
     /// How many lines the preview shows at `width`: the edit, the drawn markdown, or the text.
