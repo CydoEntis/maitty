@@ -1252,6 +1252,10 @@ impl App {
                 self.screen_focus(t);
                 self.screen_side_set(SideItem::Sess(t));
             }
+            ScreenHit::StripSession(t) => {
+                self.screen_focus(t);
+                self.view_set_aside = self.view_kind();
+            }
             ScreenHit::RowChanges(t) => {
                 self.screen.cursor = Some(t);
                 self.act(Action::Changes);

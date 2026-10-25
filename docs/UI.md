@@ -517,8 +517,10 @@ there is square whatever `ui.rounded` says.
   focused one) shows its `⋯` menu where the age was, and a project header folds (pointed, `+`
   and `⋯` take its branch's place). The foot's `new` and `menu` are the **+ New** and **Menu** buttons.
   A pane's glyph and state word open why, its tabs pick a tab, its `+` opens one, the ✕
-  closes the pane, and anywhere else on it focuses it; its title row drags onto another
-  pane to swap them, as in every look. A strip segment opens its session.
+  closes the pane, and anywhere else on it focuses it and gives it the keys, even from the
+  sidebar or a docked panel; its title row drags onto another pane to swap them, as in every
+  look. A strip segment opens its session with the keys in its pane (the sidebar lets go); a
+  right-click on it is the session's menu.
 
 ## Project-specific: frame presentation
 

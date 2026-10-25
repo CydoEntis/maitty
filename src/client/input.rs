@@ -746,7 +746,7 @@ impl App {
             let hit = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
             let at = (m.column, m.row);
             match hit {
-                Some(Hit::Screen(screen::ScreenHit::Session(t) | screen::ScreenHit::RowChanges(t))) => self.menu_for_session(t, at),
+                Some(Hit::Screen(screen::ScreenHit::Session(t) | screen::ScreenHit::RowChanges(t) | screen::ScreenHit::StripSession(t))) => self.menu_for_session(t, at),
                 Some(Hit::Screen(screen::ScreenHit::Why(t))) if self.screen.side_rect.contains(pos) => self.menu_for_session(t, at),
                 Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) => self.menu_for_project(pi, at),
                 _ => {
@@ -830,8 +830,13 @@ impl App {
         match m.kind {
             MouseEventKind::Down(MouseButton::Left) => {
                 if !matches!(self.mode, Mode::Normal) {
+                    // The sidebar or a docked panel holds the keys beside the panes, not over
+                    // them: a click on a pane takes the keys straight to that pane.
+                    let beside = screen::side_focused(self) || screen::sheet_has_keys(self);
                     self.mode = Mode::Normal;
-                    return;
+                    if !beside || !self.pane_frames.iter().any(|(_, r)| r.contains(pos)) {
+                        return;
+                    }
                 }
                 if let Some((term, _, _)) = self.pane_cell(pos) {
                     self.drag = Some((term, pos));

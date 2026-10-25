@@ -6,7 +6,7 @@ use super::*;
 /// Beyond this many sessions equal segments get too thin to tell apart: each is one `━`.
 const EQUAL_UP_TO: usize = 12;
 
-/// Draw the strip on `row`. A click on a segment opens its session.
+/// Draw the strip on `row`. A click on a segment opens its session and gives its pane the keys.
 pub(in crate::client) fn draw_strip(app: &mut App, buf: &mut Buffer, row: Rect, model: &[Proj], t: &Theme) {
     let ink = Ink::of(t);
     fill(buf, row, ink.bg);
@@ -16,7 +16,7 @@ pub(in crate::client) fn draw_strip(app: &mut App, buf: &mut Buffer, row: Rect, 
         .collect();
     for (term, colour, x, w) in segments(&sessions, row) {
         put(buf, x, row.y, &[seg("━".repeat(w as usize), Style::default().fg(colour).bg(ink.bg))], row.right());
-        hit(app, Rect { x, y: row.y, width: w, height: 1 }, ScreenHit::Session(term));
+        hit(app, Rect { x, y: row.y, width: w, height: 1 }, ScreenHit::StripSession(term));
     }
 }
 

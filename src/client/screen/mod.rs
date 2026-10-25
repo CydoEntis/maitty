@@ -975,6 +975,8 @@ pub(super) enum ScreenHit {
     ToggleProj(usize),
     /// The sidebar's "+ new": a plain shell in the selected project.
     Session(TermId),
+    /// A status strip segment: its session's pane, with the keys.
+    StripSession(TermId),
     /// A button on the selected Inbox item: the key it stands for (`\n` Enter, `\x1b` Esc).
     InboxKey(char),
     CloseSplit(TermId),
@@ -1135,6 +1137,8 @@ mod splash;
 mod tidy;
 #[cfg(test)]
 mod frame_tests;
+#[cfg(test)]
+mod panes_apart_tests;
 #[cfg(test)]
 mod reference;
 pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_bar::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, references_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};
