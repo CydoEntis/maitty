@@ -9194,6 +9194,21 @@ mod files_panel_tests {
     }
 
     #[test]
+    fn a_release_outside_the_window_ends_the_selection_drag() {
+        let (dir, mut app) = editing("staledrag");
+        let (_, buf) = frame(&mut app, 160, 45);
+        let from = at(&app, &buf, "line_1");
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), from);
+        assert!(files(&app).dragging);
+        mouse(&mut app, MouseEventKind::Moved, (0, 0));
+        assert!(!files(&app).dragging, "moving with no button held ends it");
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), from);
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), (0, 44));
+        assert!(!files(&app).dragging, "a press elsewhere ends it");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_double_click_on_drawn_markdown_takes_a_word() {
         let (dir, mut app) = guide_open("mdword");
         let (_, buf) = frame(&mut app, 200, 50);

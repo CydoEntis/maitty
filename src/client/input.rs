@@ -451,6 +451,15 @@ impl App {
         if matches!(m.kind, MouseEventKind::Down(_)) {
             self.shortcut_held = false;
         }
+        // A selection drag in Files whose release never came (let go outside the window) is
+        // over once the mouse moves with no button held, or presses somewhere else; here,
+        // before panes and popups take the event.
+        let elsewhere = matches!(m.kind, MouseEventKind::Down(_)) && !self.screen.preview_rect.contains(pos);
+        if (m.kind == MouseEventKind::Moved || elsewhere)
+            && let Some(View::Files(v)) = &mut self.view
+        {
+            v.dragging = false;
+        }
         // A click into a pane gives it the keys and leaves the open view beside it; a click in
         // the side sheet gives them back to the view.
         if m.kind == MouseEventKind::Down(MouseButton::Left) && self.view.is_some() {
