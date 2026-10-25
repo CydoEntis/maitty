@@ -35,8 +35,8 @@ natively on Windows, macOS and Linux.
 - **Agents that work together.** Agents can list, read, message and start other sessions
   through MCP tools, within limits you set.
 - **Your look.** Four layouts (Floating, Tiled, Compact and Grid), rounded or square shapes,
-  padding round the screen, your cursor's shape, 62 themes, and every key and colour
-  configurable.
+  padding round the screen, your cursor's shape, 62 themes with every colour configurable,
+  and rebindable shortcuts.
 
 ## Install
 
@@ -111,7 +111,7 @@ maitty integrate mcp        # lets agents see and steer other sessions
 maitty doctor               # checks what's connected
 ```
 
-Or use **Settings › Agents › Set up another agent…**. See [agent status](docs/agent-status.md)
+Or use **Settings › Agents › Connect agents…**, which offers the same agents. See [agent status](docs/agent-status.md)
 for what each integration reports.
 
 ## From the command line

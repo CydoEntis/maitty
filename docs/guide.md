@@ -367,8 +367,9 @@ terminal-screen and native lifecycle evidence where available. Status means:
    Any tool can report its own state with `maitty hook <name> --status working|blocked|done|idle`.
    `maitty integrate gemini` and `maitty integrate qwen` do the same for Gemini CLI and Qwen Code;
    `maitty integrate opencode` writes a small OpenCode plugin that tells maitty what it's doing.
-   `maitty integrate pi` installs Pi's native extension. These, and Codex's hooks, can also
-   be installed with the mouse through **Settings › Agents → Set up another agent…** (or search for Connect agents). Restart Codex or
+   `maitty integrate pi` installs Pi's native extension. Every agent `maitty integrate` sets up
+   (Claude Code, Codex, Gemini CLI, Qwen Code, OpenCode, Pi, OMP, Kilo, Kimi and Mastra Code) can also
+   be connected with the mouse through **Settings › Agents → Connect agents…** (or search for Connect agents). Restart Codex or
    OpenCode after setup, or reload Pi. Status follows the app with any provider, including
    z.ai and DeepSeek; see [status setup and requirements](agent-status.md).
    For Codex, `maitty integrate codex` adds native `SubagentStart` / `SubagentStop`
@@ -389,8 +390,7 @@ An advancing footer also detects automatic follow-up work without keyboard input
 Native Codex subagent hooks attach every helper to its parent pane as soon as it
 starts and remove it when it stops.
 Hook authority ends when a recognized agent's process exits. Maitty recognizes
-Herdr's 24 agent identities plus its five additional existing agents; OMP,
-Mastracode, Kilo and Kimi native status setup is also available through the Menu.
+Herdr's 24 agent identities plus its five additional existing agents.
 See [status setup and its limits](agent-status.md).
 Terminal bells do not replace the status icon or add musical-note history entries.
 Click a status icon/tag (or `<leader> y`) for a plain-language explanation and the ages of

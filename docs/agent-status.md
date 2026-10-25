@@ -1,12 +1,11 @@
 # Connect agents (status setup)
 
-Maitty works out whether an agent is working, needs you or is done by watching its process and screen. **Connect agents** installs a small adapter into Codex, Pi, OpenCode, OMP, Mastracode, Kilo or Kimi so the agent reports that itself. Claude connects with `maitty integrate claude` instead. It's a one-time step per machine.
+Maitty works out whether an agent is working, needs you or is done by watching its process and screen. **Connect agents** installs a small hook or adapter into Claude Code, Codex, Gemini CLI, Qwen Code, OpenCode, Pi, OMP, Kilo, Kimi or Mastra Code so the agent reports that itself. These are exactly the agents `maitty integrate` sets up. It's a one-time step per machine.
 
 Search commands (leader, then `Space`) for **Connect agents**, or open **Settings › Agents ›
-Set up another agent…**, then click **Codex**, **Pi**, **OpenCode**, **OMP**, **Mastracode**,
-**Kilo** or **Kimi**.
+Connect agents…**, then click the agent.
 Setup installs
-only Maitty's adapter; it preserves other extensions and refuses to overwrite a
+only Maitty's hooks or adapter; it preserves other hooks and extensions and refuses to overwrite a
 different file named `maitty.js`. It does not interrupt an agent or restart the daemon.
 
 Set up the integration on each machine where the agent runs; it lives in that
@@ -19,13 +18,16 @@ after installation. In Pi, use `/reload` or restart it.
 The CLI equivalents, including removal, are:
 
 ```sh
-maitty integrate pi
+maitty integrate claude
 maitty integrate codex
+maitty integrate gemini
+maitty integrate qwen
 maitty integrate opencode
+maitty integrate pi
 maitty integrate omp
-maitty integrate mastracode
 maitty integrate kilo
 maitty integrate kimi
+maitty integrate mastracode
 maitty integrate pi --uninstall
 maitty integrate codex --uninstall
 maitty integrate opencode --uninstall

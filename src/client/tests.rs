@@ -5818,14 +5818,39 @@ mod settings_v8_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         open(&mut app, Cat::Agents, 0);
         let o = draw(&mut app, 160, 45);
-        for want in ["AGENT STATUS", "Claude", "Codex", "✓ read from the process", "Set up another agent…", "SUBAGENTS", "Count on the session row", "AGENTS TALKING TO AGENTS", "Agents may approve prompts"] {
+        for want in ["AGENT STATUS", "Claude Code", "Codex", "✓ read from the process and screen", "Connect agents…", "SUBAGENTS", "Count on the session row", "AGENTS TALKING TO AGENTS", "Agents may approve prompts"] {
             assert!(o.contains(want), "Agents shows {want}: {o}");
         }
         app.claude_hooks = Some(true);
-        assert!(draw(&mut app, 160, 45).contains("✓ hooks installed"));
-        open(&mut app, Cat::Agents, row_of(Cat::Agents, "Set up another agent…"));
+        let o = draw(&mut app, 160, 45);
+        super::check_settings_tests::show(&o);
+        assert!(o.contains("✓ hooks installed"));
+        open(&mut app, Cat::Agents, row_of(Cat::Agents, "Codex"));
+        let o = draw(&mut app, 160, 45);
+        super::check_settings_tests::show(&o);
+        assert!(o.contains("Connect agents installs its hooks") && !o.contains("No hooks needed"), "Codex's help is true: {o}");
+        open(&mut app, Cat::Agents, row_of(Cat::Agents, "Connect agents…"));
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert!(!matches!(app.mode, Mode::ScreenSettings(_)), "the Connect agents list opened");
+    }
+
+    #[test]
+    fn connect_agents_lists_every_status_integration_and_each_one_installs() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.act(Action::AgentStatusSetup);
+        let o = draw(&mut app, 160, 45);
+        super::check_settings_tests::show(&o);
+        let Mode::ScreenMenu(menu) = &app.mode else { panic!("Connect agents opens a menu") };
+        let labels: Vec<&str> = menu.items.iter().map(|(label, _)| label.as_str()).collect();
+        assert_eq!(labels, [
+            "Connect Claude Code", "Connect Codex", "Connect Gemini CLI", "Connect Qwen Code", "Connect OpenCode",
+            "Connect Pi", "Connect OMP", "Connect Kilo", "Connect Kimi", "Connect Mastra Code",
+        ]);
+        for (label, act) in &menu.items {
+            assert!(o.contains(label.as_str()), "{label} is on screen: {o}");
+            let menu::Act::InstallStatus(agent) = act else { panic!("{label} installs a status integration") };
+            assert!(crate::cli::integrations::status_installer(agent).is_ok(), "{label}: the installer accepts {agent}");
+        }
     }
 
     #[test]
