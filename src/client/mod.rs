@@ -164,6 +164,8 @@ pub(super) enum Btn {
     Answer(TermId, char),
     /// A key inside the current view ('\n' for Enter).
     ViewKey(char),
+    /// A key with its modifiers inside the current view (the editor's Ctrl+S, Esc, …).
+    ViewChord(KeyCode, KeyModifiers),
     /// A row of the current view's list.
     Row(usize),
 }

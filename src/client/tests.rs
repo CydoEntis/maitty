@@ -9094,6 +9094,44 @@ mod files_panel_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    fn click_hit(app: &mut App, want: Hit) {
+        let r = app.hits.iter().find_map(|(r, h)| (*h == want).then_some(*r)).expect("the button is drawn");
+        for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+            mouse(app, kind, (r.x + 1, r.y));
+        }
+    }
+
+    #[test]
+    fn the_editor_has_its_own_buttons_and_they_type_nothing() {
+        let (dir, mut app) = editing("buttons");
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.bg = tx;
+        let (o, _) = frame(&mut app, 160, 45);
+        show(&o);
+        let row = o.lines().find(|l| l.contains("Save")).expect("the action row");
+        for label in ["^S", "Save", "^C", "Copy", "^V", "Paste", "^Z", "Undo", "Esc", "Done"] {
+            assert!(row.contains(label), "{label} in {row}");
+        }
+        assert!(!o.contains("Edit here") && !o.contains("Insert path"), "no file-browser buttons while editing:\n{o}");
+        let ctrl = |c: char| Hit::Button(Btn::ViewChord(KeyCode::Char(c), KeyModifiers::CONTROL));
+        click_hit(&mut app, ctrl('c'));
+        assert_eq!(last_copy().as_deref(), Some("let line_1 = 1;\n"), "Copy copies");
+        assert_eq!(edit(&app).lines[0], "let line_1 = 1;", "and types nothing");
+        click_hit(&mut app, ctrl('v'));
+        let read = super::branch_view_tests::next_bg(&mut rx);
+        app.on_bg(read);
+        assert_eq!(edit(&app).lines[..2], ["let line_1 = 1;", "let line_1 = 1;"], "Paste pastes");
+        click_hit(&mut app, ctrl('z'));
+        assert_eq!(edit(&app).lines[..2], ["let line_1 = 1;", "let line_2 = 2;"], "Undo undoes");
+        assert!(edit(&app).dirty, "an undo marks the file changed");
+        click_hit(&mut app, ctrl('s'));
+        assert!(!edit(&app).dirty, "Save saves");
+        assert_eq!(std::fs::read_to_string(dir.join("src").join("main.rs")).unwrap().lines().next(), Some("let line_1 = 1;"));
+        click_hit(&mut app, Hit::Button(Btn::ViewChord(KeyCode::Esc, KeyModifiers::NONE)));
+        assert!(files(&app).edit.is_none(), "Done leaves the editor");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_double_click_on_drawn_markdown_takes_a_word() {
         let (dir, mut app) = guide_open("mdword");

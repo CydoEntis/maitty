@@ -9,6 +9,7 @@ use super::{App, Hit};
 use crate::protocol::{Status, TermInfo};
 
 use crate::theme::Theme;
+use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -608,10 +609,23 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
             }
         }
     }
+    if v.edit.is_some() {
+        // The file browser's buttons would type their letters into the file.
+        let chord = |c: char| Hit::Button(super::Btn::ViewChord(KeyCode::Char(c), KeyModifiers::CONTROL));
+        let buttons = [
+            ("Save", "^S", BtnKind::Primary, chord('s')),
+            ("Copy", "^C", BtnKind::Normal, chord('c')),
+            ("Paste", "^V", BtnKind::Normal, chord('v')),
+            ("Undo", "^Z", BtnKind::Normal, chord('z')),
+            ("Done", "Esc", BtnKind::Normal, Hit::Button(super::Btn::ViewChord(KeyCode::Esc, KeyModifiers::NONE))),
+        ];
+        action_row(app, buf, area, t, &buttons, &[]);
+        return;
+    }
     let who = app.focused().and_then(|id| app.snap.terms.get(&id)).map(pane_name).unwrap_or_else(|| "the pane".into());
     let insert = format!("Insert path into {who}");
     let mut buttons = vec![(insert.as_str(), "Enter", BtnKind::Primary, Hit::Button(super::Btn::ViewKey('\n')))];
-    if v.markdown() && v.edit.is_none() {
+    if v.markdown() {
         buttons.push((if v.drawn() { "Raw" } else { "Pretty" }, "m", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('m'))));
     }
     buttons.extend([
@@ -621,9 +635,7 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
         ("Copy path", "y", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('y'))),
         ("Show diff", "d", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('d'))),
     ]);
-    // The editor's header has room only for saving and leaving; its other keys go here.
-    let keys = if v.edit.is_some() { "^C copy · ^V paste · ^Z undo" } else { "PgUp PgDn / wheel scroll" };
-    action_row(app, buf, area, t, &buttons, &[seg(keys, Style::default().fg(t.muted))]);
+    action_row(app, buf, area, t, &buttons, &[seg("PgUp PgDn / wheel scroll", Style::default().fg(t.muted))]);
 }
 
 /// Paint characters `span` of `text`, drawn from `at`, as selected; one past its end is the

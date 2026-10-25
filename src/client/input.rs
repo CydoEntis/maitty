@@ -1063,6 +1063,7 @@ impl App {
                     };
                     self.on_view_key(&KeyEvent::new(code, KeyModifiers::NONE));
                 }
+                Btn::ViewChord(code, mods) => self.on_view_key(&KeyEvent::new(code, mods)),
                 Btn::Row(i) => match &mut self.view {
                     Some(View::Changes(v)) => {
                         let rows = v.rows();
