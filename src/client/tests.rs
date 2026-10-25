@@ -1614,6 +1614,56 @@ mod screen_tests {
         assert_eq!((cell.fg, cell.bg), (t.acc_ink, t.accent), "the spinner reads on the tab's accent");
     }
 
+    /// The three panes, the current tab at `place` among three tabs of the session; the other
+    /// two show pane `c` and are named `other-tab-1` and `other-tab-2`.
+    fn three_tabs(app: &mut App, place: usize) -> [TermId; 3] {
+        let [a, b, c] = three_panes(app);
+        let mut tabs: Vec<_> = (1..=2)
+            .map(|k| {
+                let mut tab = app.screen.tabs[0].clone();
+                (tab.layout, tab.focus, tab.name) = (crate::layout::Node::Leaf(c), c, format!("other-tab-{k}"));
+                tab
+            })
+            .collect();
+        tabs.insert(place, app.screen.tabs[0].clone());
+        (app.screen.tabs, app.screen.tab) = (tabs, place);
+        [a, b, c]
+    }
+
+    #[test]
+    fn a_narrow_grid_title_keeps_the_current_tab_before_any_other() {
+        use crate::config::Rounding;
+        let mut failures = Vec::new();
+        let mut others_dropped = false;
+        for rounded in [Rounding::Off, Rounding::Full] {
+            for place in 0..3 {
+                for w in 44..=110u16 {
+                    let (_, mut app) = super::design_tests::render_with(w, 24);
+                    (app.cfg.ui.layout, app.cfg.ui.rounded) = ("grid".into(), rounded);
+                    let [a, ..] = three_tabs(&mut app, place);
+                    app.snap.terms.get_mut(&a).unwrap().status = Status::Working;
+                    let buf = drawn(&mut app, w, 24);
+                    let card = card_of(&app, a);
+                    let top: String = (card.x..card.right()).map(|x| buf[(x, card.y)].symbol()).collect();
+                    show(&format!("{rounded:?} current {place} {w}: {top}"));
+                    let shown = |i| border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(i))).len() == 1;
+                    let others = (0..3).filter(|&i| i != place).filter(|&i| shown(i)).count();
+                    let spinner = crate::client::design::glyph(&app, Status::Working);
+                    let at = format!("{rounded:?} current {place} {w}: {top}");
+                    if others > 0 && !(shown(place) && top.contains("claude")) {
+                        failures.push(format!("another tab kept over the current one, or while it shortens: {at}"));
+                    }
+                    if !top.contains(&spinner) {
+                        failures.push(format!("no state glyph: {at}"));
+                    }
+                    others_dropped |= shown(place) && others < 2;
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+        assert!(others_dropped, "somewhere the other tabs give way and the current one stays");
+    }
+
     #[test]
     fn any_number_of_splits_and_tabs() {
         let (_, mut app) = super::design_tests::render_with(200, 50);
