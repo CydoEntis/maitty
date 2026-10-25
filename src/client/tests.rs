@@ -8819,6 +8819,12 @@ mod side_panel_width_tests {
         app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
         key(&mut app, 'n');
         assert!(matches!(app.view, Some(View::Changes(_))), "Changes stays open beside it");
+        let mut term = Terminal::new(TestBackend::new(200, 50)).unwrap();
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        let buf = term.backend().buffer();
+        let bar = screen::mode_bar_row(&app, buf.area);
+        let text: String = (bar.x..bar.right()).map(|x| buf[(x, bar.y)].symbol().to_string()).collect();
+        assert!(text.trim_start().starts_with("TYPING"), "the bar says typing, not CHANGES: {text}");
         assert!(typed_into_a_pane(&mut app, &mut rx, 'm'), "the next key types into the pane, not Changes");
     }
 
