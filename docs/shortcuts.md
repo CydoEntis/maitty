@@ -251,7 +251,7 @@ have none.
 | Right / l, Left / h, Enter on directory | Expand, collapse / parent, toggle directory |
 | Enter on file | Insert quoted path into agent prompt and close Files |
 | r, / | Toggle recent/tree, filter paths; Enter ends filtering, Esc clears filter |
-| e, i, o, y, d | External editor, edit in preview, open outside, copy path, Changes |
+| e, i, o, y | External editor, edit in preview, open outside, copy path |
 | m on a markdown file | Show it as text or drawn (drawn is the default) |
 | PgUp, PgDn, Shift+Up, Shift+Down | Scroll preview pages or individual lines |
 | Right / l on file | Focus preview; arrows / j / k scroll, Space pages down, g / G or Home / End go to ends |
