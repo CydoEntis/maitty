@@ -603,7 +603,7 @@ Everything below is shipped on `main` unless marked.
 
 **Identity**
 - Renamed hydra → Seshi (v0.30.1, ADR-0008), Seshi → Vibecasso (ADR-0018), then Vibecasso → Maitty (ADR-0020): the name lives in `Cargo.toml` (ADR-0019); one-time move of an old install — `config::migrate_old_names`
-- Night (default) and Day themes among 62 built-in themes; block MAITTY wordmark on the splash — shipped in v0.42.0 — `src/theme.rs`, `src/client/screen/splash.rs`
+- Night (default) and Day themes among 162 built-in themes (62 by v0.42.0); block MAITTY wordmark on the splash — shipped in v0.42.0 — `src/theme.rs`, `src/client/screen/splash.rs`
 
 **Extras**
 - Alert when an agent needs you: Maitty's two rising notes and an in-app notice; a desktop notification only with no window open. Completions stay quiet — `src/alert.rs`
