@@ -559,9 +559,13 @@ impl Daemon {
             // visibly working when the agent's own screen explicitly shows its idle prompt.
             let has_active_children = !t.subagents.is_empty()
                 || t.subagent_activity.iter().any(|activity| activity.state.active());
+            // Claude's input box shows all turn long, and its title says idle while its
+            // turn-end hooks still run: a hooked agent's screen must also have gone still, or
+            // this would finish (and ring) ahead of the hook.
             if signal.status == Some(Status::Idle)
                 && signal.visible_idle
                 && (t.status == Status::Working || has_active_children)
+                && (!t.hooked || t.last_output.elapsed() >= SCREEN_DONE_QUIET)
             {
                 let status = if t.status == Status::Working && Some(t.id) != focused {
                     Status::Done

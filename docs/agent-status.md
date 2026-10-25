@@ -116,7 +116,9 @@ exit releases hook authority, so an exited agent cannot leave a permanent spinne
 An explicit idle prompt recognized by a bundled screen detector also reconciles a
 missed turn-end event for any supported agent, hooked or screen-detected. It clears
 active child rows as unconfirmed while retaining their lifecycle records; it does
-not infer completion from silence alone. Hosts without an explicit idle screen
+not infer completion from silence alone. For a hooked agent the screen must also have
+been still for 5 seconds: Claude's input box is on screen all turn, and its title reads
+idle while its own Stop hooks still run, so an animating screen waits for the hook. Hosts without an explicit idle screen
 signal rely on their lifecycle completion events.
 
 A working agent with no output and no hook report for 10 minutes is marked quiet

@@ -560,6 +560,7 @@ fn explicit_idle_screen_evidence_recovers_missed_turn_ends_across_agents() {
                 result: None,
             });
             p.parser.process(format!("\x1b]0;{title}\x07").as_bytes());
+            p.last_output = Instant::now() - Duration::from_secs(10);
         }
 
         d.update_statuses();
@@ -577,6 +578,38 @@ fn explicit_idle_screen_evidence_recovers_missed_turn_ends_across_agents() {
         );
         close(&mut d, &[t]);
     }
+}
+
+/// Claude's screen while its turn-end hooks run: the title already says idle and the
+/// spinner reads "(running Stop hooks…", which its working rule doesn't know.
+const CLAUDE_RUNNING_STOP_HOOKS: &str = "\x1b]0;\u{2733} project\x07\x1b[2J\x1b[H\
+● Pushed the branch.\r\n\r\n\
+\u{273b} Symbioting\u{2026} (running Stop hooks\u{2026} 0/2 \u{b7} 1m 0s \u{b7} \u{2193} 1.1k tokens)\r\n\r\n\
+\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\r\n\
+\u{276f} \r\n\
+\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\r\n\
+  \u{23f5}\u{23f5} auto mode on (shift+tab to cycle) \u{b7} \u{2190} 1 agent";
+
+#[test]
+fn a_hooked_claude_still_animating_is_not_read_idle_from_its_prompt_box() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    {
+        let p = d.terms.get_mut(&t).unwrap();
+        p.agent = Some("claude".into());
+        p.hooked = true;
+        p.status = Status::Working;
+        p.parser.process(CLAUDE_RUNNING_STOP_HOOKS.as_bytes());
+        p.last_output = Instant::now();
+    }
+    d.update_statuses();
+    assert_eq!(d.terms[&t].status, Status::Working, "its spinner still redraws: wait for the hook");
+    assert!(d.terms[&t].alert_due.is_none(), "nothing rings yet");
+    // No turn-end report ever came and the screen has gone still: the missed hook is recovered.
+    d.terms.get_mut(&t).unwrap().last_output = Instant::now() - Duration::from_secs(10);
+    d.update_statuses();
+    assert_eq!(d.terms[&t].status, Status::Done);
+    close(&mut d, &[t]);
 }
 
 #[test]
