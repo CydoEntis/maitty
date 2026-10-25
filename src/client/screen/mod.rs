@@ -127,6 +127,8 @@ pub(super) struct Screen {
     pub visible: Vec<TermId>,
     pub proj_keys: Vec<String>,
     pub wt_keys: Vec<(String, PathBuf)>,
+    /// The keys the mode bar's suggestions press, drawn this frame.
+    pub bar_keys: Vec<crate::keys::KeySpec>,
     pub branch_keys: Vec<(PathBuf, String)>,
     /// The sidebar model, built once per event / frame (see `screen_fresh`).
     pub model_cache: std::cell::RefCell<Option<Vec<Proj>>>,
@@ -1035,8 +1037,12 @@ pub(super) enum ScreenHit {
     Actions,
     /// A row of the actions list.
     ActionRow(usize),
-    /// The leader pill (leader mode is on): the key map.
+    /// The mode bar's SHORTCUT tag: the key map.
     Leader,
+    /// The mode bar's TYPING: shortcut mode, as the leader starts it.
+    ShortcutMode,
+    /// A suggestion on the mode bar: its key in `Screen::bar_keys`, pressed in shortcut mode.
+    BarKey(usize),
     /// A key in the key map (its row in the shown list).
     KeyRow(usize),
     /// A pane's scrollbar (click or drag).
@@ -1109,6 +1115,7 @@ mod heads;
 mod popover;
 mod helpers_ask;
 mod draw;
+mod mode_bar;
 mod side;
 mod sheet;
 mod inbox;
@@ -1118,4 +1125,4 @@ mod tidy;
 mod v7_frame_tests;
 #[cfg(test)]
 mod v7_ref;
-pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};
+pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_bar::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};

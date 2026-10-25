@@ -273,15 +273,23 @@ pub(super) fn world(stage: Stage) -> App {
     app
 }
 
-/// The world drawn in `layout` at `w`×`h`, every cell with its colours.
+/// The world drawn in `layout` at `w`×`h`, every cell with its colours. The handoff has no mode
+/// bar (ADR 0024), which takes the bottom row: the world is drawn a row taller and that row, the
+/// bar's and nothing else, is left out, so the screen above it is laid out as at `w`×`h`.
 pub(super) fn cells(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str) -> ratatui::buffer::Buffer {
     FIXED_NOW.with(|n| n.set(Some(now())));
     let (l, p) = layout.config();
     (app.cfg.ui.layout, app.cfg.ui.panes, app.cfg.ui.glyphs) = (l.into(), p.into(), glyphs.into());
     app.screen_fresh();
-    let mut term = Terminal::new(TestBackend::new(w, h)).expect("a test terminal");
+    let mut term = Terminal::new(TestBackend::new(w, h + 1)).expect("a test terminal");
     term.draw(|f| render::draw(app, f)).expect("a frame");
-    term.backend().buffer().clone()
+    let full = term.backend().buffer();
+    assert_eq!(super::screen::mode_bar_row(app, full.area).y, h, "the bar is the row left out");
+    let mut buf = ratatui::buffer::Buffer::empty(Rect::new(0, 0, w, h));
+    for (x, y) in (0..h).flat_map(|y| (0..w).map(move |x| (x, y))) {
+        buf[(x, y)] = full[(x, y)].clone();
+    }
+    buf
 }
 
 /// `app` drawn in `layout` at `w`×`h` with the `glyphs` set (`unicode`, `ascii`, `nerd`), as
@@ -323,37 +331,6 @@ fn without_new_tab_chip(row: &str) -> String {
     let rest = &out[at + CHIP.len()..];
     let fill = rest.chars().next().unwrap_or(' ');
     format!("{}{}{rest}", &out[..at], fill.to_string().repeat(CHIP.len() + cut))
-}
-
-/// Row 0 as the handoff draws it, without the mode tag the app keeps in the corner (ADR 0023):
-/// the tag and the room its title leaves for it come out, and that room goes back into the
-/// title's fill, so the top-right card's mark and ✕ keep the handoff's columns. What the room
-/// cost a narrow title (a tab that gave way) stays the app's.
-fn without_mode_tag(row: &[char], app: &App, layout: Layout) -> Vec<char> {
-    let cards = app.pane_frames.iter().map(|(_, r)| *r).chain([app.screen.sheet_rect]);
-    let Some(card) = cards.filter(|r| r.y == 0 && r.right() as usize == row.len()).max_by_key(|r| r.x) else { return row.to_vec() };
-    let t = app.theme.clone();
-    let reserve = super::screen::corner_reserve(app, row.len() as u16, card.width, &t) as usize;
-    let corner = row.len() - 1;
-    let mut out: Vec<char> = row[..corner - reserve].iter().chain(&row[corner..]).copied().collect();
-    let fill = if layout == Layout::Flat { ' ' } else { '─' };
-    // The title's fill: its longest run on that card, between the tabs and the mark.
-    let (mut best, mut at, mut run) = ((card.x as usize, 0), 0, 0);
-    for (i, c) in out.iter().enumerate().skip(card.x as usize) {
-        if *c == fill {
-            if run == 0 {
-                at = i;
-            }
-            run += 1;
-            if run > best.1 {
-                best = (at, run);
-            }
-        } else {
-            run = 0;
-        }
-    }
-    out.splice(best.0..best.0, std::iter::repeat_n(fill, reserve));
-    out
 }
 
 /// The sidebar as the handoff's v7 frames draw it, from what v8 draws (ADR 0014). `rows` is the
@@ -459,7 +436,7 @@ pub(super) fn frame(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str)
         .iter()
         .enumerate()
         .map(|(y, row)| {
-            let row: String = if y == 0 { without_mode_tag(row, app, layout).iter().collect() } else { row.iter().collect() };
+            let row: String = row.iter().collect();
             let row = if y == 0 { without_new_tab_chip(&row) } else { row };
             row.trim_end().to_string() + "\n"
         })

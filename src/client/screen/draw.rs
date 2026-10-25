@@ -1,5 +1,5 @@
 //! The main screen: the sidebar, the panes (the top-left one carrying the tabs in its title),
-//! the sheet, the pill at the top right and the toast.
+//! the sheet, the mode bar along the bottom and the toast.
 
 use super::*;
 use crate::brand::{APP_COMMAND};
@@ -44,10 +44,28 @@ pub(in crate::client) struct Grid {
 /// Most the padding round the screen may be, in cells.
 const PADDING_MAX: u16 = 2;
 
-/// The room the screen is laid out in: the window less the padding setting all round.
-pub(in crate::client) fn framed(app: &App, area: Rect) -> Rect {
+/// The window less the padding setting all round.
+fn padded(app: &App, area: Rect) -> Rect {
     let m = app.cfg.ui.padding.parse().unwrap_or(1).min(PADDING_MAX);
     Rect { x: area.x + m, y: area.y + m, width: area.width.saturating_sub(2 * m), height: area.height.saturating_sub(2 * m) }
+}
+
+/// The room the screen is laid out in: inside the padding, above the mode bar.
+pub(in crate::client) fn framed(app: &App, area: Rect) -> Rect {
+    let r = padded(app, area);
+    Rect { height: r.height.saturating_sub(1), ..r }
+}
+
+/// The mode bar's row (ADR 0024): the bottom row inside the padding.
+pub(in crate::client) fn mode_bar_row(app: &App, area: Rect) -> Rect {
+    let r = padded(app, area);
+    Rect { y: r.bottom().saturating_sub(1), height: r.height.min(1), ..r }
+}
+
+/// Where popups and their dimming go: the window above the mode bar, so the mode stays in view
+/// and readable under any of them.
+pub(in crate::client) fn above_bar(app: &App, area: Rect) -> Rect {
+    Rect { height: mode_bar_row(app, area).y.saturating_sub(area.y), ..area }
 }
 
 /// The grid in `area` (already `framed`): the sidebar the full height at one side, then the
@@ -161,17 +179,18 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
         draw_sheet_edge(app, f.buffer_mut(), &g, t);
     }
-    draw_corner_pills(app, f.buffer_mut(), room, t);
+    draw_mode_bar(app, f.buffer_mut(), mode_bar_row(app, area), t);
     app.screen.crumb_x = g.panes.x + 1;
     // A popup (`<app> popup`) floats over everything, the rest dimmed.
+    let above = above_bar(app, area);
     match app.mode.clone() {
-        Mode::Compose(c) if c.inbox.is_none() => draw_compose_pop(app, f.buffer_mut(), area, g.side, &c, t),
-        Mode::Why { term, .. } => draw_why_pop(app, f.buffer_mut(), area, g.side, term, t),
-        Mode::Helpers { term, .. } => draw_helpers_pop(app, f.buffer_mut(), area, g.side, term, t),
+        Mode::Compose(c) if c.inbox.is_none() => draw_compose_pop(app, f.buffer_mut(), above, g.side, &c, t),
+        Mode::Why { term, .. } => draw_why_pop(app, f.buffer_mut(), above, g.side, term, t),
+        Mode::Helpers { term, .. } => draw_helpers_pop(app, f.buffer_mut(), above, g.side, term, t),
         _ => {}
     }
     if let Some(term) = app.popup() {
-        let whole = f.area();
+        let whole = above;
         dim_all(f.buffer_mut(), whole, t);
         let w = (whole.width * 4 / 5).max(40).min(whole.width);
         let h = (whole.height * 3 / 4).max(12).min(whole.height);
@@ -180,184 +199,6 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     }
     draw_toast(app, f.buffer_mut(), room, t);
     g.panes
-}
-
-/// The mode tag's words (ADR 0023), lit, paused and typing, by the least room they are used from:
-/// a narrow window gets shorter words, so a narrow pane keeps its tabs and its mark. Below the
-/// narrowest supported window there is no room to say typing.
-const TAGS: [(u16, ModeWords); 3] = [
-    (100, [" SHORTCUT · Esc to type ", " SHORTCUT · paused ", " TYPING "]),
-    (76, [" SHORTCUT · Esc ", " SHORTCUT · paused ", " TYPING "]),
-    (0, [" SHORTCUT · Esc ", " SHORTCUT · paused ", ""]),
-];
-
-type ModeWords = [&'static str; 3];
-
-/// From this much room (where the layout stops tightening) the title leaves the widest tag's
-/// room while you type too, so it holds still across all three; narrower, typing keeps only its
-/// own tag's room, so a narrow title keeps its tabs, and only lit and paused hold still.
-const HOLD_TYPING_FROM: u16 = NARROW;
-
-/// What the corner card's title keeps beside the pills: its start, the current tab at its
-/// shortest, the status glyph and the ✕.
-const TITLE_KEEP: u16 = 32;
-
-fn tag_words(room_w: u16) -> ModeWords {
-    TAGS.iter().find(|(from, _)| room_w >= *from).map_or(TAGS[TAGS.len() - 1].1, |(_, words)| *words)
-}
-
-/// What the mode tag says now: lit while keys are shortcuts, held under a popup or view that
-/// took the keys, else typing.
-fn mode_words(app: &App, words: ModeWords) -> &'static str {
-    let [lit, paused, typing] = words;
-    if armed(app) {
-        lit
-    } else if shortcut_paused(app) {
-        paused
-    } else {
-        typing
-    }
-}
-
-/// How much of Update or Restart shows: all its words, the version, the arrow, or nothing.
-#[derive(Clone, Copy, PartialEq)]
-enum Release {
-    Words,
-    Version,
-    Arrow,
-    Hidden,
-}
-
-/// How much the corner says.
-#[derive(Clone, Copy)]
-struct Corner {
-    release: Release,
-    words: ModeWords,
-}
-
-/// The fullest corner that leaves a card `card_w` wide its title (`TITLE_KEEP`): Update shortens
-/// to its version, then its arrow, then the tag to one word, and last Update goes. Chosen on the
-/// widest tag, so it holds as the mode changes.
-fn corner_fit(app: &App, room_w: u16, card_w: u16, t: &Theme) -> Corner {
-    let words = tag_words(room_w);
-    let short = [" SHORTCUT ", " PAUSED ", words[2]];
-    let last = Corner { release: Release::Hidden, words: short };
-    let steps = [
-        Corner { release: Release::Words, words },
-        Corner { release: Release::Version, words },
-        Corner { release: Release::Arrow, words },
-        Corner { release: Release::Arrow, words: short },
-    ];
-    let budget = card_w.saturating_sub(TITLE_KEEP);
-    steps.into_iter().find(|c| reserve_of(app, *c, true, t) <= budget).unwrap_or(last)
-}
-
-/// The pills at the top right of row 0, left to right: Update or Restart when one is waiting,
-/// then the mode tag in the corner. Each is capped like every chip when rounded: the caps'
-/// ground is filled in where they are drawn (`draw_corner_pills`).
-fn corner_pills(app: &App, corner: Corner, t: &Theme) -> Vec<(Vec<Seg>, Option<ScreenHit>)> {
-    let round = Look::of(&app.cfg.ui).round_tabs;
-    release_pill(app, corner.release, t)
-        .map(|(segs, h)| (segs, Some(h)))
-        .into_iter()
-        .chain(mode_tag(app, corner.words, t))
-        .map(|(segs, h)| (if round { round_ends(segs, Color::Reset) } else { segs }, h))
-        .collect()
-}
-
-/// The mode, always in view: sky and bold while lit, quiet otherwise. A click on it opens the
-/// key map.
-fn mode_tag(app: &App, words: ModeWords, t: &Theme) -> Option<(Vec<Seg>, Option<ScreenHit>)> {
-    let words = mode_words(app, words);
-    let style = if armed(app) { Style::default().fg(t.bg).bg(t.sky()).add_modifier(Modifier::BOLD) } else { Style::default().fg(t.muted).bg(t.btn) };
-    // Typing under a popup, the tag is only dimmed words: a click there still reaches the
-    // popup's own outside-click, as it did before the tag was there.
-    let clickable = armed(app) || shortcut_paused(app) || matches!(app.mode, Mode::Normal | Mode::Side);
-    (!words.is_empty()).then(|| (vec![seg(words, style)], clickable.then_some(ScreenHit::Leader)))
-}
-
-/// Update when a newer release is out, else Restart once a newer one is installed but not
-/// running, as much of it as `shown`.
-fn release_pill(app: &App, shown: Release, t: &Theme) -> Option<(Vec<Seg>, ScreenHit)> {
-    let style = Style::default().fg(t.accent).bg(t.btn).add_modifier(Modifier::BOLD);
-    let (words, h) = if let Some(version) = app.update_available.as_ref() {
-        let words = match shown {
-            Release::Words => format!(" ↑ Update {version} "),
-            Release::Version => format!(" ↑ {version} "),
-            _ => " ↑ ".to_string(),
-        };
-        (words, ScreenHit::Update)
-    } else if app.restart_needed() {
-        // Installed (here or from outside the app), not running yet: one click finishes it.
-        ((if shown == Release::Words { " ↻ Restart " } else { " ↻ " }).to_string(), ScreenHit::Restart)
-    } else {
-        return None;
-    };
-    (shown != Release::Hidden).then(|| (vec![seg(words, style)], h))
-}
-
-/// Room `corner` takes from the right of row 0, a cell between its pills; `held` keeps the tag
-/// at its widest, so what sits left holds still as the mode changes.
-fn reserve_of(app: &App, corner: Corner, held: bool, t: &Theme) -> u16 {
-    let caps = if Look::of(&app.cfg.ui).round_tabs { 2 } else { 0 };
-    let release = release_pill(app, corner.release, t).map_or(0, |(segs, _)| segs_width(&segs) + caps + 1);
-    let words = mode_words(app, corner.words);
-    let tag = match (words.is_empty(), held) {
-        (true, _) => 0,
-        (false, true) => corner.words.iter().map(|w| w.width() as u16).max().unwrap_or(0) + caps,
-        (false, false) => words.width() as u16 + caps,
-    };
-    release + tag
-}
-
-/// Room the corner pills take on row 0 in a room `room_w` wide, over a corner card `card_w`
-/// wide (see `HOLD_TYPING_FROM`).
-pub(in crate::client) fn corner_reserve(app: &App, room_w: u16, card_w: u16, t: &Theme) -> u16 {
-    let held = armed(app) || shortcut_paused(app) || room_w >= HOLD_TYPING_FROM;
-    reserve_of(app, corner_fit(app, room_w, card_w, t), held, t)
-}
-
-/// How wide the card under the corner pills is: the pane or sheet at the top right, or no limit
-/// when none is (the collapsed strip holds row 0 then).
-fn corner_card_w(app: &App, area: Rect) -> u16 {
-    let right = corner_right(app, area);
-    let cards = app.pane_frames.iter().map(|(_, r)| *r).chain([app.screen.sheet_rect]);
-    cards.filter(|r| r.y == area.y && r.right() == right && r.width > 0).map(|r| r.width).min().unwrap_or(u16::MAX)
-}
-
-pub(in crate::client) fn draw_corner_pills(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
-    let paused = shortcut_paused(app);
-    let card_w = corner_card_w(app, area);
-    let mut right = corner_right(app, area).saturating_sub(1);
-    // Never past the room the corner card's title left for them.
-    let limit = right.saturating_sub(corner_reserve(app, area.width, card_w, t)).max(area.x);
-    for (segs, h) in corner_pills(app, corner_fit(app, area.width, card_w, t), t).into_iter().rev() {
-        let w = segs_width(&segs);
-        let x = right.saturating_sub(w);
-        if x < limit || w > right {
-            break;
-        }
-        let r = Rect { x, y: area.y, width: w, height: 1 };
-        let behind = ends_behind(buf, r);
-        put(buf, x, area.y, &segs, area.right());
-        // The caps sit on whatever is there: a border, a header strip, the dimming behind a popup.
-        if Look::of(&app.cfg.ui).round_tabs
-            && let Some(&(bl, br)) = behind.first()
-        {
-            let on = r.intersection(buf.area);
-            buf[(on.x, on.y)].set_bg(bl);
-            buf[(on.right() - 1, on.y)].set_bg(br);
-        }
-        // Paused, they only say so: the popup has the keys and its own way out, and the key map
-        // opened over it would throw away what was typed there. They still catch the click,
-        // which would otherwise land outside the popup and close it.
-        match (paused, h) {
-            (true, _) => hit(app, r, ScreenHit::Noop),
-            (false, Some(h)) => hit(app, r, h),
-            (false, None) => {}
-        }
-        right = x.saturating_sub(1);
-    }
 }
 
 pub(in crate::client) fn find(model: &[Proj], term: TermId) -> Option<(&Proj, &Wt, &Session)> {
@@ -663,7 +504,7 @@ fn close_w(look: Look, c: &Card) -> u16 {
 /// word, then the ✕; the mark's glyph is the last thing to go, since status must stay in view.
 /// Returns where the mark sits (a click opens why).
 fn fit_right(look: Look, r: Rect, c: &mut Card, note: Option<Seg>, mark: Option<PaneMark>) -> Option<Rect> {
-    let end = right_end(look, r).saturating_sub(c.right_room);
+    let end = right_end(look, r);
     // The card draws its right-hand segments only with two cells to spare after the title's start.
     let avail = end.saturating_sub(title_x(look, r) + 2);
     let full = mark.as_ref().map(|m| seg(format!("{} {}", m.glyph, m.word), m.style));
@@ -682,26 +523,6 @@ fn fit_right(look: Look, r: Rect, c: &mut Card, note: Option<Seg>, mark: Option<
     }
     c.right.clear();
     None
-}
-
-/// Room a card in the top-right corner (a pane or the sheet) leaves at the end of its title for
-/// the corner pills, so its mark and ✕ never sit under them or jump as the mode changes.
-pub(in crate::client) fn corner_room(app: &App, r: Rect, screen: Rect, t: &Theme) -> u16 {
-    if r.y != screen.y || r.right() != corner_right(app, screen) {
-        return 0;
-    }
-    corner_reserve(app, screen.width, r.width, t)
-}
-
-/// Where the corner pills end on row 0: the right of the room inside the padding, or, with the
-/// sidebar drawn on the right, the right of the pane column beside it, so they sit on a pane or
-/// the sheet and never over the sidebar's title and counts.
-pub(in crate::client) fn corner_right(app: &App, room: Rect) -> u16 {
-    let g = grid(app, room);
-    if app.cfg.ui.sidebar_position != "right" || g.side.width < SIDE_DRAWN_FROM {
-        return room.right();
-    }
-    g.panes.right().max(g.sheet.right()).min(g.side.x)
 }
 
 /// A pane as a card. Its title: the tabs of the session on screen when it's the top-left pane
@@ -748,7 +569,6 @@ fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: 
     let state = chip_state(app, info);
     let x = title_x(look, r);
     let room = right_end(look, r).saturating_sub(x);
-    let corner = c.right_room;
     let note_w = segs_width(&c.right);
     let caps = if look.round_tabs { 2 } else { 0 };
     let glyph_w = state.as_ref().map_or(0, |s| segs_width(&[state_seg(s, chip_style, t)]));
@@ -761,7 +581,7 @@ fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: 
     // and the named chip's share. A square ✕ keeps the room it always had, as if after other
     // segments, so square titles shorten where they did; a capped ✕ costs what it draws.
     let close_w = |right: u16, close: bool| if close { close_width(look, right > 0 || !look.caps) } else { 0 };
-    let fits = |right: u16, close: bool, body: u16| 2 + right + close_w(right, close) + corner + body <= room;
+    let fits = |right: u16, close: bool, body: u16| 2 + right + close_w(right, close) + body <= room;
     if !fits(note_w, true, chip_min) {
         c.right.clear();
     }
@@ -771,7 +591,7 @@ fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: 
     if !close {
         c.close = None;
     }
-    let rest = right_w + close_w(right_w, close) + corner;
+    let rest = right_w + close_w(right_w, close);
     let title_end = right_end(look, r).saturating_sub(rest + 2);
     let (named, glyph_at) = if top_left {
         tab_strip(app, model, Rect { x, y: r.y, width: title_end.saturating_sub(x), height: 1 }, focused, state.as_ref(), t)
@@ -850,8 +670,6 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     };
     let note = note.map(|(note, colour)| seg(format!("{note}  "), Style::default().fg(colour)));
     c.close = Some(ScreenHit::CloseSplit(term));
-    let room = corner_room(app, r, framed(app, f.area()), t);
-    c.right_room = room;
     // Grid says the state on the left of the border instead.
     let mark_at = if look.grid {
         c.right.extend(note);
@@ -873,7 +691,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         grid_title(app, model, &info, focused, r, &mut c, t)
     } else {
         // The title runs up to two cells before the right-hand segments and the ✕.
-        let right_w = segs_width(&c.right) + close_w(look, &c) + room;
+        let right_w = segs_width(&c.right) + close_w(look, &c);
         let title_end = right_end(look, r).saturating_sub(right_w + 2);
         c.chips = if top_left {
             tab_strip(app, model, Rect { x: title_x(look, r), y: r.y, width: title_end.saturating_sub(title_x(look, r)), height: 1 }, focused, None, t).0

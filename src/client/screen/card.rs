@@ -254,8 +254,6 @@ pub(in crate::client) struct Card<'a> {
     pub right: Vec<Seg>,
     /// The ✕ at the right of the top border, and what a click on it does.
     pub close: Option<ScreenHit>,
-    /// Columns kept clear after the ✕, where the corner pill sits over the border.
-    pub right_room: u16,
     pub border: Color,
     /// Focused: the border (Cards) or the left rule (Flat), and the title chip, in `border`.
     pub bold: bool,
@@ -270,7 +268,7 @@ pub(in crate::client) struct Card<'a> {
 
 impl<'a> Card<'a> {
     pub fn new(t: &Theme, title: &'a str) -> Card<'a> {
-        Card { title, sub: "", chips: Vec::new(), right: Vec::new(), close: None, right_room: 0, border: t.line, bold: false, title_fg: t.strong, bg: pane_bg(t), float: false }
+        Card { title, sub: "", chips: Vec::new(), right: Vec::new(), close: None, border: t.line, bold: false, title_fg: t.strong, bg: pane_bg(t), float: false }
     }
 
     /// The focused look: the border and the title chip in `c`.
@@ -379,7 +377,7 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
         let trail = " ".repeat(close_trail(look) as usize);
         right.push(seg(format!("{lead}{inner}{close}{inner} {trail}"), Style::default().fg(t.muted)));
     }
-    let end = right_end(look, r).saturating_sub(c.right_room);
+    let end = right_end(look, r);
     let rw = segs_width(&right);
     let rx = end.saturating_sub(rw);
     let chip_x = title_x(look, r);

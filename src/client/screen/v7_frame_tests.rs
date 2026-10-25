@@ -10,20 +10,18 @@ use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use ratatui::backend::TestBackend;
 
 /// Preset 01 "No check set" from the reference: row 0 from the pane column on, and the last
-/// row (Flat: from the pane column on, the sidebar's foot being its own). At 80×24 the second
-/// tab gives way to the room the title leaves for the mode tag (ADR 0023); the tag itself is
-/// taken out by `v7_fixture::frame`.
+/// row (Flat: from the pane column on, the sidebar's foot being its own).
 const ROWS_01: [(Layout, u16, u16, &str, &str, &str); 10] = [
     (Layout::Floating, 160, 45, "unicode", "┌─ 1  fix-footer  2  add-payments ────────────────────────────────────────────────────────────────────────────── ✓ done  ✕  ┐", "└────────────────────────────────┘ └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"),
     (Layout::Floating, 100, 30, "unicode", "┌─ 1  fix-footer  2  add-payments ────────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘ └───────────────────────────────────────────────────────────────────────┘"),
-    (Layout::Floating, 80, 24, "unicode", "┌─ 1  fix-footer ─────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘ └───────────────────────────────────────────────────┘"),
+    (Layout::Floating, 80, 24, "unicode", "┌─ 1  fix-footer  2  add-payments ────── ✓ done  ✕  ┐", "└────────────────────────┘ └───────────────────────────────────────────────────┘"),
     (Layout::Tiled, 160, 45, "unicode", "┌─ 1  fix-footer  2  add-payments ─────────────────────────────────────────────────────────────────────────────── ✓ done  ✕  ┐", "└────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"),
     (Layout::Tiled, 100, 30, "unicode", "┌─ 1  fix-footer  2  add-payments ─────────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘└────────────────────────────────────────────────────────────────────────┘"),
-    (Layout::Tiled, 80, 24, "unicode", "┌─ 1  fix-footer ──────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘└────────────────────────────────────────────────────┘"),
+    (Layout::Tiled, 80, 24, "unicode", "┌─ 1  fix-footer  2  add-payments ─────── ✓ done  ✕  ┐", "└────────────────────────┘└────────────────────────────────────────────────────┘"),
     (Layout::Flat, 160, 45, "unicode", "│ 1  fix-footer  2  add-payments                                                                                    ✓ done  ✕", "│"),
     (Layout::Flat, 100, 30, "unicode", "│ 1  fix-footer  2  add-payments                                ✓ done  ✕", "│"),
-    (Layout::Flat, 80, 24, "unicode", "│ 1  fix-footer                             ✓ done  ✕", "│"),
-    (Layout::Flat, 80, 24, "ascii", "│ 1  fix-footer                             + done  x", "│"),
+    (Layout::Flat, 80, 24, "unicode", "│ 1  fix-footer  2  add-payments            ✓ done  ✕", "│"),
+    (Layout::Flat, 80, 24, "ascii", "│ 1  fix-footer  2  add-payments            + done  x", "│"),
 ];
 
 /// The modal sizes of presets 12 (Override?), A2 (Approve · read first) and 15 (Settings ·
@@ -650,9 +648,10 @@ fn a_hovered_border_chip_is_whole() {
         ("the sheet's ✕", |h| matches!(h, Hit::Screen(ScreenHit::Close | ScreenHit::ViewClose))),
         ("a tab chip", |h| matches!(h, Hit::Screen(ScreenHit::TabPick(_)))),
         ("the + chip", |h| matches!(h, Hit::Screen(ScreenHit::NewTab))),
-        ("the update pill", |h| matches!(h, Hit::Screen(ScreenHit::Update))),
-        ("the mode tag", |h| matches!(h, Hit::Screen(ScreenHit::Leader))),
+        ("the bar's update pill", |h| matches!(h, Hit::Screen(ScreenHit::Update))),
+        ("the bar's mode tag", |h| matches!(h, Hit::Screen(ScreenHit::Leader | ScreenHit::ShortcutMode))),
     ];
+    let mut covered = std::collections::BTreeSet::new();
     for layout in ["cards", "tiled", "compact", "grid"] {
         for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
             for ((w, h), sheet) in SIZES.into_iter().flat_map(|s| [(s, false), (s, true)]) {
@@ -666,8 +665,17 @@ fn a_hovered_border_chip_is_whole() {
                     term.backend().buffer().clone()
                 };
                 size(&mut app);
-                let targets: Vec<(&str, Rect)> = chips.iter().flat_map(|(what, is)| app.hits.iter().filter(|(r, h)| r.y == 0 && is(h)).map(|(r, _)| (*what, *r)).collect::<Vec<_>>()).collect();
+                // The border chips on row 0, the mode bar's own chips on its row: its tag a cell in
+                // (TYPING's hint after it takes the same click but is words, not a chip).
+                let bar = crate::client::screen::mode_bar_row(&app, Rect::new(0, 0, w, h));
+                let on_row = |r: &Rect, what: &str| match what {
+                    "the bar's mode tag" => r.y == bar.y && r.x == bar.x + 1,
+                    "the bar's update pill" => r.y == bar.y,
+                    _ => r.y == 0,
+                };
+                let targets: Vec<(&str, Rect)> = chips.iter().flat_map(|(what, is)| app.hits.iter().filter(|(r, h)| on_row(r, what) && is(h)).map(|(r, _)| (*what, *r)).collect::<Vec<_>>()).collect();
                 for (what, r) in targets {
+                    covered.insert(what);
                     app.hover = Some(Position::new(r.x + r.width / 2, r.y));
                     let buf = size(&mut app);
                     app.hover = None;
@@ -701,4 +709,5 @@ fn a_hovered_border_chip_is_whole() {
             }
         }
     }
+    assert_eq!(covered.len(), chips.len(), "every kind of chip is hovered somewhere: {covered:?}");
 }

@@ -1281,6 +1281,8 @@ impl App {
             ScreenHit::Actions => self.act(Action::Menu),
             ScreenHit::ActionRow(i) => self.actions_run(i),
             ScreenHit::Leader => self.open_keymap(None),
+            ScreenHit::ShortcutMode => self.mode = Mode::Prefix { since: Instant::now(), acted: false },
+            ScreenHit::BarKey(i) => self.press_from_bar(i),
             ScreenHit::KeyRow(i) => {
                 if let Mode::KeyMap(km) = &self.mode {
                     let km = (**km).clone();
@@ -1480,6 +1482,16 @@ impl App {
                 }
             }
         }
+    }
+
+    /// A click on a mode bar suggestion presses its key in shortcut mode, so it does exactly
+    /// what the key does there, the mode staying for the next one. The click itself took the
+    /// mode down (`on_mouse`), so it is put back first.
+    fn press_from_bar(&mut self, i: usize) {
+        let Some(key) = self.screen.bar_keys.get(i).copied() else { return };
+        self.mode = Mode::Prefix { since: Instant::now(), acted: true };
+        self.shortcut_held = true;
+        self.on_key(KeyEvent::new(key.code, key.mods));
     }
 
     /// A key for the settings sheet (shared with clicks).
