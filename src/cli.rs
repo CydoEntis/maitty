@@ -920,9 +920,9 @@ pub fn doctor() -> Result<()> {
             Ok(text) if text.parse::<toml_edit::DocumentMut>().is_err() => {
                 line(Some(false), "codex subagent hooks", format!(concat!("{} is invalid TOML; repair it before `", env!("APP_COMMAND"), " integrate codex`"), path.display()));
             }
-            Ok(_) => line(Some(false), "codex subagent hooks", concat!("missing: `", env!("APP_COMMAND"), " integrate codex` (restart Codex to load them)").into()),
+            Ok(_) => line(Some(false), "codex subagent hooks", concat!("missing: run `", env!("APP_COMMAND"), " integrate` (restart Codex to load them)").into()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                line(Some(false), "codex subagent hooks", concat!("missing: `", env!("APP_COMMAND"), " integrate codex` (restart Codex to load them)").into());
+                line(Some(false), "codex subagent hooks", concat!("missing: run `", env!("APP_COMMAND"), " integrate` (restart Codex to load them)").into());
             }
             Err(error) => line(Some(false), "codex subagent hooks", format!("couldn't read {}: {error}", path.display())),
         }
@@ -958,7 +958,7 @@ pub fn doctor() -> Result<()> {
             line(
                 None,
                 &format!("{agent} status adapter"),
-                format!("not installed; fallback detection remains active; run `{APP_COMMAND} integrate {agent}`"),
+                format!("not installed; fallback detection remains active; run `{APP_COMMAND} integrate`"),
             );
         }
     }
@@ -969,7 +969,7 @@ pub fn doctor() -> Result<()> {
         let hooked = settings.contains("hook claude");
         let stale = stale_claude_hooks();
         match (hooked, stale.first()) {
-            (false, _) => line(Some(false), "claude status hooks", concat!("missing: `", env!("APP_COMMAND"), " integrate claude` (exact working / needs-you / done)").into()),
+            (false, _) => line(Some(false), "claude status hooks", concat!("missing: run `", env!("APP_COMMAND"), " integrate` (exact working / needs-you / done)").into()),
             // Another the app can't talk to this one's server: every agent would look idle.
             (true, Some(other)) => line(Some(false), "claude status hooks", format!("they run another {APP_COMMAND} ({other}); `{APP_COMMAND} integrate claude` (or restart the server) fixes it")),
             (true, None) => line(Some(true), "claude status hooks", "installed".into()),
@@ -1816,15 +1816,37 @@ pub(super) fn install_codex_status(exe: &str, uninstall: bool) -> Result<PathBuf
     Ok(path)
 }
 
-pub fn integrate(agent: &str, uninstall: bool) -> Result<()> {
+pub fn integrate(agent: Option<&str>, uninstall: bool) -> Result<()> {
     let exe = this_exe()?;
     match agent {
-        "mcp" => integrate_mcp(&exe, uninstall),
-        agent => {
+        None => integrate_every(&exe, uninstall),
+        Some("mcp") => integrate_mcp(&exe, uninstall),
+        Some(agent) => {
             let path = integrations::set_up_status(agent, &exe, uninstall)?;
             report_integration(agent, &path, uninstall);
             Ok(())
         }
+    }
+}
+
+/// Status for every installed agent, then the MCP server; fails, after trying them all, when
+/// any couldn't be changed.
+fn integrate_every(exe: &str, uninstall: bool) -> Result<()> {
+    println!("Status:");
+    let results = integrations::set_up_every(integrations::agent_installed, |agent| {
+        integrations::connect(agent, exe, uninstall)
+    });
+    for (agent, outcome) in &results {
+        println!("{}: {}", agent.name, outcome.describe(uninstall));
+    }
+    let failed = results.iter().filter(|(_, o)| matches!(o, integrations::Outcome::Failed(_))).count();
+    println!("\nMCP:");
+    let mcp = integrate_mcp(exe, uninstall);
+    println!("\nRestart your agents to load the change.");
+    match (failed, mcp) {
+        (0, mcp) => mcp,
+        (n, Ok(())) => bail!("{n} agent(s) not changed"),
+        (n, Err(e)) => bail!("{n} agent(s) not changed; MCP: {e:#}"),
     }
 }
 

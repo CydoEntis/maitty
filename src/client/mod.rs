@@ -853,9 +853,13 @@ impl App {
         self.updating = true;
         self.notify("Installing update… the daemon will restart when no sessions are open.".into(), false);
         self.spawn_bg(|| {
-            let r = crate::update::install_latest();
+            let r = crate::update::install_latest().map(|(v, exe)| (v, crate::update::integrate_agents(&exe)));
             Bg::Then(Box::new(move |app: &mut App| match r {
-                Ok((v, _)) => app.update_installed(v),
+                Ok((v, Ok(()))) => app.update_installed(v),
+                Ok((v, Err(e))) => {
+                    app.update_installed(v);
+                    app.notify(format!("Updated, but connecting agents failed: {e}. Run `{APP_COMMAND} integrate` to retry."), true);
+                }
                 Err(e) => {
                     app.updating = false;
                     app.notify(format!("Update failed: {e:#}"), true);

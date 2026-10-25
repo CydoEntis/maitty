@@ -53,7 +53,9 @@ curl -fsSL https://raw.githubusercontent.com/CydoEntis/maitty/main/install.sh | 
 ```
 
 The installer picks the build for your machine, verifies its checksum and needs no
-administrator rights. You can also download an archive from
+administrator rights. It then runs `maitty integrate`, which connects every agent installed on
+the machine (see below); set `MAITTY_NO_INTEGRATE=1` to skip that. Re-running the installer or
+updating connects them again. You can also download an archive from
 [Releases](https://github.com/CydoEntis/maitty/releases), or build from source with
 `cargo install --git https://github.com/CydoEntis/maitty`.
 
@@ -103,13 +105,18 @@ Scrolled up in a pane? Click **↓ Back to bottom**. Every screen's own keys are
 ## Connect your agents
 
 Maitty recognises common agents with no setup, from their process and screen. For exact
-status, connect them once on each machine:
+status, the installer connects every agent it finds on the machine. To do it again (say, after
+installing a new agent):
 
 ```sh
-maitty integrate claude     # also: codex, gemini, qwen, opencode, pi, omp, kilo, kimi, mastracode
+maitty integrate            # status hooks for every installed agent, plus MCP
+maitty integrate claude     # just one: codex, gemini, qwen, opencode, pi, omp, kilo, kimi, mastracode
 maitty integrate mcp        # lets Claude, Codex, Qwen and Gemini see and steer other sessions
+maitty integrate --uninstall  # removes every one
 maitty doctor               # checks what's connected
 ```
+
+Restart agents that were already running so they load it.
 
 Or use **Settings › Agents › Connect agents…**, which offers the same agents. See [agent status](docs/agent-status.md)
 for what each integration reports.

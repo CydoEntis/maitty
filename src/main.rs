@@ -151,10 +151,10 @@ enum Cmd {
         /// Extra payload (codex `notify` passes JSON as an argument).
         payload: Option<String>,
     },
-    /// Install status hooks into an agent's config.
+    /// Install status hooks into an agent's config (every installed agent, and MCP, when none is named).
     Integrate {
-        /// claude, codex, gemini, qwen, pi, omp, opencode, mastracode, kilo or kimi
-        agent: String,
+        /// claude, codex, gemini, qwen, pi, omp, opencode, mastracode, kilo, kimi or mcp
+        agent: Option<String>,
         #[arg(long)]
         uninstall: bool,
     },
@@ -315,7 +315,7 @@ fn main() {
             let _ = cli::hook(&agent, status.as_deref(), payload.as_deref());
             Ok(())
         }
-        Some(Cmd::Integrate { agent, uninstall }) => cli::integrate(&agent, uninstall),
+        Some(Cmd::Integrate { agent, uninstall }) => cli::integrate(agent.as_deref(), uninstall),
         Some(Cmd::Config { cmd }) => match cmd {
             ConfigCmd::Path => {
                 println!("{}", config::config_path().display());

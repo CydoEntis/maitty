@@ -7,6 +7,7 @@
 #   <APP>_VERSION      a tag such as v0.1.0 (default: the latest release)
 #   <APP>_INSTALL_DIR  where <app>.exe goes (default: %LOCALAPPDATA%\Programs\<app>)
 #   <APP>_NO_PATH      set to 1 to leave your PATH alone
+#   <APP>_NO_INTEGRATE set to 1 to leave your agents' config alone (no `<app> integrate`)
 $ErrorActionPreference = 'Stop'
 
 # The app's command and where it is released: the only place this script names it (ADR 0019).
@@ -75,6 +76,17 @@ try {
     $installedVersion = & $installed --version
     Write-Host "Installed $installedVersion to $installed"
 
+    # Status hooks and MCP for every agent installed here; a failure must not fail the install.
+    Write-Host ""
+    if ((Setting 'NO_INTEGRATE') -eq '1') {
+        Write-Host "Left your agents alone ($($envPrefix)_NO_INTEGRATE=1); run '$app integrate' to connect them."
+    } else {
+        Write-Host "Connecting your agents (set $($envPrefix)_NO_INTEGRATE=1 to skip)..."
+        # 'Stop' would turn the program's own error output into a failed install.
+        & { $ErrorActionPreference = 'Continue'; & $installed integrate }
+        if ($LASTEXITCODE -ne 0) { Write-Host "Warning: some agents weren't connected; run '$app integrate' to retry." }
+    }
+
     # Another program of the same name found first on PATH?
     $first = (Get-Command $app -All -ErrorAction SilentlyContinue | Select-Object -First 1).Source
     if ($first -and ($first -ne $installed)) {
@@ -84,7 +96,7 @@ try {
         Write-Host "  Set-Alias $($app)2 '$installed'"
     }
     Write-Host ""
-    Write-Host "Next: run '$app doctor' to check your setup, then '$app'."
+    Write-Host "Next: run '$app'. Restart agents that were already running so they load the hooks; '$app doctor' checks your setup."
     Write-Host "If $app was already running, just run ${app}: it restarts itself onto the new version (agents resume)."
 } finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue

@@ -437,6 +437,95 @@ pub(crate) fn install_status(agent: &str) -> Result<PathBuf> {
     set_up_status(agent, &super::this_exe()?, false)
 }
 
+/// What setting up (or removing) one agent's status did.
+#[derive(Debug, PartialEq)]
+pub(crate) enum Outcome {
+    Changed,
+    Unchanged,
+    NotInstalled,
+    Failed(String),
+}
+
+impl Outcome {
+    pub(crate) fn describe(&self, uninstall: bool) -> String {
+        match (self, uninstall) {
+            (Outcome::Changed, false) => "connected".into(),
+            (Outcome::Changed, true) => "disconnected".into(),
+            (Outcome::Unchanged, false) => "already connected".into(),
+            (Outcome::Unchanged, true) => "not connected".into(),
+            (Outcome::NotInstalled, _) => "skipped: not installed".into(),
+            (Outcome::Failed(reason), _) => format!("failed: {reason}"),
+        }
+    }
+}
+
+/// Runs `connect` (which says whether it changed anything) for every agent `installed` finds,
+/// trying them all even when one fails. Agents that aren't installed are never touched.
+pub(crate) fn set_up_every(
+    installed: impl Fn(&StatusAgent) -> bool,
+    mut connect: impl FnMut(&StatusAgent) -> Result<bool>,
+) -> Vec<(&'static StatusAgent, Outcome)> {
+    STATUS_AGENTS
+        .iter()
+        .map(|agent| {
+            let outcome = if !installed(agent) {
+                Outcome::NotInstalled
+            } else {
+                match connect(agent) {
+                    Ok(true) => Outcome::Changed,
+                    Ok(false) => Outcome::Unchanged,
+                    Err(e) => Outcome::Failed(format!("{e:#}")),
+                }
+            };
+            (agent, outcome)
+        })
+        .collect()
+}
+
+/// Sets up (or removes) `agent`'s status; whether its config file changed.
+pub(crate) fn connect(agent: &StatusAgent, exe: &str, uninstall: bool) -> Result<bool> {
+    let path = status_file(agent.id)?;
+    // Some removals write an emptied file; with nothing there, there is nothing to remove.
+    if uninstall && !path.exists() {
+        return Ok(false);
+    }
+    changes(&path, || (agent.install)(exe, uninstall))
+}
+
+fn changes(path: &std::path::Path, change: impl FnOnce() -> Result<PathBuf>) -> Result<bool> {
+    let before = std::fs::read(path).ok();
+    change()?;
+    Ok(std::fs::read(path).ok() != before)
+}
+
+/// On PATH, or its config folder already exists.
+pub(crate) fn agent_installed(agent: &StatusAgent) -> bool {
+    let dir = config_dir(agent.id).ok();
+    // `PI_CODING_AGENT_DIR` points OMP at Pi's folder, which is Pi's, not a sign OMP is here.
+    let shared_with_pi = agent.id == "omp" && dir == config_dir("pi").ok();
+    crate::proc::on_path(agent.id) || (!shared_with_pi && dir.is_some_and(|dir| dir.is_dir()))
+}
+
+fn status_file(agent: &str) -> Result<PathBuf> {
+    Ok(match agent {
+        "claude" => super::claude_settings(),
+        "codex" => super::codex_config(),
+        "gemini" => super::home_settings("GEMINI_CLI_HOME", ".gemini"),
+        "qwen" => super::qwen_settings(),
+        _ => status_adapter_path(agent)?,
+    })
+}
+
+fn config_dir(agent: &str) -> Result<PathBuf> {
+    // These adapters sit in a subfolder (`extensions/`, `plugin/`, `plugins/`) of the agent's folder.
+    let depth = if matches!(agent, "pi" | "omp" | "kilo" | "opencode") { 2 } else { 1 };
+    status_file(agent)?
+        .ancestors()
+        .nth(depth)
+        .map(std::path::Path::to_path_buf)
+        .with_context(|| format!("locate {agent}'s configuration folder"))
+}
+
 /// The primary file whose the app-owned contents enable each native adapter.
 /// Existence alone is not reported as live: the provider must reload it and
 /// send an event before the running session can confirm native status.
@@ -683,6 +772,58 @@ mod tests {
         assert!(config["hooks"].get("SubagentStop").is_some());
         codex_hooks_at_for_platform(&path, concat!("/home/test/.local/bin/", env!("APP_COMMAND")), true, false).unwrap();
         assert!(!std::fs::read_to_string(&path).unwrap().contains("hook codex"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// `set_up_every` on a machine with Kimi, Mastra Code and a broken Codex, all under `dir`.
+    fn set_up_every_in(dir: &std::path::Path, uninstall: bool) -> (Vec<(&'static str, Outcome)>, Vec<&'static str>) {
+        let exe = concat!("/bin/", env!("APP_COMMAND"));
+        let kimi = dir.join("kimi/config.toml");
+        let mastra = dir.join("mastracode/hooks.json");
+        let mut tried = Vec::new();
+        let results = set_up_every(
+            |agent| ["codex", "kimi", "mastracode"].contains(&agent.id),
+            |agent| {
+                tried.push(agent.id);
+                match agent.id {
+                    "kimi" => changes(&kimi, || kimi_at(&kimi, exe, uninstall)),
+                    "mastracode" => changes(&mastra, || mastracode_at(&mastra, exe, uninstall)),
+                    _ => bail!("config is broken"),
+                }
+            },
+        );
+        (results.into_iter().map(|(agent, outcome)| (agent.id, outcome)).collect(), tried)
+    }
+
+    #[test]
+    fn integrating_every_agent_touches_only_installed_ones_and_keeps_going_past_a_failure() {
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-every-agent-{}"), std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for agent in ["kimi", "mastracode"] {
+            std::fs::create_dir_all(dir.join(agent)).unwrap();
+        }
+        let (results, tried) = set_up_every_in(&dir, false);
+        assert_eq!(tried, ["codex", "kimi", "mastracode"], "agents that aren't installed are never touched");
+        for (id, outcome) in &results {
+            let expected = match *id {
+                "codex" => Outcome::Failed("config is broken".into()),
+                "kimi" | "mastracode" => Outcome::Changed,
+                _ => Outcome::NotInstalled,
+            };
+            assert_eq!(*outcome, expected, "{id}");
+        }
+        assert_eq!(results.len(), STATUS_AGENTS.len());
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2, "no folder made for a missing agent");
+
+        let (again, _) = set_up_every_in(&dir, false);
+        assert!(again.iter().filter(|(id, _)| *id != "codex").all(|(_, o)| *o != Outcome::Changed), "a second run changes nothing");
+
+        let (removed, _) = set_up_every_in(&dir, true);
+        assert!(removed.iter().any(|(id, o)| *id == "kimi" && *o == Outcome::Changed));
+        assert!(!std::fs::read_to_string(dir.join("kimi/config.toml")).unwrap().contains("hook kimi"));
+        assert!(!std::fs::read_to_string(dir.join("mastracode/hooks.json")).unwrap().contains("hook mastracode"));
+        let (none_left, _) = set_up_every_in(&dir, true);
+        assert!(none_left.iter().all(|(_, o)| matches!(o, Outcome::Unchanged | Outcome::NotInstalled | Outcome::Failed(_))));
         std::fs::remove_dir_all(dir).unwrap();
     }
 

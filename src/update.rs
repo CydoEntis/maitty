@@ -137,6 +137,13 @@ pub fn run(check: bool, force: bool) -> Result<()> {
     let _ = std::fs::remove_dir_all(&tmp);
     let exe = result?;
     println!("Updated {APP_COMMAND} {current} -> {} ({}).", tag.trim_start_matches('v'), exe.display());
+    if !integrate_opted_out() {
+        match Command::new(&exe).arg("integrate").status() {
+            Ok(status) if status.success() => {}
+            Ok(_) => println!(concat!("Warning: some agents weren't connected; run `", env!("APP_COMMAND"), " integrate` to retry.")),
+            Err(e) => println!(concat!("Warning: couldn't connect your agents ({}); run `", env!("APP_COMMAND"), " integrate` to retry."), e),
+        }
+    }
     if crate::cli::server_running() {
         offer_restart()?;
     } else {
@@ -190,6 +197,19 @@ pub fn install_latest() -> Result<(String, PathBuf)> {
     let result = install(&tag, target, &asset, &tmp, false);
     let _ = std::fs::remove_dir_all(&tmp);
     Ok((tag.trim_start_matches('v').to_string(), result?))
+}
+
+/// The newly installed program connects every installed agent (status hooks and MCP), so the
+/// hooks are its own version's. `<APP>_NO_INTEGRATE=1` leaves agents' config alone.
+pub fn integrate_agents(exe: &Path) -> Result<(), String> {
+    if integrate_opted_out() {
+        return Ok(());
+    }
+    crate::proc::run(Command::new(exe).arg("integrate")).map(drop)
+}
+
+fn integrate_opted_out() -> bool {
+    std::env::var(concat!(env!("APP_ENV"), "_NO_INTEGRATE")).is_ok_and(|v| v == "1")
 }
 
 fn install(tag: &str, target: &str, asset: &str, tmp: &Path, say: bool) -> Result<PathBuf> {
