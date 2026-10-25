@@ -9774,7 +9774,7 @@ mod files_panel_tests {
     }
 
     /// Keys as the Windows console hands them over in one read: a press and a release each.
-    fn burst(s: &str) -> Vec<Event> {
+    pub(super) fn burst(s: &str) -> Vec<Event> {
         s.chars()
             .flat_map(|c| {
                 let press = KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
@@ -10271,6 +10271,54 @@ mod drawer_tab_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Nothing typed into a pane since the last look.
+    fn no_input(out: &mut mpsc::UnboundedReceiver<ClientMsg>) -> bool {
+        std::iter::from_fn(|| out.try_recv().ok()).all(|m| !matches!(m, ClientMsg::Input { .. }))
+    }
+
+    #[test]
+    fn a_burst_in_changes_stays_its_keys_and_never_reaches_the_pane() {
+        let (mut app, dir) = in_repo("burst");
+        crate::proc::git(&dir, &["add", "."]).unwrap();
+        crate::proc::git(&dir, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "first"]).unwrap();
+        for f in ["a.txt", "b.txt", "c.txt"] {
+            std::fs::write(dir.join(f), "new\n").unwrap();
+        }
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        let (btx, mut bg) = mpsc::unbounded_channel();
+        app.bg = btx;
+        app.act(Action::Changes);
+        let sel = |app: &App| match &app.view {
+            Some(View::Changes(v)) => (v.order(), v.review.as_ref().map(|r| r.sel)),
+            _ => panic!("Changes is open"),
+        };
+        // Other background work may come back first.
+        while sel(&app).1.is_none() {
+            let read = super::branch_view_tests::next_bg(&mut bg);
+            app.on_bg(read);
+        }
+        let (order, first) = sel(&app);
+        assert!(order.len() >= 3 && first == Some(order[0]), "the files are read: {order:?}");
+        app.on_burst(super::files_panel_tests::burst("jjk"));
+        assert_eq!(sel(&app).1, Some(order[1]), "down, down, up: run as keys");
+        assert!(no_input(&mut out), "nothing typed into the pane");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_paste_with_branch_open_never_reaches_the_pane() {
+        let (mut app, dir) = in_repo("bpaste");
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.act(Action::Branches);
+        assert_eq!(open(&app), Some(screen::SheetKind::Branch));
+        app.on_event(Event::Paste("jk\n".into()));
+        assert!(no_input(&mut out), "nothing typed into the pane");
+        assert!(app.notice.as_ref().is_some_and(|(m, _, _)| m.starts_with("the side panel has the keys")), "it says why");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn r_switches_files_to_recent_files_and_back() {
         let (mut app, dir) = in_repo("recent");
@@ -10550,6 +10598,27 @@ mod references_view_tests {
         let reread = next_bg(&mut rx);
         app.on_bg(reread);
         assert_eq!(names(&app), ["mock.png"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn references_takes_its_own_paste_and_a_burst_stays_keys_never_reaching_the_pane() {
+        let dir = project("ownpaste", &[]);
+        let src = dir.join("mock.png");
+        std::fs::write(&src, "png").unwrap();
+        let (mut app, mut rx) = opened(&dir, 160, 45);
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.on_burst(super::files_panel_tests::burst("jk"));
+        assert!(app.notice.is_none(), "a short burst is keys here, not a paste");
+        app.on_event(Event::Paste(src.display().to_string()));
+        let added = next_bg(&mut rx);
+        app.on_bg(added);
+        let reread = next_bg(&mut rx);
+        app.on_bg(reread);
+        assert_eq!(names(&app), ["mock.png"], "References added it, not the side-panel guard");
+        let typed = std::iter::from_fn(|| out.try_recv().ok()).filter(|m| matches!(m, ClientMsg::Input { .. })).count();
+        assert_eq!(typed, 0, "nothing typed into the pane");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -20,7 +20,8 @@ pub(super) fn presses(events: &[Event]) -> usize {
 /// the rest would crawl in a letter at a time. Typing ahead that ends in Enter isn't a
 /// paste, and stays keys. A short line typed into a pane does what its keys would, so it may
 /// stay keys; but where `letters_are_commands`, each letter would run one, so any two
-/// different characters at once are a paste. One character repeated is a key held down.
+/// different characters at once are a paste. One character repeated is a key held down, and
+/// typing ahead that ends in Enter stays keys there too.
 pub(super) fn paste_from_burst(events: &[Event], letters_are_commands: bool) -> Option<String> {
     let mut text = String::new();
     let mut broken_line = false;
@@ -42,9 +43,11 @@ pub(super) fn paste_from_burst(events: &[Event], letters_are_commands: bool) -> 
             _ => return None,
         }
     }
-    let long_line = text.chars().count() >= PASTE_MIN_CHARS && !text.ends_with('\n');
+    let one_line = !text.ends_with('\n');
+    let long_line = text.chars().count() >= PASTE_MIN_CHARS && one_line;
     let held_key = text.chars().all(|c| text.starts_with(c));
-    (broken_line || long_line || (letters_are_commands && !held_key)).then_some(text)
+    let short_paste = letters_are_commands && one_line && !held_key;
+    (broken_line || long_line || short_paste).then_some(text)
 }
 
 impl App {
@@ -53,7 +56,7 @@ impl App {
     pub(super) fn on_burst(&mut self, burst: Vec<Event>) {
         // The mouse moving during a paste isn't part of it.
         let (keys, rest): (Vec<Event>, Vec<Event>) = burst.iter().cloned().partition(|ev| matches!(ev, Event::Key(_)));
-        match paste_from_burst(&keys, self.view_letters_run_commands()) {
+        match paste_from_burst(&keys, self.files_has_the_keys()) {
             Some(text) => {
                 self.dirty = true;
                 self.on_paste(text);
@@ -63,9 +66,10 @@ impl App {
         }
     }
 
-    /// A side-panel view has the keys with nothing over it, so a letter runs one of its commands.
-    fn view_letters_run_commands(&self) -> bool {
-        self.view_has_keys() && matches!(self.mode, Mode::Normal)
+    /// Files has the keys with nothing over it: its letters run commands, and a paste has a
+    /// home there (`paste_into_files`). Other views keep a burst as keys.
+    fn files_has_the_keys(&self) -> bool {
+        self.view_has_keys() && matches!(self.mode, Mode::Normal) && matches!(self.view, Some(View::Files(_)))
     }
 
     pub(super) fn on_event(&mut self, ev: Event) {
@@ -82,6 +86,12 @@ impl App {
 
     pub(super) fn on_paste(&mut self, s: String) {
         if self.paste_into_files(&s) || self.paste_into_references(&s) {
+            return;
+        }
+        // Another view with the keys has no text box: the pane behind is not what you were
+        // looking at, and an empty paste would start an image paste there.
+        if self.view_has_keys() && matches!(self.mode, Mode::Normal) {
+            self.notify("the side panel has the keys: Esc closes it, or click a pane to paste there".into(), false);
             return;
         }
         match &mut self.mode {
@@ -1181,5 +1191,8 @@ mod tests {
         assert_eq!(paste_from_burst(&keys("eyo"), true).as_deref(), Some("eyo"));
         assert_eq!(paste_from_burst(&keys("e"), true), None, "one key is a key");
         assert_eq!(paste_from_burst(&keys("jjjj"), true), None, "a held key is keys");
+        assert_eq!(paste_from_burst(&keys("j\n"), true), None, "typed ahead and sent: still keys");
+        assert_eq!(paste_from_burst(&keys("jk\n"), true), None, "typed ahead and sent: still keys");
+        assert_eq!(paste_from_burst(&keys("jk\nl"), true).as_deref(), Some("jk\nl"), "a line break inside: a paste");
     }
 }
