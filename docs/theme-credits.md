@@ -6,8 +6,18 @@ Maitty already included Dracula, Gruvbox Dark, Nord, Tokyo Night Night, and
 Catppuccin Mocha/Latte. These are six palettes across five families.
 
 A second pass on 2026-10-25 added the families from Cyberdream on in the table,
-each at its creator's revision. Vividchalk (Vim license), Blackboard and Wombat
-(no license on the original or any creator-owned port) are left out.
+each at its creator's revision: requested families first, then popular ones
+from vimcolorschemes.com's trending list. Left out:
+
+- Vividchalk: distributed under the Vim license.
+- Blackboard and Wombat: neither the original nor any port by its creator
+  carries a license.
+- Alduin, Garbage Oracle and Sobrio: no license.
+- Monokai Pro and Mirodark: their MIT repositories port another author's
+  palette (Monokai Pro's commercial theme, Jason W Ryan's Xresources) that has
+  no license of its own.
+- Monochrome and Solarized Osaka's Vivid style: computed at runtime, so there
+  are no fixed values to take.
 
 ## Coverage and primary sources
 
@@ -58,6 +68,16 @@ Source links pin the researched revision. Preserve the existing `gruvbox` and
 | Mellow | Added | Dark / Light | [mellow-theme/mellow.nvim](https://github.com/mellow-theme/mellow.nvim/blob/6273b7f0ddf6ac2b75021b3bc0bd8b3305cfeef1/lua/mellow/colors.lua) | [MIT](https://github.com/mellow-theme/mellow.nvim/blob/6273b7f0ddf6ac2b75021b3bc0bd8b3305cfeef1/LICENSE) |
 | Koda | Added | Dark / Light / Moss / Glade | [oskarnurm/koda.nvim](https://github.com/oskarnurm/koda.nvim/blob/25a5c98ca2f6bb0b69f5e2654a78f0d7c7e0721d/extras/ghostty/koda-dark.conf) | [MIT](https://github.com/oskarnurm/koda.nvim/blob/25a5c98ca2f6bb0b69f5e2654a78f0d7c7e0721d/LICENSE) |
 | Code 2026 | Added | Dark / Light | [code-2026-theme/ghostty](https://github.com/code-2026-theme/ghostty/blob/60da4559b02d0f0f2fced8ea4c696d29eff0190c/themes/code-2026.conf) | [MIT](https://github.com/code-2026-theme/ghostty/blob/60da4559b02d0f0f2fced8ea4c696d29eff0190c/LICENSE) |
+| Badwolf | Added | Badwolf / Goodwolf | [sjl/badwolf](https://github.com/sjl/badwolf/blob/585229900fc5beaa9df14f7734cde0f1e1524bd3/colors/badwolf.vim) | [MIT/X11](https://github.com/sjl/badwolf/blob/585229900fc5beaa9df14f7734cde0f1e1524bd3/LICENSE.markdown) |
+| Hybrid | Added | Dark / Reduced contrast / Light | [w0ng/vim-hybrid](https://github.com/w0ng/vim-hybrid/blob/cc58baabeabc7b83768e25b852bf89c34756bf90/colors/hybrid.vim) | [MIT](https://github.com/w0ng/vim-hybrid/blob/cc58baabeabc7b83768e25b852bf89c34756bf90/colors/hybrid.vim) |
+| Atelier | Added | Cave / Dune / Estuary / Forest / Heath / Lakeside / Plateau / Savanna / Seaside / Sulphurpool, each Dark / Light | [atelierbram/vim-colors_atelier-schemes](https://github.com/atelierbram/vim-colors_atelier-schemes/blob/2cfe7cee22cf9a64892dcb86e80f503f5c62eb27/db/schemes/atelier-cave.yml) | [MIT](https://github.com/atelierbram/vim-colors_atelier-schemes/blob/2cfe7cee22cf9a64892dcb86e80f503f5c62eb27/README.md#license) |
+| Archery | Added | Standard | [Badacadabra/vim-archery](https://github.com/Badacadabra/vim-archery/blob/0084b5d1199deb5c671e0e6017e9a0224f66f236/README.md) | [MIT](https://github.com/Badacadabra/vim-archery/blob/0084b5d1199deb5c671e0e6017e9a0224f66f236/LICENSE) |
+| Yui | Added | Dark / Light | [cideM/yui](https://github.com/cideM/yui/blob/5a43193c81aa999f5f77eabb01719141441dba6c/alacritty/yui_dark.toml) | [MIT](https://github.com/cideM/yui/blob/5a43193c81aa999f5f77eabb01719141441dba6c/LICENSE.txt) |
+| Rigel | Added | Standard | [Rigellute/rigel](https://github.com/Rigellute/rigel/blob/d5b881432f5f243d3880e659437030930781f9a4/estilo/palettes/rigel.yml) | [MIT](https://github.com/Rigellute/rigel/blob/d5b881432f5f243d3880e659437030930781f9a4/package.json) |
+| Dogrun | Added | Standard | [wadackel/vim-dogrun](https://github.com/wadackel/vim-dogrun/blob/3ff3601ca158a1891bed9af5dfe0ee015db984db/wezterm/dogrun.toml) | [MIT](https://github.com/wadackel/vim-dogrun/blob/3ff3601ca158a1891bed9af5dfe0ee015db984db/LICENSE) |
+| Miramare | Added | Standard | [franbach/miramare](https://github.com/franbach/miramare/blob/04330816640c3162275d69e7094126727948cd0d/colors/miramare.vim) | [MIT](https://github.com/franbach/miramare/blob/04330816640c3162275d69e7094126727948cd0d/LICENSE) |
+| Cendre | Added | Hard / Medium / Soft | [Aejkatappaja/cendre](https://github.com/Aejkatappaja/cendre/blob/5c9d924a4c75c130a1c812ee3e240d78a92d2c3a/extras/alacritty/cendre.toml) | [MIT](https://github.com/Aejkatappaja/cendre/blob/5c9d924a4c75c130a1c812ee3e240d78a92d2c3a/LICENSE) |
+| Luna | Added | Standard | [WTFox/luna.nvim](https://github.com/WTFox/luna.nvim/blob/727c19334528e1b8939f518d1ea43c4e62d98f91/extras/alacritty/luna.toml) | [MIT](https://github.com/WTFox/luna.nvim/blob/727c19334528e1b8939f518d1ea43c4e62d98f91/LICENSE) |
 
 ## Mapping to Maitty
 
@@ -105,8 +125,7 @@ From the 2026-10-25 pass on, each new palette maps the same way: the source's
 background and foreground, its comment color as the dim role, its blue as the
 accent, and its ANSI red, green, yellow, blue, magenta and cyan. The gray slot
 (what programs' bright black becomes) takes the source's ANSI 8, or its comment
-color where ANSI 8 is missing or sits on the background (Solarized Osaka,
-Tender, Palenight, Brogrammer, Neovim).
+color where ANSI 8 is missing or sits on the background (contrast under 1.5).
 
 - Cyberdream's Muted variant is its own `variant = "muted"` palette.
 - Solarized Osaka's Vivid style is computed at runtime from the default
@@ -141,6 +160,24 @@ Tender, Palenight, Brogrammer, Neovim).
   the comment colors come from
   [code-2026-theme/nvim](https://github.com/code-2026-theme/nvim/blob/ea0b1fd2751560f587aa3c070e30b7fdf1b89d27/lua/code-2026/palette.lua)
   ([MIT](https://github.com/code-2026-theme/nvim/blob/ea0b1fd2751560f587aa3c070e30b7fdf1b89d27/LICENSE)).
+- Badwolf, Goodwolf, Hybrid and Miramare ship no usable terminal palette, so
+  their slots take the named colors in the colorscheme. Goodwolf is Badwolf's
+  palette on its darkest ground. Miramare's own terminal block swaps black and
+  white, so it is not used.
+- Hybrid's palette is Tomorrow Night's, as its header says; its MIT license is
+  declared in that header. Its terminal palettes live in unlicensed gists and
+  are not used.
+- Atelier's colorscheme files map `base00`–`base0F` to the terminal slots in
+  index order, so the slots follow the standard base16 mapping from the
+  scheme's `db/schemes/atelier-<name>.yml` instead (`base08` red, `0B` green,
+  `0A` yellow, `0D` blue, `0E` magenta, `0C` cyan). Dark uses `base00` on
+  `base05`, Light `base07` on `base02`.
+- Archery's palette is its README table; its bright black sits on the
+  background, so the gray slot is its comment `#535b6f`.
+- Rigel declares MIT in its `package.json` and has no license file. Its red is
+  the palette's `#c43060` (the terminal files round it to `#c43061`).
+- Cendre's three depths share one ink and pigment set and differ only in
+  ground.
 
 ## Attribution and license notices
 
@@ -188,6 +225,17 @@ The following upstream copyright notices apply to the MIT-licensed palettes:
 - mellow-theme/mellow.nvim: Copyright (c) 2023 Rohit K Viswanath
 - oskarnurm/koda.nvim: Copyright (c) 2026 Karl Oskar Joosep Nurm
 - code-2026-theme/ghostty and code-2026-theme/nvim: Copyright (c) 2026 code-2026-theme
+- sjl/badwolf: Copyright (C) 2012 Steve Losh and Contributors
+- w0ng/vim-hybrid: Andrew Wong (w0ng), MIT per the colorscheme header
+- atelierbram/vim-colors_atelier-schemes: Copyright (c) 2013 - 2017 Bram de Haan
+- Badacadabra/vim-archery: Copyright (c) 2017 Baptiste Vannesson
+- cideM/yui: MIT; its license file keeps the template line
+  `Copyright (c) [year] [fullname]`.
+- Rigellute/rigel: Rigellute, MIT per `package.json`
+- wadackel/vim-dogrun: Copyright (c) 2019 wadackel
+- franbach/miramare: Copyright (c) 2020 Francisco Bach
+- Aejkatappaja/cendre: Copyright (c) 2026 aejkatappaja
+- WTFox/luna.nvim: Copyright (c) 2026 A. Fox
 
 Gruvbox declares MIT/X11 in its README and identifies morhetz as its author in
 its palette source; that revision contains no standalone copyright/license file.

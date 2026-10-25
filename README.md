@@ -35,7 +35,7 @@ natively on Windows, macOS and Linux.
 - **Agents that work together.** Agents can list, read, message and start other sessions
   through MCP tools, within limits you set, and find the project's reference images there.
 - **Your look.** Four layouts (Floating, Tiled, Compact and Grid), rounded or square shapes,
-  padding round the screen, your cursor's shape, 99 themes with every colour configurable,
+  padding round the screen, your cursor's shape, 134 themes with every colour configurable,
   and rebindable shortcuts.
 
 ## Install
