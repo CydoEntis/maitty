@@ -52,7 +52,7 @@ pub(super) fn layout_name(l: crate::client::reference_fixture::Layout) -> &'stat
     }
 }
 
-/// A key-hint row (v8's action bar draws each key as a cap, which spaces the words out) is
+/// A key-hint row (the action bar draws each key as a cap, which spaces the words out) is
 /// the same row when it reads the same; every other row has to match exactly.
 fn same_row(got: &str, want: &str) -> bool {
     let bare = |r: &str| r.replace(['\u{e0b6}', '\u{e0b4}'], " ");

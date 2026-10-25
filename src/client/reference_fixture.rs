@@ -332,8 +332,8 @@ fn without_new_tab_chip(row: &str) -> String {
     format!("{}{}{rest}", &out[..at], fill.to_string().repeat(CHIP.len() + cut))
 }
 
-/// The sidebar as the reference frames draw it, from what v8 draws (ADR 0014). `rows` is the
-/// whole screen; the sidebar's rectangle and its rows' places come from `app`. What v8 changes
+/// The sidebar as the reference frames draw it, from what the app draws (ADR 0014). `rows` is the
+/// whole screen; the sidebar's rectangle and its rows' places come from `app`. What the app changes
 /// on purpose, put back:
 /// - the foot sits a row higher in Flat and has a divider above it; its `new` and `menu` chips
 ///   read `+ new` and `a actions` (the app's `+ New` and `Menu`), the reference's words at the same edges;

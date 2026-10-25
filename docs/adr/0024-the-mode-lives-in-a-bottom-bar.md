@@ -56,7 +56,7 @@ shortcut mode is held. Under a popup it is still only words. See [UI](../UI.md) 
 
 ## Consequences
 
-Every look loses one row to the bar. The v7 reference frame tests draw the world one row
-taller and leave out that row, the bar's (`v7_fixture::cells`), so the handoff's frames hold
+Every look loses one row to the bar. The reference frame tests draw the world one row
+taller and leave out that row, the bar's (`reference_fixture::cells`), so the reference frames hold
 cell for cell with no corner normalisation. Revisit if the bar should carry more (a session
 count, a clock) or if a theme's `sky` makes the lit bar hard to read.

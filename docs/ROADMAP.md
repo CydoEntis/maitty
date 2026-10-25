@@ -489,7 +489,7 @@ other than a command (commits, plan approval, review), which the design only sha
 
 Status 2026-10-22: #124–#131 built and released in v0.40.0 (protocol 43→44). The gate
 passed on the merged tree (754 + 1 tests). All 26 presets match the handoff's frames in every layout and
-size, plus ASCII at Flat 80×24 (`src/client/v7_frames_tests.rs`); colour roles were compared by a reviewer.
+size, plus ASCII at Flat 80×24 (`src/client/reference_frames_tests.rs`); colour roles were compared by a reviewer.
 Two blind reviews (code and security, design fidelity) ran with two fix rounds; their blocking findings
 (the approval modal clipping a long command, approving while another checkpoint runs, the Flat ground)
 are fixed. Live checks: Windows at 120×32 on an isolated daemon (fail, pass, stale, two checkpoints, the
