@@ -37,6 +37,6 @@ grid, Files, Changes, the branch view, saved UI state. No protocol change.
 
 ## Links
 
-- Plan: [phase 26](../../ROADMAP.md#26--the-inspector-drawer--planned-2026-10-24)
+- Plan: [phase 26](../../ROADMAP.md#26--the-inspector-drawer--shipped-in-v0430-live-checks-open)
 - Spec: [spec.md](spec.md)
 - Tickets: [#172](https://github.com/CydoEntis/maitty/issues/172), [#173](https://github.com/CydoEntis/maitty/issues/173), [#174](https://github.com/CydoEntis/maitty/issues/174), [#175](https://github.com/CydoEntis/maitty/issues/175), [#176](https://github.com/CydoEntis/maitty/issues/176)

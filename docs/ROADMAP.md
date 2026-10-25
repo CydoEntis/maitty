@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-24 at `e8b84f3` on `dev` (v0.42.0 plus phase 25).
+Last reconciled: 2026-10-25 at `8027390` on `dev` (v0.43.6).
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Maitty is a terminal multiplexer built for running many coding agents at once: see
@@ -11,241 +11,25 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-The latest published release on `main` is v0.43.0 (2026-10-24): phases 25 and 26 (padding, one
-rounding setting, shortcut mode that stays, one-line rows; the side panel with Files, Changes,
-Branch and markdown). Before it, v0.42.0 (2026-10-23): the app renamed to Maitty
-(ADR 0020) with its splash, and Night and Day as the default themes. Before it, v0.41.0 was the v8 cleanup
-([Phase 19](#19--the-v8-cleanup--shipped-in-v0410-live-checks-open)). Every action goes through the
-leader, one key overlay and a grouped Menu replace the palette and the shortcut screens, sessions are
-coloured dots, and a collapsed sidebar becomes a top strip. A new shell is `n`, and an agent typed in a
-shell pane always starts in a new worktree. The fleet commander, the Team tab and the sidebar subagent
-tree are gone, and helpers ask first. Updating restarts the daemon in one step. It moves the wire protocol
-to 45, so a new `maitty` replaces an older daemon by itself (it asks once when agents are working). v0.40.0
-(2026-10-23) was the v7 layout
-([Phase 18](#18--the-v7-layout-and-checkpoints--shipped-in-v0400-live-checks-open)), with several
-named checks per project, stale passes and repo checks you approve; `maitty handoff`
-([Phase 13](#13--borrowed-from-t3-code-round-two--shipped-in-v0400)); and team roles for the commander ([Phase 17](#17--team-roles-for-the-commander--shipped-in-v0400-live-trial-open)).
-It moves the wire protocol to 44, so restart the daemon after installing it, and update
-remote daemons too. v0.37.1 (2026-10-22) added a restart button for
-the daemon after an update, and a prompt instead of an error when a new `maitty` meets an
-older daemon ([Phase 16](#16--restart-the-daemon-from-the-update-flow--complete-2026-10-22)).
-v0.37.0 brought checks that Maitty
-runs itself ([Phase 15](#15--checks-maitty-runs-itself--shipped-in-v0370)), with
-the sidebar grouping by folder and tool icons. It moves the wire protocol to 43, so
-restart the daemon after installing it, and update remote daemons too. Five platform
-archives and checksums are published, and the release workflow's install checks passed
-on Windows, macOS and Linux. v0.36.13 restarts the local
-daemon and reconnects the window automatically after the last pane closes,
-without interrupting open sessions. Remote daemons still need to be updated on
-their host. It includes the v0.36.12 Codex root-session and helper detection,
-plus the v0.36.11 sidebar and session reliability work below. Five platform
-archives and checksums are published, and installer checks passed on Windows,
-macOS and Linux. Provider reload and live reporting still need confirmation in
-sessions on the machines where those providers run. Pi full-screen scroll
-behavior remains an open live-validation item below.
+Latest release: **v0.43.6** (2026-10-25), wire protocol 46. Phases 1–26 and 29 are shipped
+(phase 11 declined); the release history is in the GitHub Releases and git tags, not here.
 
-Codex helper visibility needs cross-platform live validation. The integration
-records the root thread on session start so local rollout-file detection can
-work when Codex omits child events; Windows additionally needs a PowerShell
-`commandWindows` invocation. Restart Codex after installing the hooks, then
-verify active and completed helpers on both Windows and Linux/Omarchy.
+Being built on 2026-10-25, for release the same day:
+[Phase 27](#27--radar-and-sending-failures--in-progress-2026-10-25) (context on the row, a
+failed check into the message box), [Phase 28](#28--references--in-progress-2026-10-25)
+(references), `maitty integrate mcp` for Codex, Qwen and Gemini as well as Claude, and the
+phase 29 follow-ups (the Windows short paste, Files' `d`, the side panel's title, the guide,
+two flaky tests).
 
-User-reported sidebar hiding was removed: idle and completed sessions remain
-visible, with no snooze or automatic settling. Background top-level completions
-now use the soft alert sound; the focused session and helper completions stay
-quiet. Starting an agent in a git project defaults to a new worktree, and a
-stale explicit worktree choice now asks the user to choose again rather than
-silently starting in the main checkout.
+Next: the user uses the build daily for a week from 2026-10-26, and reports back. That trial
+stands in for the open live checks (phases 17–29) and confirms status live for the agents the
+user runs: Claude Code, Codex, Qwen Code and DeepSeek. Nothing new is planned until it ends.
 
-Maitty is terminal-first; direct subagent messaging remains out of scope. The v0.36.5 release includes cross-agent idle-status recovery; v0.36.6 passed Windows, macOS and Linux installer checks.
-
-User-requested pane padding polish: preserve the pane insets while matching the
-card and padding to a terminal app's solid surface when at least three screen
-corners share an explicit background. Isolated colored panels keep their theme
-treatment. Implemented and verified on `dev`: focused UI regressions pass and the
-full gate passes (309 tests passed, four ignored; build, clippy and both
-cross-checks passed). Shipped in v0.31.0.
-
-User-requested Settings drawer: move Settings from its centered modal into the
-existing right-hand sliding sheet. Keep all categories, setting editors, update
-controls, mouse access and keyboard navigation. Implemented and verified on
-`dev`, shipped in v0.31.0. The rendered UI and mouse category navigation
-were checked at 80×24, 100×30 and 160×45. The ordered gate passed: build, 308 tests (four
-ignored), strict clippy, Linux x64 check and macOS ARM check. This adds no wire
-shape, dependency, migration or permission change. Reverted in v0.36.2 (`5c3313d`):
-Settings is a centred modal again, as `docs/UI.md` says.
-
-User-requested working-spinner selection and Pi/DeepSeek scrolling correction:
-add an Appearance picker with animated presets, Static and validated custom
-frames, preserve saved choices, and investigate wheel/keyboard transcript
-scrolling in Pi's regular/fullscreen modes. Also scope Codex helpers to exact
-owning threads and retain a compact status/session rail when the sidebar hides.
-User-reported spurious sounds also add blocked-sound debounce and exact status
-checks in the client and headless daemon. Red status remains immediate.
-Spinner selection, exact Codex helper ownership, collapsed rail and false-blocker
-sound-race correction: merged to `dev`, shipped in v0.31.0. Ordered build, full tests (307 passed,
-four ignored), strict all-target clippy, Linux x64 and macOS ARM cross-checks
-passed; ten Node adapter tests passed. The transient/stale blocker regression
-failed before the fix. Client and headless daemon tests prove cancellation on
-resumed work and stable focused/helper questions. Rendered frames were inspected
-at 80×24, 100×30 and 160×45, including left/right rail, hover/focus, off-screen
-attention and custom frames. An isolated live server verified rail expansion
-and saved the ASCII spinner through Settings; the saved array was checked on
-disk. Its owned processes stopped and reveal registration stayed unchanged.
-README, shortcut, UI, config, architecture and status contracts are current.
-These additions introduce no dependency, migration, permission or wire change;
-no FILL decisions were filled. No production session was restarted or real
-provider job requested.
-
-Pi scrolling remains open: regular/fullscreen Pi 0.87.1 and default fullscreen
-Pi 1.2.0 scrolled with wheel and Page Up using a saved synthetic transcript on
-Windows. The user reports the failure on Linux with Maitty 0.30.0/Pi 1.2.0.
-Await the failing pane's copied “Pane info (scrolling, mouse)” diagnostic before
-claiming a fix there; no speculative scroll-routing change was applied.
-
-User-requested Herdr status audit and Codex working correction: use the pinned
-Herdr source to cover its 24 identities and 22 screen manifests, add the missing
-OMP/Mastracode/Kilo/Kimi native setup, and scope OpenCode TUI V1/V2 reports to the
-selected session. Preserve native question lifecycles, recognize Codex automatic
-follow-up work and release hook authority on recognized process exit. Questions
-ring in the focused pane; completion waits one second and new turns reset dedup.
-Status: merged to `dev`, shipped in v0.31.0. Ordered build, tests
-(299 passed / four
-ignored), strict clippy and Linux/macOS cross-checks passed; ten Node adapter
-tests passed. Rendered status frames were inspected. A named isolated live
-server showed the screenshot's wrapped footer working, expanded question blocked,
-answer working, completion idle, and process exit with no agent status. Its
-owned daemon/panes were stopped; the reveal registration remained unchanged.
-No paid provider job or production session was started/restarted. The source
-audit records remaining differences instead of claiming identical behavior.
-New dependency: pinned jsonc-parser 0.33.1 for comment-preserving OpenCode config.
-Apache source notices ship with release archives. No wire shape, migration or
-permission changes; no documentation decision markers were filled.
-See [status setup and its limits](agent-status.md).
-
-User-requested mouse access and provider-independent status correction: expose
-Status setup and all commands through Actions, retain
-Actions without the sidebar/sessions, make palette commands clickable and
-wheel-scrollable, and include configured commands. Recognize current Pi/DeepSeek
-packages; install Pi/OpenCode native lifecycle adapters through mouse or CLI.
-Keep native questions blocked until answered, retain pending OpenCode asks across
-busy events and helper completion, and recognize Codex's expanded question dialog.
-Needs-you retains the red blocked dot/text; bells do not replace state. Scope
-includes the user's z.ai/DeepSeek models inside Pi/OpenCode. Status: merged to
-`dev`, shipped in v0.31.0. The ordered build/test (290 passed / four ignored), clippy,
-Linux and macOS cross-checks pass, as do three Node adapter tests. Native adapter
-tests run in CI on Windows/Linux. An initial Windows run hit an access violation
-alongside a PowerShell out-of-memory error; isolated failing cases and complete
-subsequent gates passed. Rendered mouse flows fit 80×24, 100×30 and 160×45.
-A named isolated live server verified mouse entry, section changes, palette
-scrolling, hidden-sidebar access and adapter installation into test directories.
-A Pi adapter probe through the real authenticated hook socket remained blocked
-beyond the old quiet timeout and became idle on settlement, with event evidence.
-No real provider task was launched; existing authenticated Pi/OpenCode sessions
-were not restarted. The owned test process tree was stopped. README, shortcut,
-UI/API/architecture contracts and [status setup](agent-status.md) are updated;
-no dependencies, new permissions or wire shapes were added.
-
-The user subsequently chose to remove Maitty's profile and workflow feature so the
-terminal multiplexer stays focused. v0.34 removes that UI, its runner and config
-surface; this supersedes the earlier v0.31 workflow implementation. Old profile
-and workflow config tables remain ignored when loading existing config files.
-
-User-requested Codex consistency fix: detect native activity footers with
-background-terminal metadata and soft wraps; recognize new turns without
-whole-second rounding or a thirty-second startup deadline; distinguish Codex
-config/profile flags from Claude continue/print when allocating worktrees.
-Acceptance: genuine activity shows working with or without notify hooks,
-finished prose and stale footers remain finished, queued questions still need
-attention, and new Codex launches with config/profile options get the default
-worktree while resume/fork and explicit locations stay put. Status: verified
-locally for v0.30.1. Regressions failed before fixes; the ordered gate passed:
-`cargo build`, `cargo test` (279 passed / four ignored), clippy with warnings
-denied, and Linux/macOS cross-checks. README and the agent status/worktree contract
-are updated. Real-agent live verification remains outstanding; no installed
-daemon or agent was replaced or restarted.
-
-Historical shortcut/documentation audit: All keys expose configured bindings and contextual controls. The README and shortcut reference were rewritten; this removal deletes stale profile/workflow entries while keeping the searchable keycap reference. Status: implemented locally. The ordered gate passed: build,
-276 tests passed / four ignored, clippy with warnings denied, Linux and macOS
-cross-checks. Rendered reference inspected at 80×24, 100×30 and 160×45; tests cover
-all active bindings, aliases, replacements/unbinding, custom commands, key-name
-search, contextual search, scrolling and Actions entry without running commands.
-Live terminal/clipboard verification remains outstanding as described below.
-Release target: v0.30.0.
-
-User-authorized work: clear session state and workflow controls, shipped in v0.30.0. Keep sidebar
-selection independent of hover; distinguish update versions; expose status
-evidence; prepare workflow instructions; show stages and Inbox approvals; measure
-switching, scrolling and resizing under output. Extends existing status/workflow
-surfaces, including the existing phase-8 status popover. Updates install without
-restarting the window or daemon. Status: implemented locally; the ordered gate
-passed (`cargo build`, 274 tests passed / four ignored, clippy with warnings
-denied, Linux and macOS cross-checks). Rendered setup, versions, evidence and
-Inbox screens inspected; sidebar checks cover legacy recovery states too. The opt-in
-release benchmark passed; measurements and limits are in [TESTING](TESTING.md#project-specific-interaction-performance).
-Live nested-server and clipboard checks remain outstanding after automatic
-approval review rejected the earlier launch as "blocked by policy" without a
-more specific reason. Release target: v0.30.0; no remote tickets created.
-
-User-requested status correction: finished Codex prose mentioning its interrupt
-shortcut must not count as active work. Remove terminal-bell indicators from the
-sidebar and history; retain each session's normal status icon. Acceptance:
-completed prose settles to done/idle, real activity stays working, and unanswered
-questions stay needs-you. Verification: status and bell regressions fail before
-their fixes; rendered rows/history and the full gate passed (265 tests passed,
-three existing ignored; lint and Linux/macOS cross-checks passed). Live UI
-verification remains outstanding. Release target: v0.30.0; not in v0.29.1.
-
-User-requested update discovery: show the update dot beside **Settings** in
-**Actions**, matching the sidebar indicator. Acceptance: hide it without an
-update; clicking the marked row reaches the update controls. Verification:
-rendered update flow and the full gate passed (263 tests passed, three existing
-tests ignored; lint and both cross-checks passed). The missing-badge regression
-fails against the previous behavior. The live nested-server check was blocked
-by automatic approval review; no live verification claimed. Status: verified
-locally for v0.29.1.
-
-The saved profile/workflow feature shipped in v0.30.0 and was removed from the current product on 2026-10-18. Its historical requirements are no longer an active roadmap item; Maitty remains focused on session management and status.
-
-Also requested: fix top-to-bottom repaint during ordinary session switches and
-show Codex's queued unanswered questions as needs-you while its spinner continues.
-Verify frame presentation, navigation and question-clearing regressions; retain
-the separate sleep/wake animation.
-Status: regression checks passed, including failures against the prior behavior;
-outer frames use synchronized updates. Subjective smoothness still needs checking
-in the user's normal terminal with its real sessions.
-
-User-requested navigation fixes: the sidebar's **+ new** must open the same
-plain shell as leader + `n`; **Actions** must include Settings. Acceptance:
-mouse and keyboard reach the same actions, including the selected sidebar
-project. Verification: regression tests, the full gate, and a nested-server UI
-check. Status: verified for 0.28.1 (253 tests passed, three pre-existing tests
-ignored; lint, both cross-checks and dependency audit passed). Live mouse clicks
-opened a plain shell and Settings from Actions.
-
-Active phase: **26 — the inspector drawer** (planned 2026-10-24); phase 25 is built on `dev`.
-[Phase 29](#29--polish-from-the-043-trial--built-on-dev-2026-10-24-live-checks-open), the user's
-fixes from the 0.43 trial, is built on `dev`.
-Next: the phase 26 and 29 live look. Then
-[Phase 27](#27--radar-and-sending-failures--planned-2026-10-24) and
-[Phase 28](#28--references--planned-2026-10-24). Live checks still open for phases 18 and 20–25.
-
-Current user-requested work: expand the built-in themes to cover the 25 requested
-families and add a searchable preview browser in Appearance. Acceptance: all
-families and documented variants are selectable; search, keyboard paging, mouse
-selection, preview, cancel, and saving work; every built-in passes the contrast
-audit. Verification: the full AGENTS.md gate and a nested-server UI check.
-Status: integrated for 0.28.0 with 63 built-in choices; verified in the release
-worktree. Sources: [theme research](theme-credits.md).
-
-Also requested: fix Claude reporting working after its turn ends with a dev
-server still running. User decision: working tracks the agent's turn; background
-shells do not extend it. Acceptance: Stop and idle-prompt reports remain Done
-with an unfinished background command in the transcript; real subagent lifecycle
-reports still work. Status: integrated for 0.28.0. The combined release gate
-passed (251 tests, three pre-existing tests ignored), including Linux and macOS
-cross-checks. Named test daemons showed the completed turn as Done, then Idle
-once seen, while its background PowerShell job remained Running.
+Open validation items (need a real session on the named platform):
+- Pi full-screen scrolling on Linux: waiting on the failing pane's "Pane info (scrolling,
+  mouse)" diagnostic before any fix.
+- Codex helper detection on both Windows and Linux, after restarting Codex with the hooks.
+- Native status for every `maitty integrate` agent has unit tests, not a live run each.
 
 ## Phases
 
@@ -457,7 +241,7 @@ faked snapshot), and Windows beyond CI. Known gaps: the prompt shows protocol nu
 numbers (an older daemon reports only its protocol); it installs no panic hook to switch mouse
 capture back off; the offer-then-restart glue in `open_client` has no test of its own.
 
-### 17 — Team roles for the commander · shipped in v0.40.0, live trial open
+### 17 — Team roles for the commander · shipped in v0.40.0, removed in phase 19
 
 *Removed by the user in [Phase 19](#19--the-v8-cleanup--shipped-in-v0410-live-checks-open); the record below is history.*
 
@@ -525,7 +309,7 @@ Windows (never built), zsh, fish and PowerShell launchers, and the old-binary to
 end. Open: the live check of the helper flow with a real agent over `maitty mcp`; whether check re-run and
 override want leader keys (they work from the check sheet).
 
-### 20 — Quiet agents and safety guards · built on dev 2026-10-23, live checks open
+### 20 — Quiet agents and safety guards · shipped in v0.42.0, live checks open
 
 The user asked on 2026-10-23 for guards against a hung agent, an answer to the wrong prompt,
 hidden characters in agent-to-agent text, and saved output that can't be turned off, after a
@@ -551,7 +335,7 @@ quiet agent rather than `null` on every pane, so other panes' output is unchange
 live: a real agent going quiet, an MCP answer refused for a changed prompt, the output setting
 in Settings, and the unix file modes (tested on Linux in CI only).
 
-### 21 — Layout names and the Grid style · built on dev 2026-10-23, live checks open
+### 21 — Layout names and the Grid style · shipped in v0.42.0, live checks open
 
 The user asked on 2026-10-23 for clearer layout names and the window look from their "Windows"
 handoff, without replacing the existing looks. One Layout setting: Floating, Tiled, Compact and
@@ -573,7 +357,7 @@ already taken (Walnut's accent and violet are one teal), so every built-in theme
 four. Not checked live: Grid in a real terminal at 160×45, 100×30 and 80×24, light themes by
 eye, and an old config file loading under its new name.
 
-### 22 — Shortcut mode · built on dev 2026-10-23, live checks open
+### 22 — Shortcut mode · shipped in v0.42.0, live checks open
 
 The user asked on 2026-10-23 for an input mode and a shortcut mode, so a run of actions is one
 key each rather than the leader every time, with the mode shown
@@ -594,7 +378,7 @@ Shift (`v` / `h` splits, `i` Inbox, `y` why, `k` stop, `Enter` message, `o` sess
 options, `c` copy mode, `p` find file, `g` worktrees, `b` branches, `l` history, `F1` all keys,
 `Ctrl+W` close tab, `Ctrl+V` paste image, `Ctrl`+arrows resize, `1`–`9` tabs).
 
-### 23 — Rename to Vibecasso · built on dev 2026-10-23, then renamed to Maitty
+### 23 — Rename to Vibecasso · shipped in v0.42.0 as Maitty
 
 The user renamed the app to Vibecasso on 2026-10-23, a clean break with no `vibecasso` command
 ([ADR 0018](adr/0018-rename-to-vibecasso.md)), with a paint-stroke splash and the repository
@@ -619,7 +403,7 @@ Then, outside a phase (2026-10-23): the app was renamed again, to Maitty
 replaced the Seshi-era themes and became the defaults (#169); rounded shapes reached every chip
 (#171). Shipped in v0.42.0.
 
-### 24 — The name in one place · built on dev 2026-10-23
+### 24 — The name in one place · shipped in v0.42.0
 
 The user asked on 2026-10-23 for a rename to mean changing the name, not the code
 ([ADR 0019](adr/0019-the-name-lives-in-one-place.md)): the name is set in `Cargo.toml`, the code
@@ -636,7 +420,7 @@ the installers' first lines, `regen.sh`, docs) passed the whole gate with no cod
 first found the splash font and two tests that assumed the name's length, now fixed. Not
 checked live: a release built by the workflow under a new name.
 
-### 25 — Rows, rounding and padding · built on dev 2026-10-24, live checks open
+### 25 — Rows, rounding and padding · shipped in v0.43.0, live checks open
 
 The user asked on 2026-10-24 for padding round the screen, one rounding setting with three
 choices, a round hover, shortcut mode that stays until left, and one-line session rows with the
@@ -654,7 +438,7 @@ Status 2026-10-24: built on `dev` (e48ed40..e2b1eab, one commit per change, each
 padding in a real terminal at 80×24, 100×30 and 160×45. Also fixed here: Backspace on the last letter of an empty Inbox's search crashed the window
 (the selection outlived the matches), and tests wrote the real clipboard.
 
-### 26 — The inspector drawer · planned 2026-10-24
+### 26 — The inspector drawer · shipped in v0.43.0, live checks open
 
 The user asked on 2026-10-24 for the file tree, branch and diff in a native, resizable drawer,
 after reviewing the inspector design handoff. It grows the
@@ -682,7 +466,7 @@ Cursor blink, used where a pane's program picks no cursor of its own; a program'
 Declined while planning: a smooth, animated cursor (a terminal app can only place it on whole cells;
 the glide belongs to the terminal, as in Ghostty or kitty).
 
-### 27 — Radar and sending failures · planned 2026-10-24
+### 27 — Radar and sending failures · in progress 2026-10-25
 
 A session row shows its context as `72%` once past half full (red when nearly full), reversing
 phase 14's "context is left to the agent's status line"; and a failed check's command, exit code
@@ -691,14 +475,14 @@ Intent: [radar-and-failures](features/radar-and-failures/intent.md). Tickets whe
 done. Decided 2026-10-24: red from 85% full; `m` on a failed check opens the message box with the
 failure in it (no new key).
 
-### 28 — References · planned 2026-10-24
+### 28 — References · in progress 2026-10-25
 
 Per project, `.maitty/references/` holds screenshots and design files: a References view in the
 side panel lists, adds (paste or pick), removes and opens them in the system viewer, and an MCP
 tool lists them for agents. Intent: [references](features/references/intent.md). Tickets when
 phase 27 is done. Decided 2026-10-24: the folder is gitignored by default.
 
-### 29 — Polish from the 0.43 trial · built on dev 2026-10-24, live checks open
+### 29 — Polish from the 0.43 trial · shipped in v0.43.2–v0.43.5, live checks open
 
 The user tried v0.43 on 2026-10-24 and asked for: everything in the theme and uniform, the side
 panel's views as tabs with keys, `c` for Changes, Settings on `,` and every key on `?`
