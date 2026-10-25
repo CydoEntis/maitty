@@ -732,27 +732,25 @@ fn grid_color(app: &App, term: TermId, t: &Theme) -> Color {
     colors[grid_index(app, term) % colors.len()]
 }
 
-/// Grid's top border: the pane's number, then the chip that names it with the state's glyph at
-/// its front: the current tab on the top-left pane (its other tabs and the + around it), else
-/// one chip with the session's name. No state words, and the name is not repeated on the right.
-/// A narrow pane drops the load note, then shortens the name, then keeps only the glyph, then
-/// drops the ✕ and the number. Returns where the number and the glyph sit, which open why.
+/// Grid's top border: the chip that names the pane, with the state's glyph at its front: the
+/// current tab on the top-left pane (its other tabs and the + around it), else one chip with the
+/// session's name. No number: the pane's colour tells it apart, and no key goes to a pane by its
+/// number. No state words, and the name is not repeated on the right. A narrow pane drops the
+/// load note, then shortens the name, then keeps only the glyph, then drops the ✕. Returns where
+/// the glyph sits, which opens why.
 fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: Rect, c: &mut Card, t: &Theme) -> Vec<Rect> {
     let look = Look::of(&app.cfg.ui);
-    let ground = title_ground(look, t);
     let own = grid_color(app, info.id, t);
     let chip_style = if focused {
         Style::default().bg(own).fg(t.ink_on(own)).add_modifier(Modifier::BOLD)
     } else {
         Style::default().bg(crate::theme::mix(own, t.bg, GRID_TAG_FADE)).fg(t.strong)
     };
-    let number = vec![seg(format!(" {} ", grid_index(app, info.id) + 1), chip_style)];
-    let number = if look.round_tabs { round_ends(number, ground) } else { number };
     let state = chip_state(app, info);
     let x = title_x(look, r);
     let room = right_end(look, r).saturating_sub(x);
     let corner = c.right_room;
-    let (number_w, note_w) = (segs_width(&number), segs_width(&c.right));
+    let note_w = segs_width(&c.right);
     let caps = if look.round_tabs { 2 } else { 0 };
     let glyph_w = state.as_ref().map_or(0, |s| segs_width(&[state_seg(s, chip_style, t)]));
     let alone_w = state.as_ref().map_or(0, |s| segs_width(&state_alone(s, chip_style, look, t)));
@@ -760,50 +758,32 @@ fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: 
     let tab_close = if app.session_tabs().len() > 1 { 2 } else { 0 };
     // The chip that carries the state at its shortest: the current tab, else the pane's name.
     let chip_min = glyph_w + caps + if top_left { SHORTEST_TAB + tab_close } else { SHORTEST_NAME };
-    // Number and its gap, the two cells the card keeps before the right-hand segments, what is
-    // on the right, the ✕ and the named chip's share.
-    // A square ✕ keeps the room it always had, as if after other segments, so square titles
-    // shorten where they did; a capped ✕ costs what it draws.
+    // The two cells the card keeps before the right-hand segments, what is on the right, the ✕
+    // and the named chip's share. A square ✕ keeps the room it always had, as if after other
+    // segments, so square titles shorten where they did; a capped ✕ costs what it draws.
     let close_w = |right: u16, close: bool| if close { close_width(look, right > 0 || !look.caps) } else { 0 };
-    let fits = |number: u16, right: u16, close: bool, body: u16| number + 3 + right + close_w(right, close) + corner + body <= room;
-    if !fits(number_w, note_w, true, chip_min) {
+    let fits = |right: u16, close: bool, body: u16| 2 + right + close_w(right, close) + corner + body <= room;
+    if !fits(note_w, true, chip_min) {
         c.right.clear();
     }
     let right_w = segs_width(&c.right);
-    // Then the ✕, then the number: the state's glyph is the last to go, since status must
-    // stay in view.
-    let (close, keep_number) = if fits(number_w, right_w, true, alone_w) {
-        (true, true)
-    } else if fits(number_w, right_w, false, alone_w) {
-        (false, true)
-    } else {
-        (false, false)
-    };
+    // Then the ✕: the state's glyph is the last to go, since status must stay in view.
+    let close = fits(right_w, true, alone_w);
     if !close {
         c.close = None;
     }
-    let mut why = Vec::new();
-    let mut left = Vec::new();
-    if keep_number {
-        why.push(Rect { x, y: r.y, width: number_w, height: 1 });
-        left.extend(number);
-        left.push(seg(" ", Style::default()));
-    }
-    let start = x + segs_width(&left);
     let rest = right_w + close_w(right_w, close) + corner;
     let title_end = right_end(look, r).saturating_sub(rest + 2);
     let (named, glyph_at) = if top_left {
-        tab_strip(app, model, Rect { x: start, y: r.y, width: title_end.saturating_sub(start), height: 1 }, focused, state.as_ref(), t)
+        tab_strip(app, model, Rect { x, y: r.y, width: title_end.saturating_sub(x), height: 1 }, focused, state.as_ref(), t)
     } else {
         let name = session_name(app, model, info.id);
-        let (segs, glyph_w) = name_with_state(&name, state.as_ref(), chip_style, title_end.saturating_sub(start), look, t);
+        let (segs, glyph_w) = name_with_state(&name, state.as_ref(), chip_style, title_end.saturating_sub(x), look, t);
         let cap = u16::from(look.round_tabs);
-        (segs, (glyph_w > 0).then_some(Rect { x: start + cap, y: r.y, width: glyph_w, height: 1 }))
+        (segs, (glyph_w > 0).then_some(Rect { x: x + cap, y: r.y, width: glyph_w, height: 1 }))
     };
-    why.extend(glyph_at);
-    left.extend(named);
-    c.chips = left;
-    why
+    c.chips = named;
+    glyph_at.into_iter().collect()
 }
 
 /// The narrowest a pane's name chip gets: ` x… `.

@@ -1344,13 +1344,14 @@ mod screen_tests {
     }
 
     #[test]
-    fn grid_numbers_each_pane_and_names_it_once_with_its_state_glyph_inside() {
+    fn grid_names_each_pane_once_with_its_state_glyph_inside_and_no_number() {
         let (app, [a, b, c], rows) = grid_frame(200, 50);
         let (ta, tb, tc) = (top_border(&app, &rows, a), top_border(&app, &rows, b), top_border(&app, &rows, c));
         let spinner = crate::client::design::glyph(&app, Status::Working);
-        assert!(ta.starts_with("┌─ 1   ▲  1  claude   + ─"), "the number, then needs you inside the current tab: {ta}");
-        assert!(tb.starts_with(&format!("┌─ 2   {spinner} codex ─")), "one name chip, the spinner inside it: {tb}");
-        assert!(tc.starts_with("┌─ 3   shell ─"), "no state for a shell: {tc}");
+        assert!(ta.starts_with("┌─ ▲  1  claude   + ─"), "needs you inside the current tab, whose chip carries the only number: {ta}");
+        assert_eq!(ta.matches(" 1 ").count(), 1, "one 1 on the top-left pane, its tab's: {ta}");
+        assert!(tb.starts_with(&format!("┌─ {spinner} codex ─")), "one name chip, the spinner inside it: {tb}");
+        assert!(tc.starts_with("┌─ shell ─"), "no state for a shell: {tc}");
         for (top, name) in [(&ta, "claude"), (&tb, "codex"), (&tc, "shell")] {
             assert!(!top.contains("needs you") && !top.contains("working"), "no state words: {top}");
             assert_eq!(top.matches(name).count(), 1, "the name is not repeated on the right: {top}");
@@ -1359,9 +1360,9 @@ mod screen_tests {
         }
         let why = |term| border_hits(&app, term, Hit::Screen(screen::ScreenHit::Why(term))).iter().map(|r| r.x).collect::<Vec<_>>();
         let (ca, cb) = (card_of(&app, a), card_of(&app, b));
-        assert_eq!(why(a), [ca.x + 2, ca.x + 6], "the number chip and the glyph in the tab open why");
-        assert_eq!(why(b), [cb.x + 2, cb.x + 6], "the number chip and the glyph in the name open why");
-        assert_eq!(why(c), [card_of(&app, c).x + 2], "a shell: the number alone");
+        assert_eq!(why(a), [ca.x + 2], "the glyph in the tab opens why");
+        assert_eq!(why(b), [cb.x + 2], "the glyph in the name opens why");
+        assert!(why(c).is_empty(), "a shell shows no state to explain");
     }
 
     #[test]
@@ -1416,9 +1417,9 @@ mod screen_tests {
             let rows: Vec<String> = o.lines().map(str::to_string).collect();
             let (ta, tb, tc) = (top_border(&app, &rows, a), top_border(&app, &rows, b), top_border(&app, &rows, c));
             let spinner = crate::client::design::glyph(&app, Status::Working);
-            assert!(ta.starts_with(&format!("┌─ 1   {spinner} 1  ")), "{w}x{h}: working, in the current tab: {ta}");
-            assert!(tb.starts_with("┌─ 2   ▲  "), "{w}x{h}: needs you, in the name chip: {tb}");
-            assert!(tc.starts_with("┌─ 3   ") && !tc.contains('▲') && !tc.contains(&spinner), "{w}x{h}: done shows no glyph: {tc}");
+            assert!(ta.starts_with(&format!("┌─ {spinner} 1  ")), "{w}x{h}: working, in the current tab: {ta}");
+            assert!(tb.starts_with("┌─ ▲  "), "{w}x{h}: needs you, in the name chip: {tb}");
+            assert!(tc.starts_with("┌─ ") && !tc.contains('▲') && !tc.contains(&spinner), "{w}x{h}: done shows no glyph: {tc}");
             for top in [&ta, &tb, &tc] {
                 assert!(!["working", "needs you", "done"].iter().any(|word| top.contains(word)), "{w}x{h}: no state words: {top}");
             }
@@ -1498,23 +1499,27 @@ mod screen_tests {
     fn a_narrow_grid_pane_shortens_its_name_and_keeps_its_glyph_in_the_chip() {
         let mut shortened = false;
         // Narrowing step by step: the current tab stays, with the glyph at its front.
-        for w in 60..=110 {
-            let (app, [a, b, _], rows) = grid_frame(w, 20);
+        for w in 41..=110 {
+            let (_, mut app) = super::design_tests::render_with(w, 20);
+            app.cfg.ui.layout = "grid".into();
+            let [a, b, _] = three_panes(&mut app);
+            app.snap.terms.get_mut(&b).unwrap().label = "codex-reviews-the-footer".into();
+            let o = draw(&mut app, w, 20);
+            let rows: Vec<String> = o.lines().map(str::to_string).collect();
             let (ta, tb) = (top_border(&app, &rows, a), top_border(&app, &rows, b));
             let tab = border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab)));
             assert!(tab.len() == 1 && ta.contains("▲  1 "), "{w}: the current tab, its glyph inside: {ta}");
             assert!(!ta.contains("needs you") && ta.matches("claude").count() <= 1, "{w}: {ta}");
             let spinner = crate::client::design::glyph(&app, Status::Working);
             assert!(tb.contains(&format!("{spinner} c")) && tb.matches("codex").count() <= 1, "{w}: the name chip carries the spinner: {tb}");
-            shortened |= tb.contains(&format!("{spinner} cod…"));
+            shortened |= tb.contains(&format!("{spinner} codex-")) && tb.contains('…');
         }
         assert!(shortened, "somewhere a name chip shortens its name and keeps its glyph");
         // Narrower still, a tab that cannot fit at its shortest gives way to its glyph alone.
-        for w in 44..60 {
-            let (app, [a, ..], rows) = grid_frame(w, 20);
-            let ta = top_border(&app, &rows, a);
-            assert!(ta.starts_with("┌─ 1   ▲ "), "{w}: {ta}");
-        }
+        let (app, [a, ..], rows) = grid_frame(40, 20);
+        let ta = top_border(&app, &rows, a);
+        assert!(ta.starts_with("┌─ ▲ ─"), "the glyph alone: {ta}");
+        assert!(border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab))).is_empty(), "the tab gave way: {ta}");
     }
 
     fn drawn(app: &mut App, w: u16, h: u16) -> ratatui::buffer::Buffer {
@@ -1556,7 +1561,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn grid_draws_the_pane_number_and_name_chips_in_the_pane_s_colour_with_a_readable_glyph() {
+    fn grid_draws_the_name_chip_in_the_pane_s_colour_with_a_readable_glyph() {
         use crate::config::Rounding;
         for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
             for focus_b in [false, true] {
@@ -1574,29 +1579,25 @@ mod screen_tests {
                 let y = card_of(&app, a).y;
                 let why = |term| border_hits(&app, term, Hit::Screen(screen::ScreenHit::Why(term)));
                 let (wa, wb) = (why(a), why(b));
-                let digit = |r: &Rect| r.x + if rounded == Rounding::Full { 2 } else { 1 };
-                // Each number chip, and b's name chip with the spinner at its front, on the pane's colour.
-                let (a_ink, a_chip) = chip(colours[0], !focus_b);
+                // b's name chip with the spinner at its front, on the pane's colour.
                 let (b_ink, b_chip) = chip(colours[1], focus_b);
-                let starts = [(digit(&wa[0]), a_ink, a_chip, "a's number"), (digit(&wb[0]), b_ink, b_chip, "b's number"), (wb[1].x + 1, b_ink, b_chip, "b's spinner")];
-                for (x, ink, bg, what) in starts {
-                    let cell = &buf[(x, y)];
-                    assert_eq!((cell.fg, cell.bg), (ink, bg), "{what} on the pane's colour: {at}");
-                    assert_eq!(buf[(x - 1, y)].bg, bg, "{what} is padded on its chip: {at}");
-                    let end = &buf[(x - 2, y)];
-                    if rounded == Rounding::Full {
-                        assert_eq!((end.symbol(), end.fg), (screen::CAP_L, bg), "{what} is capped: {at}");
-                    } else {
-                        assert_ne!(end.bg, bg, "{what} is square: {at}");
-                    }
+                let x = wb[0].x + 1;
+                let cell = &buf[(x, y)];
+                assert_eq!((cell.fg, cell.bg), (b_ink, b_chip), "b's spinner on the pane's colour: {at}");
+                assert_eq!(buf[(x - 1, y)].bg, b_chip, "b's spinner is padded on its chip: {at}");
+                let end = &buf[(x - 2, y)];
+                if rounded == Rounding::Full {
+                    assert_eq!((end.symbol(), end.fg), (screen::CAP_L, b_chip), "b's chip is capped: {at}");
+                } else {
+                    assert_ne!(end.bg, b_chip, "b's chip is square: {at}");
                 }
-                let name = &buf[(wb[1].right() + 1, y)];
+                let name = &buf[(wb[0].right() + 1, y)];
                 assert_eq!((name.symbol(), name.fg, name.bg), ("c", b_ink, b_chip), "b's name after its spinner, one chip: {at}");
                 // Needs you, at the front of the current tab: amber, set apart from the chip.
-                let glyph = &buf[(wa[1].x + 1, y)];
+                let glyph = &buf[(wa[0].x + 1, y)];
                 assert_eq!(glyph.symbol(), "▲", "{at}");
                 assert!(glyph.modifier.contains(ratatui::style::Modifier::BOLD), "{at}");
-                assert!(needs_you_stands_out(&app, &buf, wa[1].x + 1, y), "needs you stands out: {at}");
+                assert!(needs_you_stands_out(&app, &buf, wa[0].x + 1, y), "needs you stands out: {at}");
             }
         }
     }
