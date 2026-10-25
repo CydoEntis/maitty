@@ -534,7 +534,7 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
                 header = vec![
                     seg(ed.path.strip_prefix(&v.root).map(|p| p.display().to_string()).unwrap_or_default(), Style::default().fg(t.strong).add_modifier(Modifier::BOLD)),
                     seg(if ed.dirty { "  ● unsaved" } else { "  editing" }, Style::default().fg(t.accent)),
-                    seg("   Ctrl+S save · ^C copy · ^V paste · Esc done", Style::default().fg(t.muted)),
+                    seg("   Ctrl+S save · Esc done", Style::default().fg(t.muted)),
                 ];
                 put(buf, px, body.y + 1, &header, body.right());
                 let selection = ed.selection();
@@ -621,7 +621,9 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
         ("Copy path", "y", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('y'))),
         ("Show diff", "d", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('d'))),
     ]);
-    action_row(app, buf, area, t, &buttons, &[seg("PgUp PgDn / wheel scroll", Style::default().fg(t.muted))]);
+    // The editor's header has room only for saving and leaving; its other keys go here.
+    let keys = if v.edit.is_some() { "^C copy · ^V paste · ^Z undo" } else { "PgUp PgDn / wheel scroll" };
+    action_row(app, buf, area, t, &buttons, &[seg(keys, Style::default().fg(t.muted))]);
 }
 
 /// Paint characters `span` of `text`, drawn from `at`, as selected; one past its end is the
