@@ -390,8 +390,7 @@ An advancing footer also detects automatic follow-up work without keyboard input
 Native Codex subagent hooks attach every helper to its parent pane as soon as it
 starts and remove it when it stops.
 Hook authority ends when a recognized agent's process exits. Maitty recognizes
-Herdr's 24 agent identities plus its five additional existing agents; OMP,
-Mastracode, Kilo and Kimi native status setup is also available through the Menu.
+Herdr's 24 agent identities plus its five additional existing agents.
 See [status setup and its limits](agent-status.md).
 Terminal bells do not replace the status icon or add musical-note history entries.
 Click a status icon/tag (or `<leader> y`) for a plain-language explanation and the ages of
