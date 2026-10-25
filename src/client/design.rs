@@ -537,14 +537,18 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
                     seg("   Ctrl+S save · Esc done", Style::default().fg(t.muted)),
                 ];
                 put(buf, px, body.y + 1, &header, body.right());
+                let selection = ed.selection();
                 for (k, l) in ed.lines.iter().enumerate().skip(v.scroll).take(prect.height as usize) {
                     let yy = prect.y + (k - v.scroll) as u16;
                     let num = Style::default().fg(if k == ed.row { t.accent } else { t.muted });
                     let mut segs = vec![seg(format!("{:>4}  ", k + 1), num)];
                     segs.extend(super::views::highlight(&l.replace('\t', "    "), t));
                     put(buf, px, yy, &segs, prect.right());
+                    if let Some(span) = selection.and_then(|sel| super::views::line_span(sel, k, l.chars().count())) {
+                        paint_selection(buf, (px + super::views::GUTTER, yy), prect.right(), l, span, super::render::select_style(t));
+                    }
                     if k == ed.row {
-                        let cx = px + 6 + ed.cursor_x() as u16;
+                        let cx = px + super::views::GUTTER + ed.cursor_x() as u16;
                         if cx < prect.right() {
                             let cell = &mut buf[(cx, yy)];
                             let sym = if cell.symbol().trim().is_empty() { " ".to_string() } else { cell.symbol().to_string() };
@@ -608,6 +612,20 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
         ("Show diff", "d", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('d'))),
     ]);
     action_row(app, buf, area, t, &buttons, &[seg("PgUp PgDn / wheel scroll", Style::default().fg(t.muted))]);
+}
+
+/// Paint characters `span` of `text`, drawn from `at`, as selected; one past its end is the
+/// line break the selection takes.
+fn paint_selection(buf: &mut Buffer, at: (u16, u16), right: u16, text: &str, span: (usize, usize), style: Style) {
+    let cells = |col: usize| super::views::x_of(text, col).min(usize::from(u16::MAX)) as u16;
+    let len = text.chars().count();
+    let from = at.0.saturating_add(cells(span.0));
+    let to = at.0.saturating_add(cells(span.1.min(len))).saturating_add(u16::from(span.1 > len));
+    for x in from..to.min(right) {
+        if let Some(cell) = buf.cell_mut((x, at.1)) {
+            cell.set_style(style);
+        }
+    }
 }
 
 /// The tree (or the recent files) in the left `fw` columns of `body`.

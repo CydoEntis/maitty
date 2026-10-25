@@ -8889,6 +8889,87 @@ mod files_panel_tests {
         assert!(!files(&app).drawn(), "raw, since drawn lines have no numbers");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// `src/main.rs` open in the editor at 160×45, drawn once so the preview has its place.
+    fn editing(name: &str) -> (PathBuf, App) {
+        let dir = project(name);
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        key(&mut app, KeyCode::Char('i'));
+        frame(&mut app, 160, 45);
+        (dir, app)
+    }
+
+    fn edit(app: &App) -> &views::Edit {
+        files(app).edit.as_ref().expect("editing")
+    }
+
+    fn press(app: &mut App, code: KeyCode, mods: KeyModifiers) {
+        app.on_key(KeyEvent::new(code, mods));
+    }
+
+    fn mouse(app: &mut App, kind: MouseEventKind, (column, row): (u16, u16)) {
+        app.on_mouse(MouseEvent { kind, column, row, modifiers: KeyModifiers::NONE });
+    }
+
+    #[test]
+    fn shift_and_the_arrows_select_in_the_editor_and_typing_replaces_it() {
+        let (dir, mut app) = editing("shiftsel");
+        for _ in 0..3 {
+            press(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+        }
+        assert_eq!(edit(&app).selection(), Some(((0, 0), (0, 3))), "three characters");
+        let (o, buf) = frame(&mut app, 160, 45);
+        show(&o);
+        let selected = render::select_style(&app.theme).bg.expect("a ground");
+        assert_eq!(cell_of(&app, &buf, "let line_1").bg, selected, "drawn in the selection colour");
+        assert_ne!(cell_of(&app, &buf, "line_1").bg, selected, "only what is selected");
+        press(&mut app, KeyCode::Char('X'), KeyModifiers::SHIFT);
+        assert_eq!(edit(&app).lines[0], "X line_1 = 1;", "typing replaces the selection");
+        assert_eq!(edit(&app).selection(), None);
+        press(&mut app, KeyCode::Down, KeyModifiers::SHIFT);
+        press(&mut app, KeyCode::End, KeyModifiers::SHIFT);
+        press(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
+        assert_eq!(edit(&app).lines[..2], ["X", "let line_3 = 3;"], "Backspace removes a selection across lines");
+        press(&mut app, KeyCode::Left, KeyModifiers::SHIFT);
+        press(&mut app, KeyCode::Right, KeyModifiers::NONE);
+        assert_eq!(edit(&app).selection(), None, "a move without Shift drops it");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ctrl_a_selects_the_whole_file() {
+        let (dir, mut app) = editing("selall");
+        press(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+        assert_eq!(edit(&app).selection(), Some(((0, 0), (59, "let line_60 = 60;".len()))));
+        press(&mut app, KeyCode::Char('z'), KeyModifiers::NONE);
+        assert_eq!(edit(&app).lines, ["z"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_mouse_selects_in_the_editor_and_a_click_moves_the_cursor() {
+        let (dir, mut app) = editing("mousesel");
+        let (_, buf) = frame(&mut app, 160, 45);
+        let (from, to) = (at(&app, &buf, "line_1"), at(&app, &buf, "= 3;"));
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), from);
+        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), to);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), to);
+        assert_eq!(edit(&app).selection(), Some(((0, 4), (2, 11))), "dragged from line 1 to line 3");
+        let click = at(&app, &buf, "line_2");
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), click);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), click);
+        assert_eq!((edit(&app).row, edit(&app).col, edit(&app).selection()), (1, 4, None), "a click moves the cursor");
+        let word = at(&app, &buf, "line_4");
+        for _ in 0..2 {
+            mouse(&mut app, MouseEventKind::Down(MouseButton::Left), word);
+            mouse(&mut app, MouseEventKind::Up(MouseButton::Left), word);
+        }
+        assert_eq!(edit(&app).selection(), Some(((3, 4), (3, 10))), "a double-click takes the word");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 

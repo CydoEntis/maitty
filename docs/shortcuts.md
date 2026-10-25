@@ -257,7 +257,9 @@ your own leader keys; the Inbox and checks have none.
 | Keys | Action |
 | --- | --- |
 | Arrows, Home, End, PgUp, PgDn | Move cursor or page |
-| Enter, Tab, Delete, Backspace | Newline, four spaces, delete forward, delete backward |
+| Shift + those keys, Ctrl+A | Select as the cursor moves; select the whole file |
+| Drag, click, double-click | Select with the mouse; move the cursor (Shift+click extends); select a word |
+| Enter, Tab, Delete, Backspace | Newline, four spaces, delete forward, delete backward; typing or deleting replaces a selection |
 | Ctrl+S | Save; repeat to overwrite a file that changed on disk after warning |
 | Esc | Exit editor; repeat to discard unsaved changes after warning |
 

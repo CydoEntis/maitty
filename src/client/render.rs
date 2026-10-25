@@ -276,6 +276,11 @@ pub(super) fn truncate(s: &str, max: usize) -> String {
 /// How far toward the sky colour a selection's ground is.
 const SELECT_TINT: f32 = 0.38;
 
+/// Selected text: copy mode's, and the Files preview's.
+pub(super) fn select_style(t: &crate::theme::Theme) -> Style {
+    Style::default().bg(blend(t.bg, t.sky(), SELECT_TINT)).fg(t.strong)
+}
+
 /// `y copy · Esc cancel` as keycaps, for the end of a selection.
 fn copy_hints(t: &crate::theme::Theme) -> Vec<Seg> {
     let label = |s: &str| seg(s.to_string(), Style::default().fg(t.text).bg(t.card));
@@ -287,7 +292,7 @@ fn copy_hints(t: &crate::theme::Theme) -> Vec<Seg> {
 }
 
 pub(super) fn render_copy(c: &Copy, area: Rect, buf: &mut Buffer, t: &crate::theme::Theme) {
-    let select = Style::default().bg(blend(t.bg, t.sky(), SELECT_TINT)).fg(t.strong);
+    let select = select_style(t);
     let hit = Style::default().bg(t.working).fg(Color::Black);
     for row in 0..area.height {
         let li = c.top + row as usize;

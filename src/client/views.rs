@@ -155,6 +155,10 @@ pub struct FilesTree {
     pub raw: Option<PathBuf>,
     /// The drawn markdown, kept until the file, the width or the theme changes.
     pub(super) drawn_cache: Option<DrawnCache>,
+    /// The left button went down in the preview and is still held: moving selects.
+    pub dragging: bool,
+    /// The last press in the preview, to tell a double-click.
+    pub last_press: Option<(Pos, std::time::Instant)>,
 }
 
 /// Markdown drawn for the preview, and what it was drawn for.
@@ -183,6 +187,65 @@ pub struct Edit {
     seen: u64,
     /// Ctrl+S found it changed on disk: the next Ctrl+S overwrites anyway.
     pub conflict: bool,
+    /// Where the selection started; it runs to the cursor.
+    pub anchor: Option<Pos>,
+}
+
+/// Columns the preview's line numbers take (`{:>4}` and two spaces).
+pub const GUTTER: u16 = 6;
+
+/// A place in some text: line, and character in it.
+pub type Pos = (usize, usize);
+
+/// A selection's two ends in reading order; None when it is empty.
+pub fn ordered(a: Pos, b: Pos) -> Option<(Pos, Pos)> {
+    (a != b).then(|| if a < b { (a, b) } else { (b, a) })
+}
+
+/// The characters of `line` (which has `len`) inside `sel`. A selection that runs on past the
+/// line's end takes one more, so the line break it includes shows.
+pub fn line_span(sel: (Pos, Pos), line: usize, len: usize) -> Option<(usize, usize)> {
+    let ((r0, c0), (r1, c1)) = sel;
+    if line < r0 || line > r1 {
+        return None;
+    }
+    let from = if line == r0 { c0.min(len) } else { 0 };
+    let to = if line == r1 { c1.min(len) } else { len + 1 };
+    (to > from).then_some((from, to))
+}
+
+/// Screen columns a character takes in the preview (tabs are four wide).
+fn cell_width(c: char) -> usize {
+    if c == '\t' { 4 } else { 1 }
+}
+
+/// The character of `line` drawn at screen column `x` (past the end: the end).
+pub fn col_at(line: &str, x: usize) -> usize {
+    let mut w = 0;
+    for (i, c) in line.chars().enumerate() {
+        w += cell_width(c);
+        if w > x {
+            return i;
+        }
+    }
+    line.chars().count()
+}
+
+/// Screen columns the first `col` characters of `line` take.
+pub fn x_of(line: &str, col: usize) -> usize {
+    line.chars().take(col).map(cell_width).sum()
+}
+
+/// The word (letters, digits, `_`) around character `col` of `line`, or that one character.
+pub fn word_at(line: &str, col: usize) -> (usize, usize) {
+    let chars: Vec<char> = line.chars().collect();
+    let word = |c: &char| c.is_alphanumeric() || *c == '_';
+    if !chars.get(col).is_some_and(word) {
+        return (col.min(chars.len()), (col + 1).min(chars.len()));
+    }
+    let start = chars[..col].iter().rposition(|c| !word(c)).map_or(0, |i| i + 1);
+    let end = chars[col..].iter().position(|c| !word(c)).map_or(chars.len(), |i| col + i);
+    (start, end)
 }
 
 /// A fingerprint of a file's bytes (same run only).
@@ -217,7 +280,7 @@ impl Edit {
         if lines.is_empty() {
             lines.push(String::new());
         }
-        Ok(Edit { path: path.to_path_buf(), lines, row: 0, col: 0, dirty: false, warned: false, crlf, trailing_newline, seen, conflict: false })
+        Ok(Edit { path: path.to_path_buf(), lines, row: 0, col: 0, dirty: false, warned: false, crlf, trailing_newline, seen, conflict: false, anchor: None })
     }
 
     /// Save, unless the file changed on disk since it was opened (an agent edited it): then
@@ -259,7 +322,54 @@ impl Edit {
         self.lines[row].char_indices().nth(col).map(|(i, _)| i).unwrap_or(self.lines[row].len())
     }
 
+    /// The selection's ends in reading order, if any text is selected.
+    pub fn selection(&self) -> Option<(Pos, Pos)> {
+        self.anchor.and_then(|a| ordered(a, (self.row, self.col)))
+    }
+
+    /// Before a move: Shift keeps (or starts) the selection, any other move drops it.
+    pub fn select(&mut self, extend: bool) {
+        self.anchor = if extend { Some(self.anchor.unwrap_or((self.row, self.col))) } else { None };
+    }
+
+    pub fn select_all(&mut self) {
+        self.anchor = Some((0, 0));
+        self.row = self.lines.len() - 1;
+        self.col = self.len(self.row);
+    }
+
+    /// Put the cursor at `at` (clamped to the text), extending the selection or dropping it.
+    pub fn move_to(&mut self, at: Pos, extend: bool) {
+        self.select(extend);
+        self.row = at.0.min(self.lines.len() - 1);
+        self.col = at.1.min(self.len(self.row));
+    }
+
+    /// Select the word under the cursor.
+    pub fn select_word(&mut self) {
+        let (from, to) = word_at(&self.lines[self.row], self.col);
+        self.anchor = Some((self.row, from));
+        self.col = to;
+    }
+
+    /// Remove the selected text, leaving the cursor where it began. False when nothing is selected.
+    fn take_selection(&mut self) -> bool {
+        let Some(((r0, c0), (r1, c1))) = self.selection() else {
+            self.anchor = None;
+            return false;
+        };
+        let tail = self.lines[r1][self.byte(r1, c1)..].to_string();
+        let at = self.byte(r0, c0);
+        self.lines[r0].truncate(at);
+        self.lines[r0].push_str(&tail);
+        self.lines.drain(r0 + 1..=r1);
+        (self.row, self.col, self.anchor) = (r0, c0, None);
+        self.dirty = true;
+        true
+    }
+
     pub fn insert(&mut self, c: char) {
+        self.take_selection();
         let at = self.byte(self.row, self.col);
         self.lines[self.row].insert(at, c);
         self.col += 1;
@@ -267,6 +377,7 @@ impl Edit {
     }
 
     pub fn newline(&mut self) {
+        self.take_selection();
         let at = self.byte(self.row, self.col);
         let rest = self.lines[self.row].split_off(at);
         // Keep the line's indent.
@@ -278,6 +389,9 @@ impl Edit {
     }
 
     pub fn backspace(&mut self) {
+        if self.take_selection() {
+            return;
+        }
         if self.col > 0 {
             let at = self.byte(self.row, self.col - 1);
             self.lines[self.row].remove(at);
@@ -294,6 +408,9 @@ impl Edit {
     }
 
     pub fn delete(&mut self) {
+        if self.take_selection() {
+            return;
+        }
         if self.col < self.len(self.row) {
             let at = self.byte(self.row, self.col);
             self.lines[self.row].remove(at);
@@ -331,7 +448,7 @@ impl Edit {
 
     /// The cursor's screen column within its line (tabs are four wide).
     pub fn cursor_x(&self) -> usize {
-        self.lines[self.row].chars().take(self.col).map(|c| if c == '\t' { 4 } else { 1 }).sum()
+        x_of(&self.lines[self.row], self.col)
     }
 }
 
@@ -357,6 +474,8 @@ impl FilesTree {
             reveal: None,
             raw: None,
             drawn_cache: None,
+            dragging: false,
+            last_press: None,
         }
     }
 
@@ -445,6 +564,41 @@ impl FilesTree {
     pub(super) fn pretty(&self) -> Option<&[Vec<super::design::Seg>]> {
         let (path, _) = self.preview.as_ref().filter(|_| self.drawn())?;
         self.drawn_cache.as_ref().filter(|c| c.path == *path).map(|c| c.lines.as_slice())
+    }
+
+    /// Scroll so the editor's cursor is on screen, `page` lines tall.
+    pub fn follow_cursor(&mut self, page: usize) {
+        let Some(row) = self.edit.as_ref().map(|ed| ed.row) else { return };
+        if row < self.scroll {
+            self.scroll = row;
+        } else if row >= self.scroll + page {
+            self.scroll = row + 1 - page;
+        }
+    }
+
+    /// Shown line `i` as plain text: the edit's, the drawn markdown's, or the file's.
+    pub fn shown_text(&self, i: usize) -> Option<String> {
+        if let Some(ed) = &self.edit {
+            return ed.lines.get(i).cloned();
+        }
+        match self.pretty() {
+            Some(drawn) => drawn.get(i).map(|segs| segs.iter().map(|(s, _)| s.as_str()).collect()),
+            None => self.preview.as_ref().and_then(|(_, l)| l.get(i).cloned()),
+        }
+    }
+
+    /// Columns before the text: line numbers, except on drawn markdown.
+    pub fn gutter(&self) -> u16 {
+        if self.edit.is_none() && self.pretty().is_some() { 0 } else { GUTTER }
+    }
+
+    /// The place in the preview's text under the cell (x, y) of `area`, the preview on screen;
+    /// a cell outside it counts as the nearest edge.
+    pub fn text_at(&self, area: ratatui::layout::Rect, x: u16, y: u16) -> Pos {
+        let y = y.clamp(area.y, area.bottom().saturating_sub(1));
+        let line = self.scroll + (y - area.y) as usize;
+        let text = self.shown_text(line).unwrap_or_default();
+        (line, col_at(&text, x.saturating_sub(area.x + self.gutter()) as usize))
     }
 
     /// How many lines the preview shows at `width`: the edit, the drawn markdown, or the text.

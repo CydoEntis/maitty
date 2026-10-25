@@ -152,7 +152,11 @@ impl App {
         let page = self.screen.preview_rect.height.saturating_sub(4).max(5) as usize;
         // Editing the file in the preview.
         if let Some(ed) = v.edit.as_mut() {
+            if matches!(k.code, KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right | KeyCode::PageUp | KeyCode::PageDown | KeyCode::Home | KeyCode::End) {
+                ed.select(k.modifiers.contains(KeyModifiers::SHIFT));
+            }
             match k.code {
+                KeyCode::Char('a') if ctrl => ed.select_all(),
                 KeyCode::Char('s') if ctrl => match ed.save() {
                     Ok(views::Saved::Done) => self.notify(format!("saved {}", ed.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()), false),
                     Ok(views::Saved::ChangedOnDisk) => {
@@ -193,13 +197,7 @@ impl App {
                 }
                 _ => {}
             }
-            // Keep the cursor on screen.
-            let row = ed.row;
-            if row < v.scroll {
-                v.scroll = row;
-            } else if row >= v.scroll + page {
-                v.scroll = row + 1 - page;
-            }
+            v.follow_cursor(page);
             return true;
         }
         if v.filtering {
