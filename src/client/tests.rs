@@ -10409,7 +10409,7 @@ mod references_view_tests {
 
     fn names(app: &App) -> Vec<String> {
         match sheet(app).and_then(|v| v.list.clone()) {
-            Some(Ok(l)) => l.into_iter().map(|r| r.name).collect(),
+            Some(Ok(l)) => l.items.into_iter().map(|r| r.name).collect(),
             other => panic!("a list: {other:?}"),
         }
     }
@@ -10498,6 +10498,24 @@ mod references_view_tests {
         let reread = next_bg(&mut rx);
         app.on_bg(reread);
         assert_eq!(names(&app), ["mock.png"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pasted_text_that_names_no_file_adds_nothing_and_is_never_shown() {
+        let dir = project("text", &[]);
+        let (mut app, mut rx) = opened(&dir, 160, 45);
+        app.on_event(Event::Paste("sk-secret-token\nsecond line".into()));
+        let shown = app.notice.as_ref().map(|(t, ..)| t.clone()).unwrap_or_default();
+        assert!(shown.contains("References has the keys") && !shown.contains("sk-secret"), "{shown}");
+        assert!(rx.try_recv().is_err(), "nothing to add for several lines");
+        app.notice = None;
+        app.on_event(Event::Paste("sk-secret-token".into()));
+        let b = next_bg(&mut rx);
+        app.on_bg(b);
+        let shown = app.notice.as_ref().map(|(t, ..)| t.clone()).unwrap_or_default();
+        assert!(shown.contains("References has the keys") && !shown.contains("sk-secret"), "{shown}");
+        assert_eq!(names(&app), Vec::<String>::new());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

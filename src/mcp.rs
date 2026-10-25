@@ -336,10 +336,10 @@ impl Server {
         let root = crate::references::project_root(&root);
         let folder = crate::references::folder(&root);
         let found = crate::references::of_project(&root)?;
-        if found.is_empty() {
+        if found.items.is_empty() && found.skipped == 0 {
             return Ok(format!("No references in {} yet. The user adds them from the References view in {APP_COMMAND} (paste a screenshot or add a file).", folder.display()));
         }
-        Ok(serde_json::to_string_pretty(&references_json(&folder, &found)).unwrap_or_default())
+        serde_json::to_string_pretty(&references_json(&folder, &found)).map_err(|e| format!("couldn't write the list: {e}"))
     }
 
     /// The project root of a folder an agent named: an existing folder, and the caller's own
@@ -400,12 +400,17 @@ impl Server {
     }
 }
 
-fn references_json(folder: &Path, found: &[crate::references::Reference]) -> Value {
+fn references_json(folder: &Path, found: &crate::references::Listing) -> Value {
     let rows: Vec<Value> = found
+        .items
         .iter()
         .map(|r| json!({ "path": r.path, "name": r.name, "kind": r.kind.label(), "bytes": r.size, "modified": crate::references::utc_iso(r.modified) }))
         .collect();
-    json!({ "folder": folder, "references": rows })
+    let mut out = json!({ "folder": folder, "references": rows });
+    if let Some(why) = &found.first_skip {
+        out["skipped"] = json!({ "count": found.skipped, "first": why });
+    }
+    out
 }
 
 /// The agent `<app>_start` runs and its command line: the named `agent`, or the user's first.

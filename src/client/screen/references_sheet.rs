@@ -7,7 +7,7 @@ use super::*;
 use crate::client::files::human_size;
 use crate::client::menu::Act;
 use crate::client::{Bg, Btn, PromptKind, View};
-use crate::references::{self as refs, Reference};
+use crate::references::{self as refs, Listing, Reference};
 
 /// Rows under the list: a gap and the hints.
 const FOOT_ROWS: u16 = 2;
@@ -17,6 +17,8 @@ const EMPTY_HINTS: [(&str, &str); 3] = [("p", "paste image"), ("n", "add file"),
 /// Below this width a row shows its name and age only.
 const FULL_ROW_FROM: u16 = 44;
 const EMPTY: &str = "No references yet · paste an image or add a file";
+/// A paste that is no file to add: the pasted text is never repeated back, it may be a secret.
+const PASTE_NOTICE: &str = "References has the keys: drop a file or paste an image to add it; Esc closes it, or click a pane to paste there";
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ReferencesSheet {
@@ -25,7 +27,7 @@ pub(crate) struct ReferencesSheet {
     /// Where the session runs: a typed relative path starts here.
     pub dir: PathBuf,
     /// None while the folder is read.
-    pub list: Option<Result<Vec<Reference>, String>>,
+    pub list: Option<Result<Listing, String>>,
     pub sel: usize,
     scroll: usize,
 }
@@ -37,7 +39,7 @@ impl ReferencesSheet {
 
     fn items(&self) -> &[Reference] {
         match &self.list {
-            Some(Ok(l)) => l,
+            Some(Ok(l)) => &l.items,
             _ => &[],
         }
     }
@@ -95,7 +97,7 @@ impl App {
     }
 
     /// The listing for the view that asked about `asked`; `root` is where the project really is.
-    pub(in crate::client) fn references_arrived(&mut self, asked: &Path, root: PathBuf, list: Result<Vec<Reference>, String>) {
+    pub(in crate::client) fn references_arrived(&mut self, asked: &Path, root: PathBuf, list: Result<Listing, String>) {
         if let Some(View::References(v)) = &mut self.view
             && v.root == asked
         {
@@ -133,19 +135,46 @@ impl App {
         true
     }
 
-    /// A paste while References has the keys: an empty one (a terminal's paste of an image) adds
-    /// the clipboard image, and text is a dropped file's path to add. Returns whether it took it.
+    /// A paste while References has the keys stays here: an empty one (a terminal's paste of an
+    /// image) adds the clipboard image, one line naming a file is a drop to add, and anything
+    /// else only says what the keys do. Returns whether it took the paste.
     pub(in crate::client) fn paste_into_references(&mut self, text: &str) -> bool {
         if !self.view_has_keys() || !matches!(self.mode, Mode::Normal) {
             return false;
         }
         let Some(View::References(v)) = &self.view else { return false };
         let (root, dir) = (v.root.clone(), v.dir.clone());
-        match text.lines().next() {
-            None => self.paste_reference(root),
-            Some(line) => self.add_reference(root, dir, line),
+        let text = text.trim_end_matches(['\r', '\n']);
+        if text.is_empty() {
+            self.paste_reference(root);
+        } else if text.contains(['\r', '\n']) {
+            self.notify(PASTE_NOTICE.into(), false);
+        } else if let Some(src) = typed_path(text, &dir) {
+            self.drop_reference(root, src);
+        } else {
+            self.notify(PASTE_NOTICE.into(), false);
         }
         true
+    }
+
+    /// A dropped path: added when it names a file (checked off the UI thread), else only the
+    /// notice, so a pasted secret is neither copied nor shown.
+    fn drop_reference(&mut self, root: PathBuf, src: PathBuf) {
+        self.spawn_bg(move || {
+            let added = if src.is_file() { Some(refs::add_file(&refs::project_root(&root), &src)) } else { None };
+            Bg::Then(Box::new(move |app: &mut App| match added {
+                Some(added) => app.reference_added(added),
+                None => app.notify(PASTE_NOTICE.into(), false),
+            }))
+        });
+    }
+
+    fn reference_added(&mut self, added: Result<PathBuf, String>) {
+        match added {
+            Ok(to) => self.notify(format!("added {} to the references", folder_name(&to)), false),
+            Err(e) => self.notify(e, true),
+        }
+        self.references_reload();
     }
 
     fn open_reference(&mut self, v: &ReferencesSheet) {
@@ -186,13 +215,7 @@ impl App {
         let Some(src) = typed_path(input, &dir) else { return };
         self.spawn_bg(move || {
             let added = refs::add_file(&refs::project_root(&root), &src);
-            Bg::Then(Box::new(move |app: &mut App| {
-                match added {
-                    Ok(to) => app.notify(format!("added {} to the references", folder_name(&to)), false),
-                    Err(e) => app.notify(e, true),
-                }
-                app.references_reload();
-            }))
+            Bg::Then(Box::new(move |app: &mut App| app.reference_added(added)))
         });
     }
 
@@ -215,8 +238,13 @@ impl App {
 fn save_clipboard_image(root: &Path) -> Result<(String, usize, usize), String> {
     let img = crate::client::clipboard_image()?;
     let dir = refs::ensure(&refs::project_root(root))?;
-    let path = refs::screenshot_path(&dir, now_secs());
-    crate::client::write_png(&path, img.width as u32, img.height as u32, &img.bytes)?;
+    let (path, file) = refs::create_screenshot(&dir, now_secs())?;
+    if let Err(why) = crate::client::encode_png(file, img.width as u32, img.height as u32, &img.bytes) {
+        return Err(match std::fs::remove_file(&path) {
+            Ok(()) => format!("couldn't save the screenshot: {why}"),
+            Err(e) => format!("couldn't save the screenshot: {why}; the partial file {} is left ({e})", path.display()),
+        });
+    }
     Ok((folder_name(&path), img.width, img.height))
 }
 
@@ -237,15 +265,29 @@ pub(in crate::client) fn draw_references(app: &mut App, buf: &mut Buffer, body: 
         Some(Err(e)) => {
             note(buf, vec![seg(format!("couldn't read: {e}"), c.fg(t.err))]);
         }
-        Some(Ok(items)) if items.is_empty() => {
+        Some(Ok(l)) if l.items.is_empty() && l.skipped == 0 => {
             note(buf, vec![seg(EMPTY, c.fg(t.muted))]);
             put(buf, list.x + 1, list.y + 2, &[seg(format!("Kept in {}/", refs::DIR), c.fg(t.muted))], list.right());
             put(buf, list.x + 1, list.y + 3, &[seg("Agents find them through MCP.", c.fg(t.muted))], list.right());
             return status_bar(buf, body, t, &EMPTY_HINTS, &[]);
         }
-        Some(Ok(_)) => draw_rows(app, buf, list, bg, t, v),
+        Some(Ok(l)) => {
+            let skipped = skipped_note(l);
+            let rows = Rect { height: list.height.saturating_sub(u16::from(skipped.is_some())), ..list };
+            if let Some(words) = skipped {
+                put(buf, list.x + 1, rows.bottom(), &[seg(words, c.fg(t.err))], list.right());
+            }
+            draw_rows(app, buf, rows, bg, t, v);
+        }
     }
     status_bar(buf, body, t, &HINTS, &[]);
+}
+
+/// What the listing left out, for the line under the rows.
+fn skipped_note(l: &Listing) -> Option<String> {
+    let first = l.first_skip.as_deref()?;
+    let more = l.skipped.saturating_sub(1);
+    Some(if more == 0 { format!("left out: {first}") } else { format!("left out: {first} (and {more} more)") })
 }
 
 fn draw_rows(app: &mut App, buf: &mut Buffer, list: Rect, bg: Color, t: &Theme, v: &mut ReferencesSheet) {
@@ -287,6 +329,15 @@ pub(in crate::client) fn references_title(app: &App) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_the_listing_left_out_is_said_not_hidden() {
+        assert_eq!(skipped_note(&Listing::default()), None);
+        let one = Listing { skipped: 1, first_skip: Some("x.png is a link out of the folder".into()), ..Listing::default() };
+        assert_eq!(skipped_note(&one).as_deref(), Some("left out: x.png is a link out of the folder"));
+        let three = Listing { skipped: 3, ..one };
+        assert_eq!(skipped_note(&three).as_deref(), Some("left out: x.png is a link out of the folder (and 2 more)"));
+    }
 
     #[test]
     fn a_dropped_path_loses_its_quotes_and_a_relative_one_starts_where_you_are() {

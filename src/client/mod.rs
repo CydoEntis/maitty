@@ -283,6 +283,11 @@ fn clipboard_image() -> Result<arboard::ImageData<'static>, String> {
 /// RGBA pixels to a PNG file.
 fn write_png(path: &std::path::Path, w: u32, h: u32, rgba: &[u8]) -> Result<(), String> {
     let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
+    encode_png(file, w, h, rgba)
+}
+
+/// RGBA pixels as a PNG into a file already open.
+fn encode_png(file: std::fs::File, w: u32, h: u32, rgba: &[u8]) -> Result<(), String> {
     let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w, h);
     enc.set_color(png::ColorType::Rgba);
     enc.set_depth(png::BitDepth::Eight);
