@@ -39,5 +39,5 @@ server (`src/mcp.rs`), the repo's `.maitty/` folder.
 
 ## Links
 
-- Plan: [phase 28](../../ROADMAP.md#28--references--planned-2026-10-24)
+- Plan: [phase 28](../../ROADMAP.md#28--references--shipped-in-v0440)
 - Tickets: none yet; filled in when the phase is ticketed.

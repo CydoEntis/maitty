@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-25 at `8027390` on `dev` (v0.43.6).
+Last reconciled: 2026-10-25 on `dev` (v0.44.0).
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Maitty is a terminal multiplexer built for running many coding agents at once: see
@@ -11,15 +11,13 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-Latest release: **v0.43.6** (2026-10-25), wire protocol 46. Phases 1–26 and 29 are shipped
-(phase 11 declined); the release history is in the GitHub Releases and git tags, not here.
-
-Being built on 2026-10-25, for release the same day:
-[Phase 27](#27--radar-and-sending-failures--in-progress-2026-10-25) (context on the row, a
-failed check into the message box), [Phase 28](#28--references--in-progress-2026-10-25)
-(references), `maitty integrate mcp` for Codex, Qwen and Gemini as well as Claude, and the
-phase 29 follow-ups (the Windows short paste, Files' `d`, the side panel's title, the guide,
-two flaky tests).
+Latest release: **v0.44.0** (2026-10-25), wire protocol 46. Phases 1–29 are shipped (phase 11
+declined); the release history is in the GitHub Releases and git tags, not here. v0.44.0 added
+[Phase 27](#27--radar-and-sending-failures--shipped-in-v0440) (context on the row, a failed
+check into the message box), [Phase 28](#28--references--shipped-in-v0440) (references),
+`maitty integrate mcp` for Codex, Qwen and Gemini as well as Claude, settings files with
+comments, and the phase 29 follow-ups (the Windows short paste, Files' `d`, the side panel's
+title, the guide, two flaky tests).
 
 Next: the user uses the build daily for a week from 2026-10-26, and reports back. That trial
 stands in for the open live checks (phases 17–29) and confirms status live for the agents the
@@ -30,6 +28,9 @@ Open validation items (need a real session on the named platform):
   mouse)" diagnostic before any fix.
 - Codex helper detection on both Windows and Linux, after restarting Codex with the hooks.
 - Native status for every `maitty integrate` agent has unit tests, not a live run each.
+- Flaky under load: `branch_view_tests` (20 s wait for background git work) and
+  `screen_tests::a_toast_clears_after_its_time_or_with_the_close_or_esc` (time-based).
+- References: no live nested-server or real drag-and-drop run yet.
 
 ## Phases
 
@@ -466,7 +467,7 @@ Cursor blink, used where a pane's program picks no cursor of its own; a program'
 Declined while planning: a smooth, animated cursor (a terminal app can only place it on whole cells;
 the glide belongs to the terminal, as in Ghostty or kitty).
 
-### 27 — Radar and sending failures · in progress 2026-10-25
+### 27 — Radar and sending failures · shipped in v0.44.0
 
 A session row shows its context as `72%` once past half full (red when nearly full), reversing
 phase 14's "context is left to the agent's status line"; and a failed check's command, exit code
@@ -475,7 +476,7 @@ Intent: [radar-and-failures](features/radar-and-failures/intent.md). Tickets whe
 done. Decided 2026-10-24: red from 85% full; `m` on a failed check opens the message box with the
 failure in it (no new key).
 
-### 28 — References · in progress 2026-10-25
+### 28 — References · shipped in v0.44.0
 
 Per project, `.maitty/references/` holds screenshots and design files: a References view in the
 side panel lists, adds (paste or pick), removes and opens them in the system viewer, and an MCP
