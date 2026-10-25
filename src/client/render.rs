@@ -57,12 +57,9 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     }
     super::screen::draw(app, f, area, &t);
     let paused = super::screen::shortcut_paused(app);
-    let before_overlays = paused.then(|| f.buffer_mut().clone());
     draw_overlays(app, f, area, &t);
-    // Held under a popup, shortcut mode stays readable above the dimming behind it, but not
-    // over the popup itself.
-    if let Some(under) = &before_overlays {
-        super::screen::draw_mode_frame(app, f.buffer_mut(), area, &t, Some(under));
+    // Held under a popup, shortcut mode stays readable above the dimming behind it.
+    if paused {
         let room = super::screen::framed(app, area);
         super::screen::draw_corner_pills(app, f.buffer_mut(), room, &t);
     }

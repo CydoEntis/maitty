@@ -4824,7 +4824,6 @@ second line
                     };
                     let row1: String = (0..w).map(|x| buf[(x, 1)].symbol()).collect();
                     assert!(row1.contains(&format!(" {words} ")), "{layout} {w}x{h} {mode}: {row1}");
-                    assert_eq!(buf[(0, h / 2)].symbol() == "█", mode != "typing", "{layout} {w}x{h} {mode}: the frame\n{text}");
                 }
             }
         }
@@ -4969,72 +4968,6 @@ second line
     const SIDES: [&str; 4] = ["left", "right", "collapsed", "hidden"];
 
     #[test]
-    fn shortcut_mode_fills_the_padding_ring_with_a_sky_frame_in_every_look() {
-        for layout in LOOKS {
-            for padding in ["1", "2"] {
-                for side in SIDES {
-                    let mut app = framed_app(layout, padding, side);
-                    let buf = drawn(&mut app, 160, 45);
-                    let at = format!("{layout} padding {padding} {side}");
-                    let ring = ring(&buf);
-                    assert!(ring.iter().all(|c| ["▀", "▄", "█"].contains(&c.symbol()) && c.fg == app.theme.sky()), "{at}: a solid sky ring");
-                    assert_eq!((buf[(1, 0)].symbol(), buf[(0, 1)].symbol(), buf[(1, 44)].symbol()), ("▀", "█", "▄"), "{at}: half a row at top and bottom, a column at the sides");
-                    if padding == "2" {
-                        assert!((2..158).all(|x| buf[(x, 1)].symbol() == " "), "{at}: only the outermost ring");
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn shortcut_mode_without_padding_lights_the_edges_that_touch_the_window() {
-        for layout in LOOKS {
-            for side in SIDES {
-                let mut app = framed_app(layout, "0", side);
-                let buf = drawn(&mut app, 160, 45);
-                let at = format!("{layout} {side}");
-                let ring = ring(&buf);
-                let line = |c: &&&ratatui::buffer::Cell| c.symbol().chars().next().is_some_and(|ch| ('\u{2500}'..='\u{257f}').contains(&ch));
-                assert!(ring.iter().filter(line).all(|c| c.fg == app.theme.sky()), "{at}: every edge on the window's ring is sky");
-                // Compact has no boxes, so nothing on its edge to light.
-                if layout != "compact" {
-                    let sides = [0u16, 159].iter().flat_map(|&x| (1..44).map(move |y| (x, y))).filter(|&(x, y)| buf[(x, y)].fg == app.theme.sky()).count();
-                    assert!(sides >= 2 * 43 * 3 / 4, "{at}: the sides read as a frame: {sides} of {}\n{}", 2 * 43, buf_text(&buf));
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn without_padding_the_frame_changes_no_words_on_the_edge() {
-        // The tag's slot on row 0, left of where the corner pills end: its widest, capped.
-        const TAG_SLOT: u16 = 26;
-        let edge = |app: &App, buf: &ratatui::buffer::Buffer| -> Vec<String> {
-            let (w, h) = (buf.area.width, buf.area.height);
-            let end = screen::corner_right(app, buf.area) - 1;
-            let row = |y: u16, skip: std::ops::Range<u16>| (0..w).filter(|x| !skip.contains(x)).map(|x| buf[(x, y)].symbol()).collect::<String>();
-            let col = |x: u16| (0..h).map(|y| buf[(x, y)].symbol()).collect::<String>();
-            vec![row(0, end - TAG_SLOT..end), row(h - 1, 0..0), col(0), col(w - 1)]
-        };
-        for layout in LOOKS {
-            for side in SIDES {
-                for rounded in [crate::config::Rounding::Off, crate::config::Rounding::Full] {
-                    let mut app = framed_app(layout, "0", side);
-                    app.cfg.ui.rounded = rounded;
-                    let buf = drawn(&mut app, 160, 45);
-                    let lit = edge(&app, &buf);
-                    show(&format!("===== padding 0 {layout} {side} {rounded:?} lit\n{}", buf_text(&buf)));
-                    app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-                    let buf = drawn(&mut app, 160, 45);
-                    let typing = edge(&app, &buf);
-                    assert_eq!(lit, typing, "{layout} {side} {rounded:?}: the frame only recolours");
-                }
-            }
-        }
-    }
-
-    #[test]
     fn a_right_hand_sidebar_keeps_its_title_and_counts_beside_the_corner_pills() {
         for (w, h) in [(80, 24), (140, 40), (160, 45)] {
             for release in ["none", "update", "restart"] {
@@ -5076,41 +5009,26 @@ second line
     }
 
     #[test]
-    fn the_paused_frame_leaves_a_popup_on_the_ring_alone() {
-        let mut app = framed_app("floating", "1", "left");
-        tap(&mut app, 'y');
-        let under = drawn(&mut app, 160, 45);
-        let mut buf = under.clone();
-        buf[(0, 20)].set_symbol("│");
-        buf[(5, 0)].set_symbol("╭");
-        let t = app.theme.clone();
-        screen::draw_mode_frame(&app, &mut buf, under.area, &t, Some(&under));
-        assert_eq!((buf[(0, 20)].symbol(), buf[(5, 0)].symbol()), ("│", "╭"), "what a popup drew stays");
-        assert_eq!(buf[(6, 0)].symbol(), "▀", "the rest of the frame is redrawn");
-    }
-
-    #[test]
-    fn a_paused_shortcut_mode_keeps_the_frame_faded() {
-        for padding in ["0", "1"] {
-            let mut app = framed_app("floating", padding, "left");
-            tap(&mut app, 'y');
-            let buf = drawn(&mut app, 160, 45);
-            let faded = crate::theme::mix(app.theme.sky(), app.theme.bg, 0.6);
-            assert_eq!(buf[(0, 20)].fg, faded, "padding {padding}: the frame stays, faded like the paused pill");
-        }
-    }
-
-    #[test]
-    fn typing_draws_no_frame() {
+    fn no_mode_draws_a_frame_round_the_window() {
         for layout in LOOKS {
             for padding in ["0", "1", "2"] {
-                let mut app = framed_app(layout, padding, "left");
-                app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-                let buf = drawn(&mut app, 160, 45);
-                let at = format!("{layout} padding {padding}");
-                assert!(ring(&buf).iter().all(|c| c.fg != app.theme.sky()), "{at}: nothing sky on the edge");
-                if padding != "0" {
-                    assert!(ring(&buf).iter().all(|c| c.symbol() == " "), "{at}: the padding stays plain");
+                for side in SIDES {
+                    for mode in ["lit", "paused", "typing"] {
+                        let mut app = framed_app(layout, padding, side);
+                        match mode {
+                            "paused" => tap(&mut app, 'y'),
+                            "typing" => app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+                            _ => {}
+                        }
+                        let buf = drawn(&mut app, 160, 45);
+                        let at = format!("{layout} padding {padding} {side} {mode}");
+                        assert!(!ring(&buf).iter().any(|c| ["▀", "▄", "█"].contains(&c.symbol())), "{at}: no solid frame");
+                        if padding != "0" {
+                            assert!(ring(&buf).iter().all(|c| c.symbol() == " "), "{at}: the padding stays plain");
+                        } else if side == "left" && layout != "compact" {
+                            assert_ne!(buf[(0, 22)].fg, app.theme.sky(), "{at}: the sidebar's edge on the window keeps its colour");
+                        }
+                    }
                 }
             }
         }
