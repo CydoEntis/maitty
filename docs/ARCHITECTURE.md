@@ -87,7 +87,8 @@ src/
     view_keys.rs keys inside full-pane views and the remaining popups
     screen/      the layout: mod.rs (state, model, click targets), draw.rs (grid, pane cards
                  with the tabs in their title), side.rs (the sidebar card and its rows), card.rs (cards, pills, fading; the Look from
-                 settings), leader.rs (key map, actions list, new tab), popups.rs,
+                 settings), hairline/ (the Hairline look's sidebar, pane titles and status
+                 strip, and its `Ink` colours), leader.rs (key map, actions list, new tab), popups.rs,
                  dialogs.rs, glyphs.rs (session and check marks), splash.rs, popover.rs (follow-up and why, beside a row), heads.rs (same-file heads-ups,
                  both diffs), sheet.rs (the card docked right of the panes:
                  Inbox, Changes), inbox.rs (the Inbox in it), behaviour.rs (its keys and clicks)

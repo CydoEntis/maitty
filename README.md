@@ -34,7 +34,7 @@ natively on Windows, macOS and Linux.
   each agent turn. A session whose check fails reads *failed*, not *done*.
 - **Agents that work together.** Agents can list, read, message and start other sessions
   through MCP tools, within limits you set, and find the project's reference images there.
-- **Your look.** Four layouts (Floating, Tiled, Compact and Grid), rounded or square shapes,
+- **Your look.** Five layouts (Floating, Tiled, Compact, Grid and Hairline), rounded or square shapes,
   padding round the screen, your cursor's shape, 162 themes with every colour configurable,
   and rebindable shortcuts.
 
@@ -151,7 +151,7 @@ A few examples:
 theme = "tokyo-night"
 
 [ui]
-layout = "grid"            # floating | tiled | compact | grid
+layout = "grid"            # floating | tiled | compact | grid | hairline
 rounded = "full"           # full (needs a Nerd Font) | corners | off
 padding = "1"              # 0 | 1 | 2: space round the screen
 

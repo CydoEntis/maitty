@@ -51,13 +51,16 @@ pick; checking is a sweeping ring. An agent's own mark is `✻` Claude, `◆` Co
 
 ## Layouts
 
-One Layout setting picks the look ([ADR 0015](adr/0015-four-named-layouts-and-grid.md));
-every look has the same sessions, tabs, splits and sheets.
+One Layout setting picks the look ([ADR 0015](adr/0015-four-named-layouts-and-grid.md),
+[ADR 0026](adr/0026-hairline-a-fifth-look.md)); every look has the same sessions, tabs, splits
+and sheets.
 
 - **Floating** (the default): each pane a box, with gaps between.
 - **Tiled**: the same boxes, edge to edge, never merged.
 - **Compact**: full-bleed zones, a header strip on row 0, zones split by one `│`.
 - **Grid**: boxes with gaps, each pane in its own colour by its place in the tab.
+- **Hairline**: no boxes at all, only `│` / `─` hairlines, and a status strip; always square
+  (see *Hairline* below).
 
 `ui.padding` leaves 0, 1 or 2 empty cells round the screen. See UI › *layout and navigation*
 and *the frame*.
@@ -66,7 +69,7 @@ and *the frame*.
 
 Anything you click or read as a control (a button, tab, tag or key) is a chip on `btn`, or on
 the accent when it is current. `ui.rounded` is the one shape setting
-([ADR 0021](adr/0021-one-line-rows-one-rounding-sticky-mode.md)): `off` is square, `corners`
+([ADR 0021](adr/0021-one-line-rows-one-rounding-sticky-mode.md); Hairline ignores it and stays square): `off` is square, `corners`
 rounds every box's corners (`╭╮╰╯`), and `full` also gives chips, buttons, selected rows and
 the hover half-circle ends. Keys are keycaps: ` key ` on `btn`, `strong` and bold. The
 pointer's hover is one quiet tint; selection is a neutral tint with an accent `▎` bar, never an
@@ -132,6 +135,35 @@ holder, then its keys and the way out (`SIDEBAR · ↑↓ move · Enter open · 
 `· shortcut mode waits` while the mode is held. Under a popup the bar is words only and takes
 no click. **Update** or **Restart** sits at its right end when waiting. See UI › *the frame*
 (Mode bar).
+
+## Hairline
+
+Less frame, more work ([ADR 0026](adr/0026-hairline-a-fifth-look.md)). Every line is one
+weight in `line`; colour is kept for state, and amber still means only needs you. It draws
+from the theme's roles (`hairline::Ink`: `raised` is `card2`, `dim` is `muted`, `teal` the
+accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` does not apply.
+
+- **Sidebar:** 28 columns, then a `│`. `sessions` and the count, dim. A project is a dim header
+  with `⎇ branch` dim at the right, a blank row above each but the first. A session is one row:
+  the glyph, the name and its age at the right, or `needs you` in amber. The focused row is
+  `raised` with a teal `▎` and a teal name; a row on screen without the keys is `raised`; one
+  that needs you has an amber `▎` and an amber name. The foot, pinned to the bottom row, is
+  dim: the new-shell hint (the leader and its key) at the left, the menu's at the right.
+- **Panes:** row 1 is the session's number in the sidebar's order (amber when it needs you,
+  teal when focused, else dim), its glyph, its name in `strong` bold, the session's tabs as
+  plain words when it has several (the current one teal), then `project · ⎇ branch` dim; at the
+  right the state (`needs you · 2m` amber bold, `working` teal, `done` green, `idle` dim) and
+  the ✕. Row 2 is a `─` rule the pane's width: teal focused (`sky()` in shortcut mode), amber
+  when it needs you and is not focused, else `line`. Panes side by side or stacked are parted
+  by one `│` or `─`, never boxed; the terminal sits two columns in.
+- **Status strip:** the row over the mode bar, one `━` segment per session in the sidebar's
+  order, a column apart, in its state's colour (idle dim).
+- **Mode bar:** `TYPING` is a teal bold word, then `Hairline · 2 panes` dim, then the hint;
+  whatever has the keys is named in `strong` bold, no chip. At the right `● N needs you` in
+  amber bold, or `all clear` dim, just before Update or Restart. Shortcut mode keeps its sky row.
+- **Motion off:** working is a still `⠿`, not a frozen spinner frame.
+
+See UI › *Hairline* for sizes, what gives way and what takes a click.
 
 ## Splash
 
