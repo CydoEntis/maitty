@@ -310,3 +310,67 @@ fn the_focused_pane_stays_lit_under_a_menu_popover_or_confirm_in_every_look() {
         }
     }
 }
+
+/// The pane menu of the focused pane in a split of two, drawn: the app and each item's row.
+fn pane_menu(app: &mut App) -> Vec<String> {
+    draw(app, 160, 45);
+    let focus = app.focused().expect("a focused pane");
+    app.menu_for_pane(focus, (60, 5));
+    let buf = draw(app, 160, 45);
+    let Mode::ScreenMenu(m) = &app.mode else { panic!("no menu: {:?}", app.mode) };
+    let labels: Vec<String> = m.items.iter().map(|(l, _)| l.clone()).collect();
+    let rows: Vec<String> = text(&buf).lines().map(str::to_string).collect();
+    labels.iter().map(|label| rows.iter().find(|r| r.contains(label.as_str())).cloned().unwrap_or_else(|| panic!("{label} is drawn:\n{}", text(&buf)))).collect()
+}
+
+/// The keys at the right of `label`'s row, as one word.
+fn key_of(rows: &[String], label: &str) -> String {
+    let row = rows.iter().find(|r| r.contains(label)).unwrap_or_else(|| panic!("no {label}"));
+    let after = &row[row.find(label).unwrap() + label.len()..];
+    after.split('│').next().unwrap_or("").chars().filter(|c| !c.is_whitespace() && !CAP_L.contains(*c) && !CAP_R.contains(*c)).collect()
+}
+
+fn press(app: &mut App, code: KeyCode, mods: KeyModifiers) {
+    app.on_key(KeyEvent::new(code, mods));
+}
+
+#[test]
+fn the_pane_menu_shows_the_real_bound_keys() {
+    let mut app = split_world("floating", 2);
+    let rows = pane_menu(&mut app);
+    assert_eq!(key_of(&rows, "Split side by side"), "v");
+    assert_eq!(key_of(&rows, "Split stacked"), "h");
+    assert_eq!(key_of(&rows, "Close pane"), "x");
+    assert_eq!(key_of(&rows, "Move pane right"), "Alt+→", "{rows:#?}");
+    let rename = key_of(&rows, "Rename pane");
+    assert!(rename.len() == 1 && !["v", "h", "x"].contains(&rename.as_str()), "no binding: a letter of its own, clear of the bound keys: {rename}");
+}
+
+#[test]
+fn the_pane_menu_follows_a_rebinding() {
+    let mut app = split_world("floating", 2);
+    app.keymap.prefixed.retain(|_, a| *a != Action::ClosePane);
+    let w = KeySpec { code: KeyCode::Char('w'), mods: KeyModifiers::NONE };
+    app.keymap.prefixed.insert(w, Action::ClosePane);
+    app.keymap.prefixed_order.retain(|k| k.code != KeyCode::Char('x') || !k.mods.is_empty());
+    app.keymap.prefixed_order.push(w);
+    let rows = pane_menu(&mut app);
+    assert_eq!(key_of(&rows, "Close pane"), "w");
+    press(&mut app, KeyCode::Char('w'), KeyModifiers::NONE);
+    assert!(matches!(&app.mode, Mode::Confirm(c) if c.title.starts_with("Close pane")), "the new key runs it: {:?}", app.mode);
+}
+
+#[test]
+fn pressing_a_shown_key_runs_its_item() {
+    let mut app = split_world("floating", 2);
+    pane_menu(&mut app);
+    press(&mut app, KeyCode::Char('x'), KeyModifiers::NONE);
+    assert!(matches!(&app.mode, Mode::Confirm(c) if c.title == "Close pane 1"), "x closes this pane, after asking: {:?}", app.mode);
+    let mut app = split_world("floating", 2);
+    let before = app.screen.tabs[0].layout.leaves();
+    pane_menu(&mut app);
+    press(&mut app, KeyCode::Right, KeyModifiers::ALT);
+    assert_eq!(app.mode, Mode::Normal);
+    let after = app.screen.tabs[0].layout.leaves();
+    assert_eq!(after, before.iter().rev().copied().collect::<Vec<_>>(), "Alt+→ moves the pane right");
+}

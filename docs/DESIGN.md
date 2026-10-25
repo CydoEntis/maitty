@@ -116,7 +116,8 @@ groups* and *check evidence sheet*.
 Deciding is a modal: centred, framed like a pane (the title as an accent chip on the top border,
 `Esc close` at the right), the screen behind dimmed, no shadow. Settings, override, command
 approval and the key overlay are modals. Small explanations (why, a row's menu, the message and
-helpers popovers) open beside their row with a `◂` pointer. Every panel ends in an action bar
+helpers popovers) open beside their row with a `◂` pointer; a menu row ends in its key, the bound leader
+key when there is one. Every panel ends in an action bar
 of keycaps. See UI › *UI conventions*, *check modals and settings* and *why popover*.
 
 ## Toasts

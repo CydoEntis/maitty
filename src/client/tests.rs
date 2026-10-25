@@ -3682,7 +3682,7 @@ second line
         assert!(matches!(app.mode, Mode::Actions { .. }), "the leader's m does");
         // And no row's menu item is ever handed a key the sidebar already uses.
         let items: Vec<(String, crate::client::menu::Act)> = ["Archive", "Ask", "Mark", "Inspect", "Jump", "Keep"].iter().map(|l| (l.to_string(), crate::client::menu::Act::RenamePane(1))).collect();
-        let keys = crate::client::menu::menu_keys(&items);
+        let keys = crate::client::menu::menu_chars(&app, &items);
         assert!(keys.iter().flatten().all(|k| !['a', 'm', 'i', 'j', 'k'].contains(k)), "{keys:?}");
     }
 
@@ -7597,7 +7597,7 @@ mod check_settings_tests {
 
 mod check_wiring_tests {
     use super::*;
-    use crate::client::menu::{Act, menu_keys};
+    use crate::client::menu::{Act, menu_chars};
     use crate::protocol::{CheckInfo, CheckState, ClientMsg, Command, ServerMsg};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -7752,7 +7752,7 @@ mod check_wiring_tests {
         let keyed = |state: Option<CheckState>| {
             let (app, _) = rig(100, 30, |_| {}, state.map(info), Status::Done);
             let items = app.session_items(TERM).unwrap().1;
-            items.iter().map(|(l, _)| l.clone()).zip(menu_keys(&items)).collect::<Vec<_>>()
+            items.iter().map(|(l, _)| l.clone()).zip(menu_chars(&app, &items)).collect::<Vec<_>>()
         };
         let key = |keys: &[(String, Option<char>)], label: &str| keys.iter().find(|(l, _)| l == label).and_then(|(_, k)| *k);
         assert_eq!(key(&keyed(None), "Rename"), Some('r'), "no check: Rename keeps r");
@@ -7807,7 +7807,7 @@ mod check_wiring_tests {
             for status in [Status::Done, Status::Working, Status::Idle] {
                 let (app, _) = rig(100, 30, |_| {}, Some(info(state)), status);
                 let items = app.session_items(TERM).unwrap().1;
-                let keys = menu_keys(&items);
+                let keys = menu_chars(&app, &items);
                 let mut seen = Vec::new();
                 for ((label, act), key) in items.iter().zip(&keys) {
                     let key = key.unwrap_or_else(|| panic!("{state:?}: {label} has a key"));
@@ -7826,7 +7826,7 @@ mod check_wiring_tests {
     fn pick(app: &mut App, label: &str) {
         app.menu_for_session(TERM, (20, 10));
         let (items, keys) = match &app.mode {
-            Mode::ScreenMenu(m) => (m.items.clone(), menu_keys(&m.items)),
+            Mode::ScreenMenu(m) => (m.items.clone(), menu_chars(app, &m.items)),
             other => panic!("no menu: {other:?}"),
         };
         let i = items.iter().position(|(l, _)| l == label).unwrap_or_else(|| panic!("no {label} in {items:?}"));

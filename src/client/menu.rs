@@ -307,10 +307,10 @@ impl App {
                     self.menu_act(a);
                 }
             }
-            // An item's key picks it: as typed (O is not o), else whatever the case.
-            KeyCode::Char(c) if menu_keys(&m.items).iter().any(|k| *k == Some(c) || *k == Some(c.to_ascii_lowercase())) => {
-                let keys = menu_keys(&m.items);
-                let i = keys.iter().position(|k| *k == Some(c)).or_else(|| keys.iter().position(|k| *k == Some(c.to_ascii_lowercase()))).unwrap_or(0);
+            // An item's key picks it: a bound key as the keymap has it, a letter as typed (O is
+            // not o), else whatever the case.
+            _ if pressed(&menu_keys(self, &m.items), k).is_some() => {
+                let i = pressed(&menu_keys(self, &m.items), k).unwrap_or(0);
                 self.mode = Mode::Normal;
                 if let Some((_, a)) = m.items.get(i).cloned() {
                     self.menu_act(a);
@@ -626,12 +626,90 @@ fn check_key(a: &Act) -> Option<char> {
     }
 }
 
-/// A key for each item: the first letter of its label not taken yet (j and k move).
-/// Numbered lists (presets) use their numbers. On a session with a check, its keys are
-/// reserved whichever of its actions apply, so the other items' letters never move.
-pub(super) fn menu_keys(items: &[(String, Act)]) -> Vec<Option<char>> {
+/// The key that runs a menu item: the leader key bound to the same action, from the live
+/// keymap (pressed without the leader while the menu is open), else a letter of its own.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MenuKey {
+    Bound(crate::keys::KeySpec),
+    Letter(char),
+}
+
+impl MenuKey {
+    /// As its keycap reads: `v`, `Alt+←`.
+    fn label(&self) -> String {
+        match self {
+            MenuKey::Bound(k) => super::design::long_key(k),
+            MenuKey::Letter(c) => c.to_string(),
+        }
+    }
+
+    /// The character it is typed as, when it is one with no modifier.
+    #[cfg(test)]
+    pub fn as_char(&self) -> Option<char> {
+        match self {
+            MenuKey::Letter(c) => Some(*c),
+            MenuKey::Bound(k) if k.mods.is_empty() => if let KeyCode::Char(c) = k.code { Some(c) } else { None },
+            MenuKey::Bound(_) => None,
+        }
+    }
+}
+
+/// Which item `k` runs: a bound key as the keymap has it, else a letter as typed, else the
+/// letter whatever its case.
+fn pressed(keys: &[Option<MenuKey>], k: &KeyEvent) -> Option<usize> {
+    let spec = crate::keys::KeySpec::from_event(k);
+    if let Some(i) = keys.iter().position(|key| *key == Some(MenuKey::Bound(spec))) {
+        return Some(i);
+    }
+    let KeyCode::Char(c) = k.code else { return None };
+    if k.modifiers.intersects(crossterm::event::KeyModifiers::CONTROL | crossterm::event::KeyModifiers::ALT) {
+        return None;
+    }
+    let letter = |c: char| keys.iter().position(|key| *key == Some(MenuKey::Letter(c)));
+    letter(c).or_else(|| letter(c.to_ascii_lowercase()))
+}
+
+/// The leader action an item does the same as, whose key it then shows: splitting, moving the
+/// pane to a side, closing one pane, a checkout's changes.
+fn bound_action(app: &App, act: &Act) -> Option<crate::keys::Action> {
+    use crate::keys::Action;
+    use crate::layout::Dir;
+    match act {
+        Act::Split(_, Dir::Right) => Some(Action::SplitRight),
+        Act::Split(_, Dir::Down) => Some(Action::SplitDown),
+        Act::Swap(a, b) => [Dir::Left, Dir::Right, Dir::Up, Dir::Down].into_iter().find(|d| crate::layout::neighbor(&app.screen.leaf_rects, *a, *d) == Some(*b)).map(Action::Swap),
+        Act::End(ts) if ts.len() == 1 => Some(Action::ClosePane),
+        Act::Changes(_) => Some(Action::Changes),
+        _ => None,
+    }
+}
+
+/// The first leader key bound to `action`, in the keymap's order.
+fn bound_key(app: &App, action: &crate::keys::Action) -> Option<crate::keys::KeySpec> {
+    app.keymap.prefixed_order.iter().find(|k| app.keymap.prefixed.get(k) == Some(action)).copied()
+}
+
+/// A key for each item: the leader key of the action it does the same as, else the first letter
+/// of its label not taken yet (j and k move). Numbered lists (presets) use their numbers. On a
+/// session with a check, its keys are reserved whichever of its actions apply, so the other
+/// items' letters never move.
+pub(super) fn menu_keys(app: &App, items: &[(String, Act)]) -> Vec<Option<MenuKey>> {
+    let bound: Vec<Option<crate::keys::KeySpec>> = items.iter().map(|(_, a)| bound_action(app, a).and_then(|b| bound_key(app, &b))).collect();
+    let letters = menu_letters(items, &bound);
+    bound.into_iter().zip(letters).map(|(b, l)| b.map(MenuKey::Bound).or(l.map(MenuKey::Letter))).collect()
+}
+
+/// Each item's key as the character typed for it (None for a key with a modifier, or none).
+#[cfg(test)]
+pub(super) fn menu_chars(app: &App, items: &[(String, Act)]) -> Vec<Option<char>> {
+    menu_keys(app, items).into_iter().map(|k| k.and_then(|k| k.as_char())).collect()
+}
+
+/// The letters of the items with no bound key, kept clear of the bound keys typed as letters.
+fn menu_letters(items: &[(String, Act)], bound: &[Option<crate::keys::KeySpec>]) -> Vec<Option<char>> {
     // Taken already where a row's letters work (the sidebar): moving, actions, follow-up, why.
     let mut used: Vec<char> = vec!['j', 'k', 'a', 'm', 'i'];
+    used.extend(bound.iter().flatten().filter(|k| k.mods.is_empty()).filter_map(|k| if let KeyCode::Char(c) = k.code { Some(c) } else { None }));
     // Closing is always x.
     let closes = |a: &Act| matches!(a, Act::End(_) | Act::CloseProject(_));
     if items.iter().any(|(_, a)| closes(a)) {
@@ -642,7 +720,11 @@ pub(super) fn menu_keys(items: &[(String, Act)]) -> Vec<Option<char>> {
     }
     items
         .iter()
-        .map(|(l, a)| {
+        .zip(bound)
+        .map(|((l, a), b)| {
+            if b.is_some() {
+                return None;
+            }
             if closes(a) {
                 return Some('x');
             }
@@ -661,11 +743,12 @@ pub(super) fn menu_keys(items: &[(String, Act)]) -> Vec<Option<char>> {
 
 pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: &ScreenMenu) {
     let buf = f.buffer_mut();
-    let keys = menu_keys(&m.items);
+    let keys: Vec<Vec<super::design::Seg>> = menu_keys(app, &m.items).iter().map(|k| k.as_ref().map(|k| super::design::keycap(t, &k.label())).unwrap_or_default()).collect();
+    let keys_w = keys.iter().map(|k| segs_width(k)).max().unwrap_or(0);
     let danger = |a: &Act| matches!(a, Act::End(_) | Act::CloseProject(_));
     // The destructive item sits last, after a blank row.
     let gap = m.items.iter().any(|(_, a)| danger(a)) && m.items.len() > 1;
-    let w = m.items.iter().map(|(l, _)| l.width() as u16).max().unwrap_or(10).max(m.title.width() as u16).clamp(16, 44) + 10;
+    let w = m.items.iter().map(|(l, _)| l.width() as u16).max().unwrap_or(10).max(m.title.width() as u16).clamp(16, 44) + 7 + keys_w.max(3);
     let h = m.items.len() as u16 + 3 + gap as u16;
     let x = m.at.0.min(area.right().saturating_sub(w + 1)).max(area.x);
     let y = if m.at.1 + h < area.bottom() { m.at.1 + 1 } else { m.at.1.saturating_sub(h) }.max(area.y);
@@ -695,10 +778,10 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
         if i == m.sel {
             ls = ls.add_modifier(Modifier::BOLD);
         }
-        put(f.buffer_mut(), row.x + 3, yy, &[seg(label.clone(), ls)], row.right().saturating_sub(4));
-        if let Some(k) = keys.get(i).copied().flatten() {
-            put(f.buffer_mut(), row.right().saturating_sub(3), yy, &[seg(k.to_string(), Style::default().fg(t.accent).bg(bg).add_modifier(Modifier::BOLD))], row.right());
-        }
+        let key = keys.get(i).cloned().unwrap_or_default();
+        let kw = segs_width(&key);
+        put(f.buffer_mut(), row.x + 3, yy, &[seg(label.clone(), ls)], row.right().saturating_sub(kw + 2));
+        put(f.buffer_mut(), row.right().saturating_sub(kw + 1), yy, &key, row.right());
         hit(app, row, ScreenHit::MenuPick(i));
         yy += 1;
     }
