@@ -1976,7 +1976,7 @@ mod tests {
     }
 
     #[test]
-    fn the_new_states_read_in_the_v7_words() {
+    fn the_new_states_read_in_their_words() {
         let stale = CheckInfo {
             name: "test".into(),
             state: CheckState::Stale,

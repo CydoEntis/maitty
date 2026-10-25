@@ -332,7 +332,7 @@ fn without_new_tab_chip(row: &str) -> String {
     format!("{}{}{rest}", &out[..at], fill.to_string().repeat(CHIP.len() + cut))
 }
 
-/// The sidebar as the reference's v7 frames draw it, from what v8 draws (ADR 0014). `rows` is the
+/// The sidebar as the reference frames draw it, from what v8 draws (ADR 0014). `rows` is the
 /// whole screen; the sidebar's rectangle and its rows' places come from `app`. What v8 changes
 /// on purpose, put back:
 /// - the foot sits a row higher in Flat and has a divider above it; its `new` and `menu` chips
@@ -487,7 +487,7 @@ const AGENT_MARKS: [(&str, char, char); 5] = [("fix-footer", '◆', 'X'), ("add-
 /// The second lines that only name a session's state, which the app no longer draws.
 const STATE_ONLY_LINES: [&str; 5] = ["working", "finished", "finished · not seen", "needs you", "idle"];
 
-/// The v7 reference's sidebar rows as the app draws them on purpose since sessions became one
+/// The reference's sidebar rows as the app draws them on purpose since sessions became one
 /// line: a second line that only names the state is gone (the mark and the name's colour say
 /// it), and each session's row carries its agent's mark two spaces before its age, or where the
 /// age would end when there is none. A moving age (`any` in the reference) is any width, so the

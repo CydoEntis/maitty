@@ -1,5 +1,5 @@
-# The sidebar's inner rows in the v7 reference frames, cut
-# to columns X-1..RX+1 of a card (X..RX in Flat) and its rows inside the border, as the v7
+# The sidebar's inner rows in the reference frames, cut
+# to columns X-1..RX+1 of a card (X..RX in Flat) and its rows inside the border, as the
 # fixture draws them. "+++++" is the title's counts, right-aligned on the top row; "-----"
 # is the foot row; the rows between the last listed one and the foot are blank.
 # The reference's sample data is swapped for the fixture's:

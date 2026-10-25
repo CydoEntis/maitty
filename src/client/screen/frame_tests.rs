@@ -1,9 +1,9 @@
-//! The v7 frame set beside the reference frames:
+//! The frame set beside the reference frames:
 //! the grid, the pane's title strip and right-hand mark, corners, where a sheet goes, the
 //! modal and popover frames, and the pointer's tint. Sidebar rows, sheet and modal contents
 //! and the pane's own terminal text belong to other screens and are left out.
 use super::*;
-use crate::client::v7_fixture::{self, LAYOUTS, Layout, SIZES, Stage};
+use crate::client::reference_fixture::{self, LAYOUTS, Layout, SIZES, Stage};
 use crate::layout::Node;
 use ratatui::Terminal;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
@@ -32,7 +32,7 @@ fn modal_sizes(w: u16, h: u16) -> [(&'static str, u16, u16); 3] {
 
 /// The reference's world with fix-footer's session in two tabs, as the reference draws it.
 fn world(stage: Stage) -> App {
-    let mut app = v7_fixture::world(stage);
+    let mut app = reference_fixture::world(stage);
     let owner = app.screen.tabs[app.screen.tab].owner;
     app.screen.tabs.push(ScreenTab { layout: Node::Leaf(2), focus: 2, owner, used: 0, name: String::new() });
     app
@@ -62,7 +62,7 @@ fn col(rows: &[Vec<char>], x: u16, ys: std::ops::Range<u16>) -> String {
 
 /// `app` drawn in `layout` at `w`×`h`, as cells.
 fn buffer(app: &mut App, layout: Layout, w: u16, h: u16) -> Buffer {
-    v7_fixture::frame(app, layout, w, h, "unicode");
+    reference_fixture::frame(app, layout, w, h, "unicode");
     let mut term = Terminal::new(TestBackend::new(w, h)).expect("a test terminal");
     term.draw(|f| crate::client::render::draw(app, f)).expect("a frame");
     term.backend().buffer().clone()
@@ -72,7 +72,7 @@ fn buffer(app: &mut App, layout: Layout, w: u16, h: u16) -> Buffer {
 fn preset_01_s_frame_is_the_reference_s_in_every_layout_and_size() {
     for (layout, w, h, glyphs, top, last) in ROWS_01 {
         let mut app = world(Stage::None);
-        let text = v7_fixture::frame(&mut app, layout, w, h, glyphs);
+        let text = reference_fixture::frame(&mut app, layout, w, h, glyphs);
         let at = format!("{layout:?} {w}x{h} {glyphs}\n{text}");
         let r = rows(&text);
         let px = pane_x(layout, w);
@@ -96,7 +96,7 @@ fn rounded_corners_round_every_card() {
     for layout in [Layout::Floating, Layout::Tiled] {
         let mut app = world(Stage::None);
         app.cfg.ui.rounded = crate::config::Rounding::Full;
-        let text = v7_fixture::frame(&mut app, layout, 100, 30, "unicode");
+        let text = reference_fixture::frame(&mut app, layout, 100, 30, "unicode");
         let r = rows(&text);
         let (sw, px) = (side_w(100), pane_x(layout, 100));
         let corners = |x0: u16, x1: u16| [r[0][x0 as usize], r[0][x1 as usize], r[29][x0 as usize], r[29][x1 as usize]];
@@ -108,7 +108,7 @@ fn rounded_corners_round_every_card() {
 #[test]
 fn a_failed_session_reads_failed_in_plain_ascii() {
     let mut app = world(Stage::Failed);
-    let text = v7_fixture::frame(&mut app, Layout::Flat, 80, 24, "ascii");
+    let text = reference_fixture::frame(&mut app, Layout::Flat, 80, 24, "ascii");
     let top = text.lines().next().unwrap_or_default();
     assert!(top.ends_with("x failed  x"), "{text}");
 }
@@ -120,7 +120,7 @@ fn a_sheet_docks_72_wide_at_160_and_takes_the_pane_column_below_140() {
             for (w, h) in SIZES {
                 let mut app = world(Stage::Failed);
                 open(&mut app);
-                let text = v7_fixture::frame(&mut app, layout, w, h, "unicode");
+                let text = reference_fixture::frame(&mut app, layout, w, h, "unicode");
                 let g = grid(&app, Rect::new(0, 0, w, h));
                 let at = format!("{layout:?} {w}x{h}\n{text}");
                 let px = pane_x(layout, w);
@@ -132,7 +132,7 @@ fn a_sheet_docks_72_wide_at_160_and_takes_the_pane_column_below_140() {
                 } else {
                     assert_eq!((g.sheet.x, g.panes.width), (px, 0), "the sheet takes the pane column: {at}");
                     app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-                    let back = v7_fixture::frame(&mut app, layout, w, h, "unicode");
+                    let back = reference_fixture::frame(&mut app, layout, w, h, "unicode");
                     assert!(back.lines().next().unwrap_or_default().contains(" fix-footer "), "Esc brings the pane back: {back}");
                 }
             }
@@ -423,7 +423,7 @@ fn a_selected_or_hovered_two_line_session_is_one_even_block() {
             for padding in ["0", "1", "2"] {
                 for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
                     for selected in [true, false] {
-                        let mut app = v7_fixture::world(stage);
+                        let mut app = reference_fixture::world(stage);
                         app.snap.terms.get_mut(&2).expect("a session").subagents = vec!["a".into(), "b".into()];
                         (app.cfg.ui.rounded, app.cfg.ui.sidebar_position, app.cfg.ui.padding) = (rounded, side.into(), padding.into());
                         drawn_in(&mut app, layout);
@@ -594,12 +594,12 @@ fn rounded_shapes_round_the_sidebar_chips_and_the_menu() {
     for layout in LAYOUTS {
         let mut app = world(Stage::None);
         app.cfg.ui.rounded = crate::config::Rounding::Full;
-        let text = v7_fixture::raw_text(&mut app, layout, 100, 30, "unicode");
+        let text = reference_fixture::raw_text(&mut app, layout, 100, 30, "unicode");
         for chip in [" SESSIONS 4 ", "+ New", "Menu"] {
             assert!(text.contains(&format!("{CAP_L}{chip}")), "{chip} has a left cap: {layout:?}\n{text}");
         }
         app.act(Action::Menu);
-        let text = v7_fixture::raw_text(&mut app, layout, 100, 30, "unicode");
+        let text = reference_fixture::raw_text(&mut app, layout, 100, 30, "unicode");
         let title = text.lines().find(|l| l.contains(" Menu ")).expect("the menu's title row");
         assert!(title.contains(&format!("{CAP_L} Menu {CAP_R}")), "the title chip is round: {layout:?}\n{title}");
         let corner = if layout == Layout::Flat { "▗" } else { "╭" };

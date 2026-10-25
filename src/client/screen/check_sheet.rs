@@ -516,9 +516,9 @@ pub(in crate::client) fn draw_check(app: &mut App, buf: &mut Buffer, inside: Rec
 
 #[cfg(test)]
 mod tests {
-    use super::super::v7_ref::{Ref, assert_same, layout_name, reference, text};
+    use super::super::reference::{Ref, assert_same, layout_name, reference, text};
     use super::*;
-    use crate::client::v7_fixture::{LAYOUTS, SIZES, Stage, world};
+    use crate::client::reference_fixture::{LAYOUTS, SIZES, Stage, world};
 
     /// The reference's output of a failing run (`OUT_FAIL`) and a passing one (`OUT_PASS`).
     const OUT_FAIL: &str = "> affiliate-site@1.4.0 test\n> vitest run\n\n ✓ src/components/Footer.test.tsx (3)\n ✓ src/lib/price.test.ts (9)\n ✗ src/pages/legal.test.tsx > footer shows current year\n   AssertionError: expected '© 2025 Affiliate Co.'\n                   to equal '© 2026 Affiliate Co.'\n    ❯ src/pages/legal.test.tsx:18:32\n\n Test Files  1 failed | 11 passed (12)\n      Tests  1 failed | 58 passed (59)\n   Duration  14.21s";

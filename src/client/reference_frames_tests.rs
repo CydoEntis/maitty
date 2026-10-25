@@ -1,5 +1,5 @@
-//! Every v7 preset drawn whole on the fixture's world and set beside the reference
-//! frames (`v7_frames/<preset>.txt`, fixed fixtures; see docs/TESTING.md), in Cards floating,
+//! Every reference preset drawn whole on the fixture's world and set beside the reference
+//! frames (`reference_frames/<preset>.txt`, fixed fixtures; see docs/TESTING.md), in Cards floating,
 //! Cards tiled and Flat at 160×45, 100×30 and 80×24, and in ASCII at Flat 80×24.
 //!
 //! Cells the reference leaves to the app (masks):
@@ -26,11 +26,11 @@
 //! - Why (13) does not add "1 of 59 tests failed": the app does not parse a command's output;
 //! - the C2 Inbox's footnote is an annotation, not a screen line;
 //! - pill caps (a Nerd Font option, on by default) are off, so buttons have square ends;
-//! - the mode bar along the bottom (ADR 0024) is not the reference's: `v7_fixture::cells` draws
+//! - the mode bar along the bottom (ADR 0024) is not the reference's: `reference_fixture::cells` draws
 //!   a row taller and leaves out that row, the bar's.
 
 use super::screen::{CAP_L, CAP_R, GoRow, goto_rows};
-use super::v7_fixture::{Layout, Stage, cells, frame, world};
+use super::reference_fixture::{Layout, Stage, cells, frame, world};
 use super::*;
 use crate::protocol::{CheckSource, CheckState};
 
@@ -134,32 +134,32 @@ fn rows_preset(stage: Stage) -> &'static str {
 
 fn frames(id: &str) -> &'static str {
     match id {
-        "01" => include_str!("v7_frames/01.txt"),
-        "02" => include_str!("v7_frames/02.txt"),
-        "03" => include_str!("v7_frames/03.txt"),
-        "04" => include_str!("v7_frames/04.txt"),
-        "05" => include_str!("v7_frames/05.txt"),
-        "06" => include_str!("v7_frames/06.txt"),
-        "07" => include_str!("v7_frames/07.txt"),
-        "08" => include_str!("v7_frames/08.txt"),
-        "09" => include_str!("v7_frames/09.txt"),
-        "10" => include_str!("v7_frames/10.txt"),
-        "11" => include_str!("v7_frames/11.txt"),
-        "12" => include_str!("v7_frames/12.txt"),
-        "13" => include_str!("v7_frames/13.txt"),
-        "14" => include_str!("v7_frames/14.txt"),
-        "15" => include_str!("v7_frames/15.txt"),
-        "16" => include_str!("v7_frames/16.txt"),
-        "17" => include_str!("v7_frames/17.txt"),
-        "A1" => include_str!("v7_frames/A1.txt"),
-        "A2" => include_str!("v7_frames/A2.txt"),
-        "A3" => include_str!("v7_frames/A3.txt"),
-        "A4" => include_str!("v7_frames/A4.txt"),
-        "A5" => include_str!("v7_frames/A5.txt"),
-        "B1" => include_str!("v7_frames/B1.txt"),
-        "B2" => include_str!("v7_frames/B2.txt"),
-        "C1" => include_str!("v7_frames/C1.txt"),
-        "C2" => include_str!("v7_frames/C2.txt"),
+        "01" => include_str!("reference_frames/01.txt"),
+        "02" => include_str!("reference_frames/02.txt"),
+        "03" => include_str!("reference_frames/03.txt"),
+        "04" => include_str!("reference_frames/04.txt"),
+        "05" => include_str!("reference_frames/05.txt"),
+        "06" => include_str!("reference_frames/06.txt"),
+        "07" => include_str!("reference_frames/07.txt"),
+        "08" => include_str!("reference_frames/08.txt"),
+        "09" => include_str!("reference_frames/09.txt"),
+        "10" => include_str!("reference_frames/10.txt"),
+        "11" => include_str!("reference_frames/11.txt"),
+        "12" => include_str!("reference_frames/12.txt"),
+        "13" => include_str!("reference_frames/13.txt"),
+        "14" => include_str!("reference_frames/14.txt"),
+        "15" => include_str!("reference_frames/15.txt"),
+        "16" => include_str!("reference_frames/16.txt"),
+        "17" => include_str!("reference_frames/17.txt"),
+        "A1" => include_str!("reference_frames/A1.txt"),
+        "A2" => include_str!("reference_frames/A2.txt"),
+        "A3" => include_str!("reference_frames/A3.txt"),
+        "A4" => include_str!("reference_frames/A4.txt"),
+        "A5" => include_str!("reference_frames/A5.txt"),
+        "B1" => include_str!("reference_frames/B1.txt"),
+        "B2" => include_str!("reference_frames/B2.txt"),
+        "C1" => include_str!("reference_frames/C1.txt"),
+        "C2" => include_str!("reference_frames/C2.txt"),
         _ => panic!("no frames for {id}"),
     }
 }
@@ -201,7 +201,7 @@ fn open(id: &str) -> App {
             let check = &mut app.snap.terms.get_mut(&1).unwrap().checks[0];
             check.previous_command = Some("npm test".into());
             check.command = "npm test && node scripts/seed.js".into();
-            check.source = CheckSource::Repo { file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(), commit: Some("9f3c2a1".into()), committed_at: Some(super::v7_fixture::now() - 2 * HOUR), uncommitted: false };
+            check.source = CheckSource::Repo { file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(), commit: Some("9f3c2a1".into()), committed_at: Some(super::reference_fixture::now() - 2 * HOUR), uncommitted: false };
         }
         _ => {}
     }
@@ -385,7 +385,7 @@ fn app_sidebar(id: &str, stage: Stage, rows: Vec<Vec<char>>, inner_w: usize, asc
     // Sessions are one line now, each with its agent's mark (ADR 0021).
     let n = rows.len();
     let foot_row = rows.pop().expect("the foot");
-    let mut rows = super::v7_fixture::as_one_line_rows(rows, ascii, ANY);
+    let mut rows = super::reference_fixture::as_one_line_rows(rows, ascii, ANY);
     for r in &mut rows {
         r.resize(inner_w, ' ');
     }
@@ -615,7 +615,7 @@ fn conforms(id: &str) {
             report.push_str(&format!("===== {id} | {:?} | {}x{} | {}\n{diff}", b.layout, b.w, b.h, b.glyphs));
         }
     }
-    assert!(report.is_empty(), "{id}: the frames differ from the v7 reference\n{report}");
+    assert!(report.is_empty(), "{id}: the frames differ from the reference\n{report}");
 }
 
 #[test]
@@ -1023,10 +1023,10 @@ fn a_check_that_could_not_run_is_violet_not_red_or_amber() {
 #[test]
 /// Backspace in the Inbox edits its search and never closes it or the app, whatever it holds.
 fn backspace_in_the_inbox_only_edits_its_search() {
-    for stage in v7_fixture::STAGES {
-        for (w, h) in v7_fixture::SIZES {
+    for stage in reference_fixture::STAGES {
+        for (w, h) in reference_fixture::SIZES {
             for keys in ["", "a", "zz"] {
-                let mut app = v7_fixture::world(stage);
+                let mut app = reference_fixture::world(stage);
                 app.cfg.ui.padding = "1".into();
                 app.open_goto();
                 let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();

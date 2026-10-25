@@ -60,7 +60,7 @@ every look has the same sessions, tabs, splits and sheets.
 - **Grid**: boxes with gaps, each pane in its own colour by its place in the tab.
 
 `ui.padding` leaves 0, 1 or 2 empty cells round the screen. See UI › *layout and navigation*
-and *v7 frame*.
+and *the frame*.
 
 ## Chips, rounding and padding
 
@@ -89,7 +89,7 @@ The title sits on the pane's top border (a header strip in Compact). The top-lef
 the session's tabs as chips, the current one in the accent, then a **+** chip for a new tab;
 other panes show their session's name. On the right: the session's status mark (it opens why)
 and a ✕. In Grid a chip names each pane and its state is the glyph alone. Unfocused panes fade;
-the focused border is the accent, or `sky()` in shortcut mode. See UI › *v7 frame* and *pane
+the focused border is the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane
 focus*.
 
 ## Side panel
@@ -99,7 +99,7 @@ screen). **Files**, **Changes** and **Branch** share one sheet with a tab strip
 (`Files f · Changes c · Branch b`), each tab at its own remembered width: Files a tree beside
 the open file (Markdown drawn), Changes the changed files and their diff, Branch the branch,
 ahead/behind, recent commits, the last check and snapshots. The Inbox and the check evidence
-sheet dock in the same place without the strip. See UI › *v7 frame* (Sheet), *Inbox check
+sheet dock in the same place without the strip. See UI › *the frame* (Sheet), *Inbox check
 groups* and *check evidence sheet*.
 
 ## Modals and popovers
@@ -115,14 +115,14 @@ of keycaps. See UI › *UI conventions*, *check modals and settings* and *why po
 One component for every notice: bottom right, above the agent's input area, a `card` with a
 full-height `▌` bar in the notice's colour (`err`, `blocked` for needs you, `done`, else the
 accent), a bold title, a detail line and an optional preview in italics. It slides in and fades
-out with motion on. See UI › *v7 frame* (Toast).
+out with motion on. See UI › *the frame* (Toast).
 
 ## Mode bar
 
 The one full-width row, along the bottom ([ADR 0024](adr/0024-the-mode-lives-in-a-bottom-bar.md)).
 Typing: a quiet ` TYPING ` chip and the leader key. Shortcut mode: the whole row in `sky()`, a
 ` SHORTCUT ` chip and the next keys you can press. **Update** or **Restart** sits at its right
-end when waiting. See UI › *v7 frame* (Mode bar).
+end when waiting. See UI › *the frame* (Mode bar).
 
 ## Splash
 

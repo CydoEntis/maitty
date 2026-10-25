@@ -638,7 +638,7 @@ mod screen_tests {
         show(&text);
         let lines: Vec<&str> = text.lines().collect();
         assert!(!text.contains(concat!(">_ ", env!("APP_COMMAND"))), "no logo");
-        // The v7 grid: no margin, the sidebar card the full height from the corner, the pane
+        // The grid: no margin, the sidebar card the full height from the corner, the pane
         // card beside it from row 0 with the tabs in its title.
         assert!(lines[0].starts_with("┌─"), "the sidebar card from the very corner: {}", lines[0]);
         assert!(lines[0].contains("● needs you") && text.contains("claude"), "the active pane keeps its session and state: {}", lines[0]);
@@ -1245,7 +1245,7 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("shop-api") && !o.contains("opus 4.5"), "the repo in the card's title; the model is the agent's own to show");
-        assert!(!o.lines().next().unwrap_or_default().contains("Fix the login flow"), "the pane's title carries its tabs, not what the agent is on (v7)");
+        assert!(!o.lines().next().unwrap_or_default().contains("Fix the login flow"), "the pane's title carries its tabs, not what the agent is on");
         assert!(!o.contains("› now add a test for it"), "one line under a row, no more");
     }
 
@@ -3504,7 +3504,7 @@ second line
         show(&o);
         let legacy_ui = o.lines().find(|line| line.contains("waking up"));
         assert!(legacy_ui.is_none(), "legacy status UI is absent: {legacy_ui:?}");
-        assert!(o.contains("asleep zzZ"), "the v7 row says it is asleep in words");
+        assert!(o.contains("asleep zzZ"), "the row says it is asleep in words");
         assert!(!o.contains("the last thing codex said"), "sidebar selection doesn't replace the focused pane");
         assert!(!app.panes.iter().any(|(term, _)| *term == 2), "legacy pane preview is removed");
     }
@@ -5946,7 +5946,7 @@ mod check_row_tests {
         words: &'static str,
     }
 
-    /// Each v7 state's glyph (Unicode, ASCII) and the start of its line, short enough for the
+    /// Each state's glyph (Unicode, ASCII) and the start of its line, short enough for the
     /// 80-column sidebar.
     const CASES: [Case; 8] = [
         Case { state: CheckState::Checking, exit: None, glyph: "◜", plain: "-", words: "checking ci" },

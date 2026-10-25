@@ -1122,7 +1122,7 @@ mod inbox;
 mod splash;
 mod tidy;
 #[cfg(test)]
-mod v7_frame_tests;
+mod frame_tests;
 #[cfg(test)]
-mod v7_ref;
+mod reference;
 pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_bar::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};

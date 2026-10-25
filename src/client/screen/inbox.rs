@@ -322,9 +322,9 @@ pub(super) fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, ground: 
 
 #[cfg(test)]
 mod tests {
-    use super::super::v7_ref::{Ref, assert_same, layout_name, reference, text};
+    use super::super::reference::{Ref, assert_same, layout_name, reference, text};
     use super::*;
-    use crate::client::v7_fixture::{LAYOUTS, SIZES, Stage, now, world};
+    use crate::client::reference_fixture::{LAYOUTS, SIZES, Stage, now, world};
     use crate::client::View;
     use crate::protocol::{CheckState, ClientMsg, Command};
 

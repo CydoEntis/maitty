@@ -1497,8 +1497,8 @@ fn same_dir(a: &std::path::Path, b: &std::path::Path) -> bool {
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
-mod v7_fixture;
+mod reference_fixture;
 #[cfg(test)]
-mod v7_frames_tests;
+mod reference_frames_tests;
 #[cfg(test)]
 mod site_frames;

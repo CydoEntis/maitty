@@ -1,11 +1,11 @@
 //! The reference frames for the read-while-working screens, cut down to what is
-//! inside each sheet and popover (`v7_ref.txt`, a fixed fixture:
+//! inside each sheet and popover (`reference.txt`, a fixed fixture:
 //! per preset, layout and size, the inside's position and size, then its rows with
 //! trailing spaces trimmed). Frame lines are not in it; they are tested with the frame.
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
-const FRAMES: &str = include_str!("v7_ref.txt");
+const FRAMES: &str = include_str!("reference.txt");
 
 /// One reference: where the inside is on the screen, and its rows.
 pub(super) struct Ref {
@@ -43,8 +43,8 @@ pub(super) fn text(buf: &Buffer, area: Rect) -> Vec<String> {
 }
 
 /// The layout names the references use, in the fixture's order.
-pub(super) fn layout_name(l: crate::client::v7_fixture::Layout) -> &'static str {
-    use crate::client::v7_fixture::Layout;
+pub(super) fn layout_name(l: crate::client::reference_fixture::Layout) -> &'static str {
+    use crate::client::reference_fixture::Layout;
     match l {
         Layout::Floating => "floating",
         Layout::Tiled => "tiled",
@@ -88,5 +88,5 @@ pub(super) fn assert_same(got: &[String], want: &Ref, what: &str) {
         let mark = if same_row(g, w) { ' ' } else { '≠' };
         report.push_str(&format!("{mark}{i:>2} got  |{g}\n    want |{w}\n"));
     }
-    panic!("{what}: the inside differs from the v7 reference\n{report}");
+    panic!("{what}: the inside differs from the reference\n{report}");
 }

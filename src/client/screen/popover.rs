@@ -604,9 +604,9 @@ mod tests {
 
 #[cfg(test)]
 mod why_tests {
-    use super::super::v7_ref::{assert_same, layout_name, reference, text};
+    use super::super::reference::{assert_same, layout_name, reference, text};
     use super::*;
-    use crate::client::v7_fixture::{LAYOUTS, SIZES, Stage, world};
+    use crate::client::reference_fixture::{LAYOUTS, SIZES, Stage, world};
 
     fn why_world(stage: Stage) -> App {
         let mut app = world(stage);
@@ -663,7 +663,7 @@ mod why_tests {
     fn a_click_on_it_opens_the_evidence() {
         let mut app = why_world(Stage::Failed);
         app.mode = Mode::Why { term: 1, side: false };
-        crate::client::v7_fixture::frame(&mut app, crate::client::v7_fixture::Layout::Floating, 100, 30, "unicode");
+        crate::client::reference_fixture::frame(&mut app, crate::client::reference_fixture::Layout::Floating, 100, 30, "unicode");
         assert!(app.hits.iter().any(|(_, h)| *h == crate::client::Hit::Screen(ScreenHit::CheckEvidence(1))));
         app.on_hy_hit(ScreenHit::CheckEvidence(1), false);
         assert!(matches!(&app.view, Some(crate::client::View::Check(v)) if v.term == 1));
@@ -681,7 +681,7 @@ mod why_tests {
 #[cfg(test)]
 mod message_tests {
     use super::*;
-    use crate::client::v7_fixture::{LAYOUTS, SIZES, Stage, frame, world};
+    use crate::client::reference_fixture::{LAYOUTS, SIZES, Stage, frame, world};
 
     const QUESTION: &str = "Both lockfiles are in the repo.\nCI runs pnpm install, but the README says npm.\nTwo scripts call npx directly.\nUse pnpm or npm for the workspace?\nTell me which.";
 
@@ -724,7 +724,7 @@ mod message_tests {
     fn it_grows_a_row_a_line_then_scrolls() {
         let rows_of = |lines: usize, w: u16, h: u16| {
             let mut app = open(3, &(1..=lines).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n"));
-            let o = frame(&mut app, crate::client::v7_fixture::Layout::Floating, w, h, "unicode");
+            let o = frame(&mut app, crate::client::reference_fixture::Layout::Floating, w, h, "unicode");
             (o.lines().filter(|l| l.contains("│ › line") || l.contains("│   line ")).count(), o)
         };
         assert_eq!(rows_of(1, 160, 45).0, 1);
@@ -750,13 +750,13 @@ mod message_tests {
     #[test]
     fn a_working_agent_queues_and_the_row_says_so_then_says_sent() {
         let mut app = open(2, "");
-        let o = frame(&mut app, crate::client::v7_fixture::Layout::Floating, 160, 45, "unicode");
+        let o = frame(&mut app, crate::client::reference_fixture::Layout::Floating, 160, 45, "unicode");
         assert!(o.contains("codex is mid-turn") || o.contains("claude is mid-turn"), "{o}");
         assert!(o.contains("Ctrl") && o.contains("Enter") && o.contains("send now"), "{o}");
         type_keys(&mut app, "also test a duplicate");
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert!(app.mode == Mode::Side, "closed");
-        let o = frame(&mut app, crate::client::v7_fixture::Layout::Floating, 160, 45, "unicode");
+        let o = frame(&mut app, crate::client::reference_fixture::Layout::Floating, 160, 45, "unicode");
         assert!(o.contains("◷ queued \"also test a"), "{o}");
         let info = app.snap.terms.get_mut(&2).unwrap();
         info.queued = vec!["also test a duplicate".into()];
@@ -764,7 +764,7 @@ mod message_tests {
         assert!(app.screen.receipts[&2].queued, "still waiting");
         let info = app.snap.terms.get_mut(&2).unwrap();
         (info.queued, info.status) = (Vec::new(), Status::Idle);
-        let o = frame(&mut app, crate::client::v7_fixture::Layout::Floating, 160, 45, "unicode");
+        let o = frame(&mut app, crate::client::reference_fixture::Layout::Floating, 160, 45, "unicode");
         assert!(o.contains("› sent \"also test a"), "{o}");
     }
 
