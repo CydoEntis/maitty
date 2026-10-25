@@ -1840,8 +1840,7 @@ fn integrate_every(exe: &str, uninstall: bool) -> Result<()> {
         println!("{}: {}", agent.name, outcome.describe(uninstall));
     }
     let failed = results.iter().filter(|(_, o)| matches!(o, integrations::Outcome::Failed(_))).count();
-    println!("
-MCP:");
+    println!("\nMCP:");
     let mcp = integrate_mcp(exe, uninstall);
     println!("\nRestart your agents to load the change.");
     match (failed, mcp) {
