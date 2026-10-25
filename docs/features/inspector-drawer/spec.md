@@ -1,6 +1,6 @@
 # Spec: the inspector drawer
 
-Intent: [intent.md](intent.md) · Status: accepted · Date: 2026-10-24
+Type: spec · Status: built (phase 26, released in v0.43.0) · Date: 2026-10-24 · Intent: [intent.md](intent.md)
 
 ## Concerns
 

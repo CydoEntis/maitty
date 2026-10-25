@@ -1,28 +1,26 @@
 # Intent: the inspector drawer
 
-Type: change + feature
-Author: Cody · Status: accepted
-Date: 2026-10-24 · Plan: [phase 26](../../ROADMAP.md#26--the-inspector-drawer--planned-2026-10-24)
+Type: change + feature · Status: built (phase 26, released in v0.43.0) · Date: 2026-10-24
 
 ## Problem
 
 "I like the file tree, branches, git diff stuff that comes out from a native resizable drawer."
-Files opens as a popup over the agent, the branch switcher is another popup, and the side panel
-(Changes, Inbox, checks) is a fixed 72 columns.
+Files opened as a popup over the agent, the branch switcher was another popup, and the side panel
+(Changes, Inbox, checks) was a fixed 72 columns.
 
-## Proposed outcome
+## Goal
 
 One right-hand panel holds Files, Changes and Branch next to the agent, pushing the panes aside
 rather than covering them. You drag its edge or press `[` `]` to size it, and each view remembers
 its width. Markdown files read pretty, with raw a key away. Ctrl+click on a `path:line` in agent
-output lands in it, and a row's `+N −N` opens its Changes. Spec: [spec.md](spec.md).
+output lands in it, and a row's `+N −N` opens its Changes.
 
-## Affected users and systems
+## Scope
 
 Anyone reviewing what an agent did. The client only: the side panel (`sheet.rs`), the screen
 grid, Files, Changes, the branch view, saved UI state. No protocol change.
 
-## Constraints
+## Decisions
 
 - It grows the existing side panel (decided 2026-10-24); no second right-hand surface. Not a
   dock layout (ROADMAP › Out, 2026-10-03).
@@ -32,15 +30,13 @@ grid, Files, Changes, the branch view, saved UI state. No protocol change.
 - Markdown uses the pulldown-cmark crate (decided 2026-10-24).
 - Every view works in Floating, Tiled, Compact and Grid at 80×24, 100×30 and 160×45.
 
-## Out
+## Out of scope
 
 - PR status in Branch (no PR data yet). A second drawer. Folding the sidebar automatically.
 - Images shown in the terminal (terminal graphics were cut in phase 7).
 
-## Open questions
+## Links
 
-None.
-
-## Tickets
-
-[#172](https://github.com/CydoEntis/maitty/issues/172), [#173](https://github.com/CydoEntis/maitty/issues/173), [#174](https://github.com/CydoEntis/maitty/issues/174), [#175](https://github.com/CydoEntis/maitty/issues/175), [#176](https://github.com/CydoEntis/maitty/issues/176)
+- Plan: [phase 26](../../ROADMAP.md#26--the-inspector-drawer--planned-2026-10-24)
+- Spec: [spec.md](spec.md)
+- Tickets: [#172](https://github.com/CydoEntis/maitty/issues/172), [#173](https://github.com/CydoEntis/maitty/issues/173), [#174](https://github.com/CydoEntis/maitty/issues/174), [#175](https://github.com/CydoEntis/maitty/issues/175), [#176](https://github.com/CydoEntis/maitty/issues/176)
