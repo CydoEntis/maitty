@@ -10695,3 +10695,92 @@ mod references_view_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+mod pane_swap_tests {
+    use super::*;
+    use crate::layout::{Dir, Node};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    /// Wide enough that Compact splits too.
+    const W: u16 = 200;
+    const H: u16 = 45;
+
+    /// Panes 1 and 2 side by side in one tab, as the server keeps them, drawn in `layout`;
+    /// and what the app sends.
+    fn side_by_side(layout: &str) -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
+        let (_, mut app) = super::design_tests::render_with(W, H);
+        let (tx, rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.cfg.ui.layout = layout.into();
+        let mut split = Node::Leaf(1);
+        split.split(1, Dir::Right, 2);
+        app.snap.workspaces[0].tabs = vec![
+            TabInfo { id: 11, name: String::new(), layout: split, focus: 1 },
+            TabInfo { id: 13, name: String::new(), layout: Node::Leaf(3), focus: 3 },
+        ];
+        app.screen.tabs.clear();
+        app.screen.last_focus = None;
+        app.screen_sync();
+        draw(&mut app);
+        (app, rx)
+    }
+
+    fn draw(app: &mut App) -> String {
+        app.screen_fresh();
+        let mut term = Terminal::new(TestBackend::new(W, H)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        (0..H).map(|y| (0..W).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>() + "\n").collect()
+    }
+
+    fn swaps_sent(rx: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Vec<(TermId, TermId)> {
+        std::iter::from_fn(|| rx.try_recv().ok())
+            .filter_map(|m| match m {
+                ClientMsg::Command(Command::SwapPanes { a, b }) => Some((a, b)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn shown(app: &App) -> Vec<TermId> {
+        app.screen.tabs[app.screen.tab].layout.leaves()
+    }
+
+    #[test]
+    fn leader_alt_arrow_swaps_with_the_neighbour_that_way() {
+        let (mut app, mut rx) = side_by_side("tiled");
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::ALT));
+        assert_eq!(shown(&app), [1, 2], "nothing left of pane 1");
+        assert!(matches!(app.mode, Mode::Prefix { .. }), "shortcut mode stays on");
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::ALT));
+        assert_eq!(shown(&app), [2, 1]);
+        assert_eq!(app.focused(), Some(1), "the keys stay with the pane that moved");
+        assert_eq!(swaps_sent(&mut rx), [(1, 2)]);
+    }
+
+    #[test]
+    fn the_pane_menu_offers_a_move_toward_each_neighbour() {
+        let (mut app, mut rx) = side_by_side("tiled");
+        app.menu_for_pane(1, (5, 5));
+        let Mode::ScreenMenu(menu) = app.mode.clone() else { panic!("a menu") };
+        let labels: Vec<&str> = menu.items.iter().map(|(l, _)| l.as_str()).collect();
+        assert!(labels.contains(&"Move pane right"), "{labels:?}");
+        assert!(!labels.iter().any(|l| ["Move pane left", "Move pane up", "Move pane down"].contains(l)), "{labels:?}");
+        app.menu_do(menu::Act::Swap(1, 2));
+        assert_eq!(shown(&app), [2, 1]);
+        assert_eq!(swaps_sent(&mut rx), [(1, 2)]);
+    }
+
+    #[test]
+    fn panes_split_here_only_swap_here() {
+        let (mut app, mut rx) = side_by_side("tiled");
+        app.snap.workspaces[0].tabs[0].layout = Node::Leaf(1);
+        app.snap.workspaces[0].tabs.push(TabInfo { id: 12, name: String::new(), layout: Node::Leaf(2), focus: 2 });
+        assert!(app.swap_panes(1, 2));
+        assert_eq!(shown(&app), [2, 1]);
+        assert!(swaps_sent(&mut rx).is_empty(), "the server keeps them apart: nothing to tell it");
+        assert!(!app.swap_panes(1, 3), "3 isn't shown beside them");
+    }
+}

@@ -35,6 +35,8 @@ pub enum Act {
     /// Put a checkout's files back as a snapshot has them: (folder, commit, when, whose row).
     Restore(PathBuf, String, String, TermId),
     Split(TermId, crate::layout::Dir),
+    /// Trade the places of two panes of the tab on screen.
+    Swap(TermId, TermId),
     RightClicks(TermId),
     RenameProject(String, String),
     /// End everything in a project and forget it.
@@ -164,6 +166,12 @@ impl App {
             ("Split side by side".to_string(), Act::Split(term, crate::layout::Dir::Right)),
             ("Split stacked".to_string(), Act::Split(term, crate::layout::Dir::Down)),
         ];
+        use crate::layout::Dir;
+        for (dir, way) in [(Dir::Left, "left"), (Dir::Right, "right"), (Dir::Up, "up"), (Dir::Down, "down")] {
+            if let Some(to) = crate::layout::neighbor(&self.screen.leaf_rects, term, dir) {
+                items.push((format!("Move pane {way}"), Act::Swap(term, to)));
+            }
+        }
         items.push((
             if self.screen.right_clicks.contains(&term) { "Stop sending right-clicks to pane" } else { "Send right-clicks to pane" }.to_string(),
             Act::RightClicks(term),
@@ -437,6 +445,9 @@ impl App {
                 self.screen.pending_split = Some((t, std::time::Instant::now()));
                 self.leave_shortcut_mode();
                 self.cmd(Command::NewWorkspace { cwd: Some(cwd), name: None, cmd: None });
+            }
+            Act::Swap(a, b) => {
+                self.swap_panes(a, b);
             }
             Act::Update => self.start_update(),
             Act::RestartDaemon => self.restart_daemon_now(),

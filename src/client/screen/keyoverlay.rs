@@ -71,6 +71,7 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
                 r("Collapse sidebar", vec![A::ToggleSidebar], true),
                 r("Hide sidebar", vec![A::HideSidebar], true),
                 r("Resize pane", vec![A::Resize(Dir::Left), A::Resize(Dir::Down), A::Resize(Dir::Up), A::Resize(Dir::Right)], false),
+                r("Swap pane", vec![A::Swap(Dir::Left), A::Swap(Dir::Down), A::Swap(Dir::Up), A::Swap(Dir::Right)], false),
                 r("Select text", vec![A::CopyMode], false),
                 r("Scroll", vec![A::ScrollUp, A::ScrollDown], false),
                 r("Jump between commands", vec![A::PrevPrompt, A::NextPrompt], false),
