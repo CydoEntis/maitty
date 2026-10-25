@@ -213,8 +213,18 @@ They show up in + New as `⚙ feature`.
 
 ## Agents that steer agents (MCP)
 
-`maitty integrate mcp` registers `maitty mcp` with Claude Code and prints the
-`[mcp_servers.maitty]` lines to add to Codex's `~/.codex/config.toml`. An agent then has tools to
+`maitty integrate mcp` registers `maitty mcp` with every agent you have that takes one, and
+prints a line per agent (registered, already registered, or skipped when it isn't installed):
+
+- Claude Code, through `claude mcp add --scope user` (every project);
+- Codex, as `[mcp_servers.maitty]` in `$CODEX_HOME/config.toml` (or `~/.codex/config.toml`);
+- Qwen Code and Gemini CLI, as `mcpServers.maitty` in `~/.qwen/settings.json` and
+  `~/.gemini/settings.json` (`$QWEN_HOME` and `$GEMINI_CLI_HOME` move them).
+
+Each entry runs this `maitty` with `args = ["mcp"]`; the rest of each file, comments included,
+is kept, and a backup sits beside it. An agent whose config folder doesn't exist is skipped, not
+set up. Running it again changes nothing; `--uninstall` removes only Maitty's entry. Restart a
+running agent to load the server. `maitty doctor` shows which agents have it. An agent then has tools to
 list sessions (`maitty_list`), read a screen (`maitty_read`), send a message
 (`maitty_send`), wait for a turn to end (`maitty_wait`), answer a prompt (`maitty_answer`),
 interrupt (`maitty_interrupt`) and start helpers (`maitty_start`, see *Helpers* above).

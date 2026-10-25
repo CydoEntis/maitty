@@ -4,6 +4,8 @@ use crate::ipc;
 use crate::brand::{APP_COMMAND};
 pub(crate) mod handoff;
 pub(crate) mod integrations;
+mod mcp_config;
+use mcp_config::McpChange;
 use crate::layout::Dir;
 use crate::protocol::*;
 use anyhow::{Context, Result, anyhow, bail};
@@ -996,6 +998,15 @@ pub fn doctor() -> Result<()> {
             None => line(if mcp { Some(true) } else { None }, concat!(env!("APP_COMMAND"), " MCP for claude"), if mcp { "registered".into() } else { concat!("not set up: `", env!("APP_COMMAND"), " integrate mcp` lets agents see each other (optional)").into() }),
         }
     }
+    let exe = this_exe().unwrap_or_default();
+    for agent in mcp_config::agents().into_iter().filter(mcp_config::McpAgent::installed) {
+        let label = format!("{APP_COMMAND} MCP for {}", agent.id);
+        match mcp_config::registered_command(&agent) {
+            Some(cmd) if cmd == exe => line(Some(true), &label, "registered".into()),
+            Some(cmd) => line(Some(false), &label, format!("runs {cmd}; `{APP_COMMAND} integrate mcp` points it at this one")),
+            None => line(None, &label, concat!("not set up: `", env!("APP_COMMAND"), " integrate mcp` lets agents see each other (optional)").into()),
+        }
+    }
 
     // Terminal
     let term = std::env::var("TERM_PROGRAM").or_else(|_| std::env::var("TERM")).unwrap_or_else(|_| if std::env::var("WT_SESSION").is_ok() { "Windows Terminal".into() } else { "unknown".into() });
@@ -1748,21 +1759,7 @@ pub fn integrate(agent: &str, uninstall: bool) -> Result<()> {
     let exe = this_exe()?;
     match agent {
         "mcp" => {
-            // Claude Code: register for every project (user scope).
-            let old = std::fs::read_to_string(claude_json()).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).map(|root| old_mcp_names(&root)).unwrap_or_default();
-            for name in old {
-                match run_claude(&["mcp", "remove", "--scope", "user", &name]) {
-                    Ok(s) if s.success() => println!("removed the old `{name}` MCP server from Claude Code"),
-                    _ => println!("Claude Code: run  claude mcp remove --scope user {name}"),
-                }
-            }
-            match run_claude(&["mcp", "add", "--scope", "user", env!("APP_COMMAND"), "--", exe.as_str(), "mcp"]) {
-                Ok(s) if s.success() => println!(concat!("added the ", env!("APP_COMMAND"), " MCP server to Claude Code (all projects)")),
-                _ => println!("Claude Code: run  claude mcp add --scope user {APP_COMMAND} -- \"{exe}\" mcp"),
-            }
-            println!("\nCodex: add to ~/.codex/config.toml\n\n[mcp_servers.{APP_COMMAND}]\ncommand = \"{exe}\"\nargs = [\"mcp\"]\n");
-            println!("Agents can then list, read, message and start sessions. Whether they may approve");
-            println!(concat!("prompts is up to you: ", env!("APP_COMMAND"), " Settings → Agents (never, by default)."));
+            integrate_mcp(&exe, uninstall);
             Ok(())
         }
         agent => {
@@ -1770,6 +1767,56 @@ pub fn integrate(agent: &str, uninstall: bool) -> Result<()> {
             report_integration(agent, &path, uninstall);
             Ok(())
         }
+    }
+}
+
+/// Registers (or removes) the MCP server with every agent on this machine that takes one, one
+/// line per agent.
+fn integrate_mcp(exe: &str, uninstall: bool) {
+    println!("Claude Code: {}", claude_mcp(exe, uninstall));
+    for agent in mcp_config::agents() {
+        let outcome = match mcp_config::set_up(&agent, exe, uninstall) {
+            Ok(McpChange::Registered) => format!("registered in {}", agent.config.display()),
+            Ok(McpChange::AlreadyRegistered) => "already registered".into(),
+            Ok(McpChange::Removed) => format!("removed from {}", agent.config.display()),
+            Ok(McpChange::NotRegistered) => "not registered".into(),
+            Ok(McpChange::NotInstalled) => "skipped (not installed)".into(),
+            Err(e) => format!("not changed: {e:#}"),
+        };
+        println!("{}: {outcome}", agent.name);
+    }
+    if !uninstall {
+        println!("\nAgents can then list, read, message and start sessions; restart running ones to load it.");
+        println!(concat!("Whether they may approve prompts is up to you: ", env!("APP_COMMAND"), " Settings → Agents (never, by default)."));
+    }
+}
+
+/// Claude Code keeps its servers in `~/.claude.json`, which it rewrites itself, so its own CLI
+/// makes the change (user scope: every project).
+fn claude_mcp(exe: &str, uninstall: bool) -> String {
+    let root = std::fs::read_to_string(claude_json()).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).unwrap_or_default();
+    let ours = root.get("mcpServers").and_then(|s| s.get(APP_COMMAND));
+    let mut remove = old_mcp_names(&root);
+    match (uninstall, ours) {
+        (true, None) => return "not registered".into(),
+        (false, Some(entry)) if entry.get("command").and_then(Value::as_str) == Some(exe) => return "already registered".into(),
+        (_, Some(_)) => remove.push(APP_COMMAND.into()),
+        (false, None) => {}
+    }
+    for name in &remove {
+        match run_claude(&["mcp", "remove", "--scope", "user", name]) {
+            Ok(s) if s.success() => {}
+            Ok(_) => return format!("run  claude mcp remove --scope user {name}"),
+            Err(_) => return "skipped (not installed)".into(),
+        }
+    }
+    if uninstall {
+        return "removed".into();
+    }
+    match run_claude(&["mcp", "add", "--scope", "user", APP_COMMAND, "--", exe, "mcp"]) {
+        Ok(s) if s.success() => "registered (all projects)".into(),
+        Ok(_) => format!("run  claude mcp add --scope user {APP_COMMAND} -- \"{exe}\" mcp"),
+        Err(_) => "skipped (not installed)".into(),
     }
 }
 

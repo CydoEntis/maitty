@@ -41,7 +41,7 @@ fn install(path: PathBuf, source: &str, exe: &str, uninstall: bool) -> Result<Pa
     Ok(path)
 }
 
-fn regular_target(path: &std::path::Path) -> Result<()> {
+pub(super) fn regular_target(path: &std::path::Path) -> Result<()> {
     match std::fs::symlink_metadata(path) {
         Ok(meta) if !meta.is_file() => {
             bail!("{} must be a regular file; preserved", path.display())

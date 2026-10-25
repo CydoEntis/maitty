@@ -107,7 +107,7 @@ status, connect them once on each machine:
 
 ```sh
 maitty integrate claude     # also: codex, gemini, qwen, opencode, pi, omp, kilo, kimi, mastracode
-maitty integrate mcp        # lets agents see and steer other sessions
+maitty integrate mcp        # lets Claude, Codex, Qwen and Gemini see and steer other sessions
 maitty doctor               # checks what's connected
 ```
 
