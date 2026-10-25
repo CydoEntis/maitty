@@ -85,7 +85,8 @@ if [ "$NO_INTEGRATE" = 1 ]; then
   say "Left your agents alone (${ENV_PREFIX}_NO_INTEGRATE=1); run '$APP integrate' to connect them."
 else
   say "Connecting your agents (set ${ENV_PREFIX}_NO_INTEGRATE=1 to skip)..."
-  "$DIR/$APP" integrate || say "Warning: some agents weren't connected; run '$APP integrate' to retry."
+  # Its own stdin: under `curl | sh` the shell's is the rest of this script.
+  "$DIR/$APP" integrate </dev/null || say "Warning: some agents weren't connected; run '$APP integrate' to retry."
 fi
 
 # Another program of the same name found first on PATH?
