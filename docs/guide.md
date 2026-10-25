@@ -219,7 +219,8 @@ prints a line per agent (registered, already registered, or skipped when it isn'
 - Claude Code, through `claude mcp add --scope user` (every project);
 - Codex, as `[mcp_servers.maitty]` in `$CODEX_HOME/config.toml` (or `~/.codex/config.toml`);
 - Qwen Code and Gemini CLI, as `mcpServers.maitty` in `~/.qwen/settings.json` and
-  `~/.gemini/settings.json` (`$QWEN_HOME` and `$GEMINI_CLI_HOME` move them).
+  `~/.gemini/settings.json` (`$QWEN_HOME` is Qwen's config folder itself; `$GEMINI_CLI_HOME`
+  stands in for the home folder, so Gemini's is `$GEMINI_CLI_HOME/.gemini`).
 
 Each entry runs this `maitty` with `args = ["mcp"]`; the rest of each file, comments included,
 is kept, and a backup sits beside it. An agent whose config folder doesn't exist is skipped, not

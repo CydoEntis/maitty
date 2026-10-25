@@ -50,7 +50,7 @@ pub(crate) enum McpChange {
 pub(crate) fn agents() -> [McpAgent; 3] {
     [
         McpAgent { id: "codex", name: "Codex", config: super::codex_config(), format: Format::CodexToml },
-        McpAgent { id: "qwen", name: "Qwen Code", config: super::home_settings("QWEN_HOME", ".qwen"), format: Format::McpServersJson },
+        McpAgent { id: "qwen", name: "Qwen Code", config: super::qwen_settings(), format: Format::McpServersJson },
         McpAgent { id: "gemini", name: "Gemini CLI", config: super::home_settings("GEMINI_CLI_HOME", ".gemini"), format: Format::McpServersJson },
     ]
 }

@@ -1321,7 +1321,18 @@ const GEMINI_EVENTS: &[(&str, Option<&str>)] = &[
     ("SessionEnd", None),
 ];
 
-/// A tool's settings.json under the home folder (`.gemini`, `.qwen`), or `$<env>/…`.
+/// Qwen Code's settings.json. `$QWEN_HOME` names Qwen's config folder itself (qwen-code
+/// `Storage.getGlobalQwenDir`), unlike `GEMINI_CLI_HOME`, which stands in for the home folder.
+fn qwen_settings() -> PathBuf {
+    let home = directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf()).unwrap_or_default();
+    qwen_settings_in(std::env::var_os("QWEN_HOME").map(PathBuf::from), &home)
+}
+
+fn qwen_settings_in(qwen_home: Option<PathBuf>, home: &std::path::Path) -> PathBuf {
+    qwen_home.filter(|dir| !dir.as_os_str().is_empty()).unwrap_or_else(|| home.join(".qwen")).join("settings.json")
+}
+
+/// A tool's settings.json under the home folder (`.gemini`), or `$<env>/…`.
 fn home_settings(env: &str, dir: &str) -> PathBuf {
     std::env::var_os(env)
         .map(|h| PathBuf::from(h).join(dir))
@@ -2373,6 +2384,14 @@ mod tests {
         assert!(std::fs::read_to_string(&file).unwrap().contains("my-notifier"));
         let _ = std::fs::remove_file(&file);
         let _ = std::fs::remove_file(file.with_extension(concat!("toml.", env!("APP_COMMAND"), "-bak")));
+    }
+
+    #[test]
+    fn qwen_home_is_the_qwen_config_folder_itself() {
+        let home = std::path::Path::new("/home/me");
+        assert_eq!(super::qwen_settings_in(Some("/opt/qwen-config".into()), home), std::path::Path::new("/opt/qwen-config/settings.json"));
+        assert_eq!(super::qwen_settings_in(None, home), home.join(".qwen").join("settings.json"));
+        assert_eq!(super::qwen_settings_in(Some("".into()), home), home.join(".qwen").join("settings.json"), "an empty QWEN_HOME is unset");
     }
 
     #[test]

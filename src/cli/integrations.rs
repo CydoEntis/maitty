@@ -417,7 +417,7 @@ pub(crate) const STATUS_AGENTS: &[StatusAgent] = &[
     StatusAgent {
         id: "qwen",
         name: "Qwen Code",
-        install: |_, uninstall| super::json_hooks(&super::home_settings("QWEN_HOME", ".qwen"), "qwen", super::CLAUDE_EVENTS, 10, uninstall),
+        install: |_, uninstall| super::json_hooks(&super::qwen_settings(), "qwen", super::CLAUDE_EVENTS, 10, uninstall),
     },
     StatusAgent { id: "opencode", name: "OpenCode", install: install_opencode },
     StatusAgent { id: "pi", name: "Pi", install: install_pi },
