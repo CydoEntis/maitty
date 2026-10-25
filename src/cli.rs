@@ -4,11 +4,13 @@ use crate::ipc;
 use crate::brand::{APP_COMMAND};
 pub(crate) mod handoff;
 pub(crate) mod integrations;
+mod jsonc;
 mod mcp_config;
 use mcp_config::McpChange;
 use crate::layout::Dir;
 use crate::protocol::*;
 use anyhow::{Context, Result, anyhow, bail};
+use jsonc_parser::cst::{CstInputValue, CstObject, CstObjectProp};
 use serde_json::{Value, json};
 use std::io::Read;
 use std::path::PathBuf;
@@ -1608,47 +1610,83 @@ fn claude_hooks(uninstall: bool) -> Result<PathBuf> {
 
 /// Add (or remove) the app's hooks in a Claude-style settings.json (Claude Code, Gemini CLI,
 /// Qwen Code): one tagged group per event running `<app> hook <agent>`, `timeout` in the
-/// tool's own unit. The rest of the file is kept, with a backup beside it.
+/// tool's own unit. The rest of the file (comments and key order included) is kept, with a
+/// backup beside it.
 fn json_hooks(path: &std::path::Path, agent: &str, events: &[(&str, Option<&str>)], timeout: u64, uninstall: bool) -> Result<PathBuf> {
     let exe = this_exe()?;
-    let path = path.to_path_buf();
-    let mut root: Value = match std::fs::read_to_string(&path) {
-        Ok(s) if s.trim().is_empty() => json!({}),
-        Ok(s) => serde_json::from_str(&s).with_context(|| format!("{} isn't valid JSON; not touching it", path.display()))?,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => json!({}),
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(e.into()),
     };
-    back_up_once(&path, "json")?;
-    let hooks = root
-        .as_object_mut()
-        .ok_or_else(|| anyhow!("settings.json is not an object"))?
-        .entry("hooks")
-        .or_insert_with(|| json!({}));
-    let hooks = hooks.as_object_mut().ok_or_else(|| anyhow!("`hooks` is not an object"))?;
-    for (event, matcher) in events {
-        let groups = hooks.entry(*event).or_insert_with(|| json!([]));
-        let Some(arr) = groups.as_array_mut() else { continue };
-        arr.retain(|g| !is_ours(g));
-        if !uninstall {
-            let mut g = json!({
-                concat!("_", env!("APP_COMMAND")): true,
-                "hooks": [{ "type": "command", "command": format!("\"{exe}\" hook {agent}"), "timeout": timeout }],
-            });
-            if let Some(m) = matcher {
-                g["matcher"] = json!(m);
-            }
-            arr.push(g);
+    let doc = jsonc::Doc::parse(&text).with_context(|| format!("{} isn't valid JSON; not touching it", path.display()))?;
+    let settings = doc.object().ok_or_else(|| anyhow!("settings.json is not an object"))?;
+    back_up_once(path, "json")?;
+    let hooks = match settings.get("hooks") {
+        Some(prop) => Some(prop.object_value().ok_or_else(|| anyhow!("`hooks` is not an object"))?),
+        None if uninstall => None,
+        None => Some(settings.append("hooks", CstInputValue::Object(Vec::new())).object_value_or_set()),
+    };
+    if let Some(hooks) = &hooks {
+        for (event, matcher) in events {
+            replace_our_group(hooks, event, (!uninstall).then(|| our_group(&exe, agent, timeout, *matcher)));
         }
     }
-    hooks.retain(|_, v| v.as_array().is_none_or(|a| !a.is_empty()));
     if agent == "claude" {
-        statusline_setting(&mut root, &exe, uninstall, &statusline_before())?;
+        claude_statusline(&doc, &exe, uninstall)?;
     }
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
+    crate::config::write_atomic(path, doc.text())?;
+    Ok(path.to_path_buf())
+}
+
+/// The tagged hook group that runs `<app> hook <agent>` (the tag is how re-runs find it).
+fn our_group(exe: &str, agent: &str, timeout: u64, matcher: Option<&str>) -> Value {
+    let mut g = json!({
+        concat!("_", env!("APP_COMMAND")): true,
+        "hooks": [{ "type": "command", "command": format!("\"{exe}\" hook {agent}"), "timeout": timeout }],
+    });
+    if let Some(m) = matcher {
+        g["matcher"] = json!(m);
     }
-    crate::config::write_atomic(&path, serde_json::to_string_pretty(&root)? + "\n")?;
-    Ok(path)
+    g
+}
+
+/// Swaps the app's groups under `event` for `ours` (`None` only removes them); every other
+/// group stays where it is. An event left with no groups is dropped.
+fn replace_our_group(hooks: &CstObject, event: &str, ours: Option<Value>) {
+    let groups = match hooks.get(event) {
+        Some(prop) => match prop.array_value() {
+            Some(groups) => groups,
+            None => return,
+        },
+        None if ours.is_none() => return,
+        None => hooks.append(event, CstInputValue::Array(Vec::new())).array_value_or_set(),
+    };
+    for group in groups.elements() {
+        if group.to_serde_value().is_some_and(|g| is_ours(&g)) {
+            group.remove();
+        }
+    }
+    if let Some(g) = ours {
+        groups.append(jsonc::input(&g));
+    }
+    if groups.elements().is_empty() {
+        hooks.get(event).into_iter().for_each(CstObjectProp::remove);
+    }
+}
+
+/// Points Claude's status line at the app (or back), changing only the `statusLine` entry.
+fn claude_statusline(doc: &jsonc::Doc, exe: &str, uninstall: bool) -> Result<()> {
+    let settings = doc.object().ok_or_else(|| anyhow!("settings.json is not an object"))?;
+    let mut root = doc.to_value().unwrap_or_default();
+    let before = root.get("statusLine").cloned();
+    statusline_setting(&mut root, exe, uninstall, &statusline_before())?;
+    match root.get("statusLine") {
+        Some(line) if before.as_ref() != Some(line) => jsonc::set_prop(&settings, "statusLine", jsonc::input(line)),
+        Some(_) => {}
+        None => settings.get("statusLine").into_iter().for_each(CstObjectProp::remove),
+    }
+    Ok(())
 }
 
 /// The commands the app's Claude hooks run that aren't this the app (an older install, a copy
@@ -2425,6 +2463,37 @@ mod tests {
         assert_eq!(super::qwen_settings_in(Some("/opt/qwen-config".into()), home), std::path::Path::new("/opt/qwen-config/settings.json"));
         assert_eq!(super::qwen_settings_in(None, home), home.join(".qwen").join("settings.json"));
         assert_eq!(super::qwen_settings_in(Some("".into()), home), home.join(".qwen").join("settings.json"), "an empty QWEN_HOME is unset");
+    }
+
+    #[test]
+    fn settings_hooks_keep_comments_order_and_other_hooks_and_replace_only_ours() {
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-jsonc-hooks-{}"), std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        let original = "\u{feff}{\n  // pick a theme\n  \"theme\": \"dark\",\n  \"hooks\": {\n    \"AfterAgent\": [\n      { \"hooks\": [{ \"type\": \"command\", \"command\": \"my-hook\" }] } // mine\n    ]\n  },\n  \"auth\": { \"type\": \"oauth\" }\n}\n";
+        std::fs::write(&path, original).unwrap();
+
+        super::json_hooks(&path, "gemini", super::GEMINI_EVENTS, 5000, false).unwrap();
+        let once = std::fs::read_to_string(&path).unwrap();
+        super::json_hooks(&path, "gemini", super::GEMINI_EVENTS, 5000, false).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), once, "a re-run replaces only its own groups");
+        assert!(once.starts_with('\u{feff}') && once.contains("// pick a theme") && once.contains("// mine"), "{once}");
+        assert!(once.find("\"theme\"") < once.find("\"hooks\"") && once.find("\"hooks\"") < once.find("\"auth\""), "key order kept: {once}");
+        let root = super::jsonc::parse_value(&once).unwrap();
+        let after_agent = root["hooks"]["AfterAgent"].as_array().unwrap();
+        assert_eq!(after_agent.len(), 2);
+        assert_eq!(after_agent[0]["hooks"][0]["command"], "my-hook");
+        assert!(super::is_ours(&after_agent[1]));
+        assert_eq!(root["hooks"].as_object().unwrap().len(), super::GEMINI_EVENTS.len());
+
+        super::json_hooks(&path, "gemini", super::GEMINI_EVENTS, 5000, true).unwrap();
+        let removed = std::fs::read_to_string(&path).unwrap();
+        let root = super::jsonc::parse_value(&removed).unwrap();
+        assert_eq!(root["hooks"].as_object().unwrap().len(), 1, "only the user's event is left: {removed}");
+        assert_eq!(root["hooks"]["AfterAgent"].as_array().unwrap().len(), 1);
+        assert!(removed.contains("// pick a theme") && removed.contains("\"auth\""));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

@@ -9,10 +9,10 @@
 //!   (qwen-code `docs/users/features/mcp.md`, gemini-cli `docs/tools/mcp-server.md`).
 
 use super::integrations::regular_target;
-use anyhow::{Context, Result, anyhow};
-use jsonc_parser::ParseOptions;
-use jsonc_parser::cst::{CstInputValue, CstObject, CstObjectProp, CstRootNode};
-use serde_json::{Value, json};
+use super::jsonc;
+use anyhow::{Context, Result};
+use jsonc_parser::cst::{CstInputValue, CstObjectProp};
+use serde_json::json;
 use std::path::{Path, PathBuf};
 
 const NAME: &str = env!("APP_COMMAND");
@@ -74,7 +74,7 @@ pub(crate) fn registered_command(agent: &McpAgent) -> Option<String> {
     let text = std::fs::read_to_string(&agent.config).ok()?;
     match agent.format {
         Format::CodexToml => toml::from_str::<toml::Value>(&text).ok()?.get("mcp_servers")?.get(NAME)?.get("command")?.as_str().map(String::from),
-        Format::McpServersJson => parse_jsonc(&text)?.get("mcpServers")?.get(NAME)?.get("command")?.as_str().map(String::from),
+        Format::McpServersJson => jsonc::parse_value(&text)?.get("mcpServers")?.get(NAME)?.get("command")?.as_str().map(String::from),
     }
 }
 
@@ -136,48 +136,10 @@ fn codex_at(path: &Path, exe: &str, uninstall: bool) -> Result<McpChange> {
     Ok(if uninstall { McpChange::Removed } else { McpChange::Registered })
 }
 
-/// Qwen Code and Gemini CLI strip comments before parsing settings.json (strip-json-comments),
-/// and Qwen a byte-order mark; trailing commas they reject, so they're rejected here too.
-fn jsonc_options() -> ParseOptions {
-    ParseOptions {
-        allow_comments: true,
-        allow_loose_object_property_names: false,
-        allow_trailing_commas: false,
-        allow_missing_commas: false,
-        allow_single_quoted_strings: false,
-        allow_hexadecimal_numbers: false,
-        allow_unary_plus_numbers: false,
-    }
-}
-
-fn split_bom(text: &str) -> (&str, &str) {
-    match text.strip_prefix('\u{feff}') {
-        Some(body) => ("\u{feff}", body),
-        None => ("", text),
-    }
-}
-
-fn parse_jsonc(text: &str) -> Option<Value> {
-    CstRootNode::parse(split_bom(text).1, &jsonc_options()).ok()?.to_serde_value()
-}
-
-fn set_prop(object: &CstObject, key: &str, value: CstInputValue) {
-    match object.get(key) {
-        Some(prop) => prop.set_value(value),
-        None => {
-            object.append(key, value);
-        }
-    }
-}
-
-/// Edits the file's syntax tree rather than re-serialising it, so comments and layout stay.
 fn json_at(path: &Path, exe: &str, uninstall: bool) -> Result<McpChange> {
     regular_target(path)?;
-    let text = read_or_empty(path)?;
-    let (bom, body) = split_bom(&text);
-    let body = if body.trim().is_empty() { "{}\n" } else { body };
-    let root = CstRootNode::parse(body, &jsonc_options()).map_err(|e| anyhow!("{} isn't valid JSON ({e}); preserved", path.display()))?;
-    let settings = root.value().and_then(|v| v.as_object()).with_context(|| format!("{} must hold a JSON object; preserved", path.display()))?;
+    let doc = jsonc::Doc::parse(&read_or_empty(path)?).with_context(|| format!("{} isn't valid JSON; preserved", path.display()))?;
+    let settings = doc.object().with_context(|| format!("{} must hold a JSON object; preserved", path.display()))?;
     let servers = match settings.get("mcpServers") {
         Some(prop) => Some(prop.object_value().with_context(|| format!("mcpServers in {} must be an object; preserved", path.display()))?),
         None => None,
@@ -201,8 +163,8 @@ fn json_at(path: &Path, exe: &str, uninstall: bool) -> Result<McpChange> {
         // Only command and args are ours; trust, timeout and the rest the user added stay.
         match entry.as_ref().and_then(CstObjectProp::object_value) {
             Some(object) => {
-                set_prop(&object, "command", exe.into());
-                set_prop(&object, "args", args());
+                jsonc::set_prop(&object, "command", exe.into());
+                jsonc::set_prop(&object, "args", args());
             }
             None => {
                 entry.into_iter().for_each(CstObjectProp::remove);
@@ -210,13 +172,14 @@ fn json_at(path: &Path, exe: &str, uninstall: bool) -> Result<McpChange> {
             }
         }
     }
-    back_up_and_write(path, "json", format!("{bom}{root}"))?;
+    back_up_and_write(path, "json", doc.text())?;
     Ok(if uninstall { McpChange::Removed } else { McpChange::Registered })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
     const EXE: &str = concat!(r"C:\Program Files\", env!("APP_NAME"), r"\", env!("APP_COMMAND"), ".exe");
 
