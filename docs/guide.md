@@ -402,7 +402,8 @@ Copies go to the system clipboard and, through OSC 52, to your outer terminal (w
 Maitty detects common command-line agents automatically and combines process,
 terminal-screen and native lifecycle evidence where available. Status means:
 
-1. **Native hooks** report lifecycle events. `maitty integrate claude` adds hooks to `~/.claude/settings.json`.
+1. **Native hooks** report lifecycle events. The installer and `maitty update` run `maitty integrate`, which
+   connects every installed agent at once (`MAITTY_NO_INTEGRATE=1` skips it). `maitty integrate claude` adds hooks to `~/.claude/settings.json`.
    They stay inert outside maitty panes and are tagged so a re-run or `--uninstall` replaces them cleanly.
    Any tool can report its own state with `maitty hook <name> --status working|blocked|done|idle`.
    `maitty integrate gemini` and `maitty integrate qwen` do the same for Gemini CLI and Qwen Code;

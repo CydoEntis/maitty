@@ -1,6 +1,6 @@
 # Connect agents (status setup)
 
-Maitty works out whether an agent is working, needs you or is done by watching its process and screen. **Connect agents** installs a small hook or adapter into Claude Code, Codex, Gemini CLI, Qwen Code, OpenCode, Pi, OMP, Kilo, Kimi or Mastra Code so the agent reports that itself. These are exactly the agents `maitty integrate` sets up. It's a one-time step per machine.
+Maitty works out whether an agent is working, needs you or is done by watching its process and screen. **Connect agents** installs a small hook or adapter into Claude Code, Codex, Gemini CLI, Qwen Code, OpenCode, Pi, OMP, Kilo, Kimi or Mastra Code so the agent reports that itself. These are exactly the agents `maitty integrate` sets up. The installer (and every update) runs `maitty integrate` for you unless `MAITTY_NO_INTEGRATE=1` is set.
 
 Search commands (leader, then `Space`) for **Connect agents**, or open **Settings › Agents ›
 Connect agents…**, then click the agent.
@@ -18,6 +18,8 @@ after installation. In Pi, use `/reload` or restart it.
 The CLI equivalents, including removal, are:
 
 ```sh
+maitty integrate              # every installed agent, plus MCP
+maitty integrate --uninstall  # removes every one
 maitty integrate claude
 maitty integrate codex
 maitty integrate gemini
@@ -32,6 +34,11 @@ maitty integrate pi --uninstall
 maitty integrate codex --uninstall
 maitty integrate opencode --uninstall
 ```
+
+With no agent named, `maitty integrate` connects each agent that is on PATH or whose config
+folder exists, skips the rest without creating anything, then registers MCP. It prints one line
+per agent (connected, already connected, skipped: not installed, failed: reason), tries every
+agent before failing, and changes nothing on a second run.
 
 Codex installs `SessionStart`, `SubagentStart` and `SubagentStop` hooks in
 `$CODEX_HOME/config.toml` (or `~/.codex/config.toml`). SessionStart records the

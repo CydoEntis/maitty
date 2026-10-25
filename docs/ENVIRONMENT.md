@@ -87,6 +87,7 @@ it reads:
 | `MAITTY_SSH`, `MAITTY_REMOTE_CMD` | replace `ssh` / the remote `maitty` command | user |
 | `MAITTY_TERM_ID`, `MAITTY_PANE_TOKEN` | the pane's id and secret, set inside every pane | daemon |
 | `MAITTY_SHOW` | tests print rendered frames | developer |
+| `MAITTY_NO_INTEGRATE` | `1`: the installers and `maitty update` leave agents' config alone instead of running `maitty integrate` | user |
 | `PI_CODING_AGENT_DIR` | Pi/OMP native agent configuration directory; do not share between the two apps | user / agent app |
 | `PI_CONFIG_DIR` | OMP config folder below the user's home, default `.omp` | user / OMP |
 | `KIMI_CODE_HOME` | Kimi config directory, default `~/.kimi-code` | user / Kimi |

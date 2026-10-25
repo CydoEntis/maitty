@@ -237,5 +237,13 @@ or answer text. Setup rejects non-regular owned-file targets and preserves
 unowned extensions/hooks. OpenCode's JSONC editor uses pinned jsonc-parser 0.33.1
 to retain native comments/settings, with invalid-config preflight tests.
 
+The installers (`install.sh`, `install.ps1`) and `maitty update` run `maitty integrate`, which
+edits the config of every agent installed on the machine: Claude Code's `settings.json` and
+`~/.claude.json` (through `claude mcp add`), Codex's `config.toml`, Gemini CLI's and Qwen Code's
+`settings.json`, Kimi's `config.toml`, Mastra Code's `hooks.json`, and adapter files for OpenCode,
+Pi, OMP and Kilo. Only Maitty's own entries change; a changed config file is first copied to
+`<file>.maitty-bak` (once). Agents that aren't installed get no folder or file. A failure
+warns and leaves the install in place. `MAITTY_NO_INTEGRATE=1` skips the step.
+
 `cargo audit` (install with `cargo install cargo-audit`) before releases; GitHub
 push protection for secrets. Not yet in CI (there is no CI yet).
