@@ -159,6 +159,8 @@ pub struct FilesTree {
     pub dragging: bool,
     /// The last press in the preview, to tell a double-click.
     pub last_press: Option<(Pos, std::time::Instant)>,
+    /// Text selected in the file shown (not edited): where it started, and where it runs to.
+    pub pick: Option<(Pos, Pos)>,
 }
 
 /// Markdown drawn for the preview, and what it was drawn for.
@@ -534,6 +536,7 @@ impl FilesTree {
             drawn_cache: None,
             dragging: false,
             last_press: None,
+            pick: None,
         }
     }
 
@@ -596,6 +599,7 @@ impl FilesTree {
         let Some((path, _)) = self.preview.as_ref().filter(|_| self.markdown()) else { return };
         self.raw = if self.raw.as_ref() == Some(path) { None } else { Some(path.clone()) };
         self.drawn_cache = None;
+        self.pick = None;
     }
 
     /// The previewed file is markdown and drawn, not shown raw.
@@ -615,6 +619,8 @@ impl FilesTree {
             return;
         }
         let lines = super::markdown::render(&lines.join("\n"), width, t);
+        // Drawn again, the lines are new: a selection in the old ones means nothing now.
+        self.pick = None;
         self.drawn_cache = Some(DrawnCache { path: path.clone(), width, theme: theme.to_string(), lines });
     }
 
@@ -626,11 +632,35 @@ impl FilesTree {
 
     /// Scroll so the editor's cursor is on screen, `page` lines tall.
     pub fn follow_cursor(&mut self, page: usize) {
-        let Some(row) = self.edit.as_ref().map(|ed| ed.row) else { return };
-        if row < self.scroll {
-            self.scroll = row;
-        } else if row >= self.scroll + page {
-            self.scroll = row + 1 - page;
+        if let Some(row) = self.edit.as_ref().map(|ed| ed.row) {
+            self.show_line(row, page);
+        }
+    }
+
+    /// Scroll so `line` is on screen, `page` lines tall.
+    pub fn show_line(&mut self, line: usize, page: usize) {
+        if line < self.scroll {
+            self.scroll = line;
+        } else if line >= self.scroll + page {
+            self.scroll = line + 1 - page;
+        }
+    }
+
+    /// The text selected in the file shown, its lines joined by line breaks.
+    pub fn picked_text(&self) -> Option<String> {
+        let ((r0, c0), (r1, c1)) = self.pick.and_then(|(a, b)| ordered(a, b))?;
+        let lines: Vec<String> = (r0..=r1).map(|i| self.shown_text(i).unwrap_or_default()).collect();
+        Some(text_between(&lines, ((0, c0), (r1 - r0, c1))))
+    }
+
+    /// How many lines the preview has: the edit's, the drawn markdown's, or the file's.
+    pub fn shown_count(&self) -> usize {
+        if let Some(ed) = &self.edit {
+            return ed.lines.len();
+        }
+        match self.pretty() {
+            Some(drawn) => drawn.len(),
+            None => self.preview.as_ref().map_or(0, |(_, l)| l.len()),
         }
     }
 
@@ -661,14 +691,10 @@ impl FilesTree {
 
     /// How many lines the preview shows at `width`: the edit, the drawn markdown, or the text.
     pub(super) fn shown_lines(&mut self, width: u16, t: &Theme, theme: &str) -> usize {
-        if let Some(ed) = &self.edit {
-            return ed.lines.len();
+        if self.edit.is_none() {
+            self.lay_out(width, t, theme);
         }
-        self.lay_out(width, t, theme);
-        match self.pretty() {
-            Some(drawn) => drawn.len(),
-            None => self.preview.as_ref().map_or(0, |(_, l)| l.len()),
-        }
+        self.shown_count()
     }
 
     pub fn refresh_preview(&mut self) {
@@ -676,6 +702,9 @@ impl FilesTree {
             self.preview = None;
             return;
         };
+        if self.preview.as_ref().is_none_or(|(p, _)| *p != n.path) {
+            self.pick = None;
+        }
         if n.is_dir {
             let kids = self.all.iter().filter(|c| c.path.parent() == Some(n.path.as_path())).count();
             self.preview = Some((n.path.clone(), vec![format!("folder · {kids} items")]));

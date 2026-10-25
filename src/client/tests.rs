@@ -9038,6 +9038,47 @@ mod files_panel_tests {
         assert!(files(&app).edit.is_some(), "still editing");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn dragging_over_the_shown_file_selects_it_and_ctrl_c_copies_it() {
+        let dir = project("readsel");
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        let (_, buf) = frame(&mut app, 160, 45);
+        let (from, to) = (at(&app, &buf, "line_1"), at(&app, &buf, "= 2;"));
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), from);
+        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), to);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), to);
+        let (o, buf) = frame(&mut app, 160, 45);
+        show(&o);
+        let selected = render::select_style(&app.theme).bg.expect("a ground");
+        assert_eq!(cell_of(&app, &buf, "line_1").bg, selected, "drawn in the selection colour");
+        assert_ne!(cell_of(&app, &buf, "= 2;").bg, selected, "it ends where the drag let go");
+        press(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_eq!(last_copy().as_deref(), Some("line_1 = 1;\nlet line_2 "), "Ctrl+C copies the selection");
+        assert!(out.try_recv().is_err(), "Ctrl+C reached no pane");
+        key(&mut app, KeyCode::Char('y'));
+        assert_eq!(last_copy(), Some(dir.join("src").join("main.rs").display().to_string()), "y still copies the path");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_double_click_on_drawn_markdown_takes_a_word() {
+        let (dir, mut app) = guide_open("mdword");
+        let (_, buf) = frame(&mut app, 200, 50);
+        let word = at(&app, &buf, "para 7");
+        for _ in 0..2 {
+            mouse(&mut app, MouseEventKind::Down(MouseButton::Left), word);
+            mouse(&mut app, MouseEventKind::Up(MouseButton::Left), word);
+        }
+        press(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_eq!(last_copy().as_deref(), Some("para"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 

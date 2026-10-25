@@ -592,6 +592,16 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
                         }
                     }
                 }
+                if let Some(sel) = v.pick.and_then(|(a, b)| super::views::ordered(a, b)) {
+                    let from = v.scroll.max(sel.0.0);
+                    for k in from..(sel.1.0 + 1).min(v.scroll + prect.height as usize) {
+                        let text = v.shown_text(k).unwrap_or_default();
+                        if let Some(span) = super::views::line_span(sel, k, text.chars().count()) {
+                            let at = (px + v.gutter(), prect.y + (k - v.scroll) as u16);
+                            paint_selection(buf, at, prect.right(), &text, span, super::render::select_style(t));
+                        }
+                    }
+                }
                 if let Some(at) = at {
                     put(buf, at_x, body.y + 1, &[seg(at, Style::default().fg(t.muted))], body.right());
                 }

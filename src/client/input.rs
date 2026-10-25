@@ -915,8 +915,9 @@ impl App {
         }
     }
 
-    /// Press, drag and release in Files' preview select the editor's text: a click moves the
-    /// cursor (Shift+click extends), a double-click takes a word. True when it took the event.
+    /// Press, drag and release in Files' preview select text, the editor's or the file's: in
+    /// the editor a click moves the cursor (Shift+click extends); a double-click takes a word.
+    /// True when it took the event.
     fn on_preview_mouse(&mut self, m: &MouseEvent, pos: Position) -> bool {
         let area = self.screen.preview_rect;
         if !matches!(self.mode, Mode::Normal) {
@@ -928,10 +929,19 @@ impl App {
                 let at = v.text_at(area, pos.x, pos.y);
                 let double = v.last_press.is_some_and(|(p, when)| p == at && when.elapsed() < DOUBLE_CLICK);
                 v.last_press = (!double).then(|| (at, Instant::now()));
-                let Some(ed) = v.edit.as_mut() else { return false };
-                ed.move_to(at, m.modifiers.contains(KeyModifiers::SHIFT));
-                if double {
-                    ed.select_word();
+                let word = |text: Option<String>| {
+                    let (from, to) = views::word_at(&text.unwrap_or_default(), at.1);
+                    ((at.0, from), (at.0, to))
+                };
+                match v.edit.as_mut() {
+                    Some(ed) => {
+                        ed.move_to(at, m.modifiers.contains(KeyModifiers::SHIFT));
+                        if double {
+                            ed.select_word();
+                        }
+                    }
+                    None if double => v.pick = Some(word(v.shown_text(at.0))),
+                    None => v.pick = Some((at, at)),
                 }
                 v.dragging = true;
                 true
@@ -945,11 +955,12 @@ impl App {
                 } else if pos.y >= area.bottom() {
                     line += 1;
                 }
-                let at = (line, col);
-                if let Some(ed) = v.edit.as_mut() {
-                    ed.move_to(at, true);
+                let at = (line.min(v.shown_count().saturating_sub(1)), col);
+                match v.edit.as_mut() {
+                    Some(ed) => ed.move_to(at, true),
+                    None => v.pick = v.pick.map(|(from, _)| (from, at)),
                 }
-                v.follow_cursor(area.height as usize);
+                v.show_line(at.0, area.height as usize);
                 true
             }
             MouseEventKind::Up(MouseButton::Left) if v.dragging => {

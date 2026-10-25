@@ -232,6 +232,16 @@ impl App {
             v.refresh_preview();
             return true;
         }
+        if ctrl && k.code == KeyCode::Char('c') {
+            match v.picked_text() {
+                Some(text) => {
+                    copy::to_clipboard(&text);
+                    self.notify(copied_note("copied", &text), false);
+                }
+                None => self.notify("drag over the file to select text; y copies its path".into(), false),
+            }
+            return true;
+        }
         let node = v.selected();
         let lines = v.shown_lines(self.screen.preview_rect.width, &self.theme, &self.cfg.theme);
         // In the preview: the arrows read the file; ← (or Esc) goes back to the tree.
