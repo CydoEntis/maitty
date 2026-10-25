@@ -204,9 +204,10 @@ fn every_pane_of_a_split_shows_its_number_in_reading_order_in_every_look() {
                 assert!(!title.contains("1 ·") && !title.trim_start().starts_with("1 "), "{label}: a lone pane has no number: {title}");
                 continue;
             }
-            // A narrow chip cuts the name before the number: `2 · warm-f…`, at the least `2…`.
-            let want = if label.starts_with("hairline") { vec![format!("  {} ", n + 1)] } else { vec![format!(" {} · ", n + 1), format!(" {}… ", n + 1)] };
+            // A narrow chip cuts the name before the number: `2 · warm-f…`, at the least a bare `2`.
+            let want = if label.starts_with("hairline") { vec![format!("  {} ", n + 1)] } else { vec![format!(" {} · ", n + 1), format!(" {} ─", n + 1), format!(" {}  ", n + 1)] };
             assert!(want.iter().any(|w| title.contains(w)), "{label}: pane {term} reads {want:?}: {title}\n{}", text(&buf));
+            assert!(!title.contains(&format!(" {}…", n + 1)), "{label}: a name cut away leaves the bare number: {title}");
         }
     }
 }

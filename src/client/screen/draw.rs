@@ -650,17 +650,13 @@ pub(in crate::client) fn numbered(app: &App, term: TermId, name: &str) -> String
 }
 
 /// `label` cut to `room` columns. A numbered name keeps its number: the name is cut first
-/// (`2 · warm-f…`), then the ` · ` (`2…`), leaving the number alone.
+/// (`2 · warm-f…`), then the ` · `, leaving the bare number (`2`).
 fn cut_label(label: &str, room: usize) -> String {
     let Some((number, name)) = label.split_once(NUMBER_SEP).filter(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())) else {
         return truncate(label, room);
     };
     let front = number.width() + NUMBER_SEP.width();
-    match room {
-        r if r >= front + 2 => format!("{number}{NUMBER_SEP}{}", truncate(name, r - front)),
-        r if r > number.width() => format!("{number}…"),
-        r => truncate(number, r),
-    }
+    if room >= front + 2 { format!("{number}{NUMBER_SEP}{}", truncate(name, room - front)) } else { truncate(number, room) }
 }
 
 /// A Grid pane's colour, by its place; they repeat from the fifth.
