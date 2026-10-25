@@ -213,6 +213,9 @@ color where ANSI 8 is missing or sits on the background (contrast under 1.5).
   gray slot.
 - Falcon's blue `#635196` barely shows on the open row, so its accent is the
   theme's signature orange `#ff761a`.
+- Horizon's accent is its brand pink `#e95378` (its `tab.activeBorder` and
+  badge colour), not its blue; it sits near its ANSI red, so needs-you is kept
+  apart by the usual distinct-amber rule.
 - Oxocarbon's own terminal slots are not in ANSI order and it has no yellow;
   its slots are matched by meaning, with purple `#be95ff` (its warning color)
   as yellow. Its greys are computed at load time and were reproduced from its
