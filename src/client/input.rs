@@ -220,6 +220,12 @@ impl App {
         if k.code == KeyCode::Esc && !matches!(self.mode, Mode::Copy(_)) {
             self.dismiss_notice();
         }
+        // Esc while a pane is dragged by its title: it stays where it was.
+        if k.code == KeyCode::Esc && matches!(self.screen.drag, Some(screen::Drag::Pane { .. })) {
+            self.screen.drag = None;
+            self.dirty = true;
+            return;
+        }
         if self.splash {
             self.on_hy_splash_key(&k);
             return;
@@ -659,6 +665,9 @@ impl App {
                                 self.screen.drag = Some(screen::Drag::Tab(now));
                             }
                         }
+                        screen::Drag::Pane { from, .. } => {
+                            self.screen.drag = Some(screen::Drag::Pane { from, over: self.swap_target(from, pos), at: pos });
+                        }
                         screen::Drag::Divider(i) => {
                             if let Some((r, horizontal, path)) = self.screen.dividers.get(i).cloned() {
                                 // The line sits in the gap after the left card (as wide as the
@@ -680,6 +689,16 @@ impl App {
                     return;
                 }
                 MouseEventKind::Up(_) => {
+                    // A pane let go on another of its tab: they trade places. Anywhere else
+                    // (itself, the sidebar, outside the panes) nothing moves.
+                    if let screen::Drag::Pane { from, .. } = d {
+                        self.screen.drag = None;
+                        if let Some(to) = self.swap_target(from, pos) {
+                            self.swap_panes(from, to);
+                        }
+                        self.dirty = true;
+                        return;
+                    }
                     // A session pressed and let go where it was: open it, or its Changes when
                     // the press was on its `+N −N`.
                     if let screen::Drag::Session(_, false, press) = d {
@@ -817,6 +836,10 @@ impl App {
                 if let Some((term, _, _)) = self.pane_cell(pos) {
                     self.drag = Some((term, pos));
                 }
+                // A pane's title (where its own controls aren't): it may be dragged onto another.
+                if let Some(from) = self.title_of_shared_pane(pos) {
+                    self.screen.drag = Some(screen::Drag::Pane { from, over: None, at: pos });
+                }
                 let hit = self.hits.iter().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
                 match hit {
                     Some(Hit::Pane(term)) => self.cmd(Command::FocusPane { term }),
@@ -900,6 +923,19 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    /// The pane whose title row is at `pos`, when its tab shows it beside others.
+    fn title_of_shared_pane(&self, pos: Position) -> Option<TermId> {
+        let (term, r) = self.pane_frames.iter().find(|(_, r)| r.contains(pos))?;
+        let shared = self.screen.leaf_rects.len() > 1 && self.screen.leaf_rects.iter().any(|(id, _)| id == term);
+        (pos.y == r.y && shared).then_some(*term)
+    }
+
+    /// The pane of the tab on screen under `pos` that `from` would trade places with.
+    fn swap_target(&self, from: TermId, pos: Position) -> Option<TermId> {
+        let (to, _) = self.pane_frames.iter().find(|(_, r)| r.contains(pos))?;
+        (*to != from && self.screen.leaf_rects.iter().any(|(id, _)| id == to)).then_some(*to)
     }
 
     /// Put session `t` where `u` is, within their group (the order you dragged them to).

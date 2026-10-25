@@ -10701,7 +10701,9 @@ mod pane_swap_tests {
     use crate::layout::{Dir, Node};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
+    use ratatui::layout::{Position, Rect};
 
+    const LAYOUTS: [&str; 5] = ["floating", "tiled", "compact", "grid", "hairline"];
     /// Wide enough that Compact splits too.
     const W: u16 = 200;
     const H: u16 = 45;
@@ -10734,6 +10736,31 @@ mod pane_swap_tests {
         (0..H).map(|y| (0..W).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>() + "\n").collect()
     }
 
+    fn mouse(app: &mut App, kind: MouseEventKind, at: Position) {
+        app.on_mouse(MouseEvent { kind, column: at.x, row: at.y, modifiers: KeyModifiers::NONE });
+    }
+
+    fn frame_of(app: &App, term: TermId) -> Rect {
+        app.pane_frames.iter().find(|(id, _)| *id == term).map(|(_, r)| *r).expect("the pane is drawn")
+    }
+
+    /// A cell of `term`'s title row that none of its title's controls take, nearest the middle.
+    fn title_spot(app: &App, term: TermId) -> Position {
+        let r = frame_of(app, term);
+        let free = |x: u16| {
+            let at = Position::new(x, r.y);
+            matches!(app.hits.iter().rev().find(|(h, _)| h.contains(at)).map(|(_, h)| *h), None | Some(Hit::Pane(_)))
+        };
+        let mid = r.x + r.width / 2;
+        let x = (r.x..r.right()).filter(|x| free(*x)).min_by_key(|x| x.abs_diff(mid)).expect("blank title space");
+        Position::new(x, r.y)
+    }
+
+    fn middle(app: &App, term: TermId) -> Position {
+        let r = frame_of(app, term);
+        Position::new(r.x + r.width / 2, r.y + r.height / 2)
+    }
+
     fn swaps_sent(rx: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Vec<(TermId, TermId)> {
         std::iter::from_fn(|| rx.try_recv().ok())
             .filter_map(|m| match m {
@@ -10745,6 +10772,74 @@ mod pane_swap_tests {
 
     fn shown(app: &App) -> Vec<TermId> {
         app.screen.tabs[app.screen.tab].layout.leaves()
+    }
+
+    #[test]
+    fn dragging_a_title_onto_another_pane_swaps_them_in_every_layout() {
+        for layout in LAYOUTS {
+            let (mut app, mut rx) = side_by_side(layout);
+            assert_eq!(shown(&app), [1, 2], "{layout}");
+            let (from, onto) = (title_spot(&app, 1), middle(&app, 2));
+            mouse(&mut app, MouseEventKind::Down(MouseButton::Left), from);
+            mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), onto);
+            let screen = draw(&mut app);
+            if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
+                println!("{layout}\n{screen}");
+            }
+            assert!(screen.contains("swap here"), "{layout}: the drop target shows\n{screen}");
+            mouse(&mut app, MouseEventKind::Up(MouseButton::Left), onto);
+            assert_eq!(shown(&app), [2, 1], "{layout}: they traded places");
+            assert_eq!(swaps_sent(&mut rx), [(1, 2)], "{layout}: the server's tab follows");
+            assert!(app.screen.drag.is_none(), "{layout}");
+        }
+    }
+
+    #[test]
+    fn a_title_drag_let_go_on_itself_outside_the_panes_or_after_esc_moves_nothing() {
+        let (mut app, mut rx) = side_by_side("floating");
+        let (from, own, other, sidebar) = (title_spot(&app, 1), middle(&app, 1), middle(&app, 2), Position::new(1, 5));
+        let ends: [&dyn Fn(&mut App); 4] = [
+            &|app| mouse(app, MouseEventKind::Up(MouseButton::Left), own),
+            &|app| mouse(app, MouseEventKind::Up(MouseButton::Left), sidebar),
+            &|app| mouse(app, MouseEventKind::Moved, other),
+            &|app| {
+                app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                mouse(app, MouseEventKind::Up(MouseButton::Left), other);
+            },
+        ];
+        for end in ends {
+            mouse(&mut app, MouseEventKind::Down(MouseButton::Left), from);
+            mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), other);
+            end(&mut app);
+            assert!(app.screen.drag.is_none());
+            assert_eq!(shown(&app), [1, 2]);
+        }
+        assert!(swaps_sent(&mut rx).is_empty());
+    }
+
+    #[test]
+    fn a_press_on_a_title_still_focuses_its_pane() {
+        let (mut app, mut rx) = side_by_side("tiled");
+        let at = title_spot(&app, 2);
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), at);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), at);
+        let sent: Vec<ClientMsg> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 }))), "{sent:?}");
+        assert!(!sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::SwapPanes { .. }))));
+    }
+
+    #[test]
+    fn the_close_button_on_a_title_is_not_a_drag_handle() {
+        let mut tried = 0;
+        for layout in LAYOUTS {
+            let (mut app, _rx) = side_by_side(layout);
+            // Compact titles have no ✕.
+            let Some(close) = app.hits.iter().rev().find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::CloseSplit(2))).map(|(r, _)| *r) else { continue };
+            mouse(&mut app, MouseEventKind::Down(MouseButton::Left), close.as_position());
+            assert!(!matches!(app.screen.drag, Some(screen::Drag::Pane { .. })), "{layout}");
+            tried += 1;
+        }
+        assert!(tried >= 3, "the layouts with a ✕ were tried");
     }
 
     #[test]

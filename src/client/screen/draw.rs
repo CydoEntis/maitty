@@ -323,6 +323,41 @@ pub(in crate::client) fn draw_main(app: &mut App, f: &mut Frame, area: Rect, mod
         hit(app, grab, ScreenHit::Divider(i));
         app.screen.dividers.push((sa, horizontal, path));
     }
+    draw_pane_drag(app, f.buffer_mut(), model, t);
+}
+
+/// A pane dragged by its title: the pane it would swap with gets lit lines and a "swap here"
+/// pill, and the dragged pane's name follows the pointer.
+fn draw_pane_drag(app: &App, buf: &mut Buffer, model: &[Proj], t: &Theme) {
+    let Some(Drag::Pane { from, over, at }) = app.screen.drag else { return };
+    let look = Look::of(&app.cfg.ui);
+    if let Some((_, r)) = over.and_then(|o| app.pane_frames.iter().find(|(id, _)| *id == o)) {
+        light_lines(buf, *r, look.hairline, t.accent);
+        let pill = pill(look, vec![seg("⇄ swap here", Style::default().fg(t.acc_ink).add_modifier(Modifier::BOLD))], t.accent, t.bg);
+        let w = segs_width(&pill);
+        // Clear of the dragged name, which sits on the pointer's row.
+        let y = r.y + r.height / 2;
+        let y = if y == at.y { y + 2 } else { y };
+        put(buf, r.x + r.width.saturating_sub(w) / 2, y.min(r.bottom().saturating_sub(2)), &pill, r.right());
+    }
+    let ghost = pill(look, vec![seg(format!("⇄ {}", session_name(app, model, from)), Style::default().fg(t.strong).add_modifier(Modifier::BOLD))], t.btn, t.bg);
+    put(buf, at.x.saturating_add(1), at.y, &ghost, buf.area.right());
+}
+
+/// Light the frame lines of the pane at `r` (its border, or Hairline's rule under the title).
+fn light_lines(buf: &mut Buffer, r: Rect, hairline: bool, colour: Color) {
+    let r = r.intersection(buf.area);
+    let edge = |x: u16, y: u16| y == r.y || (hairline && y == r.y + 1) || y + 1 == r.bottom() || x == r.x || x + 1 == r.right();
+    for y in r.top()..r.bottom() {
+        for x in r.left()..r.right() {
+            if let Some(px) = buf.cell_mut((x, y))
+                && edge(x, y)
+                && px.symbol().chars().next().is_some_and(|c| ('\u{2500}'..='\u{257F}').contains(&c))
+            {
+                px.set_fg(colour);
+            }
+        }
+    }
 }
 
 /// The name you gave a tab, if any. "tab 2" (what an earlier version named new tabs) isn't

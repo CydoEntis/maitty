@@ -244,6 +244,9 @@ pub(super) enum Drag {
     Session(TermId, bool, ScreenHit),
     /// A tab's pill (its index now): dragged onto another tab it takes that place.
     Tab(usize),
+    /// A pane pressed by its title: the pane it would swap with if let go now, and where the
+    /// pointer is (its name follows it).
+    Pane { from: TermId, over: Option<TermId>, at: Position },
 }
 
 /// The sidebar's width limits.
