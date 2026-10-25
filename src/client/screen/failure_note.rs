@@ -182,6 +182,17 @@ mod tests {
     }
 
     #[test]
+    fn an_error_for_the_output_stops_waiting_for_it() {
+        use crate::protocol::{Reply, ServerMsg};
+        let mut app = world(Stage::Failed);
+        inbox_on_failure(&mut app);
+        press(&mut app, KeyCode::Char('m'));
+        app.on_server(ServerMsg::Error("no check output for pane 1".into()));
+        app.on_server(ServerMsg::Reply(Reply::Text(sample_output())));
+        assert!(matches!(app.mode, Mode::GoTo { .. }), "a later reply is not taken for it: {:?}", app.mode);
+    }
+
+    #[test]
     fn m_in_the_inbox_uses_the_output_a_sheet_on_that_check_holds() {
         let mut app = world(Stage::Failed);
         app.open_check_sheet(FAILED);
