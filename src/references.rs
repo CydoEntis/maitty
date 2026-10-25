@@ -256,6 +256,12 @@ pub fn utc_stamp(secs: u64) -> String {
     format!("{y:04}-{m:02}-{d:02}-{:02}{:02}{:02}", s / 3600, s / 60 % 60, s % 60)
 }
 
+/// `2026-10-25T14:30:12Z`.
+pub fn utc_iso(secs: u64) -> String {
+    let (y, m, d) = civil_date(secs / 86_400);
+    let s = secs % 86_400;
+    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", s / 3600, s / 60 % 60, s % 60)
+}
 
 /// Days since 1970-01-01 as (year, month, day): Howard Hinnant's `civil_from_days`.
 fn civil_date(days: u64) -> (u64, u64, u64) {
@@ -428,6 +434,7 @@ mod tests {
     fn a_screenshot_is_named_by_its_time() {
         assert_eq!(utc_stamp(0), "1970-01-01-000000");
         assert_eq!(utc_stamp(1_793_017_812), "2026-10-26-123012");
+        assert_eq!(utc_iso(951_782_400), "2000-02-29T00:00:00Z", "a leap day");
         let dir = temp("shot");
         assert_eq!(screenshot_path(&dir, 0).file_name().unwrap(), "screenshot-1970-01-01-000000.png");
         let _ = std::fs::remove_dir_all(&dir);

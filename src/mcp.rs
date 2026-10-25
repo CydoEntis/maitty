@@ -117,6 +117,13 @@ fn tools() -> Value {
             }, "required": ["prompt"] }
         },
         {
+            "name": concat!(env!("APP_COMMAND"), "_references"),
+            "description": concat!("List the project's reference images and design files (screenshots, mockups, exports) the user keeps for UI and design work: each file's absolute path, kind, size and when it changed. Open the images it lists before building or changing a screen. The files sit in .", env!("APP_COMMAND"), "/references/ at the repo's main checkout and are plain files any agent can read."),
+            "inputSchema": { "type": "object", "properties": {
+                "path": { "type": "string", "description": "A folder in the project, if not the one you run in." }
+            } }
+        },
+        {
             "name": concat!(env!("APP_COMMAND"), "_interrupt"),
             "description": "Interrupt what a session is doing (Ctrl+C).",
             "inputSchema": { "type": "object", "properties": { "id": id }, "required": ["id"] }
@@ -209,6 +216,7 @@ impl Server {
             }),
             concat!(env!("APP_COMMAND"), "_answer") => self.answer(args),
             concat!(env!("APP_COMMAND"), "_start") => self.start(args),
+            concat!(env!("APP_COMMAND"), "_references") => self.references(args),
             concat!(env!("APP_COMMAND"), "_interrupt") => self.session(args).and_then(|t| cli::send(Some(t.id), "\x03".into(), false).map(|_| format!("interrupted {}", t.id)).map_err(|e| format!("{e:#}"))),
             other => Err(format!("no tool {other}")),
         };
@@ -318,6 +326,46 @@ impl Server {
         Ok(format!("answered {choice}{} on session {}", if label.is_empty() { String::new() } else { format!(" ({label})") }, t.id))
     }
 
+    /// The references of the caller's project, or of the project `path` is in (within scope).
+    fn references(&self, args: &Value) -> Result<String, String> {
+        let root = match args.get("path") {
+            None | Some(Value::Null) => self.root.clone(),
+            Some(Value::String(p)) => self.project_at(p)?,
+            Some(_) => return Err("path must be a string".into()),
+        };
+        let folder = crate::references::folder(&root);
+        let found = crate::references::of_project(&root)?;
+        if found.is_empty() {
+            return Ok(format!("No references in {} yet. The user adds them from the References view in {APP_COMMAND} (paste a screenshot or add a file).", folder.display()));
+        }
+        Ok(serde_json::to_string_pretty(&references_json(&folder, &found)).unwrap_or_default())
+    }
+
+    /// The project root of a folder an agent named: an existing folder, and the caller's own
+    /// project unless `[mcp] scope` is `all`.
+    fn project_at(&self, raw: &str) -> Result<PathBuf, String> {
+        if raw.trim().is_empty() || raw.contains('\0') {
+            return Err("give a folder path".into());
+        }
+        let p = PathBuf::from(raw.trim());
+        let p = if p.is_absolute() { p } else { std::env::current_dir().unwrap_or_default().join(p) };
+        let dir = p.canonicalize().map_err(|e| format!("no folder {raw}: {e}"))?;
+        if !dir.is_dir() {
+            return Err(format!("{raw} is not a folder"));
+        }
+        let mine = self.root.canonicalize().unwrap_or_else(|_| self.root.clone());
+        // A folder inside the caller's own project, git or not, is that project.
+        if dir.starts_with(&mine) {
+            return Ok(self.root.clone());
+        }
+        let root = crate::references::project_root(&dir);
+        let theirs = root.canonicalize().unwrap_or_else(|_| root.clone());
+        if self.cfg.mcp.scope != "all" && norm(&theirs) != norm(&mine) {
+            return Err(format!("{raw} is in another project; {APP_COMMAND} only lists references in {}", self.root.display()));
+        }
+        Ok(root)
+    }
+
     fn start(&self, args: &Value) -> Result<String, String> {
         let prompt = args.get("prompt").and_then(Value::as_str).filter(|p| !p.trim().is_empty()).ok_or("give the task")?;
         crate::hidden::check(prompt)?;
@@ -349,6 +397,14 @@ impl Server {
         }
         Ok(format!("asked {APP_COMMAND} to start {agent}; it hasn't appeared yet"))
     }
+}
+
+fn references_json(folder: &Path, found: &[crate::references::Reference]) -> Value {
+    let rows: Vec<Value> = found
+        .iter()
+        .map(|r| json!({ "path": r.path, "name": r.name, "kind": r.kind.label(), "bytes": r.size, "modified": crate::references::utc_iso(r.modified) }))
+        .collect();
+    json!({ "folder": folder, "references": rows })
 }
 
 /// The agent `<app>_start` runs and its command line: the named `agent`, or the user's first.
@@ -385,7 +441,7 @@ pub fn run() -> Result<()> {
                 "protocolVersion": params.get("protocolVersion").cloned().unwrap_or(json!("2025-06-18")),
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": env!("APP_COMMAND"), "version": env!("CARGO_PKG_VERSION") },
-                "instructions": concat!(env!("APP_COMMAND"), " runs your user's coding agents side by side. Use ", env!("APP_COMMAND"), "_list/read/send/start for helpers. Don't answer prompts unless the user allows it; when you do, pass ", env!("APP_COMMAND"), "_answer the prompt id ", env!("APP_COMMAND"), "_list gave you.")
+                "instructions": concat!(env!("APP_COMMAND"), " runs your user's coding agents side by side. Use ", env!("APP_COMMAND"), "_list/read/send/start for helpers. Before UI, front-end or design work, call ", env!("APP_COMMAND"), "_references and open the images it lists: they are the user's reference screenshots and designs for this project. Don't answer prompts unless the user allows it; when you do, pass ", env!("APP_COMMAND"), "_answer the prompt id ", env!("APP_COMMAND"), "_list gave you.")
             })),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": tools() })),
@@ -483,6 +539,69 @@ mod tests {
         assert!(row_of(&t, None).get("quiet_since").is_none(), "not quiet, no key");
         t.quiet_since = Some(1_000);
         assert_eq!(row_of(&t, None)["quiet_since"], 1_000);
+    }
+
+    /// Two plain folders side by side: `mine` (with one reference) and `other`.
+    fn two_projects(tag: &str) -> (PathBuf, PathBuf, PathBuf) {
+        let base = std::env::temp_dir().join(format!("{APP_COMMAND}-mcp-refs-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (mine, other) = (base.join("mine"), base.join("other"));
+        std::fs::create_dir_all(crate::references::folder(&mine)).unwrap();
+        std::fs::create_dir_all(crate::references::folder(&other)).unwrap();
+        std::fs::write(crate::references::folder(&mine).join("home.png"), "png").unwrap();
+        std::fs::write(crate::references::folder(&other).join("theirs.png"), "png").unwrap();
+        (base, mine, other)
+    }
+
+    fn refs_server(root: &Path, scope: &str) -> Server {
+        let mut cfg = crate::config::Config::default();
+        cfg.mcp.scope = scope.into();
+        Server { cfg, root: root.to_path_buf(), me: None }
+    }
+
+    #[test]
+    fn references_list_the_callers_project() {
+        let (base, mine, _) = two_projects("mine");
+        // Skip where the temp folder sits inside a repo: then both are one project.
+        if crate::gitfs::head(&mine).is_none() {
+            let out = refs_server(&mine, "project").references(&json!({})).unwrap();
+            let v: Value = serde_json::from_str(&out).unwrap();
+            let rows = v["references"].as_array().unwrap();
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0]["name"], "home.png");
+            assert_eq!(rows[0]["kind"], "image");
+            assert!(Path::new(rows[0]["path"].as_str().unwrap()).is_absolute(), "an absolute path to open");
+            let empty = refs_server(&base, "project").references(&json!({})).unwrap();
+            assert!(empty.starts_with("No references"), "{empty}");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn references_never_reach_another_project() {
+        let (base, mine, other) = two_projects("scope");
+        if crate::gitfs::head(&mine).is_none() {
+            let server = refs_server(&mine, "project");
+            let up = mine.join("..").join("other");
+            for path in [other.to_string_lossy().into_owned(), up.to_string_lossy().into_owned()] {
+                let err = server.references(&json!({ "path": path })).unwrap_err();
+                assert!(err.contains("another project"), "{err}");
+            }
+            assert!(server.references(&json!({ "path": 3 })).is_err(), "a path is a string");
+            assert!(server.references(&json!({ "path": "" })).is_err());
+            assert!(server.references(&json!({ "path": "a\0b" })).is_err());
+            let inside = server.references(&json!({ "path": crate::references::folder(&mine) })).unwrap();
+            assert!(inside.contains("home.png") && !inside.contains("theirs.png"), "{inside}");
+            let all = refs_server(&mine, "all").references(&json!({ "path": other })).unwrap();
+            assert!(all.contains("theirs.png"), "scope all reaches it: {all}");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn the_server_tells_agents_about_references() {
+        let tools = tools();
+        assert!(tools.as_array().unwrap().iter().any(|t| t["name"] == concat!(env!("APP_COMMAND"), "_references")));
     }
 
     fn command(cfg: &crate::config::Config, args: Value) -> Result<String, String> {
