@@ -505,7 +505,8 @@ impl Daemon {
             if turn_over && last_taken && t.pending_input.is_none()
                 && let Some(next) = t.queue.pop_front()
             {
-                t.pending_input = Some((format!("{}\r", next.replace(['\r', '\n'], " ")).into_bytes(), Instant::now()));
+                let typed = queued_as_typed(&next, t.parser.screen().bracketed_paste());
+                t.pending_input = Some((format!("{typed}\r").into_bytes(), Instant::now()));
                 t.queue_sent = Some(Instant::now());
                 self.dirty = true;
             }
@@ -756,6 +757,16 @@ impl Daemon {
 /// A working agent this long with no output and no hook report may be stuck. A live one
 /// redraws its timer every second, so ten silent minutes is far past any slow step.
 pub(super) const QUIET_AFTER: Duration = Duration::from_secs(10 * 60);
+
+/// A queued follow-up as it is typed: several lines go in as one bracketed paste (a newline
+/// typed bare would send the first line alone), else joined into one line.
+pub(super) fn queued_as_typed(text: &str, bracketed: bool) -> String {
+    if text.contains('\n') && bracketed {
+        format!("\x1b[200~{}\x1b[201~", text.replace("\r\n", "\n").replace('\n', "\r"))
+    } else {
+        text.replace(['\r', '\n'], " ")
+    }
+}
 
 /// When a working agent went silent, if it has been silent past `QUIET_AFTER`. Never while
 /// helpers it reported are running (it is waiting on them) or while it asks for helpers.
