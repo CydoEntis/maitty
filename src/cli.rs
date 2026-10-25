@@ -1769,10 +1769,7 @@ pub(super) fn install_codex_status(exe: &str, uninstall: bool) -> Result<PathBuf
 pub fn integrate(agent: &str, uninstall: bool) -> Result<()> {
     let exe = this_exe()?;
     match agent {
-        "mcp" => {
-            integrate_mcp(&exe, uninstall);
-            Ok(())
-        }
+        "mcp" => integrate_mcp(&exe, uninstall),
         agent => {
             let path = integrations::set_up_status(agent, &exe, uninstall)?;
             report_integration(agent, &path, uninstall);
@@ -1782,52 +1779,82 @@ pub fn integrate(agent: &str, uninstall: bool) -> Result<()> {
 }
 
 /// Registers (or removes) the MCP server with every agent on this machine that takes one, one
-/// line per agent.
-fn integrate_mcp(exe: &str, uninstall: bool) {
-    println!("Claude Code: {}", claude_mcp(exe, uninstall));
+/// line per agent. Fails, after trying every agent, when any of them couldn't be changed.
+fn integrate_mcp(exe: &str, uninstall: bool) -> Result<()> {
+    let mut failed = 0;
+    let mut report = |agent: &str, outcome: Result<String>| match outcome {
+        Ok(outcome) => println!("{agent}: {outcome}"),
+        Err(e) => {
+            failed += 1;
+            println!("{agent}: not changed: {e:#}");
+        }
+    };
+    report("Claude Code", claude_mcp(exe, uninstall));
     for agent in mcp_config::agents() {
-        let outcome = match mcp_config::set_up(&agent, exe, uninstall) {
-            Ok(McpChange::Registered) => format!("registered in {}", agent.config.display()),
-            Ok(McpChange::AlreadyRegistered) => "already registered".into(),
-            Ok(McpChange::Removed) => format!("removed from {}", agent.config.display()),
-            Ok(McpChange::NotRegistered) => "not registered".into(),
-            Ok(McpChange::NotInstalled) => "skipped (not installed)".into(),
-            Err(e) => format!("not changed: {e:#}"),
-        };
-        println!("{}: {outcome}", agent.name);
+        let outcome = mcp_config::set_up(&agent, exe, uninstall).map(|change| match change {
+            McpChange::Registered => format!("registered in {}", agent.config.display()),
+            McpChange::AlreadyRegistered => "already registered".into(),
+            McpChange::Removed => format!("removed from {}", agent.config.display()),
+            McpChange::NotRegistered => "not registered".into(),
+            McpChange::NotInstalled => "skipped (not installed)".into(),
+        });
+        report(agent.name, outcome);
+    }
+    if failed > 0 {
+        bail!("{failed} agent(s) not changed");
     }
     if !uninstall {
         println!("\nAgents can then list, read, message and start sessions; restart running ones to load it.");
         println!(concat!("Whether they may approve prompts is up to you: ", env!("APP_COMMAND"), " Settings → Agents (never, by default)."));
     }
+    Ok(())
+}
+
+/// Runs `claude <args>`: whether it succeeded, or `None` when Claude Code isn't installed.
+fn claude_cli(args: &[&str]) -> Result<Option<bool>> {
+    match run_claude(args) {
+        Ok(status) => Ok(Some(status.success())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e).context("run claude"),
+    }
 }
 
 /// Claude Code keeps its servers in `~/.claude.json`, which it rewrites itself, so its own CLI
 /// makes the change (user scope: every project).
-fn claude_mcp(exe: &str, uninstall: bool) -> String {
-    let root = std::fs::read_to_string(claude_json()).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).unwrap_or_default();
+fn claude_mcp(exe: &str, uninstall: bool) -> Result<String> {
+    const SKIPPED: &str = "skipped (not installed)";
+    let path = claude_json();
+    let root = match std::fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str::<Value>(&text).with_context(|| format!("{} isn't valid JSON", path.display()))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Value::Null,
+        Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
+    };
     let ours = root.get("mcpServers").and_then(|s| s.get(APP_COMMAND));
+    let current = ours.and_then(|e| e.get("command")).and_then(Value::as_str) == Some(exe);
     let mut remove = old_mcp_names(&root);
-    match (uninstall, ours) {
-        (true, None) => return "not registered".into(),
-        (false, Some(entry)) if entry.get("command").and_then(Value::as_str) == Some(exe) => return "already registered".into(),
-        (_, Some(_)) => remove.push(APP_COMMAND.into()),
-        (false, None) => {}
+    if ours.is_some() && (uninstall || !current) {
+        remove.push(APP_COMMAND.into());
+    }
+    if uninstall && ours.is_none() && remove.is_empty() {
+        return Ok("not registered".into());
     }
     for name in &remove {
-        match run_claude(&["mcp", "remove", "--scope", "user", name]) {
-            Ok(s) if s.success() => {}
-            Ok(_) => return format!("run  claude mcp remove --scope user {name}"),
-            Err(_) => return "skipped (not installed)".into(),
+        match claude_cli(&["mcp", "remove", "--scope", "user", name])? {
+            Some(true) => {}
+            Some(false) => println!("Claude Code: run  claude mcp remove --scope user {name}"),
+            None => return Ok(SKIPPED.into()),
         }
     }
     if uninstall {
-        return "removed".into();
+        return Ok("removed".into());
     }
-    match run_claude(&["mcp", "add", "--scope", "user", APP_COMMAND, "--", exe, "mcp"]) {
-        Ok(s) if s.success() => "registered (all projects)".into(),
-        Ok(_) => format!("run  claude mcp add --scope user {APP_COMMAND} -- \"{exe}\" mcp"),
-        Err(_) => "skipped (not installed)".into(),
+    if current {
+        return Ok("already registered".into());
+    }
+    match claude_cli(&["mcp", "add", "--scope", "user", APP_COMMAND, "--", exe, "mcp"])? {
+        Some(true) => Ok("registered (all projects)".into()),
+        Some(false) => bail!("`claude mcp add` failed; run  claude mcp add --scope user {APP_COMMAND} -- \"{exe}\" mcp"),
+        None => Ok(SKIPPED.into()),
     }
 }
 
