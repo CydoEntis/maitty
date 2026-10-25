@@ -5,6 +5,10 @@ catalog covers all 25 requested families with 42 palettes. Before this expansion
 Maitty already included Dracula, Gruvbox Dark, Nord, Tokyo Night Night, and
 Catppuccin Mocha/Latte. These are six palettes across five families.
 
+A second pass on 2026-10-25 added the families from Cyberdream on in the table,
+each at its creator's revision. Vividchalk (Vim license), Blackboard and Wombat
+(no license on the original or any creator-owned port) are left out.
+
 ## Coverage and primary sources
 
 Source links pin the researched revision. Preserve the existing `gruvbox` and
@@ -37,6 +41,17 @@ Source links pin the researched revision. Preserve the existing `gruvbox` and
 | Gotham | Added | Standard | [whatyouhide/vim-gotham](https://github.com/whatyouhide/vim-gotham/blob/7e7eff411fedada2b6cceb78059ed8a4a26d03ba/colors/gotham.vim) | [MIT](https://github.com/whatyouhide/vim-gotham/blob/7e7eff411fedada2b6cceb78059ed8a4a26d03ba/LICENSE.txt) |
 | Apprentice | Added | Standard | [romainl/Apprentice](https://github.com/romainl/Apprentice/blob/2a4557410fe6b5e3906c5290d42c4e4d8813b0d8/colortemplate/apprentice.colortemplate) | [MIT](https://github.com/romainl/Apprentice/blob/2a4557410fe6b5e3906c5290d42c4e4d8813b0d8/LICENSE) |
 | Zenbones | Added | Dark / Light, default contrast | [zenbones-theme/zenbones.nvim](https://github.com/zenbones-theme/zenbones.nvim/tree/8304d8df9b823ff11e103afa62f38c39f534abe6/extras/alacritty) | [MIT](https://github.com/zenbones-theme/zenbones.nvim/blob/8304d8df9b823ff11e103afa62f38c39f534abe6/LICENSE) |
+| Cyberdream | Added | Default / Light / Muted | [scottmckendry/cyberdream.nvim](https://github.com/scottmckendry/cyberdream.nvim/blob/81b3e39ceb87db2987255123af3212beeb75bf6d/lua/cyberdream/colors.lua) | [MIT](https://github.com/scottmckendry/cyberdream.nvim/blob/81b3e39ceb87db2987255123af3212beeb75bf6d/LICENSE) |
+| Solarized Osaka | Added | Dark / Light | [craftzdog/solarized-osaka.nvim](https://github.com/craftzdog/solarized-osaka.nvim/blob/a21176efde15fab21fabda0bf2ba123ed6d7332d/extras/alacritty/solarized_osaka_dark.toml) | [Apache-2.0](https://github.com/craftzdog/solarized-osaka.nvim/blob/a21176efde15fab21fabda0bf2ba123ed6d7332d/LICENSE) |
+| Melange | Added | Dark / Light | [savq/melange-nvim](https://github.com/savq/melange-nvim/blob/ce42f6b629beeaa00591ba73a77d3eeac4cf28ce/term/alacritty/melange_dark.toml) | [MIT](https://github.com/savq/melange-nvim/blob/ce42f6b629beeaa00591ba73a77d3eeac4cf28ce/LICENSE) |
+| Bamboo | Added | Vulgaris / Multiplex / Light | [ribru17/bamboo.nvim](https://github.com/ribru17/bamboo.nvim/blob/1309bc88bffcf1bedc3e84e7fa9004de93da774a/extras/alacritty/bamboo.toml) | [MIT](https://github.com/ribru17/bamboo.nvim/blob/1309bc88bffcf1bedc3e84e7fa9004de93da774a/LICENSE) |
+| Gruber Darker | Added | Standard | [blazkowolf/gruber-darker.nvim](https://github.com/blazkowolf/gruber-darker.nvim/blob/35cb97959ef01f7193c94c404c13ddb3d4346654/extras/alacritty/gruber-darker.toml) | [MIT](https://github.com/blazkowolf/gruber-darker.nvim/blob/35cb97959ef01f7193c94c404c13ddb3d4346654/LICENSE) |
+| Vague | Added | Standard | [vague-theme/vague.nvim](https://github.com/vague-theme/vague.nvim/blob/73f8aaa866bf3d14dd0b0ab9e48c11794c1cb7ab/lua/vague/terminal.lua) | [MIT](https://github.com/vague-theme/vague.nvim/blob/73f8aaa866bf3d14dd0b0ab9e48c11794c1cb7ab/LICENSE) |
+| Tender | Added | Standard | [jacoborus/tender.vim](https://github.com/jacoborus/tender.vim/blob/b66dc330aff998dff9d44459d84bc1c5f4304fcc/colors/tender.vim) | [MIT](https://github.com/jacoborus/tender.vim/blob/b66dc330aff998dff9d44459d84bc1c5f4304fcc/LICENSE) |
+| Ashen | Added | Default | [ficd0/ashen.nvim](https://github.com/ficd0/ashen.nvim/blob/bfb04bd50b69d863469b2deb9fb361cf0d945ba7/lua/ashen/variants/default/colors.lua) | [MIT](https://github.com/ficd0/ashen.nvim/blob/bfb04bd50b69d863469b2deb9fb361cf0d945ba7/LICENSE) |
+| Brogrammer | Added | Standard | [kenwheeler/brogrammer-syntax](https://github.com/kenwheeler/brogrammer-syntax/blob/8e3c66d1fcf5f3a3918344e63f6f0fa287369aab/styles/colors.less) | [MIT](https://github.com/kenwheeler/brogrammer-syntax/blob/8e3c66d1fcf5f3a3918344e63f6f0fa287369aab/LICENSE.md) |
+| Palenight | Added | Standard | [drewtempelmeyer/palenight.vim](https://github.com/drewtempelmeyer/palenight.vim/blob/9e9b102c54b830b72f51917b6b86c3b3b02dcea2/autoload/palenight.vim) | [MIT](https://github.com/drewtempelmeyer/palenight.vim/blob/9e9b102c54b830b72f51917b6b86c3b3b02dcea2/LICENSE) |
+| Neovim default | Added | Dark / Light | [neovim/neovim](https://github.com/neovim/neovim/blob/80ae7e336f97e169bb3d3e7172998a65336472a1/src/nvim/highlight_group.c) | [Apache-2.0](https://github.com/neovim/neovim/blob/80ae7e336f97e169bb3d3e7172998a65336472a1/LICENSE.txt) |
 
 ## Mapping to Maitty
 
@@ -80,6 +95,28 @@ may assume dark selected text, so it is not automatically a valid menu fill.
   inherently transparent. Keep Maitty's existing `mono` choice for inherited
   terminal colors.
 
+From the 2026-10-25 pass on, each new palette maps the same way: the source's
+background and foreground, its comment color as the dim role, its blue as the
+accent, and its ANSI red, green, yellow, blue, magenta and cyan. The gray slot
+(what programs' bright black becomes) takes the source's ANSI 8, or its comment
+color where ANSI 8 is missing or sits on the background (Solarized Osaka,
+Tender, Palenight, Brogrammer, Neovim).
+
+- Cyberdream's Muted variant is its own `variant = "muted"` palette.
+- Solarized Osaka's Vivid style is computed at runtime from the default
+  palette, so it has no fixed values to take. Its comment color is the
+  source's `base01`, `hsl(194, 14, 40)`, as `#576d74` (light: `base1`,
+  `#adb7b7`), with the source's truncating conversion.
+- Gruber Darker's comments are brown, which would read as the needs-you amber,
+  so its dim role is its `bg+4` grey `#52494e`.
+- Ashen's terminal green and yellow slots are its two oranges, so Done shows
+  orange in Ashen; its status labels and glyphs still say which state it is.
+- Brogrammer's colors come from Ken Wheeler's MIT-licensed Atom port of his
+  Sublime theme; the Sublime repository has no license. It defines no terminal
+  palette, so the slots take its named colors.
+- Neovim's default colorscheme sets no terminal colors. Its dark variant takes
+  the `NvimLight*` colors it draws text with, the light one the `NvimDark*`.
+
 ## Attribution and license notices
 
 The color values are adapted from the projects above. Maitty's derived UI roles,
@@ -110,6 +147,16 @@ The following upstream copyright notices apply to the MIT-licensed palettes:
 - whatyouhide/vim-gotham: Copyright (c) 2014 Andrea Leopardi
 - romainl/Apprentice: Copyright (c) 2016 Romain Lafourcade
 - zenbones-theme/zenbones.nvim: Copyright (c) 2022 Michael Chris Lopez
+- scottmckendry/cyberdream.nvim: Copyright (c) 2023 Scott McKendry
+- savq/melange-nvim: Copyright (c) 2021 Sergio Alejandro Vargas
+- ribru17/bamboo.nvim: Original Copyright (c) 2021 Navarasu; Copyright (c) 2023 Riley Bruins
+- blazkowolf/gruber-darker.nvim: Copyright (c) 2023 blazkowolf
+- vague-theme/vague.nvim: Copyright (c) 2024 Alberto Hernandez
+- jacoborus/tender.vim: Copyright (c) 2020 Jacobo Tabernero
+- ficd0/ashen.nvim: Copyright © 2025 Daniel Fichtinger, GitHub contributors
+- kenwheeler/brogrammer-syntax: MIT per its `package.json`; its license file
+  keeps the template line `Copyright (c) 2014 <Your name here>`.
+- drewtempelmeyer/palenight.vim: Copyright (c) 2015 Joshua Dick
 
 Gruvbox declares MIT/X11 in its README and identifies morhetz as its author in
 its palette source; that revision contains no standalone copyright/license file.
@@ -136,7 +183,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-Tokyo Night by Folke Lemaitre and Ayu by Konstantin Pschera use Apache-2.0.
+Tokyo Night by Folke Lemaitre, Ayu by Konstantin Pschera, Solarized Osaka
+(Copyright 2024 Takuya Matsuyama) and Neovim's default colorscheme (Copyright
+Neovim contributors; its colors are Neovim's own Apache-2.0 contribution, not
+Vim-licensed code) use Apache-2.0.
 Their source palette values are adapted to Maitty UI roles as described above.
 The shared Apache license text follows; see their linked original license files
 for each project's application appendix.
