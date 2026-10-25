@@ -91,6 +91,26 @@ impl Node {
         }
     }
 
+    /// Trade the places of leaves `a` and `b`. The splits and their ratios stay put, so each
+    /// pane takes the other's size. False unless both are distinct leaves of this tree.
+    pub fn swap(&mut self, a: TermId, b: TermId) -> bool {
+        if a == b || !self.contains(a) || !self.contains(b) {
+            return false;
+        }
+        self.relabel(&|id| if id == a { b } else if id == b { a } else { id });
+        true
+    }
+
+    fn relabel(&mut self, f: &impl Fn(TermId) -> TermId) {
+        match self {
+            Node::Leaf(id) => *id = f(*id),
+            Node::Split { a, b, .. } => {
+                a.relabel(f);
+                b.relabel(f);
+            }
+        }
+    }
+
     /// Rebuild the tree with new leaf ids; leaves mapped to `None` are dropped.
     pub fn map_leaves(&self, f: &mut impl FnMut(TermId) -> Option<TermId>) -> Option<Node> {
         match self {
@@ -284,6 +304,35 @@ mod tests {
         assert_eq!(neighbor(&r, 3, Dir::Up), Some(2));
         assert_eq!(neighbor(&r, 3, Dir::Left), Some(1));
         assert_eq!(neighbor(&r, 1, Dir::Left), None);
+    }
+
+    #[test]
+    fn swapped_panes_trade_rects_and_the_ratios_stay_with_their_slots() {
+        let area = Rect::new(0, 0, 100, 40);
+        let mut n = Node::Leaf(1);
+        n.split(1, Dir::Right, 2);
+        n.split(2, Dir::Down, 3);
+        n.set_ratio(&[], 0.3);
+        n.set_ratio(&[true], 0.75);
+        let before = n.rects(area);
+        let rect = |rects: &[(TermId, Rect)], id| rects.iter().find(|(t, _)| *t == id).map(|(_, r)| *r);
+        assert!(n.swap(1, 3));
+        let after = n.rects(area);
+        assert_eq!(rect(&after, 3), rect(&before, 1), "3 takes 1's slot, size and all");
+        assert_eq!(rect(&after, 1), rect(&before, 3));
+        assert_eq!(rect(&after, 2), rect(&before, 2), "the pane not swapped stays");
+        assert_eq!((n.ratio_at(&[]), n.ratio_at(&[true])), (Some(0.3), Some(0.75)));
+    }
+
+    #[test]
+    fn a_swap_needs_two_distinct_panes_of_the_tree() {
+        let mut n = Node::Leaf(1);
+        n.split(1, Dir::Right, 2);
+        let before = n.clone();
+        assert!(!n.swap(1, 1), "a pane with itself");
+        assert!(!n.swap(1, 9), "a pane of another tab");
+        assert!(!Node::Leaf(1).swap(1, 2));
+        assert_eq!(n, before, "a refused swap changes nothing");
     }
 
     #[test]

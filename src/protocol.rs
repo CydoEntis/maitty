@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 46;
+pub const PROTOCOL_VERSION: u32 = 47;
 
 pub type TermId = u32;
 pub type WsId = u32;
@@ -117,6 +117,9 @@ pub enum Command {
     MoveToWorktree { term: TermId, branch: Option<String> },
     /// Grow (positive) or shrink the pane along `dir`'s axis by `delta` (fraction of parent).
     ResizePane { term: TermId, dir: Dir, delta: f32 },
+    /// Trade the places of two panes of one tab; each takes the other's size. An error when
+    /// they are in different tabs.
+    SwapPanes { a: TermId, b: TermId },
     /// `git worktree add` next to the workspace's repo, then open it as a new workspace.
     /// `split`: open the worktree as a pane beside this one instead of as a workspace.
     /// `from`: the repo to branch from (default: the workspace's folder).
@@ -827,6 +830,7 @@ mod tests {
             ClientMsg::Command(Command::TidyWorktrees { items: vec![(PathBuf::from("/code/.wt/rate"), false)] }),
             ClientMsg::Command(Command::RenamePane { term: 3, name: "x".into() }),
             ClientMsg::Command(Command::MoveToWorktree { term: 3, branch: Some("feat/x".into()) }),
+            ClientMsg::Command(Command::SwapPanes { a: 3, b: 4 }),
         ];
         for m in &clients {
             round_trips(m);
@@ -849,6 +853,21 @@ mod tests {
         for m in &servers {
             round_trips(m);
         }
+    }
+
+    /// A new command is a new enum variant: a peer built before it can't read it, which is
+    /// why adding one bumps `PROTOCOL_VERSION` (and the two refuse to talk).
+    #[test]
+    fn a_peer_from_before_swap_panes_cannot_read_it() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            ResizePane { term: TermId, dir: Dir, delta: f32 },
+        }
+        let bytes = encode(&Command::SwapPanes { a: 3, b: 4 }).unwrap();
+        assert!(decode::<OldCommand>(&bytes).is_err());
+        let Command::SwapPanes { a, b } = decode(&bytes).unwrap() else { panic!("expected a swap") };
+        assert_eq!((a, b), (3, 4));
     }
 
     #[test]

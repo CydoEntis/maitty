@@ -790,6 +790,44 @@ fn detaching_and_closing_prune_tabs_and_workspaces() {
 }
 
 #[test]
+fn swapped_panes_trade_places_and_come_back_swapped_after_a_restart() {
+    let (mut d, _rx) = daemon();
+    d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();
+    let left = d.workspaces[0].tabs[0].focus;
+    d.command(0, Command::Split { term: left, dir: crate::layout::Dir::Right, cmd: None, cwd: None }).unwrap();
+    let right = newest(&d);
+    d.command(0, Command::RenamePane { term: left, name: "was left".into() }).unwrap();
+    d.command(0, Command::RenamePane { term: right, name: "was right".into() }).unwrap();
+
+    d.command(0, Command::SwapPanes { a: left, b: right }).unwrap();
+    assert_eq!(d.workspaces[0].tabs[0].layout.leaves(), vec![right, left]);
+
+    let (mut d2, _rx2) = daemon();
+    d2.restore(d.saved());
+    let back = d2.workspaces[0].tabs[0].layout.leaves();
+    let labels: Vec<&str> = back.iter().map(|t| d2.terms[t].label.as_str()).collect();
+    assert_eq!(labels, ["was right", "was left"], "the swapped order is what's saved");
+    close(&mut d2, &back);
+    close(&mut d, &[left, right]);
+}
+
+#[test]
+fn panes_in_different_tabs_cannot_swap() {
+    let (mut d, _rx) = daemon();
+    d.command(0, Command::NewWorkspace { cwd: Some(std::env::temp_dir()), name: None, cmd: None }).unwrap();
+    let first = d.workspaces[0].tabs[0].focus;
+    let ws = d.workspaces[0].id;
+    d.command(0, Command::NewTab { ws, name: None, cmd: None }).unwrap();
+    let other = newest(&d);
+    let before: Vec<_> = d.workspaces[0].tabs.iter().map(|t| t.layout.clone()).collect();
+    let err = d.command(0, Command::SwapPanes { a: first, b: other }).unwrap_err();
+    assert!(err.to_string().contains("same tab"), "{err}");
+    assert!(d.command(0, Command::SwapPanes { a: first, b: 9999 }).is_err(), "a pane that isn't there");
+    assert_eq!(d.workspaces[0].tabs.iter().map(|t| t.layout.clone()).collect::<Vec<_>>(), before);
+    close(&mut d, &[first, other]);
+}
+
+#[test]
 fn a_spare_fits_only_its_repo_and_its_agent() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
