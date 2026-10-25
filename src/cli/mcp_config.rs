@@ -9,7 +9,9 @@
 //!   (qwen-code `docs/users/features/mcp.md`, gemini-cli `docs/tools/mcp-server.md`).
 
 use super::integrations::regular_target;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
+use jsonc_parser::ParseOptions;
+use jsonc_parser::cst::{CstInputValue, CstObject, CstObjectProp, CstRootNode};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
@@ -72,7 +74,7 @@ pub(crate) fn registered_command(agent: &McpAgent) -> Option<String> {
     let text = std::fs::read_to_string(&agent.config).ok()?;
     match agent.format {
         Format::CodexToml => toml::from_str::<toml::Value>(&text).ok()?.get("mcp_servers")?.get(NAME)?.get("command")?.as_str().map(String::from),
-        Format::McpServersJson => serde_json::from_str::<Value>(&text).ok()?.get("mcpServers")?.get(NAME)?.get("command")?.as_str().map(String::from),
+        Format::McpServersJson => parse_jsonc(&text)?.get("mcpServers")?.get(NAME)?.get("command")?.as_str().map(String::from),
     }
 }
 
@@ -117,41 +119,100 @@ fn codex_at(path: &Path, exe: &str, uninstall: bool) -> Result<McpChange> {
             doc.remove("mcp_servers");
         }
     } else {
-        let mut entry = toml_edit::Table::new();
-        entry["command"] = toml_edit::value(exe);
-        entry["args"] = toml_edit::value(ARGS.into_iter().collect::<toml_edit::Array>());
-        servers.insert(NAME, toml_edit::Item::Table(entry));
+        let args = || toml_edit::value(ARGS.into_iter().collect::<toml_edit::Array>());
+        // Only command and args are ours; env, enabled, timeouts the user added stay.
+        match servers.get_mut(NAME).and_then(toml_edit::Item::as_table_like_mut) {
+            Some(entry) => {
+                entry.insert("command", toml_edit::value(exe));
+                entry.insert("args", args());
+            }
+            None => {
+                let mut entry = toml_edit::Table::new();
+                entry["command"] = toml_edit::value(exe);
+                entry["args"] = args();
+                servers.insert(NAME, toml_edit::Item::Table(entry));
+            }
+        }
     }
     back_up_and_write(path, "toml", doc.to_string())?;
     Ok(if uninstall { McpChange::Removed } else { McpChange::Registered })
 }
 
+/// Qwen Code and Gemini CLI strip comments before parsing settings.json (strip-json-comments),
+/// and Qwen a byte-order mark; trailing commas they reject, so they're rejected here too.
+fn jsonc_options() -> ParseOptions {
+    ParseOptions {
+        allow_comments: true,
+        allow_loose_object_property_names: false,
+        allow_trailing_commas: false,
+        allow_missing_commas: false,
+        allow_single_quoted_strings: false,
+        allow_hexadecimal_numbers: false,
+        allow_unary_plus_numbers: false,
+    }
+}
+
+fn split_bom(text: &str) -> (&str, &str) {
+    match text.strip_prefix('\u{feff}') {
+        Some(body) => ("\u{feff}", body),
+        None => ("", text),
+    }
+}
+
+fn parse_jsonc(text: &str) -> Option<Value> {
+    CstRootNode::parse(split_bom(text).1, &jsonc_options()).ok()?.to_serde_value()
+}
+
+fn set_prop(object: &CstObject, key: &str, value: CstInputValue) {
+    match object.get(key) {
+        Some(prop) => prop.set_value(value),
+        None => {
+            object.append(key, value);
+        }
+    }
+}
+
+/// Edits the file's syntax tree rather than re-serialising it, so comments and layout stay.
 fn json_at(path: &Path, exe: &str, uninstall: bool) -> Result<McpChange> {
     regular_target(path)?;
     let text = read_or_empty(path)?;
-    let mut root: Value = if text.trim().is_empty() { json!({}) } else { serde_json::from_str(&text).with_context(|| format!("{} isn't valid JSON; preserved", path.display()))? };
-    let settings = root.as_object_mut().with_context(|| format!("{} must hold a JSON object; preserved", path.display()))?;
-    let entry = settings.get("mcpServers").and_then(|s| s.get(NAME));
-    let current = entry.is_some_and(|e| e.get("command") == Some(&json!(exe)) && e.get("args") == Some(&json!(ARGS)));
+    let (bom, body) = split_bom(&text);
+    let body = if body.trim().is_empty() { "{}\n" } else { body };
+    let root = CstRootNode::parse(body, &jsonc_options()).map_err(|e| anyhow!("{} isn't valid JSON ({e}); preserved", path.display()))?;
+    let settings = root.value().and_then(|v| v.as_object()).with_context(|| format!("{} must hold a JSON object; preserved", path.display()))?;
+    let servers = match settings.get("mcpServers") {
+        Some(prop) => Some(prop.object_value().with_context(|| format!("mcpServers in {} must be an object; preserved", path.display()))?),
+        None => None,
+    };
+    let entry = servers.as_ref().and_then(|s| s.get(NAME));
+    let value = entry.as_ref().and_then(|e| e.value()).and_then(|v| v.to_serde_value());
+    let current = value.is_some_and(|e| e.get("command") == Some(&json!(exe)) && e.get("args") == Some(&json!(ARGS)));
     match (uninstall, entry.is_some()) {
         (false, _) if current => return Ok(McpChange::AlreadyRegistered),
         (true, false) => return Ok(McpChange::NotRegistered),
         _ => {}
     }
-    let servers = settings
-        .entry("mcpServers")
-        .or_insert_with(|| json!({}))
-        .as_object_mut()
-        .with_context(|| format!("mcpServers in {} must be an object; preserved", path.display()))?;
+    let args = || CstInputValue::Array(ARGS.map(CstInputValue::from).into());
     if uninstall {
-        servers.remove(NAME);
-        if servers.is_empty() {
-            settings.remove("mcpServers");
+        entry.into_iter().for_each(CstObjectProp::remove);
+        if servers.is_some_and(|s| s.properties().is_empty()) {
+            settings.get("mcpServers").into_iter().for_each(CstObjectProp::remove);
         }
     } else {
-        servers.insert(NAME.into(), json!({ "command": exe, "args": ARGS }));
+        let servers = servers.unwrap_or_else(|| settings.append("mcpServers", CstInputValue::Object(Vec::new())).object_value_or_set());
+        // Only command and args are ours; trust, timeout and the rest the user added stay.
+        match entry.as_ref().and_then(CstObjectProp::object_value) {
+            Some(object) => {
+                set_prop(&object, "command", exe.into());
+                set_prop(&object, "args", args());
+            }
+            None => {
+                entry.into_iter().for_each(CstObjectProp::remove);
+                servers.append(NAME, CstInputValue::Object(vec![("command".into(), exe.into()), ("args".into(), args())]));
+            }
+        }
     }
-    back_up_and_write(path, "json", serde_json::to_string_pretty(&root)? + "\n")?;
+    back_up_and_write(path, "json", format!("{bom}{root}"))?;
     Ok(if uninstall { McpChange::Removed } else { McpChange::Registered })
 }
 
@@ -228,6 +289,45 @@ mod tests {
         assert!(root["mcpServers"].get(NAME).is_none());
         assert_eq!(root["mcpServers"]["docs"]["command"], "npx");
         assert_eq!(root["theme"], "dark");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn commented_settings_register_and_keep_their_comments_and_bom() {
+        let dir = temp("jsonc");
+        let gemini = agent(&dir, "settings.json", Format::McpServersJson);
+        let original = "\u{feff}{\n  // my theme\n  \"theme\": \"dark\",\n  /* servers */\n  \"mcpServers\": {\n    \"docs\": { \"command\": \"npx\" } // docs\n  }\n}\n";
+        std::fs::write(&gemini.config, original).unwrap();
+
+        assert_eq!(set_up(&gemini, EXE, false).unwrap(), McpChange::Registered);
+        let text = std::fs::read_to_string(&gemini.config).unwrap();
+        assert!(text.starts_with('\u{feff}') && text.contains("// my theme") && text.contains("/* servers */") && text.contains("// docs"), "{text}");
+        assert_eq!(registered_command(&gemini).as_deref(), Some(EXE));
+        assert_eq!(set_up(&gemini, EXE, false).unwrap(), McpChange::AlreadyRegistered);
+
+        assert_eq!(set_up(&gemini, EXE, true).unwrap(), McpChange::Removed);
+        let text = std::fs::read_to_string(&gemini.config).unwrap();
+        assert!(text.contains("// my theme") && text.contains("\"docs\"") && !text.contains(NAME), "{text}");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn re_registering_keeps_fields_the_user_added() {
+        let dir = temp("fields");
+        let codex = agent(&dir, "config.toml", Format::CodexToml);
+        std::fs::write(&codex.config, format!("[mcp_servers.{NAME}]\ncommand = \"/old/app\"\nargs = [\"mcp\"]\nstartup_timeout_sec = 20\nenv = {{ A = \"1\" }}\n")).unwrap();
+        assert_eq!(set_up(&codex, EXE, false).unwrap(), McpChange::Registered);
+        let root: toml::Value = toml::from_str(&std::fs::read_to_string(&codex.config).unwrap()).unwrap();
+        let entry = &root["mcp_servers"][NAME];
+        assert_eq!(entry["command"].as_str(), Some(EXE));
+        assert_eq!(entry["startup_timeout_sec"].as_integer(), Some(20));
+        assert_eq!(entry["env"]["A"].as_str(), Some("1"));
+
+        let qwen = agent(&dir, "settings.json", Format::McpServersJson);
+        std::fs::write(&qwen.config, format!(r#"{{"mcpServers":{{"{NAME}":{{"command":"/old/app","args":[],"trust":true,"timeout":30000}}}}}}"#)).unwrap();
+        assert_eq!(set_up(&qwen, EXE, false).unwrap(), McpChange::Registered);
+        let root: Value = serde_json::from_str(&std::fs::read_to_string(&qwen.config).unwrap()).unwrap();
+        assert_eq!(root["mcpServers"][NAME], json!({ "command": EXE, "args": ["mcp"], "trust": true, "timeout": 30000 }));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
