@@ -611,15 +611,23 @@ fn chip_state(app: &App, info: &TermInfo) -> Option<ChipState> {
 }
 
 /// The state's glyph at the front of a chip drawn in `chip`. Working takes the chip's own ink,
-/// which reads on any chip colour; needs you gets its own `blocked` ground, so it stands out on
-/// every chip and never depends on the pane's colour.
+/// which reads on any chip colour. Needs you gets its own `blocked` ground; on a chip whose
+/// colour is close to `blocked` (a pane colour or an accent near amber) that patch would melt
+/// into it, so there it turns over: the glyph in `blocked` on the ink chosen to read on
+/// `blocked`, which by the same token stands out from a chip close to it.
 fn state_seg(s: &ChipState, chip: Style, t: &Theme) -> Seg {
-    if s.blocked {
-        seg(format!(" {} ", s.glyph), Style::default().fg(t.ink_on(t.blocked)).bg(t.blocked).add_modifier(Modifier::BOLD))
-    } else {
-        seg(format!(" {}", s.glyph), chip)
+    if !s.blocked {
+        return seg(format!(" {}", s.glyph), chip);
     }
+    let melts = chip.bg.is_some_and(|bg| crate::theme::contrast(bg, t.blocked) < PATCH_CONTRAST);
+    let (fg, bg) = if melts { (t.blocked, t.ink_on(t.blocked)) } else { (t.ink_on(t.blocked), t.blocked) };
+    let style = Style::default().fg(fg).bg(bg);
+    seg(format!(" {} ", s.glyph), style.add_modifier(Modifier::BOLD))
 }
+
+/// The least contrast between a chip and the needs-you patch on it for the patch's edge to
+/// show: the default theme's fourth Grid colour is 1.17 from `blocked`, which reads as one.
+const PATCH_CONTRAST: f64 = 1.5;
 
 /// The state's glyph as a chip of its own, for a title too narrow for the chip it belongs in.
 fn state_alone(s: &ChipState, chip: Style, look: Look, t: &Theme) -> Vec<Seg> {

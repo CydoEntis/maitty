@@ -1477,7 +1477,7 @@ mod screen_tests {
                                 failures.push(format!("{layout} split {split} {mode} update {update} {w}: {row}"));
                             }
                             // Grid draws it in a chip, on its own amber, with no words.
-                            let amber = (r.x..r.right()).any(|x| buf[(x, r.y)].symbol() == "▲" && buf[(x, r.y)].bg == app.theme.blocked);
+                            let amber = (r.x..r.right()).any(|x| buf[(x, r.y)].symbol() == "▲" && needs_you_stands_out(&app, &buf, x, r.y));
                             if layout == "grid" && mode == "off" && (!amber || row.contains("needs you")) {
                                 failures.push(format!("{layout} split {split} {mode} update {update} {w}: not a glyph on its chip: {row}"));
                             }
@@ -1592,11 +1592,11 @@ mod screen_tests {
                 }
                 let name = &buf[(wb[1].right() + 1, y)];
                 assert_eq!((name.symbol(), name.fg, name.bg), ("c", b_ink, b_chip), "b's name after its spinner, one chip: {at}");
-                // Needs you, at the front of the current tab: on its own amber, whatever the chip.
+                // Needs you, at the front of the current tab: amber, set apart from the chip.
                 let glyph = &buf[(wa[1].x + 1, y)];
                 assert_eq!(glyph.symbol(), "▲", "{at}");
-                assert_eq!((glyph.fg, glyph.bg), (t.ink_on(t.blocked), t.blocked), "needs you stands out: {at}");
                 assert!(glyph.modifier.contains(ratatui::style::Modifier::BOLD), "{at}");
+                assert!(needs_you_stands_out(&app, &buf, wa[1].x + 1, y), "needs you stands out: {at}");
             }
         }
     }
@@ -1662,6 +1662,47 @@ mod screen_tests {
         }
         assert!(failures.is_empty(), "{}", failures.join("\n"));
         assert!(others_dropped, "somewhere the other tabs give way and the current one stays");
+    }
+
+    #[test]
+    fn needs_you_stands_out_on_a_chip_of_a_like_colour() {
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        app.cfg.ui.layout = "grid".into();
+        let [a, _, c] = three_panes(&mut app);
+        let d = 4;
+        let mut info = app.snap.terms[&c].clone();
+        (info.id, info.agent, info.status) = (d, Some("gemini".into()), Status::Blocked);
+        app.snap.terms.insert(d, info);
+        app.screen.pending_split = Some((c, Instant::now()));
+        app.screen.split_dir = Some(crate::layout::Dir::Right);
+        app.screen_place(d, Some(c));
+        assert!(crate::theme::contrast(app.theme.grid_colors()[3], app.theme.blocked) < 1.5, "the fourth pane's colour is close to `blocked` in this theme");
+        // Pane 4 focused, on its own colour; then an accent like `blocked`, so the current tab is too.
+        for (focus, like_accent) in [(d, false), (a, true)] {
+            if like_accent {
+                app.theme.accent = app.theme.blocked;
+            }
+            (app.screen.tabs[0].focus, app.snap.workspaces[0].tabs[0].focus) = (focus, focus);
+            let buf = drawn(&mut app, 200, 50);
+            show(&(0..2).map(|y| (0..200).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>()).collect::<Vec<_>>().join("\n"));
+            for term in [a, d] {
+                let card = card_of(&app, term);
+                let at = format!("pane {term}, focus on {focus}");
+                let x = (card.x..card.right()).find(|&x| buf[(x, card.y)].symbol() == "▲").unwrap_or_else(|| panic!("needs you is drawn: {at}"));
+                assert!(needs_you_stands_out(&app, &buf, x, card.y), "{at}");
+            }
+        }
+    }
+
+    /// Whether the needs-you glyph at `x`, `y` is in amber or on it, its ground set apart from
+    /// the chip it sits in (the cell after its patch) and the glyph readable on that ground.
+    fn needs_you_stands_out(app: &App, buf: &ratatui::buffer::Buffer, x: u16, y: u16) -> bool {
+        // The renderer leaves the theme's own ground as Reset, so the terminal's shows.
+        let solid = |c: ratatui::style::Color| if c == ratatui::style::Color::Reset { app.theme.bg } else { c };
+        let (glyph, after) = (&buf[(x, y)], &buf[(x + 2, y)]);
+        let (fg, bg, chip) = (solid(glyph.fg), solid(glyph.bg), solid(after.bg));
+        let amber = fg == app.theme.blocked || bg == app.theme.blocked;
+        amber && crate::theme::contrast(bg, chip) >= 1.5 && crate::theme::contrast(fg, bg) >= 3.0
     }
 
     #[test]
