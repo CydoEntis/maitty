@@ -1453,7 +1453,7 @@ mod screen_tests {
         let mut failures = Vec::new();
         for layout in ["grid", "floating", "compact"] {
             for split in [false, true] {
-                for (mode, update) in [("off", false), ("lit", false), ("paused", false), ("off", true), ("lit", true), ("paused", true)] {
+                for (mode, update) in [("off", false), ("lit", false), ("held", false), ("off", true), ("lit", true), ("held", true)] {
                     for w in 56..=110u16 {
                         let (_, mut app) = super::design_tests::render_with(w, 24);
                         (app.cfg.ui.layout, app.cfg.ui.rounded, app.cfg.ui.which_key) = (layout.into(), crate::config::Rounding::Full, false);
@@ -1465,7 +1465,7 @@ mod screen_tests {
                         if mode != "off" {
                             app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
                         }
-                        if mode == "paused" {
+                        if mode == "held" {
                             tap(&mut app, ',');
                         }
                         let buf = drawn(&mut app, w, 24);
@@ -4558,14 +4558,13 @@ second line
         (row, (row.x..row.right()).map(|x| buf[(x, row.y)].symbol()).collect())
     }
 
-    /// The mode bar's tag while shortcut mode is on, lit (`SHORTCUT`) or held (`SHORTCUT ·
-    /// paused`), and the bar's ground at its right end, drawn at 160×45; none while typing.
+    /// The mode bar's tag unless typing: `SHORTCUT` while lit, else the name of what has the
+    /// keys (`SETTINGS`, `FILES`, …), and the bar's ground at its right end, drawn at 160×45.
     fn shortcut_tag(app: &mut App) -> Option<(String, ratatui::style::Color)> {
         let buf = drawn(app, 160, 45);
         let (row, text) = bar_text(app, &buf);
-        let text = text.trim();
-        let tag = if text.starts_with("SHORTCUT · paused") { "SHORTCUT · paused" } else if text.starts_with("SHORTCUT") { "SHORTCUT" } else { return None };
-        Some((tag.into(), buf[(row.right() - 1, row.y)].bg))
+        let tag = text.trim().split("  ").next().unwrap_or_default();
+        (tag != "TYPING").then(|| (tag.into(), buf[(row.right() - 1, row.y)].bg))
     }
 
     #[test]
@@ -4578,13 +4577,13 @@ second line
     }
 
     #[test]
-    fn the_shortcut_pill_reads_paused_under_a_popup_and_lights_again_when_it_closes() {
+    fn the_bar_names_the_popup_that_has_the_keys_and_lights_again_when_it_closes() {
         let mut app = shortcut_mode();
         let sky = app.theme.sky();
         tap(&mut app, 'y');
         assert!(matches!(app.mode, Mode::Why { .. }), "y opened why: {:?}", std::mem::discriminant(&app.mode));
-        let (words, ground) = shortcut_tag(&mut app).expect("the pill stays under the popup");
-        assert_eq!(words, "SHORTCUT · paused");
+        let (words, ground) = shortcut_tag(&mut app).expect("the bar names the popup");
+        assert_eq!(words, "WHY");
         assert_ne!(ground, sky, "dimmed, not sky");
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert_eq!(shortcut_tag(&mut app), Some(("SHORTCUT".into(), sky)), "lit again once it closes");
@@ -4597,19 +4596,186 @@ second line
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let r = app.pane_frames.first().expect("a pane").1;
-        assert_ne!(term.backend().buffer()[(r.x, r.y + 1)].fg, app.theme.sky(), "paused under the Inbox: no sky border");
+        assert_ne!(term.backend().buffer()[(r.x, r.y + 1)].fg, app.theme.sky(), "held under the Inbox: no sky border");
     }
 
     #[test]
-    fn the_shortcut_pill_reads_paused_while_a_view_it_opened_has_the_keys() {
+    fn the_bar_names_a_view_shortcut_mode_opened_while_it_has_the_keys() {
         let (mut app, _rx) = super::check_settings_tests::app_with_channel();
         app.cfg.ui.which_key = false;
         app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
         tap(&mut app, 'f');
         assert!(matches!(app.view, Some(View::Files(_))), "f opened Files");
-        assert_eq!(shortcut_tag(&mut app).map(|(w, _)| w), Some("SHORTCUT · paused".into()));
+        assert_eq!(shortcut_tag(&mut app).map(|(w, _)| w), Some("FILES".into()));
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert_eq!(shortcut_tag(&mut app), Some(("SHORTCUT".into(), app.theme.sky())), "Files closed: lit again");
+    }
+
+    /// Something other than the panes with the keys, reached as a user would where a key or
+    /// action gets there; `held` starts from shortcut mode, else from typing.
+    const WHO: [(&str, bool, &str); 17] = [
+        ("sidebar", true, "SIDEBAR  · ↑↓ move · Enter open · shortcut mode waits · Esc back"),
+        ("sidebar", false, "SIDEBAR  · ↑↓ move · Enter open · Esc back"),
+        ("settings", true, "SETTINGS  · ↑↓ move · ←→ change · Tab section · shortcut mode waits · Esc close"),
+        ("settings", false, "SETTINGS  · ↑↓ move · ←→ change · Tab section · Esc close"),
+        ("files", true, "FILES  · / filter · i edit · Enter insert path · shortcut mode waits · Esc close"),
+        ("files", false, "FILES  · / filter · i edit · Enter insert path · Esc close"),
+        ("inbox", true, "INBOX  · ↑↓ select · Enter open · shortcut mode waits · Esc close"),
+        ("changes", true, "CHANGES  · ↑↓ file · c commit · x reviewed · e editor · shortcut mode waits · Esc close"),
+        ("changes", false, "CHANGES  · ↑↓ file · c commit · x reviewed · e editor · Esc close"),
+        ("branch", true, "BRANCH  · ↑↓ choose · Enter open · shortcut mode waits · Esc close"),
+        ("key map search", true, "KEY MAP  · type to search · ↑↓ pick · Enter run · Esc close"),
+        ("confirm", true, "CONFIRM  · y yes · shortcut mode waits · n no"),
+        ("confirm", false, "CONFIRM  · y yes · n no"),
+        ("prompt", true, "NAME  · type · Enter save · shortcut mode waits · Esc cancel"),
+        ("prompt", false, "NAME  · type · Enter save · Esc cancel"),
+        ("compose", true, "MESSAGE  · Enter send · Shift+Enter new line · shortcut mode waits · Esc keep draft"),
+        ("compose", false, "MESSAGE  · Enter send · Shift+Enter new line · Esc keep draft"),
+    ];
+
+    /// `app` with `what` holding the keys, from shortcut mode when `held`.
+    fn give_keys(app: &mut App, what: &str, held: bool) {
+        app.cfg.ui.which_key = false;
+        let leader = |app: &mut App, c: char| {
+            app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+            tap(app, c);
+        };
+        match (what, held) {
+            ("sidebar", true) => leader(app, 'e'),
+            ("sidebar", false) => app.mode = Mode::Side,
+            ("settings", true) => leader(app, ','),
+            ("settings", false) => app.act(Action::Settings),
+            ("files", true) => leader(app, 'f'),
+            ("files", false) => app.act(Action::Files),
+            ("inbox", _) => leader(app, 'i'),
+            ("changes", _) => {
+                if held {
+                    leader(app, 'z');
+                    app.mode = Mode::Normal;
+                }
+                app.show_view(View::Changes(Box::new(views::ChangesView {
+                    dir: PathBuf::from("/repo"),
+                    review: None,
+                    error: None,
+                    agent: String::new(),
+                    said: String::new(),
+                    term: None,
+                    ws: None,
+                    reviewed: Default::default(),
+                    linked: false,
+                    confirm: None,
+                })));
+            }
+            ("branch", _) => leader(app, 'b'),
+            ("key map search", _) => {
+                leader(app, 'z');
+                app.mode = Mode::KeyMap(Box::new(screen::KeyMap::new(screen::KeyView::Search, None)));
+            }
+            ("confirm", true) => leader(app, 'x'),
+            ("confirm", false) => app.act(Action::ClosePane),
+            ("prompt", true) => leader(app, 'r'),
+            ("prompt", false) => app.act(Action::RenameTab),
+            ("compose", true) => {
+                app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+                app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            }
+            ("compose", false) => app.act(Action::Message),
+            _ => unreachable!("{what}"),
+        }
+    }
+
+    #[test]
+    fn the_bar_says_who_has_the_keys_and_how_to_get_out() {
+        for (what, held, want) in WHO {
+            let (mut app, _rx) = super::check_settings_tests::app_with_channel();
+            give_keys(&mut app, what, held);
+            let at = format!("{what} held {held}");
+            assert_eq!(app.shortcut_held, held, "{at}: shortcut mode held");
+            let buf = drawn(&mut app, 160, 45);
+            let (row, bar) = bar_text(&app, &buf);
+            show(&format!("{at}: |{bar}|"));
+            assert_eq!(bar.trim(), want, "{at}");
+            assert!(!bar.contains("paused"), "{at}: {bar}");
+            assert_ne!(buf[(row.right() - 1, row.y)].bg, app.theme.sky(), "{at}: sky is for shortcut mode lit");
+            let label = on_bar(&app, &buf, want.split("  ").next().unwrap()).expect("the label");
+            assert_eq!(buf[(label, row.y)].bg, app.theme.btn, "{at}: the label in a calm chip");
+        }
+    }
+
+    #[test]
+    fn the_key_map_before_a_search_keeps_the_bar_lit() {
+        let mut app = shortcut_mode();
+        app.mode = Mode::KeyMap(Box::new(screen::KeyMap::new(screen::KeyView::Map, None)));
+        let buf = drawn(&mut app, 160, 45);
+        let (_, bar) = bar_text(&app, &buf);
+        assert!(bar.trim().starts_with("SHORTCUT") && bar.contains("f files"), "its keys still run shortcuts: {bar}");
+    }
+
+    /// The bar's words, split: the label, then each hint and the way out.
+    fn bar_parts(bar: &str) -> (String, Vec<String>) {
+        let mut halves = bar.trim().splitn(2, "  ");
+        let label = halves.next().unwrap_or_default().to_string();
+        let rest = halves.next().unwrap_or_default().trim().trim_start_matches("· ");
+        (label, rest.split(" · ").filter(|s| !s.is_empty()).map(str::to_string).collect())
+    }
+
+    #[test]
+    fn a_narrow_bar_drops_who_has_the_keys_hints_from_the_right_and_the_way_out_last() {
+        for (what, held, want) in WHO {
+            let (label, parts) = bar_parts(want);
+            let (hints, out) = parts.split_at(parts.len() - 1);
+            for w in 40..=160u16 {
+                let (mut app, _rx) = super::check_settings_tests::app_with_channel();
+                app.update_available = (w % 2 == 0).then(|| "0.44.0".into());
+                give_keys(&mut app, what, held);
+                let buf = drawn(&mut app, w, 30);
+                let (_, bar) = bar_text(&app, &buf);
+                let at = format!("{what} held {held} {w}: |{bar}|");
+                if [40, 60, 80].contains(&w) {
+                    show(&at);
+                }
+                let bar = bar.replace("↑ Update 0.44.0", "").replace(" ↑ 0.44.0", "").replace(" ↑ ", "");
+                let (shown_label, shown) = bar_parts(&bar);
+                assert_eq!(shown_label, label, "the label stays: {at}");
+                let kept = shown.iter().filter(|s| *s != &out[0]).count();
+                assert_eq!(shown[..kept], hints[..kept], "hints go from the right: {at}");
+                assert!(kept == 0 || shown.last() == Some(&out[0]), "the way out goes after every hint: {at}");
+                if w >= 80 {
+                    assert!(shown.contains(&out[0]), "from 80 columns the way out always shows: {at}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_click_on_the_bar_under_whatever_has_the_keys_does_nothing() {
+        for (what, held, _) in WHO {
+            let (mut app, _rx) = super::check_settings_tests::app_with_channel();
+            give_keys(&mut app, what, held);
+            let buf = drawn(&mut app, 160, 45);
+            let row = screen::mode_bar_row(&app, buf.area);
+            // A click anywhere leaves shortcut mode and the sidebar (as before this bar); what
+            // must hold is the popup or view and what was typed in it.
+            let keeps = app.mode != Mode::Side;
+            let before = (std::mem::discriminant(&app.mode), app.view.as_ref().map(std::mem::discriminant));
+            for x in [row.x + 3, row.x + row.width / 2, row.right() - 2] {
+                let at = format!("{what} held {held} at {x}");
+                let words_only = app.shortcut_held || !matches!(app.mode, Mode::Normal | Mode::Side);
+                let hit = app.hits.iter().rev().find(|(r, _)| r.contains(Position::new(x, row.y))).map(|(_, h)| *h);
+                if words_only {
+                    assert_eq!(hit, Some(Hit::Screen(screen::ScreenHit::Noop)), "{at}: an indicator only");
+                } else {
+                    assert_eq!(hit, None, "{at}: no click on its words");
+                }
+                if !keeps {
+                    break;
+                }
+                click_at(&mut app, x, row.y);
+                let after = (std::mem::discriminant(&app.mode), app.view.as_ref().map(std::mem::discriminant));
+                assert_eq!(after, before, "{at}: the keys stay where they were");
+                drawn(&mut app, 160, 45);
+            }
+        }
     }
 
     #[test]
@@ -4712,14 +4878,14 @@ second line
         use screen::ScreenHit as S;
         for layout in ["floating", "tiled", "grid"] {
             for h in [24, 30] {
-                for (mode, update) in [("lit", false), ("paused", false), ("typing", true), ("lit", true), ("paused", true)] {
+                for (mode, update) in [("lit", false), ("held", false), ("typing", true), ("lit", true), ("held", true)] {
                     let (_, mut app) = super::design_tests::render_with(80, h);
                     (app.cfg.ui.layout, app.cfg.ui.rounded, app.cfg.ui.which_key) = (layout.into(), crate::config::Rounding::Full, false);
                     app.update_available = update.then(|| "0.44.0".into());
                     if mode != "typing" {
                         app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
                     }
-                    if mode == "paused" {
+                    if mode == "held" {
                         tap(&mut app, ',');
                     }
                     let at = format!("{layout} 80x{h} {mode} update {update}");
@@ -4791,10 +4957,10 @@ second line
         for layout in LOOKS {
             for padding in ["0", "1", "2"] {
                 for side in SIDES {
-                    for mode in ["lit", "paused", "typing"] {
+                    for mode in ["lit", "held", "typing"] {
                         let mut app = framed_app(layout, padding, side);
                         match mode {
-                            "paused" => tap(&mut app, 'y'),
+                            "held" => tap(&mut app, 'y'),
                             "typing" => app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
                             _ => {}
                         }
@@ -4816,13 +4982,13 @@ second line
         (0..buf.area.height).map(|y| (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect::<String>() + "\n").collect()
     }
 
-    /// `app` put in `mode`: typing, lit (after the leader) or paused (why open from it).
+    /// `app` put in `mode`: typing, lit (after the leader) or held (why open from it).
     fn into_mode(app: &mut App, mode: &str) {
         app.cfg.ui.which_key = false;
         if mode != "typing" {
             app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
         }
-        if mode == "paused" {
+        if mode == "held" {
             tap(app, 'y');
         }
     }
@@ -4832,7 +4998,7 @@ second line
         match mode {
             "typing" => "TYPING  · Ctrl+Space for shortcuts",
             "lit" => "SHORTCUT",
-            _ => "SHORTCUT · paused",
+            _ => "WHY  · shortcut mode waits · Esc close",
         }
     }
 
@@ -4850,7 +5016,7 @@ second line
     fn the_mode_bar_reads_at_a_glance_in_every_look() {
         for layout in LOOKS {
             for (w, h) in [(80, 24), (160, 45)] {
-                for mode in ["typing", "lit", "paused"] {
+                for mode in ["typing", "lit", "held"] {
                     let (_, mut app) = super::design_tests::render_with(w, h);
                     app.cfg.ui.layout = layout.into();
                     into_mode(&mut app, mode);
@@ -4880,7 +5046,7 @@ second line
                 for padding in ["0", "1", "2"] {
                     for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
                         for (w, h) in [(80, 24), (120, 36), (200, 50)] {
-                            for mode in ["typing", "lit", "paused"] {
+                            for mode in ["typing", "lit", "held"] {
                                 let mut app = framed_app(layout, padding, side);
                                 app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
                                 app.cfg.ui.rounded = rounded;
@@ -4974,7 +5140,7 @@ second line
         let y = screen::mode_bar_row(&app, buf.area).y;
         let files = on_bar(&app, &buf, "f files").expect("f files");
         click_at(&mut app, files + 2, y);
-        assert!(matches!(app.view, Some(View::Files(_))) && screen::shortcut_paused(&app), "f opened Files and the mode is held");
+        assert!(matches!(app.view, Some(View::Files(_))) && screen::shortcut_waits(&app), "f opened Files and the mode is held");
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::Prefix { .. }), "Files closed: lit again");
         let buf = drawn(&mut app, 160, 45);
@@ -5042,9 +5208,9 @@ second line
         app.mode = Mode::KeyMap(Box::new(screen::KeyMap { query: "fil".into(), ..screen::KeyMap::new(screen::KeyView::Search, None) }));
         let buf = drawn(&mut app, 160, 45);
         let (row, bar) = bar_text(&app, &buf);
-        assert!(bar.contains("f files"), "the bar stays lit under the key map: {bar}");
-        assert!(!app.hits.iter().any(|(r, h)| r.y == row.y && matches!(h, Hit::Screen(screen::ScreenHit::BarKey(_)))), "its suggestions are only words there");
-        let x = on_bar(&app, &buf, "f files").expect("f files");
+        assert!(bar.trim().starts_with("KEY MAP  · type to search"), "the search has the keys: {bar}");
+        assert!(!app.hits.iter().any(|(r, h)| r.y == row.y && matches!(h, Hit::Screen(screen::ScreenHit::BarKey(_)))), "nothing on the bar to press there");
+        let x = on_bar(&app, &buf, "type to search").expect("its hint");
         click_at(&mut app, x, row.y);
         assert!(matches!(&app.mode, Mode::KeyMap(km) if km.query == "fil"), "the search and its text survive: {:?}", std::mem::discriminant(&app.mode));
         assert!(app.view.is_none(), "and Files did not open");
@@ -5084,7 +5250,7 @@ second line
         let states: [(&str, Option<S>, SetUp); 5] = [
             ("TYPING", Some(S::ShortcutMode), |app| app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))),
             ("SHORTCUT", Some(S::Leader), |_| {}),
-            ("SHORTCUT · paused", None, |app| tap(app, 'i')),
+            ("INBOX", None, |app| tap(app, 'i')),
             ("↑ Update 9.9.9", Some(S::Update), |app| {
                 app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
                 app.update_available = Some("9.9.9".into());
@@ -5125,12 +5291,12 @@ second line
     }
 
     #[test]
-    fn update_sits_at_the_bar_s_right_end_and_clicks_except_while_paused() {
+    fn update_sits_at_the_bar_s_right_end_and_clicks_except_while_held() {
         let mut app = shortcut_mode();
         app.update_available = Some("9.9.9".into());
-        for mode in ["lit", "paused", "typing"] {
+        for mode in ["lit", "held", "typing"] {
             match mode {
-                "paused" => tap(&mut app, 'y'),
+                "held" => tap(&mut app, 'y'),
                 "typing" => {
                     app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
                     app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
@@ -5143,21 +5309,21 @@ second line
             let row0: String = (0..160).map(|x| buf[(x, 0)].symbol()).collect();
             assert!(!row0.contains("Update"), "{mode}: not in the corner any more: {row0}");
             let clickable = app.hits.iter().any(|(r, h)| r.y == row.y && *h == Hit::Screen(screen::ScreenHit::Update));
-            assert_eq!(clickable, mode != "paused", "{mode}: clickable unless a popup has the keys");
+            assert_eq!(clickable, mode != "held", "{mode}: clickable unless a popup has the keys");
         }
     }
 
     #[test]
-    fn a_click_on_the_paused_bar_keeps_the_popup_and_what_was_typed() {
+    fn a_click_on_the_bar_under_a_message_keeps_it_and_what_was_typed() {
         let mut app = shortcut_mode();
         app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::Compose(_)), "Enter opened the message box: {:?}", std::mem::discriminant(&app.mode));
         for c in "hold on".chars() {
             tap(&mut app, c);
         }
-        assert_eq!(shortcut_tag(&mut app).map(|(w, _)| w), Some("SHORTCUT · paused".into()));
+        assert_eq!(shortcut_tag(&mut app).map(|(w, _)| w), Some("MESSAGE".into()));
         let buf = drawn(&mut app, 160, 45);
-        let x = on_bar(&app, &buf, "SHORTCUT").expect("the tag");
+        let x = on_bar(&app, &buf, "MESSAGE").expect("the tag");
         let y = screen::mode_bar_row(&app, buf.area).y;
         click_at(&mut app, x + 2, y);
         assert!(matches!(&app.mode, Mode::Compose(c) if c.text == "hold on"), "the draft survives: {:?}", std::mem::discriminant(&app.mode));
@@ -5167,7 +5333,7 @@ second line
     fn the_top_right_title_reaches_the_corner_and_holds_still_in_every_mode() {
         for layout in LOOKS {
             let mut closes = Vec::new();
-            for mode in ["lit", "paused", "typing"] {
+            for mode in ["lit", "held", "typing"] {
                 let (_, mut app) = super::design_tests::render_with(160, 45);
                 app.cfg.ui.layout = layout.into();
                 into_mode(&mut app, mode);
@@ -5183,7 +5349,7 @@ second line
     }
 
     #[test]
-    fn the_sheet_s_close_stays_clickable_while_paused() {
+    fn the_sheet_s_close_stays_clickable_while_held() {
         let (mut app, _rx) = super::check_settings_tests::app_with_channel();
         app.cfg.ui.which_key = false;
         app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
@@ -5201,7 +5367,7 @@ second line
     fn a_right_hand_sidebar_keeps_its_title_and_counts_and_the_bar_its_mode() {
         for (w, h) in [(80, 24), (140, 40), (160, 45)] {
             for release in ["none", "update", "restart"] {
-                for mode in ["typing", "lit", "paused"] {
+                for mode in ["typing", "lit", "held"] {
                     let (_, mut app) = super::design_tests::render_with(w, h);
                     (app.cfg.ui.sidebar_position, app.cfg.ui.motion) = ("right".into(), false);
                     match release {
@@ -7623,7 +7789,9 @@ mod check_wiring_tests {
                     let (mut app, _rx) = rig(w, h, layout, Some(info(state)), Status::Done);
                     app.open_check_sheet(TERM);
                     let o = draw(&mut app, w, h);
-                    let last = o.lines().rfind(|l| words(l).contains("Esc back")).unwrap_or_else(|| panic!("{at}: a hint row in\n{o}"));
+                    // Above the mode bar, which names the sheet and its way out too.
+                    let bar = screen::mode_bar_row(&app, Rect::new(0, 0, w, h)).y as usize;
+                    let last = o.lines().take(bar).filter(|l| words(l).contains("Esc back")).last().unwrap_or_else(|| panic!("{at}: a hint row in\n{o}"));
                     assert!(words(last).contains("Esc back r re-run f full output i why"), "{at}: {last}");
                     let buttons = words(o.lines().rfind(|l| words(l).contains("Open session o") || words(l).contains("Re-run r")).unwrap_or(""));
                     assert_eq!(buttons.contains("Re-run r"), state != CheckState::Checking, "{at}: {buttons}");
@@ -8564,7 +8732,9 @@ mod files_panel_tests {
         assert!(sheet.width > 0 && o.contains("notes.txt"), "the tree is in the panel:\n{o}");
         let (_, pane) = *app.pane_frames.first().expect("a pane still on screen");
         assert!(pane.right() <= sheet.x, "the panes reflow beside it: {pane:?} vs {sheet:?}");
-        let sidebar = |frame: &str| frame.lines().map(|l| l.chars().take(20).collect::<String>()).collect::<Vec<_>>();
+        // Above the mode bar, which now says Files has the keys.
+        let bar = screen::mode_bar_row(&app, Rect::new(0, 0, 160, 45)).y as usize;
+        let sidebar = |frame: &str| frame.lines().take(bar).map(|l| l.chars().take(20).collect::<String>()).collect::<Vec<_>>();
         assert_eq!(sidebar(&o), sidebar(&before), "the sidebar is not covered");
         key(&mut app, KeyCode::Char('f'));
         assert!(app.view.is_none(), "f again closes it");

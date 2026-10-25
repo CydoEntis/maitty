@@ -315,7 +315,7 @@ pub(in crate::client) fn armed(app: &App) -> bool {
 
 /// Shortcut mode is held while a popup or view it opened has the keys (ADR 0021). Normal with
 /// no view is the moment before it comes back, when keys still reach the pane.
-pub(in crate::client) fn shortcut_paused(app: &App) -> bool {
+pub(in crate::client) fn shortcut_waits(app: &App) -> bool {
     app.shortcut_held && !armed(app) && (app.mode != Mode::Normal || app.view_has_keys())
 }
 
