@@ -731,10 +731,16 @@ Follow-ups: in Files, `d` still opens Changes; the side panel's title repeats it
 right-hand sidebar's header; below about 60 columns a narrow pane's name chip can shrink to `…`;
 `screen_tests::tiled_square_and_faded` failed once in a parallel run; under about 16 rows the
 paused frame can cover a popup drawn on the ring (its snapshot is taken after `screen::draw`);
-Compact at padding 0 has no frame (offer one on its header and foot strips if wanted).
+Compact at padding 0 has no frame (offer one on its header and foot strips if wanted); on
+Windows a short one-line paste (under 16 characters) arrives as separate keys, so while the
+Files tree or preview has the keys its letters run Files' commands (`e`, `y`, `o`).
 Also: alerts that rang mid-turn fixed (a Claude stop with background work in flight no longer
 rings finished; screen-idle recovery waits for a still screen; every status change is logged to
 `daemon.log`); notifications name the branch. Not checked live yet.
+Also: Files' editor selects and copies (user report 2026-10-24: no way to select, copy or paste):
+Shift-selection, Ctrl+A and the mouse; Ctrl+C, Ctrl+X, Ctrl+V and the terminal's paste as text;
+Ctrl+Z / Ctrl+Y; the file shown (not edited) selects with the mouse and Ctrl+C copies. Built on
+`feat/editor-selection`; not checked live.
 
 ## In scope
 

@@ -102,6 +102,22 @@ node docs/design/v7/render-frames.mjs "$T" "$T/frames.txt"
 node src/client/v7_frames/split-frames.mjs "$T/frames.txt"
 ```
 
+The website's screenshots are real frames: `client/site_frames.rs` draws made-up app states
+(hero, grid, changes, files, inbox, the four looks, shortcut mode, the splash) in `night` and
+`day` through the real draw code, on a pinned clock with motion off, and writes each as an HTML
+`<pre>` (inline colours, no Nerd Font needed) plus `frames.json`. Its regular test checks every
+frame draws; the export runs only on demand, from the repo root on `origin/dev` or later.
+Glyphs the site's font may lack come wrapped in `.g` / `.g2` spans; the page needs the CSS in
+`client/site_frames/html.rs` to hold them to their cells.
+
+```sh
+MAITTY_SITE_FRAMES=../maitty-site/site/frames cargo test export_site_frames -- --ignored
+```
+
+```powershell
+$env:MAITTY_SITE_FRAMES='../maitty-site/site/frames'; cargo test export_site_frames -- --ignored
+```
+
 Live checks use a nested
 server: `MAITTY_SOCKET=test maitty`, then `maitty send` / `maitty read` against it.
 Tests never touch the user's real config (`MAITTY_CONFIG` or in-memory configs).

@@ -8889,6 +8889,397 @@ mod files_panel_tests {
         assert!(!files(&app).drawn(), "raw, since drawn lines have no numbers");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// `src/main.rs` open in the editor at 160×45, drawn once so the preview has its place.
+    fn editing(name: &str) -> (PathBuf, App) {
+        let dir = project(name);
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        key(&mut app, KeyCode::Char('i'));
+        frame(&mut app, 160, 45);
+        (dir, app)
+    }
+
+    fn edit(app: &App) -> &views::Edit {
+        files(app).edit.as_ref().expect("editing")
+    }
+
+    fn press(app: &mut App, code: KeyCode, mods: KeyModifiers) {
+        app.on_key(KeyEvent::new(code, mods));
+    }
+
+    fn mouse(app: &mut App, kind: MouseEventKind, (column, row): (u16, u16)) {
+        app.on_mouse(MouseEvent { kind, column, row, modifiers: KeyModifiers::NONE });
+    }
+
+    #[test]
+    fn shift_and_the_arrows_select_in_the_editor_and_typing_replaces_it() {
+        let (dir, mut app) = editing("shiftsel");
+        for _ in 0..3 {
+            press(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+        }
+        assert_eq!(edit(&app).selection(), Some(((0, 0), (0, 3))), "three characters");
+        let (o, buf) = frame(&mut app, 160, 45);
+        show(&o);
+        let selected = render::select_style(&app.theme).bg.expect("a ground");
+        assert_eq!(cell_of(&app, &buf, "let line_1").bg, selected, "drawn in the selection colour");
+        assert_ne!(cell_of(&app, &buf, "line_1").bg, selected, "only what is selected");
+        press(&mut app, KeyCode::Char('X'), KeyModifiers::SHIFT);
+        assert_eq!(edit(&app).lines[0], "X line_1 = 1;", "typing replaces the selection");
+        assert_eq!(edit(&app).selection(), None);
+        press(&mut app, KeyCode::Down, KeyModifiers::SHIFT);
+        press(&mut app, KeyCode::End, KeyModifiers::SHIFT);
+        press(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
+        assert_eq!(edit(&app).lines[..2], ["X", "let line_3 = 3;"], "Backspace removes a selection across lines");
+        press(&mut app, KeyCode::Left, KeyModifiers::SHIFT);
+        press(&mut app, KeyCode::Right, KeyModifiers::NONE);
+        assert_eq!(edit(&app).selection(), None, "a move without Shift drops it");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ctrl_a_selects_the_whole_file() {
+        let (dir, mut app) = editing("selall");
+        press(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL);
+        assert_eq!(edit(&app).selection(), Some(((0, 0), (59, "let line_60 = 60;".len()))));
+        press(&mut app, KeyCode::Char('z'), KeyModifiers::NONE);
+        assert_eq!(edit(&app).lines, ["z"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_mouse_selects_in_the_editor_and_a_click_moves_the_cursor() {
+        let (dir, mut app) = editing("mousesel");
+        let (_, buf) = frame(&mut app, 160, 45);
+        let (from, to) = (at(&app, &buf, "line_1"), at(&app, &buf, "= 3;"));
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), from);
+        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), to);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), to);
+        assert_eq!(edit(&app).selection(), Some(((0, 4), (2, 11))), "dragged from line 1 to line 3");
+        let click = at(&app, &buf, "line_2");
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), click);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), click);
+        assert_eq!((edit(&app).row, edit(&app).col, edit(&app).selection()), (1, 4, None), "a click moves the cursor");
+        let word = at(&app, &buf, "line_4");
+        for _ in 0..2 {
+            mouse(&mut app, MouseEventKind::Down(MouseButton::Left), word);
+            mouse(&mut app, MouseEventKind::Up(MouseButton::Left), word);
+        }
+        assert_eq!(edit(&app).selection(), Some(((3, 4), (3, 10))), "a double-click takes the word");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn last_copy() -> Option<String> {
+        copy::LAST_COPY.with(|c| c.borrow().clone())
+    }
+
+    /// Ctrl+V, and the clipboard read it starts in the background handed back.
+    fn ctrl_v(app: &mut App, rx: &mut mpsc::UnboundedReceiver<Bg>) {
+        press(app, KeyCode::Char('v'), KeyModifiers::CONTROL);
+        let read = super::branch_view_tests::next_bg(rx);
+        app.on_bg(read);
+    }
+
+    #[test]
+    fn copy_cut_and_paste_round_trip_in_the_editor() {
+        let (dir, mut app) = editing("clip");
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.bg = tx;
+        for _ in 0..3 {
+            press(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+        }
+        press(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_eq!(last_copy().as_deref(), Some("let"), "Ctrl+C copies the selection");
+        press(&mut app, KeyCode::End, KeyModifiers::NONE);
+        ctrl_v(&mut app, &mut rx);
+        assert_eq!(edit(&app).lines[0], "let line_1 = 1;let", "Ctrl+V pastes at the cursor");
+        press(&mut app, KeyCode::Down, KeyModifiers::NONE);
+        press(&mut app, KeyCode::Char('x'), KeyModifiers::CONTROL);
+        assert_eq!(last_copy().as_deref(), Some("let line_2 = 2;\n"), "Ctrl+X with nothing selected cuts the line");
+        assert_eq!(edit(&app).lines[1], "let line_3 = 3;");
+        press(&mut app, KeyCode::Home, KeyModifiers::NONE);
+        ctrl_v(&mut app, &mut rx);
+        assert_eq!(edit(&app).lines[1..3], ["let line_2 = 2;", "let line_3 = 3;"], "the line comes back whole");
+        press(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_eq!(last_copy().as_deref(), Some("let line_3 = 3;\n"), "Ctrl+C with nothing selected copies the line");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_terminals_paste_goes_into_the_editor_as_text() {
+        let (dir, mut app) = editing("bracketed");
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        for _ in 0..3 {
+            press(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+        }
+        app.on_event(Event::Paste("one\r\ntwo".into()));
+        assert_eq!(edit(&app).lines[..2], ["one", "two line_1 = 1;"], "the paste replaces the selection, its lines kept");
+        assert_eq!((edit(&app).row, edit(&app).col), (1, 3), "the cursor after it");
+        app.on_event(Event::Paste(String::new()));
+        assert_eq!(app.notice.as_ref().map(|(m, _, err)| (m.as_str(), *err)), Some((copy::NO_TEXT, true)), "an empty paste is no image paste");
+        assert!(out.try_recv().is_err(), "nothing reached the pane");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ctrl_c_in_the_editor_never_reaches_the_pane() {
+        let (dir, mut app) = editing("noint");
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        for code in ['c', 'x', 'v', 'a'] {
+            press(&mut app, KeyCode::Char(code), KeyModifiers::CONTROL);
+        }
+        while let Ok(msg) = out.try_recv() {
+            assert!(!matches!(msg, ClientMsg::Input { .. }), "a key went to the agent: {msg:?}");
+        }
+        assert!(files(&app).edit.is_some(), "still editing");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dragging_over_the_shown_file_selects_it_and_ctrl_c_copies_it() {
+        let dir = project("readsel");
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "main.rs");
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        let (_, buf) = frame(&mut app, 160, 45);
+        let (from, to) = (at(&app, &buf, "line_1"), at(&app, &buf, "= 2;"));
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), from);
+        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), to);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), to);
+        let (o, buf) = frame(&mut app, 160, 45);
+        show(&o);
+        let selected = render::select_style(&app.theme).bg.expect("a ground");
+        assert_eq!(cell_of(&app, &buf, "line_1").bg, selected, "drawn in the selection colour");
+        assert_ne!(cell_of(&app, &buf, "= 2;").bg, selected, "it ends where the drag let go");
+        press(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_eq!(last_copy().as_deref(), Some("line_1 = 1;\nlet line_2 "), "Ctrl+C copies the selection");
+        assert!(out.try_recv().is_err(), "Ctrl+C reached no pane");
+        key(&mut app, KeyCode::Char('y'));
+        assert_eq!(last_copy(), Some(dir.join("src").join("main.rs").display().to_string()), "y still copies the path");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ctrl_z_undoes_a_run_of_typing_at_once_and_ctrl_y_redoes_it() {
+        let (dir, mut app) = editing("undo");
+        for c in "abc".chars() {
+            press(&mut app, KeyCode::Char(c), KeyModifiers::NONE);
+        }
+        press(&mut app, KeyCode::End, KeyModifiers::NONE);
+        press(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
+        press(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
+        app.on_event(Event::Paste("!".into()));
+        assert_eq!(edit(&app).lines[0], "abclet line_1 = !");
+        let undo = |app: &mut App| press(app, KeyCode::Char('z'), KeyModifiers::CONTROL);
+        undo(&mut app);
+        assert_eq!(edit(&app).lines[0], "abclet line_1 = ", "the paste is a step of its own");
+        undo(&mut app);
+        assert_eq!(edit(&app).lines[0], "abclet line_1 = 1;", "both Backspaces at once");
+        undo(&mut app);
+        assert_eq!(edit(&app).lines[0], "let line_1 = 1;", "the whole word typed");
+        undo(&mut app);
+        assert_eq!(app.notice.as_ref().map(|(m, _, _)| m.as_str()), Some("nothing to undo"));
+        press(&mut app, KeyCode::Char('y'), KeyModifiers::CONTROL);
+        assert_eq!(edit(&app).lines[0], "abclet line_1 = 1;", "Ctrl+Y puts it back");
+        press(&mut app, KeyCode::Char('q'), KeyModifiers::NONE);
+        press(&mut app, KeyCode::Char('y'), KeyModifiers::CONTROL);
+        assert_eq!(app.notice.as_ref().map(|(m, _, _)| m.as_str()), Some("nothing to redo"), "a new change forgets what was undone");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn click_hit(app: &mut App, want: Hit) {
+        let r = app.hits.iter().find_map(|(r, h)| (*h == want).then_some(*r)).expect("the button is drawn");
+        for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+            mouse(app, kind, (r.x + 1, r.y));
+        }
+    }
+
+    #[test]
+    fn the_editor_has_its_own_buttons_and_they_type_nothing() {
+        let (dir, mut app) = editing("buttons");
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.bg = tx;
+        let (o, _) = frame(&mut app, 160, 45);
+        show(&o);
+        let row = o.lines().find(|l| l.contains("Save")).expect("the action row");
+        for label in ["^S", "Save", "^C", "Copy", "^V", "Paste", "^Z", "Undo", "Esc", "Done"] {
+            assert!(row.contains(label), "{label} in {row}");
+        }
+        assert!(!o.contains("Edit here") && !o.contains("Insert path"), "no file-browser buttons while editing:\n{o}");
+        let ctrl = |c: char| Hit::Button(Btn::ViewChord(KeyCode::Char(c), KeyModifiers::CONTROL));
+        click_hit(&mut app, ctrl('c'));
+        assert_eq!(last_copy().as_deref(), Some("let line_1 = 1;\n"), "Copy copies");
+        assert_eq!(edit(&app).lines[0], "let line_1 = 1;", "and types nothing");
+        click_hit(&mut app, ctrl('v'));
+        let read = super::branch_view_tests::next_bg(&mut rx);
+        app.on_bg(read);
+        assert_eq!(edit(&app).lines[..2], ["let line_1 = 1;", "let line_1 = 1;"], "Paste pastes");
+        click_hit(&mut app, ctrl('z'));
+        assert_eq!(edit(&app).lines[..2], ["let line_1 = 1;", "let line_2 = 2;"], "Undo undoes");
+        assert!(edit(&app).dirty, "an undo marks the file changed");
+        click_hit(&mut app, ctrl('s'));
+        assert!(!edit(&app).dirty, "Save saves");
+        assert_eq!(std::fs::read_to_string(dir.join("src").join("main.rs")).unwrap().lines().next(), Some("let line_1 = 1;"));
+        click_hit(&mut app, Hit::Button(Btn::ViewChord(KeyCode::Esc, KeyModifiers::NONE)));
+        assert!(files(&app).edit.is_none(), "Done leaves the editor");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// What the next message to the server types into a pane, if anything.
+    fn typed(out: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Option<String> {
+        std::iter::from_fn(|| out.try_recv().ok()).find_map(|m| match m {
+            ClientMsg::Input { data, .. } => Some(String::from_utf8_lossy(&data).into_owned()),
+            _ => None,
+        })
+    }
+
+    /// An empty paste started an image paste: its background read came back and said so.
+    fn image_paste_tried(app: &mut App, rx: &mut mpsc::UnboundedReceiver<Bg>) -> bool {
+        let read = super::branch_view_tests::next_bg(rx);
+        app.on_bg(read);
+        app.notice.as_ref().is_some_and(|(m, _, _)| m == "there's no image on the clipboard")
+    }
+
+    #[test]
+    fn pastes_still_reach_the_pane_whenever_files_does_not_have_the_keys() {
+        let (dir, mut app) = editing("pastepane");
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        let (btx, mut bg) = mpsc::unbounded_channel();
+        app.bg = btx;
+        let pane = app.pane_frames.iter().find(|(t, _)| *t == 1).map(|(_, r)| *r).expect("the pane beside the panel");
+        let inside = (pane.x + pane.width / 2, pane.y + pane.height / 2);
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), inside);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), inside);
+        assert!(!app.view_has_keys(), "the click set the editor aside");
+        app.on_event(Event::Paste("x".into()));
+        assert_eq!(typed(&mut out).as_deref(), Some("x"), "set aside: the pane gets it");
+        app.on_event(Event::Paste(String::new()));
+        assert!(image_paste_tried(&mut app, &mut bg), "set aside: an empty paste is the pane's image paste");
+        click_hit(&mut app, Hit::Button(Btn::ViewChord(KeyCode::Esc, KeyModifiers::NONE)));
+        assert!(app.view_has_keys() && files(&app).edit.is_none(), "Esc left the editor; Files has the keys");
+        app.on_event(Event::Paste("x".into()));
+        assert_eq!(typed(&mut out), None, "Files with the keys keeps a paste from the pane");
+        key(&mut app, KeyCode::Esc);
+        assert!(app.view.is_none(), "Files closed");
+        app.on_event(Event::Paste("x".into()));
+        assert_eq!(typed(&mut out).as_deref(), Some("x"), "closed: the pane gets it");
+        app.on_event(Event::Paste(String::new()));
+        assert!(image_paste_tried(&mut app, &mut bg), "closed: an empty paste is the image paste");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_paste_while_files_filters_goes_into_the_filter() {
+        let dir = project("pastefilter");
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        key(&mut app, KeyCode::Char('/'));
+        app.on_event(Event::Paste("notes\nsecond line".into()));
+        assert_eq!(files(&app).filter, "notes", "its first line");
+        assert_eq!(files(&app).preview.as_ref().map(|(p, _)| p.clone()), Some(dir.join("notes.txt")), "the match is shown");
+        app.on_event(Event::Paste(String::new()));
+        assert_eq!(typed(&mut out), None, "nothing reached the pane");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_release_outside_the_window_ends_the_selection_drag() {
+        let (dir, mut app) = editing("staledrag");
+        let (_, buf) = frame(&mut app, 160, 45);
+        let from = at(&app, &buf, "line_1");
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), from);
+        assert!(files(&app).dragging);
+        mouse(&mut app, MouseEventKind::Moved, (0, 0));
+        assert!(!files(&app).dragging, "moving with no button held ends it");
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), from);
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), (0, 44));
+        assert!(!files(&app).dragging, "a press elsewhere ends it");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn below_the_last_line_the_pointer_means_the_end_of_the_file() {
+        let dir = project("pastend");
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "notes.txt");
+        key(&mut app, KeyCode::Char('i'));
+        let (_, buf) = frame(&mut app, 160, 45);
+        let below = (app.screen.preview_rect.x + 2, app.screen.preview_rect.y + 5);
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), below);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), below);
+        assert_eq!((edit(&app).row, edit(&app).col), (0, "remember the milk".len()), "a click below a short file: its end");
+        let word = at(&app, &buf, "the milk");
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), word);
+        let past = (word.0, app.screen.preview_rect.bottom() + 1);
+        mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), past);
+        assert_eq!(edit(&app).selection(), Some(((0, 9), (0, 17))), "a drag past the end takes the rest of the last line");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn undo_treats_typing_over_a_selection_and_a_line_cut_as_one_step_each() {
+        let (dir, mut app) = editing("undosteps");
+        for _ in 0..3 {
+            press(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+        }
+        for c in "var".chars() {
+            press(&mut app, KeyCode::Char(c), KeyModifiers::NONE);
+        }
+        assert_eq!(edit(&app).lines[0], "var line_1 = 1;");
+        press(&mut app, KeyCode::Char('z'), KeyModifiers::CONTROL);
+        assert_eq!(edit(&app).lines[0], "let line_1 = 1;", "one Ctrl+Z undoes the replacing and the typing");
+        press(&mut app, KeyCode::Down, KeyModifiers::NONE);
+        press(&mut app, KeyCode::Right, KeyModifiers::NONE);
+        press(&mut app, KeyCode::Right, KeyModifiers::NONE);
+        press(&mut app, KeyCode::Char('x'), KeyModifiers::CONTROL);
+        press(&mut app, KeyCode::Char('z'), KeyModifiers::CONTROL);
+        assert_eq!((edit(&app).lines[1].as_str(), edit(&app).row, edit(&app).col), ("let line_2 = 2;", 1, 5), "the line back, the cursor where it was");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ctrl_x_in_an_empty_file_does_nothing() {
+        let dir = project("emptycut");
+        std::fs::write(dir.join("empty.txt"), "").unwrap();
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "empty.txt");
+        key(&mut app, KeyCode::Char('i'));
+        app.notice = None;
+        press(&mut app, KeyCode::Char('x'), KeyModifiers::CONTROL);
+        assert!(app.notice.is_none() && !edit(&app).dirty, "no cut, no toast");
+        press(&mut app, KeyCode::Char('z'), KeyModifiers::CONTROL);
+        assert_eq!(app.notice.as_ref().map(|(m, _, _)| m.as_str()), Some("nothing to undo"), "and no undo step");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_double_click_on_drawn_markdown_takes_a_word() {
+        let (dir, mut app) = guide_open("mdword");
+        let (_, buf) = frame(&mut app, 200, 50);
+        let word = at(&app, &buf, "para 7");
+        for _ in 0..2 {
+            mouse(&mut app, MouseEventKind::Down(MouseButton::Left), word);
+            mouse(&mut app, MouseEventKind::Up(MouseButton::Left), word);
+        }
+        press(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_eq!(last_copy().as_deref(), Some("para"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 
@@ -8942,7 +9333,7 @@ mod branch_view_tests {
     }
 
     /// The next background result, once its thread is done.
-    fn next_bg(rx: &mut mpsc::UnboundedReceiver<Bg>) -> Bg {
+    pub(super) fn next_bg(rx: &mut mpsc::UnboundedReceiver<Bg>) -> Bg {
         let until = Instant::now() + std::time::Duration::from_secs(20);
         loop {
             if let Ok(b) = rx.try_recv() {

@@ -152,7 +152,33 @@ impl App {
         let page = self.screen.preview_rect.height.saturating_sub(4).max(5) as usize;
         // Editing the file in the preview.
         if let Some(ed) = v.edit.as_mut() {
+            if matches!(k.code, KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right | KeyCode::PageUp | KeyCode::PageDown | KeyCode::Home | KeyCode::End) {
+                ed.select(k.modifiers.contains(KeyModifiers::SHIFT));
+            }
             match k.code {
+                KeyCode::Char('a') if ctrl => ed.select_all(),
+                KeyCode::Char('c') if ctrl => {
+                    let text = ed.copied();
+                    copy::to_clipboard(&text);
+                    self.notify(copied_note("copied", &text), false);
+                }
+                KeyCode::Char('x') if ctrl => {
+                    if let Some(text) = ed.cut() {
+                        copy::to_clipboard(&text);
+                        self.notify(copied_note("cut", &text), false);
+                    }
+                }
+                KeyCode::Char('v') if ctrl => self.paste_clipboard_into_editor(ed.path.clone()),
+                KeyCode::Char('z') if ctrl => {
+                    if !ed.undo() {
+                        self.notify("nothing to undo".into(), false);
+                    }
+                }
+                KeyCode::Char('y') if ctrl => {
+                    if !ed.redo() {
+                        self.notify("nothing to redo".into(), false);
+                    }
+                }
                 KeyCode::Char('s') if ctrl => match ed.save() {
                     Ok(views::Saved::Done) => self.notify(format!("saved {}", ed.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()), false),
                     Ok(views::Saved::ChangedOnDisk) => {
@@ -193,13 +219,7 @@ impl App {
                 }
                 _ => {}
             }
-            // Keep the cursor on screen.
-            let row = ed.row;
-            if row < v.scroll {
-                v.scroll = row;
-            } else if row >= v.scroll + page {
-                v.scroll = row + 1 - page;
-            }
+            v.follow_cursor(page);
             return true;
         }
         if v.filtering {
@@ -221,6 +241,16 @@ impl App {
             }
             v.sel = v.sel.min(v.visible().len().saturating_sub(1));
             v.refresh_preview();
+            return true;
+        }
+        if ctrl && k.code == KeyCode::Char('c') {
+            match v.picked_text() {
+                Some(text) => {
+                    copy::to_clipboard(&text);
+                    self.notify(copied_note("copied", &text), false);
+                }
+                None => self.notify("drag over the file to select text; y copies its path".into(), false),
+            }
             return true;
         }
         let node = v.selected();
@@ -364,6 +394,56 @@ impl App {
     }
 
 
+
+    /// Ctrl+V in Files' editor: the clipboard is read in the background, and its text lands at
+    /// the cursor if that file is still being edited.
+    fn paste_clipboard_into_editor(&mut self, path: std::path::PathBuf) {
+        let read = copy::clipboard_reader();
+        self.spawn_bg(move || {
+            let got = read();
+            Bg::Then(Box::new(move |app: &mut App| match got {
+                Ok(text) => app.paste_into_editor(&path, &text),
+                Err(e) => app.notify(e, true),
+            }))
+        });
+    }
+
+    /// A paste while Files has the keys (and nothing is over it) stays in Files: the editor
+    /// takes it as text, the filter its first line. Otherwise it is dropped with a toast: the
+    /// pane behind is not what you were looking at, and an empty paste would start an image
+    /// paste there. False when Files doesn't have the keys.
+    pub(super) fn paste_into_files(&mut self, text: &str) -> bool {
+        if !self.view_has_keys() || !matches!(self.mode, Mode::Normal) {
+            return false;
+        }
+        let Some(View::Files(v)) = &mut self.view else { return false };
+        let editing = v.edit.as_ref().map(|ed| ed.path.clone());
+        match editing {
+            Some(path) => self.paste_into_editor(&path, text),
+            None if v.filtering => {
+                v.filter.push_str(text.lines().next().unwrap_or(""));
+                v.sel = v.sel.min(v.visible().len().saturating_sub(1));
+                v.refresh_preview();
+            }
+            None => self.notify("Files has the keys: / filters, i edits; Esc closes it, or click a pane to paste there".into(), false),
+        }
+        true
+    }
+
+    /// Text pasted into Files' editor for `path`, if that file is still open there.
+    pub(super) fn paste_into_editor(&mut self, path: &std::path::Path, text: &str) {
+        if text.is_empty() {
+            // A terminal's own paste of an image arrives empty; it is no text to insert.
+            self.notify(copy::NO_TEXT.into(), true);
+            return;
+        }
+        let page = self.screen.preview_rect.height.max(1) as usize;
+        let Some(View::Files(v)) = &mut self.view else { return };
+        let Some(ed) = v.edit.as_mut().filter(|ed| ed.path == path) else { return };
+        ed.insert_text(text);
+        v.follow_cursor(page);
+        self.dirty = true;
+    }
 
     /// Keys in the settings view. Returns false when it closes.
     pub(super) fn on_settings_view_key(&mut self, v: &mut design::SettingsView, k: &KeyEvent) -> bool {
@@ -569,4 +649,10 @@ impl App {
         let name = if w.main { w.repo.clone() } else { format!("{}:{}", w.repo, w.branch) };
         self.cmd(Command::NewWorkspace { cwd: Some(w.path.clone()), name: Some(name), cmd });
     }
+}
+
+/// The toast for text taken from Files: how much, not the text itself.
+fn copied_note(verb: &str, text: &str) -> String {
+    let n = text.chars().count();
+    format!("{verb} {n} character{}", if n == 1 { "" } else { "s" })
 }

@@ -58,6 +58,9 @@ impl App {
     }
 
     pub(super) fn on_paste(&mut self, s: String) {
+        if self.paste_into_files(&s) {
+            return;
+        }
         match &mut self.mode {
             Mode::Copy(c) => {
                 if let Some(input) = &mut c.input {
@@ -448,6 +451,15 @@ impl App {
         if matches!(m.kind, MouseEventKind::Down(_)) {
             self.shortcut_held = false;
         }
+        // A selection drag in Files whose release never came (let go outside the window) is
+        // over once the mouse moves with no button held, or presses somewhere else; here,
+        // before panes and popups take the event.
+        let elsewhere = matches!(m.kind, MouseEventKind::Down(_)) && !self.screen.preview_rect.contains(pos);
+        if (m.kind == MouseEventKind::Moved || elsewhere)
+            && let Some(View::Files(v)) = &mut self.view
+        {
+            v.dragging = false;
+        }
         // A click into a pane gives it the keys and leaves the open view beside it; a click in
         // the side sheet gives them back to the view.
         if m.kind == MouseEventKind::Down(MouseButton::Left) && self.view.is_some() {
@@ -698,6 +710,10 @@ impl App {
             self.pointer_for(pos);
             return;
         }
+        if self.on_preview_mouse(&m, pos) {
+            self.dirty = true;
+            return;
+        }
         if m.kind == MouseEventKind::Down(MouseButton::Left) {
             let hit = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
             // A session's row: it may be dragged within its group; a plain click opens it
@@ -906,6 +922,63 @@ impl App {
         }
     }
 
+    /// Press, drag and release in Files' preview select text, the editor's or the file's: in
+    /// the editor a click moves the cursor (Shift+click extends); a double-click takes a word.
+    /// True when it took the event.
+    fn on_preview_mouse(&mut self, m: &MouseEvent, pos: Position) -> bool {
+        let area = self.screen.preview_rect;
+        if !matches!(self.mode, Mode::Normal) {
+            return false;
+        }
+        let Some(View::Files(v)) = &mut self.view else { return false };
+        match m.kind {
+            MouseEventKind::Down(MouseButton::Left) if area.contains(pos) => {
+                let at = v.text_at(area, pos.x, pos.y);
+                let double = v.last_press.is_some_and(|(p, when)| p == at && when.elapsed() < DOUBLE_CLICK);
+                v.last_press = (!double).then(|| (at, Instant::now()));
+                let word = |text: Option<String>| {
+                    let (from, to) = views::word_at(&text.unwrap_or_default(), at.1);
+                    ((at.0, from), (at.0, to))
+                };
+                match v.edit.as_mut() {
+                    Some(ed) => {
+                        ed.move_to(at, m.modifiers.contains(KeyModifiers::SHIFT));
+                        if double {
+                            ed.select_word();
+                        }
+                    }
+                    None if double => v.pick = Some(word(v.shown_text(at.0))),
+                    None => v.pick = Some((at, at)),
+                }
+                v.dragging = true;
+                true
+            }
+            MouseEventKind::Drag(MouseButton::Left) if v.dragging => {
+                // Past the top or bottom edge, the selection runs on a line, and the text
+                // scrolls under the pointer.
+                let (mut line, col) = v.text_at(area, pos.x, pos.y);
+                if pos.y < area.y {
+                    line = line.saturating_sub(1);
+                } else if pos.y >= area.bottom() {
+                    line += 1;
+                }
+                // Past the last line: its end, so the drag takes all of it.
+                let at = if line >= v.shown_count() { v.end() } else { (line, col) };
+                match v.edit.as_mut() {
+                    Some(ed) => ed.move_to(at, true),
+                    None => v.pick = v.pick.map(|(from, _)| (from, at)),
+                }
+                v.show_line(at.0, area.height as usize);
+                true
+            }
+            MouseEventKind::Up(MouseButton::Left) if v.dragging => {
+                v.dragging = false;
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// Drag to select (enters copy mode), release to copy; clicks and wheel inside copy mode.
     /// Returns true when the event was consumed.
     pub(super) fn on_mouse_select(&mut self, m: &MouseEvent, pos: Position) -> bool {
@@ -998,6 +1071,7 @@ impl App {
                     };
                     self.on_view_key(&KeyEvent::new(code, KeyModifiers::NONE));
                 }
+                Btn::ViewChord(code, mods) => self.on_view_key(&KeyEvent::new(code, mods)),
                 Btn::Row(i) => match &mut self.view {
                     Some(View::Changes(v)) => {
                         let rows = v.rows();

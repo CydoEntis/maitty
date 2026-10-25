@@ -155,6 +155,12 @@ pub struct FilesTree {
     pub raw: Option<PathBuf>,
     /// The drawn markdown, kept until the file, the width or the theme changes.
     pub(super) drawn_cache: Option<DrawnCache>,
+    /// The left button went down in the preview and is still held: moving selects.
+    pub dragging: bool,
+    /// The last press in the preview, to tell a double-click.
+    pub last_press: Option<(Pos, std::time::Instant)>,
+    /// Text selected in the file shown (not edited): where it started, and where it runs to.
+    pub pick: Option<(Pos, Pos)>,
 }
 
 /// Markdown drawn for the preview, and what it was drawn for.
@@ -183,6 +189,106 @@ pub struct Edit {
     seen: u64,
     /// Ctrl+S found it changed on disk: the next Ctrl+S overwrites anyway.
     pub conflict: bool,
+    /// Where the selection started; it runs to the cursor.
+    pub anchor: Option<Pos>,
+    /// Earlier text and cursors, for Ctrl+Z; what Ctrl+Z took, for Ctrl+Y.
+    undo: Vec<Snapshot>,
+    redo: Vec<Snapshot>,
+    /// What the last change was: more of the same joins its undo step.
+    last_step: Option<Step>,
+}
+
+/// The editor's text and cursor at one moment, and roughly how many bytes it holds.
+#[derive(Debug, Clone, PartialEq)]
+struct Snapshot {
+    lines: Vec<String>,
+    row: usize,
+    col: usize,
+    bytes: usize,
+}
+
+/// Changes that run together into one undo step while nothing else happens between them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Step {
+    Type,
+    Delete,
+}
+
+/// What the undo history may hold: a 4 MB file keeps eight steps, a small one hundreds.
+const UNDO_BYTES: usize = 32 << 20;
+const UNDO_STEPS: usize = 500;
+
+/// Columns the preview's line numbers take (`{:>4}` and two spaces).
+pub const GUTTER: u16 = 6;
+
+/// A place in some text: line, and character in it.
+pub type Pos = (usize, usize);
+
+/// A selection's two ends in reading order; None when it is empty.
+pub fn ordered(a: Pos, b: Pos) -> Option<(Pos, Pos)> {
+    (a != b).then(|| if a < b { (a, b) } else { (b, a) })
+}
+
+/// The characters of `line` (which has `len`) inside `sel`. A selection that runs on past the
+/// line's end takes one more, so the line break it includes shows.
+pub fn line_span(sel: (Pos, Pos), line: usize, len: usize) -> Option<(usize, usize)> {
+    let ((r0, c0), (r1, c1)) = sel;
+    if line < r0 || line > r1 {
+        return None;
+    }
+    let from = if line == r0 { c0.min(len) } else { 0 };
+    let to = if line == r1 { c1.min(len) } else { len + 1 };
+    (to > from).then_some((from, to))
+}
+
+/// The text of `lines` between the two ends of `sel`, lines joined by `\n`.
+pub fn text_between<S: AsRef<str>>(lines: &[S], sel: (Pos, Pos)) -> String {
+    let ((r0, c0), (r1, c1)) = sel;
+    let mut out = String::new();
+    for (i, l) in lines.iter().enumerate().take(r1 + 1).skip(r0) {
+        let chars = l.as_ref().chars();
+        let from = if i == r0 { c0 } else { 0 };
+        let piece: String = if i == r1 { chars.take(c1).skip(from).collect() } else { chars.skip(from).collect() };
+        out.push_str(&piece);
+        if i < r1 {
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// Screen columns a character takes in the preview: tabs four, CJK and emoji two.
+fn cell_width(c: char) -> usize {
+    if c == '\t' { 4 } else { unicode_width::UnicodeWidthChar::width(c).unwrap_or(0) }
+}
+
+/// The character of `line` drawn at screen column `x` (past the end: the end).
+pub fn col_at(line: &str, x: usize) -> usize {
+    let mut w = 0;
+    for (i, c) in line.chars().enumerate() {
+        w += cell_width(c);
+        if w > x {
+            return i;
+        }
+    }
+    line.chars().count()
+}
+
+/// Screen columns the first `col` characters of `line` take.
+pub fn x_of(line: &str, col: usize) -> usize {
+    line.chars().take(col).map(cell_width).sum()
+}
+
+/// The word (letters, digits, `_`) around character `col` of `line`, or that one character.
+pub fn word_at(line: &str, col: usize) -> (usize, usize) {
+    let chars: Vec<char> = line.chars().collect();
+    let word = |c: &char| c.is_alphanumeric() || *c == '_';
+    if !chars.get(col).is_some_and(word) {
+        return (col.min(chars.len()), (col + 1).min(chars.len()));
+    }
+    let start = chars[..col].iter().rposition(|c| !word(c)).map_or(0, |i| i + 1);
+    let end = chars[col..].iter().position(|c| !word(c)).map_or(chars.len(), |i| col + i);
+    (start, end)
 }
 
 /// A fingerprint of a file's bytes (same run only).
@@ -217,7 +323,7 @@ impl Edit {
         if lines.is_empty() {
             lines.push(String::new());
         }
-        Ok(Edit { path: path.to_path_buf(), lines, row: 0, col: 0, dirty: false, warned: false, crlf, trailing_newline, seen, conflict: false })
+        Ok(Edit { path: path.to_path_buf(), lines, row: 0, col: 0, dirty: false, warned: false, crlf, trailing_newline, seen, conflict: false, anchor: None, undo: Vec::new(), redo: Vec::new(), last_step: None })
     }
 
     /// Save, unless the file changed on disk since it was opened (an agent edited it): then
@@ -259,7 +365,152 @@ impl Edit {
         self.lines[row].char_indices().nth(col).map(|(i, _)| i).unwrap_or(self.lines[row].len())
     }
 
+    /// The selection's ends in reading order, if any text is selected.
+    pub fn selection(&self) -> Option<(Pos, Pos)> {
+        self.anchor.and_then(|a| ordered(a, (self.row, self.col)))
+    }
+
+    /// What Ctrl+C copies: the selection, or the cursor's line with its line break.
+    pub fn copied(&self) -> String {
+        match self.selection() {
+            Some(sel) => text_between(&self.lines, sel),
+            None => format!("{}\n", self.lines[self.row]),
+        }
+    }
+
+    /// Ctrl+X: what `copied` gives, removed: the selection, or the cursor's whole line. None
+    /// when the file is empty and there is nothing to cut.
+    pub fn cut(&mut self) -> Option<String> {
+        if self.selection().is_none() && self.lines.len() == 1 && self.lines[0].is_empty() {
+            return None;
+        }
+        let text = self.copied();
+        // Before the cursor moves onto the line: undoing the cut puts it back where it was.
+        self.checkpoint(None);
+        if self.selection().is_none() {
+            let last = self.lines.len() - 1;
+            // The last line has no line break to take; the one before it gives up its own.
+            (self.anchor, self.row, self.col) = match self.row {
+                r if r < last => (Some((r, 0)), r + 1, 0),
+                0 => (Some((0, 0)), 0, self.len(0)),
+                r => (Some((r - 1, self.len(r - 1))), r, self.len(r)),
+            };
+        }
+        self.take_selection();
+        Some(text)
+    }
+
+    /// Before a change: remember the text as it is, unless the change continues the last one
+    /// (`step`: typing on, or deleting on). A new change forgets what Ctrl+Z took back.
+    fn checkpoint(&mut self, step: Option<Step>) {
+        // Replacing a selection starts a step of its own; typing on after it joins that step.
+        let replacing = self.selection().is_some();
+        if !replacing && step.is_some() && step == self.last_step {
+            return;
+        }
+        self.last_step = step;
+        self.redo.clear();
+        let now = self.snapshot();
+        self.undo.push(now);
+        let mut total: usize = self.undo.iter().map(|s| s.bytes).sum();
+        while self.undo.len() > 1 && (total > UNDO_BYTES || self.undo.len() > UNDO_STEPS) {
+            total -= self.undo.remove(0).bytes;
+        }
+    }
+
+    fn snapshot(&self) -> Snapshot {
+        let bytes = self.lines.iter().map(|l| l.len() + 1).sum();
+        Snapshot { lines: self.lines.clone(), row: self.row, col: self.col, bytes }
+    }
+
+    fn restore(&mut self, s: Snapshot) {
+        (self.lines, self.row, self.col) = (s.lines, s.row, s.col);
+        (self.anchor, self.last_step) = (None, None);
+        self.dirty = true;
+    }
+
+    /// Ctrl+Z: back one step. False when there is nothing to undo.
+    pub fn undo(&mut self) -> bool {
+        let Some(before) = self.undo.pop() else { return false };
+        let now = self.snapshot();
+        self.redo.push(now);
+        self.restore(before);
+        true
+    }
+
+    /// Ctrl+Y: forward again what Ctrl+Z took back. False when there is nothing to redo.
+    pub fn redo(&mut self) -> bool {
+        let Some(after) = self.redo.pop() else { return false };
+        let now = self.snapshot();
+        self.undo.push(now);
+        self.restore(after);
+        true
+    }
+
+    /// Put `text` at the cursor in place of the selection; its line breaks become lines.
+    pub fn insert_text(&mut self, text: &str) {
+        self.checkpoint(None);
+        self.take_selection();
+        let text = text.replace("\r\n", "\n").replace('\r', "\n");
+        let at = self.byte(self.row, self.col);
+        let rest = self.lines[self.row].split_off(at);
+        let mut parts = text.split('\n');
+        self.lines[self.row].push_str(parts.next().unwrap_or_default());
+        for part in parts {
+            self.row += 1;
+            self.lines.insert(self.row, part.to_string());
+        }
+        self.col = self.len(self.row);
+        self.lines[self.row].push_str(&rest);
+        self.dirty = true;
+        self.warned = false;
+    }
+
+    /// Before a move: Shift keeps (or starts) the selection, any other move drops it.
+    pub fn select(&mut self, extend: bool) {
+        self.last_step = None;
+        self.anchor = if extend { Some(self.anchor.unwrap_or((self.row, self.col))) } else { None };
+    }
+
+    pub fn select_all(&mut self) {
+        self.anchor = Some((0, 0));
+        self.row = self.lines.len() - 1;
+        self.col = self.len(self.row);
+    }
+
+    /// Put the cursor at `at` (clamped to the text), extending the selection or dropping it.
+    pub fn move_to(&mut self, at: Pos, extend: bool) {
+        self.select(extend);
+        self.row = at.0.min(self.lines.len() - 1);
+        self.col = at.1.min(self.len(self.row));
+    }
+
+    /// Select the word under the cursor.
+    pub fn select_word(&mut self) {
+        let (from, to) = word_at(&self.lines[self.row], self.col);
+        self.anchor = Some((self.row, from));
+        self.col = to;
+    }
+
+    /// Remove the selected text, leaving the cursor where it began. False when nothing is selected.
+    fn take_selection(&mut self) -> bool {
+        let Some(((r0, c0), (r1, c1))) = self.selection() else {
+            self.anchor = None;
+            return false;
+        };
+        let tail = self.lines[r1][self.byte(r1, c1)..].to_string();
+        let at = self.byte(r0, c0);
+        self.lines[r0].truncate(at);
+        self.lines[r0].push_str(&tail);
+        self.lines.drain(r0 + 1..=r1);
+        (self.row, self.col, self.anchor) = (r0, c0, None);
+        self.dirty = true;
+        true
+    }
+
     pub fn insert(&mut self, c: char) {
+        self.checkpoint(Some(Step::Type));
+        self.take_selection();
         let at = self.byte(self.row, self.col);
         self.lines[self.row].insert(at, c);
         self.col += 1;
@@ -267,6 +518,8 @@ impl Edit {
     }
 
     pub fn newline(&mut self) {
+        self.checkpoint(None);
+        self.take_selection();
         let at = self.byte(self.row, self.col);
         let rest = self.lines[self.row].split_off(at);
         // Keep the line's indent.
@@ -278,6 +531,13 @@ impl Edit {
     }
 
     pub fn backspace(&mut self) {
+        if self.selection().is_none() && (self.row, self.col) == (0, 0) {
+            return;
+        }
+        self.checkpoint(Some(Step::Delete));
+        if self.take_selection() {
+            return;
+        }
         if self.col > 0 {
             let at = self.byte(self.row, self.col - 1);
             self.lines[self.row].remove(at);
@@ -294,6 +554,13 @@ impl Edit {
     }
 
     pub fn delete(&mut self) {
+        if self.selection().is_none() && (self.row, self.col) == (self.lines.len() - 1, self.len(self.row)) {
+            return;
+        }
+        self.checkpoint(Some(Step::Delete));
+        if self.take_selection() {
+            return;
+        }
         if self.col < self.len(self.row) {
             let at = self.byte(self.row, self.col);
             self.lines[self.row].remove(at);
@@ -331,7 +598,7 @@ impl Edit {
 
     /// The cursor's screen column within its line (tabs are four wide).
     pub fn cursor_x(&self) -> usize {
-        self.lines[self.row].chars().take(self.col).map(|c| if c == '\t' { 4 } else { 1 }).sum()
+        x_of(&self.lines[self.row], self.col)
     }
 }
 
@@ -357,6 +624,9 @@ impl FilesTree {
             reveal: None,
             raw: None,
             drawn_cache: None,
+            dragging: false,
+            last_press: None,
+            pick: None,
         }
     }
 
@@ -419,6 +689,7 @@ impl FilesTree {
         let Some((path, _)) = self.preview.as_ref().filter(|_| self.markdown()) else { return };
         self.raw = if self.raw.as_ref() == Some(path) { None } else { Some(path.clone()) };
         self.drawn_cache = None;
+        self.pick = None;
     }
 
     /// The previewed file is markdown and drawn, not shown raw.
@@ -438,6 +709,8 @@ impl FilesTree {
             return;
         }
         let lines = super::markdown::render(&lines.join("\n"), width, t);
+        // Drawn again, the lines are new: a selection in the old ones means nothing now.
+        self.pick = None;
         self.drawn_cache = Some(DrawnCache { path: path.clone(), width, theme: theme.to_string(), lines });
     }
 
@@ -447,16 +720,77 @@ impl FilesTree {
         self.drawn_cache.as_ref().filter(|c| c.path == *path).map(|c| c.lines.as_slice())
     }
 
-    /// How many lines the preview shows at `width`: the edit, the drawn markdown, or the text.
-    pub(super) fn shown_lines(&mut self, width: u16, t: &Theme, theme: &str) -> usize {
+    /// Scroll so the editor's cursor is on screen, `page` lines tall.
+    pub fn follow_cursor(&mut self, page: usize) {
+        if let Some(row) = self.edit.as_ref().map(|ed| ed.row) {
+            self.show_line(row, page);
+        }
+    }
+
+    /// Scroll so `line` is on screen, `page` lines tall.
+    pub fn show_line(&mut self, line: usize, page: usize) {
+        if line < self.scroll {
+            self.scroll = line;
+        } else if line >= self.scroll + page {
+            self.scroll = line + 1 - page;
+        }
+    }
+
+    /// The text selected in the file shown, its lines joined by line breaks.
+    pub fn picked_text(&self) -> Option<String> {
+        let ((r0, c0), (r1, c1)) = self.pick.and_then(|(a, b)| ordered(a, b))?;
+        let lines: Vec<String> = (r0..=r1).map(|i| self.shown_text(i).unwrap_or_default()).collect();
+        Some(text_between(&lines, ((0, c0), (r1 - r0, c1))))
+    }
+
+    /// How many lines the preview has: the edit's, the drawn markdown's, or the file's.
+    pub fn shown_count(&self) -> usize {
         if let Some(ed) = &self.edit {
             return ed.lines.len();
         }
-        self.lay_out(width, t, theme);
         match self.pretty() {
             Some(drawn) => drawn.len(),
             None => self.preview.as_ref().map_or(0, |(_, l)| l.len()),
         }
+    }
+
+    /// Shown line `i` as plain text: the edit's, the drawn markdown's, or the file's.
+    pub fn shown_text(&self, i: usize) -> Option<String> {
+        if let Some(ed) = &self.edit {
+            return ed.lines.get(i).cloned();
+        }
+        match self.pretty() {
+            Some(drawn) => drawn.get(i).map(|segs| segs.iter().map(|(s, _)| s.as_str()).collect()),
+            None => self.preview.as_ref().and_then(|(_, l)| l.get(i).cloned()),
+        }
+    }
+
+    /// Columns before the text: line numbers, except on drawn markdown.
+    pub fn gutter(&self) -> u16 {
+        if self.edit.is_none() && self.pretty().is_some() { 0 } else { GUTTER }
+    }
+
+    /// The place in the preview's text under the cell (x, y) of `area`, the preview on screen;
+    /// a cell outside it counts as the nearest edge.
+    pub fn text_at(&self, area: ratatui::layout::Rect, x: u16, y: u16) -> Pos {
+        let y = y.clamp(area.y, area.bottom().saturating_sub(1));
+        let line = self.scroll + (y - area.y) as usize;
+        let Some(text) = self.shown_text(line) else { return self.end() };
+        (line, col_at(&text, x.saturating_sub(area.x + self.gutter()) as usize))
+    }
+
+    /// The end of the preview's last line.
+    pub fn end(&self) -> Pos {
+        let last = self.shown_count().saturating_sub(1);
+        (last, self.shown_text(last).map_or(0, |t| t.chars().count()))
+    }
+
+    /// How many lines the preview shows at `width`: the edit, the drawn markdown, or the text.
+    pub(super) fn shown_lines(&mut self, width: u16, t: &Theme, theme: &str) -> usize {
+        if self.edit.is_none() {
+            self.lay_out(width, t, theme);
+        }
+        self.shown_count()
     }
 
     pub fn refresh_preview(&mut self) {
@@ -464,6 +798,9 @@ impl FilesTree {
             self.preview = None;
             return;
         };
+        if self.preview.as_ref().is_none_or(|(p, _)| *p != n.path) {
+            self.pick = None;
+        }
         if n.is_dir {
             let kids = self.all.iter().filter(|c| c.path.parent() == Some(n.path.as_path())).count();
             self.preview = Some((n.path.clone(), vec![format!("folder · {kids} items")]));
@@ -664,6 +1001,15 @@ mod tests {
         ed.save().unwrap();
         assert_eq!(std::fs::read_to_string(&g).unwrap(), "xa\nb\nc\nd\n");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn wide_characters_take_two_columns_for_the_pointer_and_the_cursor() {
+        let line = "日本 x";
+        assert_eq!(x_of(line, 2), 4, "two CJK characters, four columns");
+        assert_eq!(col_at(line, 5), 3, "the column after the space is the x");
+        assert_eq!(col_at(line, 1), 0, "the second half of 日 is still 日");
+        assert_eq!(x_of("\tb", 1), 4, "a tab is four");
     }
 
     #[test]
