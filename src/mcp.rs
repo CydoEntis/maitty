@@ -333,6 +333,7 @@ impl Server {
             Some(Value::String(p)) => self.project_at(p)?,
             Some(_) => return Err("path must be a string".into()),
         };
+        let root = crate::references::project_root(&root);
         let folder = crate::references::folder(&root);
         let found = crate::references::of_project(&root)?;
         if found.is_empty() {

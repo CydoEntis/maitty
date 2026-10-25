@@ -6,7 +6,7 @@
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-/// The folder, relative to the project's root.
+/// The folder, relative to the project's root, as it is written for people.
 pub const DIR: &str = concat!(".", env!("APP_COMMAND"), "/references");
 /// The line in the repo's `info/exclude` that keeps the folder out of git.
 const EXCLUDE_LINE: &str = concat!(".", env!("APP_COMMAND"), "/references/");
@@ -63,12 +63,15 @@ pub struct Reference {
 /// The project `dir` belongs to: the repo's main checkout (never a linked worktree, so every
 /// agent shares one set), else the folder itself.
 pub fn project_root(dir: &Path) -> PathBuf {
-    crate::gitfs::head(dir).map(|h| h.main_root).unwrap_or_else(|| dir.to_path_buf())
+    let root = crate::gitfs::head(dir).map(|h| h.main_root).unwrap_or_else(|| dir.to_path_buf());
+    // A worktree's `.git` file names the main checkout with `/` even on Windows; rebuilt from its
+    // parts, the path an agent is handed uses one separator.
+    root.components().collect()
 }
 
 /// The references folder of the project at `root`.
 pub fn folder(root: &Path) -> PathBuf {
-    root.join(DIR)
+    root.join(concat!(".", env!("APP_COMMAND"))).join("references")
 }
 
 /// The references of the project at `root`, newest first.
@@ -323,6 +326,9 @@ mod tests {
         assert_eq!(project_root(&wt).canonicalize().unwrap(), main, "a linked worktree maps to the main checkout");
         assert_eq!(project_root(&wt.join("sub")).canonicalize().unwrap(), main, "a folder inside it too");
         assert_eq!(project_root(&main).canonicalize().unwrap(), main);
+        if cfg!(windows) {
+            assert!(!project_root(&wt).to_string_lossy().contains('/'), "one separator: {}", project_root(&wt).display());
+        }
         let added = add_file(&project_root(&wt), &main.join("a.txt")).unwrap();
         assert!(added.starts_with(folder(&project_root(&wt))));
         assert_eq!(list(&folder(&main)).unwrap().len(), 1, "seen from the main checkout");
