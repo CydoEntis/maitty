@@ -191,7 +191,32 @@ pub struct Edit {
     pub conflict: bool,
     /// Where the selection started; it runs to the cursor.
     pub anchor: Option<Pos>,
+    /// Earlier text and cursors, for Ctrl+Z; what Ctrl+Z took, for Ctrl+Y.
+    undo: Vec<Snapshot>,
+    redo: Vec<Snapshot>,
+    /// What the last change was: more of the same joins its undo step.
+    last_step: Option<Step>,
 }
+
+/// The editor's text and cursor at one moment, and roughly how many bytes it holds.
+#[derive(Debug, Clone, PartialEq)]
+struct Snapshot {
+    lines: Vec<String>,
+    row: usize,
+    col: usize,
+    bytes: usize,
+}
+
+/// Changes that run together into one undo step while nothing else happens between them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Step {
+    Type,
+    Delete,
+}
+
+/// What the undo history may hold: a 4 MB file keeps eight steps, a small one hundreds.
+const UNDO_BYTES: usize = 32 << 20;
+const UNDO_STEPS: usize = 500;
 
 /// Columns the preview's line numbers take (`{:>4}` and two spaces).
 pub const GUTTER: u16 = 6;
@@ -298,7 +323,7 @@ impl Edit {
         if lines.is_empty() {
             lines.push(String::new());
         }
-        Ok(Edit { path: path.to_path_buf(), lines, row: 0, col: 0, dirty: false, warned: false, crlf, trailing_newline, seen, conflict: false, anchor: None })
+        Ok(Edit { path: path.to_path_buf(), lines, row: 0, col: 0, dirty: false, warned: false, crlf, trailing_newline, seen, conflict: false, anchor: None, undo: Vec::new(), redo: Vec::new(), last_step: None })
     }
 
     /// Save, unless the file changed on disk since it was opened (an agent edited it): then
@@ -365,12 +390,61 @@ impl Edit {
                 r => (Some((r - 1, self.len(r - 1))), r, self.len(r)),
             };
         }
+        self.checkpoint(None);
         self.take_selection();
         text
     }
 
+    /// Before a change: remember the text as it is, unless the change continues the last one
+    /// (`step`: typing on, or deleting on). A new change forgets what Ctrl+Z took back.
+    fn checkpoint(&mut self, step: Option<Step>) {
+        // Replacing a selection is a change of its own, whatever does it.
+        let step = step.filter(|_| self.selection().is_none());
+        if step.is_some() && step == self.last_step {
+            return;
+        }
+        self.last_step = step;
+        self.redo.clear();
+        let now = self.snapshot();
+        self.undo.push(now);
+        let mut total: usize = self.undo.iter().map(|s| s.bytes).sum();
+        while self.undo.len() > 1 && (total > UNDO_BYTES || self.undo.len() > UNDO_STEPS) {
+            total -= self.undo.remove(0).bytes;
+        }
+    }
+
+    fn snapshot(&self) -> Snapshot {
+        let bytes = self.lines.iter().map(|l| l.len() + 1).sum();
+        Snapshot { lines: self.lines.clone(), row: self.row, col: self.col, bytes }
+    }
+
+    fn restore(&mut self, s: Snapshot) {
+        (self.lines, self.row, self.col) = (s.lines, s.row, s.col);
+        (self.anchor, self.last_step) = (None, None);
+        self.dirty = true;
+    }
+
+    /// Ctrl+Z: back one step. False when there is nothing to undo.
+    pub fn undo(&mut self) -> bool {
+        let Some(before) = self.undo.pop() else { return false };
+        let now = self.snapshot();
+        self.redo.push(now);
+        self.restore(before);
+        true
+    }
+
+    /// Ctrl+Y: forward again what Ctrl+Z took back. False when there is nothing to redo.
+    pub fn redo(&mut self) -> bool {
+        let Some(after) = self.redo.pop() else { return false };
+        let now = self.snapshot();
+        self.undo.push(now);
+        self.restore(after);
+        true
+    }
+
     /// Put `text` at the cursor in place of the selection; its line breaks become lines.
     pub fn insert_text(&mut self, text: &str) {
+        self.checkpoint(None);
         self.take_selection();
         let text = text.replace("\r\n", "\n").replace('\r', "\n");
         let at = self.byte(self.row, self.col);
@@ -389,6 +463,7 @@ impl Edit {
 
     /// Before a move: Shift keeps (or starts) the selection, any other move drops it.
     pub fn select(&mut self, extend: bool) {
+        self.last_step = None;
         self.anchor = if extend { Some(self.anchor.unwrap_or((self.row, self.col))) } else { None };
     }
 
@@ -429,6 +504,7 @@ impl Edit {
     }
 
     pub fn insert(&mut self, c: char) {
+        self.checkpoint(Some(Step::Type));
         self.take_selection();
         let at = self.byte(self.row, self.col);
         self.lines[self.row].insert(at, c);
@@ -437,6 +513,7 @@ impl Edit {
     }
 
     pub fn newline(&mut self) {
+        self.checkpoint(None);
         self.take_selection();
         let at = self.byte(self.row, self.col);
         let rest = self.lines[self.row].split_off(at);
@@ -449,6 +526,10 @@ impl Edit {
     }
 
     pub fn backspace(&mut self) {
+        if self.selection().is_none() && (self.row, self.col) == (0, 0) {
+            return;
+        }
+        self.checkpoint(Some(Step::Delete));
         if self.take_selection() {
             return;
         }
@@ -468,6 +549,10 @@ impl Edit {
     }
 
     pub fn delete(&mut self) {
+        if self.selection().is_none() && (self.row, self.col) == (self.lines.len() - 1, self.len(self.row)) {
+            return;
+        }
+        self.checkpoint(Some(Step::Delete));
         if self.take_selection() {
             return;
         }

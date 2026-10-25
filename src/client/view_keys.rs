@@ -168,6 +168,16 @@ impl App {
                     self.notify(copied_note("cut", &text), false);
                 }
                 KeyCode::Char('v') if ctrl => self.paste_clipboard_into_editor(ed.path.clone()),
+                KeyCode::Char('z') if ctrl => {
+                    if !ed.undo() {
+                        self.notify("nothing to undo".into(), false);
+                    }
+                }
+                KeyCode::Char('y') if ctrl => {
+                    if !ed.redo() {
+                        self.notify("nothing to redo".into(), false);
+                    }
+                }
                 KeyCode::Char('s') if ctrl => match ed.save() {
                     Ok(views::Saved::Done) => self.notify(format!("saved {}", ed.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()), false),
                     Ok(views::Saved::ChangedOnDisk) => {

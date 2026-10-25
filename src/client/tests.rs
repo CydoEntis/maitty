@@ -9067,6 +9067,34 @@ mod files_panel_tests {
     }
 
     #[test]
+    fn ctrl_z_undoes_a_run_of_typing_at_once_and_ctrl_y_redoes_it() {
+        let (dir, mut app) = editing("undo");
+        for c in "abc".chars() {
+            press(&mut app, KeyCode::Char(c), KeyModifiers::NONE);
+        }
+        press(&mut app, KeyCode::End, KeyModifiers::NONE);
+        press(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
+        press(&mut app, KeyCode::Backspace, KeyModifiers::NONE);
+        app.on_event(Event::Paste("!".into()));
+        assert_eq!(edit(&app).lines[0], "abclet line_1 = !");
+        let undo = |app: &mut App| press(app, KeyCode::Char('z'), KeyModifiers::CONTROL);
+        undo(&mut app);
+        assert_eq!(edit(&app).lines[0], "abclet line_1 = ", "the paste is a step of its own");
+        undo(&mut app);
+        assert_eq!(edit(&app).lines[0], "abclet line_1 = 1;", "both Backspaces at once");
+        undo(&mut app);
+        assert_eq!(edit(&app).lines[0], "let line_1 = 1;", "the whole word typed");
+        undo(&mut app);
+        assert_eq!(app.notice.as_ref().map(|(m, _, _)| m.as_str()), Some("nothing to undo"));
+        press(&mut app, KeyCode::Char('y'), KeyModifiers::CONTROL);
+        assert_eq!(edit(&app).lines[0], "abclet line_1 = 1;", "Ctrl+Y puts it back");
+        press(&mut app, KeyCode::Char('q'), KeyModifiers::NONE);
+        press(&mut app, KeyCode::Char('y'), KeyModifiers::CONTROL);
+        assert_eq!(app.notice.as_ref().map(|(m, _, _)| m.as_str()), Some("nothing to redo"), "a new change forgets what was undone");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_double_click_on_drawn_markdown_takes_a_word() {
         let (dir, mut app) = guide_open("mdword");
         let (_, buf) = frame(&mut app, 200, 50);
