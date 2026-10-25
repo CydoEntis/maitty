@@ -147,3 +147,24 @@ fn a_strip_segment_gives_its_pane_the_keys_while_the_sidebar_holds_them() {
     click(&mut app, seg.x + 1, seg.y);
     assert_eq!((app.mode.clone(), focused_by(&mut rx)), (Mode::Normal, vec![other]), "another session's segment opens it with the keys");
 }
+
+#[test]
+fn the_strip_marks_the_focused_session_s_segment() {
+    let mut app = split_world("hairline", 2);
+    let focus = app.focused().expect("a focused pane");
+    let buf = draw(&mut app, 160, 45);
+    let t = app.theme.clone();
+    let segments: Vec<TermId> = app.hits.iter().filter_map(|(_, h)| if let Hit::Screen(ScreenHit::StripSession(t)) = h { Some(*t) } else { None }).collect();
+    assert!(segments.len() == 4 && segments.contains(&focus), "a segment per row: {segments:?}");
+    for term in segments {
+        let r = segment_of(&app, term);
+        let cells: Vec<&ratatui::buffer::Cell> = (r.x..r.right()).map(|x| &buf[(x, r.y)]).collect();
+        if term == focus {
+            assert_eq!((cells[0].symbol(), cells[0].fg), ("▸", t.accent), "the focused segment leads with a teal ▸");
+            assert!(cells.iter().all(|c| c.bg == t.card2), "on the raised ground");
+            assert!(cells[1..].iter().all(|c| c.symbol() == "━" && c.fg == t.blocked), "its status colour stays: amber, as warm-finch in its split asks");
+        } else {
+            assert!(cells.iter().all(|c| c.symbol() == "━" && c.bg == t.bg), "{term}: a plain segment");
+        }
+    }
+}

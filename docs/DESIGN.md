@@ -161,7 +161,8 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
   when it needs you and is not focused, else `line`. Panes side by side or stacked are parted
   by one `│` or `─`, never boxed; the terminal sits two columns in.
 - **Status strip:** the row over the mode bar, one `━` segment per session in the sidebar's
-  order, a column apart, in its state's colour (idle dim).
+  order, a column apart, in its state's colour (idle dim). The session on screen is yours: its
+  segment sits on `raised` and leads with a teal bold `▸`, the rest keeping its state's colour.
 - **Mode bar:** `TYPING` is a teal bold word, then `Hairline · 2 panes` dim, then the hint;
   whatever has the keys is named in `strong` bold, no chip. At the right `● N needs you` in
   amber bold, or `all clear` dim, just before Update or Restart. Shortcut mode keeps its sky row.

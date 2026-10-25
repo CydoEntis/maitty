@@ -96,7 +96,7 @@ fn the_bottom_is_the_strip_then_the_bar() {
         assert_eq!(bar.y, buf.area.bottom() - 1, "{label}");
         assert_eq!(framed(&app, buf.area).bottom(), bar.y - 1, "{label}: the layout ends over the strip");
         let strip: String = (0..buf.area.width).map(|x| buf[(x, bar.y - 1)].symbol()).collect();
-        assert!(strip.starts_with('━'), "{label}: {strip}");
+        assert!(strip.starts_with(['━', '▸']), "{label}: {strip}");
     }
 }
 
@@ -126,8 +126,10 @@ fn the_strip_has_a_segment_per_session_in_its_state_colour() {
     for x in 0..buf.area.width {
         let c = &buf[(x, y)];
         match (c.symbol(), runs.last_mut()) {
-            ("━", Some((fg, n))) if *fg == c.fg && buf[(x - 1, y)].symbol() == "━" => *n += 1,
+            ("━", Some((fg, n))) if *fg == c.fg && ["━", "▸"].contains(&buf[(x - 1, y)].symbol()) => *n += 1,
             ("━", _) => runs.push((c.fg, 1)),
+            // The session on screen leads with a `▸`: its segment's colour is the line after it.
+            ("▸", _) => runs.push((buf[(x + 1, y)].fg, 1)),
             _ => {}
         }
     }

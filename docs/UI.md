@@ -511,7 +511,8 @@ there is square whatever `ui.rounded` says.
   drop, then at the right the load note, then the ✕, then the state word; only then is the
   name cut. The foot is only its two words, `new` and `menu`; too narrow for both, it goes. The strip gives equal
   shares (the first ones a cell wider) to up to 12 sessions, then one `━` per session from the
-  left. The mode bar drops its hint, then the look and pane count, then shortens Update; `● N
+  left; the session on screen keeps its `raised` ground and `▸` (a one-cell segment just the
+  ground). The mode bar drops its hint, then the look and pane count, then shortens Update; `● N
   needs you` becomes `● N` before it goes.
 - **Clicks.** A sidebar row opens its session, its glyph opens why, a pointed row (not the
   focused one) shows its `⋯` menu where the age was, and a project header folds (pointed, `+`
