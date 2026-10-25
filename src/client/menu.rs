@@ -694,9 +694,26 @@ fn bound_key(app: &App, action: &crate::keys::Action) -> Option<crate::keys::Key
 /// session with a check, its keys are reserved whichever of its actions apply, so the other
 /// items' letters never move.
 pub(super) fn menu_keys(app: &App, items: &[(String, Act)]) -> Vec<Option<MenuKey>> {
-    let bound: Vec<Option<crate::keys::KeySpec>> = items.iter().map(|(_, a)| bound_action(app, a).and_then(|b| bound_key(app, &b))).collect();
+    let bound: Vec<Option<crate::keys::KeySpec>> = items
+        .iter()
+        .map(|(_, a)| bound_action(app, a).and_then(|b| bound_key(app, &b)).filter(|k| !menu_owns(items, a, k)))
+        .collect();
     let letters = menu_letters(items, &bound);
     bound.into_iter().zip(letters).map(|(b, l)| b.map(MenuKey::Bound).or(l.map(MenuKey::Letter))).collect()
+}
+
+/// Whether the menu itself answers `k` before any item could: moving (j, k and the arrows),
+/// picking, closing, a check's letters, or the x that closes when it is another item's. A bound
+/// key it owns is not shown on `act`, which gets a letter instead, so every key shown runs its
+/// item.
+fn menu_owns(items: &[(String, Act)], act: &Act, k: &crate::keys::KeySpec) -> bool {
+    if !k.mods.is_empty() && k.mods != crossterm::event::KeyModifiers::SHIFT {
+        return false;
+    }
+    let KeyCode::Char(c) = k.code else { return matches!(k.code, KeyCode::Up | KeyCode::Down | KeyCode::Enter | KeyCode::Esc | KeyCode::Delete) };
+    let checks = items.iter().any(|(_, a)| check_key(a).is_some());
+    let closes = |a: &Act| matches!(a, Act::End(_) | Act::CloseProject(_));
+    matches!(c, 'j' | 'k') || checks && matches!(c, 'r' | 'o' | 'O' | 'u') || c == 'x' && !closes(act) && items.iter().any(|(_, a)| closes(a))
 }
 
 /// Each item's key as the character typed for it (None for a key with a modifier, or none).

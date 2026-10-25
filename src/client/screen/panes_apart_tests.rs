@@ -399,6 +399,27 @@ fn the_pane_menu_follows_a_rebinding() {
 }
 
 #[test]
+fn a_bound_key_the_menu_moves_with_gives_way_to_a_letter() {
+    let mut app = split_world("floating", 2);
+    app.keymap.prefixed.retain(|_, a| *a != Action::SplitRight);
+    let j = KeySpec { code: KeyCode::Char('j'), mods: KeyModifiers::NONE };
+    app.keymap.prefixed.insert(j, Action::SplitRight);
+    app.keymap.prefixed_order.retain(|k| *k != j);
+    app.keymap.prefixed_order.push(j);
+    let rows = pane_menu(&mut app);
+    let key = key_of(&rows, "Split side by side");
+    assert!(key.len() == 1 && key != "j", "j moves in the menu, so the item takes a letter: {key}");
+    press(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
+    assert!(matches!(&app.mode, Mode::ScreenMenu(m) if m.sel == 1), "j still moves: {:?}", app.mode);
+    let Mode::ScreenMenu(m) = &app.mode else { unreachable!() };
+    let keys = crate::client::menu::menu_chars(&app, &m.items);
+    let i = m.items.iter().position(|(l, _)| l == "Split side by side").expect("the item");
+    assert_eq!(keys[i].map(String::from), Some(key.clone()), "the letter shown is the one it answers to");
+    press(&mut app, KeyCode::Char(key.chars().next().unwrap()), KeyModifiers::NONE);
+    assert!(!matches!(app.mode, Mode::ScreenMenu(_)), "the letter shown runs it: {:?}", app.mode);
+}
+
+#[test]
 fn pressing_a_shown_key_runs_its_item() {
     let mut app = split_world("floating", 2);
     pane_menu(&mut app);
