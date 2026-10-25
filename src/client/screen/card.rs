@@ -442,8 +442,6 @@ pub(in crate::client) fn ruled(app: &App, buf: &Buffer, r: Rect) -> bool {
     r.x > framed(app, buf.area).x
 }
 
-/// The Flat zone: a header strip of `card` on its first row, and a `│` rule down its left
-/// when `ruled`.
 /// A docked card in Hairline: the title row, a `─` rule under it (in `border` when focused,
 /// as a pane's), and a `│` down its left when `ruled`. Returns the inside, under the rule.
 fn hairline_zone(buf: &mut Buffer, r: Rect, c: &Card, t: &Theme, ruled: bool) -> Rect {
@@ -462,6 +460,8 @@ fn hairline_zone(buf: &mut Buffer, r: Rect, c: &Card, t: &Theme, ruled: bool) ->
     Rect { x: r.x + lead, y: r.y + 2, width: r.width - lead, height: r.height.saturating_sub(2) }
 }
 
+/// The Flat zone: a header strip of `card` on its first row, and a `│` rule down its left
+/// when `ruled`.
 fn flat_frame(buf: &mut Buffer, r: Rect, c: &Card, t: &Theme, ruled: bool) -> Rect {
     fill(buf, r, c.bg);
     fill(buf, Rect { height: 1, ..r }, t.card);
