@@ -151,7 +151,7 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
   amber line under the row. The focused row is
   `raised` with a teal `▎` and a teal name; a row on screen without the keys is `raised`; one
   that needs you has an amber `▎` and an amber name. The foot, pinned to the bottom row, is
-  dim: the new-shell hint (the leader and its key) at the left, the menu's at the right.
+  two dim words, no keys: `new` at the left, `menu` at the right.
 - **Panes:** row 1 is the glyph, the name in `strong` bold (no number: no key goes to a pane
   by one), the session's tabs as
   plain words when it has several (the current one teal), then `project · ⎇ branch` dim; at the

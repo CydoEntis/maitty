@@ -184,17 +184,23 @@ fn one_line_per_session_and_dim_project_headers() {
 }
 
 #[test]
-fn the_foot_names_the_real_keys_and_takes_clicks() {
-    let mut app = hairline_world(1);
-    app.keymap.prefixed.retain(|_, a| *a != Action::ShellHere);
-    app.keymap.prefixed.insert(KeySpec { code: KeyCode::Char('w'), mods: KeyModifiers::NONE }, Action::ShellHere);
-    app.keymap.prefixed_order.push(KeySpec { code: KeyCode::Char('w'), mods: KeyModifiers::NONE });
-    let buf = draw(&mut app, 100, 30);
-    let side = grid(&app, framed(&app, buf.area)).side;
-    let foot: String = (side.x..side.right()).map(|x| buf[(x, side.bottom() - 1)].symbol()).collect();
-    assert!(foot.contains("Ctrl+Space w new") && foot.contains("m menu"), "{foot}");
-    for want in [ScreenHit::NewShell, ScreenHit::Actions] {
-        assert!(app.hits.iter().any(|(r, h)| *h == Hit::Screen(want) && r.y == side.bottom() - 1), "{want:?} is clickable");
+fn the_foot_shows_new_and_menu_and_both_click() {
+    for (w, h) in SIZES {
+        let mut app = hairline_world(1);
+        let buf = draw(&mut app, w, h);
+        let side = grid(&app, framed(&app, buf.area)).side;
+        let y = side.bottom() - 1;
+        let foot: String = (side.x..side.right()).map(|x| buf[(x, y)].symbol()).collect();
+        let words: Vec<&str> = foot.split_whitespace().collect();
+        assert_eq!(words, ["new", "menu"], "{w}x{h}: the words alone, no keys: {foot}");
+        let (nx, _) = find_in(&buf, Rect { y, height: 1, ..side }, "new").unwrap();
+        assert_eq!(buf[(nx, y)].fg, app.theme.muted, "{w}x{h}: dim");
+        for want in [ScreenHit::NewShell, ScreenHit::Actions] {
+            let at = app.hits.iter().find(|(r, h)| *h == Hit::Screen(want) && r.y == y).map(|(r, _)| *r);
+            let at = at.unwrap_or_else(|| panic!("{w}x{h}: {want:?} is clickable"));
+            let word: String = (at.x..at.right()).map(|x| buf[(x, y)].symbol()).collect();
+            assert_eq!(word, if want == ScreenHit::NewShell { "new" } else { "menu" }, "{w}x{h}: the click covers its word");
+        }
     }
 }
 

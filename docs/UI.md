@@ -509,13 +509,13 @@ there is square whatever `ui.rounded` says.
 - **What gives way.** A sidebar row cuts its name with `…` before its age or `needs you`
   goes. A pane title keeps its glyph and name: the meta is cut first, then the tabs
   drop, then at the right the load note, then the ✕, then the state word; only then is the
-  name cut. The foot drops the leader from the new hint, then the keys. The strip gives equal
+  name cut. The foot is only its two words, `new` and `menu`; too narrow for both, it goes. The strip gives equal
   shares (the first ones a cell wider) to up to 12 sessions, then one `━` per session from the
   left. The mode bar drops its hint, then the look and pane count, then shortens Update; `● N
   needs you` becomes `● N` before it goes.
 - **Clicks.** A sidebar row opens its session, its glyph opens why, a pointed row (not the
   focused one) shows its `⋯` menu where the age was, and a project header folds (pointed, `+`
-  and `⋯` take its branch's place). The foot's hints are the **+ new** and **Menu** buttons.
+  and `⋯` take its branch's place). The foot's `new` and `menu` are the **+ New** and **Menu** buttons.
   A pane's glyph and state word open why, its tabs pick a tab, its `+` opens one, the ✕
   closes the pane, and anywhere else on it focuses it; its title row drags onto another
   pane to swap them, as in every look. A strip segment opens its session.

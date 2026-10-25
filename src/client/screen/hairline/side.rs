@@ -254,26 +254,19 @@ fn needs_words(app: &App, s: &Session, model: &[Proj], room: u16) -> String {
     }
 }
 
-/// The foot, pinned to the bottom row: the new-shell hint at the left and the menu's at the
-/// right, dim, each naming its real key (the leader, then the key) and clickable. The keys go
-/// before the words do when the sidebar is narrow.
+/// The foot, pinned to the bottom row: `new` at the left and `menu` at the right, dim words with
+/// no keys, each clickable.
 fn draw_foot(app: &mut App, buf: &mut Buffer, r: Rect, ink: Ink) {
     let y = r.bottom().saturating_sub(1);
-    let lead = crate::client::design::long_key(&app.keymap.prefix);
-    let keyed = |key: String, word: &str| if key.is_empty() { word.to_string() } else { format!("{key} {word}") };
-    let (nk, mk) = (k(app, &Action::ShellHere), k(app, &Action::Menu));
-    let news = [keyed(if nk.is_empty() { String::new() } else { format!("{lead} {nk}") }, "new"), keyed(nk, "new"), "new".to_string()];
-    let menus = [keyed(mk, "menu"), "menu".to_string()];
+    let (new, menu) = ("new", "menu");
     let (x0, end) = (r.x + TEXT_IN, text_end(r));
-    let room = end.saturating_sub(x0);
-    let tries = [(0, 0), (0, 1), (1, 0), (1, 1), (2, 1)];
-    let Some((new, menu)) = tries.iter().map(|&(n, m)| (&news[n], &menus[m])).find(|(n, m)| n.width() + 2 + m.width() <= room as usize) else { return };
+    if (end.saturating_sub(x0) as usize) < new.width() + 2 + menu.width() {
+        return;
+    }
     let st = Style::default().fg(ink.dim).bg(ink.bg);
-    let nw = new.width() as u16;
-    put(buf, x0, y, &[seg(new.clone(), st)], end);
-    hit(app, Rect { x: x0, y, width: nw, height: 1 }, ScreenHit::NewShell);
-    let mw = menu.width() as u16;
-    let mx = end.saturating_sub(mw);
-    put(buf, mx, y, &[seg(menu.clone(), st)], end);
-    hit(app, Rect { x: mx, y, width: mw, height: 1 }, ScreenHit::Actions);
+    put(buf, x0, y, &[seg(new, st)], end);
+    hit(app, Rect { x: x0, y, width: new.width() as u16, height: 1 }, ScreenHit::NewShell);
+    let mx = end.saturating_sub(menu.width() as u16);
+    put(buf, mx, y, &[seg(menu, st)], end);
+    hit(app, Rect { x: mx, y, width: menu.width() as u16, height: 1 }, ScreenHit::Actions);
 }
