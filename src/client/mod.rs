@@ -671,7 +671,7 @@ impl App {
         };
         app.splash = app.cfg.ui.splash;
         app.splash_cold = !cfg!(test) && app.splash && screen::first_start_of_this_version();
-        if !crate::theme::BUILTIN.contains(&app.cfg.theme.as_str()) {
+        if !crate::theme::BUILTIN.contains(&crate::theme::canonical(&app.cfg.theme)) {
             app.keymap.warnings.push(format!(
                 "unknown theme `{}` (have: {})",
                 app.cfg.theme,

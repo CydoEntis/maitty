@@ -74,6 +74,19 @@ pub struct ThemeOverrides(pub BTreeMap<String, String>);
 /// The theme when none is chosen.
 pub const DEFAULT: &str = "night";
 
+/// Names earlier dev builds gave a theme that now carries its variant, so configs that
+/// still say them keep loading.
+const ALIASES: &[(&str, &str)] = &[
+    ("gruvbox-material", "gruvbox-material-dark"),
+    ("koda", "koda-dark"),
+    ("melange", "melange-dark"),
+];
+
+/// The built-in theme a configured name means: itself, or the theme its old name became.
+pub fn canonical(name: &str) -> &str {
+    ALIASES.iter().find(|(old, _)| *old == name).map_or(name, |(_, new)| new)
+}
+
 /// Every built-in theme, kept in alphabetical order of its display name: the theme browser,
 /// the Theme setting's cycling and the unknown-theme warning all list it as written.
 pub const BUILTIN: &[&str] = &[
@@ -673,6 +686,7 @@ impl Theme {
     }
 
     pub fn named(name: &str) -> Theme {
+        let name = canonical(name);
         let theme = Theme::base(name);
         if name == "night" || name == "mono" {
             return theme;
@@ -1668,6 +1682,15 @@ mod audit {
             if name != "mono" {
                 assert!(matches!(theme.bg, Color::Rgb(..)), "invalid background for {name}");
             }
+        }
+    }
+
+    #[test]
+    fn old_theme_names_load_the_theme_they_became() {
+        for (old, new) in super::ALIASES {
+            assert!(super::BUILTIN.contains(new), "{old} points at {new}, which is not built in");
+            assert!(!super::BUILTIN.contains(old), "{old} is both an alias and a theme");
+            assert_eq!(Theme::named(old).bg, Theme::named(new).bg, "{old} loads {new}");
         }
     }
 

@@ -36,7 +36,7 @@ impl App {
         let current = match self.cfg.theme.as_str() {
             "" => DEFAULT,
             "drover" => "hydra",
-            name => name,
+            name => crate::theme::canonical(name),
         };
         let sel = BUILTIN
             .iter()
@@ -160,7 +160,7 @@ pub(super) fn draw_themes(
     let current = match app.cfg.theme.as_str() {
         "" => DEFAULT,
         "drover" => "hydra",
-        name => name,
+        name => crate::theme::canonical(name),
     }
     .to_string();
     for (i, name) in names
@@ -347,6 +347,14 @@ mod tests {
             }
         }
         buffer
+    }
+
+    #[test]
+    fn theme_browser_opens_on_the_theme_an_old_name_became() {
+        let mut app = app();
+        app.cfg.theme = "melange".into();
+        app.open_themes();
+        assert!(matches!(app.mode, Mode::Themes { sel, .. } if BUILTIN[sel] == "melange-dark"));
     }
 
     #[test]
