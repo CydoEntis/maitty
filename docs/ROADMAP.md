@@ -23,7 +23,8 @@ Next: the user uses the build daily for a week from 2026-10-26, and reports back
 stands in for the open live checks (phases 17–29) and confirms status live for the agents the
 user runs: Claude Code, Codex, Qwen Code and DeepSeek. Also requested 2026-10-25:
 [Phase 30](#30--the-hairline-layout--shipped-in-v0450-live-checks-open), a fifth layout, and
-100 more built-in themes (162), both in v0.45.0.
+100 more built-in themes (162), both in v0.45.0. Planned next:
+[Phase 31](#31--panes-you-can-tell-apart--planned-2026-10-25), panes you can tell apart.
 
 Open validation items (need a real session on the named platform):
 - Pi full-screen scrolling on Linux: waiting on the failing pane's "Pane info (scrolling,
@@ -553,6 +554,20 @@ answer key) wait for the user's call after trying it.
 
 1. the workspace chrome: config, sidebar, pane title and rule, status strip, bottom bar
 2. every menu, popup and side panel in the Hairline style (after 1)
+
+### 31 — Panes you can tell apart · planned 2026-10-25
+
+Asked by the user on 2026-10-25 while trying splits; not started (after the trial week unless the
+user says sooner). Decided 2026-10-25: every pane gets a number in all five layouts, reversing
+UI.md's "no number no key uses" rule for Grid and phase 30's removal in Hairline.
+
+1. every pane shows its number in its title, in all layouts, stable while the pane lives
+2. closing a pane names it: the confirm says "Close pane 2 · <name>" and the pane being closed is
+   lit while the confirm is up
+3. the focused pane is unmistakable in every layout while a menu or confirm is open
+4. the pane right-click menu shows the real keys (leader `v`, `h`, `x`), not first free letters
+5. open question for the user: swap the split defaults so `v` stacks and `h` goes side by side?
+   Today `v` is a vertical divider (side by side) and `h` a horizontal one, as in Vim and tmux.
 
 ## In scope
 
