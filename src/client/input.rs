@@ -18,8 +18,10 @@ pub(super) fn presses(events: &[Event]) -> usize {
 /// it (Enter followed by more text), or one long line. Windows hands a terminal paste over
 /// this way, each new line an Enter; sent as keys, the first one would send the message and
 /// the rest would crawl in a letter at a time. Typing ahead that ends in Enter isn't a
-/// paste, and stays keys.
-pub(super) fn paste_from_burst(events: &[Event]) -> Option<String> {
+/// paste, and stays keys. A short line typed into a pane does what its keys would, so it may
+/// stay keys; but where `letters_are_commands`, each letter would run one, so any two
+/// different characters at once are a paste. One character repeated is a key held down.
+pub(super) fn paste_from_burst(events: &[Event], letters_are_commands: bool) -> Option<String> {
     let mut text = String::new();
     let mut broken_line = false;
     for ev in events {
@@ -41,10 +43,31 @@ pub(super) fn paste_from_burst(events: &[Event]) -> Option<String> {
         }
     }
     let long_line = text.chars().count() >= PASTE_MIN_CHARS && !text.ends_with('\n');
-    (broken_line || long_line).then_some(text)
+    let held_key = text.chars().all(|c| text.starts_with(c));
+    (broken_line || long_line || (letters_are_commands && !held_key)).then_some(text)
 }
 
 impl App {
+    /// Keys read together on Windows: a paste is taken whole (`paste_from_burst`), anything
+    /// else is handed on one event at a time.
+    pub(super) fn on_burst(&mut self, burst: Vec<Event>) {
+        // The mouse moving during a paste isn't part of it.
+        let (keys, rest): (Vec<Event>, Vec<Event>) = burst.iter().cloned().partition(|ev| matches!(ev, Event::Key(_)));
+        match paste_from_burst(&keys, self.view_letters_run_commands()) {
+            Some(text) => {
+                self.dirty = true;
+                self.on_paste(text);
+                rest.into_iter().for_each(|ev| self.on_event(ev));
+            }
+            None => burst.into_iter().for_each(|ev| self.on_event(ev)),
+        }
+    }
+
+    /// A side-panel view has the keys with nothing over it, so a letter runs one of its commands.
+    fn view_letters_run_commands(&self) -> bool {
+        self.view_has_keys() && matches!(self.mode, Mode::Normal)
+    }
+
     pub(super) fn on_event(&mut self, ev: Event) {
         self.dirty = true;
         match ev {
@@ -1141,15 +1164,22 @@ mod tests {
 
     #[test]
     fn a_pasted_line_break_is_text_not_send() {
-        assert_eq!(paste_from_burst(&keys("first\nsecond")).as_deref(), Some("first\nsecond"));
-        assert_eq!(paste_from_burst(&keys("one\ntwo\n")).as_deref(), Some("one\ntwo\n"), "a trailing line break stays in the paste");
-        assert_eq!(paste_from_burst(&keys("yes\n")), None, "typed ahead and sent: still keys");
-        assert_eq!(paste_from_burst(&keys("abc")), None, "a few letters: keys do the same");
-        assert_eq!(paste_from_burst(&keys("https://example.com/a/long/link")).as_deref(), Some("https://example.com/a/long/link"), "one long line at once: pasted whole");
-        assert_eq!(paste_from_burst(&keys("cargo test --workspace\n")), None, "a long line typed ahead and sent: still keys");
+        assert_eq!(paste_from_burst(&keys("first\nsecond"), false).as_deref(), Some("first\nsecond"));
+        assert_eq!(paste_from_burst(&keys("one\ntwo\n"), false).as_deref(), Some("one\ntwo\n"), "a trailing line break stays in the paste");
+        assert_eq!(paste_from_burst(&keys("yes\n"), false), None, "typed ahead and sent: still keys");
+        assert_eq!(paste_from_burst(&keys("abc"), false), None, "a few letters: keys do the same");
+        assert_eq!(paste_from_burst(&keys("https://example.com/a/long/link"), false).as_deref(), Some("https://example.com/a/long/link"), "one long line at once: pasted whole");
+        assert_eq!(paste_from_burst(&keys("cargo test --workspace\n"), false), None, "a long line typed ahead and sent: still keys");
         assert_eq!(super::presses(&keys("ab")), 2, "releases don't count");
         let mut with_ctrl = keys("a\nb");
         with_ctrl.push(Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)));
-        assert_eq!(paste_from_burst(&with_ctrl), None, "a shortcut in it: keys");
+        assert_eq!(paste_from_burst(&with_ctrl, false), None, "a shortcut in it: keys");
+    }
+
+    #[test]
+    fn where_letters_are_commands_two_keys_at_once_are_a_paste() {
+        assert_eq!(paste_from_burst(&keys("eyo"), true).as_deref(), Some("eyo"));
+        assert_eq!(paste_from_burst(&keys("e"), true), None, "one key is a key");
+        assert_eq!(paste_from_burst(&keys("jjjj"), true), None, "a held key is keys");
     }
 }

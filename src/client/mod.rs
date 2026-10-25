@@ -721,16 +721,7 @@ impl App {
                                 }
                             }
                         }
-                        // The mouse moving during a paste isn't part of it.
-                        let (keys, rest): (Vec<Event>, Vec<Event>) = burst.iter().cloned().partition(|ev| matches!(ev, Event::Key(_)));
-                        match input::paste_from_burst(&keys) {
-                            Some(text) => {
-                                self.dirty = true;
-                                self.on_paste(text);
-                                rest.into_iter().for_each(|ev| self.on_event(ev));
-                            }
-                            None => burst.into_iter().for_each(|ev| self.on_event(ev)),
-                        }
+                        self.on_burst(burst);
                     }
                     Some(Ok(ev)) => self.on_event(ev),
                     Some(Err(e)) => return Err(e.into()),

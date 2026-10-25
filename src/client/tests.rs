@@ -9772,6 +9772,47 @@ mod files_panel_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Keys as the Windows console hands them over in one read: a press and a release each.
+    fn burst(s: &str) -> Vec<Event> {
+        s.chars()
+            .flat_map(|c| {
+                let press = KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
+                [Event::Key(press), Event::Key(KeyEvent { kind: ratatui::crossterm::event::KeyEventKind::Release, ..press })]
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_short_paste_read_as_keys_runs_no_files_command() {
+        let dir = project("shortpaste");
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "notes.txt");
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        // `r/` rather than the `eyo` of the report: run as keys, those would launch an editor
+        // and an app and write the clipboard; these only change Files.
+        app.on_burst(burst("r/"));
+        assert!(app.notice.as_ref().is_some_and(|(m, _, _)| m.starts_with("Files has the keys")), "taken as a paste");
+        assert!(!files(&app).recent && !files(&app).filtering, "not run as r and /");
+        assert_eq!(typed(&mut out), None, "nothing reached the pane");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_held_key_read_in_one_burst_still_moves_in_files() {
+        let dir = project("heldkey");
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "src");
+        let from = files(&app).sel;
+        app.on_burst(burst("jj"));
+        assert_eq!(files(&app).sel, from + 2, "two moves down, not a paste");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_release_outside_the_window_ends_the_selection_drag() {
         let (dir, mut app) = editing("staledrag");
