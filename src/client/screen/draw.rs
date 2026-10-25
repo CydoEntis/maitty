@@ -505,8 +505,8 @@ fn name_chip(name: &str, lit: bool, t: &Theme) -> Seg {
 /// The tabs of the session on screen, as the top-left pane's title along `row`: a number chip
 /// and a name chip each (the tab's name, else its focused session's), the current one in the
 /// accent, then a + chip that opens a tab. The current tab outranks the rest: the other tabs,
-/// before and after it, drop before it shortens its name. A click on one picks it. Grid passes the pane's `state`, drawn at the front of the current tab; returns where its
-/// glyph sits.
+/// before and after it, drop before it shortens its name. A click on one picks it. Grid passes
+/// the pane's `state`, drawn at the front of the current tab; returns where its glyph sits.
 fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, state: Option<&ChipState>, t: &Theme) -> (Vec<Seg>, Option<Rect>) {
     let look = Look::of(&app.cfg.ui);
     let ground = title_ground(look, t);

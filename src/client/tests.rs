@@ -1631,36 +1631,49 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_narrow_grid_title_keeps_the_current_tab_before_any_other() {
+    fn a_narrow_title_keeps_the_current_tab_before_any_other() {
         use crate::config::Rounding;
         let mut failures = Vec::new();
         let mut others_dropped = false;
-        for rounded in [Rounding::Off, Rounding::Full] {
-            for place in 0..3 {
-                for w in 44..=110u16 {
-                    let (_, mut app) = super::design_tests::render_with(w, 24);
-                    (app.cfg.ui.layout, app.cfg.ui.rounded) = ("grid".into(), rounded);
-                    let [a, ..] = three_tabs(&mut app, place);
-                    app.snap.terms.get_mut(&a).unwrap().status = Status::Working;
-                    let buf = drawn(&mut app, w, 24);
-                    let card = card_of(&app, a);
-                    let top: String = (card.x..card.right()).map(|x| buf[(x, card.y)].symbol()).collect();
-                    show(&format!("{rounded:?} current {place} {w}: {top}"));
-                    let shown = |i| border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(i))).len() == 1;
-                    let others = (0..3).filter(|&i| i != place).filter(|&i| shown(i)).count();
-                    let spinner = crate::client::design::glyph(&app, Status::Working);
-                    let at = format!("{rounded:?} current {place} {w}: {top}");
-                    if others > 0 && !(shown(place) && top.contains("claude")) {
-                        failures.push(format!("another tab kept over the current one, or while it shortens: {at}"));
+        for layout in ["grid", "floating", "tiled", "compact"] {
+            for rounded in [Rounding::Off, Rounding::Full] {
+                for place in 0..3 {
+                    for w in 44..=110u16 {
+                        let (_, mut app) = super::design_tests::render_with(w, 24);
+                        (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
+                        let [a, ..] = three_tabs(&mut app, place);
+                        app.snap.terms.get_mut(&a).unwrap().status = Status::Working;
+                        let buf = drawn(&mut app, w, 24);
+                        let card = card_of(&app, a);
+                        let top: String = (card.x..card.right()).map(|x| buf[(x, card.y)].symbol()).collect();
+                        let at = format!("{layout} {rounded:?} current {place} {w}: {top}");
+                        show(&at);
+                        let tab = |i| border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(i)));
+                        let shown = |i| tab(i).len() == 1;
+                        let others = (0..3).filter(|&i| i != place).filter(|&i| shown(i)).count();
+                        if others > 0 && !(shown(place) && top.contains("claude")) {
+                            failures.push(format!("another tab kept over the current one, or while it shortens: {at}"));
+                        }
+                        let plus = !border_hits(&app, a, Hit::Screen(screen::ScreenHit::NewTab)).is_empty();
+                        if plus && !(0..3).all(shown) {
+                            failures.push(format!("+ without every tab: {at}"));
+                        }
+                        let spinner = crate::client::design::glyph(&app, Status::Working);
+                        if !top.contains(&spinner) {
+                            failures.push(format!("no state on the title: {at}"));
+                        }
+                        // Grid draws it inside the current tab whenever that tab shows.
+                        let why = border_hits(&app, a, Hit::Screen(screen::ScreenHit::Why(a)));
+                        if layout == "grid" && shown(place) && !why.iter().any(|g| tab(place)[0].x <= g.x && g.right() <= tab(place)[0].right()) {
+                            failures.push(format!("the glyph is not in the current tab: {at}"));
+                        }
+                        others_dropped |= shown(place) && others < 2;
                     }
-                    if !top.contains(&spinner) {
-                        failures.push(format!("no state glyph: {at}"));
-                    }
-                    others_dropped |= shown(place) && others < 2;
                 }
             }
         }
-        assert!(failures.is_empty(), "{}", failures.join("\n"));
+        assert!(failures.is_empty(), "{}", failures.join("
+"));
         assert!(others_dropped, "somewhere the other tabs give way and the current one stays");
     }
 
