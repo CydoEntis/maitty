@@ -1,6 +1,6 @@
 # 0023. The mode is always shown, the window is framed in shortcut mode, and dead keys say so
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by [ADR 0024](0024-the-mode-lives-in-a-bottom-bar.md))
 - **Date:** 2026-10-24
 
 ## Context

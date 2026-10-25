@@ -1,6 +1,6 @@
 # 0014. Bring over the v8 cleanup, keeping what the user already decided
 
-- **Status:** Accepted (shipped in v0.41.0)
+- **Status:** Accepted (shipped in v0.41.0; amended by [ADR 0024](0024-the-mode-lives-in-a-bottom-bar.md))
 - **Date:** 2026-10-23
 
 ## Context

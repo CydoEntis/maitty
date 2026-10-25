@@ -19,7 +19,7 @@ application-wide footer bar; the user's decision on 2026-10-24 reverses that for
   and their dimming sit above the bar, so it is never covered or dimmed.
 - **Typing:** quiet, on `bg`: ` TYPING ` (`muted` on `btn`) and `· Ctrl+Space for shortcuts`
   in `muted`, naming the leader key from the keymap. A click on either starts shortcut mode, as
-  the leader does; under a popup that holds the keys from input mode it is only words.
+  the leader does.
 - **Shortcut mode lit:** the whole row is `sky()`. A bold ` SHORTCUT ` chip (`sky` on `bg`;
   a click opens the key map) and then key suggestions read from the keymap: `n shell`,
   `s session`, `c changes`, `f files`, `i inbox`, `, settings`, then `? all keys` and
@@ -28,8 +28,10 @@ application-wide footer bar; the user's decision on 2026-10-24 reverses that for
   shortens and goes, then `? all keys`, then `Esc type`. A click on a suggestion presses its key
   in shortcut mode, so it does exactly what the key does and the mode stays.
 - **Paused** (a popup or view an action opened has the keys): ` SHORTCUT · paused ` (`muted` on
-  `btn`) and no suggestions, since the popup shows its own keys. The bar only says so: a click
-  on it does nothing, so it never closes the popup.
+  `btn`) and no suggestions, since the popup shows its own keys. Under anything that has the
+  keys (a popup, modal or view opened from either mode, or the key map and its search) the bar
+  only says the mode: a click on it does nothing, so it never closes the popup, runs a
+  suggestion or drops what was typed.
 - **Update and Restart** move from the top-right corner to the bar's right end, clickable
   except while paused. The top-right title gets its corner back.
 - **No frame round the window and no corner tag** in any mode. The focused pane's sky border
