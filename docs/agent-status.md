@@ -135,11 +135,14 @@ the needs-you mark appears immediately. Completions are quiet and remain visible
 as status/notice changes. A queued needs-you sound rechecks the exact current
 status and cancels when work resumes, the pane disappears or attention changes.
 A new working turn clears the previous turn's notification deduplication.
-A Claude turn that stops with background work still in flight (a shell, a helper, a
-monitor: the `background_tasks` of its Stop hook) shows done but is not announced: no
-sound, desktop or phone alert. Claude wakes itself when that work ends; the stop that
-leaves nothing in flight announces the finish, even after a wake-up with no tool use.
-A turn whose background shell never ends (a dev server) therefore never rings finished.
+A Claude turn that stops with background work it started still running (a shell, a
+helper, a monitor: the running entries of its Stop hook's `background_tasks` that were not
+running at the previous stop) shows done but is not announced: no sound, desktop or phone
+alert, and no check yet. Claude wakes itself when that work ends; the next stop with no new
+work in flight announces the finish and runs the checks, even after a wake-up with no tool
+use. Entries Claude marks finished don't count. A task still running from an earlier turn
+(a dev server) holds nothing: later turns ring as usual. Open question: the turn that starts
+a never-ending task (the dev server's own turn) stays silent.
 The desktop notification, phone alert and in-app note name the repository and branch
 (`maitty · fix/early-alerts`), so two worktrees of one repository tell apart; a detached
 checkout shows its short commit, and a session outside a repository its folder.

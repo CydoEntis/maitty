@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Bump whenever a message shape changes; client and daemon refuse to talk across versions.
-pub const PROTOCOL_VERSION: u32 = 46;
+pub const PROTOCOL_VERSION: u32 = 47;
 
 pub type TermId = u32;
 pub type WsId = u32;
@@ -57,6 +57,9 @@ pub enum ClientMsg {
         model: Option<String>,
         /// The name you gave the conversation in the agent (Claude's /rename).
         name: Option<String>,
+        /// Ids of the background tasks (shells, helpers) still running when a turn stopped.
+        #[serde(default)]
+        background: Vec<String>,
     },
     /// What an agent in a pane has used (from Claude's status line), with the pane's secret.
     Usage { term: TermId, token: String, usage: Usage, limits: Vec<Limit> },
@@ -219,10 +222,6 @@ pub enum ApprovalChoice {
     Always,
     Never,
 }
-
-/// A hook `event` for a turn that stopped with background work (a shell, a helper) still in
-/// flight: the agent wakes itself when that work ends, so the turn is paused, not finished.
-pub const STOP_AWAITING_BACKGROUND: &str = "Stop:background";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HookStatus {
@@ -795,6 +794,7 @@ mod tests {
                 transcript: Some(PathBuf::from("/t.jsonl")),
                 model: Some("opus".into()),
                 name: Some("api work".into()),
+                background: vec!["b1".into()],
             },
             ClientMsg::Query(Query::List),
             ClientMsg::Query(Query::Read { term: 3 }),

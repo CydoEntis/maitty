@@ -70,7 +70,7 @@ impl Daemon {
     /// A status report whose sender checked out (`verdict`: did its process chain lead to
     /// the pane; None when it couldn't be traced and the secret decides).
     pub(super) fn apply_hook(&mut self, msg: ClientMsg, verdict: Option<bool>, chain: Vec<u32>) {
-        let ClientMsg::Hook { term, agent, status, session, cwd, prompt, said, subagent, event, pid, transcript, model, name, .. } = msg else { return };
+        let ClientMsg::Hook { term, agent, status, session, cwd, prompt, said, subagent, event, pid, transcript, model, name, background, .. } = msg else { return };
         match verdict {
             Some(false) => {
                 tracing::info!("ignoring a status report for pane {term} from pid {pid} outside it");
@@ -216,10 +216,10 @@ impl Daemon {
                         t.refresh_head();
                     }
                 }
-                self.hook(term, agent, status, &event);
+                self.hook(term, agent, status, &event, &background);
     }
 
-    pub(super) fn hook(&mut self, term: TermId, agent: String, status: HookStatus, event: &str) {
+    pub(super) fn hook(&mut self, term: TermId, agent: String, status: HookStatus, event: &str, background: &[String]) {
         tracing::debug!("hook for pane {term}: {event} -> {status:?}");
         if let Some(t) = self.terms.get_mut(&term) {
             let name = if event.is_empty() { "status report".to_string() } else { event.to_string() };
@@ -237,6 +237,9 @@ impl Daemon {
         let Some(t) = self.terms.get_mut(&term) else { return };
         t.screen_blocked_from = None;
         let now = Instant::now();
+        // Claude stops when a turn waits on background work it started, and wakes itself when
+        // that work ends: a pause, not a finish.
+        let paused = status == HookStatus::Done && event == "Stop" && t.paused_on_new_background_work(background);
         if matches!(status, HookStatus::Done | HookStatus::Idle) {
             t.last_turn_end = now;
             if agent == "codex" {
@@ -280,6 +283,7 @@ impl Daemon {
                 t.agent = None;
                 t.session = None;
                 t.awaiting_background = false;
+                t.background_known.clear();
                 t.summary.clear();
                 t.status = Status::None;
                 t.status_since = term::unix_now();
@@ -311,10 +315,7 @@ impl Daemon {
         // Claude's repeated idle ping is not a turn end.
         let turn_end = status == HookStatus::Done && !event.starts_with("Notification:");
         let mut wake_up_ended = false;
-        if new == Status::Working {
-            t.awaiting_background = false;
-        } else if turn_end {
-            let paused = event == crate::protocol::STOP_AWAITING_BACKGROUND;
+        if turn_end {
             // A wake-up turn with no tool call ends without ever reporting working, so its
             // status doesn't change: it is still a turn to check and a finish to say.
             wake_up_ended = std::mem::replace(&mut t.awaiting_background, paused) && !paused && new == Status::Done && t.status == Status::Done;
@@ -322,10 +323,12 @@ impl Daemon {
                 t.turn_end_handled = false;
             }
         }
-        self.set_status(term, new, &format!("hook: {}", if event.is_empty() { "status report" } else { event }));
+        let why = if event.is_empty() { "status report" } else { event };
+        let why = if paused { format!("hook: {why}, waiting on its background work") } else { format!("hook: {why}") };
+        self.set_status(term, new, &why);
         // A turn-end report can arrive when the screen never showed the turn working, so the
-        // status did not change.
-        if turn_end {
+        // status did not change. A paused turn is checked when the work really ends.
+        if turn_end && !paused {
             self.turn_ended(term);
         }
         if wake_up_ended && !self.terms.get(&term).is_some_and(Term::check_running) {
@@ -357,6 +360,9 @@ impl Daemon {
                 self.dirty = true;
             }
         }
+        if new == Status::Working {
+            t.awaiting_background = false;
+        }
         if t.status == new {
             return;
         }
@@ -374,7 +380,7 @@ impl Daemon {
             t.turn_end_handled = false;
         }
         self.dirty = true;
-        let turn_over = turn.is_some() && matches!(new, Status::Done | Status::Idle) && why != CANCELLED_WHY;
+        let turn_over = turn.is_some() && matches!(new, Status::Done | Status::Idle) && why != CANCELLED_WHY && !t.awaiting_background;
         if let Some((agent, place, secs)) = turn {
             self.note_turn(agent, place, secs);
         }

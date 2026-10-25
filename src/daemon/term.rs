@@ -146,6 +146,9 @@ pub struct Term {
     /// Its turn stopped with background work still in flight: done for now, but it carries on
     /// by itself when that work ends, so the finish isn't announced.
     pub awaiting_background: bool,
+    /// The background tasks still running at its last stop: one of those (a dev server) is no
+    /// reason to hold a later turn's finish.
+    pub background_known: Vec<String>,
     /// When a subagent last showed signs of life (started, used a tool, asked something).
     pub subagent_seen: Option<Instant>,
     /// The agent's progress indicator (OSC 9;4) went away: an Esc-cancel ends no turn by hook.
@@ -492,6 +495,14 @@ impl Term {
         dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
     }
 
+    /// Whether a turn that stopped with `running` background tasks is only paused: one of them
+    /// began since the last stop, and the agent wakes itself when it ends.
+    pub fn paused_on_new_background_work(&mut self, running: &[String]) -> bool {
+        let paused = running.iter().any(|id| !self.background_known.contains(id));
+        self.background_known = running.to_vec();
+        paused
+    }
+
     /// Where its alerts say it works: repository and branch, else its folder.
     pub fn alert_place(&self) -> String {
         match &self.head {
@@ -636,6 +647,7 @@ impl Term {
             win32_input: false,
             done_held: None,
             awaiting_background: false,
+            background_known: Vec::new(),
             subagent_seen: None,
             grants: None,
             started_by: None,

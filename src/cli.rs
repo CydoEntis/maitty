@@ -1273,10 +1273,7 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
     {
         event = format!("Notification:{kind}");
     }
-    // Claude lists what is still in flight when it stops; it wakes itself when that finishes.
-    if event == "Stop" && payload_json.get("background_tasks").and_then(Value::as_array).is_some_and(|tasks| !tasks.is_empty()) {
-        event = crate::protocol::STOP_AWAITING_BACKGROUND.into();
-    }
+    let background = if event == "Stop" { running_background_tasks(payload_json) } else { Vec::new() };
     let said = field(&["last_assistant_message", "last-assistant-message"])
         .or_else(|| transcript.as_deref().and_then(last_assistant_text))
         .map(|s| s.trim().chars().take(2000).collect::<String>())
@@ -1284,7 +1281,22 @@ fn hook_message(origin: HookOrigin, payload_json: &Value, status: HookStatus) ->
     let session = session.filter(|_| parent_facts);
     let cwd = cwd.filter(|_| parent_facts);
     let HookOrigin { term, agent, pid, token } = origin;
-    ClientMsg::Hook { term, agent, status, session, cwd, prompt, said, subagent, event, pid, token, transcript, model, name }
+    ClientMsg::Hook { term, agent, status, session, cwd, prompt, said, subagent, event, pid, token, transcript, model, name, background }
+}
+
+/// Task states Claude might report for background work that is over. Its docs don't list the
+/// values, so anything else (or none) counts as still running.
+const BACKGROUND_TASK_OVER: &[&str] = &["completed", "complete", "done", "finished", "failed", "error", "killed", "stopped", "cancelled", "canceled"];
+
+/// The ids of the background tasks Claude's Stop says are still in flight; it wakes itself when
+/// one ends.
+fn running_background_tasks(payload: &Value) -> Vec<String> {
+    let tasks = payload.get("background_tasks").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
+    tasks
+        .iter()
+        .filter(|task| task.get("status").and_then(Value::as_str).is_none_or(|s| !BACKGROUND_TASK_OVER.contains(&s.to_ascii_lowercase().as_str())))
+        .filter_map(|task| ["id", "command", "description"].iter().find_map(|k| task.get(*k)?.as_str().filter(|v| !v.is_empty())).map(str::to_string))
+        .collect()
 }
 
 /// Gemini CLI's hook events (its settings.json takes Claude's shape, with its own names).
@@ -2205,12 +2217,15 @@ mod tests {
         let stop = |tasks: Value| {
             let payload = json!({"hook_event_name":"Stop","background_tasks":tasks,"session_crons":[]});
             let origin = super::HookOrigin { term: 1, agent: "claude".into(), pid: 0, token: String::new() };
-            let ClientMsg::Hook { status, event, .. } = super::hook_message(origin, &payload, super::status_from_hook(&payload).unwrap()) else { panic!("expected hook report") };
-            (status, event)
+            let ClientMsg::Hook { status, background, .. } = super::hook_message(origin, &payload, super::status_from_hook(&payload).unwrap()) else { panic!("expected hook report") };
+            assert_eq!(status, HookStatus::Done);
+            background
         };
         let shell = json!([{"id":"b1","type":"shell","status":"running","description":"watch CI","command":"gh pr checks 38 --watch"}]);
-        assert_eq!(stop(shell), (HookStatus::Done, crate::protocol::STOP_AWAITING_BACKGROUND.to_string()), "paused on its background shell");
-        assert_eq!(stop(json!([])), (HookStatus::Done, "Stop".to_string()), "nothing in flight: the turn is over");
+        assert_eq!(stop(shell), ["b1"], "still in flight");
+        assert_eq!(stop(json!([])), Vec::<String>::new(), "nothing in flight: the turn is over");
+        let over = json!([{"id":"b2","type":"shell","status":"completed"}, {"id":"a3","type":"subagent","status":"Failed"}, {"id":"b4","type":"shell"}]);
+        assert_eq!(stop(over), ["b4"], "finished entries don't count; one with no status might still run");
     }
 
     #[test]
