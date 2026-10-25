@@ -7,7 +7,7 @@ use crate::keys::{Action, KeySpec};
 
 /// What shortcut mode suggests after its tag, left to right; a narrow bar drops them from the
 /// right. All keys and Esc come after them and go last.
-fn suggestions() -> [(Action, &'static str); 6] {
+fn suggestions() -> [(Action, &'static str); 7] {
     [
         (Action::ShellHere, "shell"),
         (Action::StartSession, "session"),
@@ -15,6 +15,7 @@ fn suggestions() -> [(Action, &'static str); 6] {
         (Action::Files, "files"),
         (Action::Jump, "inbox"),
         (Action::Settings, "settings"),
+        (Action::References, "references"),
     ]
 }
 
@@ -149,6 +150,7 @@ fn keys_holder(app: &App) -> Option<Holder> {
         Mode::Confirm(c) if matches!(c.act, crate::client::menu::Act::OverrideCheck(..)) => holder("OVERRIDE", &[("", "type a reason"), ("Enter", "override")], ("Esc", "cancel")),
         Mode::Confirm(_) => holder("CONFIRM", &[("y", "yes")], ("n", "no")),
         Mode::Prompt { kind, .. } if kind.is_confirm() => holder("CONFIRM", &[("y", "yes")], ("n", "no")),
+        Mode::Prompt { kind: crate::client::PromptKind::AddReference(..), .. } => holder("ADD REFERENCE", &[("", "type or paste a path"), ("Enter", "add")], ("Esc", "cancel")),
         Mode::Prompt { .. } | Mode::RenameTab(_) => holder("NAME", &[("", "type"), ("Enter", "save")], ("Esc", "cancel")),
         Mode::Why { .. } => holder("WHY", &[], ("Esc", "close")),
         Mode::Helpers { .. } => holder("HELPERS", &[("1", "allow"), ("2", "always"), ("3", "no")], ("Esc", "back")),
@@ -221,6 +223,7 @@ fn view_holder(app: &App) -> Option<Holder> {
         View::Changes(_) => holder("CHANGES", &[("↑↓", "file"), ("c", "commit"), ("x", "reviewed"), ("e", "editor")], ("Esc", "close")),
         View::Branch(_) => holder("BRANCH", &[("↑↓", "choose"), ("Enter", "open")], ("Esc", "close")),
         View::Check(v) if super::check_sheet::sheet_failed(app, v) => holder("CHECK", &[("r", "re-run"), ("m", "send to agent"), ("f", "full output"), ("i", "why")], ("Esc", "back")),
+        View::References(_) => holder("REFERENCES", &[("Enter", "open"), ("p", "paste image"), ("n", "add file"), ("d", "remove")], ("Esc", "close")),
         View::Check(_) => holder("CHECK", &[("r", "re-run"), ("f", "full output"), ("i", "why")], ("Esc", "back")),
         View::Both(_) => holder("BOTH DIFFS", &[("↑↓", "scroll"), ("k", "dismiss")], ("Esc", "close")),
     }

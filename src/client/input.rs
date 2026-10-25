@@ -58,7 +58,7 @@ impl App {
     }
 
     pub(super) fn on_paste(&mut self, s: String) {
-        if self.paste_into_files(&s) {
+        if self.paste_into_files(&s) || self.paste_into_references(&s) {
             return;
         }
         match &mut self.mode {
@@ -1100,6 +1100,12 @@ impl App {
                         }
                     }
                     Some(View::Branch(v)) => {
+                        v.sel = i;
+                        if double {
+                            self.on_view_key(&KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                        }
+                    }
+                    Some(View::References(v)) => {
                         v.sel = i;
                         if double {
                             self.on_view_key(&KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));

@@ -156,6 +156,8 @@ pub(super) enum View {
     Check(Box<screen::CheckView>),
     /// Where a checkout stands (in the sheet).
     Branch(Box<screen::BranchSheet>),
+    /// The project's reference images and design files (in the sheet).
+    References(Box<screen::ReferencesSheet>),
 }
 
 /// Clickable chips and buttons.
@@ -252,12 +254,7 @@ mod cursor_tests {
 /// Save the clipboard image as a PNG under the data folder; old pastes (a week) are
 /// cleared out. Returns (path, width, height).
 fn clipboard_image_to_file() -> Result<(PathBuf, usize, usize), String> {
-    // Tests never touch the machine's clipboard: what is on it is not theirs to read.
-    if cfg!(test) {
-        return Err("there's no image on the clipboard".into());
-    }
-    let mut cb = arboard::Clipboard::new().map_err(|e| format!("can't open the clipboard: {e}"))?;
-    let img = cb.get_image().map_err(|_| "there's no image on the clipboard".to_string())?;
+    let img = clipboard_image()?;
     let dir = crate::config::data_dir().join("pastes");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     if let Ok(rd) = std::fs::read_dir(&dir) {
@@ -271,6 +268,16 @@ fn clipboard_image_to_file() -> Result<(PathBuf, usize, usize), String> {
     let path = dir.join(format!("paste-{ms}.png"));
     write_png(&path, img.width as u32, img.height as u32, &img.bytes)?;
     Ok((path, img.width, img.height))
+}
+
+/// The image on the clipboard. Slow for a big one: call it off the UI thread.
+fn clipboard_image() -> Result<arboard::ImageData<'static>, String> {
+    // Tests never touch the machine's clipboard: what is on it is not theirs to read.
+    if cfg!(test) {
+        return Err("there's no image on the clipboard".into());
+    }
+    let mut cb = arboard::Clipboard::new().map_err(|e| format!("can't open the clipboard: {e}"))?;
+    cb.get_image().map_err(|_| "there's no image on the clipboard".to_string())
 }
 
 /// RGBA pixels to a PNG file.
@@ -317,6 +324,8 @@ enum PromptKind {
     ConfirmCloseWorkspace(WsId),
     ConfirmKillServer,
     ConfirmRemoveWorktree(WsId),
+    /// A file to copy into the project's references: (project root, folder a relative path starts from).
+    AddReference(PathBuf, PathBuf),
 }
 
 impl PromptKind {
@@ -329,6 +338,7 @@ impl PromptKind {
             PromptKind::ConfirmCloseWorkspace(_) => "Close workspace and all its panes? (y/n)",
             PromptKind::ConfirmKillServer => "Kill the server and every pane? (y/n)",
             PromptKind::ConfirmRemoveWorktree(_) => "Remove this worktree? (y / f = force / n)",
+            PromptKind::AddReference(..) => "Add a reference: the file's path",
         }
     }
     fn is_confirm(&self) -> bool {

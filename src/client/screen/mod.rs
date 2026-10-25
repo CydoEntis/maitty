@@ -1101,6 +1101,7 @@ pub(super) fn k(app: &App, a: &Action) -> String {
 mod rail;
 mod behaviour;
 mod branch_sheet;
+mod references_sheet;
 mod card;
 mod check;
 mod check_actions;
@@ -1131,4 +1132,4 @@ mod tidy;
 mod frame_tests;
 #[cfg(test)]
 mod reference;
-pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_bar::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};
+pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_bar::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, references_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};

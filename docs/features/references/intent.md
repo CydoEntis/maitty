@@ -1,6 +1,6 @@
 # Intent: references
 
-Type: feature · Status: planned (phase 28) · Date: 2026-10-24
+Type: feature · Status: built (phase 28) · Date: 2026-10-24 · Spec: [spec.md](spec.md)
 
 ## Problem
 
@@ -29,7 +29,9 @@ server (`src/mcp.rs`), the repo's `.maitty/` folder.
 - Agents learn of it through an MCP tool (decided 2026-10-24); nothing is written into prompts
   or agent instruction files.
 - Images open in the system viewer; the terminal shows none (terminal graphics cut in phase 7).
-- Builds on Phase 26's side panel.
+- Builds on Phase 26's side panel: a fourth tab, References, on leader `a` (2026-10-25).
+- The folder sits at the repo's main checkout, so agents in every worktree share one set; the
+  gitignore line goes in the repo's `info/exclude`, not the tracked `.gitignore` (2026-10-25).
 
 ## Out of scope
 

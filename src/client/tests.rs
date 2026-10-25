@@ -5293,7 +5293,7 @@ second line
     }
 
     /// The suggestions in the order they are dropped last to first.
-    const SUGGESTED: [&str; 8] = ["n shell", "s session", "c changes", "f files", "i inbox", ", settings", "? all keys", "Esc type"];
+    const SUGGESTED: [&str; 9] = ["n shell", "s session", "c changes", "f files", "i inbox", ", settings", "a references", "? all keys", "Esc type"];
 
     #[test]
     fn the_lit_bar_suggests_keys_from_the_keymap() {
@@ -5330,7 +5330,7 @@ second line
                 let (_, bar) = bar_text(&app, &buf);
                 let at = format!("{w} update {update}: {bar}");
                 let shown: Vec<bool> = SUGGESTED.iter().map(|s| bar.contains(s)).collect();
-                let (suggestions, tail) = shown.split_at(6);
+                let (suggestions, tail) = shown.split_at(7);
                 assert!(bar.contains("SHORTCUT"), "the tag stays: {at}");
                 assert!(suggestions.windows(2).all(|p| p[0] || !p[1]), "dropped from the right: {at}");
                 assert!(!suggestions[0] || tail.iter().all(|s| *s), "all keys and Esc go after every suggestion: {at}");
@@ -10202,16 +10202,16 @@ mod drawer_tab_tests {
     }
 
     #[test]
-    fn tab_and_shift_tab_cycle_files_changes_and_branch() {
+    fn tab_and_shift_tab_cycle_files_changes_branch_and_references() {
         let (mut app, dir) = in_repo("cycle");
         app.act(Action::Files);
-        use screen::SheetKind::{Branch, Changes, Files};
-        for want in [Changes, Branch, Files] {
+        use screen::SheetKind::{Branch, Changes, Files, References};
+        for want in [Changes, Branch, References, Files] {
             key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
             assert_eq!(open(&app), Some(want), "Tab");
             assert!(app.view_has_keys(), "the new view has the keys");
         }
-        for want in [Branch, Changes, Files] {
+        for want in [References, Branch, Changes, Files] {
             key(&mut app, KeyCode::BackTab, KeyModifiers::SHIFT);
             assert_eq!(open(&app), Some(want), "Shift+Tab");
         }
@@ -10349,6 +10349,199 @@ mod drawer_tab_tests {
         key(&mut app, KeyCode::BackTab, KeyModifiers::SHIFT);
         draw(&mut app);
         assert_eq!(app.screen.sheet_rect.width, 70, "back to Files' width");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod references_view_tests {
+    use super::*;
+    use super::branch_view_tests::next_bg;
+    use super::check_settings_tests::{draw, show};
+
+    fn leader(app: &mut App, c: char) {
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+    }
+
+    fn key(app: &mut App, code: KeyCode) {
+        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    fn sheet(app: &App) -> Option<&screen::ReferencesSheet> {
+        match &app.view {
+            Some(View::References(v)) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// A folder outside git for session 1, with `files` in its references (name, seconds old).
+    fn project(tag: &str, files: &[(&str, u64)]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("{APP_COMMAND}-refs-view-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let refs = crate::references::folder(&dir);
+        std::fs::create_dir_all(&refs).unwrap();
+        for (name, ago) in files {
+            let p = refs.join(name);
+            std::fs::write(&p, vec![0u8; 2048]).unwrap();
+            let at = std::time::SystemTime::now() - std::time::Duration::from_secs(*ago);
+            std::fs::File::options().write(true).open(&p).unwrap().set_modified(at).unwrap();
+        }
+        dir
+    }
+
+    /// The app at w×h with session 1 in `dir` and References open, the folder read.
+    fn opened(dir: &std::path::Path, w: u16, h: u16) -> (App, mpsc::UnboundedReceiver<Bg>) {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.bg = tx;
+        let pane = app.snap.terms.get_mut(&1).unwrap();
+        pane.cwd = dir.to_path_buf();
+        pane.top = Some(dir.to_path_buf());
+        // Unknown to the snapshot: the background read finds the project from the folder.
+        pane.root = None;
+        leader(&mut app, 'a');
+        assert!(sheet(&app).is_some_and(|v| v.list.is_none()), "a opens References, reading the folder");
+        let b = next_bg(&mut rx);
+        app.on_bg(b);
+        (app, rx)
+    }
+
+    fn names(app: &App) -> Vec<String> {
+        match sheet(app).and_then(|v| v.list.clone()) {
+            Some(Ok(l)) => l.into_iter().map(|r| r.name).collect(),
+            other => panic!("a list: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_empty_project_says_how_to_add_one_at_both_sizes() {
+        let dir = project("empty", &[]);
+        for (w, h) in [(80, 24), (160, 45)] {
+            let (mut app, _rx) = opened(&dir, w, h);
+            let o = draw(&mut app, w, h);
+            show(&o);
+            assert!(o.contains("REFERENCES"), "in the side panel at {w}×{h}:\n{o}");
+            assert!(o.contains("No references yet · paste an image or add a file"), "the empty state at {w}×{h}:\n{o}");
+            assert!(o.contains("Refs") || o.contains("References"), "its tab in the strip at {w}×{h}");
+            if w >= 160 {
+                assert!(o.contains("Files f") && o.contains("References a"), "the strip names its key:\n{o}");
+            }
+            key(&mut app, KeyCode::Char('a'));
+            assert!(sheet(&app).is_none(), "a closes it again");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn references_are_listed_newest_first_with_kind_size_and_age() {
+        let dir = project("list", &[("old-home.png", 7200), ("checkout.fig", 120), ("brief.pdf", 5)]);
+        let (mut app, _rx) = opened(&dir, 160, 45);
+        assert_eq!(names(&app), ["brief.pdf", "checkout.fig", "old-home.png"]);
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        let row = |name: &str| o.lines().find(|l| l.contains(name)).unwrap_or_else(|| panic!("{name}:\n{o}")).to_string();
+        let old = row("old-home.png");
+        assert!(old.contains("image") && old.contains("2 KB") && old.contains(" 2h"), "{old}");
+        assert!(row("checkout.fig").contains("design"));
+        assert!(o.find("brief.pdf").unwrap() < o.find("old-home.png").unwrap(), "newest on top");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn remove_asks_first_then_deletes_the_file() {
+        let dir = project("remove", &[("a.png", 10), ("b.png", 20)]);
+        let (mut app, mut rx) = opened(&dir, 160, 45);
+        key(&mut app, KeyCode::Down);
+        key(&mut app, KeyCode::Char('d'));
+        let Mode::Confirm(c) = &app.mode else { panic!("asked first: {:?}", std::mem::discriminant(&app.mode)) };
+        assert!(c.danger && c.what == "b.png", "{c:?}");
+        assert!(crate::references::folder(&dir).join("b.png").exists(), "nothing gone before the answer");
+        key(&mut app, KeyCode::Enter);
+        let done = next_bg(&mut rx);
+        app.on_bg(done);
+        assert!(!crate::references::folder(&dir).join("b.png").exists(), "removed");
+        let reread = next_bg(&mut rx);
+        app.on_bg(reread);
+        assert_eq!(names(&app), ["a.png"], "the list reads again");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn n_copies_a_typed_or_dropped_file_in() {
+        let dir = project("add", &[]);
+        let src = dir.join("hero shot.png");
+        std::fs::write(&src, "png").unwrap();
+        let (mut app, mut rx) = opened(&dir, 160, 45);
+        key(&mut app, KeyCode::Char('n'));
+        assert!(matches!(app.mode, Mode::Prompt { kind: PromptKind::AddReference(..), .. }), "n asks for a path");
+        app.on_event(Event::Paste(format!("\"{}\"", src.display())));
+        key(&mut app, KeyCode::Enter);
+        let added = next_bg(&mut rx);
+        app.on_bg(added);
+        let reread = next_bg(&mut rx);
+        app.on_bg(reread);
+        assert_eq!(names(&app), ["hero shot.png"]);
+        assert!(src.exists(), "copied, not moved");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_file_dropped_on_the_open_view_is_added() {
+        let dir = project("drop", &[]);
+        let src = dir.join("mock.png");
+        std::fs::write(&src, "png").unwrap();
+        let (mut app, mut rx) = opened(&dir, 160, 45);
+        app.on_event(Event::Paste(format!("'{}'", src.display())));
+        let added = next_bg(&mut rx);
+        app.on_bg(added);
+        let reread = next_bg(&mut rx);
+        app.on_bg(reread);
+        assert_eq!(names(&app), ["mock.png"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_paste_with_no_image_says_so_and_makes_no_folder() {
+        let dir = std::env::temp_dir().join(format!("{APP_COMMAND}-refs-view-noimg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (mut app, mut rx) = opened(&dir, 160, 45);
+        key(&mut app, KeyCode::Char('p'));
+        let b = next_bg(&mut rx);
+        app.on_bg(b);
+        assert!(app.notice.as_ref().is_some_and(|(t, ..)| t.contains("no image")), "{:?}", app.notice);
+        assert!(!crate::references::folder(&dir).exists(), "no image, no folder");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_session_in_a_worktree_sees_the_main_checkouts_references() {
+        let main = project("wt", &[("shared.png", 10)]);
+        let git = |args: &[&str]| crate::proc::git(&main, args).unwrap();
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.email", "t@t"]);
+        git(&["config", "user.name", "t"]);
+        std::fs::write(main.join("a.txt"), "a").unwrap();
+        git(&["add", "a.txt"]);
+        git(&["commit", "-qm", "first"]);
+        let wt = main.with_extension("feat");
+        let _ = std::fs::remove_dir_all(&wt);
+        git(&["worktree", "add", "-q", "-b", "feat", wt.to_str().unwrap()]);
+        let (app, _rx) = opened(&wt, 160, 45);
+        assert_eq!(names(&app), ["shared.png"], "the worktree lists the main checkout's set");
+        assert_eq!(sheet(&app).unwrap().root.canonicalize().unwrap(), main.canonicalize().unwrap());
+        let _ = std::fs::remove_dir_all(&wt);
+        let _ = std::fs::remove_dir_all(&main);
+    }
+
+    #[test]
+    fn y_copies_the_chosen_files_absolute_path() {
+        let dir = project("copy", &[("a.png", 10)]);
+        let (mut app, _rx) = opened(&dir, 160, 45);
+        key(&mut app, KeyCode::Char('y'));
+        let copied = crate::client::copy::LAST_COPY.with(|c| c.borrow().clone()).unwrap();
+        assert_eq!(PathBuf::from(&copied), crate::references::folder(&dir).join("a.png"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

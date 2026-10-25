@@ -60,6 +60,8 @@ pub enum Act {
     OverrideCheck(TermId, String, Option<String>),
     /// Take an override back: the check reads as failed again.
     UndoOverride(TermId),
+    /// Delete a reference: (the project root, the file, its name in the references).
+    RemoveReference(PathBuf, PathBuf, String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -357,6 +359,18 @@ impl App {
                 danger: false,
                 act: a.clone(),
             }),
+            Act::RemoveReference(_, _, name) => Some(Confirm {
+                title: "Remove reference".into(),
+                sub: String::new(),
+                what: name.clone(),
+                detail: String::new(),
+                note: "The file is deleted from the project's references, and agents no longer see it.".into(),
+                list: Vec::new(),
+                yes: "Remove".into(),
+                key: '\n',
+                danger: true,
+                act: a.clone(),
+            }),
             Act::GitInit(p) => Some(Confirm {
                 title: "Make it a git repo".into(),
                 sub: String::new(),
@@ -483,6 +497,7 @@ impl App {
                     }))
                 });
             }
+            Act::RemoveReference(root, path, name) => self.remove_reference(root, path, name),
             Act::Tidy(items) => {
                 self.notify("Cleaning up worktrees…".into(), false);
                 self.cmd(Command::TidyWorktrees { items });

@@ -223,6 +223,7 @@ src/
   cli/jsonc.rs   agents' settings.json edited in place (comments, key order, BOM kept), for hooks and MCP
   tidy.rs        what removing a worktree would lose (shared by the server's sweep and the clean-up list)
   snapshot.rs    a checkout's files kept before each agent turn, and put back (the server takes them, the client lists and restores)
+  references.rs  a project's reference images in `.maitty/references/` at the main checkout (the client's References view and the MCP server list them)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
   protocol.rs    wire messages and PROTOCOL_VERSION
   ipc.rs         local sockets and the SSH proxy

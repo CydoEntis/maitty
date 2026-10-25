@@ -22,6 +22,7 @@ mod theme;
 mod tidy;
 mod update;
 mod restart;
+mod references;
 mod reveal;
 mod snapshot;
 

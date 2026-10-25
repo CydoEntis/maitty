@@ -42,6 +42,11 @@ impl App {
                     self.view = Some(View::Branch(v));
                 }
             }
+            View::References(mut v) => {
+                if self.on_references_key(&mut v, k) {
+                    self.view = Some(View::References(v));
+                }
+            }
         }
     }
 
@@ -610,6 +615,7 @@ impl App {
                 self.screen.save();
             }
             PromptKind::RenameTab(ws, tab) => self.cmd(Command::RenameTab { ws, tab, name: input }),
+            PromptKind::AddReference(root, dir) => self.add_reference(root, dir, &input),
             PromptKind::NewWorkspace => {
                 // A group starts with a shell where you are.
                 let name = (!input.is_empty()).then_some(input);
