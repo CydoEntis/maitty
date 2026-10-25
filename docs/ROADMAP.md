@@ -11,7 +11,7 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-Latest release: **v0.44.0** (2026-10-25), wire protocol 46. Phases 1–29 are shipped (phase 11
+Latest release: **v0.45.0** (2026-10-25), wire protocol 46. Phases 1–29 are shipped (phase 11
 declined); the release history is in the GitHub Releases and git tags, not here. v0.44.0 added
 [Phase 27](#27--radar-and-sending-failures--shipped-in-v0440) (context on the row, a failed
 check into the message box), [Phase 28](#28--references--shipped-in-v0440) (references),
@@ -22,7 +22,8 @@ title, the guide, two flaky tests).
 Next: the user uses the build daily for a week from 2026-10-26, and reports back. That trial
 stands in for the open live checks (phases 17–29) and confirms status live for the agents the
 user runs: Claude Code, Codex, Qwen Code and DeepSeek. Also requested 2026-10-25:
-[Phase 30](#30--the-hairline-layout--in-progress-2026-10-25), a fifth layout.
+[Phase 30](#30--the-hairline-layout--shipped-in-v0450-live-checks-open), a fifth layout, and
+100 more built-in themes (162), both in v0.45.0.
 
 Open validation items (need a real session on the named platform):
 - Pi full-screen scrolling on Linux: waiting on the failing pane's "Pane info (scrolling,
@@ -538,7 +539,7 @@ showed with only the sidebar focused): `SIDEBAR · ↑↓ move · Enter open · 
 `FILES`, `INBOX`, a confirm's `y yes · n no` and so on, held or not, with `shortcut mode waits`
 while held; "paused" is gone. Built on `feat/bar-says-who`; not checked live.
 
-### 30 — The Hairline layout · in progress 2026-10-25
+### 30 — The Hairline layout · shipped in v0.45.0, live checks open
 
 The user asked on 2026-10-25 for a new layout, Hairline, from a design handoff (option 1c, "split,
 one needs you"), added beside Floating, Tiled, Compact and Grid without changing them. No boxes:
