@@ -200,7 +200,7 @@ impl App {
             self.screen.pending_split = Some((f, Instant::now()));
         }
         self.screen.cursor = None;
-        self.mode = Mode::Normal;
+        self.leave_shortcut_mode();
         self.cmd(Command::NewWorkspace { cwd: Some(cwd), name: None, cmd });
     }
 
@@ -222,7 +222,7 @@ impl App {
         if beside && let Some(f) = self.focused() {
             self.screen.pending_split = Some((f, Instant::now()));
         }
-        self.mode = Mode::Normal;
+        self.leave_shortcut_mode();
         self.notify(format!("new worktree {branch} in {}", proj.name), false);
         self.cmd(Command::NewWorktree { ws, branch, base: None, cmd, split: None, from: Some(proj.path.clone()) });
     }

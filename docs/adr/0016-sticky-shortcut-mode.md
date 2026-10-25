@@ -1,6 +1,6 @@
 # 0016. The leader opens a shortcut mode that stays until you leave it
 
-- **Status:** Accepted (amended by [ADR 0021](0021-one-line-rows-one-rounding-sticky-mode.md) and [ADR 0023](0023-the-mode-is-always-shown.md))
+- **Status:** Accepted (amended by [ADR 0021](0021-one-line-rows-one-rounding-sticky-mode.md), [ADR 0023](0023-the-mode-is-always-shown.md) and [ADR 0025](0025-a-new-pane-ends-shortcut-mode.md))
 - **Date:** 2026-10-23
 
 ## Context

@@ -2384,8 +2384,7 @@ mod screen_tests {
         app.on_key(plain(KeyCode::Down));
         app.on_key(plain(KeyCode::Right));
         app.on_key(plain(KeyCode::Enter));
-        assert!(matches!(app.mode, Mode::Prefix { .. }), "started: still in shortcut mode");
-        app.on_key(plain(KeyCode::Esc));
+        assert!(app.mode == Mode::Normal && !app.shortcut_held, "started: back to typing, into the new session");
         let cmds = sent(&mut rx);
         assert!(matches!(cmds.as_slice(), [Command::NewWorkspace { cwd: Some(cwd), cmd: Some(cmd), .. }] if cmd == "codex" && cwd.ends_with("shop-api")), "{cmds:?}");
         // The Start button does the same.
@@ -2461,7 +2460,7 @@ mod screen_tests {
             caps_state,
         ));
 
-        assert!(matches!(app.mode, Mode::Prefix { .. }), "Caps Lock must not open What happened: {:?}", app.mode);
+        assert_eq!(app.mode, Mode::Normal, "Caps Lock must not open What happened; the new shell has the keys");
         assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|message| matches!(
             message,
             ClientMsg::Command(Command::NewWorkspace { cmd: None, .. })
@@ -4524,12 +4523,41 @@ second line
     }
 
     #[test]
-    fn shortcut_mode_stays_after_something_to_type_into() {
-        for c in ['n', 'v', 'h', 't'] {
+    fn a_new_pane_ends_shortcut_mode_and_the_next_key_types_into_it() {
+        for c in ['n', 's', 'v', 'h', 't'] {
             let mut app = shortcut_mode();
+            let (tx, mut rx) = mpsc::unbounded_channel();
+            app.out = tx;
+            let before = app.focused().unwrap();
             tap(&mut app, c);
-            assert!(matches!(app.mode, Mode::Prefix { .. }), "{c} keeps shortcut mode: {:?}", std::mem::discriminant(&app.mode));
+            assert_eq!(app.mode, Mode::Normal, "{c} ends shortcut mode");
+            assert!(!app.shortcut_held, "{c}: nothing holds the mode to come back");
+            assert!(sent(&mut rx).iter().any(|m| matches!(m, Command::NewWorkspace { .. } | Command::NewWorktree { .. })), "{c} started a pane");
+            // The daemon focuses the pane it made; another of the fixture's panes stands in.
+            let new = app.snap.terms.keys().copied().find(|t| *t != before).unwrap();
+            let mut next = app.snap.clone();
+            let (ws, tab) = next.locate(new).map(|(w, t)| (w.id, t.id)).unwrap();
+            next.active_ws = Some(ws);
+            for w in next.workspaces.iter_mut().filter(|w| w.id == ws) {
+                w.active_tab = tab;
+                for t in w.tabs.iter_mut().filter(|t| t.id == tab) {
+                    t.focus = new;
+                }
+            }
+            app.on_server(ServerMsg::State(next));
+            assert_eq!(app.focused(), Some(new), "{c}: the new pane has the focus");
+            assert_eq!(app.mode, Mode::Normal, "{c}: and the mode stays ended");
+            tap(&mut app, 'a');
+            let typed: Vec<ClientMsg> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+            assert!(typed.iter().any(|m| matches!(m, ClientMsg::Input { term, data } if *term == new && data == b"a")), "{c}: the next key went to the new pane: {typed:?}");
         }
+    }
+
+    #[test]
+    fn an_action_that_starts_no_pane_keeps_shortcut_mode() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'z');
+        assert!(matches!(app.mode, Mode::Prefix { .. }) && app.shortcut_held, "z keeps shortcut mode");
     }
 
     #[test]
@@ -5230,7 +5258,8 @@ second line
         let buf = drawn(&mut app, 160, 45);
         let shell = on_bar(&app, &buf, "n shell").expect("n shell");
         click_at(&mut app, shell, y);
-        assert!(matches!(app.mode, Mode::Prefix { .. }), "a shell opens nothing to type into here: the mode stays");
+        assert_eq!(app.mode, Mode::Normal, "a new shell is typed into: the mode ends");
+        let mut app = shortcut_mode();
         let buf = drawn(&mut app, 160, 45);
         let all = on_bar(&app, &buf, "? all keys").expect("? all keys");
         click_at(&mut app, all + 3, y);

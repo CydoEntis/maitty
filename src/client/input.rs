@@ -138,6 +138,13 @@ impl App {
         }
     }
 
+    /// Starting a pane ends shortcut mode (ADR 0025): you go there to type, and a letter
+    /// meant for the new shell or agent must not run an action instead.
+    pub(super) fn leave_shortcut_mode(&mut self) {
+        self.mode = Mode::Normal;
+        self.shortcut_held = false;
+    }
+
     /// A key that does nothing in shortcut mode says why, in a toast (ADR 0023): someone who
     /// thinks they are typing sees where their keys went. Once per `DEAD_KEY_HINT_EVERY`, and
     /// never over a toast still showing, so mashing keys doesn't keep it up or hide news.
@@ -287,8 +294,9 @@ impl App {
                     // does: its own k, arrows and Esc must not run leader actions. Closing it
                     // returns to shortcut mode (`keep_shortcut_mode`).
                     let opened = self.view_has_keys() && (self.view_opened != opened_before || !had_keys);
-                    // Nothing opened: the mode holds, the key map stays away.
-                    if self.mode == Mode::Normal && !opened {
+                    // Nothing opened: the mode holds, the key map stays away. A pane it
+                    // started ended the mode (`leave_shortcut_mode`).
+                    if self.mode == Mode::Normal && !opened && self.shortcut_held {
                         self.mode = Mode::Prefix { since, acted: true };
                     }
                 } else if !acted

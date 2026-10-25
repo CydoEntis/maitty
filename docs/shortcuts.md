@@ -74,10 +74,11 @@ history, open the worktree picker, rename a session, send `Ctrl+Space` itself to
 
 The leader is `Ctrl+Space`. Press it and you are in **shortcut mode**: each key runs its
 action, and the mode stays for the next, so a run of actions is one key each. `Esc`, the
-leader again or a click go back to **input mode**, where keys type into the pane; nothing
-else does. A new shell, session, tab or split leaves you in shortcut mode, so press `Esc` to
-type into it. An action that opens a popup or sheet hands it the keys, and closing it returns
-to shortcut mode. The bar along the bottom always says which mode you are in: `TYPING · Ctrl+Space for
+leader again or a click go back to **input mode**, where keys type into the pane. So does
+an action that starts a pane for you to type into (ADR 0025): `n` a shell, `s` a session,
+`t` a tab, `v` / `h` a split, and `o` once its dialog starts the session; the next key goes
+to the new pane. An action that opens a popup or sheet hands it the keys, and closing it
+returns to shortcut mode; `Enter` (message the agent) is one of those. The bar along the bottom always says which mode you are in: `TYPING · Ctrl+Space for
 shortcuts`, or, while shortcut mode is on, a sky-blue bar with `SHORTCUT` and keys to press
 from your keymap (`n shell  s session  c changes  f files  i inbox  , settings  ? all keys
 Esc type`; a click on one runs it, a click on `TYPING` starts shortcut mode). While something
