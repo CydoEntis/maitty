@@ -121,8 +121,13 @@ out with motion on. See UI › *the frame* (Toast).
 
 The one full-width row, along the bottom ([ADR 0024](adr/0024-the-mode-lives-in-a-bottom-bar.md)).
 Typing: a quiet ` TYPING ` chip and the leader key. Shortcut mode: the whole row in `sky()`, a
-` SHORTCUT ` chip and the next keys you can press. **Update** or **Restart** sits at its right
-end when waiting. See UI › *the frame* (Mode bar).
+` SHORTCUT ` chip and the next keys you can press; starting a pane ends it
+([ADR 0025](adr/0025-a-new-pane-ends-shortcut-mode.md)). When something other than the panes
+has the keys, the bar stays on `bg`, never sky: a calm chip (`strong` bold on `btn`) names the
+holder, then its keys and the way out (`SIDEBAR · ↑↓ move · Enter open · Esc back`), with
+`· shortcut mode waits` while the mode is held. Under a popup the bar is words only and takes
+no click. **Update** or **Restart** sits at its right end when waiting. See UI › *the frame*
+(Mode bar).
 
 ## Splash
 
