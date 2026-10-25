@@ -460,12 +460,18 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                 });
             }
             let mr = Rect { x: mx, y: py + 1, width: 18, height: 3 };
-            card(app, buf, mr, &card_look, t);
             let fg = if focus { t.strong } else { blend(t.text, t.card, Look::of(&app.cfg.ui).dim) };
             let mut st = Style::default().bg(card_look.bg).fg(fg);
             if focus {
                 st = st.add_modifier(Modifier::BOLD);
             }
+            // Hairline previews a pane as it draws one: its name over its rule.
+            if Look::of(&app.cfg.ui).hairline {
+                (card_look.title, card_look.title_fg, card_look.docked) = (label, fg, true);
+                card(app, buf, mr, &card_look, t);
+                return;
+            }
+            card(app, buf, mr, &card_look, t);
             put(buf, mx + 2, py + 2, &[seg(label, st)], mr.right() - 1);
         };
         mini(app, buf, lx, true);

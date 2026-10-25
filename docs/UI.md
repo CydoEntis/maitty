@@ -479,6 +479,18 @@ Code that has a Hairline variant asks `Look::of(..).hairline` and takes its colo
 `hairline::Ink`; `Ui::rounding()` is `off` in Hairline, so every pill, chip and corner drawn
 there is square whatever `ui.rounded` says.
 
+- **Menus and panels.** In Hairline a frame is drawn with `hairline::flat_theme` (`card`, `btn`
+  and `sidebar_bg` are the ground; `card2` stays `raised`), and `hairline::plain` turns every
+  chip into words: `chip`, `pill`, `keycap`, `button` and a modal's title call it, as must any new
+  chip drawn by hand. A fill that reads as a surface (contrast under 1.6 with the ground) just
+  goes; a coloured fill becomes the words' colour, bold. `plain_on()` says whether this frame is
+  Hairline, for helpers with no `Look` (an action bar drops its band). Modals keep `panel_at`'s
+  box, square; popovers get a `line` box a cell outside them (`popover_at`); a docked card
+  (`Card::docked`, the side sheet) is a zone: title row, a `─` rule under it, a `│` to its left
+  unless one is already there. The sheet's tab strip moves onto that title row, its title to
+  the right in dim; the rule under the open tab is the accent while the sheet has the keys,
+  else `muted`. Settings' preview draws two Hairline panes. The tabs and menu rows keep their
+  click targets where their words are.
 - **Needs you.** One rule everywhere (`check::needs`): the agent asks, or its check waits for
   approval. A pane goes by its own state; a sidebar row by its split's most urgent, and when
   that is a pane beside its own it names it (`▸ warm-finch`) instead of `needs you`. The mode

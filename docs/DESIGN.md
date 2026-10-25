@@ -165,6 +165,16 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
 - **Mode bar:** `TYPING` is a teal bold word, then `Hairline · 2 panes` dim, then the hint;
   whatever has the keys is named in `strong` bold, no chip. At the right `● N needs you` in
   amber bold, or `all clear` dim, just before Update or Restart. Shortcut mode keeps its sky row.
+- **Menus, popups and panels:** the same lines. A modal (Settings, a confirm, override, approval,
+  the key map, new session, themes) is a solid `bg` box in a square `line` frame over the
+  dimmed screen, its title plain words on the top border, `Esc close` dim at its right. A
+  popover (why, a row's `⋯`, the message and helpers asks) is framed the same, with the `◂`
+  in the accent. The side sheet is a zone like a pane: its tabs (or title) on the first row,
+  a `─` rule under it lit teal under the open tab while it has the keys, and a `│` to its left.
+  The toast keeps its `▌` bar and gets a hairline frame. No chip is filled: a key and what it
+  does are words (the key `strong` bold), the chosen option or primary button is the accent's
+  words, a danger button the red's. A selected row is `raised` with an accent marker. The
+  collapsed sidebar's chips and the splash's keys are words too; the splash's wordmark stays.
 - **Motion off:** working is a still `⠿`, not a frozen spinner frame.
 
 See UI › *Hairline* for sizes, what gives way and what takes a click.

@@ -149,7 +149,7 @@ pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind) -> Vec<Se
         v.push(seg(key.to_string(), Style::default().bg(bg).fg(kfg).add_modifier(Modifier::BOLD)));
     }
     v.push(r);
-    v
+    super::screen::plain(v)
 }
 
 /// A key drawn as a keycap: ` key ` raised on `btn`, strong and bold. A combo (`Ctrl+Space`) is

@@ -87,7 +87,7 @@ fn chip_head(buf: &mut Buffer, (x, y, right): (u16, u16, u16), name: &str, color
     if let Some(n) = n {
         segs.push(seg(format!(" {n} "), b.bg(mix(color, t.bg, COUNT_FADE))));
     }
-    put(buf, x, y, &segs, right);
+    put(buf, x, y, &plain(segs), right);
 }
 
 fn head_color(name: &str, t: &Theme) -> Color {

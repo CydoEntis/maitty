@@ -286,10 +286,10 @@ fn draw_preview(buf: &mut ratatui::buffer::Buffer, area: Rect, name: &str) {
         area.x + 2,
         area.y + 1,
         &[
-            seg(" Focused pane ", st.bg(theme.accent).fg(theme.acc_ink)),
-            seg("  Regular text  ", st.fg(theme.text)),
-            seg("dimmed", st.fg(theme.muted)),
-        ],
+            super::screen::plain(vec![seg(" Focused pane ", st.bg(theme.accent).fg(theme.acc_ink))]),
+            vec![seg("  Regular text  ", st.fg(theme.text)), seg("dimmed", st.fg(theme.muted))],
+        ]
+        .concat(),
         area.right(),
     );
     put(

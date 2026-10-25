@@ -48,5 +48,7 @@ onto the theme's roles, so every theme draws it.
 ## Consequences
 
 A fifth look to test: `hairline/tests.rs` draws it at three sizes with one, two and four
-panes. Hairline costs two bottom rows instead of one. Menus, popups and side panels still
-draw as cards (square) in Hairline until they get a Hairline variant of their own.
+panes, and `hairline/surface_tests.rs` every menu, popup and side panel. Hairline costs two
+bottom rows instead of one. Menus, popups and panels draw with the same lines and no filled
+chips (a flat theme and `hairline::plain`), so a new chip drawn by hand must go through
+`plain` to stay unfilled there.

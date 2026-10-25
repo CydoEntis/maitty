@@ -958,6 +958,20 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     for yy in r.y..r.bottom() {
         put(buf, r.x, yy, &[seg("▌", Style::default().fg(ink(colour, bg)).bg(bg))], r.x + 1);
     }
+    // Hairline: on the ground, so a square hairline frame in `line` holds it; the bar stays its
+    // left edge.
+    if look.hairline && r.width >= 3 {
+        let edge = Style::default().fg(ink(t.line, bg)).bg(bg);
+        for xx in r.x + 1..r.right() {
+            buf[(xx, r.y)].set_symbol("─").set_style(edge);
+            buf[(xx, r.bottom() - 1)].set_symbol("─").set_style(edge);
+        }
+        for yy in r.y..r.bottom() {
+            buf[(r.right() - 1, yy)].set_symbol("│").set_style(edge);
+        }
+        buf[(r.right() - 1, r.y)].set_symbol("┐");
+        buf[(r.right() - 1, r.bottom() - 1)].set_symbol("┘");
+    }
     // Rounded, the card's corners soften as a popup's do, and the bar becomes its left edge.
     if look.rounded && r.width >= 2 {
         soften_block(buf, r, &behind);

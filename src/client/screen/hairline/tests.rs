@@ -10,7 +10,7 @@ use ratatui::backend::TestBackend;
 const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
 
 /// The world with `panes` panes on its open tab: 1, 2 side by side, or 4 in a 2×2 split.
-fn hairline_world(panes: usize) -> App {
+pub(super) fn hairline_world(panes: usize) -> App {
     let mut app = world(Stage::None);
     app.cfg.ui.layout = "hairline".into();
     app.cfg.ui.rounded = crate::config::Rounding::Full;
@@ -27,19 +27,19 @@ fn hairline_world(panes: usize) -> App {
     app
 }
 
-fn draw(app: &mut App, w: u16, h: u16) -> Buffer {
+pub(super) fn draw(app: &mut App, w: u16, h: u16) -> Buffer {
     app.screen_fresh();
     let mut term = Terminal::new(TestBackend::new(w, h)).expect("a test terminal");
     term.draw(|f| crate::client::render::draw(app, f)).expect("a frame");
     term.backend().buffer().clone()
 }
 
-fn text(buf: &Buffer) -> String {
+pub(super) fn text(buf: &Buffer) -> String {
     let a = buf.area;
     (a.y..a.bottom()).map(|y| (a.x..a.right()).map(|x| buf[(x, y)].symbol()).collect::<String>().trim_end().to_string() + "\n").collect()
 }
 
-fn show(label: &str, buf: &Buffer) {
+pub(super) fn show(label: &str, buf: &Buffer) {
     if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
         println!("── {label} ──\n{}", text(buf));
     }
@@ -64,7 +64,7 @@ fn pane_at(app: &App, term: TermId) -> Rect {
 }
 
 /// The first place `needle` is drawn within `r`: its column and row.
-fn find_in(buf: &Buffer, r: Rect, needle: &str) -> Option<(u16, u16)> {
+pub(super) fn find_in(buf: &Buffer, r: Rect, needle: &str) -> Option<(u16, u16)> {
     (r.y..r.bottom()).find_map(|y| {
         let line: Vec<&str> = (r.x..r.right()).map(|x| buf[(x, y)].symbol()).collect();
         let wanted: Vec<String> = needle.chars().map(String::from).collect();
