@@ -35,9 +35,13 @@ Type: spec · Status: built on `feat/references` (phase 28), not yet released ·
   the clipboard image as `screenshot-YYYY-MM-DD-HHMMSS.png` (UTC), `n` add a file by its typed or
   pasted path (quotes from a drop are taken off; copied, never moved; numbered when the name is
   taken; 200 MB at most), `d` / Delete remove (asked first, danger), `y` copy the absolute path,
-  ↑↓ / `j` `k` choose. A paste while the view has the keys is a drop: its first line is a path
-  to add, and an empty paste (a terminal's paste of an image) adds the clipboard image. No image
-  on the clipboard: a toast, and no folder is made — tests.
+  ↑↓ / `j` `k` choose. A paste while the view has the keys stays in it: one line naming an
+  existing file is a drop and is added, an empty paste (a terminal's paste of an image) adds the
+  clipboard image, and anything else shows "References has the keys: …" without repeating the
+  pasted text (it may be a secret). A name starting with a dot is refused (it would be hidden
+  and unremovable). New files are made create-new, at the next free `-N` name, so an add never
+  writes through a link or over another add; the size cap holds while copying. No image on the
+  clipboard: a toast, and no folder is made — tests.
 - **R6.** Every file operation (resolve, list, copy, write, remove, exclude) runs in `spawn_bg`;
   the view opens at once with the project's root from the snapshot and settles it when the
   background read lands.
@@ -49,7 +53,13 @@ Type: spec · Status: built on `feat/references` (phase 28), not yet released ·
 - **R8.** Safety: `path` must be a string naming an existing folder; under `[mcp] scope =
   "project"` it must be in the caller's project, else refused. Nothing outside the references
   folder is listed or removed: no `..`, a link is listed only when it points inside the folder,
-  and a references folder (or `.maitty`) that is a link out of the project is refused — tests.
+  and a references folder (or `.maitty`) that is a link out of the project is refused; `ensure`
+  refuses a `.maitty` or `references` that is already a link or a file before making anything.
+  The scope is checked on the path's words (`.` and `..` worked out) before anything on disk is
+  touched, and network paths (`\\server\share`, `\\?\UNC\…`, `//server/share`) are refused up
+  front. Entries left out of a listing (unreadable, links out) are counted and the first reason
+  shown (the view's last list row, `skipped` in the MCP reply). `info/exclude` is read as bytes
+  and only appended to — tests.
 
 ## Out of scope
 

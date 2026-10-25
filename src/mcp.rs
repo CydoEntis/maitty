@@ -345,11 +345,24 @@ impl Server {
     /// The project root of a folder an agent named: an existing folder, and the caller's own
     /// project unless `[mcp] scope` is `all`.
     fn project_at(&self, raw: &str) -> Result<PathBuf, String> {
-        if raw.trim().is_empty() || raw.contains('\0') {
+        let raw = raw.trim();
+        if raw.is_empty() || raw.contains('\0') {
             return Err("give a folder path".into());
         }
-        let p = PathBuf::from(raw.trim());
-        let p = if p.is_absolute() { p } else { std::env::current_dir().unwrap_or_default().join(p) };
+        // A network path (\\server\share, \\?\UNC\…) would reach out over SMB just to be checked.
+        if raw.starts_with("\\\\") || raw.starts_with("//") {
+            return Err("network paths are not read; give a folder in your project".into());
+        }
+        let cwd = std::env::current_dir().map_err(|e| format!("can't tell where you run: {e}"))?;
+        let p = PathBuf::from(raw);
+        let p = lexical(&if p.is_absolute() { p } else { cwd.join(p) });
+        // In scope by its words first, so nothing outside it is touched, even to see if it exists.
+        if self.cfg.mcp.scope != "all" {
+            let own = crate::gitfs::head(&cwd).map(|h| h.top).unwrap_or(cwd);
+            if !within(&p, &self.root) && !within(&p, &own) {
+                return Err(format!("{raw} is in another project; {APP_COMMAND} only lists references in {}", self.root.display()));
+            }
+        }
         let dir = p.canonicalize().map_err(|e| format!("no folder {raw}: {e}"))?;
         if !dir.is_dir() {
             return Err(format!("{raw} is not a folder"));
@@ -411,6 +424,27 @@ fn references_json(folder: &Path, found: &crate::references::Listing) -> Value {
         out["skipped"] = json!({ "count": found.skipped, "first": why });
     }
     out
+}
+
+/// `p` with `.` and `..` worked out from its words alone, touching nothing on disk.
+fn lexical(p: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in p.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Whether `p` is `base` or inside it, compared as the platform compares names.
+fn within(p: &Path, base: &Path) -> bool {
+    let (p, base) = (norm(&lexical(p)), norm(&lexical(base)));
+    p == base || p.starts_with(&format!("{base}\\"))
 }
 
 /// The agent `<app>_start` runs and its command line: the named `agent`, or the user's first.
@@ -592,6 +626,13 @@ mod tests {
             for path in [other.to_string_lossy().into_owned(), up.to_string_lossy().into_owned()] {
                 let err = server.references(&json!({ "path": path })).unwrap_err();
                 assert!(err.contains("another project"), "{err}");
+            }
+            let ghost = base.join("no-such-folder");
+            let err = server.references(&json!({ "path": ghost })).unwrap_err();
+            assert!(err.contains("another project"), "refused by its words, not by probing it: {err}");
+            for unc in [r"\\server\share", r"\\?\UNC\server\share", "//server/share"] {
+                let err = server.references(&json!({ "path": unc })).unwrap_err();
+                assert!(err.contains("network"), "{unc}: {err}");
             }
             assert!(server.references(&json!({ "path": 3 })).is_err(), "a path is a string");
             assert!(server.references(&json!({ "path": "" })).is_err());
