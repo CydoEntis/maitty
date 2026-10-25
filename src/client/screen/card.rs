@@ -281,6 +281,32 @@ impl<'a> Card<'a> {
     }
 }
 
+/// How wide a card's ✕ is drawn on its top border, the spaces round it included.
+pub(in crate::client) fn close_width(look: Look, after_right: bool) -> u16 {
+    close_lead(look, after_right) + 2 * u16::from(look.caps) + 2 + close_trail(look)
+}
+
+/// Spaces before the ✕: two after other right-hand segments. Alone, a square ✕'s chip starts on
+/// the padding before the segments, where the handoff puts it; a capped chip needs that cell
+/// blank to stand clear of the border, so it starts a cell on.
+fn close_lead(look: Look, after_right: bool) -> u16 {
+    if after_right { 2 } else { u16::from(look.caps) }
+}
+
+/// Cells kept blank after the ✕'s chip. Flat's right-hand segments end on the zone's last
+/// column but one, and that last column is the next zone's rule, so a capped chip keeps a cell
+/// clear of it as it does of the border in Cards. Square ✕s keep their place in the handoff.
+fn close_trail(look: Look) -> u16 {
+    u16::from(look.flat && look.caps)
+}
+
+/// The ✕'s click target, which the pointer's tint lights: the ✕ and a cell each side, and with
+/// caps a space more each side inside them, so the hovered ✕ is a whole chip like the others
+/// rather than two caps pressed against the glyph.
+fn close_chip_w(look: Look) -> u16 {
+    if look.caps { 5 } else { 3 }
+}
+
 /// Where a card's title chip starts: on the top border two in (Cards), one in on the header
 /// strip (Flat).
 pub(in crate::client) fn title_x(look: Look, r: Rect) -> u16 {
@@ -347,9 +373,11 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
     let ground = if look.flat { t.card } else { t.bg };
     let mut right = c.right.clone();
     if c.close.is_some() {
-        let gap = if right.is_empty() { "" } else { "  " };
+        let lead = " ".repeat(close_lead(look, !right.is_empty()) as usize);
+        let inner = if look.caps { " " } else { "" };
         let close = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close;
-        right.push(seg(format!("{gap}{close} "), Style::default().fg(t.muted)));
+        let trail = " ".repeat(close_trail(look) as usize);
+        right.push(seg(format!("{lead}{inner}{close}{inner} {trail}"), Style::default().fg(t.muted)));
     }
     let end = right_end(look, r).saturating_sub(c.right_room);
     let rw = segs_width(&right);
@@ -362,7 +390,8 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
         let segs: Vec<Seg> = std::iter::once(space.clone()).chain(right).chain(std::iter::once(space)).map(|(s, st)| (s, if st.bg.is_none() { st.bg(ground) } else { st })).collect();
         put(buf, rx - pad, r.y, &segs, end + pad);
         if let Some(h) = c.close {
-            hit(app, Rect { x: end.saturating_sub(3), y: r.y, width: 3, height: 1 }, h);
+            let w = close_chip_w(look);
+            hit(app, Rect { x: end.saturating_sub(w + close_trail(look)), y: r.y, width: w, height: 1 }, h);
         }
     }
     let chip_end = if shown { rx.saturating_sub(2) } else { end };

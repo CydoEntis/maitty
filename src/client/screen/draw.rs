@@ -656,12 +656,8 @@ struct PaneMark {
 }
 
 /// How wide the card's ✕ is drawn: with its gap after other right-hand segments.
-fn close_width(c: &Card) -> u16 {
-    match (c.close.is_some(), c.right.is_empty()) {
-        (false, _) => 0,
-        (true, true) => 2,
-        (true, false) => 4,
-    }
+fn close_w(look: Look, c: &Card) -> u16 {
+    if c.close.is_some() { close_width(look, !c.right.is_empty()) } else { 0 }
 }
 
 /// The right of a pane's title in a narrow card: the load note goes first, then the mark's
@@ -678,10 +674,10 @@ fn fit_right(look: Look, r: Rect, c: &mut Card, note: Option<Seg>, mark: Option<
     for (note, mark, closes) in tries {
         c.right = note.into_iter().chain(mark.clone()).collect();
         c.close = if closes { close } else { None };
-        if segs_width(&c.right) + close_width(c) <= avail {
+        if segs_width(&c.right) + close_w(look, c) <= avail {
             return mark.map(|m| {
                 let w = m.0.width() as u16;
-                Rect { x: end.saturating_sub(close_width(c) + w), y: r.y, width: w, height: 1 }
+                Rect { x: end.saturating_sub(close_w(look, c) + w), y: r.y, width: w, height: 1 }
             });
         }
     }
@@ -721,9 +717,6 @@ const GRID_TAG_FADE: f32 = 0.28;
 
 /// The narrowest a tab chip pair gets before it drops: ` 1 ` and ` x… `.
 const SHORTEST_TAB: u16 = 7;
-
-/// The ✕ at the end of a title and the spaces round the right-hand segments.
-const CLOSE_W: u16 = 4;
 
 /// A pane's place among the tab's panes (0 first): top-left first, left to right and top to
 /// bottom. Grid numbers and colours panes by it.
@@ -769,16 +762,19 @@ fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: 
     let chip_min = glyph_w + caps + if top_left { SHORTEST_TAB + tab_close } else { SHORTEST_NAME };
     // Number and its gap, the two cells the card keeps before the right-hand segments, what is
     // on the right, the ✕ and the named chip's share.
-    let fits = |number: u16, right: u16, close: u16, body: u16| number + 3 + right + close + corner + body <= room;
-    if !fits(number_w, note_w, CLOSE_W, chip_min) {
+    // A square ✕ keeps the room it always had, as if after other segments, so square titles
+    // shorten where they did; a capped ✕ costs what it draws.
+    let close_w = |right: u16, close: bool| if close { close_width(look, right > 0 || !look.caps) } else { 0 };
+    let fits = |number: u16, right: u16, close: bool, body: u16| number + 3 + right + close_w(right, close) + corner + body <= room;
+    if !fits(number_w, note_w, true, chip_min) {
         c.right.clear();
     }
     let right_w = segs_width(&c.right);
     // Then the ✕, then the number: the state's glyph is the last to go, since status must
     // stay in view.
-    let (close, keep_number) = if fits(number_w, right_w, CLOSE_W, alone_w) {
+    let (close, keep_number) = if fits(number_w, right_w, true, alone_w) {
         (true, true)
-    } else if fits(number_w, right_w, 0, alone_w) {
+    } else if fits(number_w, right_w, false, alone_w) {
         (false, true)
     } else {
         (false, false)
@@ -794,7 +790,7 @@ fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: 
         left.push(seg(" ", Style::default()));
     }
     let start = x + segs_width(&left);
-    let rest = right_w + if close { CLOSE_W } else { 0 } + corner;
+    let rest = right_w + close_w(right_w, close) + corner;
     let title_end = right_end(look, r).saturating_sub(rest + 2);
     let (named, glyph_at) = if top_left {
         tab_strip(app, model, Rect { x: start, y: r.y, width: title_end.saturating_sub(start), height: 1 }, focused, state.as_ref(), t)
@@ -898,7 +894,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         grid_title(app, model, &info, focused, r, &mut c, t)
     } else {
         // The title runs up to two cells before the right-hand segments and the ✕.
-        let right_w = segs_width(&c.right) + close_width(&c) + room;
+        let right_w = segs_width(&c.right) + close_w(look, &c) + room;
         let title_end = right_end(look, r).saturating_sub(right_w + 2);
         c.chips = if top_left {
             tab_strip(app, model, Rect { x: title_x(look, r), y: r.y, width: title_end.saturating_sub(title_x(look, r)), height: 1 }, focused, None, t).0

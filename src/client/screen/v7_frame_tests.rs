@@ -617,3 +617,90 @@ fn a_block_of_lines_ends_in_soft_corners_and_one_line_in_caps() {
     assert_eq!(block_ends(1, 3), ("▐", "▌"), "the sides between");
 }
 
+
+
+/// The world split into two panes side by side, the second unfocused, an update waiting and,
+/// with `sheet`, the Inbox open: every hoverable chip on a border at once.
+fn border_chips_world(sheet: bool) -> App {
+    let mut app = world(Stage::None);
+    let tab = &mut app.screen.tabs[0];
+    let other = if tab.focus == 2 { 3 } else { 2 };
+    tab.layout = Node::Split { horizontal: true, ratio: 0.5, a: Box::new(Node::Leaf(tab.focus)), b: Box::new(Node::Leaf(other)) };
+    app.update_available = Some("9.9.9".into());
+    if sheet {
+        app.act(Action::Jump);
+    }
+    app
+}
+
+/// Row 0 at `x0..x1` as text, the caps as `(` and `)`, with `#` under the cells on `lit`.
+fn shown_row(buf: &Buffer, y: u16, x0: u16, x1: u16, lit: Color) -> String {
+    let text: String = (x0..x1).map(|x| match buf[(x, y)].symbol() { CAP_L => "(".into(), CAP_R => ")".into(), s => s.to_string() }).collect();
+    let tint: String = (x0..x1).map(|x| if buf[(x, y)].bg == lit || buf[(x, y)].fg == lit && [CAP_L, CAP_R].contains(&buf[(x, y)].symbol()) { '#' } else { '.' }).collect();
+    format!("{text}\n{tint}")
+}
+
+/// A hovered chip on a border is whole: with `ui.rounded = full` both caps in the chip's tint,
+/// the ✕ centred in it on the tint, the hit rect the whole chip, and a ✕ chip a blank cell clear
+/// of what is on either side, the border line included.
+#[test]
+fn a_hovered_border_chip_is_whole() {
+    use super::super::Hit;
+    use crate::config::Rounding;
+    let chips: [(&str, Pick); 6] = [
+        ("a pane's ✕", |h| matches!(h, Hit::Screen(ScreenHit::CloseSplit(_)))),
+        ("the sheet's ✕", |h| matches!(h, Hit::Screen(ScreenHit::Close | ScreenHit::ViewClose))),
+        ("a tab chip", |h| matches!(h, Hit::Screen(ScreenHit::TabPick(_)))),
+        ("the + chip", |h| matches!(h, Hit::Screen(ScreenHit::NewTab))),
+        ("the update pill", |h| matches!(h, Hit::Screen(ScreenHit::Update))),
+        ("the mode tag", |h| matches!(h, Hit::Screen(ScreenHit::Leader))),
+    ];
+    for layout in ["cards", "tiled", "compact", "grid"] {
+        for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
+            for ((w, h), sheet) in SIZES.into_iter().flat_map(|s| [(s, false), (s, true)]) {
+                let mut app = border_chips_world(sheet);
+                app.cfg.ui.rounded = rounded;
+                let size = |app: &mut App| {
+                    (app.cfg.ui.layout, app.cfg.ui.panes) = (layout.into(), "floating".into());
+                    app.screen_fresh();
+                    let mut term = Terminal::new(TestBackend::new(w, h)).expect("a test terminal");
+                    term.draw(|f| crate::client::render::draw(app, f)).expect("a frame");
+                    term.backend().buffer().clone()
+                };
+                size(&mut app);
+                let targets: Vec<(&str, Rect)> = chips.iter().flat_map(|(what, is)| app.hits.iter().filter(|(r, h)| r.y == 0 && is(h)).map(|(r, _)| (*what, *r)).collect::<Vec<_>>()).collect();
+                for (what, r) in targets {
+                    app.hover = Some(Position::new(r.x + r.width / 2, r.y));
+                    let buf = size(&mut app);
+                    app.hover = None;
+                    let mid = buf[(r.x + r.width / 2, r.y)].bg;
+                    let at = format!("{what}, {layout} {rounded:?} {w}x{h}, {r:?}\n{}", shown_row(&buf, r.y, r.x.saturating_sub(3), (r.right() + 3).min(w), mid));
+                    if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
+                        println!("{at}\n");
+                    }
+                    if rounded == Rounding::Full {
+                        let (l, e) = (&buf[(r.x, r.y)], &buf[(r.right() - 1, r.y)]);
+                        assert_eq!((l.symbol(), e.symbol()), (CAP_L, CAP_R), "both caps: {at}");
+                        assert!(l.fg != l.bg && e.fg != e.bg, "the caps are drawn, not blank: {at}");
+                    }
+                    if what.ends_with('✕') {
+                        let x = r.x + r.width / 2;
+                        assert_eq!(buf[(x, r.y)].symbol(), "✕", "the ✕ is centred and whole: {at}");
+                        assert!((r.x + 1..r.right() - 1).all(|x| buf[(x, r.y)].bg == mid), "the chip's inside is lit: {at}");
+                        if rounded == Rounding::Full {
+                            assert!(r.width == 5 && [r.x + 1, r.right() - 2].iter().all(|&x| buf[(x, r.y)].symbol() == " "), "a space each side of the ✕ inside its caps: {at}");
+                        }
+                        // A square ✕ keeps the handoff's place, flush with the border like every square chip.
+                        if rounded != Rounding::Full {
+                            continue;
+                        }
+                        for x in [r.x - 1, r.right()] {
+                            assert_eq!(buf[(x, r.y)].symbol(), " ", "a blank cell clear of the chip at {x}: {at}");
+                            assert_ne!(buf[(x, r.y)].bg, mid, "the gap is not lit at {x}: {at}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
