@@ -7,6 +7,7 @@
 # Settings (environment variables, <APP> being the app's command in capitals):
 #   <APP>_VERSION      a tag such as v0.1.0 (default: the latest release)
 #   <APP>_INSTALL_DIR  where the binary goes (default: ~/.local/bin)
+#   <APP>_NO_INTEGRATE set to 1 to leave your agents' config alone (no `<app> integrate`)
 set -eu
 
 # The app's command and where it is released: the only place this script names it (ADR 0019).
@@ -16,6 +17,7 @@ REPO="CydoEntis/maitty"
 ENV_PREFIX="$(printf '%s' "$APP" | tr 'a-z-' 'A-Z_')"
 eval "VERSION=\${${ENV_PREFIX}_VERSION:-}"
 eval "DIR=\${${ENV_PREFIX}_INSTALL_DIR:-\$HOME/.local/bin}"
+eval "NO_INTEGRATE=\${${ENV_PREFIX}_NO_INTEGRATE:-}"
 
 say() { printf '%s\n' "$*"; }
 fail() { say "$APP install: $*" >&2; exit 1; }
@@ -77,6 +79,15 @@ if [ "$(uname -s)" = Darwin ]; then
 fi
 say "Installed $("$DIR/$APP" --version) to $DIR/$APP"
 
+# Status hooks and MCP for every agent installed here; a failure must not fail the install.
+say ""
+if [ "$NO_INTEGRATE" = 1 ]; then
+  say "Left your agents alone (${ENV_PREFIX}_NO_INTEGRATE=1); run '$APP integrate' to connect them."
+else
+  say "Connecting your agents (set ${ENV_PREFIX}_NO_INTEGRATE=1 to skip)..."
+  "$DIR/$APP" integrate || say "Warning: some agents weren't connected; run '$APP integrate' to retry."
+fi
+
 # Another program of the same name found first on PATH?
 found="$(command -v "$APP" 2>/dev/null || true)"
 if [ -n "$found" ] && [ "$found" != "$DIR/$APP" ]; then
@@ -96,5 +107,5 @@ case ":$PATH:" in
 esac
 
 say ""
-say "Next: run '$APP doctor' to check your setup, then '$APP'."
+say "Next: run '$APP'. Restart agents that were already running so they load the hooks; '$APP doctor' checks your setup."
 say "If $APP was already running, just run $APP: it restarts itself onto the new version (agents resume)."
