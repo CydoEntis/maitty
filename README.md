@@ -35,8 +35,8 @@ natively on Windows, macOS and Linux.
 - **Agents that work together.** Agents can list, read, message and start other sessions
   through MCP tools, within limits you set.
 - **Your look.** Four layouts (Floating, Tiled, Compact and Grid), rounded or square shapes,
-  padding round the screen, your cursor's shape, 62 themes, and every key and colour
-  configurable.
+  padding round the screen, your cursor's shape, 62 themes with every colour configurable,
+  and rebindable shortcuts.
 
 ## Install
 
