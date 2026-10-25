@@ -4613,7 +4613,11 @@ second line
 
     /// Something other than the panes with the keys, reached as a user would where a key or
     /// action gets there; `held` starts from shortcut mode, else from typing.
-    const WHO: [(&str, bool, &str); 26] = [
+    const WHO: [(&str, bool, &str); 30] = [
+        ("check page", false, "SETTINGS  · ↑↓ move · Enter edit · Ctrl+S save · r run now · Del remove · Tab section · Esc close"),
+        ("check page timeout", false, "SETTINGS  · ↑↓ move · ←→ change · Ctrl+S save · r run now · Del remove · Tab section · Esc close"),
+        ("check page typing", false, "SETTINGS  · type a command · Enter done · Ctrl+S save · Tab section · Esc close"),
+        ("project check typing", false, "CHECK SETTINGS  · type a command · Enter done · Ctrl+S save · Esc cancel"),
         ("inbox merge", true, "INBOX  · Enter merge · shortcut mode waits · Esc don't"),
         ("inbox throw away", true, "INBOX  · Enter throw away · shortcut mode waits · Esc don't"),
         ("settings capture", false, "SETTINGS  · press the new key · Esc cancel"),
@@ -4721,6 +4725,23 @@ second line
                 let mut fd = screen::Finder::new(&PathBuf::from("."));
                 fd.for_setting = Some("start.folder");
                 app.mode = Mode::Finder(Box::new(fd));
+            }
+            ("check page" | "check page timeout" | "check page typing", _) => {
+                use crate::client::modal::Cat;
+                use screen::check_settings::{CheckDraft, DraftRow};
+                app.act(Action::Settings);
+                let Mode::ScreenSettings(v) = &mut app.mode else { panic!("Settings is open") };
+                v.cat = Cat::ALL.iter().position(|c| *c == Cat::Check).expect("a Check page");
+                let draft = CheckDraft::new(PathBuf::from("/repo"));
+                app.screen.check_page = match what {
+                    "check page timeout" => Some(CheckDraft { row: DraftRow::Timeout, ..draft }),
+                    "check page typing" => Some(CheckDraft { editing: true, ..draft }),
+                    _ => None,
+                };
+            }
+            ("project check typing", _) => {
+                let draft = screen::check_settings::CheckDraft::new(PathBuf::from("/repo"));
+                app.mode = Mode::ProjectCheck(Box::new(screen::check_settings::CheckDraft { editing: true, ..draft }));
             }
             _ => unreachable!("{what}"),
         }

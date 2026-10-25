@@ -136,6 +136,7 @@ fn keys_holder(app: &App) -> Option<Holder> {
         // Waiting for a key: the next one, arrows too, becomes the binding.
         Mode::ScreenSettings(v) if v.capturing => holder("SETTINGS", &[("", "press the new key")], ("Esc", "cancel")),
         Mode::ScreenSettings(v) if v.editing.is_some() => holder("SETTINGS", &[("", "type"), ("Enter", "save")], ("Esc", "cancel")),
+        Mode::ScreenSettings(v) if crate::client::modal::Cat::ALL.get(v.cat) == Some(&crate::client::modal::Cat::Check) => check_page_holder(app),
         Mode::ScreenSettings(_) => holder("SETTINGS", &[("↑↓", "move"), ("←→", "change"), ("Tab", "section")], ("Esc", "close")),
         // A merge or throw-away asked in a finished row: Enter does it, Esc only drops the question.
         Mode::GoTo { .. } => match app.screen.inbox_confirm {
@@ -151,6 +152,7 @@ fn keys_holder(app: &App) -> Option<Holder> {
         Mode::Why { .. } => holder("WHY", &[], ("Esc", "close")),
         Mode::Helpers { .. } => holder("HELPERS", &[("1", "allow"), ("2", "always"), ("3", "no")], ("Esc", "back")),
         Mode::Approve(_) => holder("RUN CHECK?", &[("1", "run once"), ("2", "always"), ("3", "never")], ("Esc", "not now")),
+        Mode::ProjectCheck(d) if d.editing => holder("CHECK SETTINGS", &[("", "type a command"), ("Enter", "done"), ("Ctrl+S", "save")], ("Esc", "cancel")),
         Mode::ProjectCheck(_) => holder("CHECK SETTINGS", &[("Ctrl+S", "save"), ("↑↓", "move"), ("r", "run now")], ("Esc", "cancel")),
         Mode::Finder(fd) if fd.for_setting.is_some() => holder("OPEN FOLDER", &[("", "type a path"), ("Tab", "complete"), ("Enter", "open")], ("Esc", "back")),
         Mode::Finder(_) => holder("OPEN FOLDER", &[("", "type a path"), ("Tab", "complete"), ("Enter", "open")], ("Esc", "close")),
@@ -175,6 +177,23 @@ fn keys_holder(app: &App) -> Option<Holder> {
         Mode::Copy(c) if c.anchor.is_some() => holder("COPY", &[("y", "copy")], ("Esc", "clear")),
         Mode::Copy(_) => holder("COPY", &[("v", "select"), ("y", "copy"), ("/", "search")], ("Esc", "leave")),
     }
+}
+
+/// Settings' Check page reads its own keys first (`on_check_page_key`): Enter edits only the
+/// command row, ←→ only step the timeout or the checkpoint, and Esc or Tab drop the draft as
+/// Settings closes or changes section.
+fn check_page_holder(app: &App) -> Option<Holder> {
+    use super::check_settings::DraftRow;
+    let draft = app.screen.check_page.as_ref();
+    if draft.is_some_and(|d| d.editing) {
+        return holder("SETTINGS", &[("", "type a command"), ("Enter", "done"), ("Ctrl+S", "save"), ("Tab", "section")], ("Esc", "close"));
+    }
+    let hints: &'static [Hint] = match draft.map_or(DraftRow::Command, |d| d.row) {
+        DraftRow::Command => &[("↑↓", "move"), ("Enter", "edit"), ("Ctrl+S", "save"), ("r", "run now"), ("Del", "remove"), ("Tab", "section")],
+        DraftRow::Timeout => &[("↑↓", "move"), ("←→", "change"), ("Ctrl+S", "save"), ("r", "run now"), ("Del", "remove"), ("Tab", "section")],
+        DraftRow::Points => &[("↑↓", "move"), ("←→", "checkpoint"), ("Ctrl+S", "save"), ("r", "run now"), ("Del", "remove"), ("Tab", "section")],
+    };
+    holder("SETTINGS", hints, ("Esc", "close"))
 }
 
 /// The side panel's view, while it has the keys: what its own key handler reads in the state
