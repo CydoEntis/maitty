@@ -68,7 +68,44 @@ pub(in crate::client) fn widest(col: Rect, look: Look) -> u16 {
     col.width.saturating_sub(look.gap + PANES_KEEP)
 }
 
+/// The side panel's tabs, in Tab's order: the view, its name, its name where room is short and
+/// the action that opens it.
+/// The Inbox and the check sheets are not among them.
+const DRAWER_TABS: [(SheetKind, &str, &str, Action); 3] = [
+    (SheetKind::Files, "Files", "Files", Action::Files),
+    (SheetKind::Changes, "Changes", "Chg", Action::Changes),
+    (SheetKind::Branch, "Branch", "Br", Action::Branches),
+];
+
+/// Where `kind` sits in the tab strip, if it has a tab.
+fn drawer_tab(kind: SheetKind) -> Option<usize> {
+    DRAWER_TABS.iter().position(|(k, ..)| *k == kind)
+}
+
 impl App {
+    /// Tab / Shift+Tab move along the tab strip while Files, Changes or Branch has the keys.
+    /// Returns whether the key was one of them.
+    pub(in crate::client) fn drawer_tab_key(&mut self, k: &KeyEvent) -> bool {
+        let n = DRAWER_TABS.len();
+        let step = match k.code {
+            KeyCode::Tab => 1,
+            KeyCode::BackTab => n - 1,
+            _ => return false,
+        };
+        let Some(cur) = open_sheet(self).and_then(drawer_tab) else { return false };
+        self.switch_drawer((cur + step) % n);
+        true
+    }
+
+    /// Open the strip's tab `to` for the same checkout (`screen_target_dir`), as its leader key
+    /// does; the open tab's own key would close it, so that one does nothing.
+    pub(in crate::client) fn switch_drawer(&mut self, to: usize) {
+        let Some((kind, _, _, act)) = DRAWER_TABS.get(to) else { return };
+        if open_sheet(self) != Some(*kind) {
+            self.act(act.clone());
+        }
+    }
+
     /// The open sheet's width set to `w`, held between `SHEET_MIN` and what the panes leave.
     pub(in crate::client) fn set_sheet_w(&mut self, w: u16) {
         let Some(kind) = open_sheet(self) else { return };
@@ -160,10 +197,6 @@ pub(in crate::client) fn heads_up(app: &App) -> Vec<(PathBuf, Overlap)> {
         .collect()
 }
 
-/// Columns of a sheet's title row that are not the text after its name: the corners, the
-/// name, the ✕ and the gaps between.
-const TITLE_CHROME: u16 = 24;
-
 pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t: &Theme) {
     let (title, sub, close) = match kind {
         SheetKind::Inbox => ("INBOX", inbox_count(app).to_string(), ScreenHit::Close),
@@ -177,15 +210,21 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     if sheet_has_keys(app) {
         c = c.lit(t.accent);
     }
-    // Cut here, so a long name still shows its start rather than being left out.
-    let sub = truncate(&sub, r.width.saturating_sub(TITLE_CHROME) as usize);
     c.sub = &sub;
     // The read-while-working sheets and Changes sit on the desk's ground, like the panes.
     c.bg = if kind == SheetKind::Both { t.card } else { t.bg };
     c.close = Some(close);
+    c.right_room = corner_room(app, r, framed(app, buf.area), t);
     let inside = card(app, buf, r, &c, t);
     // Clicks inside it stay in it.
     hit(app, inside, ScreenHit::Noop);
+    let inside = match drawer_tab(kind) {
+        Some(cur) if inside.height > 1 => {
+            draw_drawer_tabs(app, buf, Rect { height: 1, ..inside }, cur, c.bg, t);
+            Rect { y: inside.y + 1, height: inside.height - 1, ..inside }
+        }
+        _ => inside,
+    };
     // The Inbox and the evidence sheet keep the Cards box in Flat too: only the frame changes.
     let body = if Look::of(&app.cfg.ui).flat { Rect { width: inside.width.saturating_sub(1), height: inside.height.saturating_sub(1), ..inside } } else { inside };
     match kind {
@@ -221,6 +260,57 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
                 app.view = Some(crate::client::View::Branch(v));
             }
         }
+    }
+}
+
+/// A tab's width: its name and key (with its trailing space) between the pill's ends and pads.
+fn tab_w(name: &str, key: &str) -> u16 {
+    (name.width() + key.width()) as u16 + 4
+}
+
+/// Each tab's (name, key) in the widest form whose strip fits `room` columns: names and keys,
+/// names alone, then short names.
+fn drawer_tab_labels(app: &App, room: u16) -> Vec<(String, String)> {
+    let key = |act: &Action| {
+        let k = crate::client::design::key_text(app, std::slice::from_ref(act));
+        let k = k.split("  ").next().unwrap_or_default().replace(' ', "");
+        if k.is_empty() { k } else { format!("{k} ") }
+    };
+    let full: Vec<(String, String)> = DRAWER_TABS.iter().map(|(_, name, _, act)| (name.to_string(), key(act))).collect();
+    let names: Vec<(String, String)> = DRAWER_TABS.iter().map(|(_, name, ..)| (name.to_string(), String::new())).collect();
+    let short: Vec<(String, String)> = DRAWER_TABS.iter().map(|(_, _, short, _)| (short.to_string(), String::new())).collect();
+    // The strip's lead column, then each tab and the ` · ` between them.
+    let strip_w = |tabs: &[(String, String)]| 1 + tabs.iter().map(|(n, k)| tab_w(n, k)).sum::<u16>() + 3 * (tabs.len() as u16 - 1);
+    [full, names].into_iter().find(|tabs| strip_w(tabs) <= room).unwrap_or(short)
+}
+
+/// The tab strip across the top of Files, Changes and Branch: `Files f · Changes c · Branch b`
+/// with each one's leader key from the keymap, the open one a pill like Settings' tabs (lit
+/// while the panel has the keys). A click switches. Where the whole strip does not fit, the
+/// keys go, then the long names, so every tab stays on screen.
+fn draw_drawer_tabs(app: &mut App, buf: &mut Buffer, row: Rect, cur: usize, ground: Color, t: &Theme) {
+    let look = Look::of(&app.cfg.ui);
+    let (pill_bg, pill_ink) = if sheet_has_keys(app) { (t.accent, t.acc_ink) } else { (t.btn, t.strong) };
+    let tabs = drawer_tab_labels(app, row.width);
+    let mut x = row.x + 1;
+    for (i, (name, key)) in tabs.into_iter().enumerate() {
+        if i > 0 {
+            put(buf, x, row.y, &[seg("·", Style::default().fg(t.muted).bg(ground))], row.right());
+            x += 2;
+        }
+        let w = tab_w(&name, &key);
+        let tr = Rect { x, y: row.y, width: w.min(row.right().saturating_sub(x)), height: 1 };
+        let segs = if i == cur {
+            let st = Style::default().fg(pill_ink).add_modifier(Modifier::BOLD);
+            pill(look, vec![seg(format!(" {name} "), st), seg(key, st)], pill_bg, ground)
+        } else {
+            let bg = if hovered(app, tr) { t.hov } else { ground };
+            let st = Style::default().bg(bg);
+            vec![seg(format!("  {name} "), st.fg(t.text)), seg(key, st.fg(t.accent).add_modifier(Modifier::BOLD)), seg(" ", st)]
+        };
+        put(buf, x, row.y, &segs, row.right());
+        hit(app, tr, ScreenHit::DrawerTab(i));
+        x += w + 1;
     }
 }
 

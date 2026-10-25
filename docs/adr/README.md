@@ -26,7 +26,7 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | --- | --- | --- |
 | [0001](0001-daemon-owns-sessions.md) | Run sessions in a daemon, with a thin client | Accepted |
 | [0002](0002-portable-pty-and-vt100.md) | Use portable-pty (ConPTY) and vt100 for terminals | Accepted |
-| [0003](0003-msgpack-over-local-sockets.md) | Msgpack frames over local sockets, versioned | Accepted |
+| [0003](0003-msgpack-over-local-sockets.md) | Msgpack frames over local sockets, versioned | Accepted, amended 2026-10-24 |
 | [0004](0004-one-layout.md) | One UI layout: the hydra layout | Superseded by 0007 |
 | [0005](0005-herdr-compatible-keys.md) | Leader-key bindings follow herdr where they overlap | Superseded by 0006 |
 | [0006](0006-floating-design-keys.md) | Leader keys follow the floating design's key map | Superseded by 0009 |
@@ -38,10 +38,12 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0012](0012-flat-rendering-style.md) | Add a flat rendering style | Accepted |
 | [0013](0013-v7-frame.md) | Draw the v7 frame: tabs in the pane title, no margin | Proposed |
 | [0014](0014-v8-cleanup.md) | Bring over the v8 cleanup, keeping what the user already decided | Proposed |
-| [0015](0015-four-named-layouts-and-grid.md) | Four named layouts, one setting, and the Grid style | Accepted |
-| [0016](0016-sticky-shortcut-mode.md) | The leader opens a shortcut mode that stays until you leave it | Accepted |
-| [0017](0017-keys-other-apps-use.md) | Default shortcuts: one key each, no Shift, keys other apps use | Accepted |
+| [0015](0015-four-named-layouts-and-grid.md) | Four named layouts, one setting, and the Grid style | Accepted, amended 2026-10-24 |
+| [0016](0016-sticky-shortcut-mode.md) | The leader opens a shortcut mode that stays until you leave it | Accepted, amended by 0021 and 0023 |
+| [0017](0017-keys-other-apps-use.md) | Default shortcuts: one key each, no Shift, keys other apps use | Accepted, amended by 0022 |
 | [0018](0018-rename-to-vibecasso.md) | The app is called Vibecasso | Accepted |
 | [0019](0019-the-name-lives-in-one-place.md) | The app's name lives in one place | Accepted |
 | [0020](0020-rename-to-maitty.md) | The app is called Maitty | Accepted |
-| [0021](0021-one-line-rows-one-rounding-sticky-mode.md) | One-line session rows, one rounding setting, shortcut mode that stays | Accepted |
+| [0021](0021-one-line-rows-one-rounding-sticky-mode.md) | One-line session rows, one rounding setting, shortcut mode that stays | Accepted, amended by 0023 |
+| [0022](0022-question-mark-all-keys-c-changes.md) | `?` lists all keys, `c` opens Changes, copy mode has no key | Accepted |
+| [0023](0023-the-mode-is-always-shown.md) | The mode is always shown, the window is framed in shortcut mode, dead keys say so | Accepted |

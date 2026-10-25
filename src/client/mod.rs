@@ -376,6 +376,8 @@ pub struct App {
     notice_term: Option<TermId>,
     /// The toast offers Restart now (the update just installed, the daemon still old).
     notice_restart: bool,
+    /// The toast is a hint about keys, not news: it is marked `i`, not ✓.
+    notice_hint: bool,
     /// The toast's second and third rows, when the notice has them.
     notice_card: Option<NoticeCard>,
     /// The selection just copied, glowing for a moment after copy mode closed.
@@ -443,6 +445,8 @@ pub struct App {
     last_click: Option<(Hit, Instant)>,
     /// Shortcut mode was on when the open popup took the keys; it comes back when that closes.
     shortcut_held: bool,
+    /// When shortcut mode last said a key did nothing, so mashing keys shows it once.
+    dead_key_hint: Option<Instant>,
     /// The open view a click into a pane set aside: while that view stays open, keys go to the
     /// pane. A click back in the side sheet, or another view opening, hands them back.
     view_set_aside: Option<std::mem::Discriminant<View>>,
@@ -601,6 +605,7 @@ impl App {
             notice: None,
             notice_term: None,
             notice_restart: false,
+            notice_hint: false,
             notice_card: None,
             copy_flash: None,
             history: Default::default(),
@@ -633,6 +638,7 @@ impl App {
             undo_hint: false,
             last_click: None,
             shortcut_held: false,
+            dead_key_hint: None,
             view_set_aside: None,
             view_opened: 0,
             splash: false,
@@ -893,6 +899,7 @@ impl App {
         self.notice = Some((msg, Instant::now(), error));
         self.notice_term = None;
         self.notice_restart = false;
+        self.notice_hint = false;
         self.notice_card = None;
         self.dirty = true;
     }
@@ -1235,6 +1242,12 @@ impl App {
 
     fn describe_term(&self, term: TermId) -> String {
         let name = self.session_name(term);
+        if let Some(t) = self.snap.terms.get(&term) {
+            let place = crate::alert::place_label(t.root.as_deref(), t.top.as_deref().unwrap_or(&t.cwd), t.branch.as_deref());
+            if !place.is_empty() {
+                return format!("{name} ({place})");
+            }
+        }
         match self.snap.locate(term) {
             Some((w, t)) => {
                 let idx = w.tabs.iter().position(|x| x.id == t.id).unwrap_or(0) + 1;

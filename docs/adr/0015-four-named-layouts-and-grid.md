@@ -1,6 +1,6 @@
 # 0015. Four named layouts, one setting, and the Grid style
 
-- **Status:** Accepted
+- **Status:** Accepted (amended 2026-10-24, see *Amendments*)
 - **Date:** 2026-10-23
 
 ## Context
@@ -46,3 +46,10 @@ Settings shows one Layout choice. Internally the code keeps `Look::flat` for Com
 A pane's colour in Grid follows where it sits, so it changes when a split closes. The
 scratch shell, zoom and the right-hand sidebar stay out; they would come back only through a
 new proposal. Supersedes the names in ADR 0007 and ADR 0012, not their rules.
+
+## Amendments
+
+- **2026-10-24:** a Grid pane's top border no longer shows its state's words or a name tag on
+  the right; the user found both repeated what the title already said. The state shows only as
+  its glyph inside the chip that names the pane (the current tab on the top-left pane). The
+  rules live in [`docs/UI.md`](../UI.md) (the Grid paragraph and *Pane title*).

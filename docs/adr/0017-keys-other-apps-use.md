@@ -1,6 +1,6 @@
 # 0017. Default shortcuts: one key each, no Shift, keys other apps use
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by [0022](0022-question-mark-all-keys-c-changes.md)
 - **Date:** 2026-10-23
 
 ## Context

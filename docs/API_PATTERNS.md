@@ -104,7 +104,11 @@ Not HTTP. A private IPC protocol between client and daemon over a local socket
 (or `ssh host maitty proxy`): length-delimited frames carrying msgpack-encoded
 `ClientMsg` / `ServerMsg` enums (`src/protocol.rs`). The first exchange is
 `Hello { version }` → `Welcome { version }`; mismatched `PROTOCOL_VERSION`s are
-refused. The CLI subcommands and the MCP server (`maitty mcp`, JSON-RPC over stdio)
+refused. Bump it when a message shape changes incompatibly: a field removed, renamed
+or retyped, or a new enum variant (an old decoder rejects it). An added field with
+`#[serde(default)]` is compatible (messages are named msgpack maps and unknown fields
+are ignored) and needs no bump, provided a test decodes the old shape. Hooks say Hello
+too, so every bump stops hooked panes reporting until the daemon restarts. The CLI subcommands and the MCP server (`maitty mcp`, JSON-RPC over stdio)
 are thin wrappers that send the same commands.
 
 ## Project-specific: response and error shapes
@@ -190,7 +194,8 @@ results if the pane changes thread or agent. Merge by stable child ID and event
 time so duplicate or stale reports cannot replace newer lifecycle state.
 
 A new capability adds: a `Command` variant (and any new `ServerMsg` /
-snapshot field) in `protocol.rs` with a `PROTOCOL_VERSION` bump; handling in
+snapshot field) in `protocol.rs`, bumping `PROTOCOL_VERSION` when the change is
+incompatible (see *API style*); handling in
 `daemon/mod.rs` (or a `daemon/<feature>.rs`); the client side as an `Action` in
 `keys.rs`, a `Mode` and `draw_*` / `on_*_key` pair in `client/`, and a CLI
 subcommand in `cli.rs` when scripts should reach it.
@@ -199,6 +204,8 @@ subcommand in `cli.rs` when scripts should reach it.
 
 Honor a trusted turn-finished hook even when its transcript lists a background
 shell or dev server. Background commands do not turn `Done` back into `Working`.
+A Claude Stop that lists running background work new since its last stop stays `Done`
+but is not announced ([agent-status](agent-status.md)).
 Continue tracking actual subagents through their own lifecycle reports. Prepare
 the hook message separately from socket I/O so its effective status is testable.
 

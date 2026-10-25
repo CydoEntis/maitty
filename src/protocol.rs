@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-/// Bump whenever a message shape changes; client and daemon refuse to talk across versions.
+/// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
+/// style*); client and daemon refuse to talk across versions, and so do hooks.
 pub const PROTOCOL_VERSION: u32 = 46;
 
 pub type TermId = u32;
@@ -57,6 +58,9 @@ pub enum ClientMsg {
         model: Option<String>,
         /// The name you gave the conversation in the agent (Claude's /rename).
         name: Option<String>,
+        /// Ids of the background tasks (shells, helpers) still running when a turn stopped.
+        #[serde(default)]
+        background: Vec<String>,
     },
     /// What an agent in a pane has used (from Claude's status line), with the pane's secret.
     Usage { term: TermId, token: String, usage: Usage, limits: Vec<Limit> },
@@ -791,6 +795,7 @@ mod tests {
                 transcript: Some(PathBuf::from("/t.jsonl")),
                 model: Some("opus".into()),
                 name: Some("api work".into()),
+                background: vec!["b1".into()],
             },
             ClientMsg::Query(Query::List),
             ClientMsg::Query(Query::Read { term: 3 }),
@@ -929,6 +934,30 @@ mod tests {
         let mut term = pane_from(serde_json::json!({}));
         term.checks = vec![every_field_check(), CheckInfo { name: "build".into(), state: CheckState::Pending, ..Default::default() }];
         round_trips(&ServerMsg::State(Snapshot { terms: [(3, term)].into(), ..Default::default() }));
+    }
+
+    #[test]
+    fn a_hook_report_reads_across_the_background_field() {
+        let old = serde_json::json!({ "Hook": {
+            "term": 3, "agent": "claude", "status": "Done", "session": null, "cwd": null, "prompt": null,
+            "said": null, "subagent": null, "event": "Stop", "pid": 42, "token": "00ff",
+            "transcript": null, "model": null, "name": null,
+        }});
+        let msg: ClientMsg = decode(&rmp_serde::to_vec_named(&old).unwrap()).expect("a hook from before the field");
+        let ClientMsg::Hook { event, background, .. } = msg else { panic!("expected a hook report") };
+        assert_eq!((event.as_str(), background.len()), ("Stop", 0));
+
+        #[derive(Deserialize)]
+        enum OldClientMsg {
+            Hook { term: TermId, status: HookStatus, event: String, pid: u32, token: String },
+        }
+        let new = ClientMsg::Hook {
+            term: 3, agent: "claude".into(), status: HookStatus::Done, session: None, cwd: None, prompt: None, said: None,
+            subagent: None, event: "Stop".into(), pid: 42, token: "00ff".into(), transcript: None, model: None, name: None,
+            background: vec!["b1".into()],
+        };
+        let OldClientMsg::Hook { term, status, event, pid, token } = decode(&encode(&new).unwrap()).expect("an older daemon reads it");
+        assert_eq!((term, status, event.as_str(), pid, token.as_str()), (3, HookStatus::Done, "Stop", 42, "00ff"));
     }
 
     #[test]

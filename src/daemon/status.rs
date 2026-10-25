@@ -70,7 +70,7 @@ impl Daemon {
     /// A status report whose sender checked out (`verdict`: did its process chain lead to
     /// the pane; None when it couldn't be traced and the secret decides).
     pub(super) fn apply_hook(&mut self, msg: ClientMsg, verdict: Option<bool>, chain: Vec<u32>) {
-        let ClientMsg::Hook { term, agent, status, session, cwd, prompt, said, subagent, event, pid, transcript, model, name, .. } = msg else { return };
+        let ClientMsg::Hook { term, agent, status, session, cwd, prompt, said, subagent, event, pid, transcript, model, name, background, .. } = msg else { return };
         match verdict {
             Some(false) => {
                 tracing::info!("ignoring a status report for pane {term} from pid {pid} outside it");
@@ -216,10 +216,10 @@ impl Daemon {
                         t.refresh_head();
                     }
                 }
-                self.hook(term, agent, status, &event);
+                self.hook(term, agent, status, &event, &background);
     }
 
-    pub(super) fn hook(&mut self, term: TermId, agent: String, status: HookStatus, event: &str) {
+    pub(super) fn hook(&mut self, term: TermId, agent: String, status: HookStatus, event: &str, background: &[String]) {
         tracing::debug!("hook for pane {term}: {event} -> {status:?}");
         if let Some(t) = self.terms.get_mut(&term) {
             let name = if event.is_empty() { "status report".to_string() } else { event.to_string() };
@@ -237,6 +237,9 @@ impl Daemon {
         let Some(t) = self.terms.get_mut(&term) else { return };
         t.screen_blocked_from = None;
         let now = Instant::now();
+        // Claude stops when a turn waits on background work it started, and wakes itself when
+        // that work ends: a pause, not a finish.
+        let paused = status == HookStatus::Done && event == "Stop" && t.paused_on_new_background_work(background);
         if matches!(status, HookStatus::Done | HookStatus::Idle) {
             t.last_turn_end = now;
             if agent == "codex" {
@@ -279,6 +282,8 @@ impl Daemon {
                 t.hooked_process_seen = false;
                 t.agent = None;
                 t.session = None;
+                t.awaiting_background = false;
+                t.background_known.clear();
                 t.summary.clear();
                 t.status = Status::None;
                 t.status_since = term::unix_now();
@@ -307,11 +312,27 @@ impl Daemon {
         if new != Status::Working {
             t.progress_off = None;
         }
-        self.set_status(term, new, &format!("hook: {}", if event.is_empty() { "status report" } else { event }));
+        // Claude's repeated idle ping is not a turn end.
+        let turn_end = status == HookStatus::Done && !event.starts_with("Notification:");
+        let mut wake_up_ended = false;
+        if turn_end {
+            // A wake-up turn with no tool call ends without ever reporting working, so its
+            // status doesn't change: it is still a turn to check and a finish to say.
+            wake_up_ended = std::mem::replace(&mut t.awaiting_background, paused) && !paused && new == Status::Done && t.status == Status::Done;
+            if wake_up_ended {
+                t.turn_end_handled = false;
+            }
+        }
+        let why = if event.is_empty() { "status report" } else { event };
+        let why = if paused { format!("hook: {why}, waiting on its background work") } else { format!("hook: {why}") };
+        self.set_status(term, new, &why);
         // A turn-end report can arrive when the screen never showed the turn working, so the
-        // status did not change. Claude's repeated idle ping is not a turn end.
-        if status == HookStatus::Done && !event.starts_with("Notification:") {
+        // status did not change. A paused turn is checked when the work really ends.
+        if turn_end && !paused {
             self.turn_ended(term);
+        }
+        if wake_up_ended && !self.terms.get(&term).is_some_and(Term::check_running) {
+            self.announce(term, Status::Done);
         }
         self.dirty = true;
     }
@@ -339,9 +360,14 @@ impl Daemon {
                 self.dirty = true;
             }
         }
+        if new == Status::Working {
+            t.awaiting_background = false;
+        }
         if t.status == new {
             return;
         }
+        // Only the latest reason is kept on the pane: the log is how a wrong alert is traced.
+        tracing::info!("pane {term} ({}): {:?} -> {new:?}: {why}", t.agent.as_deref().unwrap_or("no agent"), t.status);
         t.status_why = why.to_string();
         let turn = (t.status == Status::Working && t.agent.is_some())
             .then(|| (t.agent.clone().unwrap_or_default(), t.place(), term::unix_now().saturating_sub(t.status_since)));
@@ -354,7 +380,7 @@ impl Daemon {
             t.turn_end_handled = false;
         }
         self.dirty = true;
-        let turn_over = turn.is_some() && matches!(new, Status::Done | Status::Idle) && why != CANCELLED_WHY;
+        let turn_over = turn.is_some() && matches!(new, Status::Done | Status::Idle) && why != CANCELLED_WHY && !t.awaiting_background;
         if let Some((agent, place, secs)) = turn {
             self.note_turn(agent, place, secs);
         }
@@ -382,6 +408,9 @@ impl Daemon {
 
     /// Tell attached clients `term` needs attention, and queue the desktop alert for it.
     pub(super) fn announce(&mut self, term: TermId, status: Status) {
+        if status == Status::Done && self.terms.get(&term).is_some_and(|t| t.awaiting_background) {
+            return;
+        }
         self.broadcast(|c| c.attach, ServerMsg::Attention { term, status });
         if (status != Status::Done || !self.is_helper(term))
             && let Some(t) = self.terms.get_mut(&term)
@@ -431,7 +460,7 @@ impl Daemon {
         {
             t.alerted = Some((status, now));
             let agent = t.agent.clone().unwrap_or_else(|| "an agent".into());
-            let place = t.place();
+            let place = t.alert_place();
             let summary = t.summary.trim();
             let body = if summary.is_empty() { place } else { format!("{place} · {summary}") };
             if let Some(kind) = crate::alert::Kind::for_status(status) {
@@ -451,12 +480,12 @@ impl Daemon {
         let now = term::unix_now();
         for t in self.terms.values_mut() {
             let Some(agent) = t.agent.clone() else { continue };
-            let wanted = t.status == Status::Blocked || (t.status == Status::Done && n.phone_done && !t.check_holds_done());
+            let wanted = t.status == Status::Blocked || (t.status == Status::Done && n.phone_done && !t.check_holds_done() && !t.awaiting_background);
             if !wanted || t.phoned == t.status_since || now.saturating_sub(t.status_since) < n.phone_after {
                 continue;
             }
             t.phoned = t.status_since;
-            let place = t.place();
+            let place = t.alert_place();
             let (title, body) = crate::alert::phone_message(&agent, &place, t.status == Status::Blocked, &t.summary, n.phone_text);
             let cfg = n.clone();
             std::thread::spawn(move || {
@@ -538,9 +567,13 @@ impl Daemon {
             // visibly working when the agent's own screen explicitly shows its idle prompt.
             let has_active_children = !t.subagents.is_empty()
                 || t.subagent_activity.iter().any(|activity| activity.state.active());
+            // Claude's input box shows all turn long, and its title says idle while its
+            // turn-end hooks still run: a hooked agent's screen must also have gone still, or
+            // this would finish (and ring) ahead of the hook.
             if signal.status == Some(Status::Idle)
                 && signal.visible_idle
                 && (t.status == Status::Working || has_active_children)
+                && (!t.hooked || t.last_output.elapsed() >= SCREEN_DONE_QUIET)
             {
                 let status = if t.status == Status::Working && Some(t.id) != focused {
                     Status::Done

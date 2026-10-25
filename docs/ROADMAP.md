@@ -224,7 +224,9 @@ ignored; lint, both cross-checks and dependency audit passed). Live mouse clicks
 opened a plain shell and Settings from Actions.
 
 Active phase: **26 — the inspector drawer** (planned 2026-10-24); phase 25 is built on `dev`.
-Next: the phase 26 live look (its tickets are on `dev`). Then
+[Phase 29](#29--polish-from-the-043-trial--built-on-dev-2026-10-24-live-checks-open), the user's
+fixes from the 0.43 trial, is built on `dev`.
+Next: the phase 26 and 29 live look. Then
 [Phase 27](#27--radar-and-sending-failures--planned-2026-10-24) and
 [Phase 28](#28--references--planned-2026-10-24). Live checks still open for phases 18 and 20–25.
 
@@ -695,6 +697,45 @@ side panel lists, adds (paste or pick), removes and opens them in the system vie
 tool lists them for agents. Intent: [references](features/references/intent.md). Tickets when
 phase 27 is done. Decided 2026-10-24: the folder is gitignored by default.
 
+### 29 — Polish from the 0.43 trial · built on dev 2026-10-24, live checks open
+
+The user tried v0.43 on 2026-10-24 and asked for: everything in the theme and uniform, the side
+panel's views as tabs with keys, `c` for Changes, Settings on `,` and every key on `?`
+([ADR 0022](adr/0022-question-mark-all-keys-c-changes.md)), modals framed like panes, a folder row
+rounded at both ends, and a way to tell shortcut mode is still on under a popup. No protocol change.
+
+1. leader `c` opens Changes, `?` lists every key; F1, `d` and copy mode lose their default keys
+2. a Files · Changes · Branch strip across the side panel (click, Tab, Shift+Tab); a commit asks first
+3. modals framed like panes: the title as a chip on the border, `Esc close` as a chip
+4. a folder row rounds both ends; no stray rule beside a padded Compact sidebar
+5. ` SHORTCUT · paused ` stays, dimmed, while a popup has the keys; shortcut mode comes back when a
+   popup closes by itself
+6. Grid's number, name tag and `+` as chips; toasts and corner pills follow `ui.rounded`
+7. a narrow title keeps the current tab and drops the state's glyph last of all
+
+Also: the mode made unmistakable ([ADR 0023](adr/0023-the-mode-is-always-shown.md)): a sky frame
+round the window in shortcut mode, a `TYPING` / `SHORTCUT` tag always in the corner, and a hint
+toast on a key that does nothing. Built on `feat/loud-mode`; not checked live.
+Also: Grid titles: the state glyph sits in the tab; no state words; no repeated name tag. Built
+on `feat/grid-title-status`; not checked live.
+
+Also: Background: solid is the default (user decision 2026-10-24), so a plain terminal shows the
+theme whole; `background = "terminal"` still reads for transparent or image terminals.
+
+Status 2026-10-24: built on `dev` (d8da65e..95b5c91), three parts each reviewed independently and
+approved after fixes; the gate passed at 95b5c91 (959 tests, clippy, Linux and macOS checks). Also
+fixed: the `Esc close` chip on a confirm did nothing when clicked. Not checked live: the new
+frames at 80×24, 100×30 and 160×45 in each look.
+Follow-ups: in Files, `d` still opens Changes; the side panel's title repeats its lit tab;
+`docs/guide.md` still describes the older Files panel; the paused pill gets no room in a
+right-hand sidebar's header; below about 60 columns a narrow pane's name chip can shrink to `…`;
+`screen_tests::tiled_square_and_faded` failed once in a parallel run; under about 16 rows the
+paused frame can cover a popup drawn on the ring (its snapshot is taken after `screen::draw`);
+Compact at padding 0 has no frame (offer one on its header and foot strips if wanted).
+Also: alerts that rang mid-turn fixed (a Claude stop with background work in flight no longer
+rings finished; screen-idle recovery waits for a still screen; every status change is logged to
+`daemon.log`); notifications name the branch. Not checked live yet.
+
 ## In scope
 
 Everything below is shipped on `main` unless marked.
@@ -781,7 +822,7 @@ Everything below is shipped on `main` unless marked.
 
 - [ADR-0001](adr/0001-daemon-owns-sessions.md) — A daemon owns every session; clients only draw. Rules out: sessions inside the UI process.
 - [ADR-0002](adr/0002-portable-pty-and-vt100.md) — portable-pty (ConPTY) and vt100 for terminals. Rules out: a home-grown PTY layer.
-- [ADR-0003](adr/0003-msgpack-over-local-sockets.md) — msgpack frames over local sockets, versioned. Rules out: unversioned message changes; network listeners.
+- [ADR-0003](adr/0003-msgpack-over-local-sockets.md) — msgpack frames over local sockets, versioned (added default fields need no bump, amended 2026-10-24). Rules out: incompatible message changes without a bump; network listeners.
 - [ADR-0009](adr/0009-leader-keys-after-the-cut.md) — Leader keys: a shell is one key, and only kept features have keys (supersedes ADR-0006). Rules out: keys for features that don't exist; defaults that differ from the key map shown in the app.
 - [ADR-0008](adr/0008-rename-to-seshi.md) — The app was called Seshi (the name superseded by ADR-0018, then ADR-0020); an old hydra install is brought over once.
 - [ADR-0012](adr/0012-flat-rendering-style.md) — Add a flat rendering style over the shared session layout; Cards stays default.
@@ -790,11 +831,13 @@ Everything below is shipped on `main` unless marked.
 - [ADR-0020](adr/0020-rename-to-maitty.md) — The app is called Maitty, "All agents on deck"; a vibecasso or seshi install carries over once.
 - [ADR-0019](adr/0019-the-name-lives-in-one-place.md) — The app's name lives in `Cargo.toml`; code takes it from `brand`. Rules out: writing the app's name out in code, adapters or comments.
 - [ADR-0018](adr/0018-rename-to-vibecasso.md) — The app was called Vibecasso (the name superseded by ADR-0020), a clean break; a vibecasso install carries over once. Rules out: a `vibecasso` command, new code or paths under the old name.
-- [ADR-0017](adr/0017-keys-other-apps-use.md) — Default shortcuts are one key each, none needing Shift, keys other apps use. Rules out: capital or Shift-symbol defaults; two keys for one action.
+- [ADR-0017](adr/0017-keys-other-apps-use.md) — Default shortcuts are one key each, none needing Shift, keys other apps use. Rules out: capital or Shift-symbol defaults (but `?`, ADR-0022); two keys for one action.
 - [ADR-0016](adr/0016-sticky-shortcut-mode.md) — The leader opens a shortcut mode that stays until Esc, the leader, a click into a pane or a typing action. Rules out: letters acting outside that shown mode.
 - [ADR-0013](adr/0013-v7-frame.md) — Draw the v7 frame: tabs in the pane title (the "no margin" part replaced by `ui.padding`, ADR-0021). Rules out: a separate tab row.
 - [ADR-0015](adr/0015-four-named-layouts-and-grid.md) — One Layout setting: Floating, Tiled, Compact, Grid; Grid is a look over the shared layout. Rules out: Grid's own sidebar, top bar, fixed grid, zoom and bare keys.
 - [ADR-0021](adr/0021-one-line-rows-one-rounding-sticky-mode.md) — One-line session rows, one rounding setting (full, corners, off), padding round the screen, and shortcut mode that stays until Esc, the leader or a click (amends ADR-0016). Rules out: a second line that only names the state; separate corner and pill-end switches.
+- [ADR-0022](adr/0022-question-mark-all-keys-c-changes.md) — `?` after the leader lists all keys, `c` opens Changes, copy mode has no default key (amends ADR-0017). Rules out: `F1` and `d` as defaults.
+- [ADR-0023](adr/0023-the-mode-is-always-shown.md) — The mode is always shown in the corner (`TYPING` or `SHORTCUT`), the window is framed in sky in shortcut mode, and a key with no action says how to type (amends ADR-0016 and ADR-0021). Rules out: an unlabelled input mode; keys dropped without a word.
 
 ## Rules
 

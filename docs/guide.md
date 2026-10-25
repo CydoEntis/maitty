@@ -31,16 +31,19 @@ and your configured custom ones; rows click and the wheel scrolls.
 - The title counts the sessions, then `●` what needs you and `✕` the checks that failed.
 - A project is its name, with its branch and check on the right (`⎇ main · check: test`), or
   `no git` outside a repo.
-- Under it, its sessions: state mark, name and age, then a line saying what it is doing or
-  what its check found (`failed: test · exit 1`, `asks: …`, `finished`). A failed check adds
-  its first failing line on wide screens. A session that needs you has its question under it. Every new claude / codex gets its own worktree (named for you), so agents
-  never edit the same files.
+- Under it, its sessions, one line each: the state mark and the name (in its state's colour
+  while it is worth a look), then at the right the agent's mark (`✻` Claude, `◆` Codex, `✦`
+  Gemini, `◇` OpenCode, else its first letter), the lines changed but not committed (`+8 −2`)
+  and the age. Click the `+N −N` to open its Changes.
+- A second line shows only when it says more: a question (`asks: …`), a check result
+  (`failed: test · exit 1`, with its first failing line on wide screens), helpers asked for,
+  a quiet spell or a message waiting. Every new claude / codex gets its own worktree (named
+  for you), so agents never edit the same files.
 - One row is selected: a neutral tint with a **▎** bar at its left edge (lime while the sidebar has
   the keys, dim when a pane does). The open session keeps a dim bar while you browse with the
   keyboard. Hover is a separate, quieter tint.
-- Hiding the sidebar leaves a slim rail with status indicators and two-letter titles.
-  Click to switch sessions, hover for full names, scroll to reach more, and use the
-  chevron to expand. Its red count includes blocked agents outside the visible rows.
+- Collapsing the sidebar (leader, then `z`) moves the sessions into a strip of chips along
+  the top row: click a chip to go to it, `»` (`«` with the sidebar on the right) or `+n more` to expand the sidebar again.
 - Things that need you sort to the top; everything else keeps its place. Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
 - A session taking a real share of the machine says so in its pane's title, beside its state
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
@@ -53,14 +56,16 @@ and your configured custom ones; rows click and the wheel scrolls.
   (`Ctrl+Space e`), a row's menu letters work directly (a row's menu lists them): `x` (or
   Delete) asks to close, `r` renames. Settings › General › UPDATES shows the version; Settings warns at the top when the installed, window and daemon versions differ.
 
-The leader key is `Ctrl+Space`. Press it for **shortcut mode**: a sky-blue `SHORTCUT · Esc`
-pill appears at the top right (the pane you're in turns sky too), each key below runs its
-action, and the mode stays for the next key. `Esc`, `Ctrl+Space` again or a click into a pane
+The top right always says which mode you are in: `TYPING` while keys go to the pane. The
+leader key is `Ctrl+Space`. Press it for **shortcut mode**: the corner turns into a sky-blue
+`SHORTCUT · Esc to type` tag, a sky-blue frame runs round the whole window (the pane you're
+in turns sky too), each key below runs its action, and the mode stays for the next key. A key
+that does nothing says "Shortcut mode — Esc to type". `Esc`, `Ctrl+Space` again or a click into a pane
 go back to typing; a new shell, session, tab or split keeps shortcut mode, so press `Esc`
-to type into it, and closing a popup returns to it. Wait a moment after the leader for the compact key map: a key runs its
-command, Tab (or typing a letter that is no key) searches every command, `F1` shows all keys,
+to type into it, and closing a popup returns to it. With **Leader waits for next key** on (Settings › General; off by default), a pause after the leader shows the compact key map: a key runs its
+command, Tab (or typing a letter that is no key) searches every command, `?` shows all keys,
 and keys marked `›` open a second step (`g` worktrees: new, switch, merge, delete; Backspace
-goes back). No default needs Shift, and each key does one thing; no letter acts by itself in
+goes back). No default but `?` needs Shift, and each key does one thing; no letter acts by itself in
 the sidebar. Every default shortcut, and every screen's own keys, are in
 [shortcuts](shortcuts.md).
 
@@ -71,11 +76,20 @@ when enabled in Settings. All keys shows changes to these bindings too.
 it (on a narrow panel the file takes the panel, `‹` goes back). `f` again or Esc closes it;
 Ctrl+click on a `path:line` in a pane opens it at that line. In **Files**: Enter puts the
 path in the agent's prompt, `e` opens it in your editor (`editor` in config; nvim, helix …
-open inside maitty), `y` copies the path.
+open inside maitty), `y` copies the path, `r` lists recent files.
 
-In **Changes**: `c` commit,
-`p` push and open a PR, `e` editor, `x` mark the file reviewed (it sinks; the mark clears
-if the file changes again), `r` goes to its agent.
+Files, Changes and Branch share the side panel: a tab strip at its top names each with its
+key, and Tab / Shift+Tab (or a click on a tab) moves between them for the same checkout.
+
+In **Changes**: `c` commits every changed file and `p` pushes and opens a PR (each asks
+first), `e` opens the file in your editor, `x` marks it reviewed (it sinks; the mark clears
+if the file changes again), `r` goes to its agent. In a worktree, `m` merges and `d` throws
+it away, also after asking.
+
+The side panel's width is kept for each view. While the panel has the keys, `[` and `]`
+narrow or widen it and `=` puts it back (after the leader, `[` and `]` switch tabs instead);
+or drag its left edge. A markdown file in Files is drawn by default; `m` switches
+between drawn and raw text.
 
 Everything also works with the mouse. Hold Shift to select text with your terminal.
 
@@ -196,6 +210,17 @@ They show up in + New as `⚙ feature`.
 
 ## Agents that steer agents (MCP)
 
+`maitty integrate mcp` registers `maitty mcp` with Claude Code and prints the
+`[mcp_servers.maitty]` lines to add to Codex's `~/.codex/config.toml`. An agent then has tools to
+list sessions (`maitty_list`), read a screen (`maitty_read`), send a message
+(`maitty_send`), wait for a turn to end (`maitty_wait`), answer a prompt (`maitty_answer`),
+interrupt (`maitty_interrupt`) and start helpers (`maitty_start`, see *Helpers* above).
+`[mcp] approve` sets whether agents may answer "yes" to prompts and `[mcp] scope` whether
+they reach only their project or every session; `maitty grant <pane> read,write,…` changes
+one pane's rights.
+
+## From any shell
+
 ```sh
 maitty                 # open the current directory
 maitty ~/code/my-app   # open a project
@@ -218,11 +243,9 @@ answer, and return to your other work.
 
 | Leader + | Panel | What it does |
 |---|---|---|
-| `f` | **Files** | *Recent*: files that just appeared in Downloads, Desktop, Documents or the project (docs, zips, screenshots). *Project*: fuzzy search over the project's files. Enter types the path into your prompt; `^O` opens it, `^F` shows it in the file manager, `^Y` copies the path. |
-| `d` | **Changes** | A worktree's changed files and the diff: `c` commit, `m` merge into the base branch, `p` push and open a pull request, `r` go to its agent, `x` throw it away. |
+| `f` | **Files** | The project's tree, with the file you pick beside it. `r` switches to recent files (just appeared in Downloads, Desktop, Documents or the project), `/` filters. Enter types the path into your prompt; `e` your editor, `i` edit it in place, `o` open it outside, `y` copy the path. `f` again or Esc closes it. |
+| `c` | **Changes** | A checkout's changed files and the diff: `c` commit, `p` push and open a pull request, `x` mark reviewed, `r` go to its agent; in a worktree `m` merges into the base branch and `d` throws it away. Each of `c`, `p`, `m` and `d` asks first. |
 | `b` | **Branch** | Where the session's checkout stands, in the side panel: its branch, how far it is ahead of and behind its upstream and its base branch, the last 10 commits, the last check result and its snapshots. Its first row, **Switch branch…**, opens the branch switcher; Enter on a snapshot restores it (asked first). `b` again or Esc closes it. |
-
-Typing in a panel filters it; the action keys that would collide with typing use Ctrl.
 
 ## Agents
 
@@ -311,6 +334,9 @@ when it last committed). The safe ones come ticked; tick any others, and one con
 them. It says so first when ticked ones hold uncommitted changes, which would be lost.
 
 ## Copy mode
+
+Copy mode has no default key: open it from search commands (leader, then `Space`) as
+**Select text**, or bind `copy-mode` under `[keys.prefix]`.
 
 | key | |
 |---|---|

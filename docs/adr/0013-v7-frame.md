@@ -2,6 +2,9 @@
 
 - **Status:** Proposed
 - **Date:** 2026-10-22
+- **Note:** The modal frame below (an accent title row, a hard shadow) is superseded by the
+  user's decision of 2026-10-24: modals are framed like panes, with no shadow (see
+  `docs/UI.md`, *Project-specific: UI conventions*).
 
 ## Context
 

@@ -253,6 +253,8 @@ pub(in crate::client) struct Card<'a> {
     pub right: Vec<Seg>,
     /// The ✕ at the right of the top border, and what a click on it does.
     pub close: Option<ScreenHit>,
+    /// Columns kept clear after the ✕, where the corner pill sits over the border.
+    pub right_room: u16,
     pub border: Color,
     /// Focused: the border (Cards) or the left rule (Flat), and the title chip, in `border`.
     pub bold: bool,
@@ -267,7 +269,7 @@ pub(in crate::client) struct Card<'a> {
 
 impl<'a> Card<'a> {
     pub fn new(t: &Theme, title: &'a str) -> Card<'a> {
-        Card { title, sub: "", chips: Vec::new(), right: Vec::new(), close: None, border: t.line, bold: false, title_fg: t.strong, bg: pane_bg(t), float: false }
+        Card { title, sub: "", chips: Vec::new(), right: Vec::new(), close: None, right_room: 0, border: t.line, bold: false, title_fg: t.strong, bg: pane_bg(t), float: false }
     }
 
     /// The focused look: the border and the title chip in `c`.
@@ -307,7 +309,15 @@ fn plain_title_chip(c: &Card, t: &Theme, room: u16) -> Vec<Seg> {
     let st = Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD);
     let sub = if c.sub.is_empty() { String::new() } else { format!(" {}", c.sub) };
     let fits = |s: &str| s.width() as u16 + 2 <= room;
-    let (title, sub) = if fits(&format!("{}{sub}", c.title)) { (c.title.to_string(), sub) } else { (truncate(c.title, room.saturating_sub(2) as usize), String::new()) };
+    // A long sub is cut to the room left, so it still shows its start; only a title that does
+    // not fit on its own loses it.
+    let (title, sub) = if fits(&format!("{}{sub}", c.title)) {
+        (c.title.to_string(), sub)
+    } else if fits(c.title) {
+        (c.title.to_string(), truncate(&sub, room.saturating_sub(2 + c.title.width() as u16) as usize))
+    } else {
+        (truncate(c.title, room.saturating_sub(2) as usize), String::new())
+    };
     let mut out = vec![seg(format!(" {title}"), st)];
     if !sub.is_empty() {
         out.push(seg(sub, Style::default().bg(bg).fg(if c.bold { fg } else { t.text })));
@@ -329,7 +339,7 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
     }
     let soften = c.float && look.caps && look.flat;
     let behind = if soften { ends_behind(buf, r) } else { Vec::new() };
-    let inside = if look.flat { flat_frame(buf, r, c, t) } else { box_frame(buf, r, c, look) };
+    let inside = if look.flat { flat_frame(buf, r, c, t, ruled(app, buf, r)) } else { box_frame(buf, r, c, look) };
     if soften {
         soften_block(buf, r, &behind);
     }
@@ -340,7 +350,7 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
         let close = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close;
         right.push(seg(format!("{gap}{close} "), Style::default().fg(t.muted)));
     }
-    let end = right_end(look, r);
+    let end = right_end(look, r).saturating_sub(c.right_room);
     let rw = segs_width(&right);
     let rx = end.saturating_sub(rw);
     let chip_x = title_x(look, r);
@@ -381,12 +391,19 @@ fn box_frame(buf: &mut Buffer, r: Rect, c: &Card, look: Look) -> Rect {
     Rect { x: x + 1, y: y + 1, width: r.width - 2, height: r.height - 2 }
 }
 
+/// Whether a Flat zone at `r` has a `│` rule down its left: it does not start at the left of
+/// the room the screen is laid out in (the window less its padding), as the panes beside a
+/// left sidebar, or a sidebar on the right.
+pub(in crate::client) fn ruled(app: &App, buf: &Buffer, r: Rect) -> bool {
+    r.x > framed(app, buf.area).x
+}
+
 /// The Flat zone: a header strip of `card` on its first row, and a `│` rule down its left
-/// unless it starts at the screen's edge.
-fn flat_frame(buf: &mut Buffer, r: Rect, c: &Card, t: &Theme) -> Rect {
+/// when `ruled`.
+fn flat_frame(buf: &mut Buffer, r: Rect, c: &Card, t: &Theme, ruled: bool) -> Rect {
     fill(buf, r, c.bg);
     fill(buf, Rect { height: 1, ..r }, t.card);
-    if r.x > buf.area.x {
+    if ruled {
         buf[(r.x, r.y)].set_symbol("│").set_style(Style::default().fg(t.line).bg(t.card));
         let rule = Style::default().fg(if c.bold { c.border } else { t.line }).bg(c.bg);
         for yy in r.y + 1..r.bottom() {

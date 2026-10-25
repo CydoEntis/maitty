@@ -220,7 +220,7 @@ mod screen_tests {
             assert!(keys > 0 || matches!(action, Action::None | Action::SendPrefix), "leader {key} is listed ({})", action.describe());
         }
         // Duplicate keys are gone: one key per action.
-        for dropped in ["M", "S", "Z", "H", "J", "K", "L", "X", "F", "B", "W", "R", "V", "N", "?", "{", "}", "|", ":"] {
+        for dropped in ["M", "S", "Z", "H", "J", "K", "L", "X", "F", "B", "W", "R", "V", "N", "{", "}", "|", ":"] {
             let spec: crate::keys::KeySpec = dropped.parse().unwrap();
             assert!(!app.keymap.prefixed.contains_key(&spec), "{dropped} is no longer a leader key");
         }
@@ -253,7 +253,7 @@ mod screen_tests {
             }
             assert!(o.contains("run it") && o.contains("show all") && !o.contains("[Esc]"), "{o}");
             // ? lists every key, with the keys that need no leader and the commands with none.
-            key(&mut app, KeyCode::F(1));
+            key(&mut app, KeyCode::Char('?'));
             assert!(matches!(&app.mode, Mode::KeyMap(km) if km.view == screen::KeyView::All));
             let mut seen = String::new();
             for _ in 0..80 {
@@ -895,9 +895,9 @@ mod screen_tests {
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let (_, inner) = app.panes[0];
         let buf = term.backend().buffer();
-        assert_eq!(buf[(inner.x - 1, inner.y)].bg, ratatui::style::Color::Reset, "a small contrasting panel does not recolor the card padding");
+        assert_eq!(buf[(inner.x - 1, inner.y)].bg, app.theme.bg, "a small contrasting panel does not recolor the card padding");
         assert_eq!(buf[(inner.x, inner.y)].bg, app.theme.card2, "not a light grey slab");
-        assert_eq!(buf[(inner.x + 13, inner.y)].bg, ratatui::style::Color::Reset, "the rest on the card's ground");
+        assert_eq!(buf[(inner.x + 13, inner.y)].bg, app.theme.bg, "the rest on the card's ground");
     }
 
     #[test]
@@ -1332,27 +1332,390 @@ mod screen_tests {
         rows[r.y as usize].chars().skip(r.x as usize).take(r.width as usize).collect()
     }
 
-    #[test]
-    fn grid_numbers_each_pane_and_says_its_state_on_the_left_and_its_name_on_the_right() {
-        let (app, [a, b, c], rows) = grid_frame(200, 50);
-        let (ta, tb, tc) = (top_border(&app, &rows, a), top_border(&app, &rows, b), top_border(&app, &rows, c));
-        assert!(ta.starts_with("┌─ 1 ▲ needs you "), "{ta}");
-        assert_eq!(ta.matches("needs you").count(), 1, "the state is not repeated on the right: {ta}");
-        assert!(ta.contains("  claude   ✕"), "the name tag before the close: {ta}");
-        assert!(ta.contains("1  claude  +"), "the top-left pane keeps its tabs: {ta}");
-        assert!(tb.starts_with("┌─ 2 ") && tb.contains(" working ") && tb.contains(" codex "), "{tb}");
-        assert!(tc.starts_with("┌─ 3 ─") && tc.contains(" shell "), "no state for a shell: {tc}");
-        let card = app.pane_frames.iter().find(|(t, _)| *t == a).unwrap().1;
-        let on_border = |r: &Rect| r.y == card.y && r.x >= card.x && r.right() <= card.right();
-        let why: Vec<Rect> = app.hits.iter().filter(|(r, h)| *h == Hit::Screen(screen::ScreenHit::Why(a)) && on_border(r)).map(|(r, _)| *r).collect();
-        assert_eq!(why.iter().map(|r| r.x).collect::<Vec<_>>(), [card.x + 2], "one, on the left of the border");
+    /// Where `term`'s box is drawn.
+    fn card_of(app: &App, term: TermId) -> Rect {
+        app.pane_frames.iter().find(|(t, _)| *t == term).unwrap().1
+    }
+
+    /// The hits of kind `want` on `term`'s top border.
+    fn border_hits(app: &App, term: TermId, want: Hit) -> Vec<Rect> {
+        let card = card_of(app, term);
+        app.hits.iter().filter(|(r, h)| *h == want && r.y == card.y && r.x >= card.x && r.right() <= card.right()).map(|(r, _)| *r).collect()
     }
 
     #[test]
-    fn a_narrow_grid_pane_drops_its_name_tag_before_its_state() {
-        let (app, [a, ..], rows) = grid_frame(60, 20);
-        let ta = top_border(&app, &rows, a);
-        assert!(ta.starts_with("┌─ 1 ▲ needs you ") && !ta.contains("claude"), "{ta}");
+    fn grid_numbers_each_pane_and_names_it_once_with_its_state_glyph_inside() {
+        let (app, [a, b, c], rows) = grid_frame(200, 50);
+        let (ta, tb, tc) = (top_border(&app, &rows, a), top_border(&app, &rows, b), top_border(&app, &rows, c));
+        let spinner = crate::client::design::glyph(&app, Status::Working);
+        assert!(ta.starts_with("┌─ 1   ▲  1  claude   + ─"), "the number, then needs you inside the current tab: {ta}");
+        assert!(tb.starts_with(&format!("┌─ 2   {spinner} codex ─")), "one name chip, the spinner inside it: {tb}");
+        assert!(tc.starts_with("┌─ 3   shell ─"), "no state for a shell: {tc}");
+        for (top, name) in [(&ta, "claude"), (&tb, "codex"), (&tc, "shell")] {
+            assert!(!top.contains("needs you") && !top.contains("working"), "no state words: {top}");
+            assert_eq!(top.matches(name).count(), 1, "the name is not repeated on the right: {top}");
+            let before_close = top.rsplit_once(" ✕ ").map(|(l, _)| l.to_string()).unwrap_or_default();
+            assert!(before_close.ends_with('─'), "only the ✕ on the right: {top}");
+        }
+        let why = |term| border_hits(&app, term, Hit::Screen(screen::ScreenHit::Why(term))).iter().map(|r| r.x).collect::<Vec<_>>();
+        let (ca, cb) = (card_of(&app, a), card_of(&app, b));
+        assert_eq!(why(a), [ca.x + 2, ca.x + 6], "the number chip and the glyph in the tab open why");
+        assert_eq!(why(b), [cb.x + 2, cb.x + 6], "the number chip and the glyph in the name open why");
+        assert_eq!(why(c), [card_of(&app, c).x + 2], "a shell: the number alone");
+    }
+
+    #[test]
+    fn grid_shows_the_top_left_pane_s_state_only_as_a_glyph_in_its_current_tab() {
+        for (w, h) in [(160, 45), (80, 24)] {
+            for status in [Status::Working, Status::Blocked, Status::Done] {
+                let (_, mut app) = super::design_tests::render_with(w, h);
+                app.cfg.ui.layout = "grid".into();
+                let [a, ..] = three_panes(&mut app);
+                app.snap.terms.get_mut(&a).unwrap().status = status;
+                let buf = drawn(&mut app, w, h);
+                let card = card_of(&app, a);
+                let top: String = (card.x..card.right()).map(|x| buf[(x, card.y)].symbol()).collect();
+                let at = format!("{w}x{h} {status:?}: {top}");
+                for words in ["working", "needs you", "done"] {
+                    assert!(!top.contains(words), "no state words: {at}");
+                }
+                assert!(top.matches("cl").count() <= 1, "the name is not repeated on the right: {at}");
+                let tab = border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab)));
+                assert_eq!(tab.len(), 1, "the current tab is drawn: {at}");
+                let inside: Vec<Rect> = border_hits(&app, a, Hit::Screen(screen::ScreenHit::Why(a))).into_iter().filter(|r| r.x >= tab[0].x && r.right() <= tab[0].right()).collect();
+                let want = match status {
+                    Status::Working => Some(crate::client::design::glyph(&app, Status::Working)),
+                    Status::Blocked => Some("▲".to_string()),
+                    _ => None,
+                };
+                match want {
+                    Some(g) => {
+                        assert_eq!(inside.len(), 1, "the glyph sits inside the current tab: {at}");
+                        assert_eq!(buf[(inside[0].x + 1, card.y)].symbol(), g, "{at}");
+                        assert_eq!(inside[0].x, tab[0].x, "at the front of the tab: {at}");
+                    }
+                    None => assert!(inside.is_empty() && !top.contains('▲'), "done shows no glyph in Grid: {at}"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_grid_tab_shows_working_needs_you_and_done_as_glyphs_only() {
+        for (w, h) in [(160, 45), (80, 24)] {
+            let (_, mut app) = super::design_tests::render_with(w, h);
+            app.cfg.ui.layout = "grid".into();
+            let [a, b, c] = three_panes(&mut app);
+            for (term, status) in [(a, Status::Working), (b, Status::Blocked), (c, Status::Done)] {
+                let info = app.snap.terms.get_mut(&term).unwrap();
+                info.status = status;
+                info.agent.get_or_insert_with(|| "opencode".into());
+            }
+            let o = draw(&mut app, w, h);
+            show(&o);
+            let rows: Vec<String> = o.lines().map(str::to_string).collect();
+            let (ta, tb, tc) = (top_border(&app, &rows, a), top_border(&app, &rows, b), top_border(&app, &rows, c));
+            let spinner = crate::client::design::glyph(&app, Status::Working);
+            assert!(ta.starts_with(&format!("┌─ 1   {spinner} 1  ")), "{w}x{h}: working, in the current tab: {ta}");
+            assert!(tb.starts_with("┌─ 2   ▲  "), "{w}x{h}: needs you, in the name chip: {tb}");
+            assert!(tc.starts_with("┌─ 3   ") && !tc.contains('▲') && !tc.contains(&spinner), "{w}x{h}: done shows no glyph: {tc}");
+            for top in [&ta, &tb, &tc] {
+                assert!(!["working", "needs you", "done"].iter().any(|word| top.contains(word)), "{w}x{h}: no state words: {top}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_click_on_a_grid_state_glyph_opens_why_and_the_tab_still_picks() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.cfg.ui.layout = "grid".into();
+        let [a, b, _] = three_panes(&mut app);
+        app.snap.terms.get_mut(&b).unwrap().status = Status::Working;
+        let press = |app: &mut App, x: u16, y: u16| app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x, row: y, modifiers: KeyModifiers::NONE });
+        for term in [a, b] {
+            drawn(&mut app, 160, 45);
+            let glyph = *border_hits(&app, term, Hit::Screen(screen::ScreenHit::Why(term))).last().unwrap();
+            press(&mut app, glyph.x + 1, glyph.y);
+            assert!(matches!(app.mode, Mode::Why { term: t, .. } if t == term), "the glyph opens why");
+            app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        }
+        drawn(&mut app, 160, 45);
+        let pick = Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab));
+        let tab = border_hits(&app, a, pick)[0];
+        let name = ratatui::layout::Position::new(tab.right() - 2, tab.y);
+        let hit = app.hits.iter().rev().find(|(r, _)| r.contains(name)).map(|(_, h)| *h);
+        assert_eq!(hit, Some(pick), "the rest of the tab still picks it");
+    }
+
+    #[test]
+    fn a_narrow_title_keeps_its_status_glyph_last_in_every_look() {
+        let mut failures = Vec::new();
+        for layout in ["grid", "floating", "compact"] {
+            for split in [false, true] {
+                for (mode, update) in [("off", false), ("lit", false), ("paused", false), ("off", true), ("lit", true), ("paused", true)] {
+                    for w in 56..=110u16 {
+                        let (_, mut app) = super::design_tests::render_with(w, 24);
+                        (app.cfg.ui.layout, app.cfg.ui.rounded, app.cfg.ui.which_key) = (layout.into(), crate::config::Rounding::Full, false);
+                        app.update_available = update.then(|| "0.44.0".into());
+                        if split {
+                            let [_, b, _] = three_panes(&mut app);
+                            app.snap.terms.get_mut(&b).unwrap().status = Status::Blocked;
+                        }
+                        if mode != "off" {
+                            app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+                        }
+                        if mode == "paused" {
+                            tap(&mut app, ',');
+                        }
+                        let buf = drawn(&mut app, w, 24);
+                        // The panes along the top: the modal covers any below.
+                        let blocked: Vec<Rect> = app.pane_frames.iter().filter(|(id, r)| r.y == 0 && app.snap.terms[id].status == Status::Blocked).map(|(_, r)| *r).collect();
+                        assert!(!blocked.is_empty(), "{layout} {w}: a blocked pane is drawn");
+                        for r in blocked {
+                            let row: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
+                            if !row.contains('▲') && !row.contains('●') {
+                                failures.push(format!("{layout} split {split} {mode} update {update} {w}: {row}"));
+                            }
+                            // Grid draws it in a chip, on its own amber, with no words.
+                            let amber = (r.x..r.right()).any(|x| buf[(x, r.y)].symbol() == "▲" && needs_you_stands_out(&app, &buf, x, r.y));
+                            if layout == "grid" && mode == "off" && (!amber || row.contains("needs you")) {
+                                failures.push(format!("{layout} split {split} {mode} update {update} {w}: not a glyph on its chip: {row}"));
+                            }
+                        }
+                        // From the narrowest supported window, typing says so in the corner too.
+                        let row0: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
+                        if mode == "off" && w >= 80 && !row0.contains(" TYPING ") {
+                            failures.push(format!("{layout} split {split} {mode} update {update} {w}: no TYPING tag: {row0}"));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(failures.is_empty(), "the status glyph is on the title:\n{}", failures.join("\n"));
+    }
+
+    #[test]
+    fn a_narrow_grid_pane_shortens_its_name_and_keeps_its_glyph_in_the_chip() {
+        let mut shortened = false;
+        // Narrowing step by step: the current tab stays, with the glyph at its front.
+        for w in 60..=110 {
+            let (app, [a, b, _], rows) = grid_frame(w, 20);
+            let (ta, tb) = (top_border(&app, &rows, a), top_border(&app, &rows, b));
+            let tab = border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab)));
+            assert!(tab.len() == 1 && ta.contains("▲  1 "), "{w}: the current tab, its glyph inside: {ta}");
+            assert!(!ta.contains("needs you") && ta.matches("claude").count() <= 1, "{w}: {ta}");
+            let spinner = crate::client::design::glyph(&app, Status::Working);
+            assert!(tb.contains(&format!("{spinner} c")) && tb.matches("codex").count() <= 1, "{w}: the name chip carries the spinner: {tb}");
+            shortened |= tb.contains(&format!("{spinner} cod…"));
+        }
+        assert!(shortened, "somewhere a name chip shortens its name and keeps its glyph");
+        // Narrower still, a tab that cannot fit at its shortest gives way to its glyph alone.
+        for w in 44..60 {
+            let (app, [a, ..], rows) = grid_frame(w, 20);
+            let ta = top_border(&app, &rows, a);
+            assert!(ta.starts_with("┌─ 1   ▲ "), "{w}: {ta}");
+        }
+    }
+
+    fn drawn(app: &mut App, w: u16, h: u16) -> ratatui::buffer::Buffer {
+        app.screen_fresh();
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        term.backend().buffer().clone()
+    }
+
+    /// Where `word` last starts on row `y` between `from` and `to`.
+    fn last_at(buf: &ratatui::buffer::Buffer, word: &str, y: u16, from: u16, to: u16) -> Option<u16> {
+        let n = word.chars().count() as u16;
+        (from..to.saturating_sub(n)).rev().find(|&x| (0..n).map(|i| buf[(x + i, y)].symbol()).collect::<String>() == word)
+    }
+
+    #[test]
+    fn the_new_tab_chip_is_raised_and_a_cell_clear_of_the_tabs_in_every_look() {
+        use crate::config::Rounding;
+        for layout in ["floating", "tiled", "compact", "grid"] {
+            for rounded in [Rounding::Off, Rounding::Full] {
+                let (_, mut app) = super::design_tests::render_with(160, 45);
+                (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
+                let buf = drawn(&mut app, 160, 45);
+                let at = format!("{layout} {rounded:?}");
+                let t = app.theme.clone();
+                let r = app.hits.iter().find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::NewTab)).expect("a + chip").0;
+                let plus = (r.x..r.right()).find(|&x| buf[(x, r.y)].symbol() == "+").expect("its +");
+                assert_eq!((buf[(plus, r.y)].fg, buf[(plus, r.y)].bg), (t.strong, t.btn), "strong on btn: {at}");
+                let (l, e) = (&buf[(r.x, r.y)], &buf[(r.right() - 1, r.y)]);
+                if rounded == Rounding::Full {
+                    assert_eq!((l.symbol(), l.fg, e.symbol(), e.fg), (screen::CAP_L, t.btn, screen::CAP_R, t.btn), "capped: {at}");
+                } else {
+                    assert_eq!((l.symbol(), l.bg, e.symbol(), e.bg), (" ", t.btn, " ", t.btn), "square: {at}");
+                }
+                let gap = &buf[(r.x - 1, r.y)];
+                assert!(gap.symbol() == " " && gap.bg != t.btn, "a clear cell before it: {at}");
+            }
+        }
+    }
+
+    #[test]
+    fn grid_draws_the_pane_number_and_name_chips_in_the_pane_s_colour_with_a_readable_glyph() {
+        use crate::config::Rounding;
+        for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
+            for focus_b in [false, true] {
+                let (_, mut app) = super::design_tests::render_with(200, 50);
+                (app.cfg.ui.layout, app.cfg.ui.rounded) = ("grid".into(), rounded);
+                let [a, b, _] = three_panes(&mut app);
+                if focus_b {
+                    (app.screen.tabs[0].focus, app.snap.workspaces[0].tabs[0].focus) = (b, b);
+                }
+                let buf = drawn(&mut app, 200, 50);
+                let t = app.theme.clone();
+                let colours = t.grid_colors();
+                let chip = |own, focused| if focused { (t.ink_on(own), own) } else { (t.strong, crate::theme::mix(own, t.bg, 0.28)) };
+                let at = format!("{rounded:?} focus on b {focus_b}");
+                let y = card_of(&app, a).y;
+                let why = |term| border_hits(&app, term, Hit::Screen(screen::ScreenHit::Why(term)));
+                let (wa, wb) = (why(a), why(b));
+                let digit = |r: &Rect| r.x + if rounded == Rounding::Full { 2 } else { 1 };
+                // Each number chip, and b's name chip with the spinner at its front, on the pane's colour.
+                let (a_ink, a_chip) = chip(colours[0], !focus_b);
+                let (b_ink, b_chip) = chip(colours[1], focus_b);
+                let starts = [(digit(&wa[0]), a_ink, a_chip, "a's number"), (digit(&wb[0]), b_ink, b_chip, "b's number"), (wb[1].x + 1, b_ink, b_chip, "b's spinner")];
+                for (x, ink, bg, what) in starts {
+                    let cell = &buf[(x, y)];
+                    assert_eq!((cell.fg, cell.bg), (ink, bg), "{what} on the pane's colour: {at}");
+                    assert_eq!(buf[(x - 1, y)].bg, bg, "{what} is padded on its chip: {at}");
+                    let end = &buf[(x - 2, y)];
+                    if rounded == Rounding::Full {
+                        assert_eq!((end.symbol(), end.fg), (screen::CAP_L, bg), "{what} is capped: {at}");
+                    } else {
+                        assert_ne!(end.bg, bg, "{what} is square: {at}");
+                    }
+                }
+                let name = &buf[(wb[1].right() + 1, y)];
+                assert_eq!((name.symbol(), name.fg, name.bg), ("c", b_ink, b_chip), "b's name after its spinner, one chip: {at}");
+                // Needs you, at the front of the current tab: amber, set apart from the chip.
+                let glyph = &buf[(wa[1].x + 1, y)];
+                assert_eq!(glyph.symbol(), "▲", "{at}");
+                assert!(glyph.modifier.contains(ratatui::style::Modifier::BOLD), "{at}");
+                assert!(needs_you_stands_out(&app, &buf, wa[1].x + 1, y), "needs you stands out: {at}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_working_glyph_in_the_current_tab_takes_the_tab_s_ink() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.cfg.ui.layout = "grid".into();
+        let [a, ..] = three_panes(&mut app);
+        app.snap.terms.get_mut(&a).unwrap().status = Status::Working;
+        let buf = drawn(&mut app, 160, 45);
+        let t = app.theme.clone();
+        let glyph = *border_hits(&app, a, Hit::Screen(screen::ScreenHit::Why(a))).last().unwrap();
+        let cell = &buf[(glyph.x + 1, glyph.y)];
+        assert_eq!((cell.fg, cell.bg), (t.acc_ink, t.accent), "the spinner reads on the tab's accent");
+    }
+
+    /// The three panes, the current tab at `place` among three tabs of the session; the other
+    /// two show pane `c` and are named `other-tab-1` and `other-tab-2`.
+    fn three_tabs(app: &mut App, place: usize) -> [TermId; 3] {
+        let [a, b, c] = three_panes(app);
+        let mut tabs: Vec<_> = (1..=2)
+            .map(|k| {
+                let mut tab = app.screen.tabs[0].clone();
+                (tab.layout, tab.focus, tab.name) = (crate::layout::Node::Leaf(c), c, format!("other-tab-{k}"));
+                tab
+            })
+            .collect();
+        tabs.insert(place, app.screen.tabs[0].clone());
+        (app.screen.tabs, app.screen.tab) = (tabs, place);
+        [a, b, c]
+    }
+
+    #[test]
+    fn a_narrow_title_keeps_the_current_tab_before_any_other() {
+        use crate::config::Rounding;
+        let mut failures = Vec::new();
+        let mut others_dropped = false;
+        for layout in ["grid", "floating", "tiled", "compact"] {
+            for rounded in [Rounding::Off, Rounding::Full] {
+                for place in 0..3 {
+                    for w in 44..=110u16 {
+                        let (_, mut app) = super::design_tests::render_with(w, 24);
+                        (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
+                        let [a, ..] = three_tabs(&mut app, place);
+                        app.snap.terms.get_mut(&a).unwrap().status = Status::Working;
+                        let buf = drawn(&mut app, w, 24);
+                        let card = card_of(&app, a);
+                        let top: String = (card.x..card.right()).map(|x| buf[(x, card.y)].symbol()).collect();
+                        let at = format!("{layout} {rounded:?} current {place} {w}: {top}");
+                        show(&at);
+                        let tab = |i| border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(i)));
+                        let shown = |i| tab(i).len() == 1;
+                        let others = (0..3).filter(|&i| i != place).filter(|&i| shown(i)).count();
+                        if others > 0 && !(shown(place) && top.contains("claude")) {
+                            failures.push(format!("another tab kept over the current one, or while it shortens: {at}"));
+                        }
+                        let plus = !border_hits(&app, a, Hit::Screen(screen::ScreenHit::NewTab)).is_empty();
+                        if plus && !(0..3).all(shown) {
+                            failures.push(format!("+ without every tab: {at}"));
+                        }
+                        let spinner = crate::client::design::glyph(&app, Status::Working);
+                        if !top.contains(&spinner) {
+                            failures.push(format!("no state on the title: {at}"));
+                        }
+                        // Grid draws it inside the current tab whenever that tab shows.
+                        let why = border_hits(&app, a, Hit::Screen(screen::ScreenHit::Why(a)));
+                        if layout == "grid" && shown(place) && !why.iter().any(|g| tab(place)[0].x <= g.x && g.right() <= tab(place)[0].right()) {
+                            failures.push(format!("the glyph is not in the current tab: {at}"));
+                        }
+                        others_dropped |= shown(place) && others < 2;
+                    }
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("
+"));
+        assert!(others_dropped, "somewhere the other tabs give way and the current one stays");
+    }
+
+    #[test]
+    fn needs_you_stands_out_on_a_chip_of_a_like_colour() {
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        app.cfg.ui.layout = "grid".into();
+        let [a, _, c] = three_panes(&mut app);
+        let d = 4;
+        let mut info = app.snap.terms[&c].clone();
+        (info.id, info.agent, info.status) = (d, Some("gemini".into()), Status::Blocked);
+        app.snap.terms.insert(d, info);
+        app.screen.pending_split = Some((c, Instant::now()));
+        app.screen.split_dir = Some(crate::layout::Dir::Right);
+        app.screen_place(d, Some(c));
+        assert!(crate::theme::contrast(app.theme.grid_colors()[3], app.theme.blocked) < 1.5, "the fourth pane's colour is close to `blocked` in this theme");
+        // Pane 4 focused, on its own colour; then an accent like `blocked`, so the current tab is too.
+        for (focus, like_accent) in [(d, false), (a, true)] {
+            if like_accent {
+                app.theme.accent = app.theme.blocked;
+            }
+            (app.screen.tabs[0].focus, app.snap.workspaces[0].tabs[0].focus) = (focus, focus);
+            let buf = drawn(&mut app, 200, 50);
+            show(&(0..2).map(|y| (0..200).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>()).collect::<Vec<_>>().join("\n"));
+            for term in [a, d] {
+                let card = card_of(&app, term);
+                let at = format!("pane {term}, focus on {focus}");
+                let x = (card.x..card.right()).find(|&x| buf[(x, card.y)].symbol() == "▲").unwrap_or_else(|| panic!("needs you is drawn: {at}"));
+                assert!(needs_you_stands_out(&app, &buf, x, card.y), "{at}");
+            }
+        }
+    }
+
+    /// Whether the needs-you glyph at `x`, `y` is in amber or on it, its ground set apart from
+    /// the chip it sits in (the cell after its patch) and the glyph readable on that ground.
+    fn needs_you_stands_out(app: &App, buf: &ratatui::buffer::Buffer, x: u16, y: u16) -> bool {
+        // With `background = "terminal"` the theme's own ground is drawn as Reset.
+        let solid = |c: ratatui::style::Color| if c == ratatui::style::Color::Reset { app.theme.bg } else { c };
+        let (glyph, after) = (&buf[(x, y)], &buf[(x + 2, y)]);
+        let (fg, bg, chip) = (solid(glyph.fg), solid(glyph.bg), solid(after.bg));
+        let amber = fg == app.theme.blocked || bg == app.theme.blocked;
+        amber && crate::theme::contrast(bg, chip) >= 1.5 && crate::theme::contrast(fg, bg) >= 3.0
     }
 
     #[test]
@@ -1822,8 +2185,8 @@ mod screen_tests {
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
         assert_eq!((buf[(159, 0)].symbol(), buf[(159, 0)].fg), ("┐", app.theme.sky()), "the focused border turns sky");
-        let pill: String = (143..159).map(|x| buf[(x, 0)].symbol().to_string()).collect();
-        assert_eq!((pill.as_str(), buf[(144, 0)].bg), (" SHORTCUT · Esc ", app.theme.sky()), "the shortcut pill at the top right, a column in");
+        let pill: String = (135..159).map(|x| buf[(x, 0)].symbol().to_string()).collect();
+        assert_eq!((pill.as_str(), buf[(136, 0)].bg), (" SHORTCUT · Esc to type ", app.theme.sky()), "the shortcut pill at the top right, a column in");
         // The delayed overview groups common commands; ? opens the full reference instead.
         app.open_keymap(None);
         assert!(matches!(app.mode, Mode::KeyMap(_)));
@@ -2852,6 +3215,36 @@ mod screen_tests {
     }
 
     #[test]
+    fn a_toast_s_corners_follow_the_rounding_setting_in_every_look() {
+        use crate::config::Rounding;
+        for layout in ["floating", "tiled", "compact", "grid"] {
+            for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
+                let (_, mut app) = super::design_tests::render_with(160, 45);
+                (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
+                app.notify_card("Copied to clipboard".into(), "9 characters".into(), None, false);
+                let buf = frame(&mut app, 160, 45);
+                let t = app.theme.clone();
+                let at = format!("{layout} {rounded:?}");
+                let (top, bottom) = (45 - 4 - 5, 45 - 5 - 1);
+                let mark = (0..160u16).find(|&x| buf[(x, top + 1)].symbol() == "✓").expect("the mark");
+                let close = (mark..160u16).find(|&x| buf[(x, top + 1)].symbol() == "✕").expect("the close");
+                let (left, right) = (mark - 2, close + 3);
+                let cell = |x: u16, y: u16| (buf[(x, y)].symbol().to_string(), buf[(x, y)].fg);
+                if rounded == Rounding::Off {
+                    for y in top..=bottom {
+                        assert_eq!(cell(left, y), ("▌".into(), t.accent), "a square bar: {at}");
+                        assert_eq!((buf[(right, y)].symbol(), buf[(right, y)].bg), (" ", t.card), "a square edge: {at}");
+                    }
+                } else {
+                    assert_eq!([cell(left, top), cell(left, top + 1), cell(left, bottom)], [("▗".into(), t.accent), ("▐".into(), t.accent), ("▝".into(), t.accent)], "the bar is the soft left edge: {at}");
+                    assert_eq!([cell(right, top), cell(right, top + 1), cell(right, bottom)], [("▖".into(), t.card), ("▌".into(), t.card), ("▘".into(), t.card)], "soft right edge: {at}");
+                    assert_ne!(buf[(right, top)].bg, t.card, "over what lies behind: {at}");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn a_three_row_toast_previews_in_dim_italics() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.notify_card("Copied to clipboard".into(), "9 characters · 1 line".into(), Some("\"cargo test\"".into()), false);
@@ -3782,9 +4175,9 @@ second line
             term.draw(|f| render::draw(app, f)).unwrap();
             term.backend().buffer()[(0, 0)].bg
         };
+        assert_eq!(gap(&mut app), app.theme.bg, "solid, the default: the theme's own ground");
+        app.cfg.ui.background = "terminal".into();
         assert_eq!(gap(&mut app), ratatui::style::Color::Reset, "terminal: SGR 49 under the chrome");
-        app.cfg.ui.background = "solid".into();
-        assert_eq!(gap(&mut app), app.theme.bg, "solid: the theme's own ground");
     }
 
     #[test]
@@ -3845,6 +4238,43 @@ second line
         app.settle_alerts();
         let said = app.notice.as_ref().map(|(m, ..)| m.clone()).unwrap_or_default();
         assert!(said.starts_with("Checkout rewrite") && said.ends_with("finished"), "the renamed session, not its agent: {said}");
+    }
+
+    #[test]
+    fn a_finished_note_names_the_repository_and_branch() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        {
+            let t = app.snap.terms.get_mut(&2).unwrap();
+            t.label = "Checkout rewrite".into();
+            t.root = Some(std::path::PathBuf::from("/code/shop-api"));
+            t.top = Some(std::path::PathBuf::from("/code/shop-api-worktrees/grey-wolf"));
+            t.branch = Some("fix/early-alerts".into());
+            t.status = Status::Done;
+        }
+        app.screen_fresh();
+        app.on_server(crate::protocol::ServerMsg::Attention { term: 2, status: Status::Done });
+        app.settling.get_mut(&2).unwrap().1 = Instant::now() - Duration::from_millis(1);
+        app.settle_alerts();
+        let said = app.notice.as_ref().map(|(m, ..)| m.clone()).unwrap_or_default();
+        assert_eq!(said, "Checkout rewrite (shop-api · fix/early-alerts) finished", "the worktree folder alone wouldn't say which");
+    }
+
+    #[test]
+    fn a_finished_note_outside_a_repository_names_the_folder() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        {
+            let t = app.snap.terms.get_mut(&2).unwrap();
+            t.label = "Notes".into();
+            (t.root, t.top, t.branch) = (None, None, None);
+            t.cwd = std::path::PathBuf::from("/home/me/notes");
+            t.status = Status::Done;
+        }
+        app.screen_fresh();
+        app.on_server(crate::protocol::ServerMsg::Attention { term: 2, status: Status::Done });
+        app.settling.get_mut(&2).unwrap().1 = Instant::now() - Duration::from_millis(1);
+        app.settle_alerts();
+        let said = app.notice.as_ref().map(|(m, ..)| m.clone()).unwrap_or_default();
+        assert_eq!(said, "Notes (notes) finished", "like the desktop and phone alerts");
     }
 
     #[test]
@@ -3986,16 +4416,16 @@ second line
     #[test]
     fn only_the_part_with_the_keys_looks_focused() {
         let (_, mut app) = super::design_tests::render_with(120, 30);
-        // The colour of the focused card's border just right of its ✕, and the sidebar
-        // card's left edge.
+        // The colour of the focused card's top-right corner (the mode tag sits right of its ✕),
+        // and the sidebar card's left edge.
         let borders = |app: &mut App| {
             let mut term = Terminal::new(TestBackend::new(120, 30)).unwrap();
             term.draw(|f| render::draw(app, f)).unwrap();
             let buf = term.backend().buffer().clone();
             let y = (0..30).find(|&y| (0..120).any(|x| buf[(x, y)].symbol() == "✕")).unwrap();
-            let x = (0..120).rev().find(|&x| buf[(x, y)].symbol() == "✕").unwrap();
+            let x = 119;
             let side = (1..29).filter(|&y| buf[(0u16, y)].fg == app.theme.accent).count();
-            (buf[(x + 3, y)].fg, side)
+            (buf[(x, y)].fg, side)
         };
         let (pane, side) = borders(&mut app);
         assert_eq!(pane, app.theme.accent, "the focused pane's border is the accent");
@@ -4016,7 +4446,7 @@ second line
             app.on_key(lead);
             assert!(matches!(app.mode, Mode::Prefix { .. }), "leader waits");
             let o = draw(&mut app, 160, 45);
-            assert!(o.lines().next().unwrap_or_default().trim_end().ends_with(" SHORTCUT · Esc ┐"), "the shortcut pill at the top right: {o}");
+            assert!(o.lines().next().unwrap_or_default().trim_end().ends_with(" SHORTCUT · Esc to type ┐"), "the shortcut pill at the top right: {o}");
             app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
             assert!(!matches!(app.mode, Mode::Normal | Mode::Prefix { .. }), "leader + {c} opens {what}: {:?}", std::mem::discriminant(&app.mode));
         }
@@ -4119,6 +4549,606 @@ second line
         assert!(matches!(app.mode, Mode::Normal), "after a click, closing the popup goes back to typing");
     }
 
+    /// The corner pill's words and the ground under its first letter, as drawn on row 0.
+    fn shortcut_pill(app: &mut App) -> Option<(String, ratatui::style::Color)> {
+        let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let row: Vec<&str> = (0..160).map(|x| buf[(x, 0)].symbol()).collect();
+        let at = (0..160 - 8).find(|&x| row[x..x + 8].concat() == "SHORTCUT")?;
+        let end = (at..160).find(|&x| matches!(row[x], "┐" | "╮") || (row[x] == " " && row.get(x + 1) == Some(&" "))).unwrap_or(160);
+        Some((row[at..end].concat().trim_end().to_string(), buf[(at as u16, 0)].bg))
+    }
+
+    #[test]
+    fn the_shortcut_pill_shows_after_the_leader_and_stays_lit_after_an_action() {
+        let mut app = shortcut_mode();
+        let sky = app.theme.sky();
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc to type".into(), sky)), "after the leader");
+        tap(&mut app, 'z');
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc to type".into(), sky)), "still lit after an action that opens nothing");
+    }
+
+    #[test]
+    fn the_shortcut_pill_reads_paused_under_a_popup_and_lights_again_when_it_closes() {
+        let mut app = shortcut_mode();
+        let sky = app.theme.sky();
+        tap(&mut app, 'y');
+        assert!(matches!(app.mode, Mode::Why { .. }), "y opened why: {:?}", std::mem::discriminant(&app.mode));
+        let (words, ground) = shortcut_pill(&mut app).expect("the pill stays under the popup");
+        assert_eq!(words, "SHORTCUT · paused");
+        assert_ne!(ground, sky, "dimmed, not sky");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc to type".into(), sky)), "lit again once it closes");
+    }
+
+    #[test]
+    fn the_focused_border_is_sky_only_while_shortcut_mode_is_active() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'i');
+        let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        let r = app.pane_frames.first().expect("a pane").1;
+        assert_ne!(term.backend().buffer()[(r.x, r.y + 1)].fg, app.theme.sky(), "paused under the Inbox: no sky border");
+    }
+
+    #[test]
+    fn the_shortcut_pill_reads_paused_while_a_view_it_opened_has_the_keys() {
+        let (mut app, _rx) = super::check_settings_tests::app_with_channel();
+        app.cfg.ui.which_key = false;
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        tap(&mut app, 'f');
+        assert!(matches!(app.view, Some(View::Files(_))), "f opened Files");
+        assert_eq!(shortcut_pill(&mut app).map(|(w, _)| w), Some("SHORTCUT · paused".into()));
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc to type".into(), app.theme.sky())), "Files closed: lit again");
+    }
+
+    #[test]
+    fn the_shortcut_pill_goes_after_esc_the_leader_or_a_click() {
+        let mut app = shortcut_mode();
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(shortcut_pill(&mut app), None, "Esc");
+        let mut app = shortcut_mode();
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        assert_eq!(shortcut_pill(&mut app), None, "the leader again");
+        let mut app = shortcut_mode();
+        tap(&mut app, 'y');
+        shortcut_pill(&mut app);
+        let (_, inner) = *app.panes.first().expect("a pane on screen");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: inner.x + 2, row: inner.y + 2, modifiers: KeyModifiers::NONE });
+        assert_eq!(shortcut_pill(&mut app), None, "a click, even under a popup");
+    }
+
+    #[test]
+    fn every_corner_pill_is_capped_when_rounded_and_its_click_covers_the_caps() {
+        use crate::config::Rounding;
+        use screen::ScreenHit as S;
+        type SetUp = fn(&mut App);
+        let states: [(&str, Option<S>, SetUp); 5] = [
+            ("TYPING", Some(S::Leader), |app| app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))),
+            ("SHORTCUT · Esc to type", Some(S::Leader), |_| {}),
+            ("SHORTCUT · paused", None, |app| tap(app, 'i')),
+            ("↑ Update 9.9.9", Some(S::Update), |app| {
+                app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                app.update_available = Some("9.9.9".into());
+            }),
+            ("↻ Restart", Some(S::Restart), |app| {
+                app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                app.installed_version = Some(Ok("999.0.0".into()));
+            }),
+        ];
+        for (words, kind, set_up) in states {
+            for rounded in [Rounding::Off, Rounding::Full] {
+                let mut app = shortcut_mode();
+                app.cfg.ui.rounded = rounded;
+                set_up(&mut app);
+                let at = format!("{words} {rounded:?}");
+                let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+                term.draw(|f| render::draw(&mut app, f)).unwrap();
+                let buf = term.backend().buffer().clone();
+                let caps = u16::from(rounded == Rounding::Full);
+                let n = words.chars().count() as u16;
+                let start = last_at(&buf, words, 0, 0, 160).unwrap_or_else(|| panic!("the pill: {at}"));
+                let r = Rect { x: start - 1 - caps, y: 0, width: n + 2 + 2 * caps, height: 1 };
+                match kind {
+                    Some(kind) => {
+                        let click = app.hits.iter().rev().find(|(h, k)| h.y == 0 && *k == Hit::Screen(kind)).map(|(h, _)| *h);
+                        assert_eq!(click, Some(r), "the click covers the whole pill: {at}");
+                    }
+                    None => assert!(!app.hits.iter().any(|(h, k)| *k == Hit::Screen(S::Leader) && h.y == 0 && h.intersects(r)), "an indicator, no click: {at}"),
+                }
+                let (l, e, inside) = (&buf[(r.x, 0)], &buf[(r.right() - 1, 0)], buf[(r.x + 1, 0)].bg);
+                if rounded == Rounding::Full {
+                    assert_eq!((l.symbol(), l.fg, e.symbol(), e.fg), (screen::CAP_L, inside, screen::CAP_R, inside), "capped, the click on both caps: {at}");
+                    assert_ne!(l.bg, inside, "the caps sit on the ground behind: {at}");
+                } else {
+                    assert_eq!((l.symbol(), l.bg, e.symbol(), e.bg), (" ", inside, " ", inside), "square: {at}");
+                }
+            }
+        }
+    }
+
+    /// Background work closing whatever popup is open, with no key pressed.
+    fn close_by_itself(app: &mut App) {
+        app.on_bg(Bg::Then(Box::new(|app: &mut App| app.mode = Mode::Normal)));
+    }
+
+    #[test]
+    fn shortcut_mode_returns_when_a_popup_closes_by_itself() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'i');
+        assert!(matches!(app.mode, Mode::GoTo { .. }), "the Inbox has the keys");
+        close_by_itself(&mut app);
+        assert!(matches!(app.mode, Mode::Prefix { acted: true, .. }), "back at once: {:?}", std::mem::discriminant(&app.mode));
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc to type".into(), app.theme.sky())), "and the pill lit");
+    }
+
+    /// Where the top-right card's ✕ and the corner pill sit on row 0.
+    fn close_and_pill(app: &mut App) -> (u16, u16) {
+        let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let row: String = (0..160).map(|x| buf[(x, 0)].symbol()).collect();
+        let pill = last_at(&buf, "SHORTCUT", 0, 0, 160).unwrap_or_else(|| panic!("the pill: {row}"));
+        let close = (0..pill).rev().find(|&x| buf[(x, 0)].symbol() == "✕").unwrap_or_else(|| panic!("a ✕ left of the pill: {row}"));
+        (close, pill)
+    }
+
+    #[test]
+    fn the_lit_pill_leaves_the_pane_s_close_in_view_where_the_paused_one_does() {
+        let mut app = shortcut_mode();
+        let (lit, pill) = close_and_pill(&mut app);
+        let pane = app.pane_frames.iter().map(|(_, r)| *r).find(|r| r.y == 0 && r.right() == 160).expect("the top-right pane");
+        assert!(lit > pane.x && lit + 1 < pill, "lit: ✕ {lit}, pill {pill}");
+        tap(&mut app, 'y');
+        let (paused, _) = close_and_pill(&mut app);
+        assert_eq!(paused, lit, "the ✕ holds still between lit and paused");
+    }
+
+    /// The words of the mode tag in the corner of row 0, its ground, and where the top-right
+    /// pane's ✕ sits left of it.
+    fn mode_tag(app: &mut App, w: u16, h: u16) -> (String, ratatui::style::Color, u16) {
+        let buf = drawn(app, w, h);
+        let row: Vec<&str> = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
+        let end = w as usize - 2;
+        let ground = buf[(end as u16, 0)].bg;
+        let start = (0..=end).rev().take_while(|&x| buf[(x as u16, 0)].bg == ground).last().expect("the tag");
+        let close = (0..start).rev().find(|&x| row[x] == "✕").unwrap_or_else(|| panic!("the ✕ left of the tag: {}", row.concat())) as u16;
+        (row[start..=end].concat().trim().to_string(), buf[(start as u16 + 1, 0)].bg, close)
+    }
+
+    #[test]
+    fn the_mode_tag_says_typing_shortcut_or_paused_and_the_close_holds_still() {
+        let mut app = shortcut_mode();
+        let (sky, btn) = (app.theme.sky(), app.theme.btn);
+        let (lit, lit_bg, lit_close) = mode_tag(&mut app, 160, 45);
+        assert_eq!((lit.as_str(), lit_bg), ("SHORTCUT · Esc to type", sky), "lit");
+        tap(&mut app, 'y');
+        let (paused, paused_bg, paused_close) = mode_tag(&mut app, 160, 45);
+        assert_eq!((paused.as_str(), paused_bg), ("SHORTCUT · paused", btn), "paused");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(app.mode, Mode::Normal, "back to typing");
+        let (typing, typing_bg, typing_close) = mode_tag(&mut app, 160, 45);
+        assert_eq!((typing.as_str(), typing_bg), ("TYPING", btn), "typing, quiet");
+        assert_eq!((paused_close, typing_close), (lit_close, lit_close), "the ✕ holds still in all three");
+    }
+
+    /// A letter shortcut mode has no action for.
+    fn dead_letter(app: &App) -> char {
+        ('a'..='z').chain('A'..='Z').find(|c| !app.keymap.prefixed.contains_key(&KeySpec::from_event(&KeyEvent::new(KeyCode::Char(*c), KeyModifiers::NONE)))).expect("an unbound letter")
+    }
+
+    fn notice(app: &App) -> Option<String> {
+        app.notice.as_ref().map(|(title, ..)| title.clone())
+    }
+
+    #[test]
+    fn a_dead_key_in_shortcut_mode_says_how_to_type() {
+        let mut app = shortcut_mode();
+        let dead = dead_letter(&app);
+        tap(&mut app, dead);
+        assert!(matches!(app.mode, Mode::Prefix { .. }), "the mode stays");
+        assert_eq!(notice(&app).as_deref(), Some("Shortcut mode — Esc to type"));
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains("i Shortcut mode — Esc to type"), "the toast is on screen, marked as information: {o}");
+        let buf = drawn(&mut app, 160, 45);
+        let y = (0..45).find(|&y| (0..160).map(|x| buf[(x, y)].symbol()).collect::<String>().contains("Shortcut mode")).expect("the toast row");
+        let x = (0..160).find(|&x| buf[(x, y)].symbol() == "i" && buf[(x + 2, y)].symbol() == "S").expect("its mark");
+        assert_eq!(buf[(x, y)].fg, app.theme.sky(), "the info mark is sky, not the ✓ of a success");
+        app.notify("worktree created".into(), false);
+        assert!(draw(&mut app, 160, 45).contains("✓ worktree created"), "news keeps its ✓");
+    }
+
+    #[test]
+    fn the_dead_key_hint_shows_once_while_keys_are_mashed() {
+        let mut app = shortcut_mode();
+        let dead = dead_letter(&app);
+        tap(&mut app, dead);
+        let first = app.notice.as_ref().map(|(_, at, _)| *at);
+        tap(&mut app, dead);
+        assert_eq!(app.notice.as_ref().map(|(_, at, _)| *at), first, "a second key doesn't restart it");
+        app.notice = None;
+        tap(&mut app, dead);
+        assert_eq!(notice(&app), None, "nor bring it back soon after");
+        app.dead_key_hint = Some(crate::clock::ago(std::time::Duration::from_secs(7)));
+        tap(&mut app, dead);
+        assert_eq!(notice(&app).as_deref(), Some("Shortcut mode — Esc to type"), "a while later, it says so again");
+    }
+
+    #[test]
+    fn a_dead_key_does_not_cover_another_toast() {
+        let mut app = shortcut_mode();
+        app.notify("worktree created".into(), false);
+        let dead = dead_letter(&app);
+        tap(&mut app, dead);
+        assert_eq!(notice(&app).as_deref(), Some("worktree created"));
+    }
+
+    #[test]
+    fn a_bound_key_in_shortcut_mode_shows_no_hint() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'z');
+        assert_eq!(notice(&app), None, "z toggled the sidebar quietly");
+        let mut app = shortcut_mode();
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        let dead = dead_letter(&app);
+        tap(&mut app, dead);
+        assert_eq!(notice(&app), None, "typing: the key went to the pane");
+    }
+
+    #[test]
+    fn the_mode_reads_at_a_glance_at_the_default_padding() {
+        for layout in ["floating", "compact"] {
+            for (w, h) in [(80, 24), (160, 45)] {
+                for mode in ["typing", "lit", "paused"] {
+                    let (_, mut app) = super::design_tests::render_with(w, h);
+                    (app.cfg.ui.layout, app.cfg.ui.padding, app.cfg.ui.which_key) = (layout.into(), "1".into(), false);
+                    if mode != "typing" {
+                        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+                    }
+                    if mode == "paused" {
+                        tap(&mut app, 'y');
+                    }
+                    let buf = drawn(&mut app, w, h);
+                    let text = buf_text(&buf);
+                    show(&format!("===== {layout} {w}x{h} {mode}\n{text}"));
+                    let words = match (mode, w) {
+                        ("typing", _) => "TYPING",
+                        ("lit", 80) => "SHORTCUT · Esc",
+                        ("lit", _) => "SHORTCUT · Esc to type",
+                        _ => "SHORTCUT · paused",
+                    };
+                    let row1: String = (0..w).map(|x| buf[(x, 1)].symbol()).collect();
+                    assert!(row1.contains(&format!(" {words} ")), "{layout} {w}x{h} {mode}: {row1}");
+                    assert_eq!(buf[(0, h / 2)].symbol() == "█", mode != "typing", "{layout} {w}x{h} {mode}: the frame\n{text}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_click_on_typing_opens_the_key_map_but_not_over_a_popup() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let tag = |app: &App| app.hits.iter().rev().find(|(r, h)| r.y == 0 && *h == Hit::Screen(screen::ScreenHit::Leader)).map(|(r, _)| *r);
+        drawn(&mut app, 160, 45);
+        let r = tag(&app).expect("TYPING takes a click");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: r.x + 1, row: 0, modifiers: KeyModifiers::NONE });
+        assert!(matches!(app.mode, Mode::KeyMap(_)), "it opens the key map: {:?}", std::mem::discriminant(&app.mode));
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        app.act(Action::Settings);
+        drawn(&mut app, 160, 45);
+        assert_eq!(tag(&app), None, "under Settings, typing is only words");
+    }
+
+    #[test]
+    fn a_narrow_window_shortens_the_lit_tag() {
+        let (_, mut app) = super::design_tests::render_with(80, 24);
+        app.cfg.ui.which_key = false;
+        assert_eq!(mode_tag(&mut app, 80, 24).0, "TYPING");
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        assert_eq!(mode_tag(&mut app, 80, 24).0, "SHORTCUT · Esc");
+    }
+
+    #[test]
+    fn update_sits_left_of_the_mode_tag_in_every_mode() {
+        let mut app = shortcut_mode();
+        app.update_available = Some("9.9.9".into());
+        for mode in ["lit", "paused", "typing"] {
+            match mode {
+                "paused" => tap(&mut app, 'y'),
+                "typing" => {
+                    app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                    app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                }
+                _ => {}
+            }
+            let buf = drawn(&mut app, 160, 45);
+            let row: String = (0..160).map(|x| buf[(x, 0)].symbol()).collect();
+            let (update, tag) = (row.find("↑ Update 9.9.9"), row.find(if mode == "typing" { "TYPING" } else { "SHORTCUT" }));
+            assert!(update.is_some() && tag.is_some() && update < tag, "{mode}: Update, then the mode tag in the corner: {row}");
+            let (close, update_x) = (row.rfind('✕'), update.unwrap_or(0));
+            assert!(close < Some(update_x), "{mode}: the pane's ✕ stays left of both: {row}");
+        }
+    }
+
+    #[test]
+    fn a_narrow_title_in_shortcut_mode_keeps_the_current_tab_and_drops_the_plus_first() {
+        use screen::ScreenHit as S;
+        for layout in ["floating", "tiled", "grid"] {
+            for h in [24, 30] {
+                for (mode, update) in [("lit", false), ("paused", false), ("typing", true), ("lit", true), ("paused", true)] {
+                    let (_, mut app) = super::design_tests::render_with(80, h);
+                    (app.cfg.ui.layout, app.cfg.ui.rounded, app.cfg.ui.which_key) = (layout.into(), crate::config::Rounding::Full, false);
+                    app.update_available = update.then(|| "0.44.0".into());
+                    if mode != "typing" {
+                        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+                    }
+                    if mode == "paused" {
+                        tap(&mut app, ',');
+                    }
+                    let at = format!("{layout} 80x{h} {mode} update {update}");
+                    let o = draw(&mut app, 80, h);
+                    let row0 = o.lines().next().unwrap_or_default();
+                    let current = app.screen.tab;
+                    let tabs: Vec<usize> = app.hits.iter().filter_map(|(_, k)| match k { Hit::Screen(S::TabPick(i)) => Some(*i), _ => None }).collect();
+                    assert!(tabs.contains(&current), "the current tab is drawn: {at}\n{row0}");
+                    let plus = app.hits.iter().any(|(_, k)| *k == Hit::Screen(S::NewTab));
+                    assert!(!plus || tabs.len() == app.session_tabs().len(), "no + without every tab before it: {at}\n{row0}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_paused_pill_leaves_the_sheet_s_close_in_view_and_clickable() {
+        let (mut app, _rx) = super::check_settings_tests::app_with_channel();
+        app.cfg.ui.which_key = false;
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        tap(&mut app, 'f');
+        assert!(matches!(app.view, Some(View::Files(_))), "f opened Files");
+        let (close, pill) = close_and_pill(&mut app);
+        let sheet = app.screen.sheet_rect;
+        assert!(sheet.y == 0 && sheet.right() == 160 && close > sheet.x && close + 1 < pill, "the sheet's ✕ {close} left of the pill {pill}");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: close, row: 0, modifiers: KeyModifiers::NONE });
+        assert!(app.view.is_none(), "a click on it closes Files");
+    }
+
+    #[test]
+    fn shortcut_mode_returns_when_a_server_message_closes_a_popup() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'i');
+        app.mode = Mode::Normal;
+        let snap = app.snap.clone();
+        app.on_server(ServerMsg::State(snap));
+        assert!(matches!(app.mode, Mode::Prefix { acted: true, .. }), "back with the message: {:?}", std::mem::discriminant(&app.mode));
+        assert_eq!(shortcut_pill(&mut app), Some(("SHORTCUT · Esc to type".into(), app.theme.sky())), "and the pill lit");
+    }
+
+    #[test]
+    fn a_popup_closing_by_itself_does_not_bring_back_a_mode_you_left() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'i');
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: 0, row: 0, modifiers: KeyModifiers::NONE });
+        close_by_itself(&mut app);
+        assert_eq!(app.mode, Mode::Normal, "a click left it");
+        let mut app = shortcut_mode();
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        close_by_itself(&mut app);
+        assert_eq!(app.mode, Mode::Normal, "Esc left it");
+        let mut app = shortcut_mode();
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        close_by_itself(&mut app);
+        assert_eq!(app.mode, Mode::Normal, "the leader left it");
+    }
+
+    /// The cells on the window's outermost ring.
+    fn ring(buf: &ratatui::buffer::Buffer) -> Vec<&ratatui::buffer::Cell> {
+        let a = buf.area;
+        let on_ring = |x: u16, y: u16| x == 0 || y == 0 || x == a.right() - 1 || y == a.bottom() - 1;
+        (0..a.height).flat_map(|y| (0..a.width).map(move |x| (x, y))).filter(|&(x, y)| on_ring(x, y)).map(|(x, y)| &buf[(x, y)]).collect()
+    }
+
+    /// The window in one look, padding and sidebar, in shortcut mode, at 160×45.
+    fn framed_app(layout: &str, padding: &str, side: &str) -> App {
+        let mut app = shortcut_mode();
+        (app.cfg.ui.layout, app.cfg.ui.padding, app.cfg.ui.motion) = (layout.into(), padding.into(), false);
+        match side {
+            "right" => app.cfg.ui.sidebar_position = "right".into(),
+            "collapsed" => app.sidebar = false,
+            "hidden" => (app.sidebar, app.side_hidden) = (false, true),
+            _ => {}
+        }
+        app
+    }
+
+    const LOOKS: [&str; 4] = ["floating", "tiled", "compact", "grid"];
+    const SIDES: [&str; 4] = ["left", "right", "collapsed", "hidden"];
+
+    #[test]
+    fn shortcut_mode_fills_the_padding_ring_with_a_sky_frame_in_every_look() {
+        for layout in LOOKS {
+            for padding in ["1", "2"] {
+                for side in SIDES {
+                    let mut app = framed_app(layout, padding, side);
+                    let buf = drawn(&mut app, 160, 45);
+                    let at = format!("{layout} padding {padding} {side}");
+                    let ring = ring(&buf);
+                    assert!(ring.iter().all(|c| ["▀", "▄", "█"].contains(&c.symbol()) && c.fg == app.theme.sky()), "{at}: a solid sky ring");
+                    assert_eq!((buf[(1, 0)].symbol(), buf[(0, 1)].symbol(), buf[(1, 44)].symbol()), ("▀", "█", "▄"), "{at}: half a row at top and bottom, a column at the sides");
+                    if padding == "2" {
+                        assert!((2..158).all(|x| buf[(x, 1)].symbol() == " "), "{at}: only the outermost ring");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn shortcut_mode_without_padding_lights_the_edges_that_touch_the_window() {
+        for layout in LOOKS {
+            for side in SIDES {
+                let mut app = framed_app(layout, "0", side);
+                let buf = drawn(&mut app, 160, 45);
+                let at = format!("{layout} {side}");
+                let ring = ring(&buf);
+                let line = |c: &&&ratatui::buffer::Cell| c.symbol().chars().next().is_some_and(|ch| ('\u{2500}'..='\u{257f}').contains(&ch));
+                assert!(ring.iter().filter(line).all(|c| c.fg == app.theme.sky()), "{at}: every edge on the window's ring is sky");
+                // Compact has no boxes, so nothing on its edge to light.
+                if layout != "compact" {
+                    let sides = [0u16, 159].iter().flat_map(|&x| (1..44).map(move |y| (x, y))).filter(|&(x, y)| buf[(x, y)].fg == app.theme.sky()).count();
+                    assert!(sides >= 2 * 43 * 3 / 4, "{at}: the sides read as a frame: {sides} of {}\n{}", 2 * 43, buf_text(&buf));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn without_padding_the_frame_changes_no_words_on_the_edge() {
+        // The tag's slot on row 0, left of where the corner pills end: its widest, capped.
+        const TAG_SLOT: u16 = 26;
+        let edge = |app: &App, buf: &ratatui::buffer::Buffer| -> Vec<String> {
+            let (w, h) = (buf.area.width, buf.area.height);
+            let end = screen::corner_right(app, buf.area) - 1;
+            let row = |y: u16, skip: std::ops::Range<u16>| (0..w).filter(|x| !skip.contains(x)).map(|x| buf[(x, y)].symbol()).collect::<String>();
+            let col = |x: u16| (0..h).map(|y| buf[(x, y)].symbol()).collect::<String>();
+            vec![row(0, end - TAG_SLOT..end), row(h - 1, 0..0), col(0), col(w - 1)]
+        };
+        for layout in LOOKS {
+            for side in SIDES {
+                for rounded in [crate::config::Rounding::Off, crate::config::Rounding::Full] {
+                    let mut app = framed_app(layout, "0", side);
+                    app.cfg.ui.rounded = rounded;
+                    let buf = drawn(&mut app, 160, 45);
+                    let lit = edge(&app, &buf);
+                    show(&format!("===== padding 0 {layout} {side} {rounded:?} lit\n{}", buf_text(&buf)));
+                    app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                    let buf = drawn(&mut app, 160, 45);
+                    let typing = edge(&app, &buf);
+                    assert_eq!(lit, typing, "{layout} {side} {rounded:?}: the frame only recolours");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_right_hand_sidebar_keeps_its_title_and_counts_beside_the_corner_pills() {
+        for (w, h) in [(80, 24), (140, 40), (160, 45)] {
+            for release in ["none", "update", "restart"] {
+                for mode in ["typing", "lit", "paused"] {
+                    let (_, mut app) = super::design_tests::render_with(w, h);
+                    (app.cfg.ui.sidebar_position, app.cfg.ui.which_key, app.cfg.ui.motion) = ("right".into(), false, false);
+                    match release {
+                        "update" => app.update_available = Some("0.44.0".into()),
+                        "restart" => app.installed_version = Some(Ok("999.0.0".into())),
+                        _ => {}
+                    }
+                    if mode != "typing" {
+                        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+                    }
+                    if mode == "paused" {
+                        tap(&mut app, 'y');
+                    }
+                    let buf = drawn(&mut app, w, h);
+                    let at = format!("{w}x{h} {release} {mode}");
+                    show(&format!("===== sidebar right {at}\n{}", buf_text(&buf)));
+                    let row: String = (0..w).map(|x| buf[(x, 0)].symbol()).collect();
+                    let side = app.screen.side_rect;
+                    let title: String = (side.x..side.right()).map(|x| buf[(x, 0)].symbol()).collect();
+                    assert!(title.contains("SESSIONS") && title.contains("●1"), "{at}: the sidebar's title and count: {row}");
+                    let tags: &[&str] = match mode { "typing" => &["TYPING"], "lit" => &["SHORTCUT"], _ => &["SHORTCUT", "PAUSED"] };
+                    let tag_at = tags.iter().find_map(|tag| last_at(&buf, tag, 0, 0, side.x)).unwrap_or_else(|| panic!("{at}: the tag left of the sidebar: {row}"));
+                    let pane = app.pane_frames.iter().map(|(_, r)| *r).find(|r| r.y == 0 && r.right() <= side.x && r.right() > tag_at).expect("the pane under the tag");
+                    let words: String = (pane.x..tag_at).map(|x| buf[(x, 0)].symbol()).collect();
+                    assert!(words.contains('●'), "{at}: the pane's status stays left of the pills: {row}");
+                    if release != "none" {
+                        let pill = if release == "update" { "↑" } else { "↻" };
+                        let x = (pane.x..tag_at).find(|&x| buf[(x, 0)].symbol() == pill).unwrap_or_else(|| panic!("{at}: {pill} beside the tag: {row}"));
+                        let status = (pane.x..tag_at).rev().find(|&x| buf[(x, 0)].symbol() == "●").unwrap_or(0);
+                        assert!(status < x, "{at}: the pill sits after the pane's status: {row}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_paused_frame_leaves_a_popup_on_the_ring_alone() {
+        let mut app = framed_app("floating", "1", "left");
+        tap(&mut app, 'y');
+        let under = drawn(&mut app, 160, 45);
+        let mut buf = under.clone();
+        buf[(0, 20)].set_symbol("│");
+        buf[(5, 0)].set_symbol("╭");
+        let t = app.theme.clone();
+        screen::draw_mode_frame(&app, &mut buf, under.area, &t, Some(&under));
+        assert_eq!((buf[(0, 20)].symbol(), buf[(5, 0)].symbol()), ("│", "╭"), "what a popup drew stays");
+        assert_eq!(buf[(6, 0)].symbol(), "▀", "the rest of the frame is redrawn");
+    }
+
+    #[test]
+    fn a_paused_shortcut_mode_keeps_the_frame_faded() {
+        for padding in ["0", "1"] {
+            let mut app = framed_app("floating", padding, "left");
+            tap(&mut app, 'y');
+            let buf = drawn(&mut app, 160, 45);
+            let faded = crate::theme::mix(app.theme.sky(), app.theme.bg, 0.6);
+            assert_eq!(buf[(0, 20)].fg, faded, "padding {padding}: the frame stays, faded like the paused pill");
+        }
+    }
+
+    #[test]
+    fn typing_draws_no_frame() {
+        for layout in LOOKS {
+            for padding in ["0", "1", "2"] {
+                let mut app = framed_app(layout, padding, "left");
+                app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                let buf = drawn(&mut app, 160, 45);
+                let at = format!("{layout} padding {padding}");
+                assert!(ring(&buf).iter().all(|c| c.fg != app.theme.sky()), "{at}: nothing sky on the edge");
+                if padding != "0" {
+                    assert!(ring(&buf).iter().all(|c| c.symbol() == " "), "{at}: the padding stays plain");
+                }
+            }
+        }
+    }
+
+    fn buf_text(buf: &ratatui::buffer::Buffer) -> String {
+        (0..buf.area.height).map(|y| (0..buf.area.width).map(|x| buf[(x, y)].symbol()).collect::<String>() + "\n").collect()
+    }
+
+    #[test]
+    fn a_click_on_the_paused_pill_keeps_the_popup_and_what_was_typed() {
+        let mut app = shortcut_mode();
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(app.mode, Mode::Compose(_)), "Enter opened the message box: {:?}", std::mem::discriminant(&app.mode));
+        for c in "hold on".chars() {
+            tap(&mut app, c);
+        }
+        assert_eq!(shortcut_pill(&mut app).map(|(w, _)| w), Some("SHORTCUT · paused".into()));
+        let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        let x = last_at(term.backend().buffer(), "SHORTCUT", 0, 0, 160).expect("the pill");
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x + 2, row: 0, modifiers: KeyModifiers::NONE });
+        assert!(matches!(&app.mode, Mode::Compose(c) if c.text == "hold on"), "the draft survives: {:?}", std::mem::discriminant(&app.mode));
+    }
+
+    #[test]
+    fn the_paused_pill_leaves_the_pane_s_status_and_close_readable() {
+        let mut app = shortcut_mode();
+        tap(&mut app, 'y');
+        let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let pill = last_at(&buf, "SHORTCUT", 0, 0, 160).expect("the pill");
+        let row: String = (0..160).map(|x| buf[(x, 0)].symbol()).collect();
+        let close = (0..pill).rev().find(|&x| buf[(x, 0)].symbol() == "✕").unwrap_or_else(|| panic!("the ✕ on row 0: {row}"));
+        let pane = app.pane_frames.iter().map(|(_, r)| *r).find(|r| r.y == 0 && r.right() == 160).expect("the top-right pane");
+        assert!(close > pane.x && close < pill - 1, "the ✕ moved left of the pill: ✕ {close}, pill {pill}");
+    }
+
     #[test]
     fn the_key_map_opens_on_a_pause_only_before_the_first_shortcut() {
         let mut app = shortcut_mode();
@@ -4183,7 +5213,7 @@ second line
             app.act(a);
             let o = draw(&mut app, 120, 34);
             show(&o);
-            assert!(o.contains(title) && o.contains("Esc close"), "{title}: a {APP_COMMAND} modal (title in its accent row, Esc to close)");
+            assert!(o.contains(title) && o.contains("Esc close"), "{title}: a {APP_COMMAND} modal (title in its accent chip, Esc to close)");
         }
     }
 
@@ -5199,7 +6229,10 @@ mod check_sheet_tests {
                 let (head, tail) = header.split_once('…').unwrap_or_else(|| panic!("{at}: the title is cut, so it ends in …: {header:?}"));
                 assert!(head.contains("· claude › echo start;"), "{at}: the checkpoint's start follows the session: {header:?}");
                 assert!(!tail.contains('…'), "{at}: one ellipsis: {header:?}");
-                assert!(tail.trim_matches(|c: char| c == ' ' || "─╮┐".contains(c)).trim() == "✕", "{at}: only the close follows the ellipsis, got {tail:?} in {header:?}");
+                // The mode tag sits in the corner past the close (ADR 0023).
+                let edge = |c: char| c == ' ' || "─╮┐".contains(c);
+                let tail = tail.trim_matches(edge).strip_suffix("TYPING").unwrap_or(tail);
+                assert!(tail.trim_matches(edge) == "✕", "{at}: only the close and the mode tag follow the ellipsis, got {tail:?} in {header:?}");
             }
         }
     }
@@ -7622,7 +8655,7 @@ mod files_panel_tests {
         key(&mut app, KeyCode::Right);
         let o = draw(&mut app, 80, 24);
         let header = o.lines().find(|l| l.contains('‹')).expect("the file's header");
-        assert!(header.contains("i edit") && header.contains("1–17 of 60 "), "{header}");
+        assert!(header.contains("i edit") && header.contains("1–16 of 60 "), "the tab strip takes a row: {header}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -8040,5 +9073,312 @@ mod branch_view_tests {
         assert!(!o.contains("Switch branch…") && !o.contains("COMMITS") && !o.contains("SNAPSHOTS"), "instead of the lists");
         key(&mut app, KeyCode::Enter);
         assert_eq!(app.mode, Mode::Normal, "Enter has nothing to open");
+    }
+}
+
+mod leader_key_tests {
+    use super::*;
+
+    fn leader(app: &mut App, code: KeyCode, mods: KeyModifiers) {
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        app.on_key(KeyEvent::new(code, mods));
+    }
+
+    /// A fresh git repo the focused pane runs in.
+    fn in_repo(app: &mut App, tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("{APP_COMMAND}-leader-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::proc::git(&dir, &["init", "-q"]).unwrap();
+        let pane = app.snap.terms.get_mut(&1).expect("the focused pane");
+        pane.cwd = dir.clone();
+        pane.top = Some(dir.clone());
+        dir
+    }
+
+    #[test]
+    fn leader_c_opens_changes() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let dir = in_repo(&mut app, "c");
+        leader(&mut app, KeyCode::Char('c'), KeyModifiers::NONE);
+        assert!(matches!(app.view, Some(View::Changes(_))), "c opens Changes: {:?}", app.mode);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn leader_question_mark_opens_all_keys_however_shift_is_reported() {
+        for mods in [KeyModifiers::SHIFT, KeyModifiers::NONE] {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            leader(&mut app, KeyCode::Char('?'), mods);
+            assert!(matches!(&app.mode, Mode::KeyMap(km) if km.view == screen::KeyView::All), "{mods:?}: {:?}", app.mode);
+        }
+    }
+
+    #[test]
+    fn f1_and_d_do_nothing_after_the_leader_by_default() {
+        for code in [KeyCode::F(1), KeyCode::Char('d')] {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            leader(&mut app, code, KeyModifiers::NONE);
+            assert!(app.view.is_none() && matches!(app.mode, Mode::Prefix { .. }), "{code:?} is unbound: {:?}", app.mode);
+        }
+    }
+
+    #[test]
+    fn copy_mode_has_no_key_and_search_commands_finds_it() {
+        let (_, app) = super::design_tests::render_with(160, 45);
+        assert!(!app.keymap.prefixed.values().any(|a| *a == Action::CopyMode), "no default key");
+        let km = screen::KeyMap { query: "select text".into(), ..screen::KeyMap::new(screen::KeyView::Search, None) };
+        assert!(screen::keymap_actions(&app, &km).contains(&Some(Action::CopyMode)), "Search commands lists it");
+    }
+
+    #[test]
+    fn an_old_config_binding_keys_by_action_name_still_loads() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        for (key, action) in [("d", "changes"), ("f1", "help"), ("y", "copy-mode")] {
+            app.cfg.keys.prefix.insert(key.into(), action.into());
+        }
+        app.keymap = app.cfg.keymap();
+        let bound = |k: &str| app.keymap.prefixed.get(&k.parse().unwrap()).cloned();
+        assert_eq!(bound("d"), Some(Action::Changes));
+        assert_eq!(bound("f1"), Some(Action::Help));
+        assert_eq!(bound("y"), Some(Action::CopyMode));
+    }
+}
+
+mod drawer_tab_tests {
+    use super::*;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::buffer::Buffer;
+
+    const W: u16 = 200;
+    const H: u16 = 50;
+
+    /// The main screen with the focused pane in a fresh git repo of its own.
+    fn in_repo(tag: &str) -> (App, PathBuf) {
+        let (_, mut app) = super::design_tests::render_with(W, H);
+        let dir = std::env::temp_dir().join(format!("{APP_COMMAND}-drawer-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::proc::git(&dir, &["init", "-q"]).unwrap();
+        std::fs::write(dir.join("notes.txt"), "remember the milk\n").unwrap();
+        let pane = app.snap.terms.get_mut(&1).expect("the focused pane");
+        pane.cwd = dir.clone();
+        pane.top = Some(dir.clone());
+        pane.root = Some(dir.clone());
+        (app, dir)
+    }
+
+    fn draw(app: &mut App) -> Buffer {
+        app.screen_fresh();
+        let mut term = Terminal::new(TestBackend::new(W, H)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        term.backend().buffer().clone()
+    }
+
+    fn text(buf: &Buffer) -> String {
+        (0..H).map(|y| (0..W).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>() + "\n").collect()
+    }
+
+    /// Where `word` first starts on screen.
+    fn find(buf: &Buffer, word: &str) -> Option<(u16, u16)> {
+        let lines = text(buf);
+        lines.lines().enumerate().find_map(|(y, l)| l.find(word).map(|i| (l[..i].chars().count() as u16, y as u16)))
+    }
+
+    fn open(app: &App) -> Option<screen::SheetKind> {
+        screen::open_sheet(app)
+    }
+
+    fn key(app: &mut App, code: KeyCode, mods: KeyModifiers) {
+        app.on_key(KeyEvent::new(code, mods));
+    }
+
+    fn click_tab(app: &mut App, i: usize) {
+        let r = app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::DrawerTab(i))).then_some(*r)).expect("the tab is clickable");
+        for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+            app.on_mouse(MouseEvent { kind, column: r.x + 1, row: r.y, modifiers: KeyModifiers::NONE });
+        }
+    }
+
+    #[test]
+    fn the_strip_names_each_view_with_its_key_and_lights_the_open_one() {
+        let (mut app, dir) = in_repo("strip");
+        app.act(Action::Files);
+        let buf = draw(&mut app);
+        let o = text(&buf);
+        super::check_settings_tests::show(&o);
+        let row = o.lines().find(|l| l.contains("Files f")).unwrap_or_else(|| panic!("a tab strip:\n{o}"));
+        let (files, changes, branch) = (row.find("Files f").unwrap(), row.find("Changes c").unwrap(), row.find("Branch b").unwrap());
+        assert!(files < changes && changes < branch && row.contains('·'), "in order, a dot apart: {row}");
+        let (fx, fy) = find(&buf, "Files f").unwrap();
+        let (cx, cy) = find(&buf, "Changes c").unwrap();
+        assert_eq!(buf[(fx, fy)].bg, app.theme.accent, "the open tab is lit");
+        assert_ne!(buf[(cx, cy)].bg, app.theme.accent, "the others are not");
+        app.cfg.keys.prefix.insert("c".into(), "none".into());
+        app.cfg.keys.prefix.insert("d".into(), "changes".into());
+        app.keymap = app.cfg.keymap();
+        assert!(find(&draw(&mut app), "Changes d").is_some(), "the keys come from the keymap");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_inbox_has_no_strip() {
+        let (_, mut app) = super::design_tests::render_with(W, H);
+        app.act(Action::Jump);
+        let buf = draw(&mut app);
+        assert_eq!(open(&app), Some(screen::SheetKind::Inbox));
+        assert!(find(&buf, "Branch b").is_none(), "{}", text(&buf));
+    }
+
+    #[test]
+    fn tab_and_shift_tab_cycle_files_changes_and_branch() {
+        let (mut app, dir) = in_repo("cycle");
+        app.act(Action::Files);
+        use screen::SheetKind::{Branch, Changes, Files};
+        for want in [Changes, Branch, Files] {
+            key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+            assert_eq!(open(&app), Some(want), "Tab");
+            assert!(app.view_has_keys(), "the new view has the keys");
+        }
+        for want in [Branch, Changes, Files] {
+            key(&mut app, KeyCode::BackTab, KeyModifiers::SHIFT);
+            assert_eq!(open(&app), Some(want), "Shift+Tab");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tab_is_text_while_files_filters_or_edits() {
+        let (mut app, dir) = in_repo("typing");
+        app.act(Action::Files);
+        let Some(View::Files(v)) = &mut app.view else { panic!("Files is open") };
+        v.filtering = true;
+        key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+        assert_eq!(open(&app), Some(screen::SheetKind::Files), "the filter keeps it");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn r_switches_files_to_recent_files_and_back() {
+        let (mut app, dir) = in_repo("recent");
+        app.act(Action::Files);
+        key(&mut app, KeyCode::Char('r'), KeyModifiers::NONE);
+        assert!(matches!(&app.view, Some(View::Files(v)) if v.recent), "r shows recent files");
+        assert!(text(&draw(&mut app)).contains("r project"), "the hint says r");
+        key(&mut app, KeyCode::Char('r'), KeyModifiers::NONE);
+        assert!(matches!(&app.view, Some(View::Files(v)) if !v.recent), "r again shows the project");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_click_on_a_tab_switches_to_it() {
+        let (mut app, dir) = in_repo("click");
+        app.act(Action::Files);
+        draw(&mut app);
+        click_tab(&mut app, 2);
+        assert_eq!(open(&app), Some(screen::SheetKind::Branch));
+        draw(&mut app);
+        click_tab(&mut app, 1);
+        assert_eq!(open(&app), Some(screen::SheetKind::Changes));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The next background result, once its thread is done.
+    fn next_bg(rx: &mut mpsc::UnboundedReceiver<Bg>) -> Bg {
+        let until = Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            if let Ok(b) = rx.try_recv() {
+                return b;
+            }
+            assert!(Instant::now() < until, "no background work was queued");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    /// Changes open on a repo with one commit and one new file, its review read.
+    fn changes_with_a_new_file(tag: &str) -> (App, PathBuf, mpsc::UnboundedReceiver<Bg>) {
+        let (mut app, dir) = in_repo(tag);
+        let git = |args: &[&str]| crate::proc::git(&dir, args).unwrap();
+        git(&["config", "user.email", "t@t"]);
+        git(&["config", "user.name", "t"]);
+        git(&["add", "."]);
+        git(&["commit", "-qm", "start"]);
+        std::fs::write(dir.join("new.txt"), "fresh\n").unwrap();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.bg = tx;
+        app.act(Action::Changes);
+        let b = next_bg(&mut rx);
+        app.on_bg(b);
+        assert!(matches!(&app.view, Some(View::Changes(v)) if v.review.is_some()), "Changes read the repo");
+        (app, dir, rx)
+    }
+
+    fn commits(dir: &std::path::Path) -> usize {
+        crate::proc::git(dir, &["rev-list", "--count", "HEAD"]).unwrap().trim().parse().unwrap()
+    }
+
+    #[test]
+    fn c_in_changes_asks_before_committing_and_y_commits() {
+        let (mut app, dir, mut rx) = changes_with_a_new_file("commit");
+        key(&mut app, KeyCode::Char('c'), KeyModifiers::NONE);
+        assert!(matches!(&app.view, Some(View::Changes(v)) if v.confirm.as_ref().is_some_and(|(q, _)| q.starts_with("Commit 1 file on "))), "c asks first");
+        assert!(text(&draw(&mut app)).contains("Commit 1 file on "), "the question is on screen");
+        assert!(rx.try_recv().is_err() && commits(&dir) == 1, "nothing is committed yet");
+        key(&mut app, KeyCode::Char('y'), KeyModifiers::NONE);
+        let b = next_bg(&mut rx);
+        app.on_bg(b);
+        assert_eq!(commits(&dir), 2, "y commits");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tab_answers_no_to_a_changes_question_instead_of_switching() {
+        let (mut app, dir, mut rx) = changes_with_a_new_file("ask-tab");
+        key(&mut app, KeyCode::Char('c'), KeyModifiers::NONE);
+        key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+        assert!(matches!(&app.view, Some(View::Changes(v)) if v.confirm.is_none()), "still Changes, the question answered no");
+        assert!(rx.try_recv().is_err() && commits(&dir) == 1, "nothing is committed");
+        key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+        assert_eq!(open(&app), Some(screen::SheetKind::Branch), "with no question, Tab switches");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn at_its_narrowest_the_strip_keeps_every_tab_whole_and_clickable() {
+        let (mut app, dir) = in_repo("narrow");
+        app.screen.saved.sheet_w.insert("files".into(), screen::SHEET_MIN);
+        app.act(Action::Files);
+        let buf = draw(&mut app);
+        let sheet = app.screen.sheet_rect;
+        assert_eq!(sheet.width, screen::SHEET_MIN);
+        let o = text(&buf);
+        super::check_settings_tests::show(&o);
+        for i in 0..3 {
+            let r = app.hits.iter().rev().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::DrawerTab(i))).then_some(*r)).expect("each tab has a target");
+            assert!(r.width >= 4 && r.right() < sheet.right(), "tab {i} is whole inside the panel: {r:?} in {sheet:?}");
+        }
+        let row = o.lines().find(|l| l.contains("Chg")).unwrap_or_else(|| panic!("short names:\n{o}"));
+        assert!(row.contains("Files") && row.contains("Br"), "short names: {row}");
+        click_tab(&mut app, 2);
+        assert_eq!(open(&app), Some(screen::SheetKind::Branch), "the last tab still switches");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn each_view_keeps_its_own_width_across_switches() {
+        let (mut app, dir) = in_repo("width");
+        app.screen.saved.sheet_w.insert("files".into(), 70);
+        app.screen.saved.sheet_w.insert("changes".into(), 90);
+        app.act(Action::Files);
+        draw(&mut app);
+        assert_eq!(app.screen.sheet_rect.width, 70);
+        key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
+        draw(&mut app);
+        assert_eq!(app.screen.sheet_rect.width, 90, "Changes' own width");
+        key(&mut app, KeyCode::BackTab, KeyModifiers::SHIFT);
+        draw(&mut app);
+        assert_eq!(app.screen.sheet_rect.width, 70, "back to Files' width");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

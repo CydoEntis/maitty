@@ -6,21 +6,24 @@ use super::*;
 use crate::client::v7_fixture::{self, LAYOUTS, Layout, SIZES, Stage};
 use crate::layout::Node;
 use ratatui::Terminal;
+use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use ratatui::backend::TestBackend;
 
 /// Preset 01 "No check set" from the reference: row 0 from the pane column on, and the last
-/// row (Flat: from the pane column on, the sidebar's foot being its own).
+/// row (Flat: from the pane column on, the sidebar's foot being its own). At 80×24 the second
+/// tab gives way to the room the title leaves for the mode tag (ADR 0023); the tag itself is
+/// taken out by `v7_fixture::frame`.
 const ROWS_01: [(Layout, u16, u16, &str, &str, &str); 10] = [
     (Layout::Floating, 160, 45, "unicode", "┌─ 1  fix-footer  2  add-payments ────────────────────────────────────────────────────────────────────────────── ✓ done  ✕  ┐", "└────────────────────────────────┘ └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"),
     (Layout::Floating, 100, 30, "unicode", "┌─ 1  fix-footer  2  add-payments ────────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘ └───────────────────────────────────────────────────────────────────────┘"),
-    (Layout::Floating, 80, 24, "unicode", "┌─ 1  fix-footer  2  add-payments ────── ✓ done  ✕  ┐", "└────────────────────────┘ └───────────────────────────────────────────────────┘"),
+    (Layout::Floating, 80, 24, "unicode", "┌─ 1  fix-footer ─────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘ └───────────────────────────────────────────────────┘"),
     (Layout::Tiled, 160, 45, "unicode", "┌─ 1  fix-footer  2  add-payments ─────────────────────────────────────────────────────────────────────────────── ✓ done  ✕  ┐", "└────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"),
     (Layout::Tiled, 100, 30, "unicode", "┌─ 1  fix-footer  2  add-payments ─────────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘└────────────────────────────────────────────────────────────────────────┘"),
-    (Layout::Tiled, 80, 24, "unicode", "┌─ 1  fix-footer  2  add-payments ─────── ✓ done  ✕  ┐", "└────────────────────────┘└────────────────────────────────────────────────────┘"),
+    (Layout::Tiled, 80, 24, "unicode", "┌─ 1  fix-footer ──────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘└────────────────────────────────────────────────────┘"),
     (Layout::Flat, 160, 45, "unicode", "│ 1  fix-footer  2  add-payments                                                                                    ✓ done  ✕", "│"),
     (Layout::Flat, 100, 30, "unicode", "│ 1  fix-footer  2  add-payments                                ✓ done  ✕", "│"),
-    (Layout::Flat, 80, 24, "unicode", "│ 1  fix-footer  2  add-payments            ✓ done  ✕", "│"),
-    (Layout::Flat, 80, 24, "ascii", "│ 1  fix-footer  2  add-payments            + done  x", "│"),
+    (Layout::Flat, 80, 24, "unicode", "│ 1  fix-footer                             ✓ done  ✕", "│"),
+    (Layout::Flat, 80, 24, "ascii", "│ 1  fix-footer                             + done  x", "│"),
 ];
 
 /// The modal sizes of presets 12 (Override?), A2 (Approve · read first) and 15 (Settings ·
@@ -145,7 +148,7 @@ fn beside_and_under(r: Rect, w: u16, h: u16) -> impl Iterator<Item = (u16, u16)>
 }
 
 #[test]
-fn a_modal_is_centred_with_an_accent_title_a_bottom_border_and_no_shadow() {
+fn a_modal_is_centred_with_a_border_all_round_and_no_shadow() {
     for layout in LAYOUTS {
         for (w, h) in SIZES {
             for (preset, mw, mh) in modal_sizes(w, h) {
@@ -158,13 +161,50 @@ fn a_modal_is_centred_with_an_accent_title_a_bottom_border_and_no_shadow() {
                 let at = format!("{preset} {layout:?} {w}x{h}");
                 assert_eq!(r, Rect::new((w - mw) / 2, (h - mh) / 2, mw, mh), "{at}");
                 let line = |y: u16, x0: u16, x1: u16| (x0..x1).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>();
-                assert!((r.x..r.right()).all(|x| buf[(x, r.y)].bg == t.accent), "the title row is the accent: {at}");
-                assert_eq!(line(r.y, r.x + 2, r.x + 25), "OVERRIDE A FAILED CHECK", "{at}");
-                assert_eq!(line(r.y, r.right() - 11, r.right() - 2), "Esc close", "{at}");
-                assert_eq!(line(r.bottom() - 1, r.x, r.right()), format!("└{}┘", "─".repeat(mw as usize - 2)), "{at}");
+                let fill = |n: usize| "─".repeat(n);
+                assert_eq!(line(r.y, r.x, r.right()), format!("┌─ OVERRIDE A FAILED CHECK {} Esc close ─┐", fill(mw as usize - 40)), "{at}");
+                assert_eq!(line(r.bottom() - 1, r.x, r.right()), format!("└{}┘", fill(mw as usize - 2)), "{at}");
                 assert!((r.y + 1..r.bottom() - 1).all(|y| buf[(r.x, y)].symbol() == "│" && buf[(r.right() - 1, y)].symbol() == "│"), "{at}");
                 assert!(beside_and_under(r, w, h).all(|p| buf[p] == before[p]), "no shadow: {at}");
             }
+        }
+    }
+}
+
+/// The modal's frame works like a pane's (the user's choice, 2026-10-24): corners by
+/// `ui.rounded`, the title an accent chip on the top border, `Esc close` a chip at its right
+/// that a click closes, chip ends capped with `full`, and no accent bar across the top.
+#[test]
+fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and_rounding() {
+    use crate::config::Rounding;
+    for layout in ["cards", "tiled", "compact", "grid"] {
+        for rounded in [Rounding::Full, Rounding::Corners, Rounding::Off] {
+            let mut app = world(Stage::Failed);
+            (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
+            let t = app.theme.clone();
+            let area = Rect::new(0, 0, 100, 30);
+            let mut buf = Buffer::empty(area);
+            let r = panel(&mut app, &mut buf, area, 70, 15, "OVERRIDE", &[], &t);
+            let at = format!("{layout} {rounded:?}");
+            let sym = |x: u16| buf[(x, r.y)].symbol().to_string();
+            let (tl, tr) = if rounded == Rounding::Off { ("┌", "┐") } else { ("╭", "╮") };
+            assert_eq!((sym(r.x), sym(r.x + 1), sym(r.right() - 2), sym(r.right() - 1)), (tl.into(), "─".into(), "─".into(), tr.into()), "{at}");
+            let caps = rounded == Rounding::Full;
+            let (title, esc) = (r.x + 2, r.right() - 2 - if caps { 13 } else { 11 });
+            let row = |x0: u16, x1: u16| (x0..x1).map(sym).collect::<String>();
+            let (l, e) = if caps { (CAP_L, CAP_R) } else { ("", "") };
+            assert_eq!(row(title, title + 10 + 2 * u16::from(caps)), format!("{l} OVERRIDE {e}"), "{at}");
+            assert_eq!(row(esc, r.right() - 2), format!("{l} Esc close {e}"), "{at}");
+            assert_eq!(buf[(title + 2, r.y)].bg, t.accent, "the title chip is the accent: {at}");
+            let chip = |x: u16| buf[(x, r.y)].symbol() != "─";
+            assert!((r.x + 1..r.right() - 1).filter(|x| !chip(*x)).all(|x| buf[(x, r.y)].bg == t.card), "no accent bar: {at}");
+            if caps {
+                for x in [title, esc] {
+                    assert_eq!(buf[(x, r.y)].bg, t.card, "a cap sits on the border's ground: {at}");
+                }
+            }
+            let close = app.hits.iter().rev().find(|(_, h)| *h == Hit::Screen(ScreenHit::Close)).map(|(r, _)| *r).expect("a close target");
+            assert_eq!(close, Rect::new(esc, r.y, r.right() - 2 - esc, 1), "the whole Esc chip closes: {at}");
         }
     }
 }
@@ -190,6 +230,61 @@ fn a_popover_sits_beside_the_sidebar_with_a_raised_title_and_no_shadow() {
             assert!(beside_and_under(r, w, h).all(|p| buf[p] == before[p]), "no shadow: {at}");
         }
     }
+}
+
+/// A confirm's sub (the folder `changes` found no repo in) is part of its title chip, cut before
+/// the Esc chip, which stays whole and closes it.
+#[test]
+fn a_confirm_s_long_sub_is_cut_inside_its_title_chip() {
+    use crate::config::Rounding;
+    for rounded in [Rounding::Full, Rounding::Corners, Rounding::Off] {
+        let at = format!("{rounded:?}");
+        let mut app = world(Stage::None);
+        app.cfg.ui.rounded = rounded;
+        app.mode = Mode::Confirm(Box::new(super::super::menu::Confirm {
+            title: "changes".into(),
+            sub: "a-folder-with-a-very-long-name-that-runs-far-past-the-header-of-this-confirm".into(),
+            what: "Not a git repository".into(),
+            detail: String::new(),
+            note: String::new(),
+            list: Vec::new(),
+            yes: "Init".into(),
+            key: '\n',
+            danger: false,
+            act: super::super::menu::Act::RestartDaemon,
+        }));
+        let buf = drawn_in(&mut app, "cards");
+        let close = app.hits.iter().rev().find(|(_, h)| *h == Hit::Screen(ScreenHit::Close)).map(|(r, _)| *r).expect("the Esc chip");
+        let (x0, x1) = ((160 - 58) / 2, (160 - 58) / 2 + 58);
+        let row: Vec<String> = (x0..x1).map(|x| buf[(x, close.y)].symbol().to_string()).collect();
+        let [l, e] = if rounded == Rounding::Full { [CAP_L, CAP_R] } else { ["", ""] };
+        let last = if rounded == Rounding::Full { CAP_R } else { " " };
+        let (tl, tr) = if rounded == Rounding::Off { ("┌", "┐") } else { ("╭", "╮") };
+        let text = row.concat();
+        assert!(text.starts_with(&format!("{tl}─{l} changes · a-folder")), "{at}: {text}");
+        assert!(text.ends_with(&format!("─{l} Esc close {e}─{tr}")), "{at}: {text}");
+        let esc = close.x - x0;
+        assert_eq!((row[esc as usize - 3].as_str(), row[esc as usize - 2].as_str()), (last, "─"), "{at}: the title chip ends whole before the Esc chip: {text}");
+        assert!(text.contains('…'), "{at}: the sub is cut: {text}");
+        for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+            app.on_mouse(MouseEvent { kind, column: close.x + 2, row: close.y, modifiers: KeyModifiers::NONE });
+        }
+        assert!(!matches!(app.mode, Mode::Confirm(_)), "{at}: the Esc chip closes it");
+    }
+}
+
+/// A modal too narrow for the Esc chip beside its title drops the chip rather than draw it
+/// over the corner and the title.
+#[test]
+fn a_modal_too_narrow_for_its_esc_chip_keeps_its_corner_and_title() {
+    let mut app = world(Stage::None);
+    app.cfg.ui.rounded = crate::config::Rounding::Full;
+    let t = app.theme.clone();
+    let mut buf = Buffer::empty(Rect::new(0, 0, 20, 6));
+    let r = panel_at(&mut app, &mut buf, Rect::new(2, 1, 12, 4), "NEW", &[], &t);
+    let row: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol().to_string()).collect();
+    assert!(row.starts_with(&format!("╭─{CAP_L} NEW {CAP_R}")) && row.ends_with("─╮") && !row.contains("Esc"), "{row}");
+    assert!(!app.hits.iter().any(|(_, h)| *h == Hit::Screen(ScreenHit::Close)), "nothing to click: Esc closes it");
 }
 
 /// Which hit a case points at.
@@ -325,24 +420,100 @@ fn round_rows_draw_the_selected_session_as_one_softened_block_and_off_leaves_it_
     }
 }
 
+/// The world drawn at 160×45 in `[ui] layout` `layout` (Grid included, which the handoff has not).
+fn drawn_in(app: &mut App, layout: &str) -> Buffer {
+    (app.cfg.ui.layout, app.cfg.ui.panes) = (layout.into(), "floating".into());
+    app.screen_fresh();
+    let mut term = Terminal::new(TestBackend::new(160, 45)).expect("a test terminal");
+    term.draw(|f| crate::client::render::draw(app, f)).expect("a frame");
+    term.backend().buffer().clone()
+}
+
+fn folder_row(app: &App) -> Rect {
+    app.hits.iter().rev().find_map(|(r, h)| matches!(h, super::super::Hit::Screen(ScreenHit::ToggleProj(0))).then_some(*r)).expect("a folder row")
+}
+
+/// A folder row's left cell is its fold button, so with `ui.rounded = full` its highlight and
+/// hover start a cell before it: both ends are caps, the button keeps its column and a click on
+/// it still folds. With `corners` or `off` both ends are square.
 #[test]
-fn round_tabs_end_the_selected_folder_row_in_a_cap_and_off_leaves_it_square() {
-    for layout in LAYOUTS {
-        for on in [false, true] {
-            let mut app = world(Stage::None);
-            app.cfg.ui.rounded = if on { crate::config::Rounding::Full } else { crate::config::Rounding::Off };
-            app.mode = Mode::Side;
-            app.screen.cursor = None;
-            app.screen.cursor_proj = Some(app.screen_model()[0].key.clone());
-            buffer(&mut app, layout, 160, 45);
-            let row = app.hits.iter().find_map(|(r, h)| matches!(h, super::super::Hit::Screen(ScreenHit::ToggleProj(0))).then_some(*r)).expect("a folder row");
-            let buf = buffer(&mut app, layout, 160, 45);
-            let t = app.theme.clone();
-            let last = &buf[(row.right() - 1, row.y)];
-            if on {
-                assert_eq!((last.symbol(), last.fg, last.bg), (CAP_R, t.sel_bg(), buf[(row.right() - 1, row.y + 1)].bg), "cap on the selection's colour over the pane: {layout:?}");
-            } else {
-                assert_ne!(last.symbol(), CAP_R, "{layout:?}");
+fn a_selected_or_hovered_folder_row_ends_in_caps_only_when_rounded_in_full() {
+    use crate::config::Rounding;
+    for layout in ["cards", "tiled", "compact", "grid"] {
+        let mut button_x = None;
+        for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
+            for selected in [true, false] {
+                let at = format!("{layout} {rounded:?} {}", if selected { "selected" } else { "hovered" });
+                let mut app = world(Stage::None);
+                app.cfg.ui.rounded = rounded;
+                if selected {
+                    app.mode = Mode::Side;
+                    app.screen.cursor = None;
+                    app.screen.cursor_proj = Some(app.screen_model()[0].key.clone());
+                }
+                drawn_in(&mut app, layout);
+                let row = folder_row(&app);
+                if !selected {
+                    app.hover = Some(Position::new(row.x + 3, row.y));
+                }
+                let buf = drawn_in(&mut app, layout);
+                let row = folder_row(&app);
+                let (left, right) = (&buf[(row.x, row.y)], &buf[(row.right() - 1, row.y)]);
+                if rounded == Rounding::Full {
+                    assert_eq!((left.symbol(), right.symbol()), (CAP_L, CAP_R), "{at}");
+                    assert_eq!(left.fg, buf[(row.x + 2, row.y)].bg, "the left cap is the row's colour: {at}");
+                    assert_eq!(right.fg, buf[(row.right() - 2, row.y)].bg, "the right cap is the row's colour: {at}");
+                    assert_ne!(left.bg, left.fg, "the cap stands on what is behind the row: {at}");
+                } else {
+                    assert!(left.symbol() != CAP_L && right.symbol() != CAP_R, "square: {at}");
+                }
+                let fold = (row.x..row.right()).find(|&x| buf[(x, row.y)].symbol() == "−").expect("the fold button");
+                assert_eq!(*button_x.get_or_insert(fold), fold, "the fold button keeps its column: {at}");
+                for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+                    app.on_mouse(MouseEvent { kind, column: fold, row: row.y, modifiers: KeyModifiers::NONE });
+                }
+                drawn_in(&mut app, layout);
+                assert!(!app.screen.saved.closed.is_empty(), "a click on the button folds the folder: {at}");
+            }
+        }
+    }
+}
+
+/// Compact rules a zone's left only where it meets another zone, measured in the room left
+/// inside the padding: the panes beside a left sidebar, a sidebar on the right. A left sidebar
+/// has none at any padding, so its selected or hovered folder row ends in caps.
+#[test]
+fn compact_rules_only_a_zone_beside_another_at_every_padding() {
+    use crate::config::Rounding;
+    for padding in ["0", "1", "2"] {
+        for side in ["left", "right"] {
+            for selected in [true, false] {
+                let at = format!("padding {padding}, sidebar {side}, {}", if selected { "selected" } else { "hovered" });
+                let mut app = world(Stage::None);
+                (app.cfg.ui.padding, app.cfg.ui.sidebar_position, app.cfg.ui.rounded) = (padding.into(), side.into(), Rounding::Full);
+                if selected {
+                    app.mode = Mode::Side;
+                    app.screen.cursor = None;
+                    app.screen.cursor_proj = Some(app.screen_model()[0].key.clone());
+                }
+                drawn_in(&mut app, "compact");
+                if !selected {
+                    let row = folder_row(&app);
+                    app.hover = Some(Position::new(row.x + 3, row.y));
+                }
+                let buf = drawn_in(&mut app, "compact");
+                let panes = grid(&app, framed(&app, buf.area)).panes;
+                let rule = |r: Rect| (r.y + 1..r.bottom()).filter(|&y| buf[(r.x, y)].symbol() == "│").count() as u16;
+                let (side_r, row) = (app.screen.side_rect, folder_row(&app));
+                if side == "left" {
+                    assert_eq!(rule(side_r), 0, "no rule left of the sidebar: {at}");
+                    assert_eq!(rule(panes), panes.height - 1, "the panes are ruled off the sidebar: {at}");
+                    let (left, right) = (&buf[(row.x, row.y)], &buf[(row.right() - 1, row.y)]);
+                    assert_eq!((left.symbol(), right.symbol()), (CAP_L, CAP_R), "{at}");
+                } else {
+                    assert_eq!(rule(side_r), side_r.height - 1, "the sidebar is ruled off the panes: {at}");
+                    assert_eq!(rule(panes), 0, "no rule left of the panes: {at}");
+                }
             }
         }
     }

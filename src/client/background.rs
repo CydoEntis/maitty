@@ -3,7 +3,14 @@
 use super::*;
 
 impl App {
+    /// A message from the server can close a popup with no key pressed: shortcut mode held
+    /// under it comes back then, not after a key has gone to the pane.
     pub(super) fn on_server(&mut self, msg: ServerMsg) {
+        self.apply_server(msg);
+        self.keep_shortcut_mode();
+    }
+
+    fn apply_server(&mut self, msg: ServerMsg) {
         // Output doesn't change the sidebar; everything else might. Output for a pane you
         // can't see changes nothing on screen at all: no redraw for it.
         match &msg {
@@ -259,7 +266,13 @@ impl App {
         }
     }
 
+    /// Background work can close a popup too; see `on_server`.
     pub(super) fn on_bg(&mut self, b: Bg) {
+        self.apply_bg(b);
+        self.keep_shortcut_mode();
+    }
+
+    fn apply_bg(&mut self, b: Bg) {
         self.screen_fresh();
         let b = match b {
             Bg::Branches(dir, current, list, dirty) => {

@@ -34,6 +34,12 @@ pub fn draw(app: &mut App, f: &mut Frame) {
         use std::io::Write;
         let _ = write!(std::io::stdout(), "]11;#{r:02x}{g:02x}{b:02x}");
         app.osc_bg = Some(t.bg);
+    } else if (terminal_bg || !matches!(t.bg, Color::Rgb(..))) && app.osc_bg.is_some() && !cfg!(test) {
+        // Switched to the terminal's own background mid-run: hand its colour back now, not
+        // only at exit.
+        use std::io::Write;
+        let _ = write!(std::io::stdout(), "\x1b]111\x07");
+        app.osc_bg = None;
     }
 
     // Smaller than this, nothing fits: say so instead of drawing a broken screen.
@@ -50,7 +56,16 @@ pub fn draw(app: &mut App, f: &mut Frame) {
         return;
     }
     super::screen::draw(app, f, area, &t);
+    let paused = super::screen::shortcut_paused(app);
+    let before_overlays = paused.then(|| f.buffer_mut().clone());
     draw_overlays(app, f, area, &t);
+    // Held under a popup, shortcut mode stays readable above the dimming behind it, but not
+    // over the popup itself.
+    if let Some(under) = &before_overlays {
+        super::screen::draw_mode_frame(app, f.buffer_mut(), area, &t, Some(under));
+        let room = super::screen::framed(app, area);
+        super::screen::draw_corner_pills(app, f.buffer_mut(), room, &t);
+    }
     tint_hovered(app, f.buffer_mut(), &t);
     if terminal_bg {
         use_terminal_background(f.buffer_mut(), t.bg);

@@ -1,9 +1,10 @@
 # Connect agents (status setup)
 
-Maitty works out whether an agent is working, needs you or is done by watching its process and screen. **Connect agents** installs a small adapter into Codex, Pi, OpenCode, OMP, Mastracode, Kilo or Kimi so the agent reports that itself. Claude needs nothing here. It's a one-time step per machine.
+Maitty works out whether an agent is working, needs you or is done by watching its process and screen. **Connect agents** installs a small adapter into Codex, Pi, OpenCode, OMP, Mastracode, Kilo or Kimi so the agent reports that itself. Claude connects with `maitty integrate claude` instead. It's a one-time step per machine.
 
-Choose **Menu → All commands → Connect agents**, then click **Codex**, **Pi**, **OpenCode**, **OMP**,
-**Mastracode**, **Kilo** or **Kimi**.
+Search commands (leader, then `Space`) for **Connect agents**, or open **Settings › Agents ›
+Set up another agent…**, then click **Codex**, **Pi**, **OpenCode**, **OMP**, **Mastracode**,
+**Kilo** or **Kimi**.
 Setup installs
 only Maitty's adapter; it preserves other extensions and refuses to overwrite a
 different file named `maitty.js`. It does not interrupt an agent or restart the daemon.
@@ -105,8 +106,8 @@ Not yet verified, so Maitty does not claim exact Herdr parity:
   including stale and duplicate completions;
 - live runs against every paid provider and CLI version.
 
-Needs-you uses the configured blocked dot and blocked text color (red in the
-standard themes); working keeps its working indicator. Terminal bells never
+Needs-you uses the theme's blocked colour for its mark and name (amber in the
+default Night theme); working keeps its working indicator. Terminal bells never
 replace status with a musical note. Codex's collapsed question notice and
 expanded question dialog both take priority over a working spinner.
 An advancing Codex footer starts automatic follow-up work after a completion;
@@ -115,8 +116,14 @@ exit releases hook authority, so an exited agent cannot leave a permanent spinne
 An explicit idle prompt recognized by a bundled screen detector also reconciles a
 missed turn-end event for any supported agent, hooked or screen-detected. It clears
 active child rows as unconfirmed while retaining their lifecycle records; it does
-not infer completion from silence alone. Hosts without an explicit idle screen
+not infer completion from silence alone. For a hooked agent the screen must also have
+been still for 5 seconds: Claude's input box is on screen all turn, and its title reads
+idle while its own Stop hooks still run, so an animating screen waits for the hook. Hosts without an explicit idle screen
 signal rely on their lifecycle completion events.
+
+Every status change goes to `daemon.log` in the data folder at info level, with the pane,
+agent, old and new status and the reason (`hook: Stop`, `screen: claude rule …`), so the
+cause of an alert is one search away: `pane 4 (claude): Working -> Done: hook: Stop`.
 
 A working agent with no output and no hook report for 10 minutes is marked quiet
 (`quiet_since` on the wire): it may be stuck. Quiet never changes its status, which
@@ -124,10 +131,23 @@ stays working. An agent waiting on helpers it reported, or asking to start helpe
 is never quiet. Any output or hook report clears it.
 
 Questions ring even in the focused pane after remaining blocked for 300 ms;
-the red indicator appears immediately. Completions are quiet and remain visible
+the needs-you mark appears immediately. Completions are quiet and remain visible
 as status/notice changes. A queued needs-you sound rechecks the exact current
 status and cancels when work resumes, the pane disappears or attention changes.
 A new working turn clears the previous turn's notification deduplication.
+A Claude turn that stops with background work it started still running (a shell, a
+helper, a monitor: the running entries of its Stop hook's `background_tasks` that were not
+running at the previous stop) shows done but is not announced: no sound, desktop or phone
+alert, and no check yet. Claude wakes itself when that work ends; the next stop with no new
+work in flight announces the finish and runs the checks, even after a wake-up with no tool
+use. Entries Claude marks finished don't count. A task still running from an earlier turn
+(a dev server) holds nothing: later turns ring as usual, while the turn that starts a
+never-ending task stays quiet (decided 2026-10-24). With two tasks, a stop listing `b1` and
+`b2` pauses; once `b1` ends, the wake-up that stops with `b2` still running rings, since
+`b2` is no longer new.
+The desktop notification, phone alert and in-app note name the repository and branch
+(`maitty · fix/early-alerts`), so two worktrees of one repository tell apart; a detached
+checkout shows its short commit, and a session outside a repository its folder.
 Maitty retains its four-second global sound spacing and two-minute same-news
 deduplication; its delivery settings and multiple-client acknowledgements differ
 from Herdr.
@@ -154,23 +174,16 @@ choice does not change the host integration. Other agents still get their own
 working/needs-you/done status, but Maitty cannot list hidden helpers unless the
 agent exposes their lifecycle.
 
-Lifecycle reports are retained as child activity records after completion and
-restored with the saved pane (wire protocol v41). The sidebar lists active
-children only and removes completed, failed, cancelled or unconfirmed children
-from the live view. Click an active row to inspect it, or focus the parent in the
-sidebar and press `s`, then use Up/Down to browse retained lifecycle records.
-The inspector shows the reported identity, task, parent, model, effort, state,
-start/elapsed time and latest activity. Missing metadata says **Not reported**.
-A parent ending or a child going quiet without an end event is shown as
-unconfirmed, never completed.
+Lifecycle reports are kept as child activity records after completion and
+restored with the saved pane. A working session's row shows how many helpers are
+running (`· 2 agents`; Settings › Agents › **Count on the session row**). A parent
+ending or a child going quiet without an end event counts as unconfirmed, never
+completed.
 
 Codex rollout files currently report child identity, parent thread and lifecycle
 events, but not the assigned prompt, child model/effort or result. Native hook
 payloads may report task/model/effort fields; Maitty uses them only when supplied.
-The sidebar shows the reported task when available. Otherwise it shows a
-reported current tool action when available, then a recognizable role stage, a
-meaningful reported role name, or `Working` when the runtime provides no useful
-label. The inspector marks missing metadata **Not reported**. It does not expose
-hidden reasoning or claim transcript access that a runtime does not provide.
+It does not expose hidden reasoning or claim transcript access that a runtime does
+not provide.
 
-Installing a new executable does not replace an already-running window. **Settings → General** shows installed/window/daemon versions and a restart-pending notice. Local open sessions keep running; once no panes remain, Maitty restarts the daemon and reconnects the window automatically. Closing a window alone leaves the daemon running. A remote daemon must be updated on its host.
+Installing a new executable does not replace an already-running window. **Settings › General › UPDATES** shows the version, and Settings warns at the top when the installed, window and daemon versions differ. Local open sessions keep running; once no panes remain, Maitty restarts the daemon and reconnects the window automatically. Closing a window alone leaves the daemon running. A remote daemon must be updated on its host.

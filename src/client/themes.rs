@@ -389,8 +389,9 @@ mod tests {
     fn theme_browser_pages_to_the_end_and_handles_empty_searches_and_small_screens() {
         let mut app = app();
         app.open_themes();
+        let default = BUILTIN.iter().position(|name| *name == DEFAULT).unwrap();
         app.on_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE));
-        assert!(matches!(app.mode, Mode::Themes { sel: PAGE_ROWS, .. }));
+        assert!(matches!(app.mode, Mode::Themes { sel, .. } if sel == default + PAGE_ROWS));
         app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
         for (width, height) in [(100, 30), (80, 24), (40, 10)] {
             let buffer = draw(&mut app, width, height);
@@ -399,8 +400,9 @@ mod tests {
                 .iter()
                 .map(|cell| cell.symbol())
                 .collect::<String>();
+            // At 40 columns the swatches clip the label to "Zenbone".
             assert!(
-                text.contains("Mono"),
+                text.contains("Zenbone"),
                 "the last theme remains visible at {width}x{height}"
             );
         }
@@ -421,6 +423,13 @@ mod tests {
         assert!(matches!(app.mode, Mode::Themes { ref query, sel: 0, .. } if query.is_empty()));
         app.on_paste("x".repeat(QUERY_LIMIT + 1));
         assert!(matches!(app.mode, Mode::Themes { ref query, .. } if query.len() == QUERY_LIMIT));
+    }
+
+    #[test]
+    fn theme_browser_lists_themes_alphabetically_by_display_name() {
+        let labels: Vec<String> = matching("").iter().map(|name| theme_label(name).to_lowercase()).collect();
+        assert_eq!(labels.len(), BUILTIN.len());
+        assert!(labels.is_sorted(), "{labels:?}");
     }
 
     #[test]

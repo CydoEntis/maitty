@@ -64,8 +64,8 @@ pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], 
     hit(app, Rect { x: x0, y: area.y, width: ew, height: 1 }, ScreenHit::ExpandSidebar);
     let start_x = x0 + ew + 1;
 
-    // The update pill (or the armed leader) keeps the top right.
-    let reserved = super::draw::corner_pill(app, t).map_or(0, |(segs, _)| segs_width(&segs) + 2);
+    // The corner pills (the mode, and Update or Restart) keep the top right.
+    let reserved = super::draw::corner_reserve(app, area.width, u16::MAX, t) + 2;
     // The Menu keeps a chip here, so mouse access to it doesn't need the sidebar open.
     let menu = super::side::word_chip(app, None, "Menu", t, ground);
     let mw = segs_width(&menu);

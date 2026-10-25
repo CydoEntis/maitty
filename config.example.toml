@@ -1,6 +1,6 @@
 # maitty configuration
 # Location: %APPDATA%\maitty\config.toml on Windows, ~/.config/maitty/config.toml elsewhere
-# (override with MAITTY_CONFIG). Every key is optional; reload with <prefix> r.
+# (override with MAITTY_CONFIG). Every key is optional; reload with <prefix> Ctrl+R.
 
 prefix = "ctrl+space"
 
@@ -36,13 +36,17 @@ replay_bytes = 2097152      # output kept per pane by the daemon, replayed on re
 [ui]
 start_dir = ""              # where plain `maitty` opens, e.g. "~/code" (empty: where you run it)
 attention_sort = true       # sidebar: sessions that need you first, the rest keep their place
-sidebar = true              # <leader> b
+sidebar = true              # <leader> z collapses it
 sidebar_position = "left"   # left | right
 layout = "floating"         # floating | tiled | compact | grid (older "cards" / "flat" still read)
-corners = "square"          # square | rounded box corners ("flush" reads as square)
-glyphs = "auto"             # auto | unicode | ascii | nerd: session and check marks (auto: ascii when [icons] are)
+rounded = "off"             # full (needs a Nerd Font) | corners | off (older `corners = "rounded"` still read)
+# padding = "1"             # 0 | 1 | 2: space round the screen
+# background = "solid"      # solid: paint the theme everywhere | terminal: your terminal's (transparent, image) shows through
+# cursor = "terminal"       # terminal | block | underline | bar, when a pane's program picks none
+# cursor_blink = true
+glyphs = "auto"             # auto | dots | unicode | ascii | nerd: session and check marks (auto: dots, or ascii when [icons] are)
 which_key = false         # Settings: "Leader waits for next key"; list every key if you pause after the leader (? always shows them)
-which_key_delay_ms = 350
+which_key_delay_ms = 600
 mouse = true
 subagent_count = true       # show "· N agents" on a working session row when the agent reports helpers
 # Working spinner: Settings > Appearance > Working spinner has animated previews.
@@ -105,32 +109,36 @@ scan_interval_ms = 1000
 pattern_rows = 12
 
 # Bindings after the prefix. Merged over the defaults; "none" unbinds a default.
-# Actions: split-right split-down split-left split-up close-pane zoom
+# Actions: split-right split-down split-left split-up close-pane close-split
 #   focus-{left,right,up,down} focus-next focus-prev resize-{left,right,up,down}
 #   new-tab next-tab prev-tab close-tab rename-tab select-tab-N
-#   new-workspace next-workspace prev-workspace close-workspace rename-workspace select-workspace-N
-#   toggle-sidebar scroll-up scroll-down copy-mode search
-#   new-worktree new-worktree:<cmd> remove-worktree cycle-workspace-color
-#   palette menu settings
-#   jump new-session new-pane close-split side-up side-down
-#   detach help reload-config send-prefix kill-server
+#   new-workspace close-workspace rename-workspace
+#   toggle-sidebar hide-sidebar browse-tree side-up side-down scroll-up scroll-down
+#   copy-mode search prev-prompt next-prompt
+#   shell-here start-session new-pane new-session message stop-agent why jump history
+#   files find-file search-code changes branch worktrees new-worktree new-worktree:<cmd>
+#   remove-worktree tidy-worktrees paste-image
+#   palette menu settings help agent-status-setup pane-info
+#   detach reload-config send-prefix kill-server update check-update restart
 #   spawn-right:<cmd> spawn-down:<cmd> spawn-left:<cmd> spawn-up:<cmd> spawn-tab:<cmd>
+# Examples, commented out so the defaults stay as they are:
 [keys.prefix]
-C = "spawn-right:claude"
-O = "spawn-down:codex"
-g = "spawn-tab:lazygit"
-A = "new-worktree:claude"   # worktree picker; whatever you open or create starts claude
+# C = "spawn-right:claude"   # Shift+C: claude in a split beside you
+# O = "spawn-down:codex"     # Shift+O: codex in a split below
+# A = "new-worktree:claude"  # Shift+A: worktree picker; whatever you open or create starts claude
+# g = "spawn-tab:lazygit"    # lazygit in a new tab; takes `g` from Worktrees
 
 # Bindings that work without the prefix (they're taken from the program in the pane).
 [keys.global]
-"alt+h" = "focus-left"
-"alt+j" = "focus-down"
-"alt+k" = "focus-up"
-"alt+l" = "focus-right"
+# "alt+h" = "focus-left"     # Alt+h/j/k/l move between panes, and programs no longer get them
+# "alt+j" = "focus-down"
+# "alt+k" = "focus-up"
+# "alt+l" = "focus-right"
 
 # Agents are detected from the pane's process tree. Entries here merge over the
-# built-ins (claude, codex, gemini, opencode, cursor, copilot, amp, qwen, aider,
-# goose, crush, droid, pi, kiro) by name. Patterns are case-insensitive regexes
+# built-ins by name: claude, codex, gemini, opencode, cursor, copilot, amp, qwen, aider,
+# goose, crush, droid, pi, kiro, grok, auggie, kimi, deepseek, devin, agy, cline, omp,
+# mastracode, hermes, kilo, qodercli, letta, maki, muse. Patterns are case-insensitive regexes
 # matched against the bottom of the screen; hooks (`maitty integrate claude`)
 # override them with exact lifecycle events.
 # [[agents]]

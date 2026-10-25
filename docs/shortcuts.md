@@ -5,8 +5,8 @@ in Settings › Keys or under `[keys.prefix]` in your config.
 
 ## Default shortcuts
 
-Press `Ctrl+Space` for shortcut mode, then the key. No default needs Shift, and each key does
-one thing (ADR 0017).
+Press `Ctrl+Space` for shortcut mode, then the key. Only `?` needs Shift, and each key does
+one thing (ADR 0017, 0022).
 
 ### Sessions
 
@@ -29,7 +29,6 @@ one thing (ADR 0017).
 | `h` | Split stacked |
 | `x` | Close the pane |
 | `Ctrl`+arrows | Resize the pane |
-| `c` | Copy mode: select text with keys |
 | `PgUp` / `PgDn` | Scroll half a pane |
 | `z` | Collapse the sidebar (again brings it back) |
 
@@ -51,7 +50,7 @@ one thing (ADR 0017).
 | `e` | The sidebar |
 | `p` | Find a file |
 | `/` | Search the code |
-| `d` | Changes |
+| `c` | Changes |
 | `g` | Worktrees › |
 | `b` | Branch (in the side panel; its first row switches branch) |
 
@@ -62,7 +61,7 @@ one thing (ADR 0017).
 | `Space` | Search commands |
 | `m` | Menu |
 | `,` | Settings |
-| `F1` | All keys |
+| `?` | All keys |
 | `l` | What happened (history) |
 | `Ctrl+V` | Paste the clipboard's image |
 | `q` | Step away (agents keep running) |
@@ -78,22 +77,27 @@ action, and the mode stays for the next, so a run of actions is one key each. `E
 leader again or a click go back to **input mode**, where keys type into the pane; nothing
 else does. A new shell, session, tab or split leaves you in shortcut mode, so press `Esc` to
 type into it. An action that opens a popup or sheet hands it the keys, and closing it returns
-to shortcut mode. While shortcut mode is on, a `SHORTCUT` pill sits at the top right and
-the focused pane's border is sky blue. To send `Ctrl+Space` itself to the pane, search
+to shortcut mode. The top right always says which mode you are in: `TYPING`, or a sky
+`SHORTCUT · Esc to type` while shortcut mode is on (`SHORTCUT · paused` while a popup has
+the keys). In shortcut mode the whole window is also framed in sky blue and the focused
+pane's border is sky blue, and a key that does nothing shows "Shortcut mode — Esc to type".
+To send `Ctrl+Space` itself to the pane, search
 commands for "Send the leader key" or bind `send-prefix` to a key. One overlay holds every key
 reference; it is not a second palette:
 
-- **Key map** (`Ctrl+Space`, then a pause): the keys by group, Sessions, Panes, Tabs,
+- **Key map** (`Ctrl+Space`, then a pause, with Settings › General › **Leader waits for next
+  key** on; it is off by default): the keys by group, Sessions, Panes, Tabs,
   Project and Maitty, built from your real bindings. Pressing a key runs it.
 - **Search commands** (`Space` after the leader, `Tab` from the map, or typing a letter
   that is not a key): every command, including ones with no key. With nothing typed it
   lists the ones you ran last.
-- **All keys** (`F1` after the leader, or Menu → All keys): the map in full, the keys that
+- **All keys** (`?` after the leader, or Menu → All keys): the map in full, the keys that
   need no leader, and the commands that only search finds.
 
 Keys are drawn as keycaps; `Ctrl+Space` is two caps joined by a dim `+`. On Windows,
-Caps Lock does not change shortcut meaning, and no default needs Shift (ADR 0017). The
-[README](../README.md#use) lists the defaults.
+Caps Lock does not change shortcut meaning, and no default but `?` needs Shift (ADR 0017,
+0022). The
+[README](../README.md#shortcuts) lists the defaults.
 
 Mouse entry: **Menu** has a chip in the collapsed strip (row 0); with the sessions hidden
 (search commands for "Hide sidebar"), use the leader. Click a row to run it; the wheel moves the selection. Close buttons
@@ -117,17 +121,17 @@ or another program follow that program's own help.
 | Esc | Close; no command runs while reading |
 
 Every key is a leader key: there is no letter that acts by itself in the sidebar.
-The defaults are one key each, none needing Shift, chosen from what other apps use (ADR
-0017): `v` / `h` split side by side / stacked, `c` copy mode, `i` Inbox, `y` why, `k` stop
+The defaults are one key each, none but `?` needing Shift, chosen from what other apps use
+(ADR 0017, 0022): `v` / `h` split side by side / stacked, `c` Changes, `i` Inbox, `y` why, `k` stop
 the agent, `Enter` message it, `o` session with options, `p` find a file, `g` worktrees, `b`
-Branch, `l` what happened, `F1` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image,
+Branch, `l` what happened, `?` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image,
 `Ctrl`+arrows resize, `1`–`9` go to a tab. Your own `[keys.prefix]` entries still load.
 
 ## Menu
 
 | Keys | Action |
 | --- | --- |
-| The key shown beside a row | Run it (the same leader key works anywhere): `n` Shell here, `s` Session, `o` Session with options…, `v` Pane beside this, `t` Tab, `i` Inbox, `Space` Search commands, `F1` All keys, `z` Collapse sidebar, `,` Settings |
+| The key shown beside a row | Run it (the same leader key works anywhere): `n` Shell here, `s` Session, `o` Session with options…, `v` Pane beside this, `t` Tab, `i` Inbox, `Space` Search commands, `?` All keys, `z` Collapse sidebar, `,` Settings |
 | Up, Down, Enter | Choose and run a row |
 | Esc | Close the Menu |
 
@@ -151,7 +155,6 @@ The sidebar takes navigation only. No letter acts from it: every action is the l
 | Up / k, Down / j, Home, End | Browse rows, first row, last row; active session stays selected |
 | Right, Left | Expand project or enter session; fold project or go to session's project |
 | Enter | Toggle project or open selected session; opening a sleeping session wakes it. On a session whose check failed, could not run, was overridden, went stale or is never run for its repo, open its evidence sheet instead; on one whose repo command waits for approval, open the approval |
-| Up, Down in the activity inspector | Inspect the previous or next child record |
 | Esc | Return keyboard focus to the active pane |
 
 ## Text prompts and worktree picker
@@ -190,6 +193,8 @@ No bare key answers from the sidebar.
 ## Side panel
 
 The panel docked right (Inbox, Changes, Files, checks, Branch). Its width is kept for each kind of view.
+Files, Changes and Branch show a tab strip at its top, `Files f · Changes c · Branch b` with
+your own leader keys; the Inbox and checks have none.
 
 | Keys | Action |
 | --- | --- |
@@ -198,6 +203,8 @@ The panel docked right (Inbox, Changes, Files, checks, Branch). Its width is kep
 | Drag its left edge | Resize it |
 | Click a pane | Type into that pane; the view stays open, unlit |
 | Click the panel | Give the view the keys again |
+| Tab, Shift+Tab | Files, Changes, Branch: the next or previous tab, for the same checkout (not while Files filters or edits) |
+| Click a tab | Switch to it |
 
 ## Inbox
 
@@ -236,7 +243,7 @@ The panel docked right (Inbox, Changes, Files, checks, Branch). Its width is kep
 | Up / k, Down / j, Home, End | Choose file |
 | Right / l, Left / h, Enter on directory | Expand, collapse / parent, toggle directory |
 | Enter on file | Insert quoted path into agent prompt and close Files |
-| Tab, / | Toggle recent/tree, filter paths; Enter ends filtering, Esc clears filter |
+| r, / | Toggle recent/tree, filter paths; Enter ends filtering, Esc clears filter |
 | e, i, o, y, d | External editor, edit in preview, open outside, copy path, Changes |
 | m on a markdown file | Show it as text or drawn (drawn is the default) |
 | PgUp, PgDn, Shift+Up, Shift+Down | Scroll preview pages or individual lines |
@@ -267,10 +274,10 @@ The panel docked right (Inbox, Changes, Files, checks, Branch). Its width is kep
 
 | Keys | Action |
 | --- | --- |
-| Up / k / Shift+Tab, Down / j / Tab | Previous or next changed file |
+| Up / k, Down / j | Previous or next changed file |
 | PgUp, PgDn, Space | Read diff; Space pages down |
 | x, e, r | Mark reviewed, open editor, return to agent |
-| c, p | Commit; ask to push and open a pull request |
+| c, p | Ask to commit every changed file; ask to push and open a pull request (y or Enter says yes) |
 | m, d | Linked worktree: ask to merge, ask to discard |
 | Enter / y in confirmation | Confirm the requested action; other keys cancel |
 | Up, Down, PgUp, PgDn in shared-file diffs | Scroll both checkout diffs together |
@@ -344,6 +351,7 @@ loads). It has the keys while open; closing it returns to shortcut mode.
 | Tab, Shift+Tab, Up / k, Down / j | Change settings category; choose row |
 | Left / h, Right / l, Enter, Space | Change value; Enter edits text or captures binding; theme opens browser |
 | o | Open configuration file outside Maitty |
+| u | Check for updates now |
 | R | Restart the daemon after an update (when the Restart now button shows) |
 | Keys on the Check page | As in `PROJECT · <name>` (see Check modals); Tab, Esc and o stay Settings' |
 | Enter, Esc when editing | Save field / cancel; when capturing press the new key or Esc |
@@ -357,6 +365,8 @@ loads). It has the keys while open; closing it returns to shortcut mode.
 | Esc in settings | Close Settings |
 
 ## Copy mode
+
+No default key: search commands (leader, then `Space`) opens it as **Select text**.
 
 | Keys | Action |
 | --- | --- |
