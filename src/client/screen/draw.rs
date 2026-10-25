@@ -323,6 +323,41 @@ pub(in crate::client) fn draw_main(app: &mut App, f: &mut Frame, area: Rect, mod
         hit(app, grab, ScreenHit::Divider(i));
         app.screen.dividers.push((sa, horizontal, path));
     }
+    draw_pane_drag(app, f.buffer_mut(), model, t);
+}
+
+/// A pane dragged by its title: the pane it would swap with gets lit lines and a "swap here"
+/// pill, and the dragged pane's name follows the pointer.
+fn draw_pane_drag(app: &App, buf: &mut Buffer, model: &[Proj], t: &Theme) {
+    let Some(Drag::Pane { from, over, at }) = app.screen.drag else { return };
+    let look = Look::of(&app.cfg.ui);
+    if let Some((_, r)) = over.and_then(|o| app.pane_frames.iter().find(|(id, _)| *id == o)) {
+        light_lines(buf, *r, look.hairline, t.accent);
+        let pill = pill(look, vec![seg("⇄ swap here", Style::default().fg(t.acc_ink).add_modifier(Modifier::BOLD))], t.accent, t.bg);
+        let w = segs_width(&pill);
+        // Clear of the dragged name, which sits on the pointer's row.
+        let y = r.y + r.height / 2;
+        let y = if y == at.y { y + 2 } else { y };
+        put(buf, r.x + r.width.saturating_sub(w) / 2, y.min(r.bottom().saturating_sub(2)), &pill, r.right());
+    }
+    let ghost = pill(look, vec![seg(format!("⇄ {}", session_name(app, model, from)), Style::default().fg(t.strong).add_modifier(Modifier::BOLD))], t.btn, t.bg);
+    put(buf, at.x.saturating_add(1), at.y, &ghost, buf.area.right());
+}
+
+/// Light the frame lines of the pane at `r` (its border, or Hairline's rule under the title).
+fn light_lines(buf: &mut Buffer, r: Rect, hairline: bool, colour: Color) {
+    let r = r.intersection(buf.area);
+    let edge = |x: u16, y: u16| y == r.y || (hairline && y == r.y + 1) || y + 1 == r.bottom() || x == r.x || x + 1 == r.right();
+    for y in r.top()..r.bottom() {
+        for x in r.left()..r.right() {
+            if let Some(px) = buf.cell_mut((x, y))
+                && edge(x, y)
+                && px.symbol().chars().next().is_some_and(|c| ('\u{2500}'..='\u{257F}').contains(&c))
+            {
+                px.set_fg(colour);
+            }
+        }
+    }
 }
 
 /// The name you gave a tab, if any. "tab 2" (what an earlier version named new tabs) isn't
@@ -331,6 +366,27 @@ pub(in crate::client) fn tab_name(tab: &ScreenTab) -> Option<String> {
     let n = tab.name.trim();
     let generic = n.strip_prefix("tab ").is_some_and(|d| d.chars().all(|c| c.is_ascii_digit()));
     (!n.is_empty() && !generic).then(|| n.to_string())
+}
+
+/// A tab's chips as text: the head chip, if any, and the name chip. The head is the tab's number
+/// when the session has several tabs; a lone tab has none, so a title never reads `1  1 · name`.
+/// The current tab
+/// of a split names its top-left pane, the pane its title sits on, numbered (`1 · claude`), and
+/// a name you gave the tab moves to the head, so a name is never put on a pane it is not.
+fn tab_label(app: &App, model: &[Proj], i: usize, n: usize, several: bool) -> (Option<String>, String) {
+    let tab = &app.screen.tabs[i];
+    let number = several.then(|| (n + 1).to_string());
+    let top_left = app.screen.leaf_rects.iter().min_by_key(|(_, r)| (r.y, r.x)).map(|(id, _)| *id);
+    match top_left.filter(|t| i == app.screen.tab && pane_number(app, *t).is_some()) {
+        Some(term) => {
+            let head = match (number, tab_name(tab)) {
+                (Some(n), Some(name)) => Some(format!("{n} {name}")),
+                (number, name) => number.or(name),
+            };
+            (head, numbered(app, term, &session_name(app, model, term)))
+        }
+        None => (number, tab_name(tab).unwrap_or_else(|| session_name(app, model, tab.focus))),
+    }
 }
 
 /// Leader mode is on: waiting for the key, or showing the key map.
@@ -346,7 +402,7 @@ pub(in crate::client) fn shortcut_waits(app: &App) -> bool {
 
 /// What a session is called on its pane: its sidebar name, else (a pane in another's tab or
 /// split has no row) your name for it or what runs in it.
-pub(super) fn session_name(app: &App, model: &[Proj], term: TermId) -> String {
+pub(in crate::client) fn session_name(app: &App, model: &[Proj], term: TermId) -> String {
     if let Some((_, _, s)) = find(model, term) {
         return s.name.clone();
     }
@@ -379,15 +435,19 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, state: Option<
     let mut out = Vec::new();
     let mut at = row.x;
     let tabs = app.session_tabs();
-    let names: Vec<String> = tabs.iter().map(|&i| tab_name(&app.screen.tabs[i]).unwrap_or_else(|| session_name(app, model, app.screen.tabs[i].focus))).collect();
     let closable = tabs.len() > 1;
+    let labels: Vec<(Option<String>, String)> = tabs.iter().enumerate().map(|(n, &i)| tab_label(app, model, i, n, closable)).collect();
+    let names: Vec<String> = labels.iter().map(|(_, name)| name.clone()).collect();
     let current = Style::default().fg(t.acc_ink).bg(t.accent).add_modifier(Modifier::BOLD);
     let cap = u16::from(look.round_tabs);
     let chips = |n: usize, on: bool, name: &str| {
         let number = if on { current } else { Style::default().fg(t.text).bg(t.btn) };
         let label = if on { name_chip(name, lit, t) } else { seg(format!(" {name} "), Style::default().fg(t.text).bg(t.card)) };
-        let mut pair: Vec<Seg> = state.filter(|_| on).map(|s| state_seg(s, number, t)).into_iter().collect();
-        pair.extend([seg(format!(" {} ", n + 1), number), label]);
+        // The glyph sits on the chip after it: the head's, else (a lone tab) the name's.
+        let next = if labels[n].0.is_some() { number } else { label.1 };
+        let mut pair: Vec<Seg> = state.filter(|_| on).map(|s| state_seg(s, next, t)).into_iter().collect();
+        pair.extend(labels[n].0.as_ref().map(|head| seg(format!(" {head} "), number)));
+        pair.push(label);
         if closable {
             let (fg, bg) = if on { if lit { (t.acc_ink, t.accent) } else { (t.strong, t.btn) } } else { (t.muted, t.card) };
             pair.push(seg("✕ ", Style::default().fg(fg).bg(bg)));
@@ -399,7 +459,7 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, state: Option<
     // else its glyph, so it never shortens or drops while another tab shows.
     let current_w = |shorten: bool| {
         let n = tabs.iter().position(|&i| i == app.screen.tab);
-        n.map_or(0, |n| segs_width(&chips(n, true, &if shorten { truncate(&names[n], 2) } else { names[n].clone() })))
+        n.map_or(0, |n| segs_width(&chips(n, true, &if shorten { cut_label(&names[n], 2) } else { names[n].clone() })))
     };
     let keep = [current_w(false), current_w(true), alone_w].into_iter().find(|w| row.x + w <= max_x).unwrap_or(alone_w);
     let (mut all_fit, mut placed, mut crowded) = (true, false, false);
@@ -409,7 +469,7 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, state: Option<
         let mut pair = chips(n, on, &names[n]);
         let rest = segs_width(&pair).saturating_sub(names[n].width() as u16);
         if on && at + segs_width(&pair) > max_x && max_x > at + rest + 1 {
-            pair = chips(n, on, &truncate(&names[n], (max_x - at - rest) as usize));
+            pair = chips(n, on, &cut_label(&names[n], (max_x - at - rest) as usize));
         }
         let w = segs_width(&pair);
         let reserve = if on || placed { 0 } else { keep };
@@ -564,11 +624,39 @@ const GRID_TAG_FADE: f32 = 0.28;
 const SHORTEST_TAB: u16 = 7;
 
 /// A pane's place among the tab's panes (0 first): top-left first, left to right and top to
-/// bottom. Grid numbers and colours panes by it.
+/// bottom. Grid colours panes by it, and every look numbers them by it.
 fn grid_index(app: &App, term: TermId) -> usize {
     let mut order: Vec<(u16, u16, TermId)> = app.screen.leaf_rects.iter().map(|(id, r)| (r.y, r.x, *id)).collect();
     order.sort_unstable();
     order.iter().position(|(.., id)| *id == term).unwrap_or(0)
+}
+
+/// The number a pane shows in its title: its place in the tab in reading order, from 1. Only
+/// while the tab shows two panes or more, so a lone pane's title stays as it was.
+pub(in crate::client) fn pane_number(app: &App, term: TermId) -> Option<usize> {
+    let split = app.screen.leaf_rects.len() > 1 && app.screen.leaf_rects.iter().any(|(id, _)| *id == term);
+    split.then(|| grid_index(app, term) + 1)
+}
+
+/// Between a pane's number and its name in a title chip.
+const NUMBER_SEP: &str = " · ";
+
+/// A pane's name with its number in front (`2 · claude`) while it has one.
+pub(in crate::client) fn numbered(app: &App, term: TermId, name: &str) -> String {
+    match pane_number(app, term) {
+        Some(n) => format!("{n}{NUMBER_SEP}{name}"),
+        None => name.to_string(),
+    }
+}
+
+/// `label` cut to `room` columns. A numbered name keeps its number: the name is cut first
+/// (`2 · warm-f…`), then the ` · `, leaving the bare number (`2`).
+fn cut_label(label: &str, room: usize) -> String {
+    let Some((number, name)) = label.split_once(NUMBER_SEP).filter(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())) else {
+        return truncate(label, room);
+    };
+    let front = number.width() + NUMBER_SEP.width();
+    if room >= front + 2 { format!("{number}{NUMBER_SEP}{}", truncate(name, room - front)) } else { truncate(number, room) }
 }
 
 /// A Grid pane's colour, by its place; they repeat from the fifth.
@@ -579,8 +667,8 @@ fn grid_color(app: &App, term: TermId, t: &Theme) -> Color {
 
 /// Grid's top border: the chip that names the pane, with the state's glyph at its front: the
 /// current tab on the top-left pane (its other tabs and the + around it), else one chip with the
-/// session's name. No number: the pane's colour tells it apart, and no key goes to a pane by its
-/// number. No state words, and the name is not repeated on the right. A narrow pane drops the
+/// session's name, each with the pane's number before the name while the tab is split. No state
+/// words, and the name is not repeated on the right. A narrow pane drops the
 /// load note, then shortens the name, then keeps only the glyph, then drops the ✕. Returns where
 /// the glyph sits, which opens why.
 fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: Rect, c: &mut Card, t: &Theme) -> Vec<Rect> {
@@ -621,7 +709,7 @@ fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: 
     let (named, glyph_at) = if top_left {
         tab_strip(app, model, Rect { x, y: r.y, width: title_end.saturating_sub(x), height: 1 }, focused, state.as_ref(), t)
     } else {
-        let name = session_name(app, model, info.id);
+        let name = numbered(app, info.id, &session_name(app, model, info.id));
         let (segs, glyph_w) = name_with_state(&name, state.as_ref(), chip_style, title_end.saturating_sub(x), look, t);
         let cap = u16::from(look.round_tabs);
         (segs, (glyph_w > 0).then_some(Rect { x: x + cap, y: r.y, width: glyph_w, height: 1 }))
@@ -642,7 +730,7 @@ fn name_with_state(name: &str, state: Option<&ChipState>, chip: Style, room: u16
     let front_w = segs_width(&front);
     if room >= front_w + caps + SHORTEST_NAME {
         let mut segs = front;
-        segs.push(seg(format!(" {} ", truncate(name, (room - front_w - caps - 2) as usize)), chip));
+        segs.push(seg(format!(" {} ", cut_label(name, (room - front_w - caps - 2) as usize)), chip));
         return (if look.round_tabs { round_ends(segs, title_ground(look, t)) } else { segs }, front_w);
     }
     match state {
@@ -719,13 +807,22 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     }
 }
 
+/// A close confirm asks about this pane: its lines are lit in `err` until you answer, so you
+/// see which one goes.
+pub(in crate::client) fn closing(app: &App, term: TermId) -> bool {
+    matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, crate::client::menu::Act::End(ts) if ts.contains(&term)))
+}
+
 /// A Cards, Compact or Grid pane's frame: the box (or zone) with its title on the top border.
 /// Returns the inside and the terminal's ground.
 fn card_frame(app: &mut App, buf: &mut Buffer, r: Rect, info: &TermInfo, focused: bool, model: &[Proj], t: &Theme) -> (Rect, Color) {
     let look = Look::of(&app.cfg.ui);
     let term = info.id;
     let grid_color = look.grid.then(|| grid_color(app, term, t));
-    let border = if let Some(own) = grid_color {
+    let closing = closing(app, term);
+    let border = if closing {
+        t.err
+    } else if let Some(own) = grid_color {
         match (focused, armed(app)) {
             (true, true) => t.sky(),
             (true, false) => own,
@@ -767,7 +864,7 @@ fn card_frame(app: &mut App, buf: &mut Buffer, r: Rect, info: &TermInfo, focused
         c.bg = crate::client::render::terminal_surface_bg(parser.screen(), c.bg);
     }
     let terminal_bg = c.bg;
-    if focused {
+    if focused || closing {
         c = c.lit(border);
     } else if look.grid {
         c.border = border;
@@ -783,7 +880,7 @@ fn card_frame(app: &mut App, buf: &mut Buffer, r: Rect, info: &TermInfo, focused
             tab_strip(app, model, Rect { x: title_x(look, r), y: r.y, width: title_end.saturating_sub(title_x(look, r)), height: 1 }, focused, None, t).0
         } else {
             let caps = if look.round_tabs { 2 } else { 0 };
-            let name = truncate(&session_name(app, model, term), title_end.saturating_sub(title_x(look, r) + 2 + caps) as usize);
+            let name = cut_label(&numbered(app, term, &session_name(app, model, term)), title_end.saturating_sub(title_x(look, r) + 2 + caps) as usize);
             let chip = vec![name_chip(&name, focused, t)];
             if look.round_tabs { round_ends(chip, title_ground(look, t)) } else { chip }
         };

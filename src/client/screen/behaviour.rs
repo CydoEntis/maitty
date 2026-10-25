@@ -167,6 +167,21 @@ impl App {
         to
     }
 
+    /// Trade the places of two panes shown in one tab; each takes the other's size. The
+    /// server's tab follows when it holds both, so a restart keeps the new order. False when
+    /// no tab here shows both.
+    pub(in crate::client) fn swap_panes(&mut self, a: TermId, b: TermId) -> bool {
+        let Some(tab) = self.screen.tabs.iter_mut().find(|t| t.layout.contains(a) && t.layout.contains(b)) else { return false };
+        if !tab.layout.swap(a, b) {
+            return false;
+        }
+        if self.snap.workspaces.iter().flat_map(|w| &w.tabs).any(|t| t.layout.contains(a) && t.layout.contains(b)) {
+            self.cmd(Command::SwapPanes { a, b });
+        }
+        self.dirty = true;
+        true
+    }
+
     /// Stop showing `t` beside the others (it keeps running). False when it's on its own.
     pub(in crate::client) fn screen_unshow(&mut self, t: TermId) -> bool {
         let Some(i) = self.screen.tabs.iter().position(|tab| tab.layout.contains(t)) else { return false };
@@ -447,6 +462,13 @@ impl App {
                 None if *d == crate::layout::Dir::Left && !self.side_hidden => self.screen_side_move(0),
                 None => {}
             },
+            Action::Swap(d) => {
+                if let Some(f) = focused
+                    && let Some(to) = crate::layout::neighbor(&self.screen.leaf_rects, f, *d)
+                {
+                    self.swap_panes(f, to);
+                }
+            }
             Action::FocusNext | Action::FocusPrev => {
                 let shown: Vec<TermId> = self.screen.leaf_rects.iter().map(|(id, _)| *id).collect();
                 if let Some(f) = focused
@@ -1229,6 +1251,10 @@ impl App {
             ScreenHit::Session(t) => {
                 self.screen_focus(t);
                 self.screen_side_set(SideItem::Sess(t));
+            }
+            ScreenHit::StripSession(t) => {
+                self.screen_focus(t);
+                self.view_set_aside = self.view_kind();
             }
             ScreenHit::RowChanges(t) => {
                 self.screen.cursor = Some(t);

@@ -47,14 +47,18 @@ pub(in crate::client) fn pane_frame(app: &mut App, buf: &mut Buffer, r: Rect, in
     if edges.right {
         vline(buf, Rect { x: r.right() - 1, ..r }, ink.line, ink.bg);
     }
-    draw_title(app, buf, body, info, model, ink, t);
+    draw_title(app, buf, body, info, focused, model, t);
     rule(buf, body.x, body.y + 1, body.width, rule_colour(app, info, focused, ink, t), ink.bg);
     inside
 }
 
-/// The rule's colour: teal on the focused pane (sky in shortcut mode, as every focused edge),
-/// amber on one that needs you, else `line`. Focus wins over amber.
+/// The rule's colour: red while a confirm asks to close the pane, teal on the focused pane (sky
+/// in shortcut mode, as every focused edge), amber on one that needs you, else `line`. Focus
+/// wins over amber.
 fn rule_colour(app: &App, info: &TermInfo, focused: bool, ink: Ink, t: &Theme) -> Color {
+    if closing(app, info.id) {
+        return t.err;
+    }
     match (focused, pane_needs(info)) {
         (true, _) if armed(app) => t.sky(),
         (true, _) => ink.teal,
@@ -63,14 +67,16 @@ fn rule_colour(app: &App, info: &TermInfo, focused: bool, ink: Ink, t: &Theme) -
     }
 }
 
-/// The title row: glyph, name, the tabs, `project · ⎇ branch` and at the right the load
-/// note, the state word and the ✕. The glyph and name never shrink while anything else is
-/// left to give way: the meta first, then the tabs, then the note, the ✕ and the state word.
-fn draw_title(app: &mut App, buf: &mut Buffer, body: Rect, info: &TermInfo, model: &[Proj], ink: Ink, t: &Theme) {
+/// The title row: number, glyph, name, the tabs, `project · ⎇ branch` and at the right the
+/// load note, the state word and the ✕. The number, glyph and name never shrink while anything
+/// else is left to give way: the meta first, then the tabs, then the note, the ✕ and the state
+/// word.
+fn draw_title(app: &mut App, buf: &mut Buffer, body: Rect, info: &TermInfo, focused: bool, model: &[Proj], t: &Theme) {
+    let ink = Ink::of(t);
     let y = body.y;
     let (x0, end) = (body.x + PANE_PAD, body.right().saturating_sub(PANE_PAD));
     let st = Style::default().bg(ink.bg);
-    let (mut head, glyph_at) = head_segs(app, info, model, ink, t);
+    let (mut head, glyph_at) = head_segs(app, info, focused, model, t);
     let room = end.saturating_sub(x0);
     // The name shortens only once nothing else is left to give way.
     let before_name = segs_width(&head[..head.len() - 1]);
@@ -103,14 +109,25 @@ fn draw_title(app: &mut App, buf: &mut Buffer, body: Rect, info: &TermInfo, mode
     }
 }
 
-/// Glyph and name: its state's mark and its name in `strong`, bold. No number: no key goes to
-/// a pane by one. Also where the mark sits in them, when there is one.
-fn head_segs(app: &App, info: &TermInfo, model: &[Proj], ink: Ink, t: &Theme) -> (Vec<Seg>, Option<u16>) {
+/// Number, glyph and name: the pane's number while the tab is split (teal focused, amber when
+/// it needs you, else dim), its state's mark and its name in `strong`, bold. Also where the mark
+/// sits in them, when there is one.
+fn head_segs(app: &App, info: &TermInfo, focused: bool, model: &[Proj], t: &Theme) -> (Vec<Seg>, Option<u16>) {
+    let ink = Ink::of(t);
     let st = Style::default().bg(ink.bg);
     let mut out = Vec::new();
+    if let Some(n) = pane_number(app, info.id) {
+        let colour = match (focused, pane_needs(info)) {
+            (true, _) => ink.teal,
+            (false, true) => ink.amber,
+            _ => ink.dim,
+        };
+        out.push(seg(format!("{n} "), st.fg(colour).add_modifier(Modifier::BOLD)));
+    }
     let glyph_at = mark(app, info, t).map(|(g, c)| {
+        let at = segs_width(&out);
         out.push(seg(format!("{g} "), st.fg(c).add_modifier(Modifier::BOLD)));
-        0
+        at
     });
     out.push(seg(session_name(app, model, info.id), st.fg(ink.strong).add_modifier(Modifier::BOLD)));
     (out, glyph_at)

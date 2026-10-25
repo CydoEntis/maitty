@@ -96,7 +96,7 @@ fn the_bottom_is_the_strip_then_the_bar() {
         assert_eq!(bar.y, buf.area.bottom() - 1, "{label}");
         assert_eq!(framed(&app, buf.area).bottom(), bar.y - 1, "{label}: the layout ends over the strip");
         let strip: String = (0..buf.area.width).map(|x| buf[(x, bar.y - 1)].symbol()).collect();
-        assert!(strip.starts_with('━'), "{label}: {strip}");
+        assert!(strip.starts_with(['━', '▸']), "{label}: {strip}");
     }
 }
 
@@ -126,8 +126,10 @@ fn the_strip_has_a_segment_per_session_in_its_state_colour() {
     for x in 0..buf.area.width {
         let c = &buf[(x, y)];
         match (c.symbol(), runs.last_mut()) {
-            ("━", Some((fg, n))) if *fg == c.fg && buf[(x - 1, y)].symbol() == "━" => *n += 1,
+            ("━", Some((fg, n))) if *fg == c.fg && ["━", "▸"].contains(&buf[(x - 1, y)].symbol()) => *n += 1,
             ("━", _) => runs.push((c.fg, 1)),
+            // The session on screen leads with a `▸`: its segment's colour is the line after it.
+            ("▸", _) => runs.push((buf[(x + 1, y)].fg, 1)),
             _ => {}
         }
     }
@@ -184,17 +186,23 @@ fn one_line_per_session_and_dim_project_headers() {
 }
 
 #[test]
-fn the_foot_names_the_real_keys_and_takes_clicks() {
-    let mut app = hairline_world(1);
-    app.keymap.prefixed.retain(|_, a| *a != Action::ShellHere);
-    app.keymap.prefixed.insert(KeySpec { code: KeyCode::Char('w'), mods: KeyModifiers::NONE }, Action::ShellHere);
-    app.keymap.prefixed_order.push(KeySpec { code: KeyCode::Char('w'), mods: KeyModifiers::NONE });
-    let buf = draw(&mut app, 100, 30);
-    let side = grid(&app, framed(&app, buf.area)).side;
-    let foot: String = (side.x..side.right()).map(|x| buf[(x, side.bottom() - 1)].symbol()).collect();
-    assert!(foot.contains("Ctrl+Space w new") && foot.contains("m menu"), "{foot}");
-    for want in [ScreenHit::NewShell, ScreenHit::Actions] {
-        assert!(app.hits.iter().any(|(r, h)| *h == Hit::Screen(want) && r.y == side.bottom() - 1), "{want:?} is clickable");
+fn the_foot_shows_new_and_menu_and_both_click() {
+    for (w, h) in SIZES {
+        let mut app = hairline_world(1);
+        let buf = draw(&mut app, w, h);
+        let side = grid(&app, framed(&app, buf.area)).side;
+        let y = side.bottom() - 1;
+        let foot: String = (side.x..side.right()).map(|x| buf[(x, y)].symbol()).collect();
+        let words: Vec<&str> = foot.split_whitespace().collect();
+        assert_eq!(words, ["new", "menu"], "{w}x{h}: the words alone, no keys: {foot}");
+        let (nx, _) = find_in(&buf, Rect { y, height: 1, ..side }, "new").unwrap();
+        assert_eq!(buf[(nx, y)].fg, app.theme.muted, "{w}x{h}: dim");
+        for want in [ScreenHit::NewShell, ScreenHit::Actions] {
+            let at = app.hits.iter().find(|(r, h)| *h == Hit::Screen(want) && r.y == y).map(|(r, _)| *r);
+            let at = at.unwrap_or_else(|| panic!("{w}x{h}: {want:?} is clickable"));
+            let word: String = (at.x..at.right()).map(|x| buf[(x, y)].symbol()).collect();
+            assert_eq!(word, if want == ScreenHit::NewShell { "new" } else { "menu" }, "{w}x{h}: the click covers its word");
+        }
     }
 }
 
@@ -206,8 +214,9 @@ fn the_name_stays_whole_while_the_meta_gives_way() {
     let r = pane_at(&app, 1);
     let title: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
     assert!(title.contains("fix-footer") && title.contains('…') && title.contains("done"), "{title}");
-    let (x, y) = find_in(&buf, Rect { height: 1, ..r }, "● fix-footer").unwrap();
-    assert_eq!(x, r.x + PANE_PAD, "the glyph leads the title: no number before it");
+    let (x, y) = find_in(&buf, Rect { height: 1, ..r }, "1 ● fix-footer").unwrap();
+    assert_eq!(x, r.x + PANE_PAD, "the pane's number leads the title, then the glyph");
+    let x = x + 2;
     let name = &buf[(x + 2, y)];
     assert_eq!(name.fg, t.strong);
     assert!(name.modifier.contains(Modifier::BOLD));

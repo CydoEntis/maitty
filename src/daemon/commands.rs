@@ -212,6 +212,16 @@ impl Daemon {
                     t.layout.resize(term, dir, delta);
                 }
             }
+            Command::SwapPanes { a, b } => {
+                let at = self.locate(a).ok_or_else(|| anyhow::anyhow!("no pane {a}"))?;
+                if self.locate(b) != Some(at) {
+                    anyhow::bail!("panes {a} and {b} aren't in the same tab: only panes side by side can swap");
+                }
+                let (ws, tab) = at;
+                if let Some(t) = self.ws_mut(ws)?.tabs.iter_mut().find(|t| t.id == tab) {
+                    t.layout.swap(a, b);
+                }
+            }
             Command::NewWorktree { ws, branch, base, cmd, split, from } => {
                 let by = self.starting(client, &helpers::task_label(cmd.as_deref(), Some(&branch)))?;
                 let ws_dir = self.ws_mut(ws)?.cwd.clone();

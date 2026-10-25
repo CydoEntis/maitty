@@ -244,6 +244,9 @@ pub(super) enum Drag {
     Session(TermId, bool, ScreenHit),
     /// A tab's pill (its index now): dragged onto another tab it takes that place.
     Tab(usize),
+    /// A pane pressed by its title: the pane it would swap with if let go now, and where the
+    /// pointer is (its name follows it).
+    Pane { from: TermId, over: Option<TermId>, at: Position },
 }
 
 /// The sidebar's width limits.
@@ -972,6 +975,8 @@ pub(super) enum ScreenHit {
     ToggleProj(usize),
     /// The sidebar's "+ new": a plain shell in the selected project.
     Session(TermId),
+    /// A status strip segment: its session's pane, with the keys.
+    StripSession(TermId),
     /// A button on the selected Inbox item: the key it stands for (`\n` Enter, `\x1b` Esc).
     InboxKey(char),
     CloseSplit(TermId),
@@ -1132,6 +1137,8 @@ mod splash;
 mod tidy;
 #[cfg(test)]
 mod frame_tests;
+#[cfg(test)]
+mod panes_apart_tests;
 #[cfg(test)]
 mod reference;
 pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_bar::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, references_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};

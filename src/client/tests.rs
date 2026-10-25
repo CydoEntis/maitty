@@ -364,7 +364,7 @@ mod screen_tests {
                 let on_row0 = |hit: screen::ScreenHit| app.hits.iter().find(|(r, h)| *h == Hit::Screen(hit) && r.y == 0).map(|(r, _)| *r);
                 assert!(on_row0(screen::ScreenHit::Session(1)).is_some() && on_row0(screen::ScreenHit::Session(2)).is_some(), "{w}x{h} {position}: a chip per session");
                 assert!(on_row0(screen::ScreenHit::ExpandSidebar).is_some() && on_row0(screen::ScreenHit::Actions).is_some(), "{w}x{h} {position}: expand and Menu stay clickable");
-                assert!(screen.lines().nth(1).unwrap().contains(" 1 "), "the pane's tabs moved down to row 1: {}", screen.lines().nth(1).unwrap());
+                assert!(screen.lines().nth(1).unwrap().contains(" + "), "the pane's tabs moved down to row 1: {}", screen.lines().nth(1).unwrap());
                 let click = |app: &mut App, r: Rect| {
                     for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
                         app.on_mouse(MouseEvent { kind, column: r.x + 1, row: r.y, modifiers: KeyModifiers::NONE });
@@ -643,7 +643,7 @@ mod screen_tests {
         assert!(lines[0].starts_with("┌─"), "the sidebar card from the very corner: {}", lines[0]);
         assert!(lines[0].contains("● needs you") && text.contains("claude"), "the active pane keeps its session and state: {}", lines[0]);
         assert!(text.contains("+ New") && text.contains("Menu"), "New and Actions stay in the sidebar foot");
-        assert!(lines[0].contains("─ 1  ") && lines[0].contains("  + ") && !lines[0].contains('▯'), "the tab's number and name in the pane's title, then the + chip; no layout switch: {}", lines[0]);
+        assert!(lines[0].contains("─ claude ") && lines[0].contains("  + ") && !lines[0].contains('▯'), "the tab's name in the pane's title (a lone tab has no number), then the + chip; no layout switch: {}", lines[0]);
         // Projects and their sessions, nothing in between.
         assert!(text.contains("−  shop-api") && text.contains("SESSIONS") && text.contains("●1"), "a project: its fold arrow and name; what needs you in the sidebar's title");
         assert!(!text.contains("AGENTS") && !text.contains("TERMINALS") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "no heading per kind of session");
@@ -773,7 +773,7 @@ mod screen_tests {
         assert!(o.contains("Run npm test -- checkout?") && o.contains("Reply m") && o.contains("Open o"), "the question and what to do about it");
         assert!(o.contains("↑↓") && o.contains("select") && o.contains("Esc") && o.contains("close"), "the sheet's keys");
         // It's docked beside the panes, not over them: the session's card is still there.
-        assert!(o.contains("─ 1  claude "), "the panes reflow beside it");
+        assert!(o.contains("─ claude "), "the panes reflow beside it");
         // 2 answers the selected question without going there.
         app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::GoTo { .. }), "still in the Inbox");
@@ -1344,14 +1344,14 @@ mod screen_tests {
     }
 
     #[test]
-    fn grid_names_each_pane_once_with_its_state_glyph_inside_and_no_number() {
+    fn grid_names_each_pane_once_with_its_state_glyph_and_its_number_inside() {
         let (app, [a, b, c], rows) = grid_frame(200, 50);
         let (ta, tb, tc) = (top_border(&app, &rows, a), top_border(&app, &rows, b), top_border(&app, &rows, c));
         let spinner = crate::client::design::glyph(&app, Status::Working);
-        assert!(ta.starts_with("┌─ ▲  1  claude   + ─"), "needs you inside the current tab, whose chip carries the only number: {ta}");
-        assert_eq!(ta.matches(" 1 ").count(), 1, "one 1 on the top-left pane, its tab's: {ta}");
-        assert!(tb.starts_with(&format!("┌─ {spinner} codex ─")), "one name chip, the spinner inside it: {tb}");
-        assert!(tc.starts_with("┌─ shell ─"), "no state for a shell: {tc}");
+        assert!(ta.starts_with("┌─ ▲  1 · claude   + ─"), "needs you inside the current tab, then pane 1 before the name: {ta}");
+        assert_eq!(ta.matches(" 1 ").count(), 1, "a lone tab has no number chip: only the pane's 1: {ta}");
+        assert!(tb.starts_with(&format!("┌─ {spinner} 2 · codex ─")), "one name chip, the spinner and pane 2 inside it: {tb}");
+        assert!(tc.starts_with("┌─ 3 · shell ─"), "no state for a shell, pane 3: {tc}");
         for (top, name) in [(&ta, "claude"), (&tb, "codex"), (&tc, "shell")] {
             assert!(!top.contains("needs you") && !top.contains("working"), "no state words: {top}");
             assert_eq!(top.matches(name).count(), 1, "the name is not repeated on the right: {top}");
@@ -1417,7 +1417,7 @@ mod screen_tests {
             let rows: Vec<String> = o.lines().map(str::to_string).collect();
             let (ta, tb, tc) = (top_border(&app, &rows, a), top_border(&app, &rows, b), top_border(&app, &rows, c));
             let spinner = crate::client::design::glyph(&app, Status::Working);
-            assert!(ta.starts_with(&format!("┌─ {spinner} 1  ")), "{w}x{h}: working, in the current tab: {ta}");
+            assert!(ta.starts_with(&format!("┌─ {spinner} 1 · ")), "{w}x{h}: working, in the current tab: {ta}");
             assert!(tb.starts_with("┌─ ▲  "), "{w}x{h}: needs you, in the name chip: {tb}");
             assert!(tc.starts_with("┌─ ") && !tc.contains('▲') && !tc.contains(&spinner), "{w}x{h}: done shows no glyph: {tc}");
             for top in [&ta, &tb, &tc] {
@@ -1508,15 +1508,23 @@ mod screen_tests {
             let rows: Vec<String> = o.lines().map(str::to_string).collect();
             let (ta, tb) = (top_border(&app, &rows, a), top_border(&app, &rows, b));
             let tab = border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab)));
-            assert!(tab.len() == 1 && ta.contains("▲  1 "), "{w}: the current tab, its glyph inside: {ta}");
+            assert!(tab.len() == 1 && ta.contains("▲  1"), "{w}: the current tab, its glyph inside: {ta}");
             assert!(!ta.contains("needs you") && ta.matches("claude").count() <= 1, "{w}: {ta}");
             let spinner = crate::client::design::glyph(&app, Status::Working);
-            assert!(tb.contains(&format!("{spinner} c")) && tb.matches("codex").count() <= 1, "{w}: the name chip carries the spinner: {tb}");
-            shortened |= tb.contains(&format!("{spinner} codex-")) && tb.contains('…');
+            assert!(tb.contains(&format!("{spinner} 2")) && tb.matches("codex").count() <= 1, "{w}: the name chip carries the spinner and the number: {tb}");
+            shortened |= tb.contains(&format!("{spinner} 2 · codex-")) && tb.contains('…');
         }
         assert!(shortened, "somewhere a name chip shortens its name and keeps its glyph");
-        // Narrower still, a tab that cannot fit at its shortest gives way to its glyph alone.
-        let (app, [a, ..], rows) = grid_frame(40, 20);
+        // Narrower still, a tab that cannot fit at its shortest (a session of several tabs, so
+        // with its number chip) gives way to its glyph alone.
+        let (_, mut app) = super::design_tests::render_with(40, 20);
+        app.cfg.ui.layout = "grid".into();
+        let [a, ..] = three_panes(&mut app);
+        let mut second = app.screen.tabs[0].clone();
+        (second.layout, second.focus) = (crate::layout::Node::Leaf(a), a);
+        app.screen.tabs.push(second);
+        let o = draw(&mut app, 40, 20);
+        let rows: Vec<String> = o.lines().map(str::to_string).collect();
         let ta = top_border(&app, &rows, a);
         assert!(ta.starts_with("┌─ ▲ ─"), "the glyph alone: {ta}");
         assert!(border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab))).is_empty(), "the tab gave way: {ta}");
@@ -1592,7 +1600,7 @@ mod screen_tests {
                     assert_ne!(end.bg, b_chip, "b's chip is square: {at}");
                 }
                 let name = &buf[(wb[0].right() + 1, y)];
-                assert_eq!((name.symbol(), name.fg, name.bg), ("c", b_ink, b_chip), "b's name after its spinner, one chip: {at}");
+                assert_eq!((name.symbol(), name.fg, name.bg), ("2", b_ink, b_chip), "b's number and name after its spinner, one chip: {at}");
                 // Needs you, at the front of the current tab: amber, set apart from the chip.
                 let glyph = &buf[(wa[0].x + 1, y)];
                 assert_eq!(glyph.symbol(), "▲", "{at}");
@@ -3683,7 +3691,7 @@ second line
         assert!(matches!(app.mode, Mode::Actions { .. }), "the leader's m does");
         // And no row's menu item is ever handed a key the sidebar already uses.
         let items: Vec<(String, crate::client::menu::Act)> = ["Archive", "Ask", "Mark", "Inspect", "Jump", "Keep"].iter().map(|l| (l.to_string(), crate::client::menu::Act::RenamePane(1))).collect();
-        let keys = crate::client::menu::menu_keys(&items);
+        let keys = crate::client::menu::menu_chars(&app, &items);
         assert!(keys.iter().flatten().all(|k| !['a', 'm', 'i', 'j', 'k'].contains(k)), "{keys:?}");
     }
 
@@ -4065,7 +4073,7 @@ second line
         app.open_changes(repo.clone());
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains(" Changes c ") && o.contains("─ 1  claude "), "Changes docks beside the panes");
+        assert!(o.contains(" Changes c ") && o.contains("─ claude "), "Changes docks beside the panes");
         assert!(!o.contains("─ Changes "), "its lit tab names it; the title doesn't repeat it");
         let _ = std::fs::remove_dir_all(&repo);
     }
@@ -7598,7 +7606,7 @@ mod check_settings_tests {
 
 mod check_wiring_tests {
     use super::*;
-    use crate::client::menu::{Act, menu_keys};
+    use crate::client::menu::{Act, menu_chars};
     use crate::protocol::{CheckInfo, CheckState, ClientMsg, Command, ServerMsg};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -7753,7 +7761,7 @@ mod check_wiring_tests {
         let keyed = |state: Option<CheckState>| {
             let (app, _) = rig(100, 30, |_| {}, state.map(info), Status::Done);
             let items = app.session_items(TERM).unwrap().1;
-            items.iter().map(|(l, _)| l.clone()).zip(menu_keys(&items)).collect::<Vec<_>>()
+            items.iter().map(|(l, _)| l.clone()).zip(menu_chars(&app, &items)).collect::<Vec<_>>()
         };
         let key = |keys: &[(String, Option<char>)], label: &str| keys.iter().find(|(l, _)| l == label).and_then(|(_, k)| *k);
         assert_eq!(key(&keyed(None), "Rename"), Some('r'), "no check: Rename keeps r");
@@ -7808,7 +7816,7 @@ mod check_wiring_tests {
             for status in [Status::Done, Status::Working, Status::Idle] {
                 let (app, _) = rig(100, 30, |_| {}, Some(info(state)), status);
                 let items = app.session_items(TERM).unwrap().1;
-                let keys = menu_keys(&items);
+                let keys = menu_chars(&app, &items);
                 let mut seen = Vec::new();
                 for ((label, act), key) in items.iter().zip(&keys) {
                     let key = key.unwrap_or_else(|| panic!("{state:?}: {label} has a key"));
@@ -7827,7 +7835,7 @@ mod check_wiring_tests {
     fn pick(app: &mut App, label: &str) {
         app.menu_for_session(TERM, (20, 10));
         let (items, keys) = match &app.mode {
-            Mode::ScreenMenu(m) => (m.items.clone(), menu_keys(&m.items)),
+            Mode::ScreenMenu(m) => (m.items.clone(), menu_chars(app, &m.items)),
             other => panic!("no menu: {other:?}"),
         };
         let i = items.iter().position(|(l, _)| l == label).unwrap_or_else(|| panic!("no {label} in {items:?}"));
@@ -10693,5 +10701,189 @@ mod references_view_tests {
         let copied = crate::client::copy::LAST_COPY.with(|c| c.borrow().clone()).unwrap();
         assert_eq!(PathBuf::from(&copied), crate::references::folder(&dir).join("a.png"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+mod pane_swap_tests {
+    use super::*;
+    use crate::layout::{Dir, Node};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::layout::{Position, Rect};
+
+    const LAYOUTS: [&str; 5] = ["floating", "tiled", "compact", "grid", "hairline"];
+    /// Wide enough that Compact splits too.
+    const W: u16 = 200;
+    const H: u16 = 45;
+
+    /// Panes 1 and 2 side by side in one tab, as the server keeps them, drawn in `layout`;
+    /// and what the app sends.
+    fn side_by_side(layout: &str) -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
+        let (_, mut app) = super::design_tests::render_with(W, H);
+        let (tx, rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.cfg.ui.layout = layout.into();
+        let mut split = Node::Leaf(1);
+        split.split(1, Dir::Right, 2);
+        app.snap.workspaces[0].tabs = vec![
+            TabInfo { id: 11, name: String::new(), layout: split, focus: 1 },
+            TabInfo { id: 13, name: String::new(), layout: Node::Leaf(3), focus: 3 },
+        ];
+        app.screen.tabs.clear();
+        app.screen.last_focus = None;
+        app.screen_sync();
+        draw(&mut app);
+        (app, rx)
+    }
+
+    fn draw(app: &mut App) -> String {
+        app.screen_fresh();
+        let mut term = Terminal::new(TestBackend::new(W, H)).unwrap();
+        term.draw(|f| render::draw(app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        (0..H).map(|y| (0..W).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>() + "\n").collect()
+    }
+
+    fn mouse(app: &mut App, kind: MouseEventKind, at: Position) {
+        app.on_mouse(MouseEvent { kind, column: at.x, row: at.y, modifiers: KeyModifiers::NONE });
+    }
+
+    fn frame_of(app: &App, term: TermId) -> Rect {
+        app.pane_frames.iter().find(|(id, _)| *id == term).map(|(_, r)| *r).expect("the pane is drawn")
+    }
+
+    /// A cell of `term`'s title row that none of its title's controls take, nearest the middle.
+    fn title_spot(app: &App, term: TermId) -> Position {
+        let r = frame_of(app, term);
+        let free = |x: u16| {
+            let at = Position::new(x, r.y);
+            matches!(app.hits.iter().rev().find(|(h, _)| h.contains(at)).map(|(_, h)| *h), None | Some(Hit::Pane(_)))
+        };
+        let mid = r.x + r.width / 2;
+        let x = (r.x..r.right()).filter(|x| free(*x)).min_by_key(|x| x.abs_diff(mid)).expect("blank title space");
+        Position::new(x, r.y)
+    }
+
+    fn middle(app: &App, term: TermId) -> Position {
+        let r = frame_of(app, term);
+        Position::new(r.x + r.width / 2, r.y + r.height / 2)
+    }
+
+    fn swaps_sent(rx: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Vec<(TermId, TermId)> {
+        std::iter::from_fn(|| rx.try_recv().ok())
+            .filter_map(|m| match m {
+                ClientMsg::Command(Command::SwapPanes { a, b }) => Some((a, b)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn shown(app: &App) -> Vec<TermId> {
+        app.screen.tabs[app.screen.tab].layout.leaves()
+    }
+
+    #[test]
+    fn dragging_a_title_onto_another_pane_swaps_them_in_every_layout() {
+        for layout in LAYOUTS {
+            let (mut app, mut rx) = side_by_side(layout);
+            assert_eq!(shown(&app), [1, 2], "{layout}");
+            let (from, onto) = (title_spot(&app, 1), middle(&app, 2));
+            mouse(&mut app, MouseEventKind::Down(MouseButton::Left), from);
+            mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), onto);
+            let screen = draw(&mut app);
+            if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
+                println!("{layout}\n{screen}");
+            }
+            assert!(screen.contains("swap here"), "{layout}: the drop target shows\n{screen}");
+            mouse(&mut app, MouseEventKind::Up(MouseButton::Left), onto);
+            assert_eq!(shown(&app), [2, 1], "{layout}: they traded places");
+            assert_eq!(swaps_sent(&mut rx), [(1, 2)], "{layout}: the server's tab follows");
+            assert!(app.screen.drag.is_none(), "{layout}");
+        }
+    }
+
+    #[test]
+    fn a_title_drag_let_go_on_itself_outside_the_panes_or_after_esc_moves_nothing() {
+        let (mut app, mut rx) = side_by_side("floating");
+        let (from, own, other, sidebar) = (title_spot(&app, 1), middle(&app, 1), middle(&app, 2), Position::new(1, 5));
+        let ends: [&dyn Fn(&mut App); 4] = [
+            &|app| mouse(app, MouseEventKind::Up(MouseButton::Left), own),
+            &|app| mouse(app, MouseEventKind::Up(MouseButton::Left), sidebar),
+            &|app| mouse(app, MouseEventKind::Moved, other),
+            &|app| {
+                app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                mouse(app, MouseEventKind::Up(MouseButton::Left), other);
+            },
+        ];
+        for end in ends {
+            mouse(&mut app, MouseEventKind::Down(MouseButton::Left), from);
+            mouse(&mut app, MouseEventKind::Drag(MouseButton::Left), other);
+            end(&mut app);
+            assert!(app.screen.drag.is_none());
+            assert_eq!(shown(&app), [1, 2]);
+        }
+        assert!(swaps_sent(&mut rx).is_empty());
+    }
+
+    #[test]
+    fn a_press_on_a_title_still_focuses_its_pane() {
+        let (mut app, mut rx) = side_by_side("tiled");
+        let at = title_spot(&app, 2);
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), at);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), at);
+        let sent: Vec<ClientMsg> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 }))), "{sent:?}");
+        assert!(!sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::SwapPanes { .. }))));
+    }
+
+    #[test]
+    fn the_close_button_on_a_title_is_not_a_drag_handle() {
+        let mut tried = 0;
+        for layout in LAYOUTS {
+            let (mut app, _rx) = side_by_side(layout);
+            // Compact titles have no ✕.
+            let Some(close) = app.hits.iter().rev().find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::CloseSplit(2))).map(|(r, _)| *r) else { continue };
+            mouse(&mut app, MouseEventKind::Down(MouseButton::Left), close.as_position());
+            assert!(!matches!(app.screen.drag, Some(screen::Drag::Pane { .. })), "{layout}");
+            tried += 1;
+        }
+        assert!(tried >= 3, "the layouts with a ✕ were tried");
+    }
+
+    #[test]
+    fn leader_alt_arrow_swaps_with_the_neighbour_that_way() {
+        let (mut app, mut rx) = side_by_side("tiled");
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::ALT));
+        assert_eq!(shown(&app), [1, 2], "nothing left of pane 1");
+        assert!(matches!(app.mode, Mode::Prefix { .. }), "shortcut mode stays on");
+        app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::ALT));
+        assert_eq!(shown(&app), [2, 1]);
+        assert_eq!(app.focused(), Some(1), "the keys stay with the pane that moved");
+        assert_eq!(swaps_sent(&mut rx), [(1, 2)]);
+    }
+
+    #[test]
+    fn the_pane_menu_offers_a_move_toward_each_neighbour() {
+        let (mut app, mut rx) = side_by_side("tiled");
+        app.menu_for_pane(1, (5, 5));
+        let Mode::ScreenMenu(menu) = app.mode.clone() else { panic!("a menu") };
+        let labels: Vec<&str> = menu.items.iter().map(|(l, _)| l.as_str()).collect();
+        assert!(labels.contains(&"Move pane right"), "{labels:?}");
+        assert!(!labels.iter().any(|l| ["Move pane left", "Move pane up", "Move pane down"].contains(l)), "{labels:?}");
+        app.menu_do(menu::Act::Swap(1, 2));
+        assert_eq!(shown(&app), [2, 1]);
+        assert_eq!(swaps_sent(&mut rx), [(1, 2)]);
+    }
+
+    #[test]
+    fn panes_split_here_only_swap_here() {
+        let (mut app, mut rx) = side_by_side("tiled");
+        app.snap.workspaces[0].tabs[0].layout = Node::Leaf(1);
+        app.snap.workspaces[0].tabs.push(TabInfo { id: 12, name: String::new(), layout: Node::Leaf(2), focus: 2 });
+        assert!(app.swap_panes(1, 2));
+        assert_eq!(shown(&app), [2, 1]);
+        assert!(swaps_sent(&mut rx).is_empty(), "the server keeps them apart: nothing to tell it");
+        assert!(!app.swap_panes(1, 3), "3 isn't shown beside them");
     }
 }

@@ -91,8 +91,10 @@ sidebar*.
 
 The title sits on the pane's top border (a header strip in Compact). The top-left pane carries
 the session's tabs as chips, the current one in the accent, then a **+** chip for a new tab;
-other panes show their session's name. On the right: the session's status mark (it opens why)
-and a ✕. In Grid a chip names each pane and its state is the glyph alone. Unfocused panes fade;
+other panes show their session's name. While a tab is split, every pane's number (its place in
+reading order, from 1, so it changes when panes move, close or split) leads its name: `2 · claude`. On the right: the session's status mark (it
+opens why) and a ✕; closing asks first, naming the pane (`Close pane 2 · claude`) and lighting
+its lines in the red until you answer. In Grid a chip names each pane and its state is the glyph alone. Unfocused panes fade;
 the focused border is the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane
 focus*.
 
@@ -114,7 +116,8 @@ groups* and *check evidence sheet*.
 Deciding is a modal: centred, framed like a pane (the title as an accent chip on the top border,
 `Esc close` at the right), the screen behind dimmed, no shadow. Settings, override, command
 approval and the key overlay are modals. Small explanations (why, a row's menu, the message and
-helpers popovers) open beside their row with a `◂` pointer. Every panel ends in an action bar
+helpers popovers) open beside their row with a `◂` pointer; a menu row ends in its key, the bound leader
+key when there is one. Every panel ends in an action bar
 of keycaps. See UI › *UI conventions*, *check modals and settings* and *why popover*.
 
 ## Toasts
@@ -151,9 +154,9 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
   amber line under the row. The focused row is
   `raised` with a teal `▎` and a teal name; a row on screen without the keys is `raised`; one
   that needs you has an amber `▎` and an amber name. The foot, pinned to the bottom row, is
-  dim: the new-shell hint (the leader and its key) at the left, the menu's at the right.
-- **Panes:** row 1 is the glyph, the name in `strong` bold (no number: no key goes to a pane
-  by one), the session's tabs as
+  two dim words, no keys: `new` at the left, `menu` at the right.
+- **Panes:** row 1 is the pane's number while the tab is split (bold: teal focused, amber when
+  it needs you, else dim), the glyph, the name in `strong` bold, the session's tabs as
   plain words when it has several (the current one teal), then `project · ⎇ branch` dim; at the
   right the state (`needs you · 2m` or `needs you · approve check` amber bold, `working` teal,
   `done` green, `idle` dim) and
@@ -161,7 +164,8 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
   when it needs you and is not focused, else `line`. Panes side by side or stacked are parted
   by one `│` or `─`, never boxed; the terminal sits two columns in.
 - **Status strip:** the row over the mode bar, one `━` segment per session in the sidebar's
-  order, a column apart, in its state's colour (idle dim).
+  order, a column apart, in its state's colour (idle dim). The session on screen is yours: its
+  segment sits on `raised` and leads with a teal bold `▸`, the rest keeping its state's colour.
 - **Mode bar:** `TYPING` is a teal bold word, then `Hairline · 2 panes` dim, then the hint;
   whatever has the keys is named in `strong` bold, no chip. At the right `● N needs you` in
   amber bold, or `all clear` dim, just before Update or Restart. Shortcut mode keeps its sky row.
