@@ -1816,15 +1816,38 @@ pub(super) fn install_codex_status(exe: &str, uninstall: bool) -> Result<PathBuf
     Ok(path)
 }
 
-pub fn integrate(agent: &str, uninstall: bool) -> Result<()> {
+pub fn integrate(agent: Option<&str>, uninstall: bool) -> Result<()> {
     let exe = this_exe()?;
     match agent {
-        "mcp" => integrate_mcp(&exe, uninstall),
-        agent => {
+        None => integrate_every(&exe, uninstall),
+        Some("mcp") => integrate_mcp(&exe, uninstall),
+        Some(agent) => {
             let path = integrations::set_up_status(agent, &exe, uninstall)?;
             report_integration(agent, &path, uninstall);
             Ok(())
         }
+    }
+}
+
+/// Status for every installed agent, then the MCP server; fails, after trying them all, when
+/// any couldn't be changed.
+fn integrate_every(exe: &str, uninstall: bool) -> Result<()> {
+    println!("Status:");
+    let results = integrations::set_up_every(integrations::agent_installed, |agent| {
+        integrations::connect(agent, exe, uninstall)
+    });
+    for (agent, outcome) in &results {
+        println!("{}: {}", agent.name, outcome.describe(uninstall));
+    }
+    let failed = results.iter().filter(|(_, o)| matches!(o, integrations::Outcome::Failed(_))).count();
+    println!("
+MCP:");
+    let mcp = integrate_mcp(exe, uninstall);
+    println!("\nRestart your agents to load the change.");
+    match (failed, mcp) {
+        (0, mcp) => mcp,
+        (n, Ok(())) => bail!("{n} agent(s) not changed"),
+        (n, Err(e)) => bail!("{n} agent(s) not changed; MCP: {e:#}"),
     }
 }
 
