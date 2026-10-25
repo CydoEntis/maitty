@@ -50,10 +50,21 @@ fn padded(app: &App, area: Rect) -> Rect {
     Rect { x: area.x + m, y: area.y + m, width: area.width.saturating_sub(2 * m), height: area.height.saturating_sub(2 * m) }
 }
 
-/// The room the screen is laid out in: inside the padding, above the mode bar.
+/// Rows along the bottom under the layout: the mode bar, and in Hairline the status strip over it.
+fn bottom_rows(app: &App) -> u16 {
+    if Look::of(&app.cfg.ui).hairline { 2 } else { 1 }
+}
+
+/// The room the screen is laid out in: inside the padding, above the mode bar (and the strip).
 pub(in crate::client) fn framed(app: &App, area: Rect) -> Rect {
     let r = padded(app, area);
-    Rect { height: r.height.saturating_sub(1), ..r }
+    Rect { height: r.height.saturating_sub(bottom_rows(app)), ..r }
+}
+
+/// Hairline's status strip: the row over the mode bar.
+fn strip_row(app: &App, area: Rect) -> Option<Rect> {
+    let bar = mode_bar_row(app, area);
+    (Look::of(&app.cfg.ui).hairline && bar.y > padded(app, area).y).then(|| Rect { y: bar.y - 1, ..bar })
 }
 
 /// The mode bar's row (ADR 0024): the bottom row inside the padding.
@@ -62,10 +73,11 @@ pub(in crate::client) fn mode_bar_row(app: &App, area: Rect) -> Rect {
     Rect { y: r.bottom().saturating_sub(1), height: r.height.min(1), ..r }
 }
 
-/// Where popups and their dimming go: the window above the mode bar, so the mode stays in view
-/// and readable under any of them.
+/// Where popups and their dimming go: the window above the mode bar (and the strip), so the
+/// mode stays in view and readable under any of them.
 pub(in crate::client) fn above_bar(app: &App, area: Rect) -> Rect {
-    Rect { height: mode_bar_row(app, area).y.saturating_sub(area.y), ..area }
+    let top = strip_row(app, area).unwrap_or_else(|| mode_bar_row(app, area)).y;
+    Rect { height: top.saturating_sub(area.y), ..area }
 }
 
 /// The grid in `area` (already `framed`): the sidebar the full height at one side, then the
@@ -74,9 +86,11 @@ pub(in crate::client) fn above_bar(app: &App, area: Rect) -> Rect {
 /// parts them. A width you dragged the sidebar to wins over the default.
 pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
     let look = Look::of(&app.cfg.ui);
-    let full = app.screen.saved.side_w.unwrap_or_else(|| side_w(area.width)).clamp(SIDE_MIN, SIDE_MAX).min(area.width / 2);
+    let default_w = if look.hairline { hairline::SIDE_W } else { side_w(area.width) };
+    let full = app.screen.saved.side_w.unwrap_or(default_w).clamp(SIDE_MIN, SIDE_MAX).min(area.width / 2);
     let sw = (full as f32 * app.side_frac).round() as u16;
-    let gap = if sw == 0 { 0 } else { look.gap };
+    // Hairline keeps a column for the `│` between the sidebar and the panes.
+    let gap = if sw == 0 { 0 } else if look.hairline { 1 } else { look.gap };
     let (side, col) = if app.cfg.ui.sidebar_position == "right" {
         let side = Rect { x: area.right().saturating_sub(sw), width: sw, ..area };
         (side, Rect { width: area.width.saturating_sub(sw + gap), ..area })
@@ -152,7 +166,12 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     note_sheet(app, &g, room.width);
     // Too narrow mid-slide to draw anything sensible: just the room it takes.
     if g.side.width >= SIDE_DRAWN_FROM {
-        draw_side(app, f.buffer_mut(), g.side, &model, t);
+        if Look::of(&app.cfg.ui).hairline {
+            hairline::draw_side(app, f.buffer_mut(), g.side, &model, t);
+            hairline::draw_side_rule(f.buffer_mut(), g.edge, t);
+        } else {
+            draw_side(app, f.buffer_mut(), g.side, &model, t);
+        }
         // The edge beside the sidebar: drag it. It lights up while you point at it.
         if app.screen.drag == Some(Drag::Side) || hovered(app, g.edge) {
             let ex = g.edge.x + g.edge.width / 2;
@@ -179,7 +198,10 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
         draw_sheet_edge(app, f.buffer_mut(), &g, t);
     }
-    draw_mode_bar(app, f.buffer_mut(), mode_bar_row(app, area), t);
+    if let Some(row) = strip_row(app, area) {
+        hairline::draw_strip(app, f.buffer_mut(), row, &model, t);
+    }
+    draw_mode_bar(app, f.buffer_mut(), mode_bar_row(app, area), &model, t);
     app.screen.crumb_x = g.panes.x + 1;
     // A popup (`<app> popup`) floats over everything, the rest dimmed.
     let above = above_bar(app, area);
@@ -321,7 +343,7 @@ pub(in crate::client) fn shortcut_waits(app: &App) -> bool {
 
 /// What a session is called on its pane: its sidebar name, else (a pane in another's tab or
 /// split has no row) your name for it or what runs in it.
-fn session_name(app: &App, model: &[Proj], term: TermId) -> String {
+pub(super) fn session_name(app: &App, model: &[Proj], term: TermId) -> String {
     if let Some((_, _, s)) = find(model, term) {
         return s.name.clone();
     }
@@ -638,85 +660,24 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     // Exactly one lit edge: an open sheet has the keys, so the pane gives up its lit border.
     let focused = focused && !side_focused(app) && !sheet_has_keys(app);
     let scrolled = app.parsers.get(&term).map(|p| p.screen().scrollback()).filter(|n| *n > 0);
-    let grid_color = look.grid.then(|| grid_color(app, term, t));
-    let border = if let Some(own) = grid_color {
-        match (focused, armed(app)) {
-            (true, true) => t.sky(),
-            (true, false) => own,
-            (false, _) => crate::theme::mix(own, t.bg, GRID_UNFOCUSED_FADE),
-        }
-    } else if !focused {
-        t.line
-    } else if armed(app) {
-        t.sky()
-    } else {
-        match app.cfg.ui.focus_border.as_str() {
-            "bright" => t.strong,
-            "none" => t.line,
-            _ => t.accent,
-        }
-    };
-    // Just moved here: the border flares and settles, so you see where you landed.
-    let on = app.motion_on();
-    let flash = if focused { app.motion.land(term as u64, on) } else { 0.0 };
-    let flare = if app.cfg.ui.focus_border == "bright" { t.accent } else { t.strong };
-    let border = if flash > 0.0 { blend(border, flare, flash) } else { border };
-    let mut c = Card::new(t, "");
-    let mark = pane_mark(app, &info, t);
-    // What it's waiting for, beside its state: a usage limit, or what it takes of the machine.
-    let note = match info.resume_at {
-        Some(at) => Some((format!("⏸ limit · continues in {}", until(at)), t.muted)),
-        None => load_note(info.cpu, info.mem).map(|(load, heavy)| (load, if heavy { t.err } else { t.muted })),
-    };
-    let note = note.map(|(note, colour)| seg(format!("{note}  "), Style::default().fg(colour)));
-    c.close = Some(ScreenHit::CloseSplit(term));
-    // Grid says the state on the left of the border instead.
-    let mark_at = if look.grid {
-        c.right.extend(note);
-        None
-    } else {
-        fit_right(look, r, &mut c, note, mark)
-    };
-    if let Some(parser) = app.parsers.get(&term) {
-        c.bg = crate::client::render::terminal_surface_bg(parser.screen(), c.bg);
-    }
-    let terminal_bg = c.bg;
-    if focused {
-        c = c.lit(border);
-    } else if look.grid {
-        c.border = border;
-    }
-    let top_left = app.screen.leaf_rects.iter().min_by_key(|(_, lr)| (lr.y, lr.x)).is_some_and(|(id, _)| *id == term);
-    let why_at = if look.grid {
-        grid_title(app, model, &info, focused, r, &mut c, t)
-    } else {
-        // The title runs up to two cells before the right-hand segments and the ✕.
-        let right_w = segs_width(&c.right) + close_w(look, &c);
-        let title_end = right_end(look, r).saturating_sub(right_w + 2);
-        c.chips = if top_left {
-            tab_strip(app, model, Rect { x: title_x(look, r), y: r.y, width: title_end.saturating_sub(title_x(look, r)), height: 1 }, focused, None, t).0
-        } else {
-            let caps = if look.round_tabs { 2 } else { 0 };
-            let name = truncate(&session_name(app, model, term), title_end.saturating_sub(title_x(look, r) + 2 + caps) as usize);
-            let chip = vec![name_chip(&name, focused, t)];
-            if look.round_tabs { round_ends(chip, title_ground(look, t)) } else { chip }
-        };
-        mark_at.into_iter().collect()
-    };
-    let buf = f.buffer_mut();
-    let inside = card(app, buf, r, &c, t);
-    // After the tabs' hits, so a click on the glyph inside the current tab opens why.
-    for at in why_at {
-        hit(app, at, ScreenHit::Why(term));
-    }
-    app.pane_frames.push((term, r));
-
-    // The terminal: 3 columns in, a row below the title, down to the last row inside.
     // Answer buttons only for a question asked through the app (ask-human), which has nowhere
     // else to be answered: an agent's own question is answered in its own prompt.
     let ask = st == Status::Blocked && info.agent.is_some() && app.pending_question(term).is_some();
-    let below = 1 + if ask { 2 } else { 0 };
-    let inner = Rect { x: r.x + 3, y: r.y + 2, width: r.width.saturating_sub(6), height: r.height.saturating_sub(2 + below) };
+    let (inside, inner, terminal_bg) = if look.hairline {
+        let surface = app.parsers.get(&term).map_or(pane_bg(t), |p| crate::client::render::terminal_surface_bg(p.screen(), pane_bg(t)));
+        let inside = hairline::pane_frame(app, f.buffer_mut(), r, &info, focused, model, surface, t);
+        // The terminal: the pane's padding in from each side, from under the rule to the bottom.
+        let below = if ask { 3 } else { 0 };
+        let pad = hairline::PANE_PAD;
+        let inner = Rect { x: inside.x + pad, width: inside.width.saturating_sub(2 * pad), height: inside.height.saturating_sub(below), ..inside };
+        (inside, inner, surface)
+    } else {
+        let (inside, terminal_bg) = card_frame(app, f.buffer_mut(), r, &info, focused, model, t);
+        // The terminal: 3 columns in, a row below the title, down to the last row inside.
+        let below = 1 + if ask { 2 } else { 0 };
+        (inside, Rect { x: r.x + 3, y: r.y + 2, width: r.width.saturating_sub(6), height: r.height.saturating_sub(2 + below) }, terminal_bg)
+    };
+    app.pane_frames.push((term, r));
     app.panes.push((term, inner));
     // The whole inside of the card focuses the pane, as the reference's focus region does.
     app.hits.push((inside, Hit::Pane(term)));
@@ -743,8 +704,99 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
             }
         }
     }
+    draw_scrollbar(app, f.buffer_mut(), term, inner, terminal_bg, t);
+    draw_to_bottom(app, f.buffer_mut(), term, inner, scrolled, terminal_bg, t);
 
-    // A scrollbar in the margin when there's history: where you are, click or drag it.
+    // Not the one you're in: its inside fades (the border and its amber tag stay as they are).
+    if !focused {
+        dim_inside(f.buffer_mut(), inside, look.dim, t);
+    }
+    if ask && r.height >= 8 {
+        draw_answer_bar(app, f.buffer_mut(), r, term, terminal_bg, t);
+    }
+}
+
+/// A Cards, Compact or Grid pane's frame: the box (or zone) with its title on the top border.
+/// Returns the inside and the terminal's ground.
+fn card_frame(app: &mut App, buf: &mut Buffer, r: Rect, info: &TermInfo, focused: bool, model: &[Proj], t: &Theme) -> (Rect, Color) {
+    let look = Look::of(&app.cfg.ui);
+    let term = info.id;
+    let grid_color = look.grid.then(|| grid_color(app, term, t));
+    let border = if let Some(own) = grid_color {
+        match (focused, armed(app)) {
+            (true, true) => t.sky(),
+            (true, false) => own,
+            (false, _) => crate::theme::mix(own, t.bg, GRID_UNFOCUSED_FADE),
+        }
+    } else if !focused {
+        t.line
+    } else if armed(app) {
+        t.sky()
+    } else {
+        match app.cfg.ui.focus_border.as_str() {
+            "bright" => t.strong,
+            "none" => t.line,
+            _ => t.accent,
+        }
+    };
+    // Just moved here: the border flares and settles, so you see where you landed.
+    let on = app.motion_on();
+    let flash = if focused { app.motion.land(term as u64, on) } else { 0.0 };
+    let flare = if app.cfg.ui.focus_border == "bright" { t.accent } else { t.strong };
+    let border = if flash > 0.0 { blend(border, flare, flash) } else { border };
+    let mut c = Card::new(t, "");
+    let mark = pane_mark(app, info, t);
+    // What it's waiting for, beside its state: a usage limit, or what it takes of the machine.
+    let note = match info.resume_at {
+        Some(at) => Some((format!("⏸ limit · continues in {}", until(at)), t.muted)),
+        None => load_note(info.cpu, info.mem).map(|(load, heavy)| (load, if heavy { t.err } else { t.muted })),
+    };
+    let note = note.map(|(note, colour)| seg(format!("{note}  "), Style::default().fg(colour)));
+    c.close = Some(ScreenHit::CloseSplit(term));
+    // Grid says the state on the left of the border instead.
+    let mark_at = if look.grid {
+        c.right.extend(note);
+        None
+    } else {
+        fit_right(look, r, &mut c, note, mark)
+    };
+    if let Some(parser) = app.parsers.get(&term) {
+        c.bg = crate::client::render::terminal_surface_bg(parser.screen(), c.bg);
+    }
+    let terminal_bg = c.bg;
+    if focused {
+        c = c.lit(border);
+    } else if look.grid {
+        c.border = border;
+    }
+    let top_left = app.screen.leaf_rects.iter().min_by_key(|(_, lr)| (lr.y, lr.x)).is_some_and(|(id, _)| *id == term);
+    let why_at = if look.grid {
+        grid_title(app, model, info, focused, r, &mut c, t)
+    } else {
+        // The title runs up to two cells before the right-hand segments and the ✕.
+        let right_w = segs_width(&c.right) + close_w(look, &c);
+        let title_end = right_end(look, r).saturating_sub(right_w + 2);
+        c.chips = if top_left {
+            tab_strip(app, model, Rect { x: title_x(look, r), y: r.y, width: title_end.saturating_sub(title_x(look, r)), height: 1 }, focused, None, t).0
+        } else {
+            let caps = if look.round_tabs { 2 } else { 0 };
+            let name = truncate(&session_name(app, model, term), title_end.saturating_sub(title_x(look, r) + 2 + caps) as usize);
+            let chip = vec![name_chip(&name, focused, t)];
+            if look.round_tabs { round_ends(chip, title_ground(look, t)) } else { chip }
+        };
+        mark_at.into_iter().collect()
+    };
+    let inside = card(app, buf, r, &c, t);
+    // After the tabs' hits, so a click on the glyph inside the current tab opens why.
+    for at in why_at {
+        hit(app, at, ScreenHit::Why(term));
+    }
+    (inside, terminal_bg)
+}
+
+/// A scrollbar in the margin right of the terminal when there's history: where you are, click
+/// or drag it.
+fn draw_scrollbar(app: &mut App, buf: &mut Buffer, term: TermId, inner: Rect, terminal_bg: Color, t: &Theme) {
     let (cur, total) = app.history(term);
     if total > 0 && inner.height > 2 {
         let track = Rect { x: inner.right() + 1, y: inner.y, width: 1, height: inner.height };
@@ -755,7 +807,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         for yy in track.top()..track.bottom() {
             let on = yy >= top && yy < top + thumb as u16;
             let (sym, col) = if on { ("┃", if hot { t.accent } else { t.muted }) } else { ("│", t.line) };
-            if let Some(px) = f.buffer_mut().cell_mut((track.x, yy)) {
+            if let Some(px) = buf.cell_mut((track.x, yy)) {
                 px.set_symbol(sym).set_style(Style::default().fg(col).bg(terminal_bg));
             }
         }
@@ -764,9 +816,11 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         }
         hit(app, track, ScreenHit::ScrollBar(term));
     }
+}
 
-    // Scrolled up (in the app's history, or an agent that scrolls itself paged up by the wheel):
-    // a button back to the newest output, where a chat's is, at the bottom right.
+/// Scrolled up (in the app's history, or an agent that scrolls itself paged up by the wheel):
+/// a button back to the newest output, where a chat's is, at the bottom right.
+fn draw_to_bottom(app: &mut App, buf: &mut Buffer, term: TermId, inner: Rect, scrolled: Option<usize>, terminal_bg: Color, t: &Theme) {
     let label = match (scrolled, app.paged_up.get(&term)) {
         (Some(n), _) => Some(format!(" ↓ Back to bottom · {n} lines up ")),
         (None, Some(_)) => Some(" ↓ Back to bottom ".to_string()),
@@ -775,39 +829,36 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     if let Some(label) = label
         && inner.height > 0
     {
-        let note = pill(look, vec![seg(label, Style::default().fg(t.acc_ink).add_modifier(Modifier::BOLD))], t.accent, c.bg);
+        let look = Look::of(&app.cfg.ui);
+        let note = pill(look, vec![seg(label, Style::default().fg(t.acc_ink).add_modifier(Modifier::BOLD))], t.accent, terminal_bg);
         let w = segs_width(&note).min(inner.width);
         let (x, y) = (inner.right().saturating_sub(w), inner.bottom() - 1);
-        put(f.buffer_mut(), x, y, &note, inner.right());
+        put(buf, x, y, &note, inner.right());
         hit(app, Rect { x, y, width: w, height: 1 }, ScreenHit::ToBottom(term));
     }
+}
 
-    // Not the one you're in: its inside fades (the border and its amber tag stay as they are).
-    if !focused {
-        dim_inside(f.buffer_mut(), inside, look.dim, t);
-    }
-
-    // Answer bar: the choices of the question asked through the app, a full-width pill that
-    // keeps its amber even when the card is faded.
-    if ask && r.height >= 8 {
-        let ay = r.bottom() - 3;
-        let (lx, rx) = (r.x + 3, r.right().saturating_sub(3));
-        row_pill(look, f.buffer_mut(), lx - 1, ay, rx - lx + 2, t.card2, c.bg);
-        let opts = app.answer_options(term);
-        let full: u16 = opts.iter().take(4).map(|o| o.width() as u16 + 6).sum();
-        // In a narrow pane the label shrinks to its dot, then the buttons to their keys.
-        let roomy = rx.saturating_sub(lx) >= full + 11;
-        let label = if roomy { "● answer   " } else { "● " };
-        let mut x = put(f.buffer_mut(), lx, ay, &[seg(label, Style::default().fg(t.blocked).bg(t.card2).add_modifier(Modifier::BOLD))], rx);
-        let keys_only = rx.saturating_sub(x) < full;
-        for (i, o) in opts.iter().enumerate().take(4) {
-            let key = char::from_digit(i as u32 + 1, 10).unwrap_or('1').to_string();
-            let label = if keys_only { String::new() } else { o.clone() };
-            let segs = button_pill(look, t, &label, &key, i == 0, t.card2);
-            let br = Rect { x, y: ay, width: segs_width(&segs), height: 1 };
-            x = put(f.buffer_mut(), x, ay, &segs, rx) + 1;
-            app.hits.push((br, Hit::Button(crate::client::Btn::Answer(term, key.chars().next().unwrap_or('1')))));
-        }
+/// Answer bar: the choices of the question asked through the app, a full-width pill that
+/// keeps its amber even when the card is faded.
+fn draw_answer_bar(app: &mut App, buf: &mut Buffer, r: Rect, term: TermId, terminal_bg: Color, t: &Theme) {
+    let look = Look::of(&app.cfg.ui);
+    let ay = r.bottom() - 3;
+    let (lx, rx) = (r.x + 3, r.right().saturating_sub(3));
+    row_pill(look, buf, lx - 1, ay, rx - lx + 2, t.card2, terminal_bg);
+    let opts = app.answer_options(term);
+    let full: u16 = opts.iter().take(4).map(|o| o.width() as u16 + 6).sum();
+    // In a narrow pane the label shrinks to its dot, then the buttons to their keys.
+    let roomy = rx.saturating_sub(lx) >= full + 11;
+    let label = if roomy { "● answer   " } else { "● " };
+    let mut x = put(buf, lx, ay, &[seg(label, Style::default().fg(t.blocked).bg(t.card2).add_modifier(Modifier::BOLD))], rx);
+    let keys_only = rx.saturating_sub(x) < full;
+    for (i, o) in opts.iter().enumerate().take(4) {
+        let key = char::from_digit(i as u32 + 1, 10).unwrap_or('1').to_string();
+        let label = if keys_only { String::new() } else { o.clone() };
+        let segs = button_pill(look, t, &label, &key, i == 0, t.card2);
+        let br = Rect { x, y: ay, width: segs_width(&segs), height: 1 };
+        x = put(buf, x, ay, &segs, rx) + 1;
+        app.hits.push((br, Hit::Button(crate::client::Btn::Answer(term, key.chars().next().unwrap_or('1')))));
     }
 }
 

@@ -1122,6 +1122,7 @@ mod heads;
 mod popover;
 mod helpers_ask;
 mod draw;
+mod hairline;
 mod mode_bar;
 mod side;
 mod sheet;
