@@ -201,7 +201,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     if let Some(row) = strip_row(app, area) {
         hairline::draw_strip(app, f.buffer_mut(), row, &model, t);
     }
-    draw_mode_bar(app, f.buffer_mut(), mode_bar_row(app, area), &model, t);
+    draw_mode_bar(app, f.buffer_mut(), mode_bar_row(app, area), t);
     app.screen.crumb_x = g.panes.x + 1;
     // A popup (`<app> popup`) floats over everything, the rest dimmed.
     let above = above_bar(app, area);
@@ -301,6 +301,9 @@ pub(in crate::client) fn draw_main(app: &mut App, f: &mut Frame, area: Rect, mod
         let grab = if horizontal {
             let g = gap_x.max(1);
             Rect { x: div.x.saturating_sub(g), width: g + 2, ..div }
+        } else if look.hairline {
+            // Hairline draws the `─` on the upper pane's last row: that row is the grab.
+            div
         } else {
             let h = gap_y.max(1);
             Rect { y: div.y.saturating_sub(h), height: h, ..div }

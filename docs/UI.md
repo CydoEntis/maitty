@@ -479,17 +479,22 @@ Code that has a Hairline variant asks `Look::of(..).hairline` and takes its colo
 `hairline::Ink`; `Ui::rounding()` is `off` in Hairline, so every pill, chip and corner drawn
 there is square whatever `ui.rounded` says.
 
+- **Needs you.** One rule everywhere (`check::needs`): the agent asks, or its check waits for
+  approval. A pane goes by its own state; a sidebar row by its split's most urgent, and when
+  that is a pane beside its own it names it (`▸ warm-finch`) instead of `needs you`. The mode
+  bar counts panes that need you, a split's included.
 - **Sizes.** The sidebar is 28 columns (a width you dragged wins) and its `│` is the column you
   drag. Its header is row 0, the rows start on row 2, and the foot is the last row with a
-  blank row over it. A row's `▎` is on the sidebar's first column, words one in, the glyph two
-  in, the name four in, and right-aligned text ends a column before the `│`. A pane's title
+  blank row over it. A row's `▎` is on the sidebar's first column, words and the glyph one in,
+  the name three in (a helper `side::HELPER_INDENT` more per level), and right-aligned text
+  ends a column before the `│`. A pane's title
   and rule are its first two rows; the terminal starts under the rule, two columns in from
   each side, down to the pane's last row (three rows less with an answer bar). A pane with
   another to its right gives its last column to the `│`; one with another below it, its last
   row to the `─`. The bottom area is two rows: the status strip, then the mode bar; popups dim
   everything above the strip.
 - **What gives way.** A sidebar row cuts its name with `…` before its age or `needs you`
-  goes. A pane title keeps its number, glyph and name: the meta is cut first, then the tabs
+  goes. A pane title keeps its glyph and name: the meta is cut first, then the tabs
   drop, then at the right the load note, then the ✕, then the state word; only then is the
   name cut. The foot drops the leader from the new hint, then the keys. The strip gives equal
   shares (the first ones a cell wider) to up to 12 sessions, then one `━` per session from the

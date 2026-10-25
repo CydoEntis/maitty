@@ -36,7 +36,8 @@ pub(in crate::client) fn pane_frame(app: &mut App, buf: &mut Buffer, r: Rect, in
     if body.width < 4 || body.height < 3 {
         return Rect { width: 0, height: 0, ..r };
     }
-    app.hits.push((r, Hit::Pane(info.id)));
+    // The title row and rule focus the pane, under the title's own controls drawn after.
+    app.hits.push((Rect { height: 2, ..body }, Hit::Pane(info.id)));
     fill(buf, Rect { height: 2, ..body }, ink.bg);
     let inside = Rect { y: body.y + 2, height: body.height - 2, ..body };
     fill(buf, inside, surface);
@@ -46,7 +47,7 @@ pub(in crate::client) fn pane_frame(app: &mut App, buf: &mut Buffer, r: Rect, in
     if edges.right {
         vline(buf, Rect { x: r.right() - 1, ..r }, ink.line, ink.bg);
     }
-    draw_title(app, buf, body, info, focused, model, ink, t);
+    draw_title(app, buf, body, info, model, ink, t);
     rule(buf, body.x, body.y + 1, body.width, rule_colour(app, info, focused, ink, t), ink.bg);
     inside
 }
@@ -54,7 +55,7 @@ pub(in crate::client) fn pane_frame(app: &mut App, buf: &mut Buffer, r: Rect, in
 /// The rule's colour: teal on the focused pane (sky in shortcut mode, as every focused edge),
 /// amber on one that needs you, else `line`. Focus wins over amber.
 fn rule_colour(app: &App, info: &TermInfo, focused: bool, ink: Ink, t: &Theme) -> Color {
-    match (focused, info.status == Status::Blocked) {
+    match (focused, pane_needs(info)) {
         (true, _) if armed(app) => t.sky(),
         (true, _) => ink.teal,
         (false, true) => ink.amber,
@@ -62,16 +63,14 @@ fn rule_colour(app: &App, info: &TermInfo, focused: bool, ink: Ink, t: &Theme) -
     }
 }
 
-/// The title row: number, glyph, name, the tabs, `project · ⎇ branch` and at the right the
-/// load note, the state word and the ✕. The number, glyph and name never shrink while
-/// anything else is left to give way: the meta first, then the tabs, then the note, the ✕ and
-/// the state word.
-#[allow(clippy::too_many_arguments)]
-fn draw_title(app: &mut App, buf: &mut Buffer, body: Rect, info: &TermInfo, focused: bool, model: &[Proj], ink: Ink, t: &Theme) {
+/// The title row: glyph, name, the tabs, `project · ⎇ branch` and at the right the load
+/// note, the state word and the ✕. The glyph and name never shrink while anything else is
+/// left to give way: the meta first, then the tabs, then the note, the ✕ and the state word.
+fn draw_title(app: &mut App, buf: &mut Buffer, body: Rect, info: &TermInfo, model: &[Proj], ink: Ink, t: &Theme) {
     let y = body.y;
     let (x0, end) = (body.x + PANE_PAD, body.right().saturating_sub(PANE_PAD));
     let st = Style::default().bg(ink.bg);
-    let (mut head, glyph_at) = head_segs(app, info, focused, model, ink, t);
+    let (mut head, glyph_at) = head_segs(app, info, model, ink, t);
     let room = end.saturating_sub(x0);
     // The name shortens only once nothing else is left to give way.
     let before_name = segs_width(&head[..head.len() - 1]);
@@ -104,21 +103,14 @@ fn draw_title(app: &mut App, buf: &mut Buffer, body: Rect, info: &TermInfo, focu
     }
 }
 
-/// Number, glyph and name: the session's place in the sidebar (amber when it needs you, teal
-/// when focused, else dim), its state's mark and its name in `strong`, bold. Also where the
-/// mark sits in them, when there is one.
-fn head_segs(app: &App, info: &TermInfo, focused: bool, model: &[Proj], ink: Ink, t: &Theme) -> (Vec<Seg>, Option<u16>) {
+/// Glyph and name: its state's mark and its name in `strong`, bold. No number: no key goes to
+/// a pane by one. Also where the mark sits in them, when there is one.
+fn head_segs(app: &App, info: &TermInfo, model: &[Proj], ink: Ink, t: &Theme) -> (Vec<Seg>, Option<u16>) {
     let st = Style::default().bg(ink.bg);
-    let needs = info.status == Status::Blocked;
     let mut out = Vec::new();
-    if let Some(n) = session_order(app, model, t).iter().position(|term| *term == info.id) {
-        let c = if needs { ink.amber } else if focused { ink.teal } else { ink.dim };
-        out.push(seg(format!("{} ", n + 1), st.fg(c).add_modifier(Modifier::BOLD)));
-    }
     let glyph_at = mark(app, info, t).map(|(g, c)| {
-        let at = segs_width(&out);
         out.push(seg(format!("{g} "), st.fg(c).add_modifier(Modifier::BOLD)));
-        at
+        0
     });
     out.push(seg(session_name(app, model, info.id), st.fg(ink.strong).add_modifier(Modifier::BOLD)));
     (out, glyph_at)
@@ -177,8 +169,12 @@ fn fit_right(app: &App, info: &TermInfo, ink: Ink, room: u16) -> Right {
 fn state_word(info: &TermInfo, ink: Ink) -> Option<Seg> {
     info.agent.as_ref()?;
     let st = Style::default().bg(ink.bg);
+    let needs = st.fg(ink.amber).add_modifier(Modifier::BOLD);
+    if check::approving(info.status, info.check()) {
+        return Some(seg("needs you · approve check", needs));
+    }
     Some(match info.status {
-        Status::Blocked => seg(format!("needs you · {}", age(info.since)), st.fg(ink.amber).add_modifier(Modifier::BOLD)),
+        Status::Blocked => seg(format!("needs you · {}", age(info.since)), needs),
         Status::Working => seg("working", st.fg(ink.teal)),
         Status::Done => seg("done", st.fg(ink.green)),
         _ => seg("idle", st.fg(ink.dim)),
@@ -193,7 +189,6 @@ fn is_top_left(app: &App, term: TermId) -> bool {
 /// The session's tabs as plain words from `x`, the current one teal and bold, then a dim `+`
 /// that opens one. A tab that does not fit before `end` is left out, with the `+`; returns
 /// where the tabs end.
-#[allow(clippy::too_many_arguments)]
 fn draw_tabs(app: &mut App, buf: &mut Buffer, x: u16, y: u16, end: u16, model: &[Proj], ink: Ink) -> u16 {
     let st = Style::default().bg(ink.bg);
     let tabs = app.session_tabs();

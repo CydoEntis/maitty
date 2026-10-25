@@ -37,7 +37,17 @@ pub(super) fn finished(s: &Session) -> bool {
 
 /// It needs you: it asks, or its repo's check command waits for your approval.
 pub(super) fn needs_you(s: &Session) -> bool {
-    s.status == Status::Blocked || shown(s).is_some_and(|info| info.state == CheckState::NeedsApproval)
+    needs(s.status, s.check.as_ref())
+}
+
+/// The one rule for needs you, for a sidebar row or a pane: asking, or a check to approve.
+pub(super) fn needs(status: Status, check: Option<&CheckInfo>) -> bool {
+    status == Status::Blocked || approving(status, check)
+}
+
+/// Needs you only because its repo's check command waits for your approval.
+pub(super) fn approving(status: Status, check: Option<&CheckInfo>) -> bool {
+    crate::protocol::reported_check(status, check).is_some_and(|info| info.state == CheckState::NeedsApproval)
 }
 
 /// What the row reads as.

@@ -73,7 +73,7 @@ fn working_glyph(app: &App) -> String {
 }
 
 /// The sessions in sidebar order: the rows as the sidebar lists them, then those of folded
-/// projects. The strip and the panes' numbers count in this order.
+/// projects. The strip draws its segments in this order.
 fn session_order(app: &App, model: &[Proj], t: &Theme) -> Vec<TermId> {
     let mut order: Vec<TermId> = side_lines(app, model, t).iter().filter_map(|l| line_term(model, l)).collect();
     for s in model.iter().flat_map(Proj::sessions) {
@@ -107,7 +107,13 @@ pub(in crate::client) fn draw_side_rule(buf: &mut Buffer, edge: Rect, t: &Theme)
     vline(buf, Rect { width: 1, ..edge }, t.line, t.bg);
 }
 
-/// How many sessions need you: the right end of the mode bar says so.
-pub(in crate::client) fn needing(model: &[Proj]) -> usize {
-    model.iter().flat_map(Proj::sessions).filter(|s| check::needs_you(s)).count()
+/// A pane needs you: its own agent asks, or its own check waits for approval. The sidebar's
+/// rows use the same rule (`check::needs`).
+fn pane_needs(info: &TermInfo) -> bool {
+    check::needs(info.status, info.check())
+}
+
+/// How many panes need you, a split's included: the right end of the mode bar says so.
+pub(in crate::client) fn needing(app: &App) -> usize {
+    app.snap.terms.values().filter(|info| pane_needs(info)).count()
 }

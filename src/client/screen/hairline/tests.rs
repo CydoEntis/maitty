@@ -206,12 +206,84 @@ fn the_name_stays_whole_while_the_meta_gives_way() {
     let r = pane_at(&app, 1);
     let title: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
     assert!(title.contains("fix-footer") && title.contains('…') && title.contains("done"), "{title}");
-    let (x, y) = find_text(&buf, "1 ● fix-footer").unwrap();
-    assert_eq!(y, r.y);
-    assert_eq!(buf[(x, y)].fg, t.accent, "the focused pane's number is teal");
-    let name = &buf[(x + 4, y)];
+    let (x, y) = find_in(&buf, Rect { height: 1, ..r }, "● fix-footer").unwrap();
+    assert_eq!(x, r.x + PANE_PAD, "the glyph leads the title: no number before it");
+    let name = &buf[(x + 2, y)];
     assert_eq!(name.fg, t.strong);
     assert!(name.modifier.contains(Modifier::BOLD));
+}
+
+#[test]
+fn a_check_to_approve_needs_you_everywhere() {
+    let mut app = hairline_world(4);
+    let approve = crate::client::reference_fixture::world(Stage::Approve).snap.terms[&1].checks.clone();
+    let fox = app.snap.terms.get_mut(&4).unwrap();
+    (fox.status, fox.checks) = (Status::Done, approve);
+    let buf = draw(&mut app, 160, 45);
+    let t = app.theme.clone();
+    let r = pane_at(&app, 4);
+    let (x, _) = find_in(&buf, Rect { height: 1, ..r }, "needs you · approve check").expect("its state word");
+    assert_eq!(buf[(x, r.y)].fg, t.blocked);
+    assert_eq!(buf[(r.x + 1, r.y + 1)].fg, t.blocked, "its rule is amber");
+    let bar = mode_bar_row(&app, buf.area);
+    assert!(find_in(&buf, bar, "● 2 needs you").is_some(), "counted with warm-finch in the bar");
+}
+
+#[test]
+fn a_split_row_names_the_pane_that_needs_you() {
+    let mut app = hairline_world(2);
+    let buf = draw(&mut app, 160, 45);
+    let side = grid(&app, framed(&app, buf.area)).side;
+    let (_, y) = find_in(&buf, side, "fix-footer").expect("the split's row");
+    let row: String = (side.x..side.right()).map(|x| buf[(x, y)].symbol()).collect();
+    assert!(row.contains("fix-footer") && row.contains("▸ warm-finch"), "{row}");
+    let r = pane_at(&app, 1);
+    assert!(find_in(&buf, Rect { height: 1, ..r }, "done").is_some(), "its own pane is done");
+}
+
+#[test]
+fn a_helper_steps_in_and_keeps_its_ask_line() {
+    let mut app = hairline_world(1);
+    let info = app.snap.terms.get_mut(&5).unwrap();
+    info.started_by = Some(4);
+    info.helper_ask = vec!["one".into(), "two".into()];
+    let buf = draw(&mut app, 160, 45);
+    show("a helper", &buf);
+    let side = grid(&app, framed(&app, buf.area)).side;
+    let (fox, _) = find_in(&buf, side, "quick-fox").unwrap();
+    let (moth, _) = find_in(&buf, side, "old-moth").unwrap();
+    assert_eq!(moth, fox + super::super::side::HELPER_INDENT, "a helper steps in");
+    let (_, ask) = find_in(&buf, side, "helpers").expect("the wants-helpers line");
+    assert!(app.hits.iter().any(|(hr, h)| *h == Hit::Screen(ScreenHit::HelperAsk(5)) && hr.y == ask), "it takes the click");
+}
+
+/// What a click at (`x`, `y`) lands on: the last region drawn there.
+fn hit_at(app: &App, x: u16, y: u16) -> Option<Hit> {
+    app.hits.iter().rev().find(|(r, _)| r.contains(Position { x, y })).map(|(_, h)| *h)
+}
+
+#[test]
+fn the_stacked_divider_is_grabbed_on_the_line_drawn() {
+    let mut app = hairline_world(4);
+    let buf = draw(&mut app, 160, 45);
+    let r = pane_at(&app, app.focused().unwrap());
+    let y = r.bottom() - 1;
+    assert_eq!(buf[(r.x + 3, y)].symbol(), "─");
+    assert!(matches!(hit_at(&app, r.x + 3, y), Some(Hit::Screen(ScreenHit::Divider(_)))), "{:?}", hit_at(&app, r.x + 3, y));
+    assert!(!matches!(hit_at(&app, r.x + 3, y - 1), Some(Hit::Screen(ScreenHit::Divider(_)))), "the terminal row over it is not the grab");
+}
+
+#[test]
+fn title_controls_win_and_the_rest_of_the_title_focuses() {
+    let mut app = hairline_world(2);
+    let buf = draw(&mut app, 160, 45);
+    let r = pane_at(&app, 3);
+    let title = Rect { height: 1, ..r };
+    let (cx, _) = find_in(&buf, title, "✕").unwrap();
+    assert_eq!(hit_at(&app, cx, r.y), Some(Hit::Screen(ScreenHit::CloseSplit(3))));
+    let (wx, _) = find_in(&buf, title, "needs you").unwrap();
+    assert_eq!(hit_at(&app, wx, r.y), Some(Hit::Screen(ScreenHit::Why(3))));
+    assert_eq!(hit_at(&app, wx - 3, r.y), Some(Hit::Pane(3)), "blank title space focuses the pane");
 }
 
 #[test]

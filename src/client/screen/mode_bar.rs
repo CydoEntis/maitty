@@ -321,7 +321,7 @@ fn alerts(needs: usize, t: &Theme) -> Vec<Piece> {
 /// Draw the mode bar on `row`: lit, who has the keys, or typing, with Update or Restart at its
 /// right end. Hairline adds the look and pane count after TYPING and, unless shortcut mode
 /// lights the row, how many need you just before Update or Restart (or at the end without them).
-pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rect, model: &[Proj], t: &Theme) {
+pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rect, t: &Theme) {
     app.screen.bar_keys.clear();
     if row.height == 0 || row.width < 4 {
         return;
@@ -346,7 +346,7 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
     let caps = |p: &Piece| if round && p.segs.first().is_some_and(|(_, s)| s.bg != Some(ground)) { round_ends(p.segs.clone(), ground) } else { p.segs.clone() };
     let room = row.width.saturating_sub(2);
     // Needs you keeps its place before the mode's hints, the look and Update do.
-    let alerts = if hairline { alerts(super::hairline::needing(model), t) } else { Vec::new() };
+    let alerts = if hairline { alerts(super::hairline::needing(app), t) } else { Vec::new() };
     let alert = alerts.into_iter().find(|a| width(&[&tag]) + GAP + segs_width(&a.segs) <= room);
     let alert_w = alert.as_ref().map_or(0, |a| segs_width(&a.segs) + GAP);
     let (left, release) = fit(room.saturating_sub(alert_w), &tag, &middle, &tail, &releases);

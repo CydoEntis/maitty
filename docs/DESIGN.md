@@ -145,14 +145,18 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
 
 - **Sidebar:** 28 columns, then a `│`. `sessions` and the count, dim. A project is a dim header
   with `⎇ branch` dim at the right, a blank row above each but the first. A session is one row:
-  the glyph, the name and its age at the right, or `needs you` in amber. The focused row is
+  the glyph, the name and its age at the right, or `needs you` in amber (a split whose own
+  pane is fine but whose pane beside it asks names that pane instead: `▸ warm-finch`). A
+  helper steps in under the session that started it, and a request to start helpers keeps its
+  amber line under the row. The focused row is
   `raised` with a teal `▎` and a teal name; a row on screen without the keys is `raised`; one
   that needs you has an amber `▎` and an amber name. The foot, pinned to the bottom row, is
   dim: the new-shell hint (the leader and its key) at the left, the menu's at the right.
-- **Panes:** row 1 is the session's number in the sidebar's order (amber when it needs you,
-  teal when focused, else dim), its glyph, its name in `strong` bold, the session's tabs as
+- **Panes:** row 1 is the glyph, the name in `strong` bold (no number: no key goes to a pane
+  by one), the session's tabs as
   plain words when it has several (the current one teal), then `project · ⎇ branch` dim; at the
-  right the state (`needs you · 2m` amber bold, `working` teal, `done` green, `idle` dim) and
+  right the state (`needs you · 2m` or `needs you · approve check` amber bold, `working` teal,
+  `done` green, `idle` dim) and
   the ✕. Row 2 is a `─` rule the pane's width: teal focused (`sky()` in shortcut mode), amber
   when it needs you and is not focused, else `line`. Panes side by side or stacked are parted
   by one `│` or `─`, never boxed; the terminal sits two columns in.

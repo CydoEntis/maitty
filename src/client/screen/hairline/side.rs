@@ -3,11 +3,12 @@
 
 use super::*;
 
-/// Where a row's pieces go, from the sidebar's left edge: the `▎` marker on the edge itself,
-/// words and headers a column in, the glyph two in and the name two after it.
+/// Where a row's pieces go, from the sidebar's left edge (the handoff's columns): the `▎`
+/// marker on the edge itself, words, headers and the glyph a column in, the name two after it.
+/// A helper's row steps in `HELPER_INDENT` per level under the session that started it.
 const TEXT_IN: u16 = 1;
-const GLYPH_IN: u16 = 2;
-const NAME_IN: u16 = 4;
+const GLYPH_IN: u16 = 1;
+const NAME_IN: u16 = 3;
 
 /// A session row's look, from the handoff's state table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,11 +38,20 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     let list_h = list_end.saturating_sub(top) as usize;
     let scroll = side_scroll(app, model, &lines, focus, list_h);
     note_rows(app, model, &lines);
+    let mut indent = 0;
     for (i, line) in lines.iter().enumerate().skip(scroll).take(list_h) {
         let y = top + (i - scroll) as u16;
         match line {
             Line::Proj(pi) => draw_proj(app, buf, model, *pi, r, y, ink, t),
-            Line::Sess(..) => {
+            Line::Detail(term) => {
+                let Some((.., s)) = find(model, *term) else { continue };
+                let x = r.x + NAME_IN + indent;
+                let room = text_end(r).saturating_sub(x) as usize;
+                put(buf, x, y, &[seg(truncate(&helpers_line_in(s.helpers_wanted, room), room), Style::default().fg(ink.amber).bg(ink.bg))], text_end(r));
+                hit(app, Rect { x: r.x, y, width: r.width, height: 1 }, ScreenHit::HelperAsk(*term));
+            }
+            Line::Sess(.., depth) => {
+                indent = u16::from(*depth) * HELPER_INDENT;
                 let Some((_, _, s)) = line_term(model, line).and_then(|term| find(model, term)) else { continue };
                 let keyboard = side_has_keys && app.screen.cursor == Some(s.term);
                 let state = if keyboard || (!side_has_keys && Some(s.term) == focus) {
@@ -52,7 +62,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                     RowState::Plain
                 };
                 app.screen.row_y.insert(s.term, y);
-                draw_session(app, buf, s, r, y, state, ink, t);
+                draw_session(app, buf, s, Row { r, y, indent, state }, model, ink, t);
             }
             Line::Section(kind, n) => {
                 put(buf, r.x + TEXT_IN, y, &[seg(format!("{} {n}", kind.heading().to_lowercase()), Style::default().fg(ink.dim).bg(ink.bg))], text_end(r));
@@ -82,10 +92,14 @@ fn text_end(r: Rect) -> u16 {
     r.right().saturating_sub(1)
 }
 
-/// The sidebar's lines without the second and third lines and notes: one row per session.
+/// The sidebar's lines, one row per session: of the second lines only a request to start
+/// helpers stays, since that line is where you answer it.
 fn hairline_lines(app: &App, model: &[Proj], t: &Theme) -> Vec<Line> {
     let mut lines = side_lines(app, model, t);
-    lines.retain(|l| matches!(l, Line::Section(..) | Line::Proj(_) | Line::Sess(..) | Line::Empty(_) | Line::Gap));
+    lines.retain(|l| match l {
+        Line::Detail(term) => find(model, *term).is_some_and(|(.., s)| s.helpers_wanted > 0),
+        _ => matches!(l, Line::Section(..) | Line::Proj(_) | Line::Sess(..) | Line::Empty(_) | Line::Gap),
+    });
     if matches!(lines.last(), Some(Line::Gap)) {
         lines.pop();
     }
@@ -160,10 +174,21 @@ fn plus_button(app: &mut App, buf: &mut Buffer, r: Rect, bg: Color, ink: Ink, h:
     hit(app, r, h);
 }
 
+/// Where a session's row is drawn and how it looks.
+#[derive(Debug, Clone, Copy)]
+struct Row {
+    /// The sidebar.
+    r: Rect,
+    y: u16,
+    /// Columns a helper steps in under the session that started it.
+    indent: u16,
+    state: RowState,
+}
+
 /// One session: `▎` marker, glyph, name and at the right its age, or `needs you` in amber.
 /// Pointed at (and not the open one), its `⋯` menu takes the age's place.
-#[allow(clippy::too_many_arguments)]
-fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, r: Rect, y: u16, state: RowState, ink: Ink, t: &Theme) {
+fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, at: Row, model: &[Proj], ink: Ink, t: &Theme) {
+    let Row { r, y, indent, state } = at;
     let row = Rect { x: r.x, y, width: r.width, height: 1 };
     let needs = check::needs_you(s);
     let bg = if state == RowState::Plain { ink.bg } else { ink.raised };
@@ -179,29 +204,53 @@ fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, r: Rect, y: u16, s
         let m = check::mark(app, s, t, &working);
         (m.glyph.to_string(), m.color)
     };
-    let gx = r.x + GLYPH_IN;
-    put(buf, gx, y, &[seg(g, st.fg(gc).add_modifier(Modifier::BOLD))], r.x + NAME_IN);
+    let gx = r.x + GLYPH_IN + indent;
+    let nx = r.x + NAME_IN + indent;
+    put(buf, gx, y, &[seg(g, st.fg(gc).add_modifier(Modifier::BOLD))], nx);
     hit(app, Rect { x: gx, y, width: 2, height: 1 }, ScreenHit::Why(s.term));
     let end = text_end(r);
     let menu = state != RowState::Focused && hovered(app, row);
     let right = if menu {
-        Vec::new()
+        String::new()
     } else if needs {
-        vec![seg("needs you", st.fg(ink.amber))]
+        needs_words(app, s, model, end.saturating_sub(nx))
     } else if s.is_agent {
-        vec![seg(age(s.since), st.fg(ink.dim))]
+        age(s.since)
     } else {
-        Vec::new()
+        String::new()
     };
-    let rw = if menu { 1 } else { segs_width(&right) };
-    let nx = r.x + NAME_IN;
+    let right_fg = if needs { ink.amber } else { ink.dim };
+    let rw = if menu { 1 } else { right.width() as u16 };
     let room = end.saturating_sub(nx + if rw > 0 { rw + 1 } else { 0 });
     let colour = if needs { ink.amber } else if state == RowState::Focused { ink.teal } else { ink.text };
     put(buf, nx, y, &[seg(truncate(&s.name, room as usize), st.fg(colour).add_modifier(Modifier::BOLD))], nx + room);
     if menu {
         row_menu_button(app, buf, Rect { x: end.saturating_sub(1), y, width: 1, height: 1 }, bg, t, ScreenHit::RowMenuSess(s.term));
     } else if rw > 0 && room > 0 {
-        put(buf, end.saturating_sub(rw), y, &right, end);
+        put(buf, end.saturating_sub(rw), y, &[seg(right, st.fg(right_fg))], end);
+    }
+}
+
+/// The most of a row's name kept when its right names the pane that needs you, and the least
+/// of that pane's name worth showing.
+const NAME_KEPT: u16 = 10;
+const PANE_NAME_KEPT: usize = 4;
+/// Points from a split's row to the pane beside it that needs you.
+const POINTER: &str = "▸ ";
+
+/// What a row that needs you says at its right, in amber: `needs you`, or, when it is a split
+/// and not its own pane but one beside it asks, that pane's name (`▸ warm-finch`), so the row
+/// and its own pane, which may be `done`, don't seem to disagree. Without room, `needs you`.
+fn needs_words(app: &App, s: &Session, model: &[Proj], room: u16) -> String {
+    let own = app.snap.terms.get(&s.term).is_none_or(pane_needs);
+    let beside = app.screen.tabs.iter().filter(|tab| tab.owner == s.term).flat_map(|tab| tab.layout.leaves()).find(|term| *term != s.term && app.snap.terms.get(term).is_some_and(pane_needs));
+    match beside.filter(|_| !own) {
+        Some(term) => {
+            let kept = (s.name.width() as u16).min(NAME_KEPT);
+            let fits = room.saturating_sub(1 + kept + POINTER.width() as u16) as usize;
+            if fits < PANE_NAME_KEPT { "needs you".into() } else { format!("{POINTER}{}", truncate(&session_name(app, model, term), fits)) }
+        }
+        None => "needs you".into(),
     }
 }
 

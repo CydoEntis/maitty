@@ -109,7 +109,7 @@ pub(in crate::client) fn session_lines(app: &App, s: &Session, t: &Theme, out: &
 }
 
 /// A helper's row steps in this far under the session that started it, per level.
-const HELPER_INDENT: u16 = 2;
+pub(super) const HELPER_INDENT: u16 = 2;
 /// Deeper helpers stay at this level: the names need the width more than the tree does.
 const HELPER_DEPTH: u8 = 2;
 
