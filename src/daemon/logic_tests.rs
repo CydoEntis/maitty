@@ -2369,6 +2369,22 @@ fn a_background_task_that_never_ends_does_not_silence_later_turns() {
 }
 
 #[test]
+fn a_wake_up_with_an_older_task_still_running_rings() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let mut say = claude_reports(&mut d, t);
+    let mut seen = viewer(&mut d);
+    say(&mut d, HookStatus::Working, "UserPromptSubmit", &[]);
+    say(&mut d, HookStatus::Done, "Stop", &["b1", "b2"]);
+    assert!(!announced(&heard(&mut seen), Status::Done), "both are new: paused");
+    // b1 ended and woke it; b2 was already running at the last stop.
+    say(&mut d, HookStatus::Working, "PreToolUse", &[]);
+    say(&mut d, HookStatus::Done, "Stop", &["b2"]);
+    assert!(announced(&heard(&mut seen), Status::Done));
+    close(&mut d, &[t]);
+}
+
+#[test]
 fn a_paused_turn_is_checked_only_when_the_work_really_ends() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
