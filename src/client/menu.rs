@@ -101,7 +101,11 @@ pub(super) fn draw_confirm(app: &mut App, f: &mut ratatui::Frame, area: ratatui:
     use ratatui::layout::Rect;
     use ratatui::style::{Modifier, Style};
     let buf = f.buffer_mut();
+    let lit = closing_lines(app, buf, c, t);
     dim_all(app, buf, area, t);
+    for (x, y, cell) in lit {
+        buf[(x, y)] = cell;
+    }
     let widest_item = c.list.iter().map(|l| l.chars().count() + 10).max().unwrap_or(0);
     let w = (c.what.chars().count() + c.detail.chars().count() + 12).max(c.note.chars().count() + 8).max(widest_item).clamp(58, 90) as u16;
     // The list (its heading, at most CONFIRM_LIST_MAX items and a "more" line), then a gap.
@@ -133,6 +137,19 @@ pub(super) fn draw_confirm(app: &mut App, f: &mut ratatui::Frame, area: ratatui:
     put(buf, nr.x, nr.y, &button(t, "Cancel", "Esc", BtnKind::Normal), r.right());
     hit(app, yr, ScreenHit::ConfirmYes);
     hit(app, nr, ScreenHit::ConfirmNo);
+}
+
+/// The lit lines of the panes a close confirm asks about, kept as drawn so the screen's dimming
+/// behind the confirm leaves them bright.
+fn closing_lines(app: &App, buf: &ratatui::buffer::Buffer, c: &Confirm, t: &Theme) -> Vec<(u16, u16, ratatui::buffer::Cell)> {
+    let Act::End(ts) = &c.act else { return Vec::new() };
+    app.pane_frames
+        .iter()
+        .filter(|(term, _)| ts.contains(term))
+        .flat_map(|(_, r)| r.intersection(buf.area).positions())
+        .filter(|p| buf[(p.x, p.y)].fg == t.err)
+        .map(|p| (p.x, p.y, buf[(p.x, p.y)].clone()))
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -325,12 +342,12 @@ impl App {
         let model = self.screen_model();
         let ask: Option<Confirm> = match &a {
             Act::End(ts) if ts.len() == 1 => {
-                let name = find(&model, ts[0]).map(|(_, _, s)| s.name.clone()).unwrap_or_else(|| "this pane".into());
+                let name = super::screen::session_name(self, &model, ts[0]);
                 let path = self.snap.terms.get(&ts[0]).map(|t| t.cwd.display().to_string()).unwrap_or_default();
                 let running = self.snap.terms.get(&ts[0]).is_some_and(|t| t.status == crate::protocol::Status::Working);
                 Some(Confirm {
-                    title: "Close pane".into(),
-                    sub: String::new(),
+                    title: super::screen::pane_number(self, ts[0]).map_or_else(|| "Close pane".into(), |n| format!("Close pane {n}")),
+                    sub: name.clone(),
                     what: name,
                     detail: path,
                     note: if running { "It's still working; the program running in it will stop.".into() } else { "The program running in it will stop.".into() },

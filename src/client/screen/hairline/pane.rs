@@ -52,9 +52,13 @@ pub(in crate::client) fn pane_frame(app: &mut App, buf: &mut Buffer, r: Rect, in
     inside
 }
 
-/// The rule's colour: teal on the focused pane (sky in shortcut mode, as every focused edge),
-/// amber on one that needs you, else `line`. Focus wins over amber.
+/// The rule's colour: red while a confirm asks to close the pane, teal on the focused pane (sky
+/// in shortcut mode, as every focused edge), amber on one that needs you, else `line`. Focus
+/// wins over amber.
 fn rule_colour(app: &App, info: &TermInfo, focused: bool, ink: Ink, t: &Theme) -> Color {
+    if closing(app, info.id) {
+        return t.err;
+    }
     match (focused, pane_needs(info)) {
         (true, _) if armed(app) => t.sky(),
         (true, _) => ink.teal,

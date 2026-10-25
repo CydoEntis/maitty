@@ -381,7 +381,7 @@ pub(in crate::client) fn shortcut_waits(app: &App) -> bool {
 
 /// What a session is called on its pane: its sidebar name, else (a pane in another's tab or
 /// split has no row) your name for it or what runs in it.
-pub(super) fn session_name(app: &App, model: &[Proj], term: TermId) -> String {
+pub(in crate::client) fn session_name(app: &App, model: &[Proj], term: TermId) -> String {
     if let Some((_, _, s)) = find(model, term) {
         return s.name.clone();
     }
@@ -796,13 +796,22 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     }
 }
 
+/// A close confirm asks about this pane: its lines are lit in `err` until you answer, so you
+/// see which one goes.
+pub(in crate::client) fn closing(app: &App, term: TermId) -> bool {
+    matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, crate::client::menu::Act::End(ts) if ts.contains(&term)))
+}
+
 /// A Cards, Compact or Grid pane's frame: the box (or zone) with its title on the top border.
 /// Returns the inside and the terminal's ground.
 fn card_frame(app: &mut App, buf: &mut Buffer, r: Rect, info: &TermInfo, focused: bool, model: &[Proj], t: &Theme) -> (Rect, Color) {
     let look = Look::of(&app.cfg.ui);
     let term = info.id;
     let grid_color = look.grid.then(|| grid_color(app, term, t));
-    let border = if let Some(own) = grid_color {
+    let closing = closing(app, term);
+    let border = if closing {
+        t.err
+    } else if let Some(own) = grid_color {
         match (focused, armed(app)) {
             (true, true) => t.sky(),
             (true, false) => own,
@@ -844,7 +853,7 @@ fn card_frame(app: &mut App, buf: &mut Buffer, r: Rect, info: &TermInfo, focused
         c.bg = crate::client::render::terminal_surface_bg(parser.screen(), c.bg);
     }
     let terminal_bg = c.bg;
-    if focused {
+    if focused || closing {
         c = c.lit(border);
     } else if look.grid {
         c.border = border;

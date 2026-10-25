@@ -224,3 +224,44 @@ fn a_hairline_number_is_teal_focused_amber_when_it_needs_you_else_dim() {
         assert!(cell.modifier.contains(Modifier::BOLD), "pane {term}");
     }
 }
+
+/// The cells of `r` drawn in exactly `colour`.
+fn cells_in(buf: &Buffer, r: Rect, colour: Color) -> usize {
+    r.positions().filter(|p| buf[(p.x, p.y)].fg == colour).count()
+}
+
+#[test]
+fn closing_a_pane_names_it_and_lights_it_in_every_look() {
+    for look in LOOKS {
+        let mut app = split_world(look, 2);
+        let (w, h) = wide(look);
+        draw(&mut app, w, h);
+        let [first, second] = [0, 1].map(|i| app.screen.tabs[0].layout.leaves()[i]);
+        app.menu_act(crate::client::menu::Act::End(vec![second]));
+        let buf = draw(&mut app, w, h);
+        let screen = text(&buf);
+        assert!(screen.contains("Close pane 2 · warm-finch"), "{look}: the confirm names the pane:\n{screen}");
+        assert!(screen.contains("pixls"), "{look}: and its folder:\n{screen}");
+        let rect = |term: TermId| app.screen.leaf_rects.iter().find(|(id, _)| *id == term).map(|(_, r)| *r).expect("the pane is on screen");
+        let (closing, kept) = (rect(second), rect(first));
+        let t = app.theme.clone();
+        let line = |r: Rect| if look == "hairline" { (r.x + 1, r.y + 1) } else if look == "compact" { (r.x, r.y + 1) } else { (r.x, r.y) };
+        assert_eq!(buf[line(closing)].fg, t.err, "{look}: the pane being closed is lit, bright over the dimmed screen:\n{screen}");
+        // Compact lights its zone's `│` rule, as it does for focus; the others their border or rule.
+        assert!(cells_in(&buf, closing, t.err) > 20, "{look}: its lines, not a cell");
+        assert_ne!(buf[line(kept)].fg, t.err, "{look}: only that pane");
+        app.on_key(crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Esc, crossterm::event::KeyModifiers::NONE));
+        let buf = draw(&mut app, w, h);
+        assert_eq!(cells_in(&buf, closing, t.err), 0, "{look}: Esc puts it out");
+    }
+}
+
+#[test]
+fn a_lone_pane_s_confirm_says_close_pane_and_its_name() {
+    let mut app = split_world("floating", 1);
+    let focus = app.focused().expect("a focused pane");
+    draw(&mut app, 160, 45);
+    app.menu_act(crate::client::menu::Act::End(vec![focus]));
+    let screen = text(&draw(&mut app, 160, 45));
+    assert!(screen.contains("Close pane · fix-footer"), "no number for a lone pane:\n{screen}");
+}

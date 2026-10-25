@@ -93,7 +93,8 @@ The title sits on the pane's top border (a header strip in Compact). The top-lef
 the session's tabs as chips, the current one in the accent, then a **+** chip for a new tab;
 other panes show their session's name. While a tab is split, every pane's number (its place in
 reading order, from 1) leads its name: `2 · claude`. On the right: the session's status mark (it
-opens why) and a ✕. In Grid a chip names each pane and its state is the glyph alone. Unfocused panes fade;
+opens why) and a ✕; closing asks first, naming the pane (`Close pane 2 · claude`) and lighting
+its lines in the red until you answer. In Grid a chip names each pane and its state is the glyph alone. Unfocused panes fade;
 the focused border is the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane
 focus*.
 
