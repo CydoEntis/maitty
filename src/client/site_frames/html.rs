@@ -1,5 +1,15 @@
 //! A drawn buffer as an HTML `<pre>`: the same cells, colours and weights, readable anywhere
 //! without the app's fonts.
+//!
+//! A glyph the page's font may lack is wrapped in `<span class="g">` (one cell) or `g2` (two),
+//! so a wider fallback font cannot push the rest of its row right. The page must hold them to
+//! their cells:
+//!
+//! ```css
+//! .frame .g,.frame .g2{display:inline-block;overflow:hidden;text-align:center;vertical-align:top}
+//! .frame .g{width:1ch}
+//! .frame .g2{width:2ch}
+//! ```
 
 use crate::client::render::blend;
 use crate::client::screen::{CAP_L, CAP_R};
@@ -85,7 +95,23 @@ fn cell_html(cell: &Cell, t: &Theme) -> (String, String) {
         (false, true) => style.push_str(";text-decoration:line-through"),
         (false, false) => {}
     }
-    (style, escape(if sym.is_empty() { " " } else { sym }))
+    (style, glyph_html(if sym.is_empty() { " " } else { sym }))
+}
+
+/// `sym` escaped, and wrapped to its cell width unless every monospace font draws it in one cell.
+fn glyph_html(sym: &str) -> String {
+    let text = escape(sym);
+    if sym.chars().all(fits_any_font) {
+        return text;
+    }
+    let class = if sym.width() > 1 { "g2" } else { "g" };
+    format!("<span class=\"{class}\">{text}</span>")
+}
+
+/// ASCII, box drawing and block elements, left unwrapped to keep the frame small: borders are
+/// most of it.
+fn fits_any_font(c: char) -> bool {
+    c.is_ascii() || ('\u{2500}'..='\u{259F}').contains(&c)
 }
 
 fn escape(s: &str) -> String {
@@ -195,7 +221,24 @@ mod tests {
         buf.set_string(0, 1, "界ab", Style::default());
         let out = frame(&buf, &t);
         assert!(out.contains(">&lt;&amp;&quot;&gt; </span>"), "{out}");
-        assert!(out.contains(">界ab </span>"), "the spacer cell after 界 is skipped: {out}");
+        assert!(out.contains("><span class=\"g2\">界</span>ab </span>"), "the spacer cell after 界 is skipped: {out}");
+    }
+
+    #[test]
+    fn a_glyph_the_font_may_lack_is_held_to_its_cell() {
+        let t = night();
+        let mut buf = Buffer::empty(Rect::new(0, 0, 4, 1));
+        buf.set_string(0, 0, "⎇ a─", Style::default());
+        let out = frame(&buf, &t);
+        assert!(out.contains("><span class=\"g\">⎇</span> a─</span>"), "{out}");
+    }
+
+    #[test]
+    fn ascii_is_not_wrapped() {
+        let t = night();
+        let mut buf = Buffer::empty(Rect::new(0, 0, 3, 1));
+        buf.set_string(0, 0, "abc", Style::default());
+        assert!(!frame(&buf, &t).contains("class=\"g"));
     }
 
     #[test]
