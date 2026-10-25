@@ -82,8 +82,8 @@ Ctrl+click on a `path:line` in a pane opens it at that line. In **Files**: Enter
 path in the agent's prompt, `e` opens it in your editor (`editor` in config; nvim, helix …
 open inside maitty), `y` copies the path, `r` lists recent files.
 
-Files, Changes and Branch share the side panel: a tab strip at its top names each with its
-key, and Tab / Shift+Tab (or a click on a tab) moves between them for the same checkout.
+Files, Changes, Branch and References share the side panel: a tab strip at its top names each
+with its key, and Tab / Shift+Tab (or a click on a tab) moves between them for the same checkout.
 
 In **Changes**: `c` commits every changed file and `p` pushes and opens a PR (each asks
 first), `e` opens the file in your editor, `x` marks it reviewed (it sinks; the mark clears
@@ -215,6 +215,18 @@ run = ["claude", "npm run dev", "lazygit"] # the first is the main one
 
 They show up in + New as `⚙ feature`.
 
+## References
+
+Keep the screenshots and design files an agent should build from in the References view
+(leader + `a`). They are plain files in `.maitty/references/` at the repo's main checkout (a
+folder outside git keeps its own), so every agent, in every worktree, sees the same set, and
+any agent can read them by path. The first time Maitty makes the folder in a repo it adds
+`.maitty/references/` to the repo's `.git/info/exclude`, so references stay out of git without
+touching your `.gitignore`; `git add -f` commits one if you want to share it. Agents connected
+through `maitty integrate mcp` are told to call `maitty_references` before UI or design work; it
+lists each file's absolute path, kind, size and time, and the agent opens the images itself.
+Subagents usually inherit their parent's MCP tools. Over `--remote` the view isn't available yet.
+
 ## Agents that steer agents (MCP)
 
 `maitty integrate mcp` registers `maitty mcp` with every agent you have that takes one, and
@@ -232,7 +244,8 @@ set up. Running it again changes nothing; `--uninstall` removes only Maitty's en
 running agent to load the server. `maitty doctor` shows which agents have it. An agent then has tools to
 list sessions (`maitty_list`), read a screen (`maitty_read`), send a message
 (`maitty_send`), wait for a turn to end (`maitty_wait`), answer a prompt (`maitty_answer`),
-interrupt (`maitty_interrupt`) and start helpers (`maitty_start`, see *Helpers* above).
+interrupt (`maitty_interrupt`), start helpers (`maitty_start`, see *Helpers* above) and list the
+project's references (`maitty_references`, see *References* above).
 `[mcp] approve` sets whether agents may answer "yes" to prompts and `[mcp] scope` whether
 they reach only their project or every session; `maitty grant <pane> read,write,…` changes
 one pane's rights.
@@ -263,6 +276,7 @@ answer, and return to your other work.
 |---|---|---|
 | `f` | **Files** | The project's tree, with the file you pick beside it. `r` switches to recent files (just appeared in Downloads, Desktop, Documents or the project), `/` filters. Enter types the path into your prompt; `e` your editor, `i` edit it in place (Shift+arrows or the mouse select; Ctrl+C, Ctrl+X, Ctrl+V copy, cut and paste), `o` open it outside, `y` copy the path. `f` again or Esc closes it. |
 | `c` | **Changes** | A checkout's changed files and the diff: `c` commit, `p` push and open a pull request, `x` mark reviewed, `r` go to its agent; in a worktree `m` merges into the base branch and `d` throws it away. Each of `c`, `p`, `m` and `d` asks first. |
+| `a` | **References** | The project's screenshots and design files, newest first: `p` adds the clipboard image, `n` a file by its path (type it or drop it in), Enter opens one in your image viewer, `y` copies its path, `d` removes it (asked first). `a` again or Esc closes it. See *References* below. |
 | `b` | **Branch** | Where the session's checkout stands, in the side panel: its branch, how far it is ahead of and behind its upstream and its base branch, the last 10 commits, the last check result and its snapshots. Its first row, **Switch branch…**, opens the branch switcher; Enter on a snapshot restores it (asked first). `b` again or Esc closes it. |
 
 ## Agents

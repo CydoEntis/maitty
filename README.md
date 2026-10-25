@@ -27,13 +27,13 @@ natively on Windows, macOS and Linux.
   urgent first. A sound and an optional phone notification tell you when an agent needs you.
 - **Each agent in its own branch.** New agents get their own Git worktree, so they never
   edit the same files. Review the diff, commit, merge or open a pull request without leaving.
-- **A side panel for the code.** Files, Changes and Branch open beside your panes as tabs:
-  browse the tree, read markdown drawn or raw, review each file's diff, and see where the
-  branch stands. Drag its edge to resize it, or press `[` `]` while it has the keys.
+- **A side panel for the code.** Files, Changes, Branch and References open beside your panes
+  as tabs: browse the tree, read markdown drawn or raw, review each file's diff, see where the
+  branch stands, and keep the screenshots and designs your agents build from. Drag its edge to resize it, or press `[` `]` while it has the keys.
 - **Checks you can rely on.** Name a command, such as your tests, and Maitty runs it after
   each agent turn. A session whose check fails reads *failed*, not *done*.
 - **Agents that work together.** Agents can list, read, message and start other sessions
-  through MCP tools, within limits you set.
+  through MCP tools, within limits you set, and find the project's reference images there.
 - **Your look.** Four layouts (Floating, Tiled, Compact and Grid), rounded or square shapes,
   padding round the screen, your cursor's shape, 62 themes with every colour configurable,
   and rebindable shortcuts.
