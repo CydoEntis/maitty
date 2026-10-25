@@ -534,7 +534,7 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
                 header = vec![
                     seg(ed.path.strip_prefix(&v.root).map(|p| p.display().to_string()).unwrap_or_default(), Style::default().fg(t.strong).add_modifier(Modifier::BOLD)),
                     seg(if ed.dirty { "  ● unsaved" } else { "  editing" }, Style::default().fg(t.accent)),
-                    seg("   Ctrl+S save · Esc done", Style::default().fg(t.muted)),
+                    seg("   Ctrl+S save · ^C copy · ^V paste · Esc done", Style::default().fg(t.muted)),
                 ];
                 put(buf, px, body.y + 1, &header, body.right());
                 let selection = ed.selection();

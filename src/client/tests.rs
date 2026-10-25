@@ -8970,6 +8970,74 @@ mod files_panel_tests {
         assert_eq!(edit(&app).selection(), Some(((3, 4), (3, 10))), "a double-click takes the word");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    fn last_copy() -> Option<String> {
+        copy::LAST_COPY.with(|c| c.borrow().clone())
+    }
+
+    /// Ctrl+V, and the clipboard read it starts in the background handed back.
+    fn ctrl_v(app: &mut App, rx: &mut mpsc::UnboundedReceiver<Bg>) {
+        press(app, KeyCode::Char('v'), KeyModifiers::CONTROL);
+        let read = super::branch_view_tests::next_bg(rx);
+        app.on_bg(read);
+    }
+
+    #[test]
+    fn copy_cut_and_paste_round_trip_in_the_editor() {
+        let (dir, mut app) = editing("clip");
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.bg = tx;
+        for _ in 0..3 {
+            press(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+        }
+        press(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_eq!(last_copy().as_deref(), Some("let"), "Ctrl+C copies the selection");
+        press(&mut app, KeyCode::End, KeyModifiers::NONE);
+        ctrl_v(&mut app, &mut rx);
+        assert_eq!(edit(&app).lines[0], "let line_1 = 1;let", "Ctrl+V pastes at the cursor");
+        press(&mut app, KeyCode::Down, KeyModifiers::NONE);
+        press(&mut app, KeyCode::Char('x'), KeyModifiers::CONTROL);
+        assert_eq!(last_copy().as_deref(), Some("let line_2 = 2;\n"), "Ctrl+X with nothing selected cuts the line");
+        assert_eq!(edit(&app).lines[1], "let line_3 = 3;");
+        press(&mut app, KeyCode::Home, KeyModifiers::NONE);
+        ctrl_v(&mut app, &mut rx);
+        assert_eq!(edit(&app).lines[1..3], ["let line_2 = 2;", "let line_3 = 3;"], "the line comes back whole");
+        press(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_eq!(last_copy().as_deref(), Some("let line_3 = 3;\n"), "Ctrl+C with nothing selected copies the line");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_terminals_paste_goes_into_the_editor_as_text() {
+        let (dir, mut app) = editing("bracketed");
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        for _ in 0..3 {
+            press(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+        }
+        app.on_event(Event::Paste("one\r\ntwo".into()));
+        assert_eq!(edit(&app).lines[..2], ["one", "two line_1 = 1;"], "the paste replaces the selection, its lines kept");
+        assert_eq!((edit(&app).row, edit(&app).col), (1, 3), "the cursor after it");
+        app.on_event(Event::Paste(String::new()));
+        assert_eq!(app.notice.as_ref().map(|(m, _, err)| (m.as_str(), *err)), Some((copy::NO_TEXT, true)), "an empty paste is no image paste");
+        assert!(out.try_recv().is_err(), "nothing reached the pane");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ctrl_c_in_the_editor_never_reaches_the_pane() {
+        let (dir, mut app) = editing("noint");
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        for code in ['c', 'x', 'v', 'a'] {
+            press(&mut app, KeyCode::Char(code), KeyModifiers::CONTROL);
+        }
+        while let Ok(msg) = out.try_recv() {
+            assert!(!matches!(msg, ClientMsg::Input { .. }), "a key went to the agent: {msg:?}");
+        }
+        assert!(files(&app).edit.is_some(), "still editing");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 
@@ -9023,7 +9091,7 @@ mod branch_view_tests {
     }
 
     /// The next background result, once its thread is done.
-    fn next_bg(rx: &mut mpsc::UnboundedReceiver<Bg>) -> Bg {
+    pub(super) fn next_bg(rx: &mut mpsc::UnboundedReceiver<Bg>) -> Bg {
         let until = Instant::now() + std::time::Duration::from_secs(20);
         loop {
             if let Ok(b) = rx.try_recv() {

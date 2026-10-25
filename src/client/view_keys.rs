@@ -157,6 +157,17 @@ impl App {
             }
             match k.code {
                 KeyCode::Char('a') if ctrl => ed.select_all(),
+                KeyCode::Char('c') if ctrl => {
+                    let text = ed.copied();
+                    copy::to_clipboard(&text);
+                    self.notify(copied_note("copied", &text), false);
+                }
+                KeyCode::Char('x') if ctrl => {
+                    let text = ed.cut();
+                    copy::to_clipboard(&text);
+                    self.notify(copied_note("cut", &text), false);
+                }
+                KeyCode::Char('v') if ctrl => self.paste_clipboard_into_editor(ed.path.clone()),
                 KeyCode::Char('s') if ctrl => match ed.save() {
                     Ok(views::Saved::Done) => self.notify(format!("saved {}", ed.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()), false),
                     Ok(views::Saved::ChangedOnDisk) => {
@@ -363,6 +374,42 @@ impl App {
 
 
 
+    /// Ctrl+V in Files' editor: the clipboard is read in the background, and its text lands at
+    /// the cursor if that file is still being edited.
+    fn paste_clipboard_into_editor(&mut self, path: std::path::PathBuf) {
+        let read = copy::clipboard_reader();
+        self.spawn_bg(move || {
+            let got = read();
+            Bg::Then(Box::new(move |app: &mut App| match got {
+                Ok(text) => app.paste_into_editor(&path, &text),
+                Err(e) => app.notify(e, true),
+            }))
+        });
+    }
+
+    /// The file Files' editor has open, while nothing is over it and it has the keys.
+    pub(super) fn editor_path(&self) -> Option<std::path::PathBuf> {
+        match &self.view {
+            Some(View::Files(v)) if self.view_has_keys() && matches!(self.mode, Mode::Normal) => v.edit.as_ref().map(|ed| ed.path.clone()),
+            _ => None,
+        }
+    }
+
+    /// Text pasted into Files' editor for `path`, if that file is still open there.
+    pub(super) fn paste_into_editor(&mut self, path: &std::path::Path, text: &str) {
+        if text.is_empty() {
+            // A terminal's own paste of an image arrives empty; it is no text to insert.
+            self.notify(copy::NO_TEXT.into(), true);
+            return;
+        }
+        let page = self.screen.preview_rect.height.max(1) as usize;
+        let Some(View::Files(v)) = &mut self.view else { return };
+        let Some(ed) = v.edit.as_mut().filter(|ed| ed.path == path) else { return };
+        ed.insert_text(text);
+        v.follow_cursor(page);
+        self.dirty = true;
+    }
+
     /// Keys in the settings view. Returns false when it closes.
     pub(super) fn on_settings_view_key(&mut self, v: &mut design::SettingsView, k: &KeyEvent) -> bool {
         use modal::{Cat, Kind};
@@ -567,4 +614,10 @@ impl App {
         let name = if w.main { w.repo.clone() } else { format!("{}:{}", w.repo, w.branch) };
         self.cmd(Command::NewWorkspace { cwd: Some(w.path.clone()), name: Some(name), cmd });
     }
+}
+
+/// The toast for text taken from Files: how much, not the text itself.
+fn copied_note(verb: &str, text: &str) -> String {
+    let n = text.chars().count();
+    format!("{verb} {n} character{}", if n == 1 { "" } else { "s" })
 }

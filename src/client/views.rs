@@ -214,6 +214,22 @@ pub fn line_span(sel: (Pos, Pos), line: usize, len: usize) -> Option<(usize, usi
     (to > from).then_some((from, to))
 }
 
+/// The text of `lines` between the two ends of `sel`, lines joined by `\n`.
+pub fn text_between<S: AsRef<str>>(lines: &[S], sel: (Pos, Pos)) -> String {
+    let ((r0, c0), (r1, c1)) = sel;
+    let mut out = String::new();
+    for (i, l) in lines.iter().enumerate().take(r1 + 1).skip(r0) {
+        let chars = l.as_ref().chars();
+        let from = if i == r0 { c0 } else { 0 };
+        let piece: String = if i == r1 { chars.take(c1).skip(from).collect() } else { chars.skip(from).collect() };
+        out.push_str(&piece);
+        if i < r1 {
+            out.push('\n');
+        }
+    }
+    out
+}
+
 /// Screen columns a character takes in the preview (tabs are four wide).
 fn cell_width(c: char) -> usize {
     if c == '\t' { 4 } else { 1 }
@@ -325,6 +341,48 @@ impl Edit {
     /// The selection's ends in reading order, if any text is selected.
     pub fn selection(&self) -> Option<(Pos, Pos)> {
         self.anchor.and_then(|a| ordered(a, (self.row, self.col)))
+    }
+
+    /// What Ctrl+C copies: the selection, or the cursor's line with its line break.
+    pub fn copied(&self) -> String {
+        match self.selection() {
+            Some(sel) => text_between(&self.lines, sel),
+            None => format!("{}\n", self.lines[self.row]),
+        }
+    }
+
+    /// Ctrl+X: what `copied` gives, removed: the selection, or the cursor's whole line.
+    pub fn cut(&mut self) -> String {
+        let text = self.copied();
+        if self.selection().is_none() {
+            let last = self.lines.len() - 1;
+            // The last line has no line break to take; the one before it gives up its own.
+            (self.anchor, self.row, self.col) = match self.row {
+                r if r < last => (Some((r, 0)), r + 1, 0),
+                0 => (Some((0, 0)), 0, self.len(0)),
+                r => (Some((r - 1, self.len(r - 1))), r, self.len(r)),
+            };
+        }
+        self.take_selection();
+        text
+    }
+
+    /// Put `text` at the cursor in place of the selection; its line breaks become lines.
+    pub fn insert_text(&mut self, text: &str) {
+        self.take_selection();
+        let text = text.replace("\r\n", "\n").replace('\r', "\n");
+        let at = self.byte(self.row, self.col);
+        let rest = self.lines[self.row].split_off(at);
+        let mut parts = text.split('\n');
+        self.lines[self.row].push_str(parts.next().unwrap_or_default());
+        for part in parts {
+            self.row += 1;
+            self.lines.insert(self.row, part.to_string());
+        }
+        self.col = self.len(self.row);
+        self.lines[self.row].push_str(&rest);
+        self.dirty = true;
+        self.warned = false;
     }
 
     /// Before a move: Shift keeps (or starts) the selection, any other move drops it.

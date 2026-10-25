@@ -260,6 +260,8 @@ your own leader keys; the Inbox and checks have none.
 | Shift + those keys, Ctrl+A | Select as the cursor moves; select the whole file |
 | Drag, click, double-click | Select with the mouse; move the cursor (Shift+click extends); select a word |
 | Enter, Tab, Delete, Backspace | Newline, four spaces, delete forward, delete backward; typing or deleting replaces a selection |
+| Ctrl+C, Ctrl+X | Copy, cut the selection (with nothing selected: the cursor's line) |
+| Ctrl+V, the terminal's own paste | Paste text at the cursor, replacing a selection; never an image, never into the pane |
 | Ctrl+S | Save; repeat to overwrite a file that changed on disk after warning |
 | Esc | Exit editor; repeat to discard unsaved changes after warning |
 

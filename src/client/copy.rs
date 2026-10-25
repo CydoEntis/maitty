@@ -447,6 +447,27 @@ thread_local! {
     pub static LAST_COPY: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
 }
 
+/// What reads the system clipboard's text, to run off the UI thread: on X11 the program
+/// that owns the clipboard has to answer, and may be slow to. Under test it reads what the
+/// last copy on this thread recorded (`LAST_COPY`), never the machine's clipboard.
+#[cfg(test)]
+pub fn clipboard_reader() -> impl FnOnce() -> Result<String, String> + Send + 'static {
+    let last = LAST_COPY.with(|c| c.borrow().clone());
+    move || last.ok_or_else(|| NO_TEXT.to_string())
+}
+
+#[cfg(not(test))]
+pub fn clipboard_reader() -> impl FnOnce() -> Result<String, String> + Send + 'static {
+    || {
+        arboard::Clipboard::new().and_then(|mut c| c.get_text()).map_err(|e| match e {
+            arboard::Error::ContentNotAvailable => NO_TEXT.to_string(),
+            e => format!("can't read the clipboard: {e}"),
+        })
+    }
+}
+
+pub const NO_TEXT: &str = "there's no text on the clipboard";
+
 /// Write `text` to the system clipboard, and to the outer terminal with OSC 52 so it also
 /// works over SSH. Under test it is only recorded (`LAST_COPY`).
 #[cfg(test)]
