@@ -257,9 +257,9 @@ pub fn text_between<S: AsRef<str>>(lines: &[S], sel: (Pos, Pos)) -> String {
     out
 }
 
-/// Screen columns a character takes in the preview (tabs are four wide).
+/// Screen columns a character takes in the preview: tabs four, CJK and emoji two.
 fn cell_width(c: char) -> usize {
-    if c == '\t' { 4 } else { 1 }
+    if c == '\t' { 4 } else { unicode_width::UnicodeWidthChar::width(c).unwrap_or(0) }
 }
 
 /// The character of `line` drawn at screen column `x` (past the end: the end).
@@ -990,6 +990,15 @@ mod tests {
         ed.save().unwrap();
         assert_eq!(std::fs::read_to_string(&g).unwrap(), "xa\nb\nc\nd\n");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn wide_characters_take_two_columns_for_the_pointer_and_the_cursor() {
+        let line = "日本 x";
+        assert_eq!(x_of(line, 2), 4, "two CJK characters, four columns");
+        assert_eq!(col_at(line, 5), 3, "the column after the space is the x");
+        assert_eq!(col_at(line, 1), 0, "the second half of 日 is still 日");
+        assert_eq!(x_of("\tb", 1), 4, "a tab is four");
     }
 
     #[test]
