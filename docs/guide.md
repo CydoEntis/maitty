@@ -33,8 +33,9 @@ and your configured custom ones; rows click and the wheel scrolls.
   `no git` outside a repo.
 - Under it, its sessions, one line each: the state mark and the name (in its state's colour
   while it is worth a look), then at the right the agent's mark (`✻` Claude, `◆` Codex, `✦`
-  Gemini, `◇` OpenCode, else its first letter), the lines changed but not committed (`+8 −2`)
-  and the age. Click the `+N −N` to open its Changes.
+  Gemini, `◇` OpenCode, else its first letter), how full its context is once past half
+  (`✻ 72%`, red from 85%; Claude and Codex report it), the lines changed but not committed
+  (`+8 −2`) and the age. Click the `+N −N` to open its Changes.
 - A second line shows only when it says more: a question (`asks: …`), a check result
   (`failed: test · exit 1`, with its first failing line on wide screens), helpers asked for,
   a quiet spell or a message waiting. Every new claude / codex gets its own worktree (named

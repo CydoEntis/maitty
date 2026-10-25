@@ -355,6 +355,8 @@ pub(super) struct Session {
     pub check: Option<CheckInfo>,
     /// Every checkpoint, in the project's order.
     pub checks: Vec<CheckInfo>,
+    /// How full the agent's context is, 0–100, when the agent reports it.
+    pub context: Option<f32>,
 }
 
 #[derive(Debug, Clone)]
@@ -705,6 +707,7 @@ impl App {
                     queued: t.queued.clone(),
                     check: t.check().cloned(),
                     checks: t.checks.clone(),
+                    context: t.usage.context,
                 });
             }
             // The repo's other worktrees, even with nothing running in them.

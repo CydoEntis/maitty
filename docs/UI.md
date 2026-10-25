@@ -255,10 +255,12 @@ through `reference_fixture::as_one_line_rows`, which applies ADR 0021's one-line
 - **Row line 1:** the session's mark (`client/screen/glyphs.rs` `Kind`; bold for failed,
   needs you and approve; a new session's `○` is `accent`, bold), the name, then
   right-aligned the agent's mark (`muted`: `✻` Claude, `◆` Codex, `✦` Gemini, `◇` OpenCode,
-  else its first letter; `C`, `X`, `G`, `O` with the ASCII glyph set), the checkout's
-  uncommitted lines (`+N` in `done`, `−N` in `err`; shown only when there are any) and the
-  age (`muted`), two spaces apart (`side.rs` `row_meta`). The lines give way first, then the
-  agent's mark, so the name keeps 8 columns. The `+N −N` is its own click target
+  else its first letter; `C`, `X`, `G`, `O` with the ASCII glyph set), a space and the
+  agent's context once past half full (`72%`, rounded, from `TermInfo.usage.context`;
+  `muted`, `err` from 85%, never amber; nothing for an agent that reports none), the
+  checkout's uncommitted lines (`+N` in `done`, `−N` in `err`; shown only when there are
+  any) and the age (`muted`), two spaces apart (`side.rs` `row_meta`). The lines give way
+  first, then the agent's mark, then the context, so the name keeps 8 columns. The `+N −N` is its own click target
   (`ScreenHit::RowChanges`): it opens that checkout's Changes in the side panel, as `c` on
   the session does, and the hover tint covers just it; the rest of the row opens the
   session. A right-click or a drag from it acts on the row, as anywhere else on it. Hover

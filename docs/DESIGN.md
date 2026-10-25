@@ -77,7 +77,8 @@ accent fill. See UI › *UI conventions*.
 `SESSIONS` and its count, with `●n` needs you and `✕n` failed at the right. Projects are folder
 rows (a `−`/`+` fold button, the name, `⎇ branch` and check meta). A session is one line: its
 mark, the name in its state's colour when it wants a look (shimmering while working, pulsing
-when it needs you), then the agent's mark, uncommitted `+N −N` and the age. A second and third
+when it needs you), then the agent's mark, its context past half full (`✻ 72%`, red from 85%),
+uncommitted `+N −N` and the age. A second and third
 line, always `muted`, appear only when they say more: a question, a check result, the first
 failing line. The foot holds **+ New** and **Menu**. Collapsed, the sessions become chips along
 row 0; hidden, the panes take everything. See UI › *sidebar check result* and *collapsed

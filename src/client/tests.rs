@@ -3005,7 +3005,8 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(!o.contains("claude 5h"), "no plan limits on screen");
-        assert!(!o.contains("ctx 76%") && !o.contains("$1.20") && !o.contains("76% "), "context and cost are the agent's own to show");
+        assert!(!o.contains("ctx 76%") && !o.contains("$1.20"), "cost is the agent's own to show");
+        assert!(o.contains(" 76%"), "context past half full is on its row");
         app.snap.terms.get_mut(&agent).unwrap().resume_at = Some(now + 600);
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("resumes in 10m") || o.contains("resumes in 9m"), "waiting on a limit, on its row");
