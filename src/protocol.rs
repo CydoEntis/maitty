@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-/// Bump whenever a message shape changes; client and daemon refuse to talk across versions.
+/// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
+/// style*); client and daemon refuse to talk across versions, and so do hooks.
 pub const PROTOCOL_VERSION: u32 = 46;
 
 pub type TermId = u32;
