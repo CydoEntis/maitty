@@ -1,6 +1,6 @@
 # 0015. Four named layouts, one setting, and the Grid style
 
-- **Status:** Accepted
+- **Status:** Accepted (amended 2026-10-24, see *Amendments*)
 - **Date:** 2026-10-23
 
 ## Context
@@ -28,10 +28,9 @@ Grid is a rendering style, like Compact: each pane is a box in its own colour, c
 position in the tab (green, pink, violet, cyan, then again) from colours every theme has
 (`Theme::grid_colors`: `done`, `accent`, `violet()`, `cyan()`, skipping any too like one
 already taken, then the theme's other colours). The focused pane's border is that colour, bold; the
-others' is the colour faded toward the ground. The top border carries the pane's number, then
-the chip that names it (the current tab on the top-left pane), with the state only as a glyph
-at that chip's front: no state words, and the name is not repeated on the right (the user
-found both redundant, 2026-10-24). The sidebar, tabs, splits, keys and sheets are unchanged.
+others' is the colour faded toward the ground. The top border carries the pane's number and
+its state on the left and its name as a tag on the right. The sidebar, tabs, splits, keys
+and sheets are unchanged.
 
 ## Alternatives considered
 
@@ -47,3 +46,10 @@ Settings shows one Layout choice. Internally the code keeps `Look::flat` for Com
 A pane's colour in Grid follows where it sits, so it changes when a split closes. The
 scratch shell, zoom and the right-hand sidebar stay out; they would come back only through a
 new proposal. Supersedes the names in ADR 0007 and ADR 0012, not their rules.
+
+## Amendments
+
+- **2026-10-24:** a Grid pane's top border no longer shows its state's words or a name tag on
+  the right; the user found both repeated what the title already said. The state shows only as
+  its glyph inside the chip that names the pane (the current tab on the top-left pane). The
+  rules live in [`docs/UI.md`](../UI.md) (the Grid paragraph and *Pane title*).
