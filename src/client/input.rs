@@ -58,9 +58,7 @@ impl App {
     }
 
     pub(super) fn on_paste(&mut self, s: String) {
-        // Files' editor takes a paste as text: not the pane's, and never an image paste.
-        if let Some(path) = self.editor_path() {
-            self.paste_into_editor(&path, &s);
+        if self.paste_into_files(&s) {
             return;
         }
         match &mut self.mode {

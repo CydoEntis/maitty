@@ -407,12 +407,26 @@ impl App {
         });
     }
 
-    /// The file Files' editor has open, while nothing is over it and it has the keys.
-    pub(super) fn editor_path(&self) -> Option<std::path::PathBuf> {
-        match &self.view {
-            Some(View::Files(v)) if self.view_has_keys() && matches!(self.mode, Mode::Normal) => v.edit.as_ref().map(|ed| ed.path.clone()),
-            _ => None,
+    /// A paste while Files has the keys (and nothing is over it) stays in Files: the editor
+    /// takes it as text, the filter its first line. Otherwise it is dropped with a toast: the
+    /// pane behind is not what you were looking at, and an empty paste would start an image
+    /// paste there. False when Files doesn't have the keys.
+    pub(super) fn paste_into_files(&mut self, text: &str) -> bool {
+        if !self.view_has_keys() || !matches!(self.mode, Mode::Normal) {
+            return false;
         }
+        let Some(View::Files(v)) = &mut self.view else { return false };
+        let editing = v.edit.as_ref().map(|ed| ed.path.clone());
+        match editing {
+            Some(path) => self.paste_into_editor(&path, text),
+            None if v.filtering => {
+                v.filter.push_str(text.lines().next().unwrap_or(""));
+                v.sel = v.sel.min(v.visible().len().saturating_sub(1));
+                v.refresh_preview();
+            }
+            None => self.notify("Files has the keys: / filters, i edits; click a pane to paste there".into(), false),
+        }
+        true
     }
 
     /// Text pasted into Files' editor for `path`, if that file is still open there.

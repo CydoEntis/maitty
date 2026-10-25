@@ -9132,6 +9132,67 @@ mod files_panel_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// What the next message to the server types into a pane, if anything.
+    fn typed(out: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Option<String> {
+        std::iter::from_fn(|| out.try_recv().ok()).find_map(|m| match m {
+            ClientMsg::Input { data, .. } => Some(String::from_utf8_lossy(&data).into_owned()),
+            _ => None,
+        })
+    }
+
+    /// An empty paste started an image paste: its background read came back and said so.
+    fn image_paste_tried(app: &mut App, rx: &mut mpsc::UnboundedReceiver<Bg>) -> bool {
+        let read = super::branch_view_tests::next_bg(rx);
+        app.on_bg(read);
+        app.notice.as_ref().is_some_and(|(m, _, _)| m == "there's no image on the clipboard")
+    }
+
+    #[test]
+    fn pastes_still_reach_the_pane_whenever_files_does_not_have_the_keys() {
+        let (dir, mut app) = editing("pastepane");
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        let (btx, mut bg) = mpsc::unbounded_channel();
+        app.bg = btx;
+        let pane = app.pane_frames.iter().find(|(t, _)| *t == 1).map(|(_, r)| *r).expect("the pane beside the panel");
+        let inside = (pane.x + pane.width / 2, pane.y + pane.height / 2);
+        mouse(&mut app, MouseEventKind::Down(MouseButton::Left), inside);
+        mouse(&mut app, MouseEventKind::Up(MouseButton::Left), inside);
+        assert!(!app.view_has_keys(), "the click set the editor aside");
+        app.on_event(Event::Paste("x".into()));
+        assert_eq!(typed(&mut out).as_deref(), Some("x"), "set aside: the pane gets it");
+        app.on_event(Event::Paste(String::new()));
+        assert!(image_paste_tried(&mut app, &mut bg), "set aside: an empty paste is the pane's image paste");
+        click_hit(&mut app, Hit::Button(Btn::ViewChord(KeyCode::Esc, KeyModifiers::NONE)));
+        assert!(app.view_has_keys() && files(&app).edit.is_none(), "Esc left the editor; Files has the keys");
+        app.on_event(Event::Paste("x".into()));
+        assert_eq!(typed(&mut out), None, "Files with the keys keeps a paste from the pane");
+        key(&mut app, KeyCode::Esc);
+        assert!(app.view.is_none(), "Files closed");
+        app.on_event(Event::Paste("x".into()));
+        assert_eq!(typed(&mut out).as_deref(), Some("x"), "closed: the pane gets it");
+        app.on_event(Event::Paste(String::new()));
+        assert!(image_paste_tried(&mut app, &mut bg), "closed: an empty paste is the image paste");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_paste_while_files_filters_goes_into_the_filter() {
+        let dir = project("pastefilter");
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        key(&mut app, KeyCode::Char('/'));
+        app.on_event(Event::Paste("notes\nsecond line".into()));
+        assert_eq!(files(&app).filter, "notes", "its first line");
+        assert_eq!(files(&app).preview.as_ref().map(|(p, _)| p.clone()), Some(dir.join("notes.txt")), "the match is shown");
+        app.on_event(Event::Paste(String::new()));
+        assert_eq!(typed(&mut out), None, "nothing reached the pane");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_double_click_on_drawn_markdown_takes_a_word() {
         let (dir, mut app) = guide_open("mdword");
