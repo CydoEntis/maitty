@@ -4593,6 +4593,70 @@ second line
         }
     }
 
+    /// Shortcut mode on, as a popup it opened had closed: the loop's `keep_shortcut_mode` runs.
+    fn ended_after(app: &mut App, what: &str) {
+        app.keep_shortcut_mode();
+        assert!(app.mode == Mode::Normal && !app.shortcut_held, "{what} ends shortcut mode: {:?}", std::mem::discriminant(&app.mode));
+    }
+
+    #[test]
+    fn every_way_into_a_new_pane_ends_shortcut_mode() {
+        let mut app = shortcut_mode();
+        app.keymap.prefixed.insert("w".parse().unwrap(), Action::SpawnTab("lazygit".into()));
+        tap(&mut app, 'w');
+        ended_after(&mut app, "spawn-tab");
+
+        let mut app = shortcut_mode();
+        let ws = app.active_ws().unwrap().id;
+        let entry = WorktreeEntry { path: PathBuf::from("/elsewhere/wt"), branch: "feature".into(), main: false, repo: "shop-api".into() };
+        app.mode = Mode::Worktrees { ws, cmd: None, items: Some(vec![entry]), query: String::new(), sel: 0 };
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        ended_after(&mut app, "a row of the worktree picker");
+
+        let mut app = shortcut_mode();
+        app.mode = Mode::Worktrees { ws, cmd: None, items: Some(Vec::new()), query: "fresh".into(), sel: 0 };
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        ended_after(&mut app, "the picker's create row");
+
+        let mut app = shortcut_mode();
+        app.mode = Mode::Prompt { kind: PromptKind::NewWorkspace, input: String::new() };
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        ended_after(&mut app, "the new pane prompt");
+
+        let mut app = shortcut_mode();
+        let t = app.focused().unwrap();
+        app.menu_do(menu::Act::Split(t, crate::layout::Dir::Right));
+        ended_after(&mut app, "the pane menu's split");
+    }
+
+    #[test]
+    fn opening_a_project_ends_shortcut_mode_whether_it_starts_a_session_or_not() {
+        let mut app = shortcut_mode();
+        let running = app.screen_model().iter().find(|p| p.sessions().next().is_some()).map(|p| p.path.clone()).unwrap();
+        app.screen_open_project(running);
+        ended_after(&mut app, "a project already running");
+        let mut app = shortcut_mode();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        let fresh = std::env::temp_dir().join(format!("{APP_COMMAND}-fresh-project-{}", std::process::id()));
+        app.screen_open_project(fresh);
+        assert!(sent(&mut rx).iter().any(|c| matches!(c, Command::NewWorkspace { .. })), "a new project starts a shell");
+        ended_after(&mut app, "a new project");
+    }
+
+    #[test]
+    fn the_shell_that_replaces_the_last_closed_session_keeps_shortcut_mode() {
+        let mut app = shortcut_mode();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.screen.last_focus = app.focused();
+        let mut gone = app.snap.clone();
+        (gone.terms, gone.workspaces, gone.active_ws) = (Default::default(), Vec::new(), None);
+        app.on_server(ServerMsg::State(gone));
+        assert!(sent(&mut rx).iter().any(|c| matches!(c, Command::NewWorkspace { cmd: None, .. })), "a home shell takes the last session's place");
+        assert!(matches!(app.mode, Mode::Prefix { .. }) && app.shortcut_held, "nobody asked for it: shortcut mode stays");
+    }
+
     #[test]
     fn an_action_that_starts_no_pane_keeps_shortcut_mode() {
         let mut app = shortcut_mode();
@@ -8743,6 +8807,19 @@ mod side_panel_width_tests {
         let sheet = app.screen.sheet_rect;
         click(&mut app, sheet.x + sheet.width / 2, sheet.y + sheet.height / 2);
         assert!(!typed_into_a_pane(&mut app, &mut rx, 'm'), "a click in the sheet gives Changes the keys back");
+    }
+
+    #[test]
+    fn after_leader_n_beside_a_panel_the_next_key_goes_to_the_new_pane() {
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.cfg.ui.which_key = false;
+        app.show_view(changes_view());
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        key(&mut app, 'n');
+        assert!(matches!(app.view, Some(View::Changes(_))), "Changes stays open beside it");
+        assert!(typed_into_a_pane(&mut app, &mut rx, 'm'), "the next key types into the pane, not Changes");
     }
 
     fn leader_x(app: &mut App) {

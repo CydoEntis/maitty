@@ -32,6 +32,7 @@ impl App {
             Action::History => self.mode = Mode::History { sel: 0 },
             Action::SpawnTab(c) => {
                 if let Some(ws) = ws {
+                    self.leave_shortcut_mode();
                     self.cmd(Command::NewTab { ws, name: None, cmd: Some(c) });
                 }
             }

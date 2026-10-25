@@ -181,10 +181,13 @@ Only the area with the keyboard is lit: the focused pane's whole border (Cards),
   popover or floating pane nothing tints and the pointer keeps its arrow, and an overlay's
   backdrop (its click-outside region) is never tinted. Inside the overlay hover works as
   anywhere.
-- Shortcut mode ends on Esc, the leader again, a click, or an action that starts a pane to
-  type into (ADR 0025: every path through `screen_new_session` / `screen_new_worktree`, so
-  `n`, `s`, `t`, the splits, and `o` once its dialog starts one). Those call
-  `leave_shortcut_mode`; a new way to start a pane must go through them or call it too.
+- Shortcut mode ends on Esc, the leader again, a click, or an action that takes you into a
+  pane to type (ADR 0025 lists them: `n`, `s`, `t`, the splits, `spawn-*`, `o` once its
+  dialog starts one, the worktree picker, opening a project). Each calls
+  `leave_shortcut_mode`, which also sets an open side panel aside so the next key reaches the
+  pane; `screen_new_session` and `screen_new_worktree` call it for you, and a new way to start
+  a pane must too. `screen_start_pane` starts one without it, only for a pane nobody asked
+  for (the home shell after the last session closes).
 - Leader `x` closes what has the keys (`actions.rs` `ClosePane`): a side panel that has them
   (`view_has_keys`) closes with no question, so x never stops the program in the pane behind
   it; Files with unsaved edits stays open and says so. Once a click into a pane set the panel

@@ -799,7 +799,7 @@ impl App {
             self.screen.last_focus = None;
             self.splash = false;
             let home = self.cfg.start_dir().or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf())).unwrap_or_else(std::env::temp_dir);
-            self.screen_new_session(home, None, false);
+            self.screen_start_pane(home, None, false);
             return;
         }
         let proj_of = |t: TermId| model.iter().find(|p| p.sessions().any(|s| s.term == t)).map(|p| p.key.clone());

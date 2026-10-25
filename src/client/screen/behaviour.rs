@@ -196,11 +196,18 @@ impl App {
     /// Start a session in `cwd` running `cmd` (None: a shell), beside the focused one or
     /// on its own.
     pub(in crate::client) fn screen_new_session(&mut self, cwd: PathBuf, cmd: Option<String>, beside: bool) {
+        self.leave_shortcut_mode();
+        self.screen_start_pane(cwd, cmd, beside);
+    }
+
+    /// Start a pane without touching shortcut mode: for one nobody asked for (the shell that
+    /// replaces the last session closed), which must not end a mode the user is in.
+    pub(in crate::client) fn screen_start_pane(&mut self, cwd: PathBuf, cmd: Option<String>, beside: bool) {
         if beside && let Some(f) = self.focused() {
             self.screen.pending_split = Some((f, Instant::now()));
         }
         self.screen.cursor = None;
-        self.leave_shortcut_mode();
+        self.mode = Mode::Normal;
         self.cmd(Command::NewWorkspace { cwd: Some(cwd), name: None, cmd });
     }
 
@@ -234,7 +241,8 @@ impl App {
 
     /// Open a folder as a project: switch to it, or start a session there if nothing runs.
     pub(in crate::client) fn screen_open_project(&mut self, path: PathBuf) {
-        self.mode = Mode::Normal;
+        // Into a session either way, new or already running: you go there to type.
+        self.leave_shortcut_mode();
         self.splash = false;
         let root = crate::gitfs::head(&path).map(|h| h.main_root).unwrap_or_else(|| path.clone());
         let key = path_key(&root);

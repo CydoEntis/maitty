@@ -421,6 +421,7 @@ impl App {
                     self.cmd(Command::FocusPane { term: t });
                 }
                 self.screen.pending_split = Some((t, std::time::Instant::now()));
+                self.leave_shortcut_mode();
                 self.cmd(Command::NewWorkspace { cwd: Some(cwd), name: None, cmd: None });
             }
             Act::Update => self.start_update(),
