@@ -84,8 +84,9 @@ The bar along the bottom always shows the mode. It reads `TYPING · Ctrl+Space f
 shortcuts` while keys go to the terminal. Press `Ctrl+Space` (or click the bar) to enter
 **shortcut mode**: the bar turns sky blue and lists keys to press (`n shell`, `f files`,
 `? all keys`, `Esc type`, …; click one to run it), and each key runs an action until you press
-`Esc`, `Ctrl+Space` again or click into a pane. While a popup has the keys the bar reads
-`SHORTCUT · paused`, and a key that isn't a shortcut says "Shortcut mode — Esc to type". Every key is a single key, and only `?` needs Shift. Press `?` to see them all.
+`Esc`, `Ctrl+Space` again or click into a pane. While the sidebar, a popup or a panel has the
+keys, the bar names it and its keys (`SETTINGS · ↑↓ move · ←→ change · Tab section · Esc
+close`), and a key that isn't a shortcut says "Shortcut mode — Esc to type". Every key is a single key, and only `?` needs Shift. Press `?` to see them all.
 
 | | |
 |---|---|

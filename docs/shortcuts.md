@@ -80,8 +80,10 @@ type into it. An action that opens a popup or sheet hands it the keys, and closi
 to shortcut mode. The bar along the bottom always says which mode you are in: `TYPING · Ctrl+Space for
 shortcuts`, or, while shortcut mode is on, a sky-blue bar with `SHORTCUT` and keys to press
 from your keymap (`n shell  s session  c changes  f files  i inbox  , settings  ? all keys
-Esc type`; a click on one runs it, a click on `TYPING` starts shortcut mode). While a popup has
-the keys it reads `SHORTCUT · paused`. In shortcut mode the focused pane's border is sky blue,
+Esc type`; a click on one runs it, a click on `TYPING` starts shortcut mode). While something
+other than the panes has the keys (the sidebar, a popup, Files, …) it names it and says how to
+use and leave it, such as `SIDEBAR · ↑↓ move · Enter open · Esc back`, adding `shortcut mode
+waits` when shortcut mode comes back after. In shortcut mode the focused pane's border is sky blue,
 and a key that does nothing shows "Shortcut mode — Esc to type".
 To send `Ctrl+Space` itself to the pane, search
 commands for "Send the leader key" or bind `send-prefix` to a key. One overlay holds every key

@@ -63,7 +63,9 @@ on one runs it), the pane you're in turns sky too, each key below runs its actio
 stays for the next key. A key
 that does nothing says "Shortcut mode — Esc to type". `Esc`, `Ctrl+Space` again or a click into a pane
 go back to typing; a new shell, session, tab or split keeps shortcut mode, so press `Esc`
-to type into it, and closing a popup returns to it. With **Leader waits for next key** on (Settings › General; off by default), a pause after the leader shows the compact key map: a key runs its
+to type into it, and closing a popup returns to it. While the sidebar, a popup or a panel has
+the keys, the bar names it and says how to use and leave it (`FILES · / filter · i edit · Enter
+insert path · Esc close`). With **Leader waits for next key** on (Settings › General; off by default), a pause after the leader shows the compact key map: a key runs its
 command, Tab (or typing a letter that is no key) searches every command, `?` shows all keys,
 and keys marked `›` open a second step (`g` worktrees: new, switch, merge, delete; Backspace
 goes back). No default but `?` needs Shift, and each key does one thing; no letter acts by itself in

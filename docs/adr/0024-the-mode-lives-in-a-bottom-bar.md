@@ -40,6 +40,12 @@ application-wide footer bar; the user's decision on 2026-10-24 reverses that for
 Amends ADR 0023 (the frame and the corner tag go; the toast and the always-shown mode stay) and
 ADR 0014's no-footer rule (this bar is the one exception).
 
+**Amended 2026-10-25:** the user found ` SHORTCUT · paused ` unclear (it showed with the sidebar
+focused and nothing visibly open). Paused is gone: whenever something other than the panes has
+the keys, held or not, the bar names it in a calm chip (not sky) with its own keys and the way
+out, e.g. `SIDEBAR · ↑↓ move · Enter open · Esc back`, plus `· shortcut mode waits` while
+shortcut mode is held. Under a popup it is still only words. See [UI](../UI.md) *Mode bar*.
+
 ## Alternatives considered
 
 - **Keep the corner tag and frame (ADR 0023):** the user found the bar clearer and preferred

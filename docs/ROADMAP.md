@@ -746,6 +746,10 @@ Also: polish from the 0.43.3 trial (user decisions 2026-10-24): Grid panes lose 
 one mode bar along the bottom with key suggestions from the keymap; Update and Restart move to
 its right end ([ADR 0024](adr/0024-the-mode-lives-in-a-bottom-bar.md)). Built on
 `feat/mode-bar`; not checked live.
+Also: the bar says who has the keys (user decision 2026-10-25, after ` SHORTCUT · paused `
+showed with only the sidebar focused): `SIDEBAR · ↑↓ move · Enter open · Esc back`, `SETTINGS`,
+`FILES`, `INBOX`, a confirm's `y yes · n no` and so on, held or not, with `shortcut mode waits`
+while held; "paused" is gone. Built on `feat/bar-says-who`; not checked live.
 
 ## In scope
 
