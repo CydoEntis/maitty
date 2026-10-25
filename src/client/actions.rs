@@ -35,6 +35,16 @@ impl App {
                     self.cmd(Command::NewTab { ws, name: None, cmd: Some(c) });
                 }
             }
+            // x closes what has the keys: a side panel (Files, Changes, Branch, a check) that
+            // has them, not the pane behind it, whose program would stop. Set aside by a click
+            // into a pane, the pane has the keys and x closes it.
+            Action::ClosePane if self.view_has_keys() => {
+                if matches!(&self.view, Some(View::Files(v)) if v.edit.as_ref().is_some_and(|e| e.dirty)) {
+                    self.notify("unsaved changes: Ctrl+S saves, Esc twice throws them away".into(), true);
+                } else {
+                    self.view = None;
+                }
+            }
             Action::ClosePane => {
                 // From the sidebar it's the row the cursor is on, as its x is.
                 if let Some(term) = self.screen.cursor.or(focused) {

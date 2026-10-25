@@ -27,7 +27,7 @@ one thing (ADR 0017, 0022).
 | `←` `↓` `↑` `→` | Move to the pane that way (left past the edge: the sidebar) |
 | `v` | Split side by side |
 | `h` | Split stacked |
-| `x` | Close the pane |
+| `x` | Close what has the keys: the side panel (Files, Changes, Branch, a check) when it has them, else the focused pane, after asking |
 | `Ctrl`+arrows | Resize the pane |
 | `PgUp` / `PgDn` | Scroll half a pane |
 | `z` | Collapse the sidebar (again brings it back) |

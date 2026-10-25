@@ -8705,6 +8705,56 @@ mod side_panel_width_tests {
         assert!(!typed_into_a_pane(&mut app, &mut rx, 'm'), "a click in the sheet gives Changes the keys back");
     }
 
+    fn leader_x(app: &mut App) {
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        key(app, 'x');
+    }
+
+    /// A Changes sheet open beside a pane that is still working.
+    fn changes_beside_a_working_pane() -> App {
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        let focused = app.focused().unwrap();
+        app.snap.terms.get_mut(&focused).unwrap().status = Status::Working;
+        app.show_view(changes_view());
+        draw(&mut app, 200, 50);
+        app
+    }
+
+    #[test]
+    fn leader_x_closes_the_side_panel_that_has_the_keys_not_the_pane_behind_it() {
+        let mut app = changes_beside_a_working_pane();
+        leader_x(&mut app);
+        assert!(app.view.is_none(), "x closed Changes");
+        assert!(!matches!(app.mode, Mode::Confirm(_)), "and asked nothing about the pane behind it: {:?}", std::mem::discriminant(&app.mode));
+    }
+
+    #[test]
+    fn leader_x_closes_the_pane_when_a_click_set_the_panel_aside() {
+        let mut app = changes_beside_a_working_pane();
+        let focused = app.focused().unwrap();
+        let (_, pane) = *app.pane_frames.iter().find(|(t, _)| *t == focused).expect("the focused pane beside the sheet");
+        click(&mut app, pane.x + pane.width / 2, pane.y + pane.height / 2);
+        leader_x(&mut app);
+        let Mode::Confirm(c) = &app.mode else { panic!("the pane has the keys: x asks before closing it") };
+        assert_eq!(c.act, crate::client::menu::Act::End(vec![focused]), "it closes the focused pane");
+        assert!(c.note.contains("still working"), "and warns that it is working: {}", c.note);
+        assert!(matches!(app.view, Some(View::Changes(_))), "Changes stays open beside it");
+    }
+
+    #[test]
+    fn leader_x_with_no_panel_closes_the_focused_split() {
+        let (_, mut app) = super::design_tests::render_with(200, 50);
+        let a = app.focused().unwrap();
+        let b = app.snap.terms.keys().copied().find(|t| *t != a).unwrap();
+        app.screen.tabs.clear();
+        app.screen_place(a, None);
+        app.screen.pending_split = Some((a, Instant::now()));
+        app.screen_place(b, Some(a));
+        draw(&mut app, 200, 50);
+        leader_x(&mut app);
+        assert!(matches!(&app.mode, Mode::Confirm(c) if c.act == crate::client::menu::Act::End(vec![a])), "x asks about the focused split only");
+    }
+
     /// Files open in the sheet, set aside by a click into the pane beside it.
     fn files_set_aside() -> App {
         let (_, mut app) = super::design_tests::render_with(200, 50);

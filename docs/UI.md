@@ -181,6 +181,11 @@ Only the area with the keyboard is lit: the focused pane's whole border (Cards),
   type into (ADR 0025: every path through `screen_new_session` / `screen_new_worktree`, so
   `n`, `s`, `t`, the splits, and `o` once its dialog starts one). Those call
   `leave_shortcut_mode`; a new way to start a pane must go through them or call it too.
+- Leader `x` closes what has the keys (`actions.rs` `ClosePane`): a side panel that has them
+  (`view_has_keys`) closes with no question, so x never stops the program in the pane behind
+  it; Files with unsaved edits stays open and says so. Once a click into a pane set the panel
+  aside, the pane has the keys and x closes the focused pane (the sidebar cursor's row in the
+  sidebar), with its `Close pane` confirm.
 - Selection is a neutral tint (`sel_on` of the surface it sits on) with a lime `▎` bar;
   never the accent colour as a row fill.
 - Every popup row is clickable and keyboard-reachable; every key is shown as a
