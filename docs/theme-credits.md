@@ -52,6 +52,12 @@ Source links pin the researched revision. Preserve the existing `gruvbox` and
 | Brogrammer | Added | Standard | [kenwheeler/brogrammer-syntax](https://github.com/kenwheeler/brogrammer-syntax/blob/8e3c66d1fcf5f3a3918344e63f6f0fa287369aab/styles/colors.less) | [MIT](https://github.com/kenwheeler/brogrammer-syntax/blob/8e3c66d1fcf5f3a3918344e63f6f0fa287369aab/LICENSE.md) |
 | Palenight | Added | Standard | [drewtempelmeyer/palenight.vim](https://github.com/drewtempelmeyer/palenight.vim/blob/9e9b102c54b830b72f51917b6b86c3b3b02dcea2/autoload/palenight.vim) | [MIT](https://github.com/drewtempelmeyer/palenight.vim/blob/9e9b102c54b830b72f51917b6b86c3b3b02dcea2/LICENSE) |
 | Neovim default | Added | Dark / Light | [neovim/neovim](https://github.com/neovim/neovim/blob/80ae7e336f97e169bb3d3e7172998a65336472a1/src/nvim/highlight_group.c) | [Apache-2.0](https://github.com/neovim/neovim/blob/80ae7e336f97e169bb3d3e7172998a65336472a1/LICENSE.txt) |
+| Nightfox | Added | Nightfox / Dayfox / Dawnfox / Duskfox / Nordfox / Terafox / Carbonfox | [EdenEast/nightfox.nvim](https://github.com/EdenEast/nightfox.nvim/blob/4dacd3f0185a2227bdf3b6c0975a8f0bf87cac9a/extra/nightfox/alacritty.toml) | [MIT](https://github.com/EdenEast/nightfox.nvim/blob/4dacd3f0185a2227bdf3b6c0975a8f0bf87cac9a/LICENSE) |
+| Gruvbox Material | Added | Dark / Light, medium background | [sainnhe/gruvbox-material](https://github.com/sainnhe/gruvbox-material/blob/11d779b26a9ab2b3db8c22c6ac9fb6e8ed4fea79/autoload/gruvbox_material.vim) | [MIT](https://github.com/sainnhe/gruvbox-material/blob/11d779b26a9ab2b3db8c22c6ac9fb6e8ed4fea79/LICENSE) |
+| Doom One | Added | Dark / Light | [NTBBloodbath/doom-one.nvim](https://github.com/NTBBloodbath/doom-one.nvim/blob/960d8bf49904001b7cf37fdc34ca18dffb21b024/extras/alacritty-dark.toml) | [MIT](https://github.com/NTBBloodbath/doom-one.nvim/blob/960d8bf49904001b7cf37fdc34ca18dffb21b024/LICENSE) |
+| Mellow | Added | Dark / Light | [mellow-theme/mellow.nvim](https://github.com/mellow-theme/mellow.nvim/blob/6273b7f0ddf6ac2b75021b3bc0bd8b3305cfeef1/lua/mellow/colors.lua) | [MIT](https://github.com/mellow-theme/mellow.nvim/blob/6273b7f0ddf6ac2b75021b3bc0bd8b3305cfeef1/LICENSE) |
+| Koda | Added | Dark / Light / Moss / Glade | [oskarnurm/koda.nvim](https://github.com/oskarnurm/koda.nvim/blob/25a5c98ca2f6bb0b69f5e2654a78f0d7c7e0721d/extras/ghostty/koda-dark.conf) | [MIT](https://github.com/oskarnurm/koda.nvim/blob/25a5c98ca2f6bb0b69f5e2654a78f0d7c7e0721d/LICENSE) |
+| Code 2026 | Added | Dark / Light | [code-2026-theme/ghostty](https://github.com/code-2026-theme/ghostty/blob/60da4559b02d0f0f2fced8ea4c696d29eff0190c/themes/code-2026.conf) | [MIT](https://github.com/code-2026-theme/ghostty/blob/60da4559b02d0f0f2fced8ea4c696d29eff0190c/LICENSE) |
 
 ## Mapping to Maitty
 
@@ -116,6 +122,25 @@ Tender, Palenight, Brogrammer, Neovim).
   palette, so the slots take its named colors.
 - Neovim's default colorscheme sets no terminal colors. Its dark variant takes
   the `NvimLight*` colors it draws text with, the light one the `NvimDark*`.
+- Nightfox's comment colors come from each variant's
+  `lua/nightfox/palette/<variant>.lua`; Carbonfox computes its comment as
+  `bg:blend(fg, 0.4)`, `#6e6f70`. Carbonfox's terminal yellow slot is teal, so
+  its needs-you amber is Maitty's own.
+- Gruvbox Material takes the medium background and the default material
+  foreground; its terminal mapping is in `colors/gruvbox-material.vim`.
+- Doom One's light palette is `extras/alacritty-light.toml`; both comment
+  colors come from `lua/doom-one/colors.lua`.
+- Mellow's light variant is `vim.g.mellow_variant = "light"`. Its terminal cyan
+  slot is rose in both variants.
+- Koda's Dark and Light take the creator's Ghostty files. Moss and Glade ship
+  no terminal palette, so their slots take the named colors in
+  `lua/koda/palette/<variant>.lua`. Koda Dark's terminal yellow is white and
+  its blue grey: the theme is near-monochrome by design.
+- Code 2026 ports VS Code's 2026 themes. The terminal palettes are the
+  creator's Ghostty files (`themes/code-2026.conf`, `themes/light-2026.conf`);
+  the comment colors come from
+  [code-2026-theme/nvim](https://github.com/code-2026-theme/nvim/blob/ea0b1fd2751560f587aa3c070e30b7fdf1b89d27/lua/code-2026/palette.lua)
+  ([MIT](https://github.com/code-2026-theme/nvim/blob/ea0b1fd2751560f587aa3c070e30b7fdf1b89d27/LICENSE)).
 
 ## Attribution and license notices
 
@@ -157,6 +182,12 @@ The following upstream copyright notices apply to the MIT-licensed palettes:
 - kenwheeler/brogrammer-syntax: MIT per its `package.json`; its license file
   keeps the template line `Copyright (c) 2014 <Your name here>`.
 - drewtempelmeyer/palenight.vim: Copyright (c) 2015 Joshua Dick
+- EdenEast/nightfox.nvim: Copyright (c) 2021 James Simpson
+- sainnhe/gruvbox-material: Copyright (c) 2020 sainnhe
+- NTBBloodbath/doom-one.nvim: Copyright (c) 2021 NTBBloodbath
+- mellow-theme/mellow.nvim: Copyright (c) 2023 Rohit K Viswanath
+- oskarnurm/koda.nvim: Copyright (c) 2026 Karl Oskar Joosep Nurm
+- code-2026-theme/ghostty and code-2026-theme/nvim: Copyright (c) 2026 code-2026-theme
 
 Gruvbox declares MIT/X11 in its README and identifies morhetz as its author in
 its palette source; that revision contains no standalone copyright/license file.
