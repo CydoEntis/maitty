@@ -125,14 +125,24 @@ fn keys_holder(app: &App) -> Option<Holder> {
     match &app.mode {
         Mode::Normal => view_holder(app),
         Mode::Prefix { .. } => None,
+        // A second step's letters pick its items, not shortcuts.
+        Mode::KeyMap(km) if km.step.is_some() => holder("KEY MAP", &[("", "a letter picks"), ("↑↓", "choose"), ("Enter", "run"), ("Backspace", "back")], ("Esc", "close")),
         Mode::KeyMap(km) => match km.view {
-            KeyView::Search if km.step.is_none() => holder("KEY MAP", &[("", "type to search"), ("↑↓", "pick"), ("Enter", "run")], ("Esc", "close")),
-            KeyView::All if km.step.is_none() => holder("KEY MAP", &[("", "type to search"), ("↑↓", "scroll")], ("Esc", "close")),
-            _ => None,
+            KeyView::Search => holder("KEY MAP", &[("", "type to search"), ("↑↓", "pick"), ("Enter", "run")], ("Esc", "close")),
+            KeyView::All => holder("KEY MAP", &[("", "type to search"), ("↑↓", "scroll")], ("Esc", "close")),
+            KeyView::Map => None,
         },
         Mode::Side => holder("SIDEBAR", &[("↑↓", "move"), ("Enter", "open")], ("Esc", "back")),
+        // Waiting for a key: the next one, arrows too, becomes the binding.
+        Mode::ScreenSettings(v) if v.capturing => holder("SETTINGS", &[("", "press the new key")], ("Esc", "cancel")),
+        Mode::ScreenSettings(v) if v.editing.is_some() => holder("SETTINGS", &[("", "type"), ("Enter", "save")], ("Esc", "cancel")),
         Mode::ScreenSettings(_) => holder("SETTINGS", &[("↑↓", "move"), ("←→", "change"), ("Tab", "section")], ("Esc", "close")),
-        Mode::GoTo { .. } => holder("INBOX", &[("↑↓", "select"), ("Enter", "open")], ("Esc", "close")),
+        // A merge or throw-away asked in a finished row: Enter does it, Esc only drops the question.
+        Mode::GoTo { .. } => match app.screen.inbox_confirm {
+            Some((_, true, false)) => holder("INBOX", &[("Enter", "merge")], ("Esc", "don't")),
+            Some((_, false, false)) => holder("INBOX", &[("Enter", "throw away")], ("Esc", "don't")),
+            _ => holder("INBOX", &[("↑↓", "select"), ("Enter", "open")], ("Esc", "close")),
+        },
         Mode::Compose(_) => holder("MESSAGE", &[("Enter", "send"), ("Shift+Enter", "new line")], ("Esc", "keep draft")),
         Mode::Confirm(c) if matches!(c.act, crate::client::menu::Act::OverrideCheck(..)) => holder("OVERRIDE", &[("", "type a reason"), ("Enter", "override")], ("Esc", "cancel")),
         Mode::Confirm(_) => holder("CONFIRM", &[("y", "yes")], ("n", "no")),
@@ -142,6 +152,7 @@ fn keys_holder(app: &App) -> Option<Holder> {
         Mode::Helpers { .. } => holder("HELPERS", &[("1", "allow"), ("2", "always"), ("3", "no")], ("Esc", "back")),
         Mode::Approve(_) => holder("RUN CHECK?", &[("1", "run once"), ("2", "always"), ("3", "never")], ("Esc", "not now")),
         Mode::ProjectCheck(_) => holder("CHECK SETTINGS", &[("Ctrl+S", "save"), ("↑↓", "move"), ("r", "run now")], ("Esc", "cancel")),
+        Mode::Finder(fd) if fd.for_setting.is_some() => holder("OPEN FOLDER", &[("", "type a path"), ("Tab", "complete"), ("Enter", "open")], ("Esc", "back")),
         Mode::Finder(_) => holder("OPEN FOLDER", &[("", "type a path"), ("Tab", "complete"), ("Enter", "open")], ("Esc", "close")),
         Mode::ScreenPane(_) => holder("NEW PANE", &[("↑↓", "rows"), ("←→", "choose"), ("Enter", "start")], ("Esc", "close")),
         Mode::NewSession(_) => holder("NEW SESSION", &[("↑↓", "rows"), ("←→", "pick"), ("Enter", "start")], ("Esc", "cancel")),
@@ -159,6 +170,9 @@ fn keys_holder(app: &App) -> Option<Holder> {
         Mode::History { .. } => holder("HISTORY", &[("↑↓", "move"), ("Enter", "go to it"), ("c", "clear")], ("Esc", "close")),
         Mode::Tidy(_) => holder("TIDY", &[("Space", "tick"), ("a", "all the safe ones"), ("Enter", "remove")], ("Esc", "close")),
         Mode::Worktrees { .. } => holder("WORKTREES", &[("", "type a branch"), ("↑↓", "move"), ("Enter", "open")], ("Esc", "close")),
+        Mode::Copy(c) if c.input.is_some() => holder("COPY", &[("", "type to search"), ("Enter", "find")], ("Esc", "cancel")),
+        // Esc drops a selection first; only the next one leaves.
+        Mode::Copy(c) if c.anchor.is_some() => holder("COPY", &[("y", "copy")], ("Esc", "clear")),
         Mode::Copy(_) => holder("COPY", &[("v", "select"), ("y", "copy"), ("/", "search")], ("Esc", "leave")),
     }
 }

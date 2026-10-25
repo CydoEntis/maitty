@@ -4613,7 +4613,16 @@ second line
 
     /// Something other than the panes with the keys, reached as a user would where a key or
     /// action gets there; `held` starts from shortcut mode, else from typing.
-    const WHO: [(&str, bool, &str); 17] = [
+    const WHO: [(&str, bool, &str); 26] = [
+        ("inbox merge", true, "INBOX  · Enter merge · shortcut mode waits · Esc don't"),
+        ("inbox throw away", true, "INBOX  · Enter throw away · shortcut mode waits · Esc don't"),
+        ("settings capture", false, "SETTINGS  · press the new key · Esc cancel"),
+        ("settings edit", false, "SETTINGS  · type · Enter save · Esc cancel"),
+        ("copy", false, "COPY  · v select · y copy · / search · Esc leave"),
+        ("copy search", false, "COPY  · type to search · Enter find · Esc cancel"),
+        ("copy selection", false, "COPY  · y copy · Esc clear"),
+        ("key map step", true, "KEY MAP  · a letter picks · ↑↓ choose · Enter run · Backspace back · Esc close"),
+        ("folder for a setting", false, "OPEN FOLDER  · type a path · Tab complete · Enter open · Esc back"),
         ("sidebar", true, "SIDEBAR  · ↑↓ move · Enter open · shortcut mode waits · Esc back"),
         ("sidebar", false, "SIDEBAR  · ↑↓ move · Enter open · Esc back"),
         ("settings", true, "SETTINGS  · ↑↓ move · ←→ change · Tab section · shortcut mode waits · Esc close"),
@@ -4680,6 +4689,39 @@ second line
                 app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
             }
             ("compose", false) => app.act(Action::Message),
+            ("inbox merge" | "inbox throw away", _) => {
+                give_keys(app, "inbox", true);
+                let term = *app.snap.terms.keys().next().expect("a session");
+                app.screen.inbox_confirm = Some((term, what == "inbox merge", false));
+            }
+            ("settings capture" | "settings edit", _) => {
+                app.act(Action::Settings);
+                let Mode::ScreenSettings(v) = &mut app.mode else { panic!("Settings is open") };
+                if what == "settings capture" {
+                    v.capturing = true;
+                } else {
+                    v.editing = Some(String::new());
+                }
+            }
+            ("copy" | "copy search" | "copy selection", _) => {
+                let term = app.focused().expect("a pane");
+                assert!(app.enter_copy(term), "copy mode");
+                let Mode::Copy(c) = &mut app.mode else { panic!("copy mode") };
+                match what {
+                    "copy search" => c.input = Some(String::new()),
+                    "copy selection" => c.anchor = Some(c.cur),
+                    _ => {}
+                }
+            }
+            ("key map step", _) => {
+                leader(app, 'z');
+                app.mode = Mode::KeyMap(Box::new(screen::KeyMap::new(screen::KeyView::Map, Some(screen::Step::Worktrees))));
+            }
+            ("folder for a setting", _) => {
+                let mut fd = screen::Finder::new(&PathBuf::from("."));
+                fd.for_setting = Some("start.folder");
+                app.mode = Mode::Finder(Box::new(fd));
+            }
             _ => unreachable!("{what}"),
         }
     }
@@ -4738,7 +4780,7 @@ second line
                 let (shown_label, shown) = bar_parts(&bar);
                 assert_eq!(shown_label, label, "the label stays: {at}");
                 let kept = shown.iter().filter(|s| *s != &out[0]).count();
-                assert_eq!(shown[..kept], hints[..kept], "hints go from the right: {at}");
+                assert!(kept <= hints.len() && shown[..kept] == hints[..kept], "hints go from the right: {at}");
                 assert!(kept == 0 || shown.last() == Some(&out[0]), "the way out goes after every hint: {at}");
                 if w >= 80 {
                     assert!(shown.contains(&out[0]), "from 80 columns the way out always shows: {at}");
