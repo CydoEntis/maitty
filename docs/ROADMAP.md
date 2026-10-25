@@ -21,7 +21,8 @@ title, the guide, two flaky tests).
 
 Next: the user uses the build daily for a week from 2026-10-26, and reports back. That trial
 stands in for the open live checks (phases 17–29) and confirms status live for the agents the
-user runs: Claude Code, Codex, Qwen Code and DeepSeek. Nothing new is planned until it ends.
+user runs: Claude Code, Codex, Qwen Code and DeepSeek. Also requested 2026-10-25:
+[Phase 30](#30--the-hairline-layout--in-progress-2026-10-25), a fifth layout.
 
 Open validation items (need a real session on the named platform):
 - Pi full-screen scrolling on Linux: waiting on the failing pane's "Pane info (scrolling,
@@ -536,6 +537,21 @@ Also: the bar says who has the keys (user decision 2026-10-25, after ` SHORTCUT 
 showed with only the sidebar focused): `SIDEBAR · ↑↓ move · Enter open · Esc back`, `SETTINGS`,
 `FILES`, `INBOX`, a confirm's `y yes · n no` and so on, held or not, with `shortcut mode waits`
 while held; "paused" is gone. Built on `feat/bar-says-who`; not checked live.
+
+### 30 — The Hairline layout · in progress 2026-10-25
+
+The user asked on 2026-10-25 for a new layout, Hairline, from a design handoff (option 1c, "split,
+one needs you"), added beside Floating, Tiled, Compact and Grid without changing them. No boxes:
+single `│` / `─` hairlines in `line`; one row per session in the sidebar with a `▎` marker; each
+pane a title row and a rule coloured by state (teal focused, amber needs you); a status strip of
+one segment per session above a single bottom bar (mode, layout · panes, hints, `● N needs you`).
+Hairline is never rounded (`ui.rounded` doesn't apply). Every menu, popup and side panel gets
+the same look in Hairline. Decided 2026-10-25: behaviour stays as today (alt+1–9, digits go to
+the focused agent); the handoff's open questions (auto-open a waiting session in pane B, a quick
+answer key) wait for the user's call after trying it.
+
+1. the workspace chrome: config, sidebar, pane title and rule, status strip, bottom bar
+2. every menu, popup and side panel in the Hairline style (after 1)
 
 ## In scope
 
