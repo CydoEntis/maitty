@@ -76,14 +76,25 @@ the sidebar. Every default shortcut, and every screen's own keys, are in
 Without the leader: **Alt+1–9** selects tabs; **Alt+arrows** moves pane focus
 when enabled in Settings. All keys shows changes to these bindings too.
 
-**Files** opens in the side panel beside your panes: the tree, and the file you pick beside
-it (on a narrow panel the file takes the panel, `‹` goes back). `f` again or Esc closes it;
-Ctrl+click on a `path:line` in a pane opens it at that line. In **Files**: Enter puts the
-path in the agent's prompt, `e` opens it in your editor (`editor` in config; nvim, helix …
-open inside maitty), `y` copies the path, `r` lists recent files.
+**Files**, **Changes**, **Branch** and **References** share the side panel docked beside
+your panes. A tab strip at its top names each with its key (`Files f · Changes c · Branch b ·
+References a`), the open one lit
+while the panel has the keys; Tab / Shift+Tab (or a click on a tab) moves between them for the
+same checkout. A click into a pane gives that pane the keys and leaves the panel open beside
+it; a click in the panel, or its key again, gives the keys back.
 
-Files, Changes, Branch and References share the side panel: a tab strip at its top names each
-with its key, and Tab / Shift+Tab (or a click on a tab) moves between them for the same checkout.
+**Files** shows the project's tree and the file you pick beside it (on a narrow panel the
+file takes the panel, `‹` goes back). `f` again or Esc closes it; Ctrl+click on a `path:line`
+in a pane opens it at that line. Enter puts the path in the agent's prompt, `e` opens it in
+your editor (`editor` in config; nvim, helix … open inside maitty), `o` opens it outside,
+`y` copies the path, `/` filters, `r` lists recent files. Drag over the file shown (or
+double-click a word) and Ctrl+C copies the text.
+
+`i` edits the file right in the panel: Shift with the arrows, Ctrl+A or the mouse selects;
+Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste (with nothing selected, Ctrl+C and Ctrl+X take
+the whole line); Ctrl+Z and Ctrl+Y undo and redo; Ctrl+S saves and Esc is done (it asks
+first about unsaved changes). While Files has the keys a paste stays in Files: in the editor
+at the cursor, while filtering in the filter, and never in the pane behind.
 
 In **Changes**: `c` commits every changed file and `p` pushes and opens a PR (each asks
 first), `e` opens the file in your editor, `x` marks it reviewed (it sinks; the mark clears
