@@ -29,6 +29,7 @@ one thing (ADR 0017, 0022).
 | `h` | Split stacked |
 | `x` | Close what has the keys: the side panel (Files, Changes, Branch, a check) when it has them, else the focused pane, after asking |
 | `Ctrl`+arrows | Resize the pane |
+| `Alt`+arrows | Swap the pane with the one that way |
 | `PgUp` / `PgDn` | Scroll half a pane |
 | `z` | Collapse the sidebar (again brings it back) |
 
@@ -131,7 +132,7 @@ The defaults are one key each, none but `?` needing Shift, chosen from what othe
 (ADR 0017, 0022): `v` / `h` split side by side / stacked, `c` Changes, `i` Inbox, `y` why, `k` stop
 the agent, `Enter` message it, `o` session with options, `p` find a file, `g` worktrees, `b`
 Branch, `a` references, `l` what happened, `?` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image,
-`Ctrl`+arrows resize, `1`–`9` go to a tab. Your own `[keys.prefix]` entries still load.
+`Ctrl`+arrows resize, `Alt`+arrows swap panes, `1`–`9` go to a tab. Your own `[keys.prefix]` entries still load.
 
 ## Menu
 
@@ -435,6 +436,7 @@ sessions. "Hide sidebar" (search commands) hides the sessions completely; `z` br
 | Ctrl+click | Open a path or link |
 | Shift+right-click | Maitty menu even when program handles right-click |
 | Double-click, drag | Copy word/path/link, select and copy text |
+| Drag a pane's title onto another pane | Swap the two (Esc, or letting go outside the panes, cancels) |
 
 ## Menus, history, splash and confirmations
 

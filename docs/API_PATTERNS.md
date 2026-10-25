@@ -128,7 +128,10 @@ the pane's process tree or `MAITTY_PANE_TOKEN`.
 Saved role profiles and sequenced planner/worker/reviewer workflows are not part
 of Maitty's interface, and neither is a fleet commander (`maitty brief`, `[team]`): old
 config keys for them are read and ignored. Sessions, ordinary agent launches, helpers, and
-MCP session controls remain supported. The wire protocol is version 46.
+MCP session controls remain supported. The wire protocol is version 47.
+
+`SwapPanes { a, b }` trades the places of two panes of one tab (the split ratios stay with
+their slots). Panes in different tabs, or one that isn't there, are an error.
 
 `maitty_answer` takes the `prompt` id that `maitty_list` (`prompt` on a session that needs you) or
 `maitty_wait` (`prompt <id>`) gave. It hashes the question and its choices, whitespace aside. If the

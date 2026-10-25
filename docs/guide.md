@@ -79,7 +79,7 @@ the sidebar. Every default shortcut, and every screen's own keys, are in
 [shortcuts](shortcuts.md).
 
 Without the leader: **Alt+1–9** selects tabs; **Alt+arrows** moves pane focus
-when enabled in Settings. All keys shows changes to these bindings too.
+when enabled in Settings (after the leader, Alt+arrows swaps panes instead). All keys shows changes to these bindings too.
 
 **Files**, **Changes**, **Branch** and **References** share the side panel docked beside
 your panes. A tab strip at its top names each with its key (`Files f · Changes c · Branch b ·
@@ -137,6 +137,10 @@ still has them loads, and they are ignored.
   click or drag it. Typing (or clicking for the program) goes back to the bottom.
 - **Mouse:** programs that use it (vim, lazygit, htop, full-screen agents) get clicks, wheel and
   drags. Hold Shift to select text yourself.
+- **Move:** drag a pane by its title onto another pane of the tab and the two swap places
+  (each takes the other's size); Esc cancels. `Ctrl+Space` then `Alt`+an arrow swaps the pane
+  you're in with the one that way, and the pane's right-click menu has "Move pane left" and so
+  on.
 - **Copy:** drag to select; double-click copies a word, path or link. Programs that copy (OSC 52,
   e.g. Claude's `/copy`, nvim) put it on your clipboard. Ctrl+click opens a link.
 - **Images:** `Ctrl+Space`, then `Ctrl+V` (or a paste while an image is on the
