@@ -19,15 +19,14 @@ impl App {
         match a {
             Action::PasteImage => self.paste_image(),
             Action::Find(tab) => self.open_find(tab),
-            Action::AgentStatusSetup => self.menu("Connect an agent · it then reports working, needs you and done itself".into(), vec![
-                ("Connect Codex".into(), menu::Act::InstallStatus("codex".into())),
-                ("Connect Pi".into(), menu::Act::InstallStatus("pi".into())),
-                ("Connect OpenCode".into(), menu::Act::InstallStatus("opencode".into())),
-                ("Connect OMP".into(), menu::Act::InstallStatus("omp".into())),
-                ("Connect Mastracode".into(), menu::Act::InstallStatus("mastracode".into())),
-                ("Connect Kilo".into(), menu::Act::InstallStatus("kilo".into())),
-                ("Connect Kimi".into(), menu::Act::InstallStatus("kimi".into())),
-            ], (3, 3)),
+            Action::AgentStatusSetup => self.menu(
+                "Connect an agent · it then reports working, needs you and done itself".into(),
+                crate::cli::integrations::STATUS_AGENTS
+                    .iter()
+                    .map(|a| (format!("Connect {}", a.name), menu::Act::InstallStatus(a.id.into())))
+                    .collect(),
+                (3, 3),
+            ),
             Action::Branches => self.toggle_branch_sheet(),
             Action::History => self.mode = Mode::History { sel: 0 },
             Action::SpawnTab(c) => {

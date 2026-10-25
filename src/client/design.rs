@@ -781,17 +781,17 @@ pub(super) const AGENT_STATUS_GROUP: &str = "AGENT STATUS";
 impl AgentRow {
     pub(super) fn label(self) -> &'static str {
         match self {
-            AgentRow::Claude => "Claude",
+            AgentRow::Claude => "Claude Code",
             AgentRow::Codex => "Codex",
-            AgentRow::SetUp => "Set up another agent…",
+            AgentRow::SetUp => "Connect agents…",
         }
     }
 
     pub(super) fn help(self) -> &'static str {
         match self {
-            AgentRow::Claude => concat!(env!("APP_NAME"), " reads working, needs you and done from Claude's hooks. Missing? Run ", env!("APP_COMMAND"), " integrate claude."),
-            AgentRow::Codex => concat!("No hooks needed: ", env!("APP_COMMAND"), " watches the Codex process."),
-            AgentRow::SetUp => "Connect another agent so it reports working, needs you and done itself. Enter opens the list.",
+            AgentRow::Claude => concat!(env!("APP_NAME"), " reads working, needs you and done from Claude Code's hooks. Missing? Connect agents installs them, or run ", env!("APP_COMMAND"), " integrate claude."),
+            AgentRow::Codex => concat!(env!("APP_NAME"), " reads Codex's process and screen. For exact status and its helpers, Connect agents installs its hooks."),
+            AgentRow::SetUp => "Connect an agent so it reports working, needs you and done itself. Enter opens the list.",
         }
     }
 }
@@ -977,7 +977,7 @@ fn agent_control(app: &App, t: &Theme, row: AgentRow) -> Vec<Seg> {
             Some(false) => vec![seg("hooks not installed", Style::default().fg(t.muted))],
             None => vec![seg("checking…", Style::default().fg(t.muted))],
         },
-        AgentRow::Codex => vec![seg("✓ read from the process", ok)],
+        AgentRow::Codex => vec![seg("✓ read from the process and screen", ok)],
         AgentRow::SetUp => vec![seg("Enter", Style::default().fg(t.accent))],
     }
 }

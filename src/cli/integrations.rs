@@ -392,18 +392,56 @@ fn install_opencode_at(
     Ok(dir.join(concat!("plugins/", env!("APP_COMMAND"), ".js")))
 }
 
-pub(crate) fn install_status(agent: &str) -> Result<PathBuf> {
-    let exe = super::this_exe()?;
-    match agent {
-        "codex" => install_codex(&exe, false),
-        "pi" => install_pi(&exe, false),
-        "opencode" => install_opencode(&exe, false),
-        "omp" => install_omp(&exe, false),
-        "mastracode" => install_mastracode(&exe, false),
-        "kilo" => install_kilo(&exe, false),
-        "kimi" => install_kimi(&exe, false),
-        _ => bail!("unsupported status adapter: {agent}"),
+type Install = fn(exe: &str, uninstall: bool) -> Result<PathBuf>;
+
+/// An agent whose status `integrate` and the Connect agents list can set up.
+pub(crate) struct StatusAgent {
+    pub(crate) id: &'static str,
+    pub(crate) name: &'static str,
+    install: Install,
+}
+
+/// The one list both the CLI and the Connect agents menu offer, so they can't disagree.
+pub(crate) const STATUS_AGENTS: &[StatusAgent] = &[
+    StatusAgent { id: "claude", name: "Claude Code", install: |_, uninstall| super::claude_hooks(uninstall) },
+    StatusAgent { id: "codex", name: "Codex", install: install_codex },
+    // Gemini counts its hook timeout in milliseconds.
+    StatusAgent {
+        id: "gemini",
+        name: "Gemini CLI",
+        install: |_, uninstall| {
+            super::json_hooks(&super::home_settings("GEMINI_CLI_HOME", ".gemini"), "gemini", super::GEMINI_EVENTS, 5000, uninstall)
+        },
+    },
+    // Qwen Code copies Claude's events, and its seconds.
+    StatusAgent {
+        id: "qwen",
+        name: "Qwen Code",
+        install: |_, uninstall| super::json_hooks(&super::home_settings("QWEN_HOME", ".qwen"), "qwen", super::CLAUDE_EVENTS, 10, uninstall),
+    },
+    StatusAgent { id: "opencode", name: "OpenCode", install: install_opencode },
+    StatusAgent { id: "pi", name: "Pi", install: install_pi },
+    StatusAgent { id: "omp", name: "OMP", install: install_omp },
+    StatusAgent { id: "kilo", name: "Kilo", install: install_kilo },
+    StatusAgent { id: "kimi", name: "Kimi", install: install_kimi },
+    StatusAgent { id: "mastracode", name: "Mastra Code", install: install_mastracode },
+];
+
+/// The function that sets up `agent`'s status, or why there is none.
+pub(crate) fn status_installer(agent: &str) -> Result<Install> {
+    match STATUS_AGENTS.iter().find(|a| a.id == agent) {
+        Some(a) => Ok(a.install),
+        None => bail!("no integration for `{agent}`; any agent can call `{} hook {agent} --status <working|blocked|done|idle>`", env!("APP_COMMAND")),
     }
+}
+
+/// Installs (or removes) an agent's status integration; returns the file it changed.
+pub(crate) fn set_up_status(agent: &str, exe: &str, uninstall: bool) -> Result<PathBuf> {
+    status_installer(agent)?(exe, uninstall)
+}
+
+pub(crate) fn install_status(agent: &str) -> Result<PathBuf> {
+    set_up_status(agent, &super::this_exe()?, false)
 }
 
 /// The primary file whose the app-owned contents enable each native adapter.

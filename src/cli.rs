@@ -1318,12 +1318,6 @@ fn home_settings(env: &str, dir: &str) -> PathBuf {
         .join("settings.json")
 }
 
-/// opencode has no command hooks: a plugin hands each event to `<app> hook opencode`.
-fn opencode_plugin(uninstall: bool) -> Result<PathBuf> {
-    let exe = this_exe()?;
-    integrations::install_opencode(&exe, uninstall)
-}
-
 const CLAUDE_EVENTS: &[(&str, Option<&str>)] = &[
     ("UserPromptSubmit", None),
     ("PreToolUse", None),
@@ -1753,16 +1747,6 @@ pub(super) fn install_codex_status(exe: &str, uninstall: bool) -> Result<PathBuf
 pub fn integrate(agent: &str, uninstall: bool) -> Result<()> {
     let exe = this_exe()?;
     match agent {
-        "claude" => {
-            let path = claude_hooks(uninstall)?;
-            if uninstall {
-                println!(concat!("removed ", env!("APP_COMMAND"), " hooks from {}"), path.display());
-            } else {
-                println!(concat!("installed ", env!("APP_COMMAND"), " hooks into {}"), path.display());
-                println!(concat!("they only act inside ", env!("APP_COMMAND"), " panes (", env!("APP_ENV"), "_TERM_ID), so other terminals are unaffected."));
-            }
-            Ok(())
-        }
         "mcp" => {
             // Claude Code: register for every project (user scope).
             let old = std::fs::read_to_string(claude_json()).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).map(|root| old_mcp_names(&root)).unwrap_or_default();
@@ -1781,43 +1765,33 @@ pub fn integrate(agent: &str, uninstall: bool) -> Result<()> {
             println!(concat!("prompts is up to you: ", env!("APP_COMMAND"), " Settings → Agents (never, by default)."));
             Ok(())
         }
+        agent => {
+            let path = integrations::set_up_status(agent, &exe, uninstall)?;
+            report_integration(agent, &path, uninstall);
+            Ok(())
+        }
+    }
+}
+
+fn report_integration(agent: &str, path: &std::path::Path, uninstall: bool) {
+    match agent {
+        "claude" if uninstall => println!(concat!("removed ", env!("APP_COMMAND"), " hooks from {}"), path.display()),
+        "claude" => {
+            println!(concat!("installed ", env!("APP_COMMAND"), " hooks into {}"), path.display());
+            println!(concat!("they only act inside ", env!("APP_COMMAND"), " panes (", env!("APP_ENV"), "_TERM_ID), so other terminals are unaffected."));
+        }
         "gemini" | "qwen" => {
-            let (path, events, timeout) = if agent == "gemini" {
-                // Gemini counts its timeout in milliseconds.
-                (home_settings("GEMINI_CLI_HOME", ".gemini"), GEMINI_EVENTS, 5000)
-            } else {
-                // Qwen Code copies Claude's events (and seconds).
-                (home_settings("QWEN_HOME", ".qwen"), CLAUDE_EVENTS, 10)
-            };
-            let path = json_hooks(&path, agent, events, timeout, uninstall)?;
             println!(concat!("{} ", env!("APP_COMMAND"), " hooks {} {}"), if uninstall { "removed" } else { "installed" }, if uninstall { "from" } else { "into" }, path.display());
-            Ok(())
         }
-        "opencode" => {
-            let path = opencode_plugin(uninstall)?;
-            println!(concat!("{} ", env!("APP_COMMAND"), "'s opencode plugin: {}"), if uninstall { "removed" } else { "wrote" }, path.display());
-            Ok(())
-        }
-        "pi" | "omp" | "mastracode" | "kilo" | "kimi" => {
-            let path = match agent {
-                "pi" => integrations::install_pi(&exe, uninstall)?,
-                "omp" => integrations::install_omp(&exe, uninstall)?,
-                "mastracode" => integrations::install_mastracode(&exe, uninstall)?,
-                "kilo" => integrations::install_kilo(&exe, uninstall)?,
-                "kimi" => integrations::install_kimi(&exe, uninstall)?,
-                _ => unreachable!(),
-            };
-            println!("{} {APP_COMMAND}'s {agent} status integration: {}", if uninstall { "removed" } else { "wrote" }, path.display());
-            println!("Restart {agent} to load it. Status follows the session, including z.ai and DeepSeek models.");
-            Ok(())
-        }
+        "opencode" => println!(concat!("{} ", env!("APP_COMMAND"), "'s opencode plugin: {}"), if uninstall { "removed" } else { "wrote" }, path.display()),
         "codex" => {
-            let path = install_codex_status(&exe, uninstall)?;
             println!(concat!("{} ", env!("APP_NAME"), "'s Codex status hooks in {}"), if uninstall { "removed" } else { "installed" }, path.display());
             println!("Live subagent events are tracked; any other Codex notify command is preserved.");
-            Ok(())
         }
-        other => bail!("no integration for `{other}`; any agent can call `{APP_COMMAND} hook {other} --status <working|blocked|done|idle>`"),
+        _ => {
+            println!("{} {APP_COMMAND}'s {agent} status integration: {}", if uninstall { "removed" } else { "wrote" }, path.display());
+            println!("Restart {agent} to load it. Status follows the session, including z.ai and DeepSeek models.");
+        }
     }
 }
 

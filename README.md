@@ -111,7 +111,7 @@ maitty integrate mcp        # lets agents see and steer other sessions
 maitty doctor               # checks what's connected
 ```
 
-Or use **Settings › Agents › Set up another agent…**. See [agent status](docs/agent-status.md)
+Or use **Settings › Agents › Connect agents…**, which offers the same agents. See [agent status](docs/agent-status.md)
 for what each integration reports.
 
 ## From the command line
