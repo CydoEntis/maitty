@@ -525,11 +525,12 @@ Windows (never built), zsh, fish and PowerShell launchers, and the old-binary to
 end. Open: the live check of the helper flow with a real agent over `maitty mcp`; whether check re-run and
 override want leader keys (they work from the check sheet).
 
-### 20 — Borrowed from TUIOS · built on dev 2026-10-23, live checks open
+### 20 — Quiet agents and safety guards · built on dev 2026-10-23, live checks open
 
-The user asked on 2026-10-23 for the parts of TUIOS (tuios.dev) that Maitty lacks, after a
+The user asked on 2026-10-23 for guards against a hung agent, an answer to the wrong prompt,
+hidden characters in agent-to-agent text, and saved output that can't be turned off, after a
 check showed ranked status sources, evidence times, box-only screen rules, saved scrollback,
-per-turn checkpoints and hook setup already exist. [Intent](features/borrowed-from-tuios/intent.md).
+per-turn checkpoints and hook setup already exist.
 One protocol bump for the phase: 45 to 46. Tickets are labelled `phase-20`.
 
 1. #142 daemon: mark a hooked agent quiet after 10 minutes with no output
