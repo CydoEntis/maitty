@@ -141,8 +141,10 @@ running at the previous stop) shows done but is not announced: no sound, desktop
 alert, and no check yet. Claude wakes itself when that work ends; the next stop with no new
 work in flight announces the finish and runs the checks, even after a wake-up with no tool
 use. Entries Claude marks finished don't count. A task still running from an earlier turn
-(a dev server) holds nothing: later turns ring as usual. Open question: the turn that starts
-a never-ending task (the dev server's own turn) stays silent.
+(a dev server) holds nothing: later turns ring as usual, while the turn that starts a
+never-ending task stays quiet (decided 2026-10-24). With two tasks, a stop listing `b1` and
+`b2` pauses; once `b1` ends, the wake-up that stops with `b2` still running rings, since
+`b2` is no longer new.
 The desktop notification, phone alert and in-app note name the repository and branch
 (`maitty · fix/early-alerts`), so two worktrees of one repository tell apart; a detached
 checkout shows its short commit, and a session outside a repository its folder.

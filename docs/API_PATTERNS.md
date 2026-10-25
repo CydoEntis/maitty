@@ -204,6 +204,8 @@ subcommand in `cli.rs` when scripts should reach it.
 
 Honor a trusted turn-finished hook even when its transcript lists a background
 shell or dev server. Background commands do not turn `Done` back into `Working`.
+A Claude Stop that lists running background work new since its last stop stays `Done`
+but is not announced ([agent-status](agent-status.md)).
 Continue tracking actual subagents through their own lifecycle reports. Prepare
 the hook message separately from socket I/O so its effective status is testable.
 
