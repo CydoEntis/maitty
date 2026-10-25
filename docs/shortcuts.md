@@ -249,6 +249,7 @@ your own leader keys; the Inbox and checks have none.
 | PgUp, PgDn, Shift+Up, Shift+Down | Scroll preview pages or individual lines |
 | Right / l on file | Focus preview; arrows / j / k scroll, Space pages down, g / G or Home / End go to ends |
 | Left / h / Esc in preview, or click ‹ | Return to tree (on a narrow panel the file takes the whole panel) |
+| Paste (terminal) | While filtering: its first line into the filter; otherwise kept from the pane (click a pane to paste there) |
 | Drag or double-click over the file, then Ctrl+C | Select its text (a word on double-click) and copy it; `y` still copies the path |
 | Click the selected file, or double-click a file, on a narrow panel | Open it in the panel |
 | f, Esc in tree | Close Files |
@@ -264,6 +265,7 @@ your own leader keys; the Inbox and checks have none.
 | Ctrl+C, Ctrl+X | Copy, cut the selection (with nothing selected: the cursor's line) |
 | Ctrl+V, the terminal's own paste | Paste text at the cursor, replacing a selection; never an image, never into the pane |
 | Ctrl+Z, Ctrl+Y | Undo (a run of typing or deleting is one step), redo |
+| Click Save, Copy, Paste, Undo, Done | The action row's buttons while editing: Ctrl+S, Ctrl+C, Ctrl+V, Ctrl+Z, Esc |
 | Ctrl+S | Save; repeat to overwrite a file that changed on disk after warning |
 | Esc | Exit editor; repeat to discard unsaved changes after warning |
 
