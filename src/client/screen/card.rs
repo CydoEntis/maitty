@@ -178,9 +178,10 @@ pub(in crate::client) fn soften_block(buf: &mut Buffer, r: Rect, behind: &[(Colo
 const END_GLYPHS: [&str; 8] = [CAP_L, CAP_R, "▗", "▖", "▝", "▘", "▐", "▌"];
 
 /// Round the ends of a region just tinted (the pointer's hover), with rounded shapes on. An end
-/// cell holding only ground, or already a rounded end, becomes the region's cap or soft corner
-/// in its tinted colour, over `behind`, the ground there before the tint. An end with text in
-/// it stays square, so nothing is drawn over.
+/// already rounded keeps its shape in the tinted colour, over `behind`, the ground there before
+/// the tint. A one-line region's end holding only ground becomes a cap; a taller region's stays
+/// square, so a block of rows lights as one even block. An end with text in it stays square,
+/// so nothing is drawn over.
 pub(in crate::client) fn round_tinted(buf: &mut Buffer, r: Rect, behind: &[(Color, Color)], tint: impl Fn(Color) -> Color) {
     let r = r.intersection(buf.area);
     if !round() || r.width < 2 {
@@ -192,7 +193,7 @@ pub(in crate::client) fn round_tinted(buf: &mut Buffer, r: Rect, behind: &[(Colo
         for (x, glyph, under) in [(r.x, l, bl), (r.right() - 1, e, br)] {
             let cell = &mut buf[(x, y)];
             let shape = match cell.symbol() {
-                " " => cell.bg,
+                " " if r.height == 1 => cell.bg,
                 s if END_GLYPHS.contains(&s) => tint(cell.fg),
                 _ => continue,
             };
@@ -253,8 +254,6 @@ pub(in crate::client) struct Card<'a> {
     pub right: Vec<Seg>,
     /// The ✕ at the right of the top border, and what a click on it does.
     pub close: Option<ScreenHit>,
-    /// Columns kept clear after the ✕, where the corner pill sits over the border.
-    pub right_room: u16,
     pub border: Color,
     /// Focused: the border (Cards) or the left rule (Flat), and the title chip, in `border`.
     pub bold: bool,
@@ -269,7 +268,7 @@ pub(in crate::client) struct Card<'a> {
 
 impl<'a> Card<'a> {
     pub fn new(t: &Theme, title: &'a str) -> Card<'a> {
-        Card { title, sub: "", chips: Vec::new(), right: Vec::new(), close: None, right_room: 0, border: t.line, bold: false, title_fg: t.strong, bg: pane_bg(t), float: false }
+        Card { title, sub: "", chips: Vec::new(), right: Vec::new(), close: None, border: t.line, bold: false, title_fg: t.strong, bg: pane_bg(t), float: false }
     }
 
     /// The focused look: the border and the title chip in `c`.
@@ -278,6 +277,32 @@ impl<'a> Card<'a> {
         self.bold = true;
         self
     }
+}
+
+/// How wide a card's ✕ is drawn on its top border, the spaces round it included.
+pub(in crate::client) fn close_width(look: Look, after_right: bool) -> u16 {
+    close_lead(look, after_right) + 2 * u16::from(look.caps) + 2 + close_trail(look)
+}
+
+/// Spaces before the ✕: two after other right-hand segments. Alone, a square ✕'s chip starts on
+/// the padding before the segments, where the handoff puts it; a capped chip needs that cell
+/// blank to stand clear of the border, so it starts a cell on.
+fn close_lead(look: Look, after_right: bool) -> u16 {
+    if after_right { 2 } else { u16::from(look.caps) }
+}
+
+/// Cells kept blank after the ✕'s chip. Flat's right-hand segments end on the zone's last
+/// column but one, and that last column is the next zone's rule, so a capped chip keeps a cell
+/// clear of it as it does of the border in Cards. Square ✕s keep their place in the handoff.
+fn close_trail(look: Look) -> u16 {
+    u16::from(look.flat && look.caps)
+}
+
+/// The ✕'s click target, which the pointer's tint lights: the ✕ and a cell each side, and with
+/// caps a space more each side inside them, so the hovered ✕ is a whole chip like the others
+/// rather than two caps pressed against the glyph.
+fn close_chip_w(look: Look) -> u16 {
+    if look.caps { 5 } else { 3 }
 }
 
 /// Where a card's title chip starts: on the top border two in (Cards), one in on the header
@@ -346,11 +371,13 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
     let ground = if look.flat { t.card } else { t.bg };
     let mut right = c.right.clone();
     if c.close.is_some() {
-        let gap = if right.is_empty() { "" } else { "  " };
+        let lead = " ".repeat(close_lead(look, !right.is_empty()) as usize);
+        let inner = if look.caps { " " } else { "" };
         let close = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close;
-        right.push(seg(format!("{gap}{close} "), Style::default().fg(t.muted)));
+        let trail = " ".repeat(close_trail(look) as usize);
+        right.push(seg(format!("{lead}{inner}{close}{inner} {trail}"), Style::default().fg(t.muted)));
     }
-    let end = right_end(look, r).saturating_sub(c.right_room);
+    let end = right_end(look, r);
     let rw = segs_width(&right);
     let rx = end.saturating_sub(rw);
     let chip_x = title_x(look, r);
@@ -361,7 +388,8 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
         let segs: Vec<Seg> = std::iter::once(space.clone()).chain(right).chain(std::iter::once(space)).map(|(s, st)| (s, if st.bg.is_none() { st.bg(ground) } else { st })).collect();
         put(buf, rx - pad, r.y, &segs, end + pad);
         if let Some(h) = c.close {
-            hit(app, Rect { x: end.saturating_sub(3), y: r.y, width: 3, height: 1 }, h);
+            let w = close_chip_w(look);
+            hit(app, Rect { x: end.saturating_sub(w + close_trail(look)), y: r.y, width: w, height: 1 }, h);
         }
     }
     let chip_end = if shown { rx.saturating_sub(2) } else { end };

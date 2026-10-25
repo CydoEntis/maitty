@@ -77,10 +77,12 @@ action, and the mode stays for the next, so a run of actions is one key each. `E
 leader again or a click go back to **input mode**, where keys type into the pane; nothing
 else does. A new shell, session, tab or split leaves you in shortcut mode, so press `Esc` to
 type into it. An action that opens a popup or sheet hands it the keys, and closing it returns
-to shortcut mode. The top right always says which mode you are in: `TYPING`, or a sky
-`SHORTCUT · Esc to type` while shortcut mode is on (`SHORTCUT · paused` while a popup has
-the keys). In shortcut mode the whole window is also framed in sky blue and the focused
-pane's border is sky blue, and a key that does nothing shows "Shortcut mode — Esc to type".
+to shortcut mode. The bar along the bottom always says which mode you are in: `TYPING · Ctrl+Space for
+shortcuts`, or, while shortcut mode is on, a sky-blue bar with `SHORTCUT` and keys to press
+from your keymap (`n shell  s session  c changes  f files  i inbox  , settings  ? all keys
+Esc type`; a click on one runs it, a click on `TYPING` starts shortcut mode). While a popup has
+the keys it reads `SHORTCUT · paused`. In shortcut mode the focused pane's border is sky blue,
+and a key that does nothing shows "Shortcut mode — Esc to type".
 To send `Ctrl+Space` itself to the pane, search
 commands for "Send the leader key" or bind `send-prefix` to a key. One overlay holds every key
 reference; it is not a second palette:

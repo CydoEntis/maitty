@@ -10,20 +10,18 @@ use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use ratatui::backend::TestBackend;
 
 /// Preset 01 "No check set" from the reference: row 0 from the pane column on, and the last
-/// row (Flat: from the pane column on, the sidebar's foot being its own). At 80×24 the second
-/// tab gives way to the room the title leaves for the mode tag (ADR 0023); the tag itself is
-/// taken out by `v7_fixture::frame`.
+/// row (Flat: from the pane column on, the sidebar's foot being its own).
 const ROWS_01: [(Layout, u16, u16, &str, &str, &str); 10] = [
     (Layout::Floating, 160, 45, "unicode", "┌─ 1  fix-footer  2  add-payments ────────────────────────────────────────────────────────────────────────────── ✓ done  ✕  ┐", "└────────────────────────────────┘ └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"),
     (Layout::Floating, 100, 30, "unicode", "┌─ 1  fix-footer  2  add-payments ────────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘ └───────────────────────────────────────────────────────────────────────┘"),
-    (Layout::Floating, 80, 24, "unicode", "┌─ 1  fix-footer ─────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘ └───────────────────────────────────────────────────┘"),
+    (Layout::Floating, 80, 24, "unicode", "┌─ 1  fix-footer  2  add-payments ────── ✓ done  ✕  ┐", "└────────────────────────┘ └───────────────────────────────────────────────────┘"),
     (Layout::Tiled, 160, 45, "unicode", "┌─ 1  fix-footer  2  add-payments ─────────────────────────────────────────────────────────────────────────────── ✓ done  ✕  ┐", "└────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"),
     (Layout::Tiled, 100, 30, "unicode", "┌─ 1  fix-footer  2  add-payments ─────────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘└────────────────────────────────────────────────────────────────────────┘"),
-    (Layout::Tiled, 80, 24, "unicode", "┌─ 1  fix-footer ──────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘└────────────────────────────────────────────────────┘"),
+    (Layout::Tiled, 80, 24, "unicode", "┌─ 1  fix-footer  2  add-payments ─────── ✓ done  ✕  ┐", "└────────────────────────┘└────────────────────────────────────────────────────┘"),
     (Layout::Flat, 160, 45, "unicode", "│ 1  fix-footer  2  add-payments                                                                                    ✓ done  ✕", "│"),
     (Layout::Flat, 100, 30, "unicode", "│ 1  fix-footer  2  add-payments                                ✓ done  ✕", "│"),
-    (Layout::Flat, 80, 24, "unicode", "│ 1  fix-footer                             ✓ done  ✕", "│"),
-    (Layout::Flat, 80, 24, "ascii", "│ 1  fix-footer                             + done  x", "│"),
+    (Layout::Flat, 80, 24, "unicode", "│ 1  fix-footer  2  add-payments            ✓ done  ✕", "│"),
+    (Layout::Flat, 80, 24, "ascii", "│ 1  fix-footer  2  add-payments            + done  x", "│"),
 ];
 
 /// The modal sizes of presets 12 (Override?), A2 (Approve · read first) and 15 (Settings ·
@@ -389,34 +387,104 @@ fn round_tabs_cap_every_chip_on_the_ground_behind_the_title() {
     }
 }
 
+/// Every session row drawn on more than one line, in the order the sidebar lists them.
+fn block_rows(app: &App) -> Vec<(TermId, Rect)> {
+    let mut v: Vec<(TermId, Rect)> = app.hits.iter().filter_map(|(r, h)| match h {
+        super::super::Hit::Screen(ScreenHit::Session(t)) if r.height >= 2 => Some((*t, *r)),
+        _ => None,
+    }).collect();
+    v.sort_by_key(|(_, r)| r.y);
+    v
+}
+
+/// The first and last column of line `y` on the row's colour `c`.
+fn tinted_span(buf: &Buffer, row: Rect, y: u16, c: Color) -> Option<(u16, u16)> {
+    let lit: Vec<u16> = (row.x..row.right()).filter(|&x| buf[(x, y)].bg == c).collect();
+    Some((*lit.first()?, *lit.last()?))
+}
+
+/// The row's lines with, under each, `#` where the row's colour is the ground.
+fn shown(buf: &Buffer, row: Rect, c: Color) -> String {
+    (row.y..row.bottom()).map(|y| {
+        let text: String = (row.x..row.right()).map(|x| buf[(x, y)].symbol().to_string()).collect();
+        let tint: String = (row.x..row.right()).map(|x| if buf[(x, y)].bg == c { '#' } else { '.' }).collect();
+        format!("{text}\n{tint}\n")
+    }).collect()
+}
+
+/// A session that keeps a second line (what it asks, its agents, its check) is one even block
+/// when selected or hovered: every line lit across the same columns, no quarter-cell corners
+/// to notch it, and with `ui.rounded = full` square ends, since caps on each line would scallop.
 #[test]
-fn round_rows_draw_the_selected_session_as_one_softened_block_and_off_leaves_it_square() {
-    for layout in LAYOUTS {
-        for on in [false, true] {
-            let mut app = world(Stage::None);
-            app.cfg.ui.rounded = if on { crate::config::Rounding::Full } else { crate::config::Rounding::Off };
-            app.mode = Mode::Side;
-            let term = app.screen_model().iter().flat_map(|p| p.sessions().map(|s| s.term).collect::<Vec<_>>()).next().expect("a session");
-            app.screen.cursor_proj = None;
-            app.screen.cursor = Some(term);
-            buffer(&mut app, layout, 160, 45);
-            let row = app.hits.iter().find_map(|(r, h)| matches!(h, super::super::Hit::Screen(ScreenHit::Session(t)) if *t == term).then_some(*r)).expect("the session's row");
-            assert!(row.height >= 2, "a session is a block of lines: {layout:?}");
-            let buf = buffer(&mut app, layout, 160, 45);
-            let t = app.theme.clone();
-            for y in row.y..row.bottom() {
-                let (left, right) = (&buf[(row.x, y)], &buf[(row.right() - 1, y)]);
-                if on {
-                    let ends = block_ends(y - row.y, row.height);
-                    assert_eq!((left.symbol(), right.symbol()), ends, "line {y} of one block: {layout:?}");
-                    assert!(row.height == 1 || (left.symbol() != CAP_L && right.symbol() != CAP_R), "no pill per line: {layout:?}");
-                    assert_eq!((left.fg, right.fg), (t.sel_bg(), t.sel_bg()), "on the selection's colour: {layout:?}");
-                    assert_ne!(left.bg, t.sel_bg(), "over what is behind it, not the selection: {layout:?}");
-                } else {
-                    assert!(left.symbol() != CAP_L && right.symbol() != CAP_R, "square when off: {layout:?}");
+fn a_selected_or_hovered_two_line_session_is_one_even_block() {
+    use crate::config::Rounding;
+    for (stage, layout) in [Stage::None, Stage::Passed, Stage::Failed].into_iter().flat_map(|s| ["cards", "tiled", "compact", "grid"].map(|l| (s, l))) {
+        for side in ["left", "right"] {
+            for padding in ["0", "1", "2"] {
+                for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
+                    for selected in [true, false] {
+                        let mut app = v7_fixture::world(stage);
+                        app.snap.terms.get_mut(&2).expect("a session").subagents = vec!["a".into(), "b".into()];
+                        (app.cfg.ui.rounded, app.cfg.ui.sidebar_position, app.cfg.ui.padding) = (rounded, side.into(), padding.into());
+                        drawn_in(&mut app, layout);
+                        let rows = block_rows(&app);
+                        assert!(rows.len() >= 2, "sessions with a second line: {layout}");
+                        for (term, _) in rows {
+                            let at = format!("{stage:?} {layout} {side} pad {padding} {rounded:?} {} {term}", if selected { "selected" } else { "hovered" });
+                            app.hover = None;
+                            if selected {
+                                app.mode = Mode::Side;
+                                app.screen.cursor_proj = None;
+                                app.screen.cursor = Some(term);
+                            } else {
+                                app.mode = Mode::Normal;
+                                let row = block_rows(&app).into_iter().find(|(t, _)| *t == term).expect("the row").1;
+                                app.hover = Some(Position::new(row.x + row.width / 2, row.bottom() - 1));
+                            }
+                            let buf = drawn_in(&mut app, layout);
+                            let (_, row) = block_rows(&app).into_iter().find(|(t, _)| *t == term).expect("the row");
+                            let c = buf[(row.x + row.width / 2, row.y)].bg;
+                            if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
+                                println!("{at}\n{}", shown(&buf, row, c));
+                            }
+                            let spans: Vec<_> = (row.y..row.bottom()).map(|y| tinted_span(&buf, row, y, c)).collect();
+                            assert!(spans.iter().all(|s| s.is_some() && *s == spans[0]), "every line lit across the same columns {spans:?}: {at}\n{}", shown(&buf, row, c));
+                            for y in row.y..row.bottom() {
+                                for x in row.x..row.right() {
+                                    assert!(!["▗", "▖", "▝", "▘", CAP_L, CAP_R].contains(&buf[(x, y)].symbol()), "no corner or cap at {x},{y}: {at}\n{}", shown(&buf, row, c));
+                                }
+                                if rounded == Rounding::Full {
+                                    assert!((row.x..row.right()).all(|x| buf[(x, y)].bg == c), "square, the whole width: {at}\n{}", shown(&buf, row, c));
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+/// A session on one line keeps its half-circle caps when selected, with rounded shapes on.
+#[test]
+fn a_selected_one_line_session_ends_in_caps() {
+    for layout in ["cards", "tiled", "compact", "grid"] {
+        let mut app = world(Stage::None);
+        app.cfg.ui.rounded = crate::config::Rounding::Full;
+        drawn_in(&mut app, layout);
+        let (term, _) = app.hits.iter().find_map(|(r, h)| match h {
+            super::super::Hit::Screen(ScreenHit::Session(t)) if r.height == 1 => Some((*t, *r)),
+            _ => None,
+        }).expect("a one-line session");
+        app.mode = Mode::Side;
+        app.screen.cursor_proj = None;
+        app.screen.cursor = Some(term);
+        let buf = drawn_in(&mut app, layout);
+        let row = app.hits.iter().find_map(|(r, h)| matches!(h, super::super::Hit::Screen(ScreenHit::Session(t)) if *t == term).then_some(*r)).expect("the row");
+        let t = app.theme.clone();
+        let (left, right) = (&buf[(row.x, row.y)], &buf[(row.right() - 1, row.y)]);
+        assert_eq!((left.symbol(), right.symbol()), (CAP_L, CAP_R), "{layout}");
+        assert_eq!((left.fg, right.fg), (t.sel_bg(), t.sel_bg()), "on the selection's colour: {layout}");
     }
 }
 
@@ -545,4 +613,101 @@ fn a_block_of_lines_ends_in_soft_corners_and_one_line_in_caps() {
     assert_eq!(block_ends(0, 2), ("▗", "▖"));
     assert_eq!(block_ends(1, 2), ("▝", "▘"));
     assert_eq!(block_ends(1, 3), ("▐", "▌"), "the sides between");
+}
+
+/// The world split into two panes side by side, the second unfocused, an update waiting and,
+/// with `sheet`, the Inbox open: every hoverable chip on a border at once.
+fn border_chips_world(sheet: bool) -> App {
+    let mut app = world(Stage::None);
+    let tab = &mut app.screen.tabs[0];
+    let other = if tab.focus == 2 { 3 } else { 2 };
+    tab.layout = Node::Split { horizontal: true, ratio: 0.5, a: Box::new(Node::Leaf(tab.focus)), b: Box::new(Node::Leaf(other)) };
+    app.update_available = Some("9.9.9".into());
+    if sheet {
+        app.act(Action::Jump);
+    }
+    app
+}
+
+/// Row 0 at `x0..x1` as text, the caps as `(` and `)`, with `#` under the cells on `lit`.
+fn shown_row(buf: &Buffer, y: u16, x0: u16, x1: u16, lit: Color) -> String {
+    let text: String = (x0..x1).map(|x| match buf[(x, y)].symbol() { CAP_L => "(".into(), CAP_R => ")".into(), s => s.to_string() }).collect();
+    let tint: String = (x0..x1).map(|x| if buf[(x, y)].bg == lit || buf[(x, y)].fg == lit && [CAP_L, CAP_R].contains(&buf[(x, y)].symbol()) { '#' } else { '.' }).collect();
+    format!("{text}\n{tint}")
+}
+
+/// A hovered chip on a border is whole: with `ui.rounded = full` both caps in the chip's tint,
+/// the ✕ centred in it on the tint, the hit rect the whole chip, and a ✕ chip a blank cell clear
+/// of what is on either side, the border line included.
+#[test]
+fn a_hovered_border_chip_is_whole() {
+    use super::super::Hit;
+    use crate::config::Rounding;
+    let chips: [(&str, Pick); 6] = [
+        ("a pane's ✕", |h| matches!(h, Hit::Screen(ScreenHit::CloseSplit(_)))),
+        ("the sheet's ✕", |h| matches!(h, Hit::Screen(ScreenHit::Close | ScreenHit::ViewClose))),
+        ("a tab chip", |h| matches!(h, Hit::Screen(ScreenHit::TabPick(_)))),
+        ("the + chip", |h| matches!(h, Hit::Screen(ScreenHit::NewTab))),
+        ("the bar's update pill", |h| matches!(h, Hit::Screen(ScreenHit::Update))),
+        ("the bar's mode tag", |h| matches!(h, Hit::Screen(ScreenHit::Leader | ScreenHit::ShortcutMode))),
+    ];
+    let mut covered = std::collections::BTreeSet::new();
+    for layout in ["cards", "tiled", "compact", "grid"] {
+        for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
+            for ((w, h), sheet) in SIZES.into_iter().flat_map(|s| [(s, false), (s, true)]) {
+                let mut app = border_chips_world(sheet);
+                app.cfg.ui.rounded = rounded;
+                let size = |app: &mut App| {
+                    (app.cfg.ui.layout, app.cfg.ui.panes) = (layout.into(), "floating".into());
+                    app.screen_fresh();
+                    let mut term = Terminal::new(TestBackend::new(w, h)).expect("a test terminal");
+                    term.draw(|f| crate::client::render::draw(app, f)).expect("a frame");
+                    term.backend().buffer().clone()
+                };
+                size(&mut app);
+                // The border chips on row 0, the mode bar's own chips on its row: its tag a cell in
+                // (TYPING's hint after it takes the same click but is words, not a chip).
+                let bar = crate::client::screen::mode_bar_row(&app, Rect::new(0, 0, w, h));
+                let on_row = |r: &Rect, what: &str| match what {
+                    "the bar's mode tag" => r.y == bar.y && r.x == bar.x + 1,
+                    "the bar's update pill" => r.y == bar.y,
+                    _ => r.y == 0,
+                };
+                let targets: Vec<(&str, Rect)> = chips.iter().flat_map(|(what, is)| app.hits.iter().filter(|(r, h)| on_row(r, what) && is(h)).map(|(r, _)| (*what, *r)).collect::<Vec<_>>()).collect();
+                for (what, r) in targets {
+                    covered.insert(what);
+                    app.hover = Some(Position::new(r.x + r.width / 2, r.y));
+                    let buf = size(&mut app);
+                    app.hover = None;
+                    let mid = buf[(r.x + r.width / 2, r.y)].bg;
+                    let at = format!("{what}, {layout} {rounded:?} {w}x{h}, {r:?}\n{}", shown_row(&buf, r.y, r.x.saturating_sub(3), (r.right() + 3).min(w), mid));
+                    if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
+                        println!("{at}\n");
+                    }
+                    if rounded == Rounding::Full {
+                        let (l, e) = (&buf[(r.x, r.y)], &buf[(r.right() - 1, r.y)]);
+                        assert_eq!((l.symbol(), e.symbol()), (CAP_L, CAP_R), "both caps: {at}");
+                        assert!(l.fg != l.bg && e.fg != e.bg, "the caps are drawn, not blank: {at}");
+                    }
+                    if what.ends_with('✕') {
+                        let x = r.x + r.width / 2;
+                        assert_eq!(buf[(x, r.y)].symbol(), "✕", "the ✕ is centred and whole: {at}");
+                        assert!((r.x + 1..r.right() - 1).all(|x| buf[(x, r.y)].bg == mid), "the chip's inside is lit: {at}");
+                        if rounded == Rounding::Full {
+                            assert!(r.width == 5 && [r.x + 1, r.right() - 2].iter().all(|&x| buf[(x, r.y)].symbol() == " "), "a space each side of the ✕ inside its caps: {at}");
+                        }
+                        // A square ✕ keeps the handoff's place, flush with the border like every square chip.
+                        if rounded != Rounding::Full {
+                            continue;
+                        }
+                        for x in [r.x - 1, r.right()] {
+                            assert_eq!(buf[(x, r.y)].symbol(), " ", "a blank cell clear of the chip at {x}: {at}");
+                            assert_ne!(buf[(x, r.y)].bg, mid, "the gap is not lit at {x}: {at}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(covered.len(), chips.len(), "every kind of chip is hovered somewhere: {covered:?}");
 }

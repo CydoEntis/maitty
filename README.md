@@ -80,12 +80,12 @@ name, such as the MCP server (`maitty integrate mcp` renames it) or another agen
 
 ## Shortcuts
 
-The top-right corner always shows the mode. It reads `TYPING` while keys go to the terminal.
-Press `Ctrl+Space` to enter **shortcut mode**: the corner turns into a bold sky-blue
-`SHORTCUT · Esc to type`, a sky frame runs round the window, and each key runs an action
-until you press `Esc`, `Ctrl+Space` again or click into a pane. While a popup has the keys
-the corner reads `SHORTCUT · paused`, and a key that isn't a shortcut says "Shortcut mode —
-Esc to type". Every key is a single key, and only `?` needs Shift. Press `?` to see them all.
+The bar along the bottom always shows the mode. It reads `TYPING · Ctrl+Space for
+shortcuts` while keys go to the terminal. Press `Ctrl+Space` (or click the bar) to enter
+**shortcut mode**: the bar turns sky blue and lists keys to press (`n shell`, `f files`,
+`? all keys`, `Esc type`, …; click one to run it), and each key runs an action until you press
+`Esc`, `Ctrl+Space` again or click into a pane. While a popup has the keys the bar reads
+`SHORTCUT · paused`, and a key that isn't a shortcut says "Shortcut mode — Esc to type". Every key is a single key, and only `?` needs Shift. Press `?` to see them all.
 
 | | |
 |---|---|

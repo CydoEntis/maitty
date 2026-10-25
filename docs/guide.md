@@ -56,10 +56,11 @@ and your configured custom ones; rows click and the wheel scrolls.
   (`Ctrl+Space e`), a row's menu letters work directly (a row's menu lists them): `x` (or
   Delete) asks to close, `r` renames. Settings › General › UPDATES shows the version; Settings warns at the top when the installed, window and daemon versions differ.
 
-The top right always says which mode you are in: `TYPING` while keys go to the pane. The
-leader key is `Ctrl+Space`. Press it for **shortcut mode**: the corner turns into a sky-blue
-`SHORTCUT · Esc to type` tag, a sky-blue frame runs round the whole window (the pane you're
-in turns sky too), each key below runs its action, and the mode stays for the next key. A key
+The bar along the bottom always says which mode you are in: `TYPING` while keys go to the
+pane. The leader key is `Ctrl+Space`. Press it (or click the bar) for **shortcut mode**: the
+bar turns sky blue and suggests keys (`n shell`, `f files`, `? all keys`, `Esc type`, …; a click
+on one runs it), the pane you're in turns sky too, each key below runs its action, and the mode
+stays for the next key. A key
 that does nothing says "Shortcut mode — Esc to type". `Esc`, `Ctrl+Space` again or a click into a pane
 go back to typing; a new shell, session, tab or split keeps shortcut mode, so press `Esc`
 to type into it, and closing a popup returns to it. With **Leader waits for next key** on (Settings › General; off by default), a pause after the leader shows the compact key map: a key runs its
