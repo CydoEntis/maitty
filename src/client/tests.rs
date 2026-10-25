@@ -5015,6 +5015,42 @@ second line
     }
 
     #[test]
+    fn a_click_on_the_bar_under_a_popup_neither_acts_nor_closes_it() {
+        for from in ["typing", "shortcut mode"] {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            app.cfg.ui.which_key = false;
+            if from == "typing" {
+                app.act(Action::Settings);
+            } else {
+                app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+                tap(&mut app, ',');
+            }
+            assert!(matches!(app.mode, Mode::ScreenSettings(_)), "{from}: Settings is open");
+            let buf = drawn(&mut app, 160, 45);
+            let row = screen::mode_bar_row(&app, buf.area);
+            for x in [row.x + 3, row.x + row.width / 2, row.right() - 2] {
+                click_at(&mut app, x, row.y);
+                assert!(matches!(app.mode, Mode::ScreenSettings(_)), "{from}: a click on the bar at {x} keeps Settings open: {:?}", std::mem::discriminant(&app.mode));
+                drawn(&mut app, 160, 45);
+            }
+        }
+    }
+
+    #[test]
+    fn the_key_map_s_search_keeps_its_query_when_the_bar_is_clicked() {
+        let mut app = shortcut_mode();
+        app.mode = Mode::KeyMap(Box::new(screen::KeyMap { query: "fil".into(), ..screen::KeyMap::new(screen::KeyView::Search, None) }));
+        let buf = drawn(&mut app, 160, 45);
+        let (row, bar) = bar_text(&app, &buf);
+        assert!(bar.contains("f files"), "the bar stays lit under the key map: {bar}");
+        assert!(!app.hits.iter().any(|(r, h)| r.y == row.y && matches!(h, Hit::Screen(screen::ScreenHit::BarKey(_)))), "its suggestions are only words there");
+        let x = on_bar(&app, &buf, "f files").expect("f files");
+        click_at(&mut app, x, row.y);
+        assert!(matches!(&app.mode, Mode::KeyMap(km) if km.query == "fil"), "the search and its text survive: {:?}", std::mem::discriminant(&app.mode));
+        assert!(app.view.is_none(), "and Files did not open");
+    }
+
+    #[test]
     fn the_bar_takes_no_click_from_a_pane_in_any_look() {
         for layout in LOOKS {
             for mode in ["typing", "lit"] {

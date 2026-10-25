@@ -92,10 +92,9 @@ fn lit(app: &mut App, t: &Theme) -> (Piece, Vec<Piece>, Vec<Piece>) {
 }
 
 /// Typing: quiet, and how to get to the shortcuts. A click there starts shortcut mode, as the
-/// leader does; typing under a popup it is only words, so a click there still reaches the popup.
+/// leader does.
 fn typing(app: &App, t: &Theme) -> (Piece, Vec<Piece>) {
-    let clickable = matches!(app.mode, Mode::Normal | Mode::Side);
-    let hit = clickable.then_some(ScreenHit::ShortcutMode);
+    let hit = Some(ScreenHit::ShortcutMode);
     let tag = Piece { segs: vec![seg(" TYPING ", Style::default().fg(t.muted).bg(t.btn))], gap: 0, hit };
     let lead = crate::client::design::long_key(&app.keymap.prefix);
     let hint = Piece { segs: vec![seg(format!("· {lead} for shortcuts"), Style::default().fg(t.muted).bg(t.bg))], gap: 1, hit };
@@ -135,6 +134,14 @@ fn fit<'a>(room: u16, tag: &'a Piece, middle: &'a [Piece], tail: &'a [Piece], re
     }
 }
 
+/// Under anything that has the keys (a popup, a modal, a view shortcut mode opened, the key map
+/// with its search), the bar only says the mode: the keys and the way out are that thing's, and
+/// what was typed in it must survive. It still takes the click, which would otherwise land
+/// outside the popup and close it.
+fn only_says(app: &App) -> bool {
+    shortcut_paused(app) || !matches!(app.mode, Mode::Normal | Mode::Side | Mode::Prefix { .. })
+}
+
 /// Draw the mode bar on `row`: lit, paused or typing, with Update or Restart at its right end.
 pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rect, t: &Theme) {
     app.screen.bar_keys.clear();
@@ -156,7 +163,7 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
     let caps = |p: &Piece| if round && p.segs.first().is_some_and(|(_, s)| s.bg != Some(ground)) { round_ends(p.segs.clone(), ground) } else { p.segs.clone() };
     let room = row.width.saturating_sub(2);
     let (left, release) = fit(room, &tag, &middle, &tail, &releases);
-    let paused = shortcut_paused(app);
+    let paused = only_says(app);
     let mut x = row.x + 1;
     for p in left {
         x += p.gap;
@@ -175,8 +182,6 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
             hit(app, Rect { x, y: row.y, width: segs_width(&segs), height: 1 }, h);
         }
     }
-    // Paused, it only says so: the popup has the keys and its own way out. The bar still takes
-    // the click, which would otherwise land outside the popup and close it.
     if paused {
         hit(app, row, ScreenHit::Noop);
     }
