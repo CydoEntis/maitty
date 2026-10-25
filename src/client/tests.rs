@@ -8859,6 +8859,20 @@ mod side_panel_width_tests {
     }
 
     #[test]
+    fn leader_x_in_the_sidebar_closes_the_cursor_s_row_not_the_panel() {
+        let mut app = changes_beside_a_working_pane();
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+        let row = app.screen.cursor.expect("leader ← put the cursor on a sidebar row");
+        app.snap.terms.get_mut(&row).unwrap().status = Status::Working;
+        leader_x(&mut app);
+        let Mode::Confirm(c) = &app.mode else { panic!("x asks before closing the row: {:?}", std::mem::discriminant(&app.mode)) };
+        assert_eq!(c.act, crate::client::menu::Act::End(vec![row]), "it closes the cursor's session");
+        assert!(c.note.contains("still working"), "and warns that it is working: {}", c.note);
+        assert!(matches!(app.view, Some(View::Changes(_))), "Changes stays open");
+    }
+
+    #[test]
     fn leader_x_with_no_panel_closes_the_focused_split() {
         let (_, mut app) = super::design_tests::render_with(200, 50);
         let a = app.focused().unwrap();

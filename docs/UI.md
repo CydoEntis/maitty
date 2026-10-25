@@ -190,9 +190,10 @@ Only the area with the keyboard is lit: the focused pane's whole border (Cards),
   for (the home shell after the last session closes).
 - Leader `x` closes what has the keys (`actions.rs` `ClosePane`): a side panel that has them
   (`view_has_keys`) closes with no question, so x never stops the program in the pane behind
-  it; Files with unsaved edits stays open and says so. Once a click into a pane set the panel
-  aside, the pane has the keys and x closes the focused pane (the sidebar cursor's row in the
-  sidebar), with its `Close pane` confirm.
+  it; Files with unsaved edits stays open and says so. A click into a pane, or moving into the
+  sidebar (`screen_side_set`), sets the panel aside: then x closes the focused pane, or in the
+  sidebar the cursor's row, with its `Close pane` confirm. `f` or a click in the panel gives
+  it the keys back.
 - Selection is a neutral tint (`sel_on` of the surface it sits on) with a lime `▎` bar;
   never the accent colour as a row fill.
 - Every popup row is clickable and keyboard-reachable; every key is shown as a

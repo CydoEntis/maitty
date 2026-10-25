@@ -352,6 +352,9 @@ impl App {
     pub(in crate::client) fn screen_side_set(&mut self, item: SideItem) {
         self.screen.follow = true;
         self.mode = Mode::Side;
+        // The sidebar has the keys now, not an open side panel: set it aside, as a click
+        // into a pane does, so the leader's x closes the cursor's row and not the panel.
+        self.view_set_aside = self.view_kind();
         match item {
             SideItem::Proj(k) => {
                 self.screen.cursor_proj = Some(k);
