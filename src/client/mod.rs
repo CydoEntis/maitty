@@ -1242,10 +1242,11 @@ impl App {
 
     fn describe_term(&self, term: TermId) -> String {
         let name = self.session_name(term);
-        if let Some(t) = self.snap.terms.get(&term)
-            && let Some(top) = &t.top
-        {
-            return format!("{name} ({})", crate::alert::place_label(t.root.as_deref(), top, t.branch.as_deref()));
+        if let Some(t) = self.snap.terms.get(&term) {
+            let place = crate::alert::place_label(t.root.as_deref(), t.top.as_deref().unwrap_or(&t.cwd), t.branch.as_deref());
+            if !place.is_empty() {
+                return format!("{name} ({place})");
+            }
         }
         match self.snap.locate(term) {
             Some((w, t)) => {
