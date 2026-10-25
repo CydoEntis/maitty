@@ -73,12 +73,17 @@ fn cell_html(cell: &Cell, t: &Theme) -> (String, String) {
     for (bit, css) in [
         (Modifier::BOLD, ";font-weight:bold"),
         (Modifier::ITALIC, ";font-style:italic"),
-        (Modifier::UNDERLINED, ";text-decoration:underline"),
-        (Modifier::CROSSED_OUT, ";text-decoration:line-through"),
     ] {
         if m.contains(bit) {
             style.push_str(css);
         }
+    }
+    // One declaration for both lines, since a second `text-decoration` would replace the first.
+    match (m.contains(Modifier::UNDERLINED), m.contains(Modifier::CROSSED_OUT)) {
+        (true, true) => style.push_str(";text-decoration:underline line-through"),
+        (true, false) => style.push_str(";text-decoration:underline"),
+        (false, true) => style.push_str(";text-decoration:line-through"),
+        (false, false) => {}
     }
     (style, escape(if sym.is_empty() { " " } else { sym }))
 }

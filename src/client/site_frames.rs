@@ -420,7 +420,8 @@ mod tests {
             for theme in THEMES {
                 let (page, _) = render(shot, theme);
                 assert_eq!(page.matches('\n').count(), shot.rows as usize, "{} {theme}: one line a row", shot.name);
-                assert!(!page.chars().any(|c| ('\u{e000}'..='\u{f8ff}').contains(&c)), "{} {theme}: no private-use glyphs", shot.name);            }
+                assert!(!page.chars().any(|c| ('\u{e000}'..='\u{f8ff}').contains(&c)), "{} {theme}: no private-use glyphs", shot.name);
+            }
         }
     }
 }
