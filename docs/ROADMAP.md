@@ -30,7 +30,7 @@ remote daemons too. v0.37.1 (2026-10-22) added a restart button for
 the daemon after an update, and a prompt instead of an error when a new `maitty` meets an
 older daemon ([Phase 16](#16--restart-the-daemon-from-the-update-flow--complete-2026-10-22)).
 v0.37.0 brought checks that Maitty
-runs itself ([Phase 15](#15--checks-maitty-runs-itself--active-chosen-2026-10-22)), with
+runs itself ([Phase 15](#15--checks-maitty-runs-itself--shipped-in-v0370)), with
 the sidebar grouping by folder and tool icons. It moves the wire protocol to 43, so
 restart the daemon after installing it, and update remote daemons too. Five platform
 archives and checksums are published, and the release workflow's install checks passed
