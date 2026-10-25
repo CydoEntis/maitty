@@ -1344,14 +1344,13 @@ mod screen_tests {
     }
 
     #[test]
-    fn grid_names_each_pane_once_with_its_state_glyph_inside_and_no_number() {
+    fn grid_names_each_pane_once_with_its_state_glyph_and_its_number_inside() {
         let (app, [a, b, c], rows) = grid_frame(200, 50);
         let (ta, tb, tc) = (top_border(&app, &rows, a), top_border(&app, &rows, b), top_border(&app, &rows, c));
         let spinner = crate::client::design::glyph(&app, Status::Working);
-        assert!(ta.starts_with("┌─ ▲  1  claude   + ─"), "needs you inside the current tab, whose chip carries the only number: {ta}");
-        assert_eq!(ta.matches(" 1 ").count(), 1, "one 1 on the top-left pane, its tab's: {ta}");
-        assert!(tb.starts_with(&format!("┌─ {spinner} codex ─")), "one name chip, the spinner inside it: {tb}");
-        assert!(tc.starts_with("┌─ shell ─"), "no state for a shell: {tc}");
+        assert!(ta.starts_with("┌─ ▲  1  1 · claude   + ─"), "needs you inside the current tab, its number chip, then pane 1 before the name: {ta}");
+        assert!(tb.starts_with(&format!("┌─ {spinner} 2 · codex ─")), "one name chip, the spinner and pane 2 inside it: {tb}");
+        assert!(tc.starts_with("┌─ 3 · shell ─"), "no state for a shell, pane 3: {tc}");
         for (top, name) in [(&ta, "claude"), (&tb, "codex"), (&tc, "shell")] {
             assert!(!top.contains("needs you") && !top.contains("working"), "no state words: {top}");
             assert_eq!(top.matches(name).count(), 1, "the name is not repeated on the right: {top}");
@@ -1511,8 +1510,8 @@ mod screen_tests {
             assert!(tab.len() == 1 && ta.contains("▲  1 "), "{w}: the current tab, its glyph inside: {ta}");
             assert!(!ta.contains("needs you") && ta.matches("claude").count() <= 1, "{w}: {ta}");
             let spinner = crate::client::design::glyph(&app, Status::Working);
-            assert!(tb.contains(&format!("{spinner} c")) && tb.matches("codex").count() <= 1, "{w}: the name chip carries the spinner: {tb}");
-            shortened |= tb.contains(&format!("{spinner} codex-")) && tb.contains('…');
+            assert!(tb.contains(&format!("{spinner} 2")) && tb.matches("codex").count() <= 1, "{w}: the name chip carries the spinner and the number: {tb}");
+            shortened |= tb.contains(&format!("{spinner} 2 · codex-")) && tb.contains('…');
         }
         assert!(shortened, "somewhere a name chip shortens its name and keeps its glyph");
         // Narrower still, a tab that cannot fit at its shortest gives way to its glyph alone.
@@ -1592,7 +1591,7 @@ mod screen_tests {
                     assert_ne!(end.bg, b_chip, "b's chip is square: {at}");
                 }
                 let name = &buf[(wb[0].right() + 1, y)];
-                assert_eq!((name.symbol(), name.fg, name.bg), ("c", b_ink, b_chip), "b's name after its spinner, one chip: {at}");
+                assert_eq!((name.symbol(), name.fg, name.bg), ("2", b_ink, b_chip), "b's number and name after its spinner, one chip: {at}");
                 // Needs you, at the front of the current tab: amber, set apart from the chip.
                 let glyph = &buf[(wa[0].x + 1, y)];
                 assert_eq!(glyph.symbol(), "▲", "{at}");

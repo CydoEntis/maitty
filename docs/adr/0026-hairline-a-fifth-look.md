@@ -21,8 +21,8 @@ Panes split as in Tiled. The drawing differs:
   headers with their branch; one row per session (`▎` marker, glyph, name, age or
   `needs you`), no second lines but a request to start helpers; `new` and `menu` pinned to the
   foot as plain words.
-- **Panes:** a title row (its glyph, its name in `strong`, `project · ⎇ branch`, the state
-  word and the ✕; no number, since no key goes to a pane by one) over a full-width `─` rule:
+- **Panes:** a title row (the pane's number while the tab is split, its glyph, its name in
+  `strong`, `project · ⎇ branch`, the state word and the ✕) over a full-width `─` rule:
   teal focused, amber needs you, else `line`. `│` / `─` only between panes, never round
   the outside; two columns of padding inside.
 - **Bottom:** a status strip, one `━` segment per session in its state's colour, over the

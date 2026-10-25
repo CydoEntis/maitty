@@ -168,3 +168,59 @@ fn the_strip_marks_the_focused_session_s_segment() {
         }
     }
 }
+
+fn text(buf: &Buffer) -> String {
+    let a = buf.area;
+    (a.y..a.bottom()).map(|y| (a.x..a.right()).map(|x| buf[(x, y)].symbol()).collect::<String>().trim_end().to_string() + "\n").collect()
+}
+
+/// `r`'s title row as text.
+fn title_of(buf: &Buffer, r: Rect) -> String {
+    (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect()
+}
+
+/// Every look at 80×24 and 160×45 (and Compact wide enough to split) with 1, 2 and 3 panes:
+/// the label, the app and its frame.
+fn every_split() -> impl Iterator<Item = (String, App, Buffer)> {
+    LOOKS.into_iter().flat_map(|look| {
+        [1, 2, 3].into_iter().flat_map(move |panes| {
+            [(80, 24), (160, 45), wide(look)].into_iter().collect::<std::collections::BTreeSet<_>>().into_iter().map(move |(w, h)| {
+                let mut app = split_world(look, panes);
+                let buf = draw(&mut app, w, h);
+                (format!("{look}, {panes} pane(s), {w}x{h}"), app, buf)
+            })
+        })
+    })
+}
+
+#[test]
+fn every_pane_of_a_split_shows_its_number_in_reading_order_in_every_look() {
+    for (label, app, buf) in every_split() {
+        let mut shown = app.screen.leaf_rects.clone();
+        shown.sort_by_key(|(_, r)| (r.y, r.x));
+        for (n, (term, r)) in shown.iter().enumerate() {
+            let title = title_of(&buf, *r);
+            if shown.len() < 2 {
+                assert!(!title.contains("1 ·") && !title.trim_start().starts_with("1 "), "{label}: a lone pane has no number: {title}");
+                continue;
+            }
+            // A narrow chip cuts the name before the number: `2 · warm-f…`, at the least `2…`.
+            let want = if label.starts_with("hairline") { vec![format!("  {} ", n + 1)] } else { vec![format!(" {} · ", n + 1), format!(" {}… ", n + 1)] };
+            assert!(want.iter().any(|w| title.contains(w)), "{label}: pane {term} reads {want:?}: {title}\n{}", text(&buf));
+        }
+    }
+}
+
+#[test]
+fn a_hairline_number_is_teal_focused_amber_when_it_needs_you_else_dim() {
+    let mut app = split_world("hairline", 3);
+    let buf = draw(&mut app, 160, 45);
+    let t = app.theme.clone();
+    for (term, want) in [(1, t.accent), (3, t.blocked), (4, t.muted)] {
+        let r = app.screen.leaf_rects.iter().find(|(id, _)| *id == term).map(|(_, r)| *r).expect("the pane is on screen");
+        let cell = &buf[(r.x + hairline::PANE_PAD, r.y)];
+        assert!(cell.symbol().chars().all(|c| c.is_ascii_digit()), "pane {term} leads with its number: {}", title_of(&buf, r));
+        assert_eq!(cell.fg, want, "pane {term}");
+        assert!(cell.modifier.contains(Modifier::BOLD), "pane {term}");
+    }
+}

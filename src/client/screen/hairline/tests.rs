@@ -214,8 +214,9 @@ fn the_name_stays_whole_while_the_meta_gives_way() {
     let r = pane_at(&app, 1);
     let title: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
     assert!(title.contains("fix-footer") && title.contains('…') && title.contains("done"), "{title}");
-    let (x, y) = find_in(&buf, Rect { height: 1, ..r }, "● fix-footer").unwrap();
-    assert_eq!(x, r.x + PANE_PAD, "the glyph leads the title: no number before it");
+    let (x, y) = find_in(&buf, Rect { height: 1, ..r }, "1 ● fix-footer").unwrap();
+    assert_eq!(x, r.x + PANE_PAD, "the pane's number leads the title, then the glyph");
+    let x = x + 2;
     let name = &buf[(x + 2, y)];
     assert_eq!(name.fg, t.strong);
     assert!(name.modifier.contains(Modifier::BOLD));

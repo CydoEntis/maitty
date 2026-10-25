@@ -414,7 +414,17 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, state: Option<
     let mut out = Vec::new();
     let mut at = row.x;
     let tabs = app.session_tabs();
-    let names: Vec<String> = tabs.iter().map(|&i| tab_name(&app.screen.tabs[i]).unwrap_or_else(|| session_name(app, model, app.screen.tabs[i].focus))).collect();
+    let top_left = app.screen.leaf_rects.iter().min_by_key(|(_, r)| (r.y, r.x)).map(|(id, _)| *id);
+    let names: Vec<String> = tabs
+        .iter()
+        .map(|&i| {
+            let name = tab_name(&app.screen.tabs[i]).unwrap_or_else(|| session_name(app, model, app.screen.tabs[i].focus));
+            match top_left.filter(|_| i == app.screen.tab) {
+                Some(term) => numbered(app, term, &name),
+                None => name,
+            }
+        })
+        .collect();
     let closable = tabs.len() > 1;
     let current = Style::default().fg(t.acc_ink).bg(t.accent).add_modifier(Modifier::BOLD);
     let cap = u16::from(look.round_tabs);
@@ -434,7 +444,7 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, state: Option<
     // else its glyph, so it never shortens or drops while another tab shows.
     let current_w = |shorten: bool| {
         let n = tabs.iter().position(|&i| i == app.screen.tab);
-        n.map_or(0, |n| segs_width(&chips(n, true, &if shorten { truncate(&names[n], 2) } else { names[n].clone() })))
+        n.map_or(0, |n| segs_width(&chips(n, true, &if shorten { cut_label(&names[n], 2) } else { names[n].clone() })))
     };
     let keep = [current_w(false), current_w(true), alone_w].into_iter().find(|w| row.x + w <= max_x).unwrap_or(alone_w);
     let (mut all_fit, mut placed, mut crowded) = (true, false, false);
@@ -444,7 +454,7 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, state: Option<
         let mut pair = chips(n, on, &names[n]);
         let rest = segs_width(&pair).saturating_sub(names[n].width() as u16);
         if on && at + segs_width(&pair) > max_x && max_x > at + rest + 1 {
-            pair = chips(n, on, &truncate(&names[n], (max_x - at - rest) as usize));
+            pair = chips(n, on, &cut_label(&names[n], (max_x - at - rest) as usize));
         }
         let w = segs_width(&pair);
         let reserve = if on || placed { 0 } else { keep };
@@ -599,11 +609,43 @@ const GRID_TAG_FADE: f32 = 0.28;
 const SHORTEST_TAB: u16 = 7;
 
 /// A pane's place among the tab's panes (0 first): top-left first, left to right and top to
-/// bottom. Grid numbers and colours panes by it.
+/// bottom. Grid colours panes by it, and every look numbers them by it.
 fn grid_index(app: &App, term: TermId) -> usize {
     let mut order: Vec<(u16, u16, TermId)> = app.screen.leaf_rects.iter().map(|(id, r)| (r.y, r.x, *id)).collect();
     order.sort_unstable();
     order.iter().position(|(.., id)| *id == term).unwrap_or(0)
+}
+
+/// The number a pane shows in its title: its place in the tab in reading order, from 1. Only
+/// while the tab shows two panes or more, so a lone pane's title stays as it was.
+pub(in crate::client) fn pane_number(app: &App, term: TermId) -> Option<usize> {
+    let split = app.screen.leaf_rects.len() > 1 && app.screen.leaf_rects.iter().any(|(id, _)| *id == term);
+    split.then(|| grid_index(app, term) + 1)
+}
+
+/// Between a pane's number and its name in a title chip.
+const NUMBER_SEP: &str = " · ";
+
+/// A pane's name with its number in front (`2 · claude`) while it has one.
+pub(in crate::client) fn numbered(app: &App, term: TermId, name: &str) -> String {
+    match pane_number(app, term) {
+        Some(n) => format!("{n}{NUMBER_SEP}{name}"),
+        None => name.to_string(),
+    }
+}
+
+/// `label` cut to `room` columns. A numbered name keeps its number: the name is cut first
+/// (`2 · warm-f…`), then the ` · ` (`2…`), leaving the number alone.
+fn cut_label(label: &str, room: usize) -> String {
+    let Some((number, name)) = label.split_once(NUMBER_SEP).filter(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())) else {
+        return truncate(label, room);
+    };
+    let front = number.width() + NUMBER_SEP.width();
+    match room {
+        r if r >= front + 2 => format!("{number}{NUMBER_SEP}{}", truncate(name, r - front)),
+        r if r > number.width() => format!("{number}…"),
+        r => truncate(number, r),
+    }
 }
 
 /// A Grid pane's colour, by its place; they repeat from the fifth.
@@ -614,8 +656,8 @@ fn grid_color(app: &App, term: TermId, t: &Theme) -> Color {
 
 /// Grid's top border: the chip that names the pane, with the state's glyph at its front: the
 /// current tab on the top-left pane (its other tabs and the + around it), else one chip with the
-/// session's name. No number: the pane's colour tells it apart, and no key goes to a pane by its
-/// number. No state words, and the name is not repeated on the right. A narrow pane drops the
+/// session's name, each with the pane's number before the name while the tab is split. No state
+/// words, and the name is not repeated on the right. A narrow pane drops the
 /// load note, then shortens the name, then keeps only the glyph, then drops the ✕. Returns where
 /// the glyph sits, which opens why.
 fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: Rect, c: &mut Card, t: &Theme) -> Vec<Rect> {
@@ -656,7 +698,7 @@ fn grid_title(app: &mut App, model: &[Proj], info: &TermInfo, focused: bool, r: 
     let (named, glyph_at) = if top_left {
         tab_strip(app, model, Rect { x, y: r.y, width: title_end.saturating_sub(x), height: 1 }, focused, state.as_ref(), t)
     } else {
-        let name = session_name(app, model, info.id);
+        let name = numbered(app, info.id, &session_name(app, model, info.id));
         let (segs, glyph_w) = name_with_state(&name, state.as_ref(), chip_style, title_end.saturating_sub(x), look, t);
         let cap = u16::from(look.round_tabs);
         (segs, (glyph_w > 0).then_some(Rect { x: x + cap, y: r.y, width: glyph_w, height: 1 }))
@@ -677,7 +719,7 @@ fn name_with_state(name: &str, state: Option<&ChipState>, chip: Style, room: u16
     let front_w = segs_width(&front);
     if room >= front_w + caps + SHORTEST_NAME {
         let mut segs = front;
-        segs.push(seg(format!(" {} ", truncate(name, (room - front_w - caps - 2) as usize)), chip));
+        segs.push(seg(format!(" {} ", cut_label(name, (room - front_w - caps - 2) as usize)), chip));
         return (if look.round_tabs { round_ends(segs, title_ground(look, t)) } else { segs }, front_w);
     }
     match state {
@@ -818,7 +860,7 @@ fn card_frame(app: &mut App, buf: &mut Buffer, r: Rect, info: &TermInfo, focused
             tab_strip(app, model, Rect { x: title_x(look, r), y: r.y, width: title_end.saturating_sub(title_x(look, r)), height: 1 }, focused, None, t).0
         } else {
             let caps = if look.round_tabs { 2 } else { 0 };
-            let name = truncate(&session_name(app, model, term), title_end.saturating_sub(title_x(look, r) + 2 + caps) as usize);
+            let name = cut_label(&numbered(app, term, &session_name(app, model, term)), title_end.saturating_sub(title_x(look, r) + 2 + caps) as usize);
             let chip = vec![name_chip(&name, focused, t)];
             if look.round_tabs { round_ends(chip, title_ground(look, t)) } else { chip }
         };
