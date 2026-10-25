@@ -368,6 +368,25 @@ pub(in crate::client) fn tab_name(tab: &ScreenTab) -> Option<String> {
     (!n.is_empty() && !generic).then(|| n.to_string())
 }
 
+/// A tab's chips as text: the head chip (the tab's number) and the name chip. The current tab
+/// of a split names its top-left pane, the pane its title sits on, numbered (`1 · claude`), and
+/// a name you gave the tab moves to the head, so a name is never put on a pane it is not.
+fn tab_label(app: &App, model: &[Proj], i: usize, n: usize) -> (Option<String>, String) {
+    let tab = &app.screen.tabs[i];
+    let number = Some((n + 1).to_string());
+    let top_left = app.screen.leaf_rects.iter().min_by_key(|(_, r)| (r.y, r.x)).map(|(id, _)| *id);
+    match top_left.filter(|t| i == app.screen.tab && pane_number(app, *t).is_some()) {
+        Some(term) => {
+            let head = match (number, tab_name(tab)) {
+                (Some(n), Some(name)) => Some(format!("{n} {name}")),
+                (number, name) => number.or(name),
+            };
+            (head, numbered(app, term, &session_name(app, model, term)))
+        }
+        None => (number, tab_name(tab).unwrap_or_else(|| session_name(app, model, tab.focus))),
+    }
+}
+
 /// Leader mode is on: waiting for the key, or showing the key map.
 pub(in crate::client) fn armed(app: &App) -> bool {
     matches!(app.mode, Mode::Prefix { .. } | Mode::KeyMap(_))
@@ -414,25 +433,17 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, state: Option<
     let mut out = Vec::new();
     let mut at = row.x;
     let tabs = app.session_tabs();
-    let top_left = app.screen.leaf_rects.iter().min_by_key(|(_, r)| (r.y, r.x)).map(|(id, _)| *id);
-    let names: Vec<String> = tabs
-        .iter()
-        .map(|&i| {
-            let name = tab_name(&app.screen.tabs[i]).unwrap_or_else(|| session_name(app, model, app.screen.tabs[i].focus));
-            match top_left.filter(|_| i == app.screen.tab) {
-                Some(term) => numbered(app, term, &name),
-                None => name,
-            }
-        })
-        .collect();
     let closable = tabs.len() > 1;
+    let labels: Vec<(Option<String>, String)> = tabs.iter().enumerate().map(|(n, &i)| tab_label(app, model, i, n)).collect();
+    let names: Vec<String> = labels.iter().map(|(_, name)| name.clone()).collect();
     let current = Style::default().fg(t.acc_ink).bg(t.accent).add_modifier(Modifier::BOLD);
     let cap = u16::from(look.round_tabs);
     let chips = |n: usize, on: bool, name: &str| {
         let number = if on { current } else { Style::default().fg(t.text).bg(t.btn) };
         let label = if on { name_chip(name, lit, t) } else { seg(format!(" {name} "), Style::default().fg(t.text).bg(t.card)) };
         let mut pair: Vec<Seg> = state.filter(|_| on).map(|s| state_seg(s, number, t)).into_iter().collect();
-        pair.extend([seg(format!(" {} ", n + 1), number), label]);
+        pair.extend(labels[n].0.as_ref().map(|head| seg(format!(" {head} "), number)));
+        pair.push(label);
         if closable {
             let (fg, bg) = if on { if lit { (t.acc_ink, t.accent) } else { (t.strong, t.btn) } } else { (t.muted, t.card) };
             pair.push(seg("✕ ", Style::default().fg(fg).bg(bg)));

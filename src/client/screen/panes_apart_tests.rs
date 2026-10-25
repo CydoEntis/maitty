@@ -212,6 +212,37 @@ fn every_pane_of_a_split_shows_its_number_in_reading_order_in_every_look() {
 }
 
 #[test]
+fn the_top_left_pane_names_its_own_session_whichever_pane_has_focus() {
+    for look in ["floating", "tiled", "compact", "grid"] {
+        for focus_on in [1, 2] {
+            let mut app = split_world(look, 3);
+            let (w, h) = wide(look);
+            draw(&mut app, w, h);
+            let mut shown = app.screen.leaf_rects.clone();
+            shown.sort_by_key(|(_, r)| (r.y, r.x));
+            app.screen.tabs[0].focus = shown[focus_on].0;
+            let buf = draw(&mut app, w, h);
+            let model = app.screen_model();
+            for (n, (term, r)) in shown.iter().enumerate() {
+                let title = title_of(&buf, *r);
+                let want = format!("{} · {}", n + 1, session_name(&app, &model, *term));
+                assert!(title.contains(&want), "{look}, focus on pane {}: pane {} reads {want:?}: {title}", focus_on + 1, n + 1);
+            }
+        }
+    }
+}
+
+#[test]
+fn a_named_tab_keeps_its_name_beside_the_top_left_pane_s_own() {
+    let mut app = split_world("floating", 2);
+    app.screen.tabs[0].name = "build".into();
+    let buf = draw(&mut app, 160, 45);
+    let r = app.screen.leaf_rects.iter().min_by_key(|(_, r)| (r.y, r.x)).map(|(_, r)| *r).expect("a pane");
+    let title = title_of(&buf, r);
+    assert!(title.contains(" 1 build ") && title.contains(" 1 · fix-footer "), "the tab's name in its chip, the pane's in its own: {title}");
+}
+
+#[test]
 fn a_hairline_number_is_teal_focused_amber_when_it_needs_you_else_dim() {
     let mut app = split_world("hairline", 3);
     let buf = draw(&mut app, 160, 45);
