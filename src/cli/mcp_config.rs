@@ -87,9 +87,7 @@ fn read_or_empty(path: &Path) -> Result<String> {
 }
 
 fn back_up_and_write(path: &Path, extension: &str, text: String) -> Result<()> {
-    if path.exists() {
-        std::fs::copy(path, path.with_extension(format!("{extension}.{NAME}-bak"))).with_context(|| format!("back up {}", path.display()))?;
-    }
+    super::back_up_once(path, extension).with_context(|| format!("back up {}", path.display()))?;
     crate::config::write_atomic(path, text).with_context(|| format!("write {}", path.display()))
 }
 
@@ -328,6 +326,18 @@ mod tests {
         assert_eq!(set_up(&qwen, EXE, false).unwrap(), McpChange::Registered);
         let root: Value = serde_json::from_str(&std::fs::read_to_string(&qwen.config).unwrap()).unwrap();
         assert_eq!(root["mcpServers"][NAME], json!({ "command": EXE, "args": ["mcp"], "trust": true, "timeout": 30000 }));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn the_backup_is_the_file_before_the_first_change() {
+        let dir = temp("backup");
+        let qwen = agent(&dir, "settings.json", Format::McpServersJson);
+        std::fs::write(&qwen.config, "{\"theme\":\"dark\"}").unwrap();
+        set_up(&qwen, "/old/app", false).unwrap();
+        set_up(&qwen, "/new/app", false).unwrap();
+        let backup = dir.join(format!("settings.json.{NAME}-bak"));
+        assert_eq!(std::fs::read_to_string(backup).unwrap(), "{\"theme\":\"dark\"}");
         std::fs::remove_dir_all(dir).unwrap();
     }
 

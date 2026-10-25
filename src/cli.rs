@@ -1465,6 +1465,16 @@ fn claude_settings() -> PathBuf {
         .join("settings.json")
 }
 
+/// Copies an agent's config file to `<file>.<ext>.<app>-bak` before the app changes it. An
+/// existing copy is kept: it is the file as it was before the app first touched it.
+fn back_up_once(path: &std::path::Path, ext: &str) -> std::io::Result<()> {
+    let backup = path.with_extension(format!("{ext}.{APP_COMMAND}-bak"));
+    if path.exists() && !backup.exists() {
+        std::fs::copy(path, backup)?;
+    }
+    Ok(())
+}
+
 /// This the app, as hook commands name it.
 fn this_exe() -> Result<String> {
     Ok(std::env::current_exe()?.to_string_lossy().replace('\\', "/"))
@@ -1608,9 +1618,7 @@ fn json_hooks(path: &std::path::Path, agent: &str, events: &[(&str, Option<&str>
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => json!({}),
         Err(e) => return Err(e.into()),
     };
-    if path.exists() {
-        std::fs::copy(&path, path.with_extension(concat!("json.", env!("APP_COMMAND"), "-bak")))?;
-    }
+    back_up_once(&path, "json")?;
     let hooks = root
         .as_object_mut()
         .ok_or_else(|| anyhow!("settings.json is not an object"))?
@@ -1746,9 +1754,7 @@ fn codex_notify(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<Co
         // Top-level keys go before the tables.
         doc.insert("notify", toml_edit::value(a));
     }
-    if path.exists() {
-        std::fs::copy(path, path.with_extension(concat!("toml.", env!("APP_COMMAND"), "-bak")))?;
-    }
+    back_up_once(path, "toml")?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
