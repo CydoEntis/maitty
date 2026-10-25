@@ -17,8 +17,9 @@
 //!   says (its sidebar says "finished");
 //! - a failed row's third line is its first failing line, the Inbox's sample line; the reference
 //!   sets "footer shows current year" outside the failed branch, so other rows drop it;
-//! - add-payments is a session of its own, not a second tab of fix-footer's pane, and the
-//!   pane's mark keeps its room where the reference draws the tab chips over it;
+//! - add-payments is a session of its own, not a second tab of fix-footer's pane, so fix-footer's
+//!   lone tab has no number chip, and the pane's mark keeps its room where the reference draws
+//!   the tab chips over it;
 //! - a row waiting on a changed command (A4) shows the new command; a project with a check
 //!   that never ran (16) names it in the folder's meta;
 //! - a command you said never to (A5) reads "did not run" and its source names the file's
@@ -498,11 +499,13 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
         m.y as usize
     });
     // The sample's second tab is add-payments, a session of its own in the app (the sidebar
-    // lists it); fix-footer has one tab.
+    // lists it); fix-footer has one tab, so its title has no tab number either.
     let flat = b.layout == Layout::Flat;
+    let fill = if flat { " " } else { "─" };
     let top = &mut want[0];
     let w = top.len();
-    swap(top, " 2  add-payments ", &(if flat { " " } else { "─" }).repeat(17), 0, w);
+    swap(top, " 2  add-payments ", &fill.repeat(17), 0, w);
+    swap(top, " 1  fix-footer ", &format!(" fix-footer {}", fill.repeat(3)), 0, w);
     // The reference draws the tab chips over the pane's mark when they meet; the app gives the
     // mark its room.
     if g.pane.is_some() {

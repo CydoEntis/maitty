@@ -368,12 +368,14 @@ pub(in crate::client) fn tab_name(tab: &ScreenTab) -> Option<String> {
     (!n.is_empty() && !generic).then(|| n.to_string())
 }
 
-/// A tab's chips as text: the head chip (the tab's number) and the name chip. The current tab
+/// A tab's chips as text: the head chip, if any, and the name chip. The head is the tab's number
+/// when the session has several tabs; a lone tab has none, so a title never reads `1  1 · name`.
+/// The current tab
 /// of a split names its top-left pane, the pane its title sits on, numbered (`1 · claude`), and
 /// a name you gave the tab moves to the head, so a name is never put on a pane it is not.
-fn tab_label(app: &App, model: &[Proj], i: usize, n: usize) -> (Option<String>, String) {
+fn tab_label(app: &App, model: &[Proj], i: usize, n: usize, several: bool) -> (Option<String>, String) {
     let tab = &app.screen.tabs[i];
-    let number = Some((n + 1).to_string());
+    let number = several.then(|| (n + 1).to_string());
     let top_left = app.screen.leaf_rects.iter().min_by_key(|(_, r)| (r.y, r.x)).map(|(id, _)| *id);
     match top_left.filter(|t| i == app.screen.tab && pane_number(app, *t).is_some()) {
         Some(term) => {
@@ -434,14 +436,16 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, state: Option<
     let mut at = row.x;
     let tabs = app.session_tabs();
     let closable = tabs.len() > 1;
-    let labels: Vec<(Option<String>, String)> = tabs.iter().enumerate().map(|(n, &i)| tab_label(app, model, i, n)).collect();
+    let labels: Vec<(Option<String>, String)> = tabs.iter().enumerate().map(|(n, &i)| tab_label(app, model, i, n, closable)).collect();
     let names: Vec<String> = labels.iter().map(|(_, name)| name.clone()).collect();
     let current = Style::default().fg(t.acc_ink).bg(t.accent).add_modifier(Modifier::BOLD);
     let cap = u16::from(look.round_tabs);
     let chips = |n: usize, on: bool, name: &str| {
         let number = if on { current } else { Style::default().fg(t.text).bg(t.btn) };
         let label = if on { name_chip(name, lit, t) } else { seg(format!(" {name} "), Style::default().fg(t.text).bg(t.card)) };
-        let mut pair: Vec<Seg> = state.filter(|_| on).map(|s| state_seg(s, number, t)).into_iter().collect();
+        // The glyph sits on the chip after it: the head's, else (a lone tab) the name's.
+        let next = if labels[n].0.is_some() { number } else { label.1 };
+        let mut pair: Vec<Seg> = state.filter(|_| on).map(|s| state_seg(s, next, t)).into_iter().collect();
         pair.extend(labels[n].0.as_ref().map(|head| seg(format!(" {head} "), number)));
         pair.push(label);
         if closable {

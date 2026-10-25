@@ -239,7 +239,13 @@ fn a_named_tab_keeps_its_name_beside_the_top_left_pane_s_own() {
     let buf = draw(&mut app, 160, 45);
     let r = app.screen.leaf_rects.iter().min_by_key(|(_, r)| (r.y, r.x)).map(|(_, r)| *r).expect("a pane");
     let title = title_of(&buf, r);
-    assert!(title.contains(" 1 build ") && title.contains(" 1 · fix-footer "), "the tab's name in its chip, the pane's in its own: {title}");
+    assert!(title.contains("─ build ") && title.contains(" 1 · fix-footer "), "the tab's name in its chip, the pane's in its own: {title}");
+    let mut second = app.screen.tabs[0].clone();
+    (second.layout, second.focus, second.name) = (Node::Leaf(5), 5, String::new());
+    app.screen.tabs.push(second);
+    let buf = draw(&mut app, 160, 45);
+    let title = title_of(&buf, r);
+    assert!(title.contains(" 1 build ") && title.contains(" 1 · fix-footer "), "with several tabs the chip adds the tab's number: {title}");
 }
 
 #[test]

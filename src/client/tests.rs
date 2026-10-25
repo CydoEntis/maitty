@@ -364,7 +364,7 @@ mod screen_tests {
                 let on_row0 = |hit: screen::ScreenHit| app.hits.iter().find(|(r, h)| *h == Hit::Screen(hit) && r.y == 0).map(|(r, _)| *r);
                 assert!(on_row0(screen::ScreenHit::Session(1)).is_some() && on_row0(screen::ScreenHit::Session(2)).is_some(), "{w}x{h} {position}: a chip per session");
                 assert!(on_row0(screen::ScreenHit::ExpandSidebar).is_some() && on_row0(screen::ScreenHit::Actions).is_some(), "{w}x{h} {position}: expand and Menu stay clickable");
-                assert!(screen.lines().nth(1).unwrap().contains(" 1 "), "the pane's tabs moved down to row 1: {}", screen.lines().nth(1).unwrap());
+                assert!(screen.lines().nth(1).unwrap().contains(" + "), "the pane's tabs moved down to row 1: {}", screen.lines().nth(1).unwrap());
                 let click = |app: &mut App, r: Rect| {
                     for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
                         app.on_mouse(MouseEvent { kind, column: r.x + 1, row: r.y, modifiers: KeyModifiers::NONE });
@@ -643,7 +643,7 @@ mod screen_tests {
         assert!(lines[0].starts_with("┌─"), "the sidebar card from the very corner: {}", lines[0]);
         assert!(lines[0].contains("● needs you") && text.contains("claude"), "the active pane keeps its session and state: {}", lines[0]);
         assert!(text.contains("+ New") && text.contains("Menu"), "New and Actions stay in the sidebar foot");
-        assert!(lines[0].contains("─ 1  ") && lines[0].contains("  + ") && !lines[0].contains('▯'), "the tab's number and name in the pane's title, then the + chip; no layout switch: {}", lines[0]);
+        assert!(lines[0].contains("─ claude ") && lines[0].contains("  + ") && !lines[0].contains('▯'), "the tab's name in the pane's title (a lone tab has no number), then the + chip; no layout switch: {}", lines[0]);
         // Projects and their sessions, nothing in between.
         assert!(text.contains("−  shop-api") && text.contains("SESSIONS") && text.contains("●1"), "a project: its fold arrow and name; what needs you in the sidebar's title");
         assert!(!text.contains("AGENTS") && !text.contains("TERMINALS") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "no heading per kind of session");
@@ -773,7 +773,7 @@ mod screen_tests {
         assert!(o.contains("Run npm test -- checkout?") && o.contains("Reply m") && o.contains("Open o"), "the question and what to do about it");
         assert!(o.contains("↑↓") && o.contains("select") && o.contains("Esc") && o.contains("close"), "the sheet's keys");
         // It's docked beside the panes, not over them: the session's card is still there.
-        assert!(o.contains("─ 1  claude "), "the panes reflow beside it");
+        assert!(o.contains("─ claude "), "the panes reflow beside it");
         // 2 answers the selected question without going there.
         app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::GoTo { .. }), "still in the Inbox");
@@ -1348,7 +1348,8 @@ mod screen_tests {
         let (app, [a, b, c], rows) = grid_frame(200, 50);
         let (ta, tb, tc) = (top_border(&app, &rows, a), top_border(&app, &rows, b), top_border(&app, &rows, c));
         let spinner = crate::client::design::glyph(&app, Status::Working);
-        assert!(ta.starts_with("┌─ ▲  1  1 · claude   + ─"), "needs you inside the current tab, its number chip, then pane 1 before the name: {ta}");
+        assert!(ta.starts_with("┌─ ▲  1 · claude   + ─"), "needs you inside the current tab, then pane 1 before the name: {ta}");
+        assert_eq!(ta.matches(" 1 ").count(), 1, "a lone tab has no number chip: only the pane's 1: {ta}");
         assert!(tb.starts_with(&format!("┌─ {spinner} 2 · codex ─")), "one name chip, the spinner and pane 2 inside it: {tb}");
         assert!(tc.starts_with("┌─ 3 · shell ─"), "no state for a shell, pane 3: {tc}");
         for (top, name) in [(&ta, "claude"), (&tb, "codex"), (&tc, "shell")] {
@@ -1416,7 +1417,7 @@ mod screen_tests {
             let rows: Vec<String> = o.lines().map(str::to_string).collect();
             let (ta, tb, tc) = (top_border(&app, &rows, a), top_border(&app, &rows, b), top_border(&app, &rows, c));
             let spinner = crate::client::design::glyph(&app, Status::Working);
-            assert!(ta.starts_with(&format!("┌─ {spinner} 1  ")), "{w}x{h}: working, in the current tab: {ta}");
+            assert!(ta.starts_with(&format!("┌─ {spinner} 1 · ")), "{w}x{h}: working, in the current tab: {ta}");
             assert!(tb.starts_with("┌─ ▲  "), "{w}x{h}: needs you, in the name chip: {tb}");
             assert!(tc.starts_with("┌─ ") && !tc.contains('▲') && !tc.contains(&spinner), "{w}x{h}: done shows no glyph: {tc}");
             for top in [&ta, &tb, &tc] {
@@ -1507,15 +1508,23 @@ mod screen_tests {
             let rows: Vec<String> = o.lines().map(str::to_string).collect();
             let (ta, tb) = (top_border(&app, &rows, a), top_border(&app, &rows, b));
             let tab = border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab)));
-            assert!(tab.len() == 1 && ta.contains("▲  1 "), "{w}: the current tab, its glyph inside: {ta}");
+            assert!(tab.len() == 1 && ta.contains("▲  1"), "{w}: the current tab, its glyph inside: {ta}");
             assert!(!ta.contains("needs you") && ta.matches("claude").count() <= 1, "{w}: {ta}");
             let spinner = crate::client::design::glyph(&app, Status::Working);
             assert!(tb.contains(&format!("{spinner} 2")) && tb.matches("codex").count() <= 1, "{w}: the name chip carries the spinner and the number: {tb}");
             shortened |= tb.contains(&format!("{spinner} 2 · codex-")) && tb.contains('…');
         }
         assert!(shortened, "somewhere a name chip shortens its name and keeps its glyph");
-        // Narrower still, a tab that cannot fit at its shortest gives way to its glyph alone.
-        let (app, [a, ..], rows) = grid_frame(40, 20);
+        // Narrower still, a tab that cannot fit at its shortest (a session of several tabs, so
+        // with its number chip) gives way to its glyph alone.
+        let (_, mut app) = super::design_tests::render_with(40, 20);
+        app.cfg.ui.layout = "grid".into();
+        let [a, ..] = three_panes(&mut app);
+        let mut second = app.screen.tabs[0].clone();
+        (second.layout, second.focus) = (crate::layout::Node::Leaf(a), a);
+        app.screen.tabs.push(second);
+        let o = draw(&mut app, 40, 20);
+        let rows: Vec<String> = o.lines().map(str::to_string).collect();
         let ta = top_border(&app, &rows, a);
         assert!(ta.starts_with("┌─ ▲ ─"), "the glyph alone: {ta}");
         assert!(border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab))).is_empty(), "the tab gave way: {ta}");
@@ -4064,7 +4073,7 @@ second line
         app.open_changes(repo.clone());
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains(" Changes c ") && o.contains("─ 1  claude "), "Changes docks beside the panes");
+        assert!(o.contains(" Changes c ") && o.contains("─ claude "), "Changes docks beside the panes");
         assert!(!o.contains("─ Changes "), "its lit tab names it; the title doesn't repeat it");
         let _ = std::fs::remove_dir_all(&repo);
     }
