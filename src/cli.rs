@@ -1698,7 +1698,8 @@ fn claude_statusline(doc: &jsonc::Doc, exe: &str, uninstall: bool) -> Result<()>
 /// that moved). Empty when they're right, or when there are none.
 pub fn stale_claude_hooks() -> Vec<String> {
     let (Ok(exe), Ok(text)) = (this_exe(), std::fs::read_to_string(claude_settings())) else { return Vec::new() };
-    let Ok(root) = serde_json::from_str::<Value>(&text) else { return Vec::new() };
+    // Comments are allowed: the hooks may have been installed into a commented file.
+    let Some(root) = jsonc::parse_value(&text) else { return Vec::new() };
     stale_in(&root, &format!("\"{exe}\" hook claude"))
 }
 
@@ -1732,7 +1733,7 @@ fn stale_in(root: &Value, want: &str) -> Vec<String> {
 /// The app's Claude hooks are in, but not its status line (installed before there was one).
 fn needs_statusline() -> bool {
     let Ok(text) = std::fs::read_to_string(claude_settings()) else { return false };
-    let Ok(root) = serde_json::from_str::<Value>(&text) else { return false };
+    let Some(root) = jsonc::parse_value(&text) else { return false };
     let hooked = root.get("hooks").and_then(Value::as_object).is_some_and(|h| h.values().filter_map(Value::as_array).flatten().any(is_ours));
     let cmd = root.get("statusLine").and_then(|s| s.get("command")).and_then(Value::as_str).unwrap_or_default();
     hooked && !is_our_statusline(cmd)
@@ -2544,6 +2545,19 @@ mod tests {
         let untagged = serde_json::json!({ "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "/home/me/.local/bin/hydra hook claude" }] }] } });
         assert_eq!(super::stale_in(&untagged, want), vec!["/home/me/.local/bin/hydra hook claude".to_string()]);
         assert!(!super::runs_our_hook("hydra-lint check"), "only the app's own hook");
+    }
+
+    #[test]
+    fn stale_hooks_are_found_in_a_commented_settings_file() {
+        let want = concat!("\"/home/me/.local/bin/", env!("APP_COMMAND"), "\" hook claude");
+        let old = concat!("\"/home/me/.cargo/bin/", env!("APP_COMMAND"), "\" hook claude");
+        let text = format!(
+            "{{\n  // my settings\n  \"hooks\": {{ \"Stop\": [ {{ \"_{app}\": true, \"hooks\": [{{ \"type\": \"command\", \"command\": {cmd} }}] }} ] }}\n}}\n",
+            app = env!("APP_COMMAND"),
+            cmd = serde_json::to_string(old).unwrap()
+        );
+        let root = super::jsonc::parse_value(&text).expect("a commented settings file still reads");
+        assert_eq!(super::stale_in(&root, want), vec![old.to_string()], "a moved install is found despite the comment");
     }
 
     #[test]
