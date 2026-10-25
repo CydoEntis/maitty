@@ -47,7 +47,7 @@ fn tree_of_now(top: &Path) -> Result<String, String> {
     let index = real.with_file_name(format!("{APP_COMMAND}-snapshot-index-{}-{n}", std::process::id()));
     // Started from the real index, git only reads the files that changed since.
     if real.exists() {
-        std::fs::copy(&real, &index).map_err(|e| format!("couldn't copy the index: {e}"))?;
+        copy_index(&real, &index)?;
     }
     let tree = git_with_index(top, &index, &["add", "-A"]).and_then(|_| git_with_index(top, &index, &["write-tree"]));
     // Its lock goes with it if git was stopped halfway.
@@ -59,6 +59,17 @@ fn tree_of_now(top: &Path) -> Result<String, String> {
         }
     }
     tree
+}
+
+/// Copy the index with its modified time. git takes a file whose stat matches its entry as
+/// unchanged only when the index is newer than the file, so a copy dated now would hide an
+/// edit made in the second the real index was written. Windows' copy keeps the time; Linux's
+/// does not.
+fn copy_index(real: &Path, copy: &Path) -> Result<(), String> {
+    let failed = |e: std::io::Error| format!("couldn't copy the index: {e}");
+    std::fs::copy(real, copy).map_err(failed)?;
+    let written = std::fs::metadata(real).and_then(|m| m.modified()).map_err(failed)?;
+    std::fs::File::options().write(true).open(copy).and_then(|f| f.set_modified(written)).map_err(failed)
 }
 
 /// The tree of everything in `dir`'s checkout right now, as a snapshot would keep it.
@@ -234,5 +245,28 @@ mod tests {
         let plain = Scratch::new("plain");
         assert_eq!(take(plain.path(), "x"), Ok(None));
         assert!(list(plain.path()).is_empty() && restore(plain.path(), "abc").is_err());
+    }
+
+    /// git trusts a file that looks unchanged only when the index was written after the
+    /// file's last change; an edit in the second the index was written is read in full. Here
+    /// stat sees whole seconds only, as with a git built without sub-second times, and that
+    /// second is in the past, as when a fingerprint is taken a second or more later.
+    #[test]
+    fn an_edit_in_the_second_the_index_was_written_is_seen() {
+        let dir = repo("racy");
+        let at = |name: &str| dir.path().join(name);
+        let index = PathBuf::from(git(dir.path(), &["rev-parse", "--absolute-git-dir"]).unwrap()).join("index");
+        let back_then = std::time::SystemTime::now() - std::time::Duration::from_secs(10);
+        let date = |file: &Path| std::fs::File::options().write(true).open(file).unwrap().set_modified(back_then).unwrap();
+        for (key, value) in [("core.checkStat", "minimal"), ("core.trustCtime", "false")] {
+            proc::git(dir.path(), &["config", key, value]).unwrap();
+        }
+        date(&at("kept.txt"));
+        proc::git(dir.path(), &["update-index", "--refresh"]).unwrap();
+        std::fs::write(at("kept.txt"), "two\n").unwrap();
+        date(&at("kept.txt"));
+        date(&index);
+        let tree = tree_now(dir.path()).unwrap().unwrap();
+        assert_eq!(git(dir.path(), &["rev-parse", &format!("{tree}:kept.txt")]), git(dir.path(), &["hash-object", "kept.txt"]));
     }
 }
