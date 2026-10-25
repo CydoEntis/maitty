@@ -307,12 +307,6 @@ fn remove_worktree_dir(dir: &std::path::Path) -> Result<String, String> {
     if out.status.success() { Ok(format!("removed {}", dir.display())) } else { Err(String::from_utf8_lossy(&out.stderr).trim().to_string()) }
 }
 
-/// Used where a key handler replaces the view itself and must not restore the old one.
-fn true_and_replace() -> bool {
-    false
-}
-
-
 /// A row in the worktree picker.
 #[derive(Debug, Clone)]
 enum WtRow {

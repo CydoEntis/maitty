@@ -10242,6 +10242,16 @@ mod drawer_tab_tests {
     }
 
     #[test]
+    fn d_in_files_does_not_open_changes() {
+        let (mut app, dir) = in_repo("nod");
+        app.act(Action::Files);
+        key(&mut app, KeyCode::Char('d'), KeyModifiers::NONE);
+        assert_eq!(open(&app), Some(screen::SheetKind::Files), "Changes is c, not d");
+        assert!(!text(&draw(&mut app)).contains("Show diff"), "no button offers it either");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_click_on_a_tab_switches_to_it() {
         let (mut app, dir) = in_repo("click");
         app.act(Action::Files);

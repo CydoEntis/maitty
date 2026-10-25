@@ -633,7 +633,6 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
         ("Editor", "e", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('e'))),
         ("Open", "o", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('o'))),
         ("Copy path", "y", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('y'))),
-        ("Show diff", "d", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('d'))),
     ]);
     action_row(app, buf, area, t, &buttons, &[seg("PgUp PgDn / wheel scroll", Style::default().fg(t.muted))]);
 }
