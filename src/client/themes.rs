@@ -393,6 +393,8 @@ mod tests {
         app.on_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::Themes { sel, .. } if sel == default + PAGE_ROWS));
         app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
+        // At 40 columns the swatches clip the label to its first few letters.
+        let last: String = theme_label(BUILTIN.last().unwrap()).chars().take(6).collect();
         for (width, height) in [(100, 30), (80, 24), (40, 10)] {
             let buffer = draw(&mut app, width, height);
             let text = buffer
@@ -400,9 +402,8 @@ mod tests {
                 .iter()
                 .map(|cell| cell.symbol())
                 .collect::<String>();
-            // At 40 columns the swatches clip the label to "Zenbone".
             assert!(
-                text.contains("Zenbone"),
+                text.contains(&last),
                 "the last theme remains visible at {width}x{height}"
             );
         }
