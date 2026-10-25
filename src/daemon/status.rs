@@ -360,6 +360,8 @@ impl Daemon {
         if t.status == new {
             return;
         }
+        // Only the latest reason is kept on the pane: the log is how a wrong alert is traced.
+        tracing::info!("pane {term} ({}): {:?} -> {new:?}: {why}", t.agent.as_deref().unwrap_or("no agent"), t.status);
         t.status_why = why.to_string();
         let turn = (t.status == Status::Working && t.agent.is_some())
             .then(|| (t.agent.clone().unwrap_or_default(), t.place(), term::unix_now().saturating_sub(t.status_since)));

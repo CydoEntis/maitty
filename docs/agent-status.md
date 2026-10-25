@@ -121,6 +121,10 @@ been still for 5 seconds: Claude's input box is on screen all turn, and its titl
 idle while its own Stop hooks still run, so an animating screen waits for the hook. Hosts without an explicit idle screen
 signal rely on their lifecycle completion events.
 
+Every status change goes to `daemon.log` in the data folder at info level, with the pane,
+agent, old and new status and the reason (`hook: Stop`, `screen: claude rule …`), so the
+cause of an alert is one search away: `pane 4 (claude): Working -> Done: hook: Stop`.
+
 A working agent with no output and no hook report for 10 minutes is marked quiet
 (`quiet_since` on the wire): it may be stuck. Quiet never changes its status, which
 stays working. An agent waiting on helpers it reported, or asking to start helpers,
