@@ -71,6 +71,9 @@ pub(in crate::client) struct Look {
     pub flat: bool,
     /// Grid: each pane a box in its own colour (ADR 0015).
     pub grid: bool,
+    /// Hairline: no boxes, only `│` / `─` hairlines, and always square (ADR 0026). Drawing
+    /// asks this, and takes its colours from `hairline::Ink`.
+    pub hairline: bool,
     pub rounded: bool,
     /// Rows between stacked cards, and columns between cards side by side.
     pub gap: u16,
@@ -87,11 +90,14 @@ impl Look {
         use crate::config::LayoutKind;
         let kind = ui.layout_kind();
         let flat = kind == LayoutKind::Compact;
-        let tiled = kind == LayoutKind::Tiled || flat;
+        let hairline = kind == LayoutKind::Hairline;
+        let tiled = kind == LayoutKind::Tiled || flat || hairline;
+        let rounding = ui.rounding();
         Look {
             flat,
             grid: kind == LayoutKind::Grid,
-            rounded: ui.rounded.corners(),
+            hairline,
+            rounded: rounding.corners(),
             gap: if tiled { 0 } else { ui.gap.parse().unwrap_or(1).min(2) },
             dim: if flat { 0.0 } else { match ui.dim.as_str() {
                 "off" => 0.0,
@@ -99,9 +105,9 @@ impl Look {
                 "60%" => DIM_STRONG,
                 _ => DIM_DEFAULT,
             } },
-            caps: ui.rounded.caps(),
-            round_tabs: ui.rounded.caps(),
-            round_rows: ui.rounded.caps(),
+            caps: rounding.caps(),
+            round_tabs: rounding.caps(),
+            round_rows: rounding.caps(),
         }
     }
 }

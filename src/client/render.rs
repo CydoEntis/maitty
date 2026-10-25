@@ -24,7 +24,7 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     let area = f.area();
     let t = app.theme.clone();
     set_palette(t.ansi, t.ansi.map(|_| t.card2));
-    super::screen::set_round(app.cfg.ui.rounded.caps());
+    super::screen::set_round(app.cfg.ui.rounding().caps());
     // The terminal's own background (its window padding) matches ours while we run.
     let terminal_bg = app.cfg.ui.background != "solid";
     if let Color::Rgb(r, g, b) = t.bg

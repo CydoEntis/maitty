@@ -184,6 +184,11 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
 
 // Settings ------------------------------------------------------------------------------------
 
+/// A setting the current look ignores: Rounded in Hairline, which is always square.
+fn unused_here(app: &App, row: &SRow) -> bool {
+    matches!(row, SRow::Setting(s) if s.path == "ui.rounded") && Look::of(&app.cfg.ui).hairline
+}
+
 /// The values a settings row offers as chips, and which one is current.
 pub(in crate::client) fn chips_for(app: &App, row: &SRow) -> Option<(Vec<String>, Option<usize>)> {
     use crate::client::modal::Kind;
@@ -395,7 +400,8 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                 if sel {
                     put(buf, r.x + 4, y, &[seg("›", st.fg(t.accent).add_modifier(Modifier::BOLD))], r.right());
                 }
-                let mut ls = st.fg(if sel { t.strong } else { t.text });
+                let unused = unused_here(app, row);
+                let mut ls = st.fg(if unused { t.muted } else if sel { t.strong } else { t.text });
                 if sel {
                     ls = ls.add_modifier(Modifier::BOLD);
                 }
@@ -413,7 +419,9 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                     let need: usize = opts.iter().map(|o| o.width() + 3).sum();
                     vx as usize + need < r.right() as usize - 3
                 });
-                if let Some((opts, cur)) = chips.filter(|_| !(sel && v.editing.is_some())) {
+                if unused {
+                    put(buf, vx, y, &[seg(" not in Hairline", st.fg(t.muted).add_modifier(Modifier::ITALIC))], r.right() - 3);
+                } else if let Some((opts, cur)) = chips.filter(|_| !(sel && v.editing.is_some())) {
                     let mut cx = vx;
                     for (vi, o) in opts.iter().enumerate() {
                         let on = Some(vi) == cur;
