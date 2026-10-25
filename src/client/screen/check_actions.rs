@@ -78,7 +78,7 @@ impl App {
 
     pub(in crate::client) fn override_check(&mut self, term: TermId, name: Option<String>, reason: String) {
         self.cmd(Command::OverrideCheck { term, name, reason });
-        // As checks7.js's doOverride: the evidence it now stands on is shown.
+        // After an override the evidence it now stands on is shown.
         if !matches!(&self.view, Some(crate::client::View::Check(v)) if v.term == term) {
             self.open_check_sheet(term);
         }

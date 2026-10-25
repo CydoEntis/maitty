@@ -82,25 +82,20 @@ ratatui's `TestBackend` and assert on the text and cell styles;
 Tests live next to the code they test. Client UI tests build a fake snapshot
 with `design_tests::render_with(w, h)` (projects, worktrees, agents in
 each state) and drive it with `app.on_key` / `app.act`. v7 layout tests use
-`client/v7_fixture.rs`: `world(stage)` is the handoff's sample world (affiliate-site,
-pixls, maitty) with fix-footer's check at one of `checks7.js`'s stages, on a pinned clock
+`client/v7_fixture.rs`: `world(stage)` is the reference sample world (affiliate-site,
+pixls, maitty) with fix-footer's check at one of its stages, on a pinned clock
 (`screen::FIXED_NOW`), and `frame(app, layout, w, h, glyphs)` draws it as text in Cards
-floating, Cards tiled or Flat, to compare with the handoff's frames
-(`docs/design/v7/render-frames.mjs`).
+floating, Cards tiled or Flat, to compare with the reference frames.
 
 `client/v7_frames_tests.rs` holds one test per v7 preset (01–17, A1–A5, B1–B2, C1–C2). Each
 draws the whole screen in every layout at 160×45, 100×30 and 80×24 (and ASCII at Flat 80×24)
 and compares it cell for cell with the reference in `client/v7_frames/<preset>.txt`. Its
 header lists the masks (the pane's terminal text, the working spinner and ages the fixture
 can't pin, the sample's checkpoint kinds) and every deliberate difference from the sample. A
-failure prints each differing row as got/want. The reference files are generated, never
-edited by hand; regenerate them from the repo root (Git Bash) with:
-
-```sh
-T=$(mktemp -d) && cp docs/design/v7/*.js "$T" && echo '{"type":"module"}' > "$T/package.json"
-node docs/design/v7/render-frames.mjs "$T" "$T/frames.txt"
-node src/client/v7_frames/split-frames.mjs "$T/frames.txt"
-```
+failure prints each differing row as got/want. The reference frames
+(`client/v7_frames/*.txt`, `client/screen/v7_ref.txt`, `client/screen/check_modals_frames.txt`
+and `client/screen/side_frames.txt`) are fixed fixtures. Update them by hand, in the same
+change, only when the design itself changes; never to make a failing test pass.
 
 The website's screenshots are real frames: `client/site_frames.rs` draws made-up app states
 (hero, grid, changes, files, inbox, the four looks, shortcut mode, the splash) in `night` and

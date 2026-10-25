@@ -428,8 +428,8 @@ macOS. On Linux a check's grandchild process can outlive the daemon
 - **Open decisions (ask before building):** where the command is configured (user config or the
   repo); the timeout; whether a re-run happens on every turn end or only when the files changed;
   what the Inbox says for a check that cannot run.
-- **Design:** design brief v6 and its handoff, since replaced by [`design/v7/`](design/v7/)
-  (`maitty-checks/checks.js` is the spec; drawn in the Flat style only). Checkpoints must work in
+- **Design:** design brief v6 and its handoff, since replaced by the v7 handoff
+  (`maitty-checks/checks.js` was the spec; drawn in the Flat style only). Checkpoints must work in
   all three layouts (Cards floating, Cards tiled, Flat) at 80×24, 100×30 and 160×45. Flat is built
   first; floating and tiled follow the designer's versions. Decisions taken from the handoff:
   10-minute timeout, run after every turn end, a separate Inbox group for checks that could not
@@ -478,7 +478,7 @@ one click on the Family row while a job is being edited leaves the edit open.
 
 ### 18 — The v7 layout and checkpoints · shipped in v0.40.0, live checks open
 
-The user supplied the v7 handoff on 2026-10-22 ([`design/v7/`](design/v7/), `checks7.js` is the spec) and
+The user supplied the v7 handoff on 2026-10-22 and
 asked for all of it: a new layout for the app, not a pass over the old one. Covers the frame in all three
 layouts (Cards floating, Cards tiled, Flat) at 160×45, 100×30 and 80×24 with the drop order below 140 and
 100 columns, every check screen, approving a repo's `.maitty/checks.toml` command (Enter, y and Space never
@@ -504,7 +504,7 @@ protocol change). Not checked live: 80×24, 100×30 and 160×45, ASCII and Nerd 
 
 ### 19 — The v8 cleanup · shipped in v0.41.0, live checks open
 
-The user supplied the v8 handoff ([`design/v8/`](design/v8/); `app8.js` is the spec) and asked for it with
+The user supplied the v8 handoff and asked for it with
 the rulings in [ADR-0014](adr/0014-v8-cleanup.md) where the two differ. One protocol bump for the whole of
 v8: 44 to 45. This phase covers the cuts the user asked for by name: the fleet commander (`Start a fleet`,
 `Fleet commander` in the row menu, `maitty brief`, `[team]` jobs and their validation, the `job` argument of
@@ -656,7 +656,7 @@ padding in a real terminal at 80×24, 100×30 and 160×45. Also fixed here: Back
 ### 26 — The inspector drawer · planned 2026-10-24
 
 The user asked on 2026-10-24 for the file tree, branch and diff in a native, resizable drawer,
-after reviewing the [inspector design handoff](design/inspector-v1/README.md). It grows the
+after reviewing the inspector design handoff. It grows the
 existing side panel rather than adding a second one; the sidebar keeps its state; markdown reads
 pretty with pulldown-cmark. Intent: [inspector-drawer](features/inspector-drawer/intent.md),
 spec: [spec](features/inspector-drawer/spec.md). Tickets are labelled `phase-26`; no protocol
@@ -871,7 +871,7 @@ Everything below is shipped on `main` unless marked.
 ## Records
 
 Docs: `AGENTS.md`, `docs/` (architecture, standards, testing, security, UI, API patterns), `docs/stack/rust.md`.
-Design references: the v8 handoff [`design/v8/`](design/v8/README.md) (current), the inspector handoff [`design/inspector-v1/`](design/inspector-v1/README.md) (the drawer, phases 26–28; `theme.js` is its spec) and the v7 handoff [`design/v7/`](design/v7/README.md) (layout and checkpoints; its frames back the tests). Older briefs and handoffs (v1–v6, Flat, wake-up) are in git history.
+Design: [`DESIGN.md`](DESIGN.md) (the current design). The design handoffs (v1–v8, Flat, wake-up, inspector, splash) are in git history.
 Glossary: none yet.
 Feature docs: `docs/features/`. Each live intent is linked from its phase; shipped or removed intents are in git history.
 

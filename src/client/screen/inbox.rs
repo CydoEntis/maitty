@@ -26,7 +26,7 @@ pub(super) fn inbox_rows(model: &[Proj], heads: usize) -> Vec<GoRow> {
         .chain(check_inbox::rows(model, |r| matches!(r, GoRow::Approve(_))))
         .chain(quiet.into_iter().map(|s| GoRow::Quiet(s.term)))
         .collect();
-    // Finished: a session with a check result first, then the newest (checks7.js's order).
+    // Finished: a session with a check result first, then the newest (the reference's order).
     let mut done: Vec<&Session> = waiting.iter().map(|(s, ..)| s).filter(|s| check::finished(s)).collect();
     done.sort_by_key(|s| (s.checks.is_empty(), std::cmp::Reverse(s.since)));
     let finished = done.into_iter().map(|s| GoRow::Done(s.term)).collect();
@@ -328,11 +328,11 @@ mod tests {
     use crate::client::View;
     use crate::protocol::{CheckState, ClientMsg, Command};
 
-    /// The handoff's sample question and first failing line, in place of the fixture's.
+    /// The reference's sample question and first failing line, in place of the fixture's.
     const QUESTION: &str = "Use pnpm or npm for the workspace?";
     const FAILING: &str = "✗ legal.test.tsx › footer shows current year";
 
-    /// The world at `stage` with the handoff's sample words, the Inbox open on `term`'s item.
+    /// The world at `stage` with the reference's sample words, the Inbox open on `term`'s item.
     fn inbox_world(stage: Stage, term: TermId) -> App {
         let mut app = world(stage);
         app.cfg.ui.glyphs = "unicode".into();
@@ -417,11 +417,11 @@ mod tests {
     }
 
     #[test]
-    fn the_inbox_lists_needs_you_then_failed_checks_then_finished_as_the_handoff_draws_it() {
+    fn the_inbox_lists_needs_you_then_failed_checks_then_finished_as_the_reference_draws_it() {
         matches_reference("11 Inbox", Stage::Failed, 1, |_| {}, |_| {});
     }
 
-    /// The handoff's sample asked a minute ago; the fixture's turn ended two minutes ago.
+    /// The reference's sample asked a minute ago; the fixture's turn ended two minutes ago.
     #[test]
     fn a_repo_command_waits_as_needs_you_with_one_way_to_read_it() {
         let a_minute_ago = |app: &mut App| {
@@ -431,7 +431,7 @@ mod tests {
         matches_reference("A1 Repo command waits", Stage::Approve, 1, a_minute_ago, |_| {});
     }
 
-    /// The fixture's checkpoints are build and test; the handoff's sample kinds (commits,
+    /// The fixture's checkpoints are build and test; the reference's sample kinds (commits,
     /// approval, review) are not built, and nor is its footnote.
     #[test]
     fn several_checkpoints_read_as_one_word_then_each_checkpoint() {

@@ -78,9 +78,9 @@ mod design_tests {
         let (tx, _rx) = mpsc::unbounded_channel();
         let (bg_tx, _bg_rx) = mpsc::unbounded_channel();
         let mut cfg = Config::default();
-        // The handoff's own glyphs: its tests read a state by shape. `dots` is the default.
+        // The reference's own glyphs: its tests read a state by shape. `dots` is the default.
         cfg.ui.glyphs = "unicode".into();
-        // The handoff has no padding round the screen; its frames are compared cell for cell.
+        // The reference has no padding round the screen; its frames are compared cell for cell.
         cfg.ui.padding = "0".into();
         let mut app = App::new(cfg, tx, None, bg_tx);
         app.splash = false;
@@ -633,7 +633,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn main_screen_follows_the_handoff() {
+    fn main_screen_follows_the_reference() {
         let (text, mut app) = super::design_tests::render_with(160, 45);
         show(&text);
         let lines: Vec<&str> = text.lines().collect();
@@ -941,7 +941,7 @@ mod screen_tests {
         // The theme's ground, handed back to the terminal's own background (SGR 49) when
         // the app draws on it.
         let ground = |bg| bg == app.theme.bg || bg == ratatui::style::Color::Reset;
-        assert!(ground(buffer[(inner.x + 1, inner.y)].bg), "the default terminal ground is the zone's body, as checks7.js's panel draws it");
+        assert!(ground(buffer[(inner.x + 1, inner.y)].bg), "the default terminal ground is the zone's body, as the reference's panel draws it");
         assert!(ground(buffer[(inner.x + 2, inner.y)].bg), "empty terminal cells keep the same ground");
         assert_eq!(buffer[(inner.x + inner.width / 2, 0)].bg, app.theme.card, "only row 0 is the card strip");
         show(&draw(&mut app, 160, 45));
@@ -6020,7 +6020,7 @@ mod check_row_tests {
         (r.x..r.right()).map(|x| &buf[(x, y)]).find(|c| c.symbol() == symbol).unwrap_or_else(|| panic!("no {symbol} on row {y}"))
     }
 
-    /// The column a row's edge bar is drawn in: the handoff's X.
+    /// The column a row's edge bar is drawn in: the reference's X.
     fn bar_column(app: &App) -> u16 {
         app.screen.side_rect.x + if app.cfg.ui.layout == "flat" { 1 } else { 2 }
     }

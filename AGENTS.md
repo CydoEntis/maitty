@@ -23,6 +23,7 @@ Load them when the work touches their area, not all of them up front.
 | [`docs/SECURITY.md`](docs/SECURITY.md) | handling input, auth, secrets, permissions, or adding a dependency | threat checklist, auth rules, secrets, supply chain |
 | [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) | adding config or env vars, changing setup | config loading, `.env.example`, local setup, environments |
 | [`docs/UI.md`](docs/UI.md) | building or changing any user interface | component structure, UI state, async states, accessibility |
+| [`docs/DESIGN.md`](docs/DESIGN.md) | changing how the app looks | the current visual language: themes, layouts, chips, sidebar, panels, splash |
 | [`docs/COMMIT-STANDARDS.md`](docs/COMMIT-STANDARDS.md) | committing, branching, opening a PR | message format, commit workflow, git safety |
 | the plan doc (see *Planning*) | starting, finishing, or scoping work | what is in, out, and in what order |
 | [`docs/stack/`](docs/stack/) | touching a technology that has a stack doc | the rules for each technology used in this project |
@@ -290,7 +291,7 @@ runs a nested server with `MAITTY_SOCKET=<name> maitty`.
 
 ## Project-specific: workflow and tooling
 
-- **Plan:** `docs/ROADMAP.md` (the plan doc: phases, scope, decisions, rules). Design references: the v8 handoff `docs/design/v8/` (the current design; `app8.js` is the spec, ADR 0014 records where the app differs) and the v7 handoff `docs/design/v7/` (the layout and checkpoints; `checks7.js` is the spec, `render-frames.mjs` prints the frames the tests compare against), and the inspector handoff `docs/design/inspector-v1/` (the side-panel drawer, phases 26–28; `theme.js` is the spec). Older briefs and handoffs are in git history.
+- **Plan:** `docs/ROADMAP.md` (the plan doc: phases, scope, decisions, rules). The current design is [`docs/DESIGN.md`](docs/DESIGN.md).
 - **Branches:** work lands on `dev` at https://github.com/CydoEntis/maitty; one
   commit per logical change, pushed after the gate passes.
 - **Install locally:** `cargo install --path .` (stop a running `maitty` first on

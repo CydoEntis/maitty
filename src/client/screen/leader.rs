@@ -10,7 +10,7 @@ const NAME_MAX: usize = 40;
 /// it here too.
 pub(in crate::client) type MenuItem = (&'static str, Action);
 
-/// The Menu's groups, a blank row apart, in the handoff's order. "Shell here" starts a plain
+/// The Menu's groups, a blank row apart, in the reference's order. "Shell here" starts a plain
 /// shell (what `n` does); "Session" starts an agent straight away (`s`).
 pub(in crate::client) fn menu_groups() -> Vec<Vec<MenuItem>> {
     vec![

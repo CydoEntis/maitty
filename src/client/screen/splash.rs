@@ -1,5 +1,5 @@
 //! The splash screen: the wordmark rising from deep water, a swell under it, the tagline, and
-//! the choices (docs/design/splash/, `splash.js` is the spec).
+//! the choices (see docs/UI.md, splash).
 
 use super::*;
 use crate::theme::mix;

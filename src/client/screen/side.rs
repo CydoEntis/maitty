@@ -1,5 +1,5 @@
 //! The sidebar card: projects, their sessions in one to three lines each, and the lines they
-//! are drawn from. The layout is the v7 handoff's `drawSide` (`docs/design/v7/checks7.js`).
+//! are drawn from. Its rows are held to the reference frames (`side_frames.txt`).
 
 use super::check;
 use super::glyphs::Kind as State;
@@ -205,7 +205,7 @@ fn row_term(model: &[Proj], l: &Line) -> Option<TermId> {
     }
 }
 
-/// Where the sidebar's rows go (the handoff's X and RX): the selection bar's column, and the
+/// Where the sidebar's rows go (the reference's X and RX): the selection bar's column, and the
 /// last column right-aligned text reaches. Tints and clipped lines run one past it.
 #[derive(Debug, Clone, Copy)]
 struct Cols {
@@ -533,7 +533,7 @@ fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, changed: Option<(i
         gs = gs.add_modifier(Modifier::BOLD);
     }
     let gx = cols.x + 2 + indent;
-    // The 3-bar spinner is two cells wide; the name steps right to make room, as the handoff's does.
+    // The 3-bar spinner is two cells wide; the name steps right to make room, as the reference's does.
     let gw = (g.width() as u16).max(1);
     put(buf, gx, y, &[seg(g, gs)], gx + gw);
     hit(app, Rect { x: gx, y, width: gw + 1, height: 1 }, ScreenHit::Why(s.term));
@@ -913,7 +913,7 @@ mod frame_tests {
     }
 
     /// The reference's folders in the order the app lists them: a folder with a session that
-    /// needs you goes first, where the handoff's sample keeps its own order.
+    /// needs you goes first, where the reference's sample keeps its own order.
     fn in_app_order(rows: &[String], got: &[String]) -> Vec<String> {
         let blocks: Vec<&[String]> = rows.split(String::is_empty).filter(|b| !b.is_empty()).collect();
         let name = |b: &[String]| b[0].split_whitespace().nth(1).unwrap_or_default().to_string();

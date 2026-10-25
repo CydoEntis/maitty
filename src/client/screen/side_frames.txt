@@ -1,11 +1,11 @@
-# The sidebar's inner rows in the v7 reference frames (docs/design/v7/render-frames.mjs), cut
+# The sidebar's inner rows in the v7 reference frames, cut
 # to columns X-1..RX+1 of a card (X..RX in Flat) and its rows inside the border, as the v7
 # fixture draws them. "+++++" is the title's counts, right-aligned on the top row; "-----"
 # is the foot row; the rows between the last listed one and the foot are blank.
-# The handoff's sample data is swapped for the fixture's:
+# The reference's sample data is swapped for the fixture's:
 # - the working spinner cell is "◌" (any glyph) and add-payments started 0s ago, not "now";
 # - quick-fox is unseen, so it reads "finished · not seen" at 140 columns and up;
-# - line 3 is the fixture's first failing line, and only on a failed row (checks7.js sets it
+# - line 3 is the fixture's first failing line, and only on a failed row (the reference sets it
 #   on every stage, which the brief does not);
 # - C1 names the fixture's checkpoints, build and test, not commits/test/approval/review.
 ===== None | floating | 160x45 | unicode

@@ -1,6 +1,6 @@
-//! The v7 handoff's reference frames for the read-while-working screens, cut down to what is
-//! inside each sheet and popover (`v7_ref.txt`, from `docs/design/v7/render-frames.mjs`'s
-//! output: per preset, layout and size, the inside's position and size, then its rows with
+//! The reference frames for the read-while-working screens, cut down to what is
+//! inside each sheet and popover (`v7_ref.txt`, a fixed fixture:
+//! per preset, layout and size, the inside's position and size, then its rows with
 //! trailing spaces trimmed). Frame lines are not in it; they are tested with the frame.
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -14,7 +14,7 @@ pub(super) struct Ref {
 }
 
 impl Ref {
-    /// Row `i` as this package draws it where the handoff's sample data differs; `new` is
+    /// Row `i` as this package draws it where the reference's sample data differs; `new` is
     /// clipped like a drawn row, which keeps the inside's last column clear.
     pub fn set_row(&mut self, i: usize, new: &str) {
         self.rows[i] = new.chars().take(self.area.width.saturating_sub(1) as usize).collect::<String>().trim_end().to_string();

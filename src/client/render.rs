@@ -226,13 +226,13 @@ pub fn blend(a: Color, b: Color, t: f32) -> Color {
     }
 }
 
-/// Which working-spinner frame to show: it turns with motion on and rests on the handoff's
+/// Which working-spinner frame to show: it turns with motion on and rests on its
 /// third frame with motion off.
 fn working_step(app: &App, len: usize) -> usize {
     if app.motion_on() { (app.spinner_frame() % len as u64) as usize } else { REST_FRAME.min(len - 1) }
 }
 
-/// The frame the working spinner holds without motion (`checks7.js` `glyph`: `G.work[2]`).
+/// The frame the working spinner holds without motion (the third, as the reference frames draw it).
 const REST_FRAME: usize = 2;
 
 pub(super) fn status_icon(app: &App, s: Status) -> String {

@@ -31,8 +31,9 @@ Intent: [intent.md](intent.md) · Status: accepted · Date: 2026-10-24
 
 ## Design
 
-- **Source**: [`docs/design/inspector-v1/README.md`](../../design/inspector-v1/README.md) §2 and
-  its `theme.js`. Where the app differs: no sidebar fold, no PR status, keys as above.
+- **Source**: the inspector design handoff (in git history); the result is in
+  [DESIGN](../../DESIGN.md). Where the app differs from the handoff: no sidebar fold, no PR
+  status, keys as above.
 - **Data**: `Screen.saved` gains a width per view kind (serde default, so older files load).
 - **Reuses**: `sheet.rs` `split_for_sheet` and `SheetKind`; `design.rs` `draw_files`; `actions.rs`
   `open_files`, `open_path_from`, `open_changes`; the `branch.rs` switcher; `snapshot.rs` `list`;

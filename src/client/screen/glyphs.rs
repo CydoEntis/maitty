@@ -1,5 +1,5 @@
-//! The marks a session and its checks are drawn with, from the v7 handoff (`checks7.js` `GL`,
-//! `glyph`, `col`, `WORD`). In the handoff's sets shape and word carry the meaning and colour
+//! The marks a session and its checks are drawn with: glyph, colour and word for each state.
+//! In the full sets (Unicode, ASCII, Nerd) shape and word carry the meaning and colour
 //! only backs them, so a state reads in plain ASCII and without colour too. The `dots` set
 //! (the default) marks a session with a coloured dot and leaves the meaning to the colour and
 //! the word beside it.
@@ -78,7 +78,7 @@ pub(in crate::client) const ASCII: Glyphs = Glyphs {
     dots: false,
 };
 
-/// Unicode with Nerd Font icons where the handoff has one; each is drawn in one cell.
+/// Unicode with Nerd Font icons where the reference has one; each is drawn in one cell.
 pub(in crate::client) const NERD: Glyphs = Glyphs {
     needs: "\u{f0f3}",
     done: "\u{f00c}",
@@ -222,7 +222,7 @@ mod tests {
         CheckInfo { state, ..Default::default() }
     }
 
-    /// Every state the handoff names: what it is made of and how it must read in each set.
+    /// Every state the reference names: what it is made of and how it must read in each set.
     #[test]
     fn every_state_reads_by_glyph_colour_and_word_in_every_set() {
         let t = Theme::named(crate::theme::DEFAULT);

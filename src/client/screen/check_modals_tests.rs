@@ -1,5 +1,5 @@
 //! The v7 decide-screens: Override, the repo-command approval and Settings › Check, drawn on the
-//! handoff's sample world and set beside its reference frames, and the keys that make them hard
+//! reference sample world and set beside its reference frames, and the keys that make them hard
 //! to get wrong by reflex.
 use super::check_settings::{CheckDraft, CheckEdit};
 use super::*;
@@ -9,7 +9,7 @@ use crate::config::CheckDef;
 use crate::protocol::{ApprovalChoice, CheckSource};
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 
-/// Inside each modal, row by row, as the handoff's `render-frames.mjs` drew it (frame lines
+/// Inside each modal, row by row, as the reference frames draw it (frame lines
 /// excluded: they are the modal chrome's).
 const FRAMES: &str = include_str!("check_modals_frames.txt");
 const HOUR: u64 = 3600;
@@ -24,7 +24,7 @@ fn reference(preset: &str, w: u16, h: u16) -> Vec<String> {
     body[..end].lines().map(|l| l.replace('\\', std::path::MAIN_SEPARATOR_STR)).collect()
 }
 
-/// The modal's rectangle on a `w`×`h` screen, as the handoff places it.
+/// The modal's rectangle on a `w`×`h` screen, as the reference places it.
 fn modal_rect(preset: &str, w: u16, h: u16) -> (usize, usize, usize, usize) {
     let (mw, mh) = match preset.as_bytes()[0] {
         b'1' if preset.starts_with("12") => (70.min(w - 2), 15),
@@ -134,7 +134,7 @@ fn preset(name: &str) -> App {
 }
 
 #[test]
-fn each_modal_matches_the_handoff_inside_in_every_layout_at_every_size() {
+fn each_modal_matches_the_reference_inside_in_every_layout_at_every_size() {
     let presets = [
         "12 Override?",
         "14 Settings · empty",

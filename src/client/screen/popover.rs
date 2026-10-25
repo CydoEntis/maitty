@@ -625,7 +625,7 @@ mod why_tests {
         text(&buf, area)
     }
 
-    /// The handoff's sample counts the tests that failed, which a check's result does not carry.
+    /// The reference's sample counts the tests that failed, which a check's result does not carry.
     #[test]
     fn why_reads_the_turn_the_run_and_what_it_came_to() {
         for layout in LAYOUTS {

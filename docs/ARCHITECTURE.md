@@ -253,7 +253,8 @@ fails on the name written out. To rename the app:
    and put the old command first in `previous`. Build once and commit `Cargo.lock` too (it
    records the package name; releases build `--locked`).
 2. In `install.sh` and `install.ps1`, set `APP` / `$app` and the repository (a test checks them).
-3. Run `sh src/client/v7_frames/regen.sh` (the reference frames show the name).
+3. Replace the name in the reference frames by hand (they show it; see
+   [TESTING](TESTING.md#project-specific-layout-and-fixtures)).
 4. Replace the name in the docs (not the ADRs), then rename the GitHub repository.
 
 `client/screen/keyoverlay.rs` is the one key overlay: the key map, the search over every

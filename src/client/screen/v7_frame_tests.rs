@@ -1,4 +1,4 @@
-//! The v7 frame set beside the handoff's reference frames (`docs/design/v7/render-frames.mjs`):
+//! The v7 frame set beside the reference frames:
 //! the grid, the pane's title strip and right-hand mark, corners, where a sheet goes, the
 //! modal and popover frames, and the pointer's tint. Sidebar rows, sheet and modal contents
 //! and the pane's own terminal text belong to other screens and are left out.
@@ -30,7 +30,7 @@ fn modal_sizes(w: u16, h: u16) -> [(&'static str, u16, u16); 3] {
     [("12", (w - 2).min(70), 15), ("A2", (w - 2).min(84), (h - 1).min(20) - u16::from(h < 30)), ("15", (w - 2).min(80), (h - 2).min(20))]
 }
 
-/// The handoff's world with fix-footer's session in two tabs, as the reference draws it.
+/// The reference's world with fix-footer's session in two tabs, as the reference draws it.
 fn world(stage: Stage) -> App {
     let mut app = v7_fixture::world(stage);
     let owner = app.screen.tabs[app.screen.tab].owner;
@@ -488,7 +488,7 @@ fn a_selected_one_line_session_ends_in_caps() {
     }
 }
 
-/// The world drawn at 160×45 in `[ui] layout` `layout` (Grid included, which the handoff has not).
+/// The world drawn at 160×45 in `[ui] layout` `layout` (Grid included, which the reference has not).
 fn drawn_in(app: &mut App, layout: &str) -> Buffer {
     (app.cfg.ui.layout, app.cfg.ui.panes) = (layout.into(), "floating".into());
     app.screen_fresh();
@@ -696,7 +696,7 @@ fn a_hovered_border_chip_is_whole() {
                         if rounded == Rounding::Full {
                             assert!(r.width == 5 && [r.x + 1, r.right() - 2].iter().all(|&x| buf[(x, r.y)].symbol() == " "), "a space each side of the ✕ inside its caps: {at}");
                         }
-                        // A square ✕ keeps the handoff's place, flush with the border like every square chip.
+                        // A square ✕ keeps the reference's place, flush with the border like every square chip.
                         if rounded != Rounding::Full {
                             continue;
                         }

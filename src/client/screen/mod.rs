@@ -1,4 +1,4 @@
-//! The app's layout, from the design handoff: projects (git repos) in the sidebar, each
+//! The app's layout: projects (git repos) in the sidebar, each
 //! project's worktrees with the sessions running in them, and the focused session full size
 //! (optionally split with a second). Most tools are centred overlays over a dimmed
 //! screen: jump, new pane, talk and keys. Settings uses a centred modal; review uses a right-hand sheet

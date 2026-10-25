@@ -8,7 +8,8 @@
 
 ## Context
 
-The v7 handoff (`docs/design/v7/`, brief v7) is a new layout for Seshi's checkpoints in
+The v7 handoff (brief v7; its files are in git history, the current design is in
+[DESIGN](../DESIGN.md)) is a new layout for Seshi's checkpoints in
 Cards floating, Cards tiled and Flat. Its frame differs from the one ADRs 0007 and 0012
 left: no outer margin, no separate tab row, square or rounded borders instead of the
 flush eighth-block edges, a 72-column side sheet, and modals and popovers with a hard

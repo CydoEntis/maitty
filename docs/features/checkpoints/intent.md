@@ -21,8 +21,8 @@ is recorded and shows. A project with no check looks exactly as Maitty does toda
 
 Anyone running agents in a project with tests. The daemon (runs the check, holds the result,
 delays finished alerts and waiters), the protocol and saved session, the sidebar row, the
-why popover, a new evidence sheet, the Inbox, Settings, and the row menu. The design is the
-[v7 handoff](../../design/v7/README.md); `checks7.js` is its spec.
+why popover, a new evidence sheet, the Inbox, Settings, and the row menu. The design is in
+[DESIGN](../../DESIGN.md) and [UI](../../UI.md).
 
 ## Constraints
 

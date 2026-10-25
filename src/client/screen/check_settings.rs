@@ -22,7 +22,7 @@ const EXIT_NOT_EXECUTABLE: i32 = 126;
 const EXIT_NOT_FOUND: i32 = 127;
 const COMMAND_PLACEHOLDER: &str = "e.g. npm test";
 const NO_CHECK: &str = "No check set.";
-/// The empty state's words as the handoff breaks them; a narrower host wraps them.
+/// The empty state's words as the reference breaks them; a narrower host wraps them.
 const EMPTY_LINES: [&str; 2] = [
     concat!("No check set. ", env!("APP_NAME"), " can run one command itself when an agent's"),
     "turn ends; the session isn't done until it passes. Agents keep working.",
