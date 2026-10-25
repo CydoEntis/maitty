@@ -46,10 +46,9 @@ fn tree_of_now(top: &Path) -> Result<String, String> {
     let n = TAKEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let index = real.with_file_name(format!("{APP_COMMAND}-snapshot-index-{}-{n}", std::process::id()));
     // Started from the real index, git only reads the files that changed since.
-    if real.exists() {
-        copy_index(&real, &index)?;
-    }
-    let tree = git_with_index(top, &index, &["add", "-A"]).and_then(|_| git_with_index(top, &index, &["write-tree"]));
+    // A failed copy still falls through to the clean-up below, so no private index is left in .git.
+    let copied = if real.exists() { copy_index(&real, &index) } else { Ok(()) };
+    let tree = copied.and_then(|_| git_with_index(top, &index, &["add", "-A"])).and_then(|_| git_with_index(top, &index, &["write-tree"]));
     // Its lock goes with it if git was stopped halfway.
     for leftover in [index.clone(), index.with_extension("lock")] {
         match std::fs::remove_file(&leftover) {
@@ -67,8 +66,10 @@ fn tree_of_now(top: &Path) -> Result<String, String> {
 /// does not.
 fn copy_index(real: &Path, copy: &Path) -> Result<(), String> {
     let failed = |e: std::io::Error| format!("couldn't copy the index: {e}");
-    std::fs::copy(real, copy).map_err(failed)?;
+    // The time is read first: if git rewrites the index meanwhile, the copy is dated too early,
+    // which only makes git re-read more files, never fewer.
     let written = std::fs::metadata(real).and_then(|m| m.modified()).map_err(failed)?;
+    std::fs::copy(real, copy).map_err(failed)?;
     std::fs::File::options().write(true).open(copy).and_then(|f| f.set_modified(written)).map_err(failed)
 }
 
