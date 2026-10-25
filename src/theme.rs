@@ -74,136 +74,349 @@ pub struct ThemeOverrides(pub BTreeMap<String, String>);
 /// The theme when none is chosen.
 pub const DEFAULT: &str = "night";
 
+/// Names earlier dev builds gave a theme that now carries its variant, so configs that
+/// still say them keep loading.
+const ALIASES: &[(&str, &str)] = &[
+    ("gruvbox-material", "gruvbox-material-dark"),
+    ("koda", "koda-dark"),
+    ("melange", "melange-dark"),
+];
+
+/// The built-in theme a configured name means: itself, or the theme its old name became.
+pub fn canonical(name: &str) -> &str {
+    ALIASES.iter().find(|(old, _)| *old == name).map_or(name, |(_, new)| new)
+}
+
 /// Every built-in theme, kept in alphabetical order of its display name: the theme browser,
 /// the Theme setting's cycling and the unknown-theme warning all list it as written.
 pub const BUILTIN: &[&str] = &[
     "apprentice",
+    "aquarium",
     "arcade",
+    "archery",
     "ash",
+    "ashen",
+    "atelier-cave-dark",
+    "atelier-cave-light",
+    "atelier-dune-dark",
+    "atelier-dune-light",
+    "atelier-estuary-dark",
+    "atelier-estuary-light",
+    "atelier-forest-dark",
+    "atelier-forest-light",
+    "atelier-heath-dark",
+    "atelier-heath-light",
+    "atelier-lakeside-dark",
+    "atelier-lakeside-light",
+    "atelier-plateau-dark",
+    "atelier-plateau-light",
+    "atelier-savanna-dark",
+    "atelier-savanna-light",
+    "atelier-seaside-dark",
+    "atelier-seaside-light",
+    "atelier-sulphurpool-dark",
+    "atelier-sulphurpool-light",
     "aurora",
     "ayu-dark",
     "ayu-light",
     "ayu-mirage",
+    "badwolf",
+    "bamboo",
+    "bamboo-light",
+    "bamboo-multiplex",
+    "base16-default-dark",
+    "brogrammer",
+    "carbonfox",
     "catppuccin-frappe",
     "catppuccin-latte",
     "catppuccin-macchiato",
     "catppuccin-mocha",
+    "cendre",
+    "cendre-medium",
+    "cendre-soft",
     "cobalt2",
+    "code-2026-dark",
+    "code-2026-light",
+    "code-dark",
+    "cyberdream",
+    "cyberdream-light",
+    "cyberdream-muted",
+    "dawnfox",
     "day",
+    "dayfox",
+    "dogrun",
+    "doom-one",
+    "doom-one-light",
     "dracula",
+    "duskfox",
+    "edge",
+    "embark",
     "ember",
     "everforest-dark",
     "everforest-light",
+    "falcon",
+    "fluoromachine",
+    "github-dark",
+    "github-dark-dimmed",
+    "github-light",
+    "goodwolf",
     "gotham",
+    "gruber-darker",
+    "gruvbox-baby",
     "gruvbox",
     "gruvbox-light",
+    "gruvbox-material-dark",
+    "gruvbox-material-light",
     "harbor",
     "harbor-day",
+    "horizon",
+    "hybrid",
+    "hybrid-light",
+    "hybrid-reduced-contrast",
     "hydra",
     "iceberg",
     "ink",
     "jellybeans",
     "kanagawa-dragon",
     "kanagawa-lotus",
+    "kanagawa-paper",
     "kanagawa-wave",
+    "koda-dark",
+    "koda-glade",
+    "koda-light",
+    "koda-moss",
+    "lackluster",
     "lucario",
+    "luna",
+    "melange-dark",
+    "melange-light",
+    "mellow",
+    "mellow-light",
+    "miasma",
+    "miramare",
     "mono",
     "monokai",
+    "monokai-pro",
     "moonfly",
     "moonlit",
     "moss",
     "moss-day",
+    "neovim-dark",
+    "neovim-light",
     "night",
     "night-owl",
     "nightfly",
+    "nightfox",
     "nord",
+    "nordfox",
+    "nordic",
+    "oceanic-next",
     "one-dark",
     "one-half-dark",
     "one-half-light",
+    "one-light",
+    "onenord",
+    "oxocarbon",
+    "palenight",
     "panda",
     "paper",
     "papercolor-dark",
+    "rigel",
     "rose-pine",
     "rose-pine-dawn",
     "rose-pine-moon",
     "shades-of-purple",
     "solarized-dark",
     "solarized-light",
+    "solarized-osaka",
+    "solarized-osaka-light",
     "sonokai",
+    "synthwave-84",
     "tango-dark",
+    "tender",
+    "terafox",
     "tinkery",
     "tinkery-light",
     "tokyo-night",
     "tokyo-night-day",
     "tokyo-night-moon",
     "tokyo-night-storm",
+    "tomorrow",
+    "tomorrow-night",
+    "tomorrow-night-bright",
+    "tomorrow-night-eighties",
+    "vague",
+    "vscode",
+    "yui-dark",
+    "yui-light",
     "zenbones-dark",
     "zenbones-light",
+    "zephyr",
 ];
 
 /// The display names Settings shows; a theme missing here shows its config name in title case.
 pub const DESIGN: &[(&str, &str)] = &[
     ("apprentice", "Apprentice"),
+    ("aquarium", "Aquarium"),
     ("arcade", "Arcade"),
+    ("archery", "Archery"),
     ("ash", "Ash"),
+    ("ashen", "Ashen"),
+    ("atelier-cave-dark", "Atelier Cave Dark"),
+    ("atelier-cave-light", "Atelier Cave Light"),
+    ("atelier-dune-dark", "Atelier Dune Dark"),
+    ("atelier-dune-light", "Atelier Dune Light"),
+    ("atelier-estuary-dark", "Atelier Estuary Dark"),
+    ("atelier-estuary-light", "Atelier Estuary Light"),
+    ("atelier-forest-dark", "Atelier Forest Dark"),
+    ("atelier-forest-light", "Atelier Forest Light"),
+    ("atelier-heath-dark", "Atelier Heath Dark"),
+    ("atelier-heath-light", "Atelier Heath Light"),
+    ("atelier-lakeside-dark", "Atelier Lakeside Dark"),
+    ("atelier-lakeside-light", "Atelier Lakeside Light"),
+    ("atelier-plateau-dark", "Atelier Plateau Dark"),
+    ("atelier-plateau-light", "Atelier Plateau Light"),
+    ("atelier-savanna-dark", "Atelier Savanna Dark"),
+    ("atelier-savanna-light", "Atelier Savanna Light"),
+    ("atelier-seaside-dark", "Atelier Seaside Dark"),
+    ("atelier-seaside-light", "Atelier Seaside Light"),
+    ("atelier-sulphurpool-dark", "Atelier Sulphurpool Dark"),
+    ("atelier-sulphurpool-light", "Atelier Sulphurpool Light"),
     ("aurora", "Aurora"),
     ("ayu-dark", "Ayu Dark"),
     ("ayu-light", "Ayu Light"),
     ("ayu-mirage", "Ayu Mirage"),
+    ("badwolf", "Badwolf"),
+    ("bamboo", "Bamboo"),
+    ("bamboo-light", "Bamboo Light"),
+    ("bamboo-multiplex", "Bamboo Multiplex"),
+    ("base16-default-dark", "Base16 Default Dark"),
+    ("brogrammer", "Brogrammer"),
+    ("carbonfox", "Carbonfox"),
     ("catppuccin-frappe", "Catppuccin Frappé"),
     ("catppuccin-latte", "Catppuccin Latte"),
     ("catppuccin-macchiato", "Catppuccin Macchiato"),
     ("catppuccin-mocha", "Catppuccin Mocha"),
+    ("cendre", "Cendre"),
+    ("cendre-medium", "Cendre Medium"),
+    ("cendre-soft", "Cendre Soft"),
     ("cobalt2", "Cobalt2"),
+    ("code-2026-dark", "Code 2026 Dark"),
+    ("code-2026-light", "Code 2026 Light"),
+    ("code-dark", "Code Dark"),
+    ("cyberdream", "Cyberdream"),
+    ("cyberdream-light", "Cyberdream Light"),
+    ("cyberdream-muted", "Cyberdream Muted"),
+    ("dawnfox", "Dawnfox"),
     ("day", "Day"),
+    ("dayfox", "Dayfox"),
+    ("dogrun", "Dogrun"),
+    ("doom-one", "Doom One"),
+    ("doom-one-light", "Doom One Light"),
     ("dracula", "Dracula"),
+    ("duskfox", "Duskfox"),
+    ("edge", "Edge"),
+    ("embark", "Embark"),
     ("ember", "Ember"),
     ("everforest-dark", "Everforest Dark"),
     ("everforest-light", "Everforest Light"),
+    ("falcon", "Falcon"),
+    ("fluoromachine", "Fluoromachine"),
+    ("github-dark", "GitHub Dark"),
+    ("github-dark-dimmed", "GitHub Dark Dimmed"),
+    ("github-light", "GitHub Light"),
+    ("goodwolf", "Goodwolf"),
     ("gotham", "Gotham"),
+    ("gruber-darker", "Gruber Darker"),
+    ("gruvbox-baby", "Gruvbox Baby"),
     ("gruvbox", "Gruvbox Dark"),
     ("gruvbox-light", "Gruvbox Light"),
+    ("gruvbox-material-dark", "Gruvbox Material Dark"),
+    ("gruvbox-material-light", "Gruvbox Material Light"),
     ("harbor", "Harbor"),
     ("harbor-day", "Harbor Day"),
+    ("horizon", "Horizon"),
+    ("hybrid", "Hybrid"),
+    ("hybrid-light", "Hybrid Light"),
+    ("hybrid-reduced-contrast", "Hybrid Reduced Contrast"),
     ("hydra", "Hydra"),
     ("iceberg", "Iceberg"),
     ("ink", "Ink"),
     ("jellybeans", "Jellybeans"),
     ("kanagawa-dragon", "Kanagawa Dragon"),
     ("kanagawa-lotus", "Kanagawa Lotus"),
+    ("kanagawa-paper", "Kanagawa Paper Ink"),
     ("kanagawa-wave", "Kanagawa Wave"),
+    ("koda-dark", "Koda Dark"),
+    ("koda-glade", "Koda Glade"),
+    ("koda-light", "Koda Light"),
+    ("koda-moss", "Koda Moss"),
+    ("lackluster", "Lackluster"),
     ("lucario", "Lucario"),
+    ("luna", "Luna"),
+    ("melange-dark", "Melange Dark"),
+    ("melange-light", "Melange Light"),
+    ("mellow", "Mellow"),
+    ("mellow-light", "Mellow Light"),
+    ("miasma", "Miasma"),
+    ("miramare", "Miramare"),
     ("monokai", "Monokai"),
+    ("monokai-pro", "Monokai Pro"),
     ("moonfly", "Moonfly"),
     ("moonlit", "Moonlit"),
     ("moss", "Moss"),
     ("moss-day", "Moss Day"),
+    ("neovim-dark", "Neovim Dark"),
+    ("neovim-light", "Neovim Light"),
     ("night", "Night"),
     ("night-owl", "Night Owl"),
     ("nightfly", "Nightfly"),
+    ("nightfox", "Nightfox"),
     ("nord", "Nord"),
+    ("nordfox", "Nordfox"),
+    ("nordic", "Nordic"),
+    ("oceanic-next", "Oceanic Next"),
     ("one-dark", "One Dark / Atom One"),
     ("one-half-dark", "One Half Dark"),
     ("one-half-light", "One Half Light"),
+    ("one-light", "One Light"),
+    ("onenord", "OneNord"),
+    ("oxocarbon", "Oxocarbon"),
+    ("palenight", "Palenight"),
     ("panda", "Panda"),
     ("paper", "Paper"),
     ("papercolor-dark", "PaperColor Dark"),
+    ("rigel", "Rigel"),
     ("rose-pine", "Rosé Pine"),
     ("rose-pine-dawn", "Rosé Pine Dawn"),
     ("rose-pine-moon", "Rosé Pine Moon"),
     ("shades-of-purple", "Shades of Purple"),
     ("solarized-dark", "Solarized Dark"),
     ("solarized-light", "Solarized Light"),
+    ("solarized-osaka", "Solarized Osaka"),
+    ("solarized-osaka-light", "Solarized Osaka Light"),
     ("sonokai", "Sonokai"),
+    ("synthwave-84", "SynthWave '84"),
     ("tango-dark", "Tango Dark"),
+    ("tender", "Tender"),
+    ("terafox", "Terafox"),
     ("tinkery", "Tinkery"),
     ("tinkery-light", "Tinkery Light"),
     ("tokyo-night", "Tokyo Night"),
     ("tokyo-night-day", "Tokyo Night Day"),
     ("tokyo-night-moon", "Tokyo Night Moon"),
     ("tokyo-night-storm", "Tokyo Night Storm"),
+    ("tomorrow", "Tomorrow"),
+    ("tomorrow-night", "Tomorrow Night"),
+    ("tomorrow-night-bright", "Tomorrow Night Bright"),
+    ("tomorrow-night-eighties", "Tomorrow Night Eighties"),
+    ("vague", "Vague"),
+    ("vscode", "VSCode Dark"),
+    ("yui-dark", "Yui Dark"),
+    ("yui-light", "Yui Light"),
     ("zenbones-dark", "Zenbones Dark"),
     ("zenbones-light", "Zenbones Light"),
+    ("zephyr", "Zephyr"),
 ];
 
 /// Needs-you ambers: gold-orange on dark grounds, a deeper brown-orange on light ones, and a
@@ -473,6 +686,7 @@ impl Theme {
     }
 
     pub fn named(name: &str) -> Theme {
+        let name = canonical(name);
         let theme = Theme::base(name);
         if name == "night" || name == "mono" {
             return theme;
@@ -691,6 +905,98 @@ impl Theme {
                 ["#262626", "#bcbcbc", "#6c6c6c", "#5f87af"],
                 ["#af5f5f", "#5f875f", "#87875f", "#5f87af", "#5f5f87", "#5f8787", "#6c6c6c"],
             ),
+            "aquarium" => Theme::palette(
+                ["#20202a", "#63718b", "#44495e", "#cddbf9"],
+                ["#ebb9b9", "#b1dba4", "#e6dfb8", "#cddbf9", "#f6bbe7", "#b8deeb", "#44495e"],
+            ),
+            "archery" => Theme::palette(
+                ["#25272c", "#81a3cf", "#535b6f", "#0088cc"],
+                ["#ba2a2a", "#008542", "#f07d30", "#0088cc", "#8d4888", "#006596", "#535b6f"],
+            ),
+            "ashen" => Theme::palette(
+                ["#121212", "#b4b4b4", "#737373", "#4a8b8b"],
+                ["#b14242", "#d87c4a", "#e49a44", "#4a8b8b", "#a7a7a7", "#b4b4b4", "#949494"],
+            ),
+            "atelier-cave-dark" => Theme::palette(
+                ["#19171c", "#8b8792", "#655f6d", "#576ddb"],
+                ["#be4678", "#2a9292", "#a06e3b", "#576ddb", "#955ae7", "#398bc6", "#655f6d"],
+            ),
+            "atelier-cave-light" => Theme::palette(
+                ["#efecf4", "#585260", "#7e7887", "#576ddb"],
+                ["#be4678", "#2a9292", "#a06e3b", "#576ddb", "#955ae7", "#398bc6", "#7e7887"],
+            ),
+            "atelier-dune-dark" => Theme::palette(
+                ["#20201d", "#a6a28c", "#7d7a68", "#6684e1"],
+                ["#d73737", "#60ac39", "#ae9513", "#6684e1", "#b854d4", "#1fad83", "#7d7a68"],
+            ),
+            "atelier-dune-light" => Theme::palette(
+                ["#fefbec", "#6e6b5e", "#999580", "#6684e1"],
+                ["#d73737", "#60ac39", "#ae9513", "#6684e1", "#b854d4", "#1fad83", "#999580"],
+            ),
+            "atelier-estuary-dark" => Theme::palette(
+                ["#22221b", "#929181", "#6c6b5a", "#36a166"],
+                ["#ba6236", "#7d9726", "#a5980d", "#36a166", "#5f9182", "#5b9d48", "#6c6b5a"],
+            ),
+            "atelier-estuary-light" => Theme::palette(
+                ["#f4f3ec", "#5f5e4e", "#878573", "#36a166"],
+                ["#ba6236", "#7d9726", "#a5980d", "#36a166", "#5f9182", "#5b9d48", "#878573"],
+            ),
+            "atelier-forest-dark" => Theme::palette(
+                ["#1b1918", "#a8a19f", "#766e6b", "#407ee7"],
+                ["#f22c40", "#7b9726", "#c38418", "#407ee7", "#6666ea", "#3d97b8", "#766e6b"],
+            ),
+            "atelier-forest-light" => Theme::palette(
+                ["#f1efee", "#68615e", "#9c9491", "#407ee7"],
+                ["#f22c40", "#7b9726", "#c38418", "#407ee7", "#6666ea", "#3d97b8", "#9c9491"],
+            ),
+            "atelier-heath-dark" => Theme::palette(
+                ["#1b181b", "#ab9bab", "#776977", "#516aec"],
+                ["#ca402b", "#918b3b", "#bb8a35", "#516aec", "#7b59c0", "#159393", "#776977"],
+            ),
+            "atelier-heath-light" => Theme::palette(
+                ["#f7f3f7", "#695d69", "#9e8f9e", "#516aec"],
+                ["#ca402b", "#918b3b", "#bb8a35", "#516aec", "#7b59c0", "#159393", "#9e8f9e"],
+            ),
+            "atelier-lakeside-dark" => Theme::palette(
+                ["#161b1d", "#7ea2b4", "#5a7b8c", "#257fad"],
+                ["#d22d72", "#568c3b", "#8a8a0f", "#257fad", "#6b6bb8", "#2d8f6f", "#5a7b8c"],
+            ),
+            "atelier-lakeside-light" => Theme::palette(
+                ["#ebf8ff", "#516d7b", "#7195a8", "#257fad"],
+                ["#d22d72", "#568c3b", "#8a8a0f", "#257fad", "#6b6bb8", "#2d8f6f", "#7195a8"],
+            ),
+            "atelier-plateau-dark" => Theme::palette(
+                ["#1b1818", "#8a8585", "#655d5d", "#7272ca"],
+                ["#ca4949", "#4b8b8b", "#a06e3b", "#7272ca", "#8464c4", "#5485b6", "#655d5d"],
+            ),
+            "atelier-plateau-light" => Theme::palette(
+                ["#f4ecec", "#585050", "#7e7777", "#7272ca"],
+                ["#ca4949", "#4b8b8b", "#a06e3b", "#7272ca", "#8464c4", "#5485b6", "#7e7777"],
+            ),
+            "atelier-savanna-dark" => Theme::palette(
+                ["#171c19", "#87928a", "#5f6d64", "#478c90"],
+                ["#b16139", "#489963", "#a07e3b", "#478c90", "#55859b", "#1c9aa0", "#5f6d64"],
+            ),
+            "atelier-savanna-light" => Theme::palette(
+                ["#ecf4ee", "#526057", "#78877d", "#478c90"],
+                ["#b16139", "#489963", "#a07e3b", "#478c90", "#55859b", "#1c9aa0", "#78877d"],
+            ),
+            "atelier-seaside-dark" => Theme::palette(
+                ["#131513", "#8ca68c", "#687d68", "#3d62f5"],
+                ["#e6193c", "#29a329", "#98981b", "#3d62f5", "#ad2bee", "#1999b3", "#687d68"],
+            ),
+            "atelier-seaside-light" => Theme::palette(
+                ["#f4fbf4", "#5e6e5e", "#809980", "#3d62f5"],
+                ["#e6193c", "#29a329", "#98981b", "#3d62f5", "#ad2bee", "#1999b3", "#809980"],
+            ),
+            "atelier-sulphurpool-dark" => Theme::palette(
+                ["#202746", "#979db4", "#6b7394", "#3d8fd1"],
+                ["#c94922", "#ac9739", "#c08b30", "#3d8fd1", "#6679cc", "#22a2c9", "#6b7394"],
+            ),
+            "atelier-sulphurpool-light" => Theme::palette(
+                ["#f5f7ff", "#5e6687", "#898ea4", "#3d8fd1"],
+                ["#c94922", "#ac9739", "#c08b30", "#3d8fd1", "#6679cc", "#22a2c9", "#898ea4"],
+            ),
             "ayu-dark" => Theme::palette(
                 ["#0f1419", "#e6e1cf", "#5c6773", "#36a3d9"],
                 ["#f07178", "#b8cc52", "#f29718", "#36a3d9", "#ffee99", "#95e6cb", "#ffffff"],
@@ -703,6 +1009,34 @@ impl Theme {
                 ["#212733", "#d9d7ce", "#5c6773", "#5ccfe6"],
                 ["#f07178", "#bbe67e", "#ffcc66", "#5ccfe6", "#d4bfff", "#95e6cb", "#ffffff"],
             ),
+            "badwolf" => Theme::palette(
+                ["#1c1b1a", "#f8f6f2", "#857f78", "#0a9dff"],
+                ["#ff2c4b", "#aeee00", "#fade3e", "#0a9dff", "#ff9eb8", "#8cffba", "#857f78"],
+            ),
+            "bamboo" => Theme::palette(
+                ["#252623", "#f1e9d2", "#838781", "#57a5e5"],
+                ["#e75a7c", "#8fb573", "#dbb651", "#57a5e5", "#aaaaff", "#70c2be", "#5b5e5a"],
+            ),
+            "bamboo-light" => Theme::palette(
+                ["#fafae0", "#3a4238", "#838781", "#1745d5"],
+                ["#c72a3c", "#27850b", "#bb9631", "#1745d5", "#8a4adf", "#188a9e", "#a1a7a0"],
+            ),
+            "bamboo-multiplex" => Theme::palette(
+                ["#232923", "#ece1c0", "#818781", "#409cdc"],
+                ["#dc4f62", "#81af58", "#ceba49", "#409cdc", "#a09af8", "#68baae", "#5a5e5a"],
+            ),
+            "base16-default-dark" => Theme::palette(
+                ["#181818", "#d8d8d8", "#585858", "#7cafc2"],
+                ["#ab4642", "#a1b56c", "#f7ca88", "#7cafc2", "#ba8baf", "#86c1b9", "#585858"],
+            ),
+            "brogrammer" => Theme::palette(
+                ["#1a1a1a", "#ecf0f1", "#606060", "#3498db"],
+                ["#e74c3c", "#2ecc71", "#f1c40f", "#3498db", "#9b59b6", "#1abc9c", "#606060"],
+            ),
+            "carbonfox" => Theme::palette(
+                ["#161616", "#f2f4f8", "#6e6f70", "#78a9ff"],
+                ["#ee5396", "#25be6a", "#08bdba", "#78a9ff", "#be95ff", "#33b1ff", "#484848"],
+            ),
             "catppuccin-frappe" => Theme::palette(
                 ["#303446", "#c6d0f5", "#626880", "#8caaee"],
                 ["#e78284", "#a6d189", "#e5c890", "#8caaee", "#f4b8e4", "#81c8be", "#b5bfe2"],
@@ -711,9 +1045,77 @@ impl Theme {
                 ["#24273a", "#cad3f5", "#5b6078", "#8aadf4"],
                 ["#ed8796", "#a6da95", "#eed49f", "#8aadf4", "#f5bde6", "#8bd5ca", "#b8c0e0"],
             ),
+            "cendre" => Theme::palette(
+                ["#171311", "#e6d5c2", "#73665b", "#58bdff"],
+                ["#d1766e", "#99af6b", "#fcba81", "#58bdff", "#9480ba", "#4e89a2", "#73665b"],
+            ),
+            "cendre-medium" => Theme::palette(
+                ["#1d1917", "#e6d5c2", "#73665b", "#58bdff"],
+                ["#d1766e", "#99af6b", "#fcba81", "#58bdff", "#9480ba", "#4e89a2", "#73665b"],
+            ),
+            "cendre-soft" => Theme::palette(
+                ["#231f1d", "#e6d5c2", "#73665b", "#58bdff"],
+                ["#d1766e", "#99af6b", "#fcba81", "#58bdff", "#9480ba", "#4e89a2", "#73665b"],
+            ),
             "cobalt2" => Theme::palette(
                 ["#122738", "#ffffff", "#aaaaaa", "#ffc600"],
                 ["#ff628c", "#3ad900", "#ffc600", "#0088ff", "#fb94ff", "#80fcff", "#ffffff"],
+            ),
+            "code-2026-dark" => Theme::palette(
+                ["#121314", "#bbbebf", "#8b949e", "#79c0ff"],
+                ["#ff7b72", "#7ee787", "#cd9731", "#79c0ff", "#d2a8ff", "#4ec9b0", "#555555"],
+            ),
+            "code-2026-light" => Theme::palette(
+                ["#ffffff", "#202020", "#6e7781", "#0550ae"],
+                ["#cf222e", "#116329", "#953800", "#0550ae", "#8250df", "#116329", "#999999"],
+            ),
+            "code-dark" => Theme::palette(
+                ["#1e1e1e", "#d4d4d4", "#808080", "#569cd6"],
+                ["#f44747", "#6a9955", "#dcdcaa", "#569cd6", "#c586c0", "#9cdcfe", "#808080"],
+            ),
+            "cyberdream" => Theme::palette(
+                ["#16181a", "#ffffff", "#7b8496", "#5ea1ff"],
+                ["#ff6e5e", "#5eff6c", "#f1ff5e", "#5ea1ff", "#bd5eff", "#5ef1ff", "#3c4048"],
+            ),
+            "cyberdream-light" => Theme::palette(
+                ["#ffffff", "#16181a", "#7b8496", "#0057d1"],
+                ["#d11500", "#008b0c", "#997b00", "#0057d1", "#a018ff", "#008c99", "#acacac"],
+            ),
+            "cyberdream-muted" => Theme::palette(
+                ["#16181a", "#ffffff", "#7b8496", "#78a8e8"],
+                ["#e8796f", "#7ee088", "#e3c875", "#78a8e8", "#b07ee8", "#7ed8e8", "#3c4048"],
+            ),
+            "dawnfox" => Theme::palette(
+                ["#faf4ed", "#575279", "#9893a5", "#286983"],
+                ["#b4637a", "#618774", "#ea9d34", "#286983", "#907aa9", "#56949f", "#5f5695"],
+            ),
+            "dayfox" => Theme::palette(
+                ["#f6f2ee", "#3d2b5a", "#837a72", "#2848a9"],
+                ["#a5222f", "#396847", "#ac5402", "#2848a9", "#6e33ce", "#287980", "#534c45"],
+            ),
+            "dogrun" => Theme::palette(
+                ["#222433", "#9ea3c0", "#545c8c", "#4c89ac"],
+                ["#e58585", "#7cbe8c", "#8e8a6f", "#4c89ac", "#6c75cb", "#73c1a9", "#545c8c"],
+            ),
+            "doom-one" => Theme::palette(
+                ["#282c34", "#bbc2cf", "#5b6268", "#51afef"],
+                ["#ff6c6b", "#98be65", "#ecbe7b", "#51afef", "#a9a1e1", "#46d9ff", "#5b6268"],
+            ),
+            "doom-one-light" => Theme::palette(
+                ["#fafafa", "#383a42", "#9ca0a4", "#4078f2"],
+                ["#e45649", "#50a14f", "#986801", "#4078f2", "#b751b6", "#0184bc", "#9ca0a4"],
+            ),
+            "duskfox" => Theme::palette(
+                ["#232136", "#e0def4", "#817c9c", "#569fba"],
+                ["#eb6f92", "#a3be8c", "#f6c177", "#569fba", "#c4a7e7", "#9ccfd8", "#47407d"],
+            ),
+            "edge" => Theme::palette(
+                ["#2c2e34", "#c5cdd9", "#758094", "#6cb6eb"],
+                ["#ec7279", "#a0c980", "#deb974", "#6cb6eb", "#d38aea", "#5dbbc1", "#758094"],
+            ),
+            "embark" => Theme::palette(
+                ["#1e1c31", "#cbe3e7", "#8a889d", "#91ddff"],
+                ["#f48fb1", "#a1efd3", "#ffe6b3", "#91ddff", "#d4bfff", "#abf8f7", "#585273"],
             ),
             "everforest-dark" => Theme::palette(
                 ["#2d353b", "#d3c6aa", "#859289", "#7fbbb3"],
@@ -723,13 +1125,69 @@ impl Theme {
                 ["#fdf6e3", "#5c6a72", "#939f91", "#3a94c5"],
                 ["#f85552", "#8da101", "#dfa000", "#3a94c5", "#df69ba", "#35a77c", "#5c6a72"],
             ),
+            "falcon" => Theme::palette(
+                ["#020221", "#b4b4b9", "#787882", "#ff761a"],
+                ["#ff3600", "#859933", "#ffc552", "#635196", "#ff761a", "#34bfa4", "#787882"],
+            ),
+            "fluoromachine" => Theme::palette(
+                ["#262335", "#8ba7a7", "#495495", "#fc199a"],
+                ["#fe4450", "#72f1b8", "#ffcc00", "#af6df9", "#fc199a", "#61e2ff", "#495495"],
+            ),
+            "github-dark" => Theme::palette(
+                ["#0d1117", "#e6edf3", "#8b949e", "#2f81f7"],
+                ["#ff7b72", "#3fb950", "#d29922", "#58a6ff", "#bc8cff", "#76e3ea", "#8b949e"],
+            ),
+            "github-dark-dimmed" => Theme::palette(
+                ["#22272e", "#adbac7", "#768390", "#539bf5"],
+                ["#f47067", "#57ab5a", "#c69026", "#539bf5", "#b083f0", "#76e3ea", "#768390"],
+            ),
+            "github-light" => Theme::palette(
+                ["#ffffff", "#1f2328", "#57606a", "#0969da"],
+                ["#cf222e", "#116329", "#4d2d00", "#0969da", "#8250df", "#1b7c83", "#57606a"],
+            ),
+            "goodwolf" => Theme::palette(
+                ["#141413", "#f8f6f2", "#857f78", "#0a9dff"],
+                ["#ff2c4b", "#aeee00", "#fade3e", "#0a9dff", "#ff9eb8", "#8cffba", "#857f78"],
+            ),
             "gotham" => Theme::palette(
                 ["#0c1014", "#99d1ce", "#195466", "#195466"],
                 ["#c23127", "#2aa889", "#edb443", "#195466", "#4e5166", "#33859e", "#99d1ce"],
             ),
+            "gruber-darker" => Theme::palette(
+                ["#181818", "#e4e4e4", "#52494e", "#96a6c8"],
+                ["#f43841", "#73d936", "#ffdd33", "#96a6c8", "#9e95c7", "#95a99f", "#52494e"],
+            ),
+            "gruvbox-baby" => Theme::palette(
+                ["#1d2021", "#ebdbb2", "#665c54", "#7fa2ac"],
+                ["#cc241d", "#98971a", "#fabd2f", "#458588", "#b16286", "#83a598", "#665c54"],
+            ),
             "gruvbox-light" => Theme::palette(
                 ["#fbf1c7", "#3c3836", "#928374", "#076678"],
                 ["#9d0006", "#79740e", "#b57614", "#076678", "#8f3f71", "#427b58", "#3c3836"],
+            ),
+            "gruvbox-material-dark" => Theme::palette(
+                ["#282828", "#d4be98", "#928374", "#7daea3"],
+                ["#ea6962", "#a9b665", "#d8a657", "#7daea3", "#d3869b", "#89b482", "#5a524c"],
+            ),
+            "gruvbox-material-light" => Theme::palette(
+                ["#fbf1c7", "#654735", "#928374", "#45707a"],
+                ["#c14a4a", "#6c782e", "#b47109", "#45707a", "#945e80", "#4c7a5d", "#654735"],
+            ),
+            "horizon" => Theme::palette(
+                ["#1c1e26", "#d5d8da", "#4c4d53", "#e95378"],
+                ["#e95678", "#29d398", "#fab795", "#26bbd9", "#ee64ac", "#59e1e3", "#4c4d53"],
+            ),
+            "hybrid" => Theme::palette(
+                ["#1d1f21", "#c5c8c6", "#707880", "#81a2be"],
+                ["#cc6666", "#b5bd68", "#f0c674", "#81a2be", "#b294bb", "#8abeb7", "#707880"],
+            ),
+            "hybrid-light" => Theme::palette(
+                ["#e4e4e4", "#000000", "#5f5f5f", "#00005f"],
+                ["#5f0000", "#005f00", "#5f5f00", "#00005f", "#5f005f", "#005f5f", "#5f5f5f"],
+            ),
+            "hybrid-reduced-contrast" => Theme::palette(
+                ["#232c31", "#c5c8c6", "#6c7a80", "#81a2be"],
+                ["#cc6666", "#b5bd68", "#f0c674", "#81a2be", "#b294bb", "#8abeb7", "#6c7a80"],
             ),
             "iceberg" => Theme::palette(
                 ["#161821", "#c6c8d1", "#6b7089", "#84a0c6"],
@@ -747,17 +1205,81 @@ impl Theme {
                 ["#f2ecbc", "#545464", "#8a8980", "#4d699b"],
                 ["#c84053", "#6f894e", "#77713f", "#4d699b", "#b35b79", "#597b75", "#545464"],
             ),
+            "kanagawa-paper" => Theme::palette(
+                ["#1f1f28", "#dcd7ba", "#727169", "#658594"],
+                ["#c4746e", "#699469", "#c4b28a", "#435965", "#a292a3", "#8ea49e", "#aca9a4"],
+            ),
             "kanagawa-wave" => Theme::palette(
                 ["#1f1f28", "#dcd7ba", "#727169", "#7e9cd8"],
                 ["#c34043", "#76946a", "#c0a36e", "#7e9cd8", "#957fb8", "#6a9589", "#c8c093"],
+            ),
+            "koda-dark" => Theme::palette(
+                ["#101010", "#ffffff", "#50585d", "#b3b3b3"],
+                ["#ff7676", "#a3d6a3", "#ffffff", "#b3b3b3", "#f4b8e4", "#fafafa", "#50585d"],
+            ),
+            "koda-glade" => Theme::palette(
+                ["#f7f7f7", "#000000", "#696969", "#325cc0"],
+                ["#aa3731", "#448c27", "#bc7500", "#325cc0", "#7a3e9d", "#0083b2", "#696969"],
+            ),
+            "koda-light" => Theme::palette(
+                ["#faf9f5", "#101010", "#969ba5", "#3d3d3d"],
+                ["#ca0043", "#407f00", "#926200", "#3d3d3d", "#a200d1", "#007d7d", "#969ba5"],
+            ),
+            "koda-moss" => Theme::palette(
+                ["#0e1415", "#cecece", "#707070", "#71ade7"],
+                ["#c33c33", "#95cb82", "#dfdf8e", "#71ade7", "#cc8bc9", "#47bea9", "#707070"],
+            ),
+            "lackluster" => Theme::palette(
+                ["#0a0a0a", "#deeeed", "#444444", "#7788aa"],
+                ["#d70000", "#789978", "#ffaa88", "#7788aa", "#d7007d", "#708090", "#444444"],
             ),
             "lucario" => Theme::palette(
                 ["#2b3e50", "#f8f8f2", "#2f3943", "#5c98cd"],
                 ["#e94b35", "#199c4b", "#f0cc04", "#5c98cd", "#ca94ff", "#8be0fd", "#f8f8f2"],
             ),
+            "luna" => Theme::palette(
+                ["#060606", "#e4e4e8", "#7c7c7c", "#75a1c7"],
+                ["#e08585", "#6fbe80", "#c2916a", "#75a1c7", "#c4a8d6", "#75a1c7", "#888888"],
+            ),
+            "melange-dark" => Theme::palette(
+                ["#292522", "#ece1d7", "#c1a78e", "#7f91b2"],
+                ["#bd8183", "#78997a", "#e49b5d", "#7f91b2", "#b380b0", "#7b9695", "#867462"],
+            ),
+            "melange-light" => Theme::palette(
+                ["#f1f1f1", "#54433a", "#7d6658", "#7892bd"],
+                ["#c77b8b", "#6e9b72", "#bc5c00", "#7892bd", "#be79bb", "#739797", "#a98a78"],
+            ),
+            "mellow" => Theme::palette(
+                ["#161617", "#c9c7cd", "#757581", "#aca1cf"],
+                ["#f5a191", "#90b99f", "#e6b99d", "#aca1cf", "#e29eca", "#ea83a5", "#757581"],
+            ),
+            "mellow-light" => Theme::palette(
+                ["#f7f7f7", "#4d4b65", "#9d9da0", "#174c97"],
+                ["#e05439", "#598c15", "#c65c00", "#174c97", "#bf386e", "#d82b65", "#9d9da0"],
+            ),
+            "miasma" => Theme::palette(
+                ["#222222", "#c2c2b0", "#666666", "#78824b"],
+                ["#685742", "#5f875f", "#b36d43", "#78824b", "#bb7744", "#c9a554", "#666666"],
+            ),
+            "miramare" => Theme::palette(
+                ["#2a2426", "#e6d6ac", "#5b5b5b", "#89beba"],
+                ["#e68183", "#87af87", "#d9bb80", "#89beba", "#d3a0bc", "#87c095", "#5b5b5b"],
+            ),
+            "monokai-pro" => Theme::palette(
+                ["#2d2a2e", "#fcfcfa", "#727072", "#ffd866"],
+                ["#ff6188", "#a9dc76", "#ffd866", "#fc9867", "#ab9df2", "#78dce8", "#727072"],
+            ),
             "moonfly" => Theme::palette(
                 ["#080808", "#bdbdbd", "#949494", "#80a0ff"],
                 ["#ff5d5d", "#8cc85f", "#e3c78a", "#80a0ff", "#cf87e8", "#79dac8", "#c6c6c6"],
+            ),
+            "neovim-dark" => Theme::palette(
+                ["#14161b", "#e0e2ea", "#9b9ea4", "#a6dbff"],
+                ["#ffc0b9", "#b3f6c0", "#fce094", "#a6dbff", "#ffcaff", "#8cf8f7", "#9b9ea4"],
+            ),
+            "neovim-light" => Theme::palette(
+                ["#e0e2ea", "#14161b", "#4f5258", "#004c73"],
+                ["#590008", "#005523", "#6b5300", "#004c73", "#470045", "#007373", "#4f5258"],
             ),
             "night-owl" => Theme::palette(
                 ["#011627", "#d6deeb", "#575656", "#82aaff"],
@@ -766,6 +1288,22 @@ impl Theme {
             "nightfly" => Theme::palette(
                 ["#011627", "#bdc1c6", "#7c8f8f", "#82aaff"],
                 ["#fc514e", "#a1cd5e", "#e3d18a", "#82aaff", "#c792ea", "#7fdbca", "#a1aab8"],
+            ),
+            "nightfox" => Theme::palette(
+                ["#192330", "#cdcecf", "#738091", "#719cd6"],
+                ["#c94f6d", "#81b29a", "#dbc074", "#719cd6", "#9d79d6", "#63cdcf", "#575860"],
+            ),
+            "nordfox" => Theme::palette(
+                ["#2e3440", "#cdcecf", "#60728a", "#81a1c1"],
+                ["#bf616a", "#a3be8c", "#ebcb8b", "#81a1c1", "#b48ead", "#88c0d0", "#465780"],
+            ),
+            "nordic" => Theme::palette(
+                ["#242933", "#c0c8d8", "#4c566a", "#5e81ac"],
+                ["#bf616a", "#a3be8c", "#ebcb8b", "#5e81ac", "#b48ead", "#8fbcbb", "#4c566a"],
+            ),
+            "oceanic-next" => Theme::palette(
+                ["#1b2b34", "#d8dee9", "#65737e", "#6699cc"],
+                ["#ec5f67", "#99c794", "#fac863", "#6699cc", "#c594c5", "#62b3b2", "#65737e"],
             ),
             "one-dark" => Theme::palette(
                 ["#282c34", "#abb2bf", "#3e4452", "#61afef"],
@@ -779,9 +1317,29 @@ impl Theme {
                 ["#fafafa", "#383a42", "#383a42", "#0184bc"],
                 ["#e45649", "#40a14f", "#c18401", "#0184bc", "#a626a4", "#0997b3", "#fafafa"],
             ),
+            "one-light" => Theme::palette(
+                ["#fafafa", "#494b53", "#a0a1a7", "#4078f2"],
+                ["#e45649", "#50a14f", "#c18401", "#4078f2", "#a626a4", "#0184bc", "#a0a1a7"],
+            ),
+            "onenord" => Theme::palette(
+                ["#2e3440", "#e5e9f0", "#6c7a96", "#81a1c1"],
+                ["#e06c75", "#9ec183", "#ebcb8b", "#81a1c1", "#b988b0", "#88c0d0", "#4c566a"],
+            ),
+            "oxocarbon" => Theme::palette(
+                ["#161616", "#d0d0d0", "#525252", "#78a9ff"],
+                ["#ee5396", "#42be65", "#be95ff", "#78a9ff", "#ff7eb6", "#3ddbd9", "#525252"],
+            ),
+            "palenight" => Theme::palette(
+                ["#292d3e", "#bfc7d5", "#697098", "#82b1ff"],
+                ["#ff5370", "#c3e88d", "#ffcb6b", "#82b1ff", "#c792ea", "#89ddff", "#697098"],
+            ),
             "panda" => Theme::palette(
                 ["#292a2b", "#e6e6e6", "#757575", "#ff75b5"],
                 ["#ff2c6d", "#19f9d8", "#ffb86c", "#45a9f9", "#ff75b5", "#b084eb", "#cdcdcd"],
+            ),
+            "rigel" => Theme::palette(
+                ["#002635", "#e6e6dc", "#77929e", "#1c8db2"],
+                ["#c43060", "#7fc06e", "#f08e48", "#1c8db2", "#c694ff", "#00cccc", "#517f8d"],
             ),
             "rose-pine" => Theme::palette(
                 ["#191724", "#e0def4", "#6e6a86", "#c4a7e7"],
@@ -807,9 +1365,29 @@ impl Theme {
                 ["#fdf6e3", "#657b83", "#93a1a1", "#268bd2"],
                 ["#dc322f", "#859900", "#b58900", "#268bd2", "#d33682", "#2aa198", "#eee8d5"],
             ),
+            "solarized-osaka" => Theme::palette(
+                ["#001419", "#839395", "#576d74", "#268bd3"],
+                ["#db302d", "#849900", "#b28500", "#268bd3", "#d23681", "#29a298", "#576d74"],
+            ),
+            "solarized-osaka-light" => Theme::palette(
+                ["#fdf5e2", "#576d74", "#adb7b7", "#268bd3"],
+                ["#db302d", "#849900", "#b28500", "#268bd3", "#d23681", "#29a298", "#adb7b7"],
+            ),
             "sonokai" => Theme::palette(
                 ["#2c2e34", "#e2e2e3", "#7f8490", "#76cce0"],
                 ["#fc5d7c", "#9ed072", "#e7c664", "#76cce0", "#b39df3", "#f39660", "#e2e2e3"],
+            ),
+            "synthwave-84" => Theme::palette(
+                ["#262335", "#ffffff", "#848bbd", "#f97e72"],
+                ["#fe4450", "#72f1b8", "#f3e70f", "#03edf9", "#ff7edb", "#03edf9", "#848bbd"],
+            ),
+            "tender" => Theme::palette(
+                ["#282828", "#eeeeee", "#666666", "#b3deef"],
+                ["#f43753", "#c9d05c", "#ffc24b", "#b3deef", "#d3b987", "#73cef4", "#666666"],
+            ),
+            "terafox" => Theme::palette(
+                ["#152528", "#e6eaea", "#6d7f8b", "#5a93aa"],
+                ["#e85c51", "#7aa4a1", "#fda47f", "#5a93aa", "#ad5c7c", "#a1cdd8", "#4e5157"],
             ),
             "tokyo-night-day" => Theme::palette(
                 ["#e1e2e7", "#3760bf", "#a1a6c5", "#2e7de9"],
@@ -823,6 +1401,38 @@ impl Theme {
                 ["#24283b", "#c0caf5", "#414868", "#7aa2f7"],
                 ["#f7768e", "#9ece6a", "#e0af68", "#7aa2f7", "#bb9af7", "#7dcfff", "#a9b1d6"],
             ),
+            "tomorrow" => Theme::palette(
+                ["#ffffff", "#4d4d4c", "#8e908c", "#4271ae"],
+                ["#c82829", "#718c00", "#eab700", "#4271ae", "#8959a8", "#3e999f", "#666666"],
+            ),
+            "tomorrow-night" => Theme::palette(
+                ["#1d1f21", "#c5c8c6", "#969896", "#81a2be"],
+                ["#cc6666", "#b5bd68", "#f0c674", "#81a2be", "#b294bb", "#8abeb7", "#666666"],
+            ),
+            "tomorrow-night-bright" => Theme::palette(
+                ["#000000", "#eaeaea", "#969896", "#7aa6da"],
+                ["#d54e53", "#b9ca4a", "#e7c547", "#7aa6da", "#c397d8", "#70c0b1", "#666666"],
+            ),
+            "tomorrow-night-eighties" => Theme::palette(
+                ["#2d2d2d", "#cccccc", "#999999", "#6699cc"],
+                ["#f2777a", "#99cc99", "#ffcc66", "#6699cc", "#cc99cc", "#66cccc", "#666666"],
+            ),
+            "vague" => Theme::palette(
+                ["#141415", "#cdcdcd", "#606079", "#6e94b2"],
+                ["#d8647e", "#7fa563", "#f3be7c", "#6e94b2", "#bb9dbd", "#aeaed1", "#606079"],
+            ),
+            "vscode" => Theme::palette(
+                ["#1f1f1f", "#d4d4d4", "#808080", "#569cd6"],
+                ["#f44747", "#608b4e", "#dcdcaa", "#569cd6", "#c678dd", "#56b6c2", "#808080"],
+            ),
+            "yui-dark" => Theme::palette(
+                ["#1f1f29", "#aaaab5", "#5f5f72", "#69aafd"],
+                ["#f55661", "#70cf92", "#cfb787", "#69aafd", "#b5a0ff", "#18c6ce", "#46404a"],
+            ),
+            "yui-light" => Theme::palette(
+                ["#f1eded", "#3d3c44", "#9f8a99", "#3856d1"],
+                ["#b22e32", "#346e27", "#b17900", "#3856d1", "#8f35bd", "#2c6a73", "#c9babf"],
+            ),
             "zenbones-dark" => Theme::palette(
                 ["#1c1917", "#b4bdc3", "#403833", "#6099c0"],
                 ["#de6e7c", "#819b69", "#b77e64", "#6099c0", "#b279a7", "#66a5ad", "#b4bdc3"],
@@ -830,6 +1440,10 @@ impl Theme {
             "zenbones-light" => Theme::palette(
                 ["#f0edec", "#2c363c", "#cfc1ba", "#286486"],
                 ["#a8334c", "#4f6c31", "#944927", "#286486", "#88507d", "#3b8992", "#2c363c"],
+            ),
+            "zephyr" => Theme::palette(
+                ["#262a33", "#bbc2cf", "#73797e", "#61afef"],
+                ["#e95678", "#afd700", "#f7bb3b", "#61afef", "#cba6f7", "#36d0e0", "#c78665"],
             ),
             "mono" => Theme {
                 bg: Color::Reset,
@@ -1068,6 +1682,15 @@ mod audit {
             if name != "mono" {
                 assert!(matches!(theme.bg, Color::Rgb(..)), "invalid background for {name}");
             }
+        }
+    }
+
+    #[test]
+    fn old_theme_names_load_the_theme_they_became() {
+        for (old, new) in super::ALIASES {
+            assert!(super::BUILTIN.contains(new), "{old} points at {new}, which is not built in");
+            assert!(!super::BUILTIN.contains(old), "{old} is both an alias and a theme");
+            assert_eq!(Theme::named(old).bg, Theme::named(new).bg, "{old} loads {new}");
         }
     }
 

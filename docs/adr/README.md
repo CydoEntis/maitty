@@ -49,3 +49,4 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0023](0023-the-mode-is-always-shown.md) | The mode is always shown, the window is framed in shortcut mode, dead keys say so | Accepted, amended by 0024 |
 | [0024](0024-the-mode-lives-in-a-bottom-bar.md) | The mode lives in a bar along the bottom, with key suggestions | Accepted |
 | [0025](0025-a-new-pane-ends-shortcut-mode.md) | Starting a pane ends shortcut mode | Accepted |
+| [0026](0026-hairline-a-fifth-look.md) | Hairline, a fifth look with no boxes | Accepted |

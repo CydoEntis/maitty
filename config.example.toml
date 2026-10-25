@@ -38,8 +38,8 @@ start_dir = ""              # where plain `maitty` opens, e.g. "~/code" (empty: 
 attention_sort = true       # sidebar: sessions that need you first, the rest keep their place
 sidebar = true              # <leader> z collapses it
 sidebar_position = "left"   # left | right
-layout = "floating"         # floating | tiled | compact | grid (older "cards" / "flat" still read)
-rounded = "off"             # full (needs a Nerd Font) | corners | off (older `corners = "rounded"` still read)
+layout = "floating"         # floating | tiled | compact | grid | hairline (older "cards" / "flat" still read)
+rounded = "off"             # full (needs a Nerd Font) | corners | off; hairline is always square (older `corners = "rounded"` still read)
 # padding = "1"             # 0 | 1 | 2: space round the screen
 # background = "solid"      # solid: paint the theme everywhere | terminal: your terminal's (transparent, image) shows through
 # cursor = "terminal"       # terminal | block | underline | bar, when a pane's program picks none

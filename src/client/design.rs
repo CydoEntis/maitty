@@ -149,7 +149,7 @@ pub(super) fn button(t: &Theme, label: &str, key: &str, kind: BtnKind) -> Vec<Se
         v.push(seg(key.to_string(), Style::default().bg(bg).fg(kfg).add_modifier(Modifier::BOLD)));
     }
     v.push(r);
-    v
+    super::screen::plain(v)
 }
 
 /// A key drawn as a keycap: ` key ` raised on `btn`, strong and bold. A combo (`Ctrl+Space`) is
@@ -896,7 +896,7 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
         SRow::Setting(s) => {
             if s.path == "theme" {
                 let name = if cfg.theme.is_empty() { crate::theme::DEFAULT } else { &cfg.theme };
-                return vec![seg(format!(" {} ", theme_label(name)), Style::default().fg(t.strong)), seg("Enter browse", Style::default().fg(t.accent))];
+                return vec![seg(format!(" {} ", theme_label(crate::theme::canonical(name))), Style::default().fg(t.strong)), seg("Enter browse", Style::default().fg(t.accent))];
             }
             let cur = super::modal::current(cfg, s.path);
             match s.kind {

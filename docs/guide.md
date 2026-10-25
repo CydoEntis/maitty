@@ -48,7 +48,12 @@ and your configured custom ones; rows click and the wheel scrolls.
 - Things that need you sort to the top; everything else keeps its place. Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
 - A session taking a real share of the machine says so in its pane's title, beside its state
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
-- The sidebar footer keeps **+ new** and **Menu** available in both layouts. **+ new**, `Ctrl+Space n` and a project's **+** open a plain shell where you are; type your agent there. `Ctrl+Space s` starts a session straight away (Settings › Sessions sets the agent and whether it gets a worktree).
+- **Hairline** (Settings › Appearance › Layout) draws all this with no boxes: one row per
+  session (no second lines), `needs you` in amber where the age was, a coloured rule under
+  each pane's title for its state, and a strip along the bottom with one segment per session.
+  It is always square, so the Rounded setting does not apply there.
+- The sidebar footer keeps **+ new** and **Menu** available in every layout (in Hairline as dim
+  hints with their keys, such as `Ctrl+Space n new` and `m menu`). **+ new**, `Ctrl+Space n` and a project's **+** open a plain shell where you are; type your agent there. `Ctrl+Space s` starts a session straight away (Settings › Sessions sets the agent and whether it gets a worktree).
 - `⇆` under a row names a file that this checkout and another have each changed since their
   branches parted (a merge conflict waiting to happen); more than two are one line with a count.
 - Drag a group's name, or a session, up or down to reorder (what needs you still comes first);

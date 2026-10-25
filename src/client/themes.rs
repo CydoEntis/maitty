@@ -36,7 +36,7 @@ impl App {
         let current = match self.cfg.theme.as_str() {
             "" => DEFAULT,
             "drover" => "hydra",
-            name => name,
+            name => crate::theme::canonical(name),
         };
         let sel = BUILTIN
             .iter()
@@ -160,7 +160,7 @@ pub(super) fn draw_themes(
     let current = match app.cfg.theme.as_str() {
         "" => DEFAULT,
         "drover" => "hydra",
-        name => name,
+        name => crate::theme::canonical(name),
     }
     .to_string();
     for (i, name) in names
@@ -286,10 +286,10 @@ fn draw_preview(buf: &mut ratatui::buffer::Buffer, area: Rect, name: &str) {
         area.x + 2,
         area.y + 1,
         &[
-            seg(" Focused pane ", st.bg(theme.accent).fg(theme.acc_ink)),
-            seg("  Regular text  ", st.fg(theme.text)),
-            seg("dimmed", st.fg(theme.muted)),
-        ],
+            super::screen::plain(vec![seg(" Focused pane ", st.bg(theme.accent).fg(theme.acc_ink))]),
+            vec![seg("  Regular text  ", st.fg(theme.text)), seg("dimmed", st.fg(theme.muted))],
+        ]
+        .concat(),
         area.right(),
     );
     put(
@@ -350,6 +350,14 @@ mod tests {
     }
 
     #[test]
+    fn theme_browser_opens_on_the_theme_an_old_name_became() {
+        let mut app = app();
+        app.cfg.theme = "melange".into();
+        app.open_themes();
+        assert!(matches!(app.mode, Mode::Themes { sel, .. } if BUILTIN[sel] == "melange-dark"));
+    }
+
+    #[test]
     fn theme_browser_filters_previews_and_returns_without_changing_the_theme() {
         let mut app = app();
         app.cfg.theme = "dracula".into();
@@ -393,6 +401,8 @@ mod tests {
         app.on_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::Themes { sel, .. } if sel == default + PAGE_ROWS));
         app.on_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
+        // At 40 columns the swatches clip the label to its first few letters.
+        let last: String = theme_label(BUILTIN.last().unwrap()).chars().take(6).collect();
         for (width, height) in [(100, 30), (80, 24), (40, 10)] {
             let buffer = draw(&mut app, width, height);
             let text = buffer
@@ -400,9 +410,8 @@ mod tests {
                 .iter()
                 .map(|cell| cell.symbol())
                 .collect::<String>();
-            // At 40 columns the swatches clip the label to "Zenbone".
             assert!(
-                text.contains("Zenbone"),
+                text.contains(&last),
                 "the last theme remains visible at {width}x{height}"
             );
         }

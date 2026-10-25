@@ -1122,6 +1122,8 @@ mod heads;
 mod popover;
 mod helpers_ask;
 mod draw;
+mod hairline;
+pub(in crate::client) use self::hairline::{flat_theme, plain, plain_on, set_plain};
 mod mode_bar;
 mod side;
 mod sheet;

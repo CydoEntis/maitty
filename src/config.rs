@@ -98,7 +98,7 @@ pub struct Ui {
     pub start_dir: String,
     /// Sidebar sessions (and worktrees) that need you go first; the rest keep their place.
     pub attention_sort: bool,
-    /// The look (ADR 0015): "floating", "tiled", "compact" or "grid". Read with `layout_kind`,
+    /// The look (ADR 0015): "floating", "tiled", "compact", "grid" or "hairline". Read with `layout_kind`,
     /// which also takes older files' "cards" (with `panes`) and "flat"; empty means unset.
     pub layout: String,
     /// "solid" (the default) paints everything the theme's `bg`, so a plain terminal shows the
@@ -320,14 +320,19 @@ impl Default for Mcp {
     }
 }
 
-/// The four looks over the one session layout (ADR 0015).
+/// The five looks over the one session layout (ADR 0015, ADR 0026).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayoutKind {
     Floating,
     Tiled,
     Compact,
     Grid,
+    /// No boxes: `│` / `─` hairlines, a title and rule per pane, and a status strip.
+    Hairline,
 }
+
+/// Settings' Layout choices, in its order.
+pub const LAYOUT_NAMES: &[&str] = &["floating", "tiled", "compact", "grid", "hairline"];
 
 impl LayoutKind {
     /// Its value in `ui.layout`.
@@ -337,6 +342,7 @@ impl LayoutKind {
             LayoutKind::Tiled => "tiled",
             LayoutKind::Compact => "compact",
             LayoutKind::Grid => "grid",
+            LayoutKind::Hairline => "hairline",
         }
     }
 }
@@ -349,9 +355,15 @@ impl Ui {
             "tiled" => LayoutKind::Tiled,
             "compact" | "flat" => LayoutKind::Compact,
             "grid" => LayoutKind::Grid,
+            "hairline" => LayoutKind::Hairline,
             "" | "cards" if self.panes == "tiled" => LayoutKind::Tiled,
             _ => LayoutKind::Floating,
         }
+    }
+
+    /// The rounding drawn: `rounded`, except that Hairline is always square (ADR 0026).
+    pub fn rounding(&self) -> Rounding {
+        if self.layout_kind() == LayoutKind::Hairline { Rounding::Off } else { self.rounded }
     }
 }
 
@@ -1925,6 +1937,14 @@ shell = \"pwsh\"
         assert_eq!(kind("[ui]\nlayout = 'floating'\npanes = 'tiled'"), LayoutKind::Floating, "a new name wins over a leftover panes");
         assert_eq!(kind("[ui]\nlayout = 'compact'"), LayoutKind::Compact);
         assert_eq!(kind("[ui]\nlayout = 'grid'"), LayoutKind::Grid);
+        assert_eq!(kind("[ui]\nlayout = 'hairline'"), LayoutKind::Hairline);
+    }
+
+    #[test]
+    fn hairline_is_always_square() {
+        let ui = |toml: &str| toml::from_str::<Config>(toml).unwrap().ui;
+        assert_eq!(ui("[ui]\nlayout = 'hairline'\nrounded = 'full'").rounding(), Rounding::Off);
+        assert_eq!(ui("[ui]\nlayout = 'tiled'\nrounded = 'full'").rounding(), Rounding::Full, "other looks keep the setting");
     }
 
     #[test]

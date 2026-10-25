@@ -22,9 +22,11 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     app.panes.clear();
     app.pane_frames.clear();
     let area = f.area();
-    let t = app.theme.clone();
+    let hairline = super::screen::Look::of(&app.cfg.ui).hairline;
+    let t = if hairline { super::screen::flat_theme(&app.theme) } else { app.theme.clone() };
     set_palette(t.ansi, t.ansi.map(|_| t.card2));
-    super::screen::set_round(app.cfg.ui.rounded.caps());
+    super::screen::set_round(app.cfg.ui.rounding().caps());
+    super::screen::set_plain(hairline.then_some(&t));
     // The terminal's own background (its window padding) matches ours while we run.
     let terminal_bg = app.cfg.ui.background != "solid";
     if let Color::Rgb(r, g, b) = t.bg
@@ -530,14 +532,17 @@ fn draw_prompt(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::Theme
     let mut chars = title.chars();
     let title: String = chars.next().map(|c| c.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default();
     let r = super::screen::panel(app, buf, area, 64, 7, &title, &[], t);
-    // A one-line prompt needs no frame: the title bar and the field carry it.
-    for y in r.y + 1..r.bottom() {
-        for x in [r.x, r.right() - 1] {
-            buf[(x, y)].set_symbol(" ").set_style(Style::default().bg(t.card));
+    // A one-line prompt needs no frame: the title bar and the field carry it. In Hairline its
+    // card is the ground, so only the line box shows where it is: that stays.
+    if !super::screen::plain_on() {
+        for y in r.y + 1..r.bottom() {
+            for x in [r.x, r.right() - 1] {
+                buf[(x, y)].set_symbol(" ").set_style(Style::default().bg(t.card));
+            }
         }
-    }
-    for x in r.x..r.right() {
-        buf[(x, r.bottom() - 1)].set_symbol(" ").set_style(Style::default().bg(t.card));
+        for x in r.x..r.right() {
+            buf[(x, r.bottom() - 1)].set_symbol(" ").set_style(Style::default().bg(t.card));
+        }
     }
     if confirm {
         super::screen::panel_bar(buf, r, t, &[("y", "yes"), ("n", "no")]);

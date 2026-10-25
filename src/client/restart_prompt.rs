@@ -34,7 +34,7 @@ pub struct Prompt {
 
 impl Prompt {
     pub fn new(daemon: u32, cfg: &Config) -> Prompt {
-        Prompt { daemon, resume: None, theme: cfg.theme(), round: cfg.ui.rounded.caps(), hover: None, hits: Vec::new() }
+        Prompt { daemon, resume: None, theme: cfg.theme(), round: cfg.ui.rounding().caps(), hover: None, hits: Vec::new() }
     }
 
     pub fn resuming(mut self, sessions: usize, busy: Option<usize>) -> Prompt {
@@ -78,6 +78,7 @@ impl Prompt {
     pub fn draw(&mut self, f: &mut Frame) {
         let t = &self.theme;
         super::screen::set_round(self.round);
+        super::screen::set_plain(None);
         let area = f.area();
         let buf = f.buffer_mut();
         fill(buf, area, t.bg);

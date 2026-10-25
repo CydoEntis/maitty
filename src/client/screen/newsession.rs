@@ -186,7 +186,7 @@ pub(in crate::client) fn draw_new_session(app: &mut App, f: &mut Frame, area: Re
             let cr = Rect { x, y, width: txt.width() as u16, height: 1 };
             let sel = j == *cur;
             let cs = if sel { st.bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD) } else if hovered(app, cr) { st.bg(t.hov).fg(t.strong) } else { st.bg(t.btn).fg(t.text) };
-            x = put(buf, x, y, &[seg(txt, cs)], r.right() - 2) + 1;
+            x = put(buf, x, y, &plain(vec![seg(txt, cs)]), r.right() - 2) + 1;
             hit(app, cr, ScreenHit::NsOpt(i as u8, j));
         }
     }
@@ -208,7 +208,7 @@ pub(in crate::client) fn draw_new_session(app: &mut App, f: &mut Frame, area: Re
         seg(" ›", st.fg(t.muted)),
         seg(format!("   {} of {}", ns.proj.min(projs.len().saturating_sub(1)) + 1, projs.len().max(1)), st.fg(t.muted)),
     ];
-    let end = put(buf, r.x + OPTION_COL, y, &segs, r.right() - 2);
+    let end = put(buf, r.x + OPTION_COL, y, &plain(segs.to_vec()), r.right() - 2);
     hit(app, Rect { x: r.x + OPTION_COL, y, width: end.saturating_sub(r.x + OPTION_COL), height: 1 }, ScreenHit::NsOpt(ROW_PROJECT, (ns.proj + 1) % projs.len().max(1)));
 
     let agent = agents.get(ns.agent).map(String::as_str).unwrap_or(AGENT_FALLBACK);

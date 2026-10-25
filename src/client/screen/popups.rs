@@ -104,7 +104,7 @@ fn panel_box(buf: &mut Buffer, r: Rect, look: Look, edge: Style) {
 /// A chip on a modal's top border: `segs` as they are, with caps on `ground` at both ends
 /// when shapes are rounded in full.
 fn header_chip(look: Look, segs: Vec<Seg>, ground: Color) -> Vec<Seg> {
-    if look.caps { round_ends(segs, ground) } else { segs }
+    if look.caps { round_ends(segs, ground) } else { plain(segs) }
 }
 
 /// A popover keeps at least this many columns from its left edge to the screen's.
@@ -126,11 +126,26 @@ pub(in crate::client) fn popover_rect(screen: Rect, side: Rect, w: u16, h: u16) 
 /// ` TITLE ` in `strong` bold, a column in; no border.
 pub(in crate::client) fn popover_at(app: &mut App, buf: &mut Buffer, r: Rect, title: &str, t: &Theme) -> Rect {
     let r = r.intersection(buf.area);
+    let look = Look::of(&app.cfg.ui);
+    if look.hairline {
+        hairline_outline(buf, r, look, t);
+    }
     fill(buf, r, t.card);
     fill(buf, Rect { height: 1, ..r }, t.btn);
     put(buf, r.x + 1, r.y, &[seg(format!(" {title} "), Style::default().fg(t.strong).bg(t.btn).add_modifier(Modifier::BOLD))], r.right());
     hit(app, r, ScreenHit::Noop);
     r
+}
+
+/// Hairline's frame for a popover, which has none of its own: a square `line` box one cell
+/// outside `r`, so it floats over the panes without covering any of its own text.
+fn hairline_outline(buf: &mut Buffer, r: Rect, look: Look, t: &Theme) {
+    let outer = Rect { x: r.x.saturating_sub(1), y: r.y.saturating_sub(1), width: r.width + 2, height: r.height + 2 }.intersection(buf.area);
+    if outer.width < 2 || outer.height < 2 {
+        return;
+    }
+    fill(buf, outer, t.bg);
+    panel_box(buf, outer, look, Style::default().fg(t.line).bg(t.bg));
 }
 
 pub(in crate::client) fn sel_row(app: &App, buf: &mut Buffer, r: Rect, y: u16, sel: bool, t: &Theme) -> Color {
@@ -154,6 +169,8 @@ pub(in crate::client) fn hints(t: &Theme, pairs: &[(&str, &str)]) -> Vec<Seg> {
 /// last row of its panel so the actions are in the same place everywhere. `ground` is `card`
 /// for a sheet on the app's background and `card2` inside a modal.
 pub(in crate::client) fn action_bar(buf: &mut Buffer, bar: Rect, t: &Theme, ground: Color, keys: &[(&str, &str)]) {
+    // Hairline has no raised band: the keys are words on the panel's own ground.
+    let ground = if plain_on() { t.bg } else { ground };
     let row = Rect { height: 1, ..bar };
     fill(buf, row, ground);
     let room = row.width.saturating_sub(2);

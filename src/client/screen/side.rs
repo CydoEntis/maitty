@@ -109,7 +109,7 @@ pub(in crate::client) fn session_lines(app: &App, s: &Session, t: &Theme, out: &
 }
 
 /// A helper's row steps in this far under the session that started it, per level.
-const HELPER_INDENT: u16 = 2;
+pub(super) const HELPER_INDENT: u16 = 2;
 /// Deeper helpers stay at this level: the names need the width more than the tree does.
 const HELPER_DEPTH: u8 = 2;
 
@@ -402,7 +402,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
 
 /// The first line shown: the focused (or cursor) row is kept in view when it changes;
 /// otherwise the wheel rules.
-fn side_scroll(app: &mut App, model: &[Proj], lines: &[Line], focus: Option<TermId>, list_h: usize) -> usize {
+pub(super) fn side_scroll(app: &mut App, model: &[Proj], lines: &[Line], focus: Option<TermId>, list_h: usize) -> usize {
     let mut scroll = app.screen.side_scroll as usize;
     if app.screen.follow {
         let want = app.screen.cursor.or(focus).and_then(|term| lines.iter().position(|l| line_term(model, l) == Some(term)));

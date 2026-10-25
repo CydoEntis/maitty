@@ -5780,8 +5780,19 @@ mod settings_v8_tests {
     #[test]
     fn one_layout_setting_names_each_look() {
         let layout = modal::SETTINGS.iter().find(|s| s.path == "ui.layout").expect("a Layout row");
-        assert!(matches!(layout.kind, modal::Kind::Choice(c) if c == ["floating", "tiled", "compact", "grid"]), "{:?}", layout.kind);
+        assert!(matches!(layout.kind, modal::Kind::Choice(c) if c == ["floating", "tiled", "compact", "grid", "hairline"]), "{:?}", layout.kind);
         assert!(!modal::SETTINGS.iter().any(|s| s.path == "ui.panes"), "no separate Cards spacing");
+    }
+
+    #[test]
+    fn rounded_says_it_does_not_apply_in_hairline() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let rounded = |o: &str| o.lines().find(|l| l.contains("Rounded")).expect("the Rounded row").to_string();
+        open(&mut app, Cat::Appearance, row_of(Cat::Appearance, "Rounded"));
+        assert!(!rounded(&draw(&mut app, 160, 45)).contains("not in Hairline"), "other looks offer it");
+        app.cfg.ui.layout = "hairline".into();
+        let row = rounded(&draw(&mut app, 160, 45));
+        assert!(row.contains("not in Hairline") && !row.contains("corners"), "{row}");
     }
 
     #[test]
