@@ -53,6 +53,7 @@ one thing (ADR 0017, 0022).
 | `c` | Changes |
 | `g` | Worktrees › |
 | `b` | Branch (in the side panel; its first row switches branch) |
+| `a` | References (in the side panel) |
 
 ### Maitty
 
@@ -129,7 +130,7 @@ Every key is a leader key: there is no letter that acts by itself in the sidebar
 The defaults are one key each, none but `?` needing Shift, chosen from what other apps use
 (ADR 0017, 0022): `v` / `h` split side by side / stacked, `c` Changes, `i` Inbox, `y` why, `k` stop
 the agent, `Enter` message it, `o` session with options, `p` find a file, `g` worktrees, `b`
-Branch, `l` what happened, `?` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image,
+Branch, `a` references, `l` what happened, `?` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image,
 `Ctrl`+arrows resize, `1`–`9` go to a tab. Your own `[keys.prefix]` entries still load.
 
 ## Menu
@@ -197,9 +198,10 @@ No bare key answers from the sidebar.
 
 ## Side panel
 
-The panel docked right (Inbox, Changes, Files, checks, Branch). Its width is kept for each kind of view.
-Files, Changes and Branch show a tab strip at its top, `Files f · Changes c · Branch b` with
-your own leader keys; the Inbox and checks have none.
+The panel docked right (Inbox, Changes, Files, checks, Branch, References). Its width is kept for each kind of view.
+Files, Changes, Branch and References show a tab strip at its top,
+`Files f · Changes c · Branch b · References a` with your own leader keys; the Inbox and checks
+have none.
 
 | Keys | Action |
 | --- | --- |
@@ -208,7 +210,7 @@ your own leader keys; the Inbox and checks have none.
 | Drag its left edge | Resize it |
 | Click a pane | Type into that pane; the view stays open, unlit |
 | Click the panel | Give the view the keys again |
-| Tab, Shift+Tab | Files, Changes, Branch: the next or previous tab, for the same checkout (not while Files filters or edits) |
+| Tab, Shift+Tab | Files, Changes, Branch, References: the next or previous tab, for the same checkout (not while Files filters or edits) |
 | Click a tab | Switch to it |
 
 ## Inbox
@@ -220,7 +222,7 @@ your own leader keys; the Inbox and checks have none.
 | Enter | The selected item's first button: Reply (a question), Read the command (a check waiting for approval), Output (a failed or could-not-run check), Re-run (a stale pass); an item with no buttons opens its session, as does a search result |
 | o | Open the selected item's session; empty search |
 | 1–9 | Answer selected agent question when search is empty |
-| m | Follow-up to selected asking/finished agent when search is empty |
+| m | Follow-up to selected asking/finished agent when search is empty; on a failed check, the message with the failure written in (sent only on Enter) |
 | d, M, x | Finished worktree: diff, ask to merge, ask to discard; empty search |
 | d, m, k | Shared-file warning: diff, message its agent, dismiss; empty search |
 | r, O, u, , | The selected item's check: run it again, override it (asks first), undo an override, its settings; only where they apply, else typed; empty search |
@@ -249,7 +251,7 @@ your own leader keys; the Inbox and checks have none.
 | Right / l, Left / h, Enter on directory | Expand, collapse / parent, toggle directory |
 | Enter on file | Insert quoted path into agent prompt and close Files |
 | r, / | Toggle recent/tree, filter paths; Enter ends filtering, Esc clears filter |
-| e, i, o, y, d | External editor, edit in preview, open outside, copy path, Changes |
+| e, i, o, y | External editor, edit in preview, open outside, copy path |
 | m on a markdown file | Show it as text or drawn (drawn is the default) |
 | PgUp, PgDn, Shift+Up, Shift+Down | Scroll preview pages or individual lines |
 | Right / l on file | Focus preview; arrows / j / k scroll, Space pages down, g / G or Home / End go to ends |
@@ -306,6 +308,7 @@ your own leader keys; the Inbox and checks have none.
 | r | Run the check again (queued while the agent is working) |
 | O | Override a failed check: opens a confirm with an optional reason |
 | u | Undo an override: the check reads as failed again |
+| m | A failed check: the agent's message box with its command, exit code and last 40 lines written in; sent only on Enter |
 | o | Go to the session |
 | i | Why it reads as it does (the evidence popover) |
 | , | The project's check (`PROJECT · <name>`) |
@@ -344,6 +347,22 @@ loads). It has the keys while open; closing it returns to shortcut mode.
 | Enter on Switch branch… | Open the branch switcher |
 | Enter on a snapshot | Restore it (asks first; refused while the agent works) |
 | b, Esc | Close it |
+
+## References view
+
+Leader + `a` opens the project's references (`.maitty/references/` at the repo's main checkout).
+In `[keys.prefix]` its action is `references`. It has the keys while open.
+
+| Keys | Action |
+| --- | --- |
+| Up / k, Down / j, PgUp, PgDn, Home, End | Choose a reference |
+| Enter, o | Open it in the system viewer |
+| p, Ctrl+V | Add the clipboard image as a screenshot |
+| Drop a file on the terminal | Add it (the terminal pastes its path) |
+| n | Add a file: type or paste its path, then Enter |
+| d, Delete | Remove it (asks first) |
+| y | Copy its absolute path |
+| a, Esc | Close it |
 
 ## Branches and worktree cleanup
 

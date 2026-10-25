@@ -197,6 +197,19 @@ Text sent to an agent through `maitty send` (and `--wait`), MCP `maitty_send` an
 one agent cannot hide instructions to another from you. The error names each one and where it
 is; nothing is sent. Your own typing and pastes in a pane are not checked.
 
+References (`src/references.rs`) are files the user puts in `.maitty/references/` at the repo's
+main checkout; agents read them through MCP `maitty_references`, which returns paths and never
+file contents. An agent's `path` must name an existing folder in its own project unless
+`[mcp] scope = "all"`. Nothing outside that folder is listed or removed: a path with `..` is
+refused, a link is listed only when it resolves inside the folder, and a references folder (or
+`.maitty`) that is a link out of the project is refused; a link is never written through either,
+since a new reference is made create-new. An agent's `path` is checked against its project by its
+words before anything on disk is touched, so it cannot probe what exists elsewhere, and network
+paths are refused outright (no SMB connection from a check). A paste into the References view is
+added only when it is one line naming a file; anything else is not repeated in a toast, as it may
+be a secret. The folder is kept out of git through `info/exclude`, since a reference is often a
+screenshot not meant to be shared.
+
 Saved pane output and check tails can hold secrets that were on screen. On unix their folders
 are 0700 and their files 0600 (`persist::private_dir`, `create_private`); on Windows they sit
 in your own profile. `[restore] output = false` stops saving pane output and deletes it.

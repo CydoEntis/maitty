@@ -33,8 +33,9 @@ and your configured custom ones; rows click and the wheel scrolls.
   `no git` outside a repo.
 - Under it, its sessions, one line each: the state mark and the name (in its state's colour
   while it is worth a look), then at the right the agent's mark (`✻` Claude, `◆` Codex, `✦`
-  Gemini, `◇` OpenCode, else its first letter), the lines changed but not committed (`+8 −2`)
-  and the age. Click the `+N −N` to open its Changes.
+  Gemini, `◇` OpenCode, else its first letter), how full its context is once past half
+  (`✻ 72%`, red from 85%; Claude and Codex report it), the lines changed but not committed
+  (`+8 −2`) and the age. Click the `+N −N` to open its Changes.
 - A second line shows only when it says more: a question (`asks: …`), a check result
   (`failed: test · exit 1`, with its first failing line on wide screens), helpers asked for,
   a quiet spell or a message waiting. Every new claude / codex gets its own worktree (named
@@ -75,14 +76,25 @@ the sidebar. Every default shortcut, and every screen's own keys, are in
 Without the leader: **Alt+1–9** selects tabs; **Alt+arrows** moves pane focus
 when enabled in Settings. All keys shows changes to these bindings too.
 
-**Files** opens in the side panel beside your panes: the tree, and the file you pick beside
-it (on a narrow panel the file takes the panel, `‹` goes back). `f` again or Esc closes it;
-Ctrl+click on a `path:line` in a pane opens it at that line. In **Files**: Enter puts the
-path in the agent's prompt, `e` opens it in your editor (`editor` in config; nvim, helix …
-open inside maitty), `y` copies the path, `r` lists recent files.
+**Files**, **Changes**, **Branch** and **References** share the side panel docked beside
+your panes. A tab strip at its top names each with its key (`Files f · Changes c · Branch b ·
+References a`), the open one lit
+while the panel has the keys; Tab / Shift+Tab (or a click on a tab) moves between them for the
+same checkout. A click into a pane gives that pane the keys and leaves the panel open beside
+it; a click in the panel, or its key again, gives the keys back.
 
-Files, Changes and Branch share the side panel: a tab strip at its top names each with its
-key, and Tab / Shift+Tab (or a click on a tab) moves between them for the same checkout.
+**Files** shows the project's tree and the file you pick beside it (on a narrow panel the
+file takes the panel, `‹` goes back). `f` again or Esc closes it; Ctrl+click on a `path:line`
+in a pane opens it at that line. Enter puts the path in the agent's prompt, `e` opens it in
+your editor (`editor` in config; nvim, helix … open inside maitty), `o` opens it outside,
+`y` copies the path, `/` filters, `r` lists recent files. Drag over the file shown (or
+double-click a word) and Ctrl+C copies the text.
+
+`i` edits the file right in the panel: Shift with the arrows, Ctrl+A or the mouse selects;
+Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste (with nothing selected, Ctrl+C and Ctrl+X take
+the whole line); Ctrl+Z and Ctrl+Y undo and redo; Ctrl+S saves and Esc is done (with
+unsaved changes it warns first, and Esc again throws them away). While Files has the keys a paste stays in Files: in the editor
+at the cursor, while filtering in the filter, and never in the pane behind.
 
 In **Changes**: `c` commits every changed file and `p` pushes and opens a PR (each asks
 first), `e` opens the file in your editor, `x` marks it reviewed (it sinks; the mark clears
@@ -191,6 +203,9 @@ checkpoint), or let a repo ship its own in `.maitty/checks.toml`.
 - Enter on a failed row opens its evidence: the command, where and when it ran, and its output.
   `r` re-runs, `O` overrides with a reason (the failure stays visible), `u` undoes that, Tab
   moves between checkpoints.
+- `m` on a failed check, in its evidence or its Inbox item, opens the agent's message box with
+  the command, its exit code and the last 40 lines of its output written in. Add what you want
+  done and press Enter; nothing is sent before.
 - A pass goes **stale** when the files change afterwards; `r` runs it again.
 - `<leader> i` (Inbox) lists failed checks and approvals with what needs you.
 
@@ -211,13 +226,37 @@ run = ["claude", "npm run dev", "lazygit"] # the first is the main one
 
 They show up in + New as `⚙ feature`.
 
+## References
+
+Keep the screenshots and design files an agent should build from in the References view
+(leader + `a`). They are plain files in `.maitty/references/` at the repo's main checkout (a
+folder outside git keeps its own), so every agent, in every worktree, sees the same set, and
+any agent can read them by path. The first time Maitty makes the folder in a repo it adds
+`.maitty/references/` to the repo's `.git/info/exclude`, so references stay out of git without
+touching your `.gitignore`; `git add -f` commits one if you want to share it. Agents connected
+through `maitty integrate mcp` are told to call `maitty_references` before UI or design work; it
+lists each file's absolute path, kind, size and time, and the agent opens the images itself.
+Subagents usually inherit their parent's MCP tools. Over `--remote` the view isn't available yet.
+
 ## Agents that steer agents (MCP)
 
-`maitty integrate mcp` registers `maitty mcp` with Claude Code and prints the
-`[mcp_servers.maitty]` lines to add to Codex's `~/.codex/config.toml`. An agent then has tools to
+`maitty integrate mcp` registers `maitty mcp` with every agent you have that takes one, and
+prints a line per agent (registered, already registered, or skipped when it isn't installed):
+
+- Claude Code, through `claude mcp add --scope user` (every project);
+- Codex, as `[mcp_servers.maitty]` in `$CODEX_HOME/config.toml` (or `~/.codex/config.toml`);
+- Qwen Code and Gemini CLI, as `mcpServers.maitty` in `~/.qwen/settings.json` and
+  `~/.gemini/settings.json` (`$QWEN_HOME` is Qwen's config folder itself; `$GEMINI_CLI_HOME`
+  stands in for the home folder, so Gemini's is `$GEMINI_CLI_HOME/.gemini`).
+
+Each entry runs this `maitty` with `args = ["mcp"]`; the rest of each file, comments included,
+is kept, and a backup sits beside it. An agent whose config folder doesn't exist is skipped, not
+set up. Running it again changes nothing; `--uninstall` removes only Maitty's entry. Restart a
+running agent to load the server. `maitty doctor` shows which agents have it. An agent then has tools to
 list sessions (`maitty_list`), read a screen (`maitty_read`), send a message
 (`maitty_send`), wait for a turn to end (`maitty_wait`), answer a prompt (`maitty_answer`),
-interrupt (`maitty_interrupt`) and start helpers (`maitty_start`, see *Helpers* above).
+interrupt (`maitty_interrupt`), start helpers (`maitty_start`, see *Helpers* above) and list the
+project's references (`maitty_references`, see *References* above).
 `[mcp] approve` sets whether agents may answer "yes" to prompts and `[mcp] scope` whether
 they reach only their project or every session; `maitty grant <pane> read,write,…` changes
 one pane's rights.
@@ -248,6 +287,7 @@ answer, and return to your other work.
 |---|---|---|
 | `f` | **Files** | The project's tree, with the file you pick beside it. `r` switches to recent files (just appeared in Downloads, Desktop, Documents or the project), `/` filters. Enter types the path into your prompt; `e` your editor, `i` edit it in place (Shift+arrows or the mouse select; Ctrl+C, Ctrl+X, Ctrl+V copy, cut and paste), `o` open it outside, `y` copy the path. `f` again or Esc closes it. |
 | `c` | **Changes** | A checkout's changed files and the diff: `c` commit, `p` push and open a pull request, `x` mark reviewed, `r` go to its agent; in a worktree `m` merges into the base branch and `d` throws it away. Each of `c`, `p`, `m` and `d` asks first. |
+| `a` | **References** | The project's screenshots and design files, newest first: `p` adds the clipboard image, `n` a file by its path (type it or drop it in), Enter opens one in your image viewer, `y` copies its path, `d` removes it (asked first). `a` again or Esc closes it. See *References* below. |
 | `b` | **Branch** | Where the session's checkout stands, in the side panel: its branch, how far it is ahead of and behind its upstream and its base branch, the last 10 commits, the last check result and its snapshots. Its first row, **Switch branch…**, opens the branch switcher; Enter on a snapshot restores it (asked first). `b` again or Esc closes it. |
 
 ## Agents

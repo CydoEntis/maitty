@@ -3005,7 +3005,8 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(!o.contains("claude 5h"), "no plan limits on screen");
-        assert!(!o.contains("ctx 76%") && !o.contains("$1.20") && !o.contains("76% "), "context and cost are the agent's own to show");
+        assert!(!o.contains("ctx 76%") && !o.contains("$1.20"), "cost is the agent's own to show");
+        assert!(o.contains(" 76%"), "context past half full is on its row");
         app.snap.terms.get_mut(&agent).unwrap().resume_at = Some(now + 600);
         let o = draw(&mut app, 160, 45);
         assert!(o.contains("resumes in 10m") || o.contains("resumes in 9m"), "waiting on a limit, on its row");
@@ -4064,7 +4065,8 @@ second line
         app.open_changes(repo.clone());
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("─ Changes ") && o.contains("─ 1  claude "), "Changes docks beside the panes");
+        assert!(o.contains(" Changes c ") && o.contains("─ 1  claude "), "Changes docks beside the panes");
+        assert!(!o.contains("─ Changes "), "its lit tab names it; the title doesn't repeat it");
         let _ = std::fs::remove_dir_all(&repo);
     }
 
@@ -5292,7 +5294,7 @@ second line
     }
 
     /// The suggestions in the order they are dropped last to first.
-    const SUGGESTED: [&str; 8] = ["n shell", "s session", "c changes", "f files", "i inbox", ", settings", "? all keys", "Esc type"];
+    const SUGGESTED: [&str; 9] = ["n shell", "s session", "c changes", "f files", "i inbox", ", settings", "a references", "? all keys", "Esc type"];
 
     #[test]
     fn the_lit_bar_suggests_keys_from_the_keymap() {
@@ -5329,7 +5331,7 @@ second line
                 let (_, bar) = bar_text(&app, &buf);
                 let at = format!("{w} update {update}: {bar}");
                 let shown: Vec<bool> = SUGGESTED.iter().map(|s| bar.contains(s)).collect();
-                let (suggestions, tail) = shown.split_at(6);
+                let (suggestions, tail) = shown.split_at(7);
                 assert!(bar.contains("SHORTCUT"), "the tag stays: {at}");
                 assert!(suggestions.windows(2).all(|p| p[0] || !p[1]), "dropped from the right: {at}");
                 assert!(!suggestions[0] || tail.iter().all(|s| *s), "all keys and Esc go after every suggestion: {at}");
@@ -9771,6 +9773,47 @@ mod files_panel_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Keys as the Windows console hands them over in one read: a press and a release each.
+    pub(super) fn burst(s: &str) -> Vec<Event> {
+        s.chars()
+            .flat_map(|c| {
+                let press = KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
+                [Event::Key(press), Event::Key(KeyEvent { kind: ratatui::crossterm::event::KeyEventKind::Release, ..press })]
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_short_paste_read_as_keys_runs_no_files_command() {
+        let dir = project("shortpaste");
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "notes.txt");
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        // `r/` rather than the `eyo` of the report: run as keys, those would launch an editor
+        // and an app and write the clipboard; these only change Files.
+        app.on_burst(burst("r/"));
+        assert!(app.notice.as_ref().is_some_and(|(m, _, _)| m.starts_with("Files has the keys")), "taken as a paste");
+        assert!(!files(&app).recent && !files(&app).filtering, "not run as r and /");
+        assert_eq!(typed(&mut out), None, "nothing reached the pane");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_held_key_read_in_one_burst_still_moves_in_files() {
+        let dir = project("heldkey");
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "src");
+        let from = files(&app).sel;
+        app.on_burst(burst("jj"));
+        assert_eq!(files(&app).sel, from + 2, "two moves down, not a paste");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_release_outside_the_window_ends_the_selection_drag() {
         let (dir, mut app) = editing("staledrag");
@@ -10201,16 +10244,16 @@ mod drawer_tab_tests {
     }
 
     #[test]
-    fn tab_and_shift_tab_cycle_files_changes_and_branch() {
+    fn tab_and_shift_tab_cycle_files_changes_branch_and_references() {
         let (mut app, dir) = in_repo("cycle");
         app.act(Action::Files);
-        use screen::SheetKind::{Branch, Changes, Files};
-        for want in [Changes, Branch, Files] {
+        use screen::SheetKind::{Branch, Changes, Files, References};
+        for want in [Changes, Branch, References, Files] {
             key(&mut app, KeyCode::Tab, KeyModifiers::NONE);
             assert_eq!(open(&app), Some(want), "Tab");
             assert!(app.view_has_keys(), "the new view has the keys");
         }
-        for want in [Branch, Changes, Files] {
+        for want in [References, Branch, Changes, Files] {
             key(&mut app, KeyCode::BackTab, KeyModifiers::SHIFT);
             assert_eq!(open(&app), Some(want), "Shift+Tab");
         }
@@ -10228,6 +10271,54 @@ mod drawer_tab_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Nothing typed into a pane since the last look.
+    fn no_input(out: &mut mpsc::UnboundedReceiver<ClientMsg>) -> bool {
+        std::iter::from_fn(|| out.try_recv().ok()).all(|m| !matches!(m, ClientMsg::Input { .. }))
+    }
+
+    #[test]
+    fn a_burst_in_changes_stays_its_keys_and_never_reaches_the_pane() {
+        let (mut app, dir) = in_repo("burst");
+        crate::proc::git(&dir, &["add", "."]).unwrap();
+        crate::proc::git(&dir, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "first"]).unwrap();
+        for f in ["a.txt", "b.txt", "c.txt"] {
+            std::fs::write(dir.join(f), "new\n").unwrap();
+        }
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        let (btx, mut bg) = mpsc::unbounded_channel();
+        app.bg = btx;
+        app.act(Action::Changes);
+        let sel = |app: &App| match &app.view {
+            Some(View::Changes(v)) => (v.order(), v.review.as_ref().map(|r| r.sel)),
+            _ => panic!("Changes is open"),
+        };
+        // Other background work may come back first.
+        while sel(&app).1.is_none() {
+            let read = super::branch_view_tests::next_bg(&mut bg);
+            app.on_bg(read);
+        }
+        let (order, first) = sel(&app);
+        assert!(order.len() >= 3 && first == Some(order[0]), "the files are read: {order:?}");
+        app.on_burst(super::files_panel_tests::burst("jjk"));
+        assert_eq!(sel(&app).1, Some(order[1]), "down, down, up: run as keys");
+        assert!(no_input(&mut out), "nothing typed into the pane");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_paste_with_branch_open_never_reaches_the_pane() {
+        let (mut app, dir) = in_repo("bpaste");
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.act(Action::Branches);
+        assert_eq!(open(&app), Some(screen::SheetKind::Branch));
+        app.on_event(Event::Paste("jk\n".into()));
+        assert!(no_input(&mut out), "nothing typed into the pane");
+        assert!(app.notice.as_ref().is_some_and(|(m, _, _)| m.starts_with("the side panel has the keys")), "it says why");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn r_switches_files_to_recent_files_and_back() {
         let (mut app, dir) = in_repo("recent");
@@ -10237,6 +10328,16 @@ mod drawer_tab_tests {
         assert!(text(&draw(&mut app)).contains("r project"), "the hint says r");
         key(&mut app, KeyCode::Char('r'), KeyModifiers::NONE);
         assert!(matches!(&app.view, Some(View::Files(v)) if !v.recent), "r again shows the project");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn d_in_files_does_not_open_changes() {
+        let (mut app, dir) = in_repo("nod");
+        app.act(Action::Files);
+        key(&mut app, KeyCode::Char('d'), KeyModifiers::NONE);
+        assert_eq!(open(&app), Some(screen::SheetKind::Files), "Changes is c, not d");
+        assert!(!text(&draw(&mut app)).contains("Show diff"), "no button offers it either");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -10348,6 +10449,238 @@ mod drawer_tab_tests {
         key(&mut app, KeyCode::BackTab, KeyModifiers::SHIFT);
         draw(&mut app);
         assert_eq!(app.screen.sheet_rect.width, 70, "back to Files' width");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod references_view_tests {
+    use super::*;
+    use super::branch_view_tests::next_bg;
+    use super::check_settings_tests::{draw, show};
+
+    fn leader(app: &mut App, c: char) {
+        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+        app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+    }
+
+    fn key(app: &mut App, code: KeyCode) {
+        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    fn sheet(app: &App) -> Option<&screen::ReferencesSheet> {
+        match &app.view {
+            Some(View::References(v)) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// A folder outside git for session 1, with `files` in its references (name, seconds old).
+    fn project(tag: &str, files: &[(&str, u64)]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("{APP_COMMAND}-refs-view-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let refs = crate::references::folder(&dir);
+        std::fs::create_dir_all(&refs).unwrap();
+        for (name, ago) in files {
+            let p = refs.join(name);
+            std::fs::write(&p, vec![0u8; 2048]).unwrap();
+            let at = std::time::SystemTime::now() - std::time::Duration::from_secs(*ago);
+            std::fs::File::options().write(true).open(&p).unwrap().set_modified(at).unwrap();
+        }
+        dir
+    }
+
+    /// The app at w×h with session 1 in `dir` and References open, the folder read.
+    fn opened(dir: &std::path::Path, w: u16, h: u16) -> (App, mpsc::UnboundedReceiver<Bg>) {
+        let (_, mut app) = super::design_tests::render_with(w, h);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.bg = tx;
+        let pane = app.snap.terms.get_mut(&1).unwrap();
+        pane.cwd = dir.to_path_buf();
+        pane.top = Some(dir.to_path_buf());
+        // Unknown to the snapshot: the background read finds the project from the folder.
+        pane.root = None;
+        leader(&mut app, 'a');
+        assert!(sheet(&app).is_some_and(|v| v.list.is_none()), "a opens References, reading the folder");
+        let b = next_bg(&mut rx);
+        app.on_bg(b);
+        (app, rx)
+    }
+
+    fn names(app: &App) -> Vec<String> {
+        match sheet(app).and_then(|v| v.list.clone()) {
+            Some(Ok(l)) => l.items.into_iter().map(|r| r.name).collect(),
+            other => panic!("a list: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_empty_project_says_how_to_add_one_at_both_sizes() {
+        let dir = project("empty", &[]);
+        for (w, h) in [(80, 24), (160, 45)] {
+            let (mut app, _rx) = opened(&dir, w, h);
+            let o = draw(&mut app, w, h);
+            show(&o);
+            assert!(o.contains("REFERENCES"), "in the side panel at {w}×{h}:\n{o}");
+            assert!(o.contains("No references yet · paste an image or add a file"), "the empty state at {w}×{h}:\n{o}");
+            assert!(o.contains("Refs") || o.contains("References"), "its tab in the strip at {w}×{h}");
+            if w >= 160 {
+                assert!(o.contains("Files f") && o.contains("References a"), "the strip names its key:\n{o}");
+            }
+            key(&mut app, KeyCode::Char('a'));
+            assert!(sheet(&app).is_none(), "a closes it again");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn references_are_listed_newest_first_with_kind_size_and_age() {
+        let dir = project("list", &[("old-home.png", 7200), ("checkout.fig", 120), ("brief.pdf", 5)]);
+        let (mut app, _rx) = opened(&dir, 160, 45);
+        assert_eq!(names(&app), ["brief.pdf", "checkout.fig", "old-home.png"]);
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        let row = |name: &str| o.lines().find(|l| l.contains(name)).unwrap_or_else(|| panic!("{name}:\n{o}")).to_string();
+        let old = row("old-home.png");
+        assert!(old.contains("image") && old.contains("2 KB") && old.contains(" 2h"), "{old}");
+        assert!(row("checkout.fig").contains("design"));
+        assert!(o.find("brief.pdf").unwrap() < o.find("old-home.png").unwrap(), "newest on top");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn remove_asks_first_then_deletes_the_file() {
+        let dir = project("remove", &[("a.png", 10), ("b.png", 20)]);
+        let (mut app, mut rx) = opened(&dir, 160, 45);
+        key(&mut app, KeyCode::Down);
+        key(&mut app, KeyCode::Char('d'));
+        let Mode::Confirm(c) = &app.mode else { panic!("asked first: {:?}", std::mem::discriminant(&app.mode)) };
+        assert!(c.danger && c.what == "b.png", "{c:?}");
+        assert!(crate::references::folder(&dir).join("b.png").exists(), "nothing gone before the answer");
+        key(&mut app, KeyCode::Enter);
+        let done = next_bg(&mut rx);
+        app.on_bg(done);
+        assert!(!crate::references::folder(&dir).join("b.png").exists(), "removed");
+        let reread = next_bg(&mut rx);
+        app.on_bg(reread);
+        assert_eq!(names(&app), ["a.png"], "the list reads again");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn n_copies_a_typed_or_dropped_file_in() {
+        let dir = project("add", &[]);
+        let src = dir.join("hero shot.png");
+        std::fs::write(&src, "png").unwrap();
+        let (mut app, mut rx) = opened(&dir, 160, 45);
+        key(&mut app, KeyCode::Char('n'));
+        assert!(matches!(app.mode, Mode::Prompt { kind: PromptKind::AddReference(..), .. }), "n asks for a path");
+        app.on_event(Event::Paste(format!("\"{}\"", src.display())));
+        key(&mut app, KeyCode::Enter);
+        let added = next_bg(&mut rx);
+        app.on_bg(added);
+        let reread = next_bg(&mut rx);
+        app.on_bg(reread);
+        assert_eq!(names(&app), ["hero shot.png"]);
+        assert!(src.exists(), "copied, not moved");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_file_dropped_on_the_open_view_is_added() {
+        let dir = project("drop", &[]);
+        let src = dir.join("mock.png");
+        std::fs::write(&src, "png").unwrap();
+        let (mut app, mut rx) = opened(&dir, 160, 45);
+        app.on_event(Event::Paste(format!("'{}'", src.display())));
+        let added = next_bg(&mut rx);
+        app.on_bg(added);
+        let reread = next_bg(&mut rx);
+        app.on_bg(reread);
+        assert_eq!(names(&app), ["mock.png"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn references_takes_its_own_paste_and_a_burst_stays_keys_never_reaching_the_pane() {
+        let dir = project("ownpaste", &[]);
+        let src = dir.join("mock.png");
+        std::fs::write(&src, "png").unwrap();
+        let (mut app, mut rx) = opened(&dir, 160, 45);
+        let (tx, mut out) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.on_burst(super::files_panel_tests::burst("jk"));
+        assert!(app.notice.is_none(), "a short burst is keys here, not a paste");
+        app.on_event(Event::Paste(src.display().to_string()));
+        let added = next_bg(&mut rx);
+        app.on_bg(added);
+        let reread = next_bg(&mut rx);
+        app.on_bg(reread);
+        assert_eq!(names(&app), ["mock.png"], "References added it, not the side-panel guard");
+        let typed = std::iter::from_fn(|| out.try_recv().ok()).filter(|m| matches!(m, ClientMsg::Input { .. })).count();
+        assert_eq!(typed, 0, "nothing typed into the pane");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pasted_text_that_names_no_file_adds_nothing_and_is_never_shown() {
+        let dir = project("text", &[]);
+        let (mut app, mut rx) = opened(&dir, 160, 45);
+        app.on_event(Event::Paste("sk-secret-token\nsecond line".into()));
+        let shown = app.notice.as_ref().map(|(t, ..)| t.clone()).unwrap_or_default();
+        assert!(shown.contains("References has the keys") && !shown.contains("sk-secret"), "{shown}");
+        assert!(rx.try_recv().is_err(), "nothing to add for several lines");
+        app.notice = None;
+        app.on_event(Event::Paste("sk-secret-token".into()));
+        let b = next_bg(&mut rx);
+        app.on_bg(b);
+        let shown = app.notice.as_ref().map(|(t, ..)| t.clone()).unwrap_or_default();
+        assert!(shown.contains("References has the keys") && !shown.contains("sk-secret"), "{shown}");
+        assert_eq!(names(&app), Vec::<String>::new());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_paste_with_no_image_says_so_and_makes_no_folder() {
+        let dir = std::env::temp_dir().join(format!("{APP_COMMAND}-refs-view-noimg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (mut app, mut rx) = opened(&dir, 160, 45);
+        key(&mut app, KeyCode::Char('p'));
+        let b = next_bg(&mut rx);
+        app.on_bg(b);
+        assert!(app.notice.as_ref().is_some_and(|(t, ..)| t.contains("no image")), "{:?}", app.notice);
+        assert!(!crate::references::folder(&dir).exists(), "no image, no folder");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_session_in_a_worktree_sees_the_main_checkouts_references() {
+        let main = project("wt", &[("shared.png", 10)]);
+        let git = |args: &[&str]| crate::proc::git(&main, args).unwrap();
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.email", "t@t"]);
+        git(&["config", "user.name", "t"]);
+        std::fs::write(main.join("a.txt"), "a").unwrap();
+        git(&["add", "a.txt"]);
+        git(&["commit", "-qm", "first"]);
+        let wt = main.with_extension("feat");
+        let _ = std::fs::remove_dir_all(&wt);
+        git(&["worktree", "add", "-q", "-b", "feat", wt.to_str().unwrap()]);
+        let (app, _rx) = opened(&wt, 160, 45);
+        assert_eq!(names(&app), ["shared.png"], "the worktree lists the main checkout's set");
+        assert_eq!(sheet(&app).unwrap().root.canonicalize().unwrap(), main.canonicalize().unwrap());
+        let _ = std::fs::remove_dir_all(&wt);
+        let _ = std::fs::remove_dir_all(&main);
+    }
+
+    #[test]
+    fn y_copies_the_chosen_files_absolute_path() {
+        let dir = project("copy", &[("a.png", 10)]);
+        let (mut app, _rx) = opened(&dir, 160, 45);
+        key(&mut app, KeyCode::Char('y'));
+        let copied = crate::client::copy::LAST_COPY.with(|c| c.borrow().clone()).unwrap();
+        assert_eq!(PathBuf::from(&copied), crate::references::folder(&dir).join("a.png"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

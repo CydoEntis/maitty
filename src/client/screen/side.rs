@@ -481,12 +481,26 @@ fn agent_mark(agent: &str, ascii: bool) -> String {
 
 /// The least room a name keeps before the row's right-hand marks give way.
 const NAME_MIN: usize = 8;
+/// Context shows on the row once it is past this full, so a row stays quiet until it matters.
+const CONTEXT_SHOWN_ABOVE: u8 = 50;
+/// From this full the context reads in `err`: the agent is about to compact or stall.
+const CONTEXT_NEARLY_FULL: u8 = 85;
 
-/// The right of a session's row, at most `room` wide: its agent's mark, its checkout's
-/// uncommitted lines (`+N −N`) and its age. The lines give way first, then the mark.
-/// Also where the lines sit in it, as (offset, width), when they are shown.
+/// The context a row shows (`72` for `72%`) and whether it is nearly full, once past half
+/// full. Rounded first, so the number drawn is the number judged.
+fn context_shown(context: Option<f32>) -> Option<(u8, bool)> {
+    let pct = context?.clamp(0.0, 100.0).round() as u8;
+    (pct > CONTEXT_SHOWN_ABOVE).then_some((pct, pct >= CONTEXT_NEARLY_FULL))
+}
+
+/// The right of a session's row, at most `room` wide: its agent's mark, its context once past
+/// half full, its checkout's uncommitted lines (`+N −N`) and its age. The lines give way
+/// first, then the mark, then the context. Also where the lines sit in it, as (offset,
+/// width), when they are shown.
 fn row_meta(s: &Session, ascii: bool, changed: Option<(i64, i64)>, when: &str, room: usize, st: Style, t: &Theme) -> (Vec<Seg>, Option<(u16, u16)>) {
     let mark = if s.is_agent { agent_mark(&s.agent, ascii) } else { String::new() };
+    // Never amber: amber is for needs you.
+    let context = context_shown(s.context).map(|(pct, full)| seg(format!("{pct}%"), st.fg(if full { t.err } else { t.muted })));
     let lines: Vec<Seg> = match changed {
         Some((a, r)) if a > 0 || r > 0 => vec![seg(format!("+{a}"), st.fg(t.done)), seg(format!(" −{r}"), st.fg(t.err))],
         _ => Vec::new(),
@@ -496,11 +510,18 @@ fn row_meta(s: &Session, ascii: bool, changed: Option<(i64, i64)>, when: &str, r
             v.push(seg("  ", st));
         }
     };
-    let build = |with_mark: bool, with_lines: bool| {
+    let build = |with_mark: bool, with_context: bool, with_lines: bool| {
         let mut v: Vec<Seg> = Vec::new();
         let mut span = None;
         if with_mark && !mark.is_empty() {
             v.push(seg(mark.clone(), st.fg(t.muted)));
+        }
+        if let Some(c) = context.as_ref().filter(|_| with_context) {
+            // The agent's mark and its context read as one: `✻ 72%`.
+            if !v.is_empty() {
+                v.push(seg(" ", st));
+            }
+            v.push(c.clone());
         }
         if with_lines && !lines.is_empty() {
             gap(&mut v);
@@ -513,7 +534,11 @@ fn row_meta(s: &Session, ascii: bool, changed: Option<(i64, i64)>, when: &str, r
         }
         (v, span)
     };
-    [(true, true), (true, false), (false, false)].into_iter().map(|(m, l)| build(m, l)).find(|(v, _)| segs_width(v) as usize <= room).unwrap_or_default()
+    [(true, true, true), (true, true, false), (false, true, false), (false, false, false)]
+        .into_iter()
+        .map(|(m, c, l)| build(m, c, l))
+        .find(|(v, _)| segs_width(v) as usize <= room)
+        .unwrap_or_default()
 }
 
 /// A session's first line: its mark, its name in its state's colour, and at the right its
@@ -1156,6 +1181,70 @@ mod v8_tests {
         let path = app.screen_model().iter().flat_map(|p| p.wts.iter()).find(|w| w.sessions.iter().any(|s| s.term == 2)).expect("add-payments' checkout").path.clone();
         app.screen.lines_changed.insert(path.clone(), (12, 3));
         (app, path)
+    }
+
+    /// add-payments' row at a screen `w` wide, its context `context` full.
+    fn payments_row(app: &mut App, context: Option<f32>, w: u16) -> String {
+        app.snap.terms.get_mut(&2).unwrap().usage.context = context;
+        let h = if w < 100 { 24 } else { 45 };
+        let text = raw_text(app, Layout::Floating, w, h, "unicode");
+        if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
+            println!("--- {w}x{h}, context {context:?}\n{text}");
+        }
+        side_rows(app, Layout::Floating, w, h).into_iter().find(|r| r.contains("add-pay")).expect("add-payments' row")
+    }
+
+    #[test]
+    fn a_row_shows_its_context_once_past_half_full() {
+        let mut app = world(Stage::None);
+        for (context, said) in [(None, None), (Some(49.0), None), (Some(50.0), None), (Some(50.6), Some("51%")), (Some(84.0), Some("84%")), (Some(85.0), Some("85%")), (Some(100.0), Some("100%"))] {
+            let row = payments_row(&mut app, context, 160);
+            match said {
+                Some(pct) => assert!(row.contains(&format!("✻ {pct}  0s")), "{context:?}: beside the agent's mark: {row:?}"),
+                None => assert!(!row.contains('%') && row.contains("✻  0s"), "{context:?}: nothing: {row:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn context_is_muted_until_nearly_full_then_err_and_never_amber() {
+        let mut app = world(Stage::None);
+        let t = app.theme.clone();
+        for (context, colour) in [(84.0, t.muted), (85.0, t.err), (100.0, t.err)] {
+            app.snap.terms.get_mut(&2).unwrap().usage.context = Some(context);
+            let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
+            let pct = format!("{}%", context as u8);
+            let at = find(&buf, &app, &pct);
+            assert_eq!(buf[at].fg, colour, "{pct}");
+            assert_ne!(buf[at].fg, t.blocked, "{pct}: amber is for needs you");
+        }
+    }
+
+    #[test]
+    fn a_narrow_row_keeps_its_context_over_its_lines() {
+        let (mut app, _) = payments_with_changes();
+        for (w, said) in [(160, "✻ 72%  +12 −3  0s"), (120, "✻ 72%  0s"), (100, "✻ 72%  0s"), (80, "✻ 72%")] {
+            let row = payments_row(&mut app, Some(72.0), w);
+            assert!(row.contains(said), "{w}: {row:?}");
+            assert!(w == 160 || !row.contains("+12"), "{w}: the lines go first: {row:?}");
+        }
+    }
+
+    #[test]
+    fn the_meta_gives_way_lines_then_mark_then_context() {
+        let (mut app, _) = payments_with_changes();
+        app.snap.terms.get_mut(&2).unwrap().usage.context = Some(72.0);
+        app.screen_fresh();
+        let s = app.screen_model().iter().flat_map(Proj::sessions).find(|s| s.term == 2).cloned().expect("add-payments");
+        let t = app.theme.clone();
+        let said = |room| {
+            let (segs, _) = row_meta(&s, false, Some((12, 3)), "2m", room, Style::default(), &t);
+            segs.iter().map(|g| g.0.as_str()).collect::<String>()
+        };
+        assert_eq!(said(40), "✻ 72%  +12 −3  2m");
+        assert_eq!(said(16), "✻ 72%  2m", "the lines first");
+        assert_eq!(said(8), "72%  2m", "then the agent's mark");
+        assert_eq!(said(6), "2m", "then the context; the age stays");
     }
 
     fn mouse(app: &mut App, kind: crossterm::event::MouseEventKind, (column, row): (u16, u16)) {

@@ -19,6 +19,8 @@ pub(in crate::client) enum SheetKind {
     Files,
     /// Where a checkout stands: its branch, commits, check and snapshots.
     Branch,
+    /// The project's reference images and design files.
+    References,
 }
 
 /// Its width beside the panes, before you size it (Changes takes half the screen).
@@ -44,6 +46,7 @@ impl SheetKind {
             SheetKind::Check => "check",
             SheetKind::Files => "files",
             SheetKind::Branch => "branch",
+            SheetKind::References => "references",
         }
     }
 
@@ -53,6 +56,7 @@ impl SheetKind {
             SheetKind::Changes => screen_w / 2,
             SheetKind::Files => (u32::from(screen_w) * FILES_SHARE / 100) as u16,
             SheetKind::Branch => screen_w * 3 / 10,
+            SheetKind::References => screen_w * 2 / 5,
             _ => SHEET_W,
         }
     }
@@ -71,10 +75,11 @@ pub(in crate::client) fn widest(col: Rect, look: Look) -> u16 {
 /// The side panel's tabs, in Tab's order: the view, its name, its name where room is short and
 /// the action that opens it.
 /// The Inbox and the check sheets are not among them.
-const DRAWER_TABS: [(SheetKind, &str, &str, Action); 3] = [
+const DRAWER_TABS: [(SheetKind, &str, &str, Action); 4] = [
     (SheetKind::Files, "Files", "Files", Action::Files),
     (SheetKind::Changes, "Changes", "Chg", Action::Changes),
     (SheetKind::Branch, "Branch", "Br", Action::Branches),
+    (SheetKind::References, "References", "Refs", Action::References),
 ];
 
 /// Where `kind` sits in the tab strip, if it has a tab.
@@ -157,6 +162,8 @@ pub(in crate::client) fn open_sheet(app: &App) -> Option<SheetKind> {
         Some(SheetKind::Files)
     } else if matches!(app.view, Some(crate::client::View::Branch(_))) {
         Some(SheetKind::Branch)
+    } else if matches!(app.view, Some(crate::client::View::References(_))) {
+        Some(SheetKind::References)
     } else {
         None
     }
@@ -198,15 +205,18 @@ pub(in crate::client) fn heads_up(app: &App) -> Vec<(PathBuf, Overlap)> {
 }
 
 pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t: &Theme) {
+    // Files, Changes, Branch and References are named by the lit tab in their strip, so the
+    // title says only what the strip doesn't.
     let (title, sub, close) = match kind {
-        SheetKind::Inbox => ("INBOX", inbox_count(app).to_string(), ScreenHit::Close),
-        SheetKind::Changes | SheetKind::Both => ("Changes", String::new(), ScreenHit::ViewClose),
-        SheetKind::Files => ("Files", String::new(), ScreenHit::ViewClose),
-        SheetKind::Check => ("CHECK", check_title(app), ScreenHit::ViewClose),
-        SheetKind::Branch => ("BRANCH", branch_title(app), ScreenHit::ViewClose),
+        SheetKind::Inbox => ("INBOX".to_string(), inbox_count(app).to_string(), ScreenHit::Close),
+        SheetKind::Both => ("Changes".to_string(), String::new(), ScreenHit::ViewClose),
+        SheetKind::Changes | SheetKind::Files => (String::new(), String::new(), ScreenHit::ViewClose),
+        SheetKind::Check => ("CHECK".to_string(), check_title(app), ScreenHit::ViewClose),
+        SheetKind::Branch => (branch_title(app), String::new(), ScreenHit::ViewClose),
+        SheetKind::References => (references_title(app), String::new(), ScreenHit::ViewClose),
     };
     // Lit while it has the keys; a click into a pane sets it aside, unlit, still open.
-    let mut c = Card::new(t, title);
+    let mut c = Card::new(t, &title);
     if sheet_has_keys(app) {
         c = c.lit(t.accent);
     }
@@ -257,6 +267,12 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
             if let Some(crate::client::View::Branch(mut v)) = app.view.take() {
                 draw_branch(app, buf, body, c.bg, t, &mut v);
                 app.view = Some(crate::client::View::Branch(v));
+            }
+        }
+        SheetKind::References => {
+            if let Some(crate::client::View::References(mut v)) = app.view.take() {
+                draw_references(app, buf, body, c.bg, t, &mut v);
+                app.view = Some(crate::client::View::References(v));
             }
         }
     }

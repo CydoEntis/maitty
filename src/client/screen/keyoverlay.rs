@@ -93,6 +93,7 @@ pub(in crate::client) fn key_groups() -> Vec<(&'static str, Vec<KeyRow>)> {
                 r("Worktrees ›", vec![A::Worktrees], true),
                 r("Files", vec![A::Files], true),
                 r("Changes", vec![A::Changes], true),
+                r("References", vec![A::References], true),
                 r("New worktree", vec![A::NewWorktree(None)], false),
                 r("Find a file", vec![A::Find(0)], false),
                 r("Search the code", vec![A::Find(1)], false),

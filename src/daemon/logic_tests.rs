@@ -297,6 +297,14 @@ fn a_queued_follow_up_goes_in_when_the_turn_is_over() {
 }
 
 #[test]
+fn a_queued_message_of_several_lines_goes_in_as_one_paste() {
+    use super::status::queued_as_typed;
+    assert_eq!(queued_as_typed("exit 1\nFAIL a\r\nFAIL b", true), "\x1b[200~exit 1\rFAIL a\rFAIL b\x1b[201~");
+    assert_eq!(queued_as_typed("exit 1\nFAIL a", false), "exit 1 FAIL a", "no paste mode: one line");
+    assert_eq!(queued_as_typed("then run the tests", true), "then run the tests", "one line is typed as is");
+}
+
+#[test]
 fn a_pane_started_as_an_agent_keeps_its_name_while_the_agent_starts() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);

@@ -118,7 +118,11 @@ impl App {
                 let who = self.session_name(term);
                 self.notify(format!("{who} copied {n} character{} to your clipboard", if n == 1 { "" } else { "s" }), false);
             }
-            ServerMsg::Error(e) => self.notify(e, true),
+            ServerMsg::Error(e) => {
+                // The output a failure waited for may be what failed; a later reply is not its.
+                self.screen.failure_ask = None;
+                self.notify(e, true);
+            }
             ServerMsg::Notice(n) => {
                 self.undo_hint = false;
                 self.notify(n, false)

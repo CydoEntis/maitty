@@ -156,6 +156,8 @@ pub(super) enum View {
     Check(Box<screen::CheckView>),
     /// Where a checkout stands (in the sheet).
     Branch(Box<screen::BranchSheet>),
+    /// The project's reference images and design files (in the sheet).
+    References(Box<screen::ReferencesSheet>),
 }
 
 /// Clickable chips and buttons.
@@ -252,12 +254,7 @@ mod cursor_tests {
 /// Save the clipboard image as a PNG under the data folder; old pastes (a week) are
 /// cleared out. Returns (path, width, height).
 fn clipboard_image_to_file() -> Result<(PathBuf, usize, usize), String> {
-    // Tests never touch the machine's clipboard: what is on it is not theirs to read.
-    if cfg!(test) {
-        return Err("there's no image on the clipboard".into());
-    }
-    let mut cb = arboard::Clipboard::new().map_err(|e| format!("can't open the clipboard: {e}"))?;
-    let img = cb.get_image().map_err(|_| "there's no image on the clipboard".to_string())?;
+    let img = clipboard_image()?;
     let dir = crate::config::data_dir().join("pastes");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     if let Ok(rd) = std::fs::read_dir(&dir) {
@@ -273,9 +270,24 @@ fn clipboard_image_to_file() -> Result<(PathBuf, usize, usize), String> {
     Ok((path, img.width, img.height))
 }
 
+/// The image on the clipboard. Slow for a big one: call it off the UI thread.
+fn clipboard_image() -> Result<arboard::ImageData<'static>, String> {
+    // Tests never touch the machine's clipboard: what is on it is not theirs to read.
+    if cfg!(test) {
+        return Err("there's no image on the clipboard".into());
+    }
+    let mut cb = arboard::Clipboard::new().map_err(|e| format!("can't open the clipboard: {e}"))?;
+    cb.get_image().map_err(|_| "there's no image on the clipboard".to_string())
+}
+
 /// RGBA pixels to a PNG file.
 fn write_png(path: &std::path::Path, w: u32, h: u32, rgba: &[u8]) -> Result<(), String> {
     let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
+    encode_png(file, w, h, rgba)
+}
+
+/// RGBA pixels as a PNG into a file already open.
+fn encode_png(file: std::fs::File, w: u32, h: u32, rgba: &[u8]) -> Result<(), String> {
     let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w, h);
     enc.set_color(png::ColorType::Rgba);
     enc.set_depth(png::BitDepth::Eight);
@@ -295,12 +307,6 @@ fn remove_worktree_dir(dir: &std::path::Path) -> Result<String, String> {
     if out.status.success() { Ok(format!("removed {}", dir.display())) } else { Err(String::from_utf8_lossy(&out.stderr).trim().to_string()) }
 }
 
-/// Used where a key handler replaces the view itself and must not restore the old one.
-fn true_and_replace() -> bool {
-    false
-}
-
-
 /// A row in the worktree picker.
 #[derive(Debug, Clone)]
 enum WtRow {
@@ -317,6 +323,8 @@ enum PromptKind {
     ConfirmCloseWorkspace(WsId),
     ConfirmKillServer,
     ConfirmRemoveWorktree(WsId),
+    /// A file to copy into the project's references: (project root, folder a relative path starts from).
+    AddReference(PathBuf, PathBuf),
 }
 
 impl PromptKind {
@@ -329,6 +337,7 @@ impl PromptKind {
             PromptKind::ConfirmCloseWorkspace(_) => "Close workspace and all its panes? (y/n)",
             PromptKind::ConfirmKillServer => "Kill the server and every pane? (y/n)",
             PromptKind::ConfirmRemoveWorktree(_) => "Remove this worktree? (y / f = force / n)",
+            PromptKind::AddReference(..) => "Add a reference: the file's path",
         }
     }
     fn is_confirm(&self) -> bool {
@@ -712,16 +721,7 @@ impl App {
                                 }
                             }
                         }
-                        // The mouse moving during a paste isn't part of it.
-                        let (keys, rest): (Vec<Event>, Vec<Event>) = burst.iter().cloned().partition(|ev| matches!(ev, Event::Key(_)));
-                        match input::paste_from_burst(&keys) {
-                            Some(text) => {
-                                self.dirty = true;
-                                self.on_paste(text);
-                                rest.into_iter().for_each(|ev| self.on_event(ev));
-                            }
-                            None => burst.into_iter().for_each(|ev| self.on_event(ev)),
-                        }
+                        self.on_burst(burst);
                     }
                     Some(Ok(ev)) => self.on_event(ev),
                     Some(Err(e)) => return Err(e.into()),

@@ -77,7 +77,8 @@ accent fill. See UI › *UI conventions*.
 `SESSIONS` and its count, with `●n` needs you and `✕n` failed at the right. Projects are folder
 rows (a `−`/`+` fold button, the name, `⎇ branch` and check meta). A session is one line: its
 mark, the name in its state's colour when it wants a look (shimmering while working, pulsing
-when it needs you), then the agent's mark, uncommitted `+N −N` and the age. A second and third
+when it needs you), then the agent's mark, its context past half full (`✻ 72%`, red from 85%),
+uncommitted `+N −N` and the age. A second and third
 line, always `muted`, appear only when they say more: a question, a check result, the first
 failing line. The foot holds **+ New** and **Menu**. Collapsed, the sessions become chips along
 row 0; hidden, the panes take everything. See UI › *sidebar check result* and *collapsed
@@ -95,10 +96,13 @@ focus*.
 ## Side panel
 
 Reading while you work happens in a sheet docked right (it takes the pane column on a narrow
-screen). **Files**, **Changes** and **Branch** share one sheet with a tab strip
-(`Files f · Changes c · Branch b`), each tab at its own remembered width: Files a tree beside
-the open file (Markdown drawn), Changes the changed files and their diff, Branch the branch,
-ahead/behind, recent commits, the last check and snapshots. The Inbox and the check evidence
+screen). **Files**, **Changes**, **Branch** and **References** share one sheet with a tab strip
+(`Files f · Changes c · Branch b · References a`), each tab at its own remembered width: Files a
+tree beside the open file (Markdown drawn), Changes the changed files and their diff, Branch the
+branch, ahead/behind, recent commits, the last check and snapshots, References the project's
+screenshots and design files, one line each (name, then kind, size and age muted at the right).
+The lit tab names the open view, so the sheet's top border does not repeat it: Files and
+Changes carry only the ✕, Branch and References their checkout's folder. The Inbox and the check evidence
 sheet dock in the same place without the strip. See UI › *the frame* (Sheet), *Inbox check
 groups* and *check evidence sheet*.
 

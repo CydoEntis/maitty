@@ -22,6 +22,7 @@ mod theme;
 mod tidy;
 mod update;
 mod restart;
+mod references;
 mod reveal;
 mod snapshot;
 
@@ -243,7 +244,7 @@ enum Cmd {
         cmd: Vec<String>,
     },
     /// Run as an MCP server (stdio) so agents can see and steer the others.
-    /// `integrate mcp` registers it with Claude Code.
+    /// `integrate mcp` registers it with Claude Code, Codex, Qwen Code and Gemini CLI.
     Mcp,
     /// Share your config between machines through a private GitHub repo:
     /// `sync setup [repo]`, `sync` (pull + push now), `sync off`.

@@ -51,6 +51,7 @@ pub(super) type Button = (&'static str, &'static str, char);
 
 const OUTPUT: Button = ("Output", "⏎", '\n');
 const RERUN: Button = ("Re-run", "r", 'r');
+const SEND: Button = ("Send to agent", "m", 'm');
 pub(super) const OVERRIDE: Button = ("Override…", "O", 'O');
 
 /// An Inbox item as drawn: its head line, the line under it, a third for a failure, and the
@@ -176,7 +177,7 @@ fn buttons(row: &GoRow, info: Option<&CheckInfo>) -> Vec<Button> {
     match row {
         GoRow::Ask(_) => vec![("Reply", "m", 'm'), ("Open", "o", 'o')],
         GoRow::Approve(_) => vec![("Read the command", "⏎", '\n')],
-        GoRow::Failed(_) => vec![OUTPUT, RERUN, OVERRIDE],
+        GoRow::Failed(_) => vec![OUTPUT, RERUN, OVERRIDE, SEND],
         GoRow::NotRun(_) => vec![OUTPUT, ("Settings", ",", ',')],
         GoRow::Done(_) if info.is_some_and(|i| i.state == CheckState::Stale) => vec![RERUN, OUTPUT],
         _ => Vec::new(),

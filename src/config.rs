@@ -1072,9 +1072,25 @@ pub fn write_atomic(path: &std::path::Path, data: impl AsRef<[u8]>) -> std::io::
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let tmp = path.with_file_name(format!(".{name}.{APP_COMMAND}-tmp"));
     std::fs::write(&tmp, data)?;
-    std::fs::rename(&tmp, path).inspect_err(|_| {
+    keep_mode(path, &tmp).and_then(|()| std::fs::rename(&tmp, path)).inspect_err(|_| {
         let _ = std::fs::remove_file(&tmp);
     })
+}
+
+/// Gives the new file the old one's permissions, so swapping it in never widens a private
+/// file (a 0600 agent config) to the default mode.
+#[cfg(unix)]
+fn keep_mode(old: &std::path::Path, new: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::metadata(old) {
+        Ok(meta) => std::fs::set_permissions(new, meta.permissions()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+#[cfg(not(unix))]
+fn keep_mode(_old: &std::path::Path, _new: &std::path::Path) -> std::io::Result<()> {
+    Ok(())
 }
 
 
@@ -1516,6 +1532,20 @@ fn which(exe: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn an_atomic_write_keeps_a_private_files_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-atomic-mode-{}"), std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("settings.json");
+        std::fs::write(&file, "{}").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+        super::write_atomic(&file, "{\"a\":1}").unwrap();
+        assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn a_check_table_reads_and_its_timeout_defaults() {
         let c: super::Config = toml::from_str("[[check]]\nproject = \"/work/app\"\ncommand = \"npm test\"\n\n[[check]]\nproject = \"/work/lib\"\ncommand = \"cargo test\"\ntimeout_s = 90\n").unwrap();

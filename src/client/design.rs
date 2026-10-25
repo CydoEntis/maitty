@@ -323,7 +323,7 @@ pub(super) fn draw_changes(app: &mut App, buf: &mut Buffer, area: Rect, t: &Them
     use super::views::ChangesRow;
     fill(buf, area, t.bg);
     let (green, red, yellow) = (t.done, t.err, Color::Rgb(0xe8, 0xc5, 0x65));
-    // The sheet's title says "Changes" and has the ✕: this line is the summary.
+    // The tab strip says "Changes" and the sheet has the ✕: this line is the summary.
     let mut left: Vec<Seg> = Vec::new();
     let right: Vec<Seg> = Vec::new();
     if let Some(r) = &v.review {
@@ -633,7 +633,6 @@ pub(super) fn draw_files(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme,
         ("Editor", "e", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('e'))),
         ("Open", "o", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('o'))),
         ("Copy path", "y", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('y'))),
-        ("Show diff", "d", BtnKind::Normal, Hit::Button(super::Btn::ViewKey('d'))),
     ]);
     action_row(app, buf, area, t, &buttons, &[seg("PgUp PgDn / wheel scroll", Style::default().fg(t.muted))]);
 }

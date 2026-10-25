@@ -25,6 +25,8 @@
 //!   commit (the result carries no time for your choice);
 //! - Why (13) does not add "1 of 59 tests failed": the app does not parse a command's output;
 //! - the C2 Inbox's footnote is an annotation, not a screen line;
+//! - a failure's buttons end in Send to agent, which the reference predates: under 100 columns
+//!   it takes the evidence sheet's Open session, and the Inbox has no room for it;
 //! - pill caps (a Nerd Font option, on by default) are off, so buttons have square ends;
 //! - the mode bar along the bottom (ADR 0024) is not the reference's: `reference_fixture::cells` draws
 //!   a row taller and leaves out that row, the bar's.
@@ -523,6 +525,13 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
                 mask_key_bar(row, x0, x1);
             }
             swap(row, QUESTION, "use pnpm or npm?", x0, x1);
+            // A failure offers Send to agent after Override. At 80 columns it takes the
+            // evidence sheet's room for Open session, and the Inbox has no room for it.
+            if b.w >= 100 {
+                swap(row, "Override… O", "Override… O   Send to agent m", x0, x1);
+            } else {
+                swap(row, "Override… O   Open session o", "Override… O   Send to agent m", x0, x1);
+            }
             // The sample's approval item is a minute younger than its row; the app reads one age.
             if stage == Stage::Approve && find(&row[x0..x1], "fix-footer").is_some() && let Some(i) = find(&row[x0..x1], "1m") {
                 row[x0 + i..x0 + i + 2].fill(ANY);

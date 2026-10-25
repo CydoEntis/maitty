@@ -170,6 +170,8 @@ pub(super) struct Screen {
     pub drafts: std::collections::HashMap<TermId, String>,
     /// What you changed on Settings › Check and have not saved.
     pub check_page: Option<check_settings::CheckDraft>,
+    /// A failed check waiting for its output before its message opens (`m`).
+    pub failure_ask: Option<failure_note::FailureAsk>,
 }
 
 /// A row the sidebar cursor can rest on.
@@ -355,6 +357,8 @@ pub(super) struct Session {
     pub check: Option<CheckInfo>,
     /// Every checkpoint, in the project's order.
     pub checks: Vec<CheckInfo>,
+    /// How full the agent's context is, 0–100, when the agent reports it.
+    pub context: Option<f32>,
 }
 
 #[derive(Debug, Clone)]
@@ -705,6 +709,7 @@ impl App {
                     queued: t.queued.clone(),
                     check: t.check().cloned(),
                     checks: t.checks.clone(),
+                    context: t.usage.context,
                 });
             }
             // The repo's other worktrees, even with nothing running in them.
@@ -1096,6 +1101,7 @@ pub(super) fn k(app: &App, a: &Action) -> String {
 mod rail;
 mod behaviour;
 mod branch_sheet;
+mod references_sheet;
 mod card;
 mod check;
 mod check_actions;
@@ -1106,6 +1112,7 @@ mod check_modals_tests;
 pub(in crate::client) mod check_settings;
 mod check_sheet;
 mod dialogs;
+mod failure_note;
 pub(in crate::client) mod glyphs;
 mod keyoverlay;
 mod newsession;
@@ -1125,4 +1132,4 @@ mod tidy;
 mod frame_tests;
 #[cfg(test)]
 mod reference;
-pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_bar::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};
+pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_bar::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, references_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};

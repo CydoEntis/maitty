@@ -41,7 +41,7 @@ fn install(path: PathBuf, source: &str, exe: &str, uninstall: bool) -> Result<Pa
     Ok(path)
 }
 
-fn regular_target(path: &std::path::Path) -> Result<()> {
+pub(super) fn regular_target(path: &std::path::Path) -> Result<()> {
     match std::fs::symlink_metadata(path) {
         Ok(meta) if !meta.is_file() => {
             bail!("{} must be a regular file; preserved", path.display())
@@ -155,9 +155,7 @@ fn mastracode_at(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<P
         }
     }
     hooks.retain(|_, value| value.as_array().is_none_or(|a| !a.is_empty()));
-    if path.exists() {
-        std::fs::copy(path, path.with_extension(concat!("json.", env!("APP_COMMAND"), "-bak")))?;
-    }
+    super::back_up_once(path, "json")?;
     crate::config::write_atomic(path, serde_json::to_string_pretty(&root)? + "\n")?;
     Ok(path.to_path_buf())
 }
@@ -256,10 +254,7 @@ fn codex_hooks_at_for_platform(path: &std::path::Path, exe: &str, uninstall: boo
     if hooks.is_empty() {
         doc.remove("hooks");
     }
-    if path.exists() {
-        std::fs::copy(path, path.with_extension(concat!("toml.", env!("APP_COMMAND"), "-bak")))
-            .context("back up Codex configuration before updating hooks")?;
-    }
+    super::back_up_once(path, "toml").context("back up Codex configuration before updating hooks")?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).context("create Codex configuration directory")?;
     }
@@ -325,9 +320,7 @@ fn kimi_at(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<PathBuf
         ask["timeout"] = toml_edit::value(10);
         hooks.push(ask);
     }
-    if path.exists() {
-        std::fs::copy(path, path.with_extension(concat!("toml.", env!("APP_COMMAND"), "-bak")))?;
-    }
+    super::back_up_once(path, "toml")?;
     crate::config::write_atomic(path, doc.to_string())?;
     Ok(path.to_path_buf())
 }
@@ -417,7 +410,7 @@ pub(crate) const STATUS_AGENTS: &[StatusAgent] = &[
     StatusAgent {
         id: "qwen",
         name: "Qwen Code",
-        install: |_, uninstall| super::json_hooks(&super::home_settings("QWEN_HOME", ".qwen"), "qwen", super::CLAUDE_EVENTS, 10, uninstall),
+        install: |_, uninstall| super::json_hooks(&super::qwen_settings(), "qwen", super::CLAUDE_EVENTS, 10, uninstall),
     },
     StatusAgent { id: "opencode", name: "OpenCode", install: install_opencode },
     StatusAgent { id: "pi", name: "Pi", install: install_pi },

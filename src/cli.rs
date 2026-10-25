@@ -4,9 +4,13 @@ use crate::ipc;
 use crate::brand::{APP_COMMAND};
 pub(crate) mod handoff;
 pub(crate) mod integrations;
+mod jsonc;
+mod mcp_config;
+use mcp_config::McpChange;
 use crate::layout::Dir;
 use crate::protocol::*;
 use anyhow::{Context, Result, anyhow, bail};
+use jsonc_parser::cst::{CstInputValue, CstObject, CstObjectProp};
 use serde_json::{Value, json};
 use std::io::Read;
 use std::path::PathBuf;
@@ -996,6 +1000,15 @@ pub fn doctor() -> Result<()> {
             None => line(if mcp { Some(true) } else { None }, concat!(env!("APP_COMMAND"), " MCP for claude"), if mcp { "registered".into() } else { concat!("not set up: `", env!("APP_COMMAND"), " integrate mcp` lets agents see each other (optional)").into() }),
         }
     }
+    let exe = this_exe().unwrap_or_default();
+    for agent in mcp_config::agents().into_iter().filter(mcp_config::McpAgent::installed) {
+        let label = format!("{APP_COMMAND} MCP for {}", agent.id);
+        match mcp_config::registered_command(&agent) {
+            Some(cmd) if cmd == exe => line(Some(true), &label, "registered".into()),
+            Some(cmd) => line(Some(false), &label, format!("runs {cmd}; `{APP_COMMAND} integrate mcp` points it at this one")),
+            None => line(None, &label, concat!("not set up: `", env!("APP_COMMAND"), " integrate mcp` lets agents see each other (optional)").into()),
+        }
+    }
 
     // Terminal
     let term = std::env::var("TERM_PROGRAM").or_else(|_| std::env::var("TERM")).unwrap_or_else(|_| if std::env::var("WT_SESSION").is_ok() { "Windows Terminal".into() } else { "unknown".into() });
@@ -1310,7 +1323,23 @@ const GEMINI_EVENTS: &[(&str, Option<&str>)] = &[
     ("SessionEnd", None),
 ];
 
-/// A tool's settings.json under the home folder (`.gemini`, `.qwen`), or `$<env>/…`.
+/// Qwen Code's settings.json. `$QWEN_HOME` names Qwen's config folder itself (qwen-code
+/// `Storage.getGlobalQwenDir`), unlike `GEMINI_CLI_HOME`, which stands in for the home folder.
+fn qwen_settings() -> PathBuf {
+    let home = directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf()).unwrap_or_default();
+    qwen_settings_in(std::env::var_os("QWEN_HOME").map(PathBuf::from), &home)
+}
+
+fn qwen_settings_in(qwen_home: Option<PathBuf>, home: &std::path::Path) -> PathBuf {
+    let dir = match qwen_home.filter(|dir| !dir.as_os_str().is_empty()) {
+        // Qwen's resolvePath expands a leading `~`, as a shell would have.
+        Some(dir) => dir.strip_prefix("~").map(|rest| home.join(rest)).unwrap_or(dir),
+        None => home.join(".qwen"),
+    };
+    dir.join("settings.json")
+}
+
+/// A tool's settings.json under the home folder (`.gemini`), or `$<env>/…`.
 fn home_settings(env: &str, dir: &str) -> PathBuf {
     std::env::var_os(env)
         .map(|h| PathBuf::from(h).join(dir))
@@ -1441,6 +1470,16 @@ fn claude_settings() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().join(".claude")).unwrap_or_default())
         .join("settings.json")
+}
+
+/// Copies an agent's config file to `<file>.<ext>.<app>-bak` before the app changes it. An
+/// existing copy is kept: it is the file as it was before the app first touched it.
+fn back_up_once(path: &std::path::Path, ext: &str) -> std::io::Result<()> {
+    let backup = path.with_extension(format!("{ext}.{APP_COMMAND}-bak"));
+    if path.exists() && !backup.exists() {
+        std::fs::copy(path, backup)?;
+    }
+    Ok(())
 }
 
 /// This the app, as hook commands name it.
@@ -1576,56 +1615,91 @@ fn claude_hooks(uninstall: bool) -> Result<PathBuf> {
 
 /// Add (or remove) the app's hooks in a Claude-style settings.json (Claude Code, Gemini CLI,
 /// Qwen Code): one tagged group per event running `<app> hook <agent>`, `timeout` in the
-/// tool's own unit. The rest of the file is kept, with a backup beside it.
+/// tool's own unit. The rest of the file (comments and key order included) is kept, with a
+/// backup beside it.
 fn json_hooks(path: &std::path::Path, agent: &str, events: &[(&str, Option<&str>)], timeout: u64, uninstall: bool) -> Result<PathBuf> {
     let exe = this_exe()?;
-    let path = path.to_path_buf();
-    let mut root: Value = match std::fs::read_to_string(&path) {
-        Ok(s) if s.trim().is_empty() => json!({}),
-        Ok(s) => serde_json::from_str(&s).with_context(|| format!("{} isn't valid JSON; not touching it", path.display()))?,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => json!({}),
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(e.into()),
     };
-    if path.exists() {
-        std::fs::copy(&path, path.with_extension(concat!("json.", env!("APP_COMMAND"), "-bak")))?;
-    }
-    let hooks = root
-        .as_object_mut()
-        .ok_or_else(|| anyhow!("settings.json is not an object"))?
-        .entry("hooks")
-        .or_insert_with(|| json!({}));
-    let hooks = hooks.as_object_mut().ok_or_else(|| anyhow!("`hooks` is not an object"))?;
-    for (event, matcher) in events {
-        let groups = hooks.entry(*event).or_insert_with(|| json!([]));
-        let Some(arr) = groups.as_array_mut() else { continue };
-        arr.retain(|g| !is_ours(g));
-        if !uninstall {
-            let mut g = json!({
-                concat!("_", env!("APP_COMMAND")): true,
-                "hooks": [{ "type": "command", "command": format!("\"{exe}\" hook {agent}"), "timeout": timeout }],
-            });
-            if let Some(m) = matcher {
-                g["matcher"] = json!(m);
-            }
-            arr.push(g);
+    let doc = jsonc::Doc::parse(&text).with_context(|| format!("{} isn't valid JSON; not touching it", path.display()))?;
+    let settings = doc.object().ok_or_else(|| anyhow!("settings.json is not an object"))?;
+    back_up_once(path, "json")?;
+    let hooks = match settings.get("hooks") {
+        Some(prop) => Some(prop.object_value().ok_or_else(|| anyhow!("`hooks` is not an object"))?),
+        None if uninstall => None,
+        None => Some(settings.append("hooks", CstInputValue::Object(Vec::new())).object_value_or_set()),
+    };
+    if let Some(hooks) = &hooks {
+        for (event, matcher) in events {
+            replace_our_group(hooks, event, (!uninstall).then(|| our_group(&exe, agent, timeout, *matcher)));
         }
     }
-    hooks.retain(|_, v| v.as_array().is_none_or(|a| !a.is_empty()));
     if agent == "claude" {
-        statusline_setting(&mut root, &exe, uninstall, &statusline_before())?;
+        claude_statusline(&doc, &exe, uninstall)?;
     }
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
+    crate::config::write_atomic(path, doc.text())?;
+    Ok(path.to_path_buf())
+}
+
+/// The tagged hook group that runs `<app> hook <agent>` (the tag is how re-runs find it).
+fn our_group(exe: &str, agent: &str, timeout: u64, matcher: Option<&str>) -> Value {
+    let mut g = json!({
+        concat!("_", env!("APP_COMMAND")): true,
+        "hooks": [{ "type": "command", "command": format!("\"{exe}\" hook {agent}"), "timeout": timeout }],
+    });
+    if let Some(m) = matcher {
+        g["matcher"] = json!(m);
     }
-    crate::config::write_atomic(&path, serde_json::to_string_pretty(&root)? + "\n")?;
-    Ok(path)
+    g
+}
+
+/// Swaps the app's groups under `event` for `ours` (`None` only removes them); every other
+/// group stays where it is. An event left with no groups is dropped.
+fn replace_our_group(hooks: &CstObject, event: &str, ours: Option<Value>) {
+    let groups = match hooks.get(event) {
+        Some(prop) => match prop.array_value() {
+            Some(groups) => groups,
+            None => return,
+        },
+        None if ours.is_none() => return,
+        None => hooks.append(event, CstInputValue::Array(Vec::new())).array_value_or_set(),
+    };
+    for group in groups.elements() {
+        if group.to_serde_value().is_some_and(|g| is_ours(&g)) {
+            group.remove();
+        }
+    }
+    if let Some(g) = ours {
+        groups.append(jsonc::input(&g));
+    }
+    if groups.elements().is_empty() {
+        hooks.get(event).into_iter().for_each(CstObjectProp::remove);
+    }
+}
+
+/// Points Claude's status line at the app (or back), changing only the `statusLine` entry.
+fn claude_statusline(doc: &jsonc::Doc, exe: &str, uninstall: bool) -> Result<()> {
+    let settings = doc.object().ok_or_else(|| anyhow!("settings.json is not an object"))?;
+    let mut root = doc.to_value().unwrap_or_default();
+    let before = root.get("statusLine").cloned();
+    statusline_setting(&mut root, exe, uninstall, &statusline_before())?;
+    match root.get("statusLine") {
+        Some(line) if before.as_ref() != Some(line) => jsonc::set_prop(&settings, "statusLine", jsonc::input(line)),
+        Some(_) => {}
+        None => settings.get("statusLine").into_iter().for_each(CstObjectProp::remove),
+    }
+    Ok(())
 }
 
 /// The commands the app's Claude hooks run that aren't this the app (an older install, a copy
 /// that moved). Empty when they're right, or when there are none.
 pub fn stale_claude_hooks() -> Vec<String> {
     let (Ok(exe), Ok(text)) = (this_exe(), std::fs::read_to_string(claude_settings())) else { return Vec::new() };
-    let Ok(root) = serde_json::from_str::<Value>(&text) else { return Vec::new() };
+    // Comments are allowed: the hooks may have been installed into a commented file.
+    let Some(root) = jsonc::parse_value(&text) else { return Vec::new() };
     stale_in(&root, &format!("\"{exe}\" hook claude"))
 }
 
@@ -1659,7 +1733,7 @@ fn stale_in(root: &Value, want: &str) -> Vec<String> {
 /// The app's Claude hooks are in, but not its status line (installed before there was one).
 fn needs_statusline() -> bool {
     let Ok(text) = std::fs::read_to_string(claude_settings()) else { return false };
-    let Ok(root) = serde_json::from_str::<Value>(&text) else { return false };
+    let Some(root) = jsonc::parse_value(&text) else { return false };
     let hooked = root.get("hooks").and_then(Value::as_object).is_some_and(|h| h.values().filter_map(Value::as_array).flatten().any(is_ours));
     let cmd = root.get("statusLine").and_then(|s| s.get("command")).and_then(Value::as_str).unwrap_or_default();
     hooked && !is_our_statusline(cmd)
@@ -1724,9 +1798,7 @@ fn codex_notify(path: &std::path::Path, exe: &str, uninstall: bool) -> Result<Co
         // Top-level keys go before the tables.
         doc.insert("notify", toml_edit::value(a));
     }
-    if path.exists() {
-        std::fs::copy(path, path.with_extension(concat!("toml.", env!("APP_COMMAND"), "-bak")))?;
-    }
+    back_up_once(path, "toml")?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -1747,29 +1819,92 @@ pub(super) fn install_codex_status(exe: &str, uninstall: bool) -> Result<PathBuf
 pub fn integrate(agent: &str, uninstall: bool) -> Result<()> {
     let exe = this_exe()?;
     match agent {
-        "mcp" => {
-            // Claude Code: register for every project (user scope).
-            let old = std::fs::read_to_string(claude_json()).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()).map(|root| old_mcp_names(&root)).unwrap_or_default();
-            for name in old {
-                match run_claude(&["mcp", "remove", "--scope", "user", &name]) {
-                    Ok(s) if s.success() => println!("removed the old `{name}` MCP server from Claude Code"),
-                    _ => println!("Claude Code: run  claude mcp remove --scope user {name}"),
-                }
-            }
-            match run_claude(&["mcp", "add", "--scope", "user", env!("APP_COMMAND"), "--", exe.as_str(), "mcp"]) {
-                Ok(s) if s.success() => println!(concat!("added the ", env!("APP_COMMAND"), " MCP server to Claude Code (all projects)")),
-                _ => println!("Claude Code: run  claude mcp add --scope user {APP_COMMAND} -- \"{exe}\" mcp"),
-            }
-            println!("\nCodex: add to ~/.codex/config.toml\n\n[mcp_servers.{APP_COMMAND}]\ncommand = \"{exe}\"\nargs = [\"mcp\"]\n");
-            println!("Agents can then list, read, message and start sessions. Whether they may approve");
-            println!(concat!("prompts is up to you: ", env!("APP_COMMAND"), " Settings → Agents (never, by default)."));
-            Ok(())
-        }
+        "mcp" => integrate_mcp(&exe, uninstall),
         agent => {
             let path = integrations::set_up_status(agent, &exe, uninstall)?;
             report_integration(agent, &path, uninstall);
             Ok(())
         }
+    }
+}
+
+/// Registers (or removes) the MCP server with every agent on this machine that takes one, one
+/// line per agent. Fails, after trying every agent, when any of them couldn't be changed.
+fn integrate_mcp(exe: &str, uninstall: bool) -> Result<()> {
+    let mut failed = 0;
+    let mut report = |agent: &str, outcome: Result<String>| match outcome {
+        Ok(outcome) => println!("{agent}: {outcome}"),
+        Err(e) => {
+            failed += 1;
+            println!("{agent}: not changed: {e:#}");
+        }
+    };
+    report("Claude Code", claude_mcp(exe, uninstall));
+    for agent in mcp_config::agents() {
+        let outcome = mcp_config::set_up(&agent, exe, uninstall).map(|change| match change {
+            McpChange::Registered => format!("registered in {}", agent.config.display()),
+            McpChange::AlreadyRegistered => "already registered".into(),
+            McpChange::Removed => format!("removed from {}", agent.config.display()),
+            McpChange::NotRegistered => "not registered".into(),
+            McpChange::NotInstalled => "skipped (not installed)".into(),
+        });
+        report(agent.name, outcome);
+    }
+    if failed > 0 {
+        bail!("{failed} agent(s) not changed");
+    }
+    if !uninstall {
+        println!("\nAgents can then list, read, message and start sessions; restart running ones to load it.");
+        println!(concat!("Whether they may approve prompts is up to you: ", env!("APP_COMMAND"), " Settings → Agents (never, by default)."));
+    }
+    Ok(())
+}
+
+/// Runs `claude <args>`: whether it succeeded, or `None` when Claude Code isn't installed.
+fn claude_cli(args: &[&str]) -> Result<Option<bool>> {
+    match run_claude(args) {
+        Ok(status) => Ok(Some(status.success())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e).context("run claude"),
+    }
+}
+
+/// Claude Code keeps its servers in `~/.claude.json`, which it rewrites itself, so its own CLI
+/// makes the change (user scope: every project).
+fn claude_mcp(exe: &str, uninstall: bool) -> Result<String> {
+    const SKIPPED: &str = "skipped (not installed)";
+    let path = claude_json();
+    let root = match std::fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str::<Value>(&text).with_context(|| format!("{} isn't valid JSON", path.display()))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Value::Null,
+        Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
+    };
+    let ours = root.get("mcpServers").and_then(|s| s.get(APP_COMMAND));
+    let current = ours.and_then(|e| e.get("command")).and_then(Value::as_str) == Some(exe);
+    let mut remove = old_mcp_names(&root);
+    if ours.is_some() && (uninstall || !current) {
+        remove.push(APP_COMMAND.into());
+    }
+    if uninstall && ours.is_none() && remove.is_empty() {
+        return Ok("not registered".into());
+    }
+    for name in &remove {
+        match claude_cli(&["mcp", "remove", "--scope", "user", name])? {
+            Some(true) => {}
+            Some(false) => println!("Claude Code: run  claude mcp remove --scope user {name}"),
+            None => return Ok(SKIPPED.into()),
+        }
+    }
+    if uninstall {
+        return Ok("removed".into());
+    }
+    if current {
+        return Ok("already registered".into());
+    }
+    match claude_cli(&["mcp", "add", "--scope", "user", APP_COMMAND, "--", exe, "mcp"])? {
+        Some(true) => Ok("registered (all projects)".into()),
+        Some(false) => bail!("`claude mcp add` failed; run  claude mcp add --scope user {APP_COMMAND} -- \"{exe}\" mcp"),
+        None => Ok(SKIPPED.into()),
     }
 }
 
@@ -2329,6 +2464,48 @@ mod tests {
     }
 
     #[test]
+    fn qwen_home_is_the_qwen_config_folder_itself() {
+        let home = std::path::Path::new("/home/me");
+        assert_eq!(super::qwen_settings_in(Some("/opt/qwen-config".into()), home), std::path::Path::new("/opt/qwen-config/settings.json"));
+        assert_eq!(super::qwen_settings_in(None, home), home.join(".qwen").join("settings.json"));
+        assert_eq!(super::qwen_settings_in(Some("".into()), home), home.join(".qwen").join("settings.json"), "an empty QWEN_HOME is unset");
+        assert_eq!(super::qwen_settings_in(Some("~/qwen-config".into()), home), home.join("qwen-config").join("settings.json"));
+        assert_eq!(super::qwen_settings_in(Some("~".into()), home), home.join("settings.json"));
+        assert_eq!(super::qwen_settings_in(Some("/a/~b".into()), home), std::path::Path::new("/a/~b/settings.json"), "only a leading ~");
+    }
+
+    #[test]
+    fn settings_hooks_keep_comments_order_and_other_hooks_and_replace_only_ours() {
+        let dir = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-jsonc-hooks-{}"), std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        let original = "\u{feff}{\n  // pick a theme\n  \"theme\": \"dark\",\n  \"hooks\": {\n    \"AfterAgent\": [\n      { \"hooks\": [{ \"type\": \"command\", \"command\": \"my-hook\" }] } // mine\n    ]\n  },\n  \"auth\": { \"type\": \"oauth\" }\n}\n";
+        std::fs::write(&path, original).unwrap();
+
+        super::json_hooks(&path, "gemini", super::GEMINI_EVENTS, 5000, false).unwrap();
+        let once = std::fs::read_to_string(&path).unwrap();
+        super::json_hooks(&path, "gemini", super::GEMINI_EVENTS, 5000, false).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), once, "a re-run replaces only its own groups");
+        assert!(once.starts_with('\u{feff}') && once.contains("// pick a theme") && once.contains("// mine"), "{once}");
+        assert!(once.find("\"theme\"") < once.find("\"hooks\"") && once.find("\"hooks\"") < once.find("\"auth\""), "key order kept: {once}");
+        let root = super::jsonc::parse_value(&once).unwrap();
+        let after_agent = root["hooks"]["AfterAgent"].as_array().unwrap();
+        assert_eq!(after_agent.len(), 2);
+        assert_eq!(after_agent[0]["hooks"][0]["command"], "my-hook");
+        assert!(super::is_ours(&after_agent[1]));
+        assert_eq!(root["hooks"].as_object().unwrap().len(), super::GEMINI_EVENTS.len());
+
+        super::json_hooks(&path, "gemini", super::GEMINI_EVENTS, 5000, true).unwrap();
+        let removed = std::fs::read_to_string(&path).unwrap();
+        let root = super::jsonc::parse_value(&removed).unwrap();
+        assert_eq!(root["hooks"].as_object().unwrap().len(), 1, "only the user's event is left: {removed}");
+        assert_eq!(root["hooks"]["AfterAgent"].as_array().unwrap().len(), 1);
+        assert!(removed.contains("// pick a theme") && removed.contains("\"auth\""));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn an_mcp_server_left_under_an_old_name_is_found() {
         let root = serde_json::json!({ "mcpServers": {
             "hydra": { "command": "C:/Programs/hydra/hydra.exe", "args": ["mcp"] },
@@ -2368,6 +2545,19 @@ mod tests {
         let untagged = serde_json::json!({ "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "/home/me/.local/bin/hydra hook claude" }] }] } });
         assert_eq!(super::stale_in(&untagged, want), vec!["/home/me/.local/bin/hydra hook claude".to_string()]);
         assert!(!super::runs_our_hook("hydra-lint check"), "only the app's own hook");
+    }
+
+    #[test]
+    fn stale_hooks_are_found_in_a_commented_settings_file() {
+        let want = concat!("\"/home/me/.local/bin/", env!("APP_COMMAND"), "\" hook claude");
+        let old = concat!("\"/home/me/.cargo/bin/", env!("APP_COMMAND"), "\" hook claude");
+        let text = format!(
+            "{{\n  // my settings\n  \"hooks\": {{ \"Stop\": [ {{ \"_{app}\": true, \"hooks\": [{{ \"type\": \"command\", \"command\": {cmd} }}] }} ] }}\n}}\n",
+            app = env!("APP_COMMAND"),
+            cmd = serde_json::to_string(old).unwrap()
+        );
+        let root = super::jsonc::parse_value(&text).expect("a commented settings file still reads");
+        assert_eq!(super::stale_in(&root, want), vec![old.to_string()], "a moved install is found despite the comment");
     }
 
     #[test]

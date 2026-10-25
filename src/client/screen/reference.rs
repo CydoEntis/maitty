@@ -19,6 +19,19 @@ impl Ref {
     pub fn set_row(&mut self, i: usize, new: &str) {
         self.rows[i] = new.chars().take(self.area.width.saturating_sub(1) as usize).collect::<String>().trim_end().to_string();
     }
+
+    /// A failure offers Send to agent after Override, a button the reference predates. On a
+    /// screen under 100 columns it takes the evidence sheet's room for Open session, and the
+    /// Inbox has no room for it.
+    pub fn offers_send_to_agent(&mut self, screen_w: u16) {
+        let (from, to) = if screen_w >= 100 { ("Override… O", "Override… O   Send to agent m") } else { ("Override… O   Open session o", "Override… O   Send to agent m") };
+        for i in 0..self.rows.len() {
+            if self.rows[i].contains(from) {
+                let new = self.rows[i].replacen(from, to, 1);
+                self.set_row(i, &new);
+            }
+        }
+    }
 }
 
 /// The reference for `preset` (its full name, `07 Evidence · short output`) in `layout`

@@ -1062,7 +1062,13 @@ mod tests {
 
     #[test]
     fn a_chatty_command_keeps_only_the_tail_of_its_output() {
-        let line = if cfg!(windows) { "1..200000 | ForEach-Object { 'line ' + $_ }" } else { "seq 1 200000 | sed 's/^/line /'" };
+        // PowerShell written to a line at a time takes 20 to 60 s for this, up against the
+        // timeout under a parallel test run; one write of the joined lines takes about a second.
+        let line = if cfg!(windows) {
+            "[Console]::Out.Write(($(foreach ($i in 1..200000) { 'line ' + $i }) -join [char]10) + [char]10)"
+        } else {
+            "seq 1 200000 | sed 's/^/line /'"
+        };
         let run = run(line, LONG);
         assert_eq!(run.outcome, CheckOutcome::Exited(0));
         assert!(run.output.len() <= CHECK_OUTPUT_MAX_BYTES, "capped: {}", run.output.len());

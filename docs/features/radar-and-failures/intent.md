@@ -1,6 +1,6 @@
 # Intent: radar and sending failures
 
-Type: change + feature · Status: planned (phase 27) · Date: 2026-10-24
+Type: change + feature · Status: built on `feat/radar-failures`, in review (phase 27) · Date: 2026-10-24
 
 ## Problem
 
@@ -37,5 +37,7 @@ the message box.
 
 ## Links
 
-- Plan: [phase 27](../../ROADMAP.md#27--radar-and-sending-failures--planned-2026-10-24)
-- Tickets: none yet; filled in when the phase is ticketed.
+- Plan: [phase 27](../../ROADMAP.md#27--radar-and-sending-failures--shipped-in-v0440)
+- Tickets: none; built as two slices on `feat/radar-failures` (radar on the row; `m` on a
+  failed check). Behaviour: [UI › sidebar check result](../../UI.md#project-specific-sidebar-check-result)
+  and *Sending a failure* under the check evidence sheet.

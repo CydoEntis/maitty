@@ -42,6 +42,11 @@ impl App {
                     self.view = Some(View::Branch(v));
                 }
             }
+            View::References(mut v) => {
+                if self.on_references_key(&mut v, k) {
+                    self.view = Some(View::References(v));
+                }
+            }
         }
     }
 
@@ -265,7 +270,7 @@ impl App {
                 KeyCode::PageUp => v.scroll = v.scroll.saturating_sub(page),
                 KeyCode::Home | KeyCode::Char('g') => v.scroll = 0,
                 KeyCode::End | KeyCode::Char('G') => v.scroll = lines.saturating_sub(page),
-                // Everything else (i, e, y, o, d, Enter) works as from the tree.
+                // Everything else (i, e, y, o, Enter) works as from the tree.
                 _ => {
                     v.in_preview = false;
                     let keep = self.on_files_tree_key(v, k);
@@ -369,15 +374,6 @@ impl App {
                     copy::to_clipboard(&n.path.display().to_string());
                     self.notify(format!("copied {}", n.path.display()), false);
                 }
-            }
-            KeyCode::Char('d') => {
-                let root = v.root.clone();
-                self.open_changes(root);
-                if let (Some(n), Some(View::Changes(c))) = (node, &mut self.view) {
-                    c.error = None;
-                    let _ = n;
-                }
-                return true_and_replace();
             }
             KeyCode::Char('j') => {
                 let n = v.visible().len();
@@ -610,6 +606,7 @@ impl App {
                 self.screen.save();
             }
             PromptKind::RenameTab(ws, tab) => self.cmd(Command::RenameTab { ws, tab, name: input }),
+            PromptKind::AddReference(root, dir) => self.add_reference(root, dir, &input),
             PromptKind::NewWorkspace => {
                 // A group starts with a shell where you are.
                 let name = (!input.is_empty()).then_some(input);

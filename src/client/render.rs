@@ -356,19 +356,19 @@ pub(super) fn render_copy(c: &Copy, area: Rect, buf: &mut Buffer, t: &crate::the
     }
 }
 
-/// The theme's terminal colours, if it has its own (set each frame from the theme).
-static PALETTE: std::sync::RwLock<Option<[Color; 7]>> = std::sync::RwLock::new(None);
+thread_local! {
+    /// The theme's terminal colours, if it has its own (set each frame from the theme). Per
+    /// thread like `ROUND`: frames are drawn on one thread, and tests drawing in parallel with
+    /// other themes overwrote a process-wide palette mid-frame.
+    static PALETTE: std::cell::Cell<Option<[Color; 7]>> = const { std::cell::Cell::new(None) };
 
-/// What programs' "bright black" backgrounds become: a subtle panel, not a grey slab.
-static PANEL: std::sync::RwLock<Option<Color>> = std::sync::RwLock::new(None);
+    /// What programs' "bright black" backgrounds become: a subtle panel, not a grey slab.
+    static PANEL: std::cell::Cell<Option<Color>> = const { std::cell::Cell::new(None) };
+}
 
 pub(super) fn set_palette(p: Option<[Color; 7]>, panel: Option<Color>) {
-    if let Ok(mut w) = PALETTE.write() {
-        *w = p;
-    }
-    if let Ok(mut w) = PANEL.write() {
-        *w = panel;
-    }
+    PALETTE.set(p);
+    PANEL.set(panel);
 }
 
 /// Map the basic ANSI colours (red … cyan, and gray) to the theme's.
@@ -397,8 +397,8 @@ pub(super) fn terminal_surface_bg(screen: &vt100::Screen, default_bg: Color) -> 
     if rows == 0 || cols == 0 {
         return default_bg;
     }
-    let palette = PALETTE.read().map(|palette| *palette).unwrap_or(None);
-    let panel = PANEL.read().map(|panel| *panel).unwrap_or(None);
+    let palette = PALETTE.get();
+    let panel = PANEL.get();
     let corners = [
         (0, 0),
         (0, cols - 1),
@@ -433,8 +433,8 @@ pub(super) fn terminal_surface_bg(screen: &vt100::Screen, default_bg: Color) -> 
 /// workspace tint); programs' own background colours are left alone.
 pub(super) fn render_screen(screen: &vt100::Screen, area: Rect, buf: &mut Buffer, default_bg: Color) {
     let (rows, cols) = screen.size();
-    let pal = PALETTE.read().map(|p| *p).unwrap_or(None);
-    let panel = PANEL.read().map(|p| *p).unwrap_or(None);
+    let pal = PALETTE.get();
+    let panel = PANEL.get();
     for row in 0..area.height.min(rows) {
         for col in 0..area.width.min(cols) {
             let Some(cell) = screen.cell(row, col) else { continue };
@@ -548,4 +548,19 @@ fn draw_prompt(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::Theme
     let s2 = Style::default().bg(t.card2);
     put(buf, field.x + 1, field.y, &[seg("› ", s2.fg(t.accent).add_modifier(Modifier::BOLD)), seg(input.to_string(), s2.fg(t.strong)), seg("█", s2.fg(t.accent))], field.right());
     super::screen::panel_bar(buf, r, t, &[("Enter", "save"), ("Esc", "cancel")]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Tests draw on many threads at once; one test's theme must not change the terminal
+    /// colours another is drawing with.
+    #[test]
+    fn the_terminal_palette_is_per_thread() {
+        let red = Color::Rgb(0xe0, 0x50, 0x50);
+        set_palette(Some([red; 7]), None);
+        std::thread::spawn(|| set_palette(None, None)).join().unwrap();
+        assert_eq!(themed(Color::Indexed(1), &PALETTE.get()), red, "another thread's palette leaked into this one");
+    }
 }

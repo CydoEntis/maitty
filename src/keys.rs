@@ -237,6 +237,8 @@ pub enum Action {
     AgentStatusSetup,
     /// Switch the branch of the checkout you're in.
     Branches,
+    /// The project's reference images and design files, in the side panel.
+    References,
     /// A shell in the folder of the session you're on, straight away.
     ShellHere,
     /// Scroll to the command before (or after) the one at the top of the view.
@@ -324,6 +326,7 @@ impl Action {
             Action::PasteImage => "Paste the clipboard image".into(),
             Action::AgentStatusSetup => "Connect agents".into(),
             Action::Branches => "Branch".into(),
+            Action::References => "References".into(),
             Action::ShellHere => "New shell here".into(),
             Action::PrevPrompt => "Previous command in history".into(),
             Action::NextPrompt => "Next command in history".into(),
@@ -401,6 +404,7 @@ impl Action {
             Action::PasteImage => "paste-image".into(),
             Action::AgentStatusSetup => "agent-status-setup".into(),
             Action::Branches => "branch".into(),
+            Action::References => "references".into(),
             Action::ShellHere => "shell-here".into(),
             Action::PrevPrompt => "prev-prompt".into(),
             Action::NextPrompt => "next-prompt".into(),
@@ -498,6 +502,7 @@ impl FromStr for Action {
             "profiles" | "workflows" | "workflow-runs" => Action::Palette,
             "agent-status-setup" => Action::AgentStatusSetup,
             "branch" | "switch-branch" => Action::Branches,
+            "references" => Action::References,
             "shell-here" => Action::ShellHere,
             "prev-prompt" => Action::PrevPrompt,
             "next-prompt" => Action::NextPrompt,
@@ -580,6 +585,7 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("c", "changes"),
     ("g", "worktrees"),
     ("b", "branch"),
+    ("a", "references"),
     // The app
     ("space", "palette"),
     ("m", "menu"),

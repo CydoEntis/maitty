@@ -971,6 +971,12 @@ impl App {
                 self.mode = Mode::GoTo { query, sel };
                 return;
             }
+            // m on a failure: a message to its agent with the failure written in.
+            KeyCode::Char('m') if query.is_empty() && let Some(GoRow::Failed(term)) = sel_row => {
+                let name = self.snap.terms.get(&term).and_then(|t| t.check()).map(|c| c.name.clone()).unwrap_or_default();
+                self.send_failure(term, name, None, Some((query, sel)));
+                return;
+            }
             // m: a follow-up, inside the row.
             KeyCode::Char('m') if query.is_empty() && matches!(sel_row, Some(GoRow::Ask(_) | GoRow::Done(_))) => {
                 if let Some(GoRow::Ask(term) | GoRow::Done(term)) = sel_row {
