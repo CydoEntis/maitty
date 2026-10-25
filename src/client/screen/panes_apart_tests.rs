@@ -265,3 +265,48 @@ fn a_lone_pane_s_confirm_says_close_pane_and_its_name() {
     let screen = text(&draw(&mut app, 160, 45));
     assert!(screen.contains("Close pane · fix-footer"), "no number for a lone pane:\n{screen}");
 }
+
+/// The cell that carries a pane's focus in `look`: a box's corner, Compact's `│` rule, or
+/// Hairline's rule.
+fn focus_cell(look: &str, r: Rect) -> (u16, u16) {
+    match look {
+        "hairline" => (r.x + 1, r.y + 1),
+        "compact" => (r.x, r.y + 1),
+        _ => (r.x, r.y),
+    }
+}
+
+#[test]
+fn the_focused_pane_stays_lit_under_a_menu_popover_or_confirm_in_every_look() {
+    type Open = fn(&mut App, TermId, TermId);
+    let overlays: [(&str, Open, bool); 4] = [
+        ("the pane's menu", |app, focus, _| app.menu_for_pane(focus, (60, 5)), false),
+        ("why", |app, focus, _| app.mode = Mode::Why { term: focus, side: false }, false),
+        ("the Menu", |app, _, _| app.mode = Mode::Actions { sel: 0 }, true),
+        ("a close confirm", |app, _, other| app.menu_act(crate::client::menu::Act::End(vec![other])), true),
+    ];
+    for look in LOOKS {
+        for (what, open, dims) in overlays {
+            let mut app = split_world(look, 2);
+            let (w, h) = wide(look);
+            let before = draw(&mut app, w, h);
+            let [focus, other] = [0, 1].map(|i| app.screen.tabs[0].layout.leaves()[i]);
+            let r = app.screen.leaf_rects.iter().find(|(id, _)| *id == focus).map(|(_, r)| *r).expect("the pane is on screen");
+            let at = focus_cell(look, r);
+            let lit = before[at].fg;
+            open(&mut app, focus, other);
+            let buf = draw(&mut app, w, h);
+            let label = format!("{look}, {what}: {:?}", app.mode);
+            if dims {
+                let mut behind = before.clone();
+                let (area, t) = (behind.area, app.theme.clone());
+                dim_all(&mut app, &mut behind, area, &t);
+                assert_eq!(buf[at].fg, behind[at].fg, "{label}: the focus colour, dimmed with the rest");
+            } else {
+                assert_eq!(buf[at].fg, lit, "{label}: the focus colour as it was");
+            }
+            let o = app.screen.leaf_rects.iter().find(|(id, _)| *id == other).map(|(_, r)| *r).expect("the other pane");
+            assert_ne!(buf[at].fg, buf[focus_cell(look, o)].fg, "{label}: the focused pane still stands apart");
+        }
+    }
+}
