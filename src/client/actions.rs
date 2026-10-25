@@ -40,8 +40,14 @@ impl App {
             // has them, not the pane behind it, whose program would stop. Set aside by a click
             // into a pane, the pane has the keys and x closes it.
             Action::ClosePane if self.view_has_keys() => {
-                if matches!(&self.view, Some(View::Files(v)) if v.edit.as_ref().is_some_and(|e| e.dirty)) {
-                    self.notify("unsaved changes: Ctrl+S saves, Esc twice throws them away".into(), true);
+                let unsaved = match &self.view {
+                    Some(View::Files(v)) => v.edit.as_ref().filter(|e| e.dirty).map(|e| e.warned),
+                    _ => None,
+                };
+                if let Some(warned) = unsaved {
+                    // After the editor's own warning one Esc throws them away, before it two.
+                    let esc = if warned { "Esc again" } else { "Esc twice" };
+                    self.notify(format!("unsaved changes: Ctrl+S saves, {esc} throws them away"), true);
                 } else {
                     self.view = None;
                 }
