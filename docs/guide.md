@@ -92,8 +92,8 @@ double-click a word) and Ctrl+C copies the text.
 
 `i` edits the file right in the panel: Shift with the arrows, Ctrl+A or the mouse selects;
 Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste (with nothing selected, Ctrl+C and Ctrl+X take
-the whole line); Ctrl+Z and Ctrl+Y undo and redo; Ctrl+S saves and Esc is done (it asks
-first about unsaved changes). While Files has the keys a paste stays in Files: in the editor
+the whole line); Ctrl+Z and Ctrl+Y undo and redo; Ctrl+S saves and Esc is done (with
+unsaved changes it warns first, and Esc again throws them away). While Files has the keys a paste stays in Files: in the editor
 at the cursor, while filtering in the filter, and never in the pane behind.
 
 In **Changes**: `c` commits every changed file and `p` pushes and opens a PR (each asks
