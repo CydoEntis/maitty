@@ -431,7 +431,14 @@ impl App {
                 self.spawn_bg(move || {
                     let result = crate::cli::integrations::install_status(&agent);
                     super::Bg::Then(Box::new(move |app: &mut App| match result {
-                        Ok(_) => app.notify(format!("{agent} status installed; restart {agent} to load it (Pi also supports /reload)"), false),
+                        Ok(_) => {
+                            // Settings reads Claude's hook state once; a connect from here must not leave it saying "not installed".
+                            if agent == "claude" {
+                                app.claude_hooks = Some(true);
+                            }
+                            let name = crate::cli::integrations::STATUS_AGENTS.iter().find(|a| a.id == agent).map_or(agent.as_str(), |a| a.name);
+                            app.notify(format!("{name} status installed; restart {name} to load it (Pi also supports /reload)"), false)
+                        }
                         Err(e) => app.notify(format!("couldn't set up {agent} status: {e:#}"), true),
                     }))
                 });
