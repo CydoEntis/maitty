@@ -34,6 +34,12 @@ pub fn draw(app: &mut App, f: &mut Frame) {
         use std::io::Write;
         let _ = write!(std::io::stdout(), "]11;#{r:02x}{g:02x}{b:02x}");
         app.osc_bg = Some(t.bg);
+    } else if (terminal_bg || !matches!(t.bg, Color::Rgb(..))) && app.osc_bg.is_some() && !cfg!(test) {
+        // Switched to the terminal's own background mid-run: hand its colour back now, not
+        // only at exit.
+        use std::io::Write;
+        let _ = write!(std::io::stdout(), "\x1b]111\x07");
+        app.osc_bg = None;
     }
 
     // Smaller than this, nothing fits: say so instead of drawing a broken screen.

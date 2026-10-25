@@ -1710,7 +1710,7 @@ mod screen_tests {
     /// Whether the needs-you glyph at `x`, `y` is in amber or on it, its ground set apart from
     /// the chip it sits in (the cell after its patch) and the glyph readable on that ground.
     fn needs_you_stands_out(app: &App, buf: &ratatui::buffer::Buffer, x: u16, y: u16) -> bool {
-        // The renderer leaves the theme's own ground as Reset, so the terminal's shows.
+        // With `background = "terminal"` the theme's own ground is drawn as Reset.
         let solid = |c: ratatui::style::Color| if c == ratatui::style::Color::Reset { app.theme.bg } else { c };
         let (glyph, after) = (&buf[(x, y)], &buf[(x + 2, y)]);
         let (fg, bg, chip) = (solid(glyph.fg), solid(glyph.bg), solid(after.bg));
