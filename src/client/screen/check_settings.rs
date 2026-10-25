@@ -208,6 +208,18 @@ pub(super) fn project_of(app: &App) -> Option<PathBuf> {
     app.active_ws().map(|w| w.git.as_ref().map_or_else(|| w.cwd.clone(), |g| g.root.clone()))
 }
 
+/// What the Check page's keys act on, as `on_check_page_key` finds it: none with no project
+/// open, else the draft if it is this project's, and whether the project has a checkpoint yet.
+pub(super) fn page_target(app: &App) -> Option<(Option<&CheckDraft>, bool)> {
+    let project = project_of(app)?;
+    let draft = app.screen.check_page.as_ref().filter(|d| same_path(&d.project, &project));
+    Some((draft, has_points(app, &project)))
+}
+
+pub(super) fn has_points(app: &App, project: &Path) -> bool {
+    !points(app, project).is_empty()
+}
+
 fn project_of_term(t: &TermInfo) -> PathBuf {
     t.root.clone().unwrap_or_else(|| t.cwd.clone())
 }

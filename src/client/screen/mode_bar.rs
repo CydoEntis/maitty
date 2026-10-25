@@ -153,6 +153,7 @@ fn keys_holder(app: &App) -> Option<Holder> {
         Mode::Helpers { .. } => holder("HELPERS", &[("1", "allow"), ("2", "always"), ("3", "no")], ("Esc", "back")),
         Mode::Approve(_) => holder("RUN CHECK?", &[("1", "run once"), ("2", "always"), ("3", "never")], ("Esc", "not now")),
         Mode::ProjectCheck(d) if d.editing => holder("CHECK SETTINGS", &[("", "type a command"), ("Enter", "done"), ("Ctrl+S", "save")], ("Esc", "cancel")),
+        Mode::ProjectCheck(d) if !super::check_settings::has_points(app, &d.project) => holder("CHECK SETTINGS", &[("", "type a command"), ("Enter", "edit"), ("Ctrl+S", "save")], ("Esc", "cancel")),
         Mode::ProjectCheck(_) => holder("CHECK SETTINGS", &[("Ctrl+S", "save"), ("↑↓", "move"), ("r", "run now")], ("Esc", "cancel")),
         Mode::Finder(fd) if fd.for_setting.is_some() => holder("OPEN FOLDER", &[("", "type a path"), ("Tab", "complete"), ("Enter", "open")], ("Esc", "back")),
         Mode::Finder(_) => holder("OPEN FOLDER", &[("", "type a path"), ("Tab", "complete"), ("Enter", "open")], ("Esc", "close")),
@@ -183,10 +184,17 @@ fn keys_holder(app: &App) -> Option<Holder> {
 /// command row, ←→ only step the timeout or the checkpoint, and Esc or Tab drop the draft as
 /// Settings closes or changes section.
 fn check_page_holder(app: &App) -> Option<Holder> {
-    use super::check_settings::DraftRow;
-    let draft = app.screen.check_page.as_ref();
+    use super::check_settings::{DraftRow, page_target};
+    // No project open: every key but Tab and Esc only says so in a toast.
+    let Some((draft, has_points)) = page_target(app) else {
+        return holder("SETTINGS", &[("Tab", "section")], ("Esc", "close"));
+    };
     if draft.is_some_and(|d| d.editing) {
         return holder("SETTINGS", &[("", "type a command"), ("Enter", "done"), ("Ctrl+S", "save"), ("Tab", "section")], ("Esc", "close"));
+    }
+    // No checkpoint yet: only the command row, so a letter (r too) starts the command.
+    if !has_points {
+        return holder("SETTINGS", &[("", "type a command"), ("Enter", "edit"), ("Ctrl+S", "save"), ("Tab", "section")], ("Esc", "close"));
     }
     let hints: &'static [Hint] = match draft.map_or(DraftRow::Command, |d| d.row) {
         DraftRow::Command => &[("↑↓", "move"), ("Enter", "edit"), ("Ctrl+S", "save"), ("r", "run now"), ("Del", "remove"), ("Tab", "section")],

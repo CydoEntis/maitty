@@ -4613,7 +4613,11 @@ second line
 
     /// Something other than the panes with the keys, reached as a user would where a key or
     /// action gets there; `held` starts from shortcut mode, else from typing.
-    const WHO: [(&str, bool, &str); 30] = [
+    const WHO: [(&str, bool, &str); 34] = [
+        ("check page first time", false, "SETTINGS  · type a command · Enter edit · Ctrl+S save · Tab section · Esc close"),
+        ("check page no project", false, "SETTINGS  · Tab section · Esc close"),
+        ("project check", false, "CHECK SETTINGS  · Ctrl+S save · ↑↓ move · r run now · Esc cancel"),
+        ("project check first time", false, "CHECK SETTINGS  · type a command · Enter edit · Ctrl+S save · Esc cancel"),
         ("check page", false, "SETTINGS  · ↑↓ move · Enter edit · Ctrl+S save · r run now · Del remove · Tab section · Esc close"),
         ("check page timeout", false, "SETTINGS  · ↑↓ move · ←→ change · Ctrl+S save · r run now · Del remove · Tab section · Esc close"),
         ("check page typing", false, "SETTINGS  · type a command · Enter done · Ctrl+S save · Tab section · Esc close"),
@@ -4645,6 +4649,12 @@ second line
         ("compose", true, "MESSAGE  · Enter send · Shift+Enter new line · shortcut mode waits · Esc keep draft"),
         ("compose", false, "MESSAGE  · Enter send · Shift+Enter new line · Esc keep draft"),
     ];
+
+    /// The project Settings' Check page edits: the active workspace's repository.
+    fn settings_project(app: &App) -> PathBuf {
+        let ws = app.snap.active().expect("a workspace");
+        ws.git.as_ref().map_or_else(|| ws.cwd.clone(), |g| g.root.clone())
+    }
 
     /// `app` with `what` holding the keys, from shortcut mode when `held`.
     fn give_keys(app: &mut App, what: &str, held: bool) {
@@ -4726,22 +4736,33 @@ second line
                 fd.for_setting = Some("start.folder");
                 app.mode = Mode::Finder(Box::new(fd));
             }
-            ("check page" | "check page timeout" | "check page typing", _) => {
+            ("check page" | "check page timeout" | "check page typing" | "check page first time" | "check page no project", _) => {
                 use crate::client::modal::Cat;
                 use screen::check_settings::{CheckDraft, DraftRow};
+                let project = settings_project(app);
+                if what != "check page first time" {
+                    app.cfg.check = vec![crate::config::CheckDef { project: project.clone(), name: None, command: "cargo test".into(), timeout_s: 600 }];
+                }
                 app.act(Action::Settings);
                 let Mode::ScreenSettings(v) = &mut app.mode else { panic!("Settings is open") };
                 v.cat = Cat::ALL.iter().position(|c| *c == Cat::Check).expect("a Check page");
-                let draft = CheckDraft::new(PathBuf::from("/repo"));
+                let draft = CheckDraft::new(project);
                 app.screen.check_page = match what {
                     "check page timeout" => Some(CheckDraft { row: DraftRow::Timeout, ..draft }),
                     "check page typing" => Some(CheckDraft { editing: true, ..draft }),
                     _ => None,
                 };
+                if what == "check page no project" {
+                    app.snap.active_ws = None;
+                }
             }
-            ("project check typing", _) => {
-                let draft = screen::check_settings::CheckDraft::new(PathBuf::from("/repo"));
-                app.mode = Mode::ProjectCheck(Box::new(screen::check_settings::CheckDraft { editing: true, ..draft }));
+            ("project check" | "project check first time" | "project check typing", _) => {
+                let project = settings_project(app);
+                if what == "project check" {
+                    app.cfg.check = vec![crate::config::CheckDef { project: project.clone(), name: None, command: "cargo test".into(), timeout_s: 600 }];
+                }
+                let draft = screen::check_settings::CheckDraft::new(project);
+                app.mode = Mode::ProjectCheck(Box::new(screen::check_settings::CheckDraft { editing: what == "project check typing", ..draft }));
             }
             _ => unreachable!("{what}"),
         }
