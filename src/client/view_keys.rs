@@ -425,7 +425,7 @@ impl App {
                 v.sel = v.sel.min(v.visible().len().saturating_sub(1));
                 v.refresh_preview();
             }
-            None => self.notify("Files has the keys: / filters, i edits; click a pane to paste there".into(), false),
+            None => self.notify("Files has the keys: / filters, i edits; Esc closes it, or click a pane to paste there".into(), false),
         }
         true
     }
