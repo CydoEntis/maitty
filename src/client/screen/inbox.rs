@@ -73,6 +73,12 @@ pub(super) fn inbox_place(app: &App) -> Option<(String, usize)> {
     }
 }
 
+/// The Inbox's selected row, while it has the keys.
+pub(super) fn inbox_selected(app: &App) -> Option<GoRow> {
+    let Mode::GoTo { query, sel } = &app.mode else { return None };
+    goto_rows(&app.screen_model(), query, heads_up(app).len()).get(*sel).cloned()
+}
+
 /// " NEEDS YOU " on its colour, then its count on a fainter chip.
 fn chip_head(buf: &mut Buffer, (x, y, right): (u16, u16, u16), name: &str, color: Color, n: Option<usize>, t: &Theme) {
     let ink = if color == t.btn { t.strong } else { t.ink_on(color) };
@@ -364,6 +370,7 @@ mod tests {
         for layout in LAYOUTS {
             for (w, h) in SIZES {
                 let mut want = reference(preset, layout_name(layout), w, h);
+                want.offers_send_to_agent(w);
                 fix(&mut want);
                 let mut app = inbox_world(stage, term);
                 tweak(&mut app);

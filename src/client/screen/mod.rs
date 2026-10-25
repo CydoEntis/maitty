@@ -170,6 +170,8 @@ pub(super) struct Screen {
     pub drafts: std::collections::HashMap<TermId, String>,
     /// What you changed on Settings › Check and have not saved.
     pub check_page: Option<check_settings::CheckDraft>,
+    /// A failed check waiting for its output before its message opens (`m`).
+    pub failure_ask: Option<failure_note::FailureAsk>,
 }
 
 /// A row the sidebar cursor can rest on.
@@ -1109,6 +1111,7 @@ mod check_modals_tests;
 pub(in crate::client) mod check_settings;
 mod check_sheet;
 mod dialogs;
+mod failure_note;
 pub(in crate::client) mod glyphs;
 mod keyoverlay;
 mod newsession;

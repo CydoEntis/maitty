@@ -192,6 +192,9 @@ checkpoint), or let a repo ship its own in `.maitty/checks.toml`.
 - Enter on a failed row opens its evidence: the command, where and when it ran, and its output.
   `r` re-runs, `O` overrides with a reason (the failure stays visible), `u` undoes that, Tab
   moves between checkpoints.
+- `m` on a failed check, in its evidence or its Inbox item, opens the agent's message box with
+  the command, its exit code and the last 40 lines of its output written in. Add what you want
+  done and press Enter; nothing is sent before.
 - A pass goes **stale** when the files change afterwards; `r` runs it again.
 - `<leader> i` (Inbox) lists failed checks and approvals with what needs you.
 

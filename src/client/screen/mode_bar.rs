@@ -142,6 +142,7 @@ fn keys_holder(app: &App) -> Option<Holder> {
         Mode::GoTo { .. } => match app.screen.inbox_confirm {
             Some((_, true, false)) => holder("INBOX", &[("Enter", "merge")], ("Esc", "don't")),
             Some((_, false, false)) => holder("INBOX", &[("Enter", "throw away")], ("Esc", "don't")),
+            _ if matches!(super::inbox::inbox_selected(app), Some(GoRow::Failed(_))) => holder("INBOX", &[("↑↓", "select"), ("Enter", "open"), ("m", "send to agent")], ("Esc", "close")),
             _ => holder("INBOX", &[("↑↓", "select"), ("Enter", "open")], ("Esc", "close")),
         },
         Mode::Compose(_) => holder("MESSAGE", &[("Enter", "send"), ("Shift+Enter", "new line")], ("Esc", "keep draft")),
@@ -219,6 +220,7 @@ fn view_holder(app: &App) -> Option<Holder> {
         View::Changes(v) if v.confirm.is_some() => holder("CHANGES", &[("y", "yes")], ("n", "no")),
         View::Changes(_) => holder("CHANGES", &[("↑↓", "file"), ("c", "commit"), ("x", "reviewed"), ("e", "editor")], ("Esc", "close")),
         View::Branch(_) => holder("BRANCH", &[("↑↓", "choose"), ("Enter", "open")], ("Esc", "close")),
+        View::Check(v) if super::check_sheet::sheet_failed(app, v) => holder("CHECK", &[("r", "re-run"), ("m", "send to agent"), ("f", "full output"), ("i", "why")], ("Esc", "back")),
         View::Check(_) => holder("CHECK", &[("r", "re-run"), ("f", "full output"), ("i", "why")], ("Esc", "back")),
         View::Both(_) => holder("BOTH DIFFS", &[("↑↓", "scroll"), ("k", "dismiss")], ("Esc", "close")),
     }

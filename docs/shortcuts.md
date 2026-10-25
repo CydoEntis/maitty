@@ -220,7 +220,7 @@ your own leader keys; the Inbox and checks have none.
 | Enter | The selected item's first button: Reply (a question), Read the command (a check waiting for approval), Output (a failed or could-not-run check), Re-run (a stale pass); an item with no buttons opens its session, as does a search result |
 | o | Open the selected item's session; empty search |
 | 1–9 | Answer selected agent question when search is empty |
-| m | Follow-up to selected asking/finished agent when search is empty |
+| m | Follow-up to selected asking/finished agent when search is empty; on a failed check, the message with the failure written in (sent only on Enter) |
 | d, M, x | Finished worktree: diff, ask to merge, ask to discard; empty search |
 | d, m, k | Shared-file warning: diff, message its agent, dismiss; empty search |
 | r, O, u, , | The selected item's check: run it again, override it (asks first), undo an override, its settings; only where they apply, else typed; empty search |
@@ -306,6 +306,7 @@ your own leader keys; the Inbox and checks have none.
 | r | Run the check again (queued while the agent is working) |
 | O | Override a failed check: opens a confirm with an optional reason |
 | u | Undo an override: the check reads as failed again |
+| m | A failed check: the agent's message box with its command, exit code and last 40 lines written in; sent only on Enter |
 | o | Go to the session |
 | i | Why it reads as it does (the evidence popover) |
 | , | The project's check (`PROJECT · <name>`) |

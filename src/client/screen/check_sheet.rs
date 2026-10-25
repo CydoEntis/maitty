@@ -111,6 +111,11 @@ fn needs_a_look(info: &CheckInfo) -> bool {
     matches!(info.state, CheckState::Failed | CheckState::CouldNotRun | CheckState::Overridden | CheckState::Stale | CheckState::Never)
 }
 
+/// Whether the sheet shows a failure, which `m` sends to the agent.
+pub(super) fn sheet_failed(app: &App, v: &CheckView) -> bool {
+    app.snap.terms.get(&v.term).and_then(|t| shown(t, &v.name)).is_some_and(|i| i.state == CheckState::Failed)
+}
+
 impl App {
     /// Whether Enter on `term`'s sidebar row shows its evidence rather than focusing it.
     pub(in crate::client) fn check_wants_a_look(&self, term: TermId) -> bool {
@@ -152,6 +157,9 @@ impl App {
 
     /// The output the daemon sent for the open sheet.
     pub(in crate::client) fn check_output_arrived(&mut self, text: String) {
+        if self.failure_output_arrived(&text) {
+            return;
+        }
         if let Some(View::Check(v)) = &mut self.view {
             v.output = Some(text);
         }
@@ -182,6 +190,7 @@ impl App {
                 return false;
             }
             KeyCode::Char('i') => self.mode = Mode::Why { term: v.term, side: false },
+            KeyCode::Char('m') if sheet_failed(self, v) => self.send_failure(v.term, v.name.clone(), v.output.as_deref(), None),
             KeyCode::Char('f') => v.toggle_full(),
             KeyCode::Tab => self.step_checkpoint(v, false),
             KeyCode::BackTab => self.step_checkpoint(v, true),
@@ -435,7 +444,7 @@ fn buttons(app: &mut App, buf: &mut Buffer, (x, y, max): (u16, u16, u16), info: 
         _ => list.push(("Re-run", 'r', BtnKind::Normal)),
     }
     match info.state {
-        CheckState::Failed => list.push(("Override…", 'O', BtnKind::Danger)),
+        CheckState::Failed => list.extend([("Override…", 'O', BtnKind::Danger), ("Send to agent", 'm', BtnKind::Normal)]),
         CheckState::Overridden => list.push(("Undo override", 'u', BtnKind::Normal)),
         _ => {}
     }
@@ -559,6 +568,7 @@ mod tests {
         for layout in LAYOUTS {
             for (w, h) in SIZES {
                 let mut want = reference(preset, layout_name(layout), w, h);
+                want.offers_send_to_agent(w);
                 fix(&mut want);
                 let mut app = sheet_world(stage, output, line_count);
                 let (got, _) = draw(&mut app, want.area, w, h);
