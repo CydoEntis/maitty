@@ -54,10 +54,15 @@ pub(super) fn failure_note(info: &CheckInfo, output: &str) -> String {
 
 impl App {
     /// `m` on a failed check: the message box to its agent with the failure in it. The sheet
-    /// already holds the output; from the Inbox it is asked for first.
+    /// already holds the output; from the Inbox it is asked for first, unless a sheet open on
+    /// the same checkpoint holds it.
     pub(in crate::client) fn send_failure(&mut self, term: TermId, name: String, output: Option<&str>, inbox: Option<(String, usize)>) {
-        match output {
-            Some(output) => self.open_failure_note(term, &name, output, inbox),
+        let held = match &self.view {
+            Some(View::Check(v)) if v.term == term && v.name == name => v.output.clone(),
+            _ => None,
+        };
+        match output.map(str::to_string).or(held) {
+            Some(output) => self.open_failure_note(term, &name, &output, inbox),
             None => {
                 if inbox.is_some() {
                     let asked = (!name.is_empty()).then(|| name.clone());
@@ -174,6 +179,18 @@ mod tests {
         assert!(!delivered(&drain(&mut rx)), "nothing goes before Enter");
         press(&mut app, KeyCode::Enter);
         assert!(delivered(&drain(&mut rx)), "Enter sends it");
+    }
+
+    #[test]
+    fn m_in_the_inbox_uses_the_output_a_sheet_on_that_check_holds() {
+        let mut app = world(Stage::Failed);
+        app.open_check_sheet(FAILED);
+        app.check_output_arrived(sample_output());
+        let mut rx = listen(&mut app);
+        inbox_on_failure(&mut app);
+        press(&mut app, KeyCode::Char('m'));
+        the_failure_is_written_in(&app);
+        assert!(!drain(&mut rx).iter().any(|m| matches!(m, ClientMsg::Query(Query::CheckOutput { .. }))), "not asked for again");
     }
 
     #[test]
