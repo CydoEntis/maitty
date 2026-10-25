@@ -1331,7 +1331,12 @@ fn qwen_settings() -> PathBuf {
 }
 
 fn qwen_settings_in(qwen_home: Option<PathBuf>, home: &std::path::Path) -> PathBuf {
-    qwen_home.filter(|dir| !dir.as_os_str().is_empty()).unwrap_or_else(|| home.join(".qwen")).join("settings.json")
+    let dir = match qwen_home.filter(|dir| !dir.as_os_str().is_empty()) {
+        // Qwen's resolvePath expands a leading `~`, as a shell would have.
+        Some(dir) => dir.strip_prefix("~").map(|rest| home.join(rest)).unwrap_or(dir),
+        None => home.join(".qwen"),
+    };
+    dir.join("settings.json")
 }
 
 /// A tool's settings.json under the home folder (`.gemini`), or `$<env>/…`.
@@ -2463,6 +2468,9 @@ mod tests {
         assert_eq!(super::qwen_settings_in(Some("/opt/qwen-config".into()), home), std::path::Path::new("/opt/qwen-config/settings.json"));
         assert_eq!(super::qwen_settings_in(None, home), home.join(".qwen").join("settings.json"));
         assert_eq!(super::qwen_settings_in(Some("".into()), home), home.join(".qwen").join("settings.json"), "an empty QWEN_HOME is unset");
+        assert_eq!(super::qwen_settings_in(Some("~/qwen-config".into()), home), home.join("qwen-config").join("settings.json"));
+        assert_eq!(super::qwen_settings_in(Some("~".into()), home), home.join("settings.json"));
+        assert_eq!(super::qwen_settings_in(Some("/a/~b".into()), home), std::path::Path::new("/a/~b/settings.json"), "only a leading ~");
     }
 
     #[test]
