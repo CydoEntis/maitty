@@ -417,6 +417,9 @@ pub struct App {
     side_frac: f32,
     sheet_frac: f32,
     hits: Vec<(Rect, Hit)>,
+    /// How many of `hits` lie under the topmost dimmed overlay (`dim_all`): the pointer
+    /// neither tints them nor takes their shape, since they are not what a look says is live.
+    hits_under_overlay: usize,
     /// Inner rects of the panes drawn last frame.
     panes: Vec<(TermId, Rect)>,
     /// Outer rects of the panes drawn last frame (for neighbour search).
@@ -622,6 +625,7 @@ impl App {
             sizes: HashMap::new(),
             mode: Mode::Normal,
             hits: Vec::new(),
+            hits_under_overlay: 0,
             panes: Vec::new(),
             pane_frames: Vec::new(),
             wheel_page: None,
@@ -1155,6 +1159,11 @@ impl App {
 
     fn any_working(&self) -> bool {
         self.snap.terms.values().any(|term| term.status == Status::Working)
+    }
+
+    /// The topmost clickable region under `at` on the top layer: nothing under an overlay.
+    fn hover_hit(&self, at: Position) -> Option<&(Rect, Hit)> {
+        self.hits.get(self.hits_under_overlay..).unwrap_or_default().iter().rev().find(|(r, _)| r.contains(at))
     }
 
     // ---- model helpers -------------------------------------------------------------

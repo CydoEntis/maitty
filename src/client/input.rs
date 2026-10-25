@@ -913,7 +913,7 @@ impl App {
     /// The mouse pointer for what's under it: ↔ / ↕ over a line you can drag (in terminals
     /// that take OSC 22: Ghostty, kitty, foot, WezTerm; others keep their arrow).
     pub(super) fn pointer_for(&mut self, pos: Position) {
-        let want = match self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h) {
+        let want = match self.hover_hit(pos).map(|(_, h)| *h) {
             Some(Hit::Screen(screen::ScreenHit::Divider(i))) => match self.screen.dividers.get(i) {
                 Some((_, true, _)) => "col-resize",
                 Some(_) => "row-resize",

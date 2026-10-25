@@ -165,7 +165,7 @@ fn tidy_toggle(v: &mut TidyView, i: usize) {
 
 pub(in crate::client) fn draw_tidy(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, v: &TidyView) {
     let buf = f.buffer_mut();
-    dim_all(buf, area, t);
+    dim_all(app, buf, area, t);
     let n = v.rows.as_ref().map(Vec::len).unwrap_or(1) as u16;
     let h = (n + 9).max(11).min(area.height.saturating_sub(4));
     let r = panel(app, buf, area, 112, h, "Clean up worktrees", &[], t);

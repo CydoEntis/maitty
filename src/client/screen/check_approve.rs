@@ -250,7 +250,7 @@ impl App {
 pub(in crate::client) fn draw_approve(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, a: &Approve) {
     let Some(term) = app.snap.terms.get(&a.term).cloned() else { return };
     let Some(info) = term.checks.iter().find(|c| c.name == a.name).cloned() else { return };
-    dim_all(buf, area, t);
+    dim_all(app, buf, area, t);
     let changed = info.previous_command.is_some();
     let w = WIDTH.min(area.width.saturating_sub(2));
     let roomy = area.height >= ROOMY_FROM_H;

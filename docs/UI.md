@@ -176,7 +176,11 @@ Only the area with the keyboard is lit: the focused pane's whole border (Cards),
   and mouse editing available.
 - The pointer's tint is one pass after drawing (`render.rs`): the topmost
   clickable region under it is tinted once, `mix(bg, text, 0.10)`, its ends round like every other shape when `ui.rounded` is `full` (`card.rs` `round_tinted`: an end cell holding only ground, or already a rounded end, becomes a cap or soft corner; an end with text stays square). Widgets do
-  not tint themselves on hover.
+  not tint themselves on hover. Only the top layer takes the pointer: `dim_all` marks every
+  region drawn before it as under the overlay (`hits_under_overlay`), so behind a modal,
+  popover or floating pane nothing tints and the pointer keeps its arrow, and an overlay's
+  backdrop (its click-outside region) is never tinted. Inside the overlay hover works as
+  anywhere.
 - Shortcut mode ends on Esc, the leader again, a click, or an action that starts a pane to
   type into (ADR 0025: every path through `screen_new_session` / `screen_new_worktree`, so
   `n`, `s`, `t`, the splits, and `o` once its dialog starts one). Those call

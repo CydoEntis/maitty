@@ -445,7 +445,7 @@ fn draw_buttons(app: &mut App, buf: &mut Buffer, x: u16, y: u16, right: u16, p: 
 
 /// The `PROJECT · <name>` modal.
 pub(in crate::client) fn draw_project_check(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, d: &CheckDraft) {
-    dim_all(buf, area, t);
+    dim_all(app, buf, area, t);
     let w = MODAL_W.min(area.width.saturating_sub(2));
     let h = MODAL_H.min(area.height.saturating_sub(2));
     let r = panel(app, buf, area, w, h, &format!("PROJECT · {}", folder_name(&d.project)), &[], t);

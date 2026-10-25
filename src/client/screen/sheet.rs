@@ -325,7 +325,7 @@ pub(in crate::client) fn draw_settings_modal(app: &mut App, buf: &mut Buffer, ar
         width: max_width,
         height: max_height,
     };
-    super::dim_all(buf, area, t);
+    super::dim_all(app, buf, area, t);
     hit(app, area, ScreenHit::Noop);
     let r = panel_at(app, buf, r, "Settings", &[], t);
     let inside = Rect { x: r.x + 1, y: r.y + 1, width: r.width.saturating_sub(2), height: r.height.saturating_sub(2) };

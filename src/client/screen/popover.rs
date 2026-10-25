@@ -166,7 +166,7 @@ pub(in crate::client) fn frame_beside_row(app: &mut App, buf: &mut Buffer, scree
     let r = Rect { x: x0, y: top, width: w, height: h };
 
     let kept = hit_row.map(|row| (row, (row.y..row.bottom()).flat_map(|y| (row.x..row.right()).map(move |x| (x, y))).map(|p| (p, buf[p].clone())).collect::<Vec<_>>()));
-    dim_all(buf, screen, t);
+    dim_all(app, buf, screen, t);
     if let Some((_, cells)) = kept {
         for (p, cell) in cells {
             buf[p] = cell;

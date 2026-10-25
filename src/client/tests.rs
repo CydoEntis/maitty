@@ -2573,6 +2573,46 @@ mod screen_tests {
         }
     }
 
+    /// The frame with the pointer at `at`, and without it.
+    fn with_and_without_pointer(app: &mut App, at: Position) -> (ratatui::buffer::Buffer, ratatui::buffer::Buffer) {
+        let frame = |app: &mut App| {
+            let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
+            term.draw(|f| render::draw(app, f)).unwrap();
+            term.backend().buffer().clone()
+        };
+        app.hover = None;
+        let plain = frame(app);
+        app.hover = Some(at);
+        (frame(app), plain)
+    }
+
+    #[test]
+    fn behind_a_modal_nothing_lights_under_the_pointer_and_inside_it_does() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        draw(&mut app, 160, 45);
+        let (row, _) = *app.hits.iter().find(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::Session(_)))).expect("a sidebar row");
+        let on_row = Position { x: row.x + 2, y: row.y };
+        let focused = app.focused().unwrap();
+        for modal in ["Close pane", "Settings", "Message"] {
+            match modal {
+                "Settings" => app.act(Action::Settings),
+                "Message" => app.act(Action::Message),
+                _ => app.menu_act(menu::Act::End(vec![focused])),
+            }
+            assert_ne!(app.mode, Mode::Normal, "{modal} is open");
+            let (lit, plain) = with_and_without_pointer(&mut app, on_row);
+            assert_eq!(lit[(on_row.x, on_row.y)].bg, plain[(on_row.x, on_row.y)].bg, "{modal}: the row behind takes no hover tint");
+            assert_eq!(lit, plain, "{modal}: nothing behind lights up");
+            app.mode = Mode::Normal;
+        }
+        app.menu_act(menu::Act::End(vec![focused]));
+        draw(&mut app, 160, 45);
+        let (yes, _) = *app.hits.iter().find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::ConfirmYes)).expect("the Close button");
+        let on_yes = Position { x: yes.x + yes.width / 2, y: yes.y };
+        let (lit, plain) = with_and_without_pointer(&mut app, on_yes);
+        assert_ne!(lit[(on_yes.x, on_yes.y)].bg, plain[(on_yes.x, on_yes.y)].bg, "the button under the pointer lights up");
+    }
+
     #[test]
     fn tiled_square_and_faded() {
         let (_, mut app) = super::design_tests::render_with(160, 45);

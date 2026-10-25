@@ -191,7 +191,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     }
     if let Some(term) = app.popup() {
         let whole = above;
-        dim_all(f.buffer_mut(), whole, t);
+        dim_all(app, f.buffer_mut(), whole, t);
         let w = (whole.width * 4 / 5).max(40).min(whole.width);
         let h = (whole.height * 3 / 4).max(12).min(whole.height);
         let r = Rect { x: whole.x + (whole.width - w) / 2, y: whole.y + (whole.height - h) / 2, width: w, height: h };
