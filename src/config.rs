@@ -101,8 +101,9 @@ pub struct Ui {
     /// The look (ADR 0015): "floating", "tiled", "compact" or "grid". Read with `layout_kind`,
     /// which also takes older files' "cards" (with `panes`) and "flat"; empty means unset.
     pub layout: String,
-    /// "terminal" leaves chrome on the terminal's own background (so transparency and a
-    /// background image show through evenly); "solid" paints everything the theme's `bg`.
+    /// "solid" (the default) paints everything the theme's `bg`, so a plain terminal shows the
+    /// theme whole; "terminal" leaves chrome on the terminal's own background (so transparency
+    /// and a background image show through evenly).
     pub background: String,
     /// Older files' Cards spacing, "floating" or "tiled": read only while `layout` is unset or
     /// "cards".
@@ -799,7 +800,7 @@ impl Default for Ui {
             start_dir: String::new(),
             attention_sort: true,
             layout: String::new(),
-            background: "terminal".into(),
+            background: "solid".into(),
             panes: "floating".into(),
             glyphs: "auto".into(),
             gap: "1".into(),
@@ -1684,6 +1685,13 @@ mod tests {
     #[test]
     fn glyphs_default_to_auto() {
         assert_eq!(super::Config::default().ui.glyphs, "auto");
+    }
+
+    #[test]
+    fn the_background_defaults_to_solid_and_still_reads_terminal() {
+        assert_eq!(super::Ui::default().background, "solid");
+        let c: super::Config = toml::from_str("[ui]\nbackground = \"terminal\"\n").unwrap();
+        assert_eq!(c.ui.background, "terminal");
     }
 
     #[test]

@@ -719,6 +719,9 @@ toast on a key that does nothing. Built on `feat/loud-mode`; not checked live.
 Also: Grid titles: the state glyph sits in the tab; no state words; no repeated name tag. Built
 on `feat/grid-title-status`; not checked live.
 
+Also: Background: solid is the default (user decision 2026-10-24), so a plain terminal shows the
+theme whole; `background = "terminal"` still reads for transparent or image terminals.
+
 Status 2026-10-24: built on `dev` (d8da65e..95b5c91), three parts each reviewed independently and
 approved after fixes; the gate passed at 95b5c91 (959 tests, clippy, Linux and macOS checks). Also
 fixed: the `Esc close` chip on a confirm did nothing when clicked. Not checked live: the new

@@ -895,9 +895,9 @@ mod screen_tests {
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let (_, inner) = app.panes[0];
         let buf = term.backend().buffer();
-        assert_eq!(buf[(inner.x - 1, inner.y)].bg, ratatui::style::Color::Reset, "a small contrasting panel does not recolor the card padding");
+        assert_eq!(buf[(inner.x - 1, inner.y)].bg, app.theme.bg, "a small contrasting panel does not recolor the card padding");
         assert_eq!(buf[(inner.x, inner.y)].bg, app.theme.card2, "not a light grey slab");
-        assert_eq!(buf[(inner.x + 13, inner.y)].bg, ratatui::style::Color::Reset, "the rest on the card's ground");
+        assert_eq!(buf[(inner.x + 13, inner.y)].bg, app.theme.bg, "the rest on the card's ground");
     }
 
     #[test]
@@ -4175,9 +4175,9 @@ second line
             term.draw(|f| render::draw(app, f)).unwrap();
             term.backend().buffer()[(0, 0)].bg
         };
+        assert_eq!(gap(&mut app), app.theme.bg, "solid, the default: the theme's own ground");
+        app.cfg.ui.background = "terminal".into();
         assert_eq!(gap(&mut app), ratatui::style::Color::Reset, "terminal: SGR 49 under the chrome");
-        app.cfg.ui.background = "solid".into();
-        assert_eq!(gap(&mut app), app.theme.bg, "solid: the theme's own ground");
     }
 
     #[test]
