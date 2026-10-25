@@ -11,7 +11,7 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-Latest release: **v0.45.0** (2026-10-25), wire protocol 46. Phases 1–29 are shipped (phase 11
+Latest release: **v0.45.0** (2026-10-25), wire protocol 46. Phases 1–30 are shipped (phase 11
 declined); the release history is in the GitHub Releases and git tags, not here. v0.44.0 added
 [Phase 27](#27--radar-and-sending-failures--shipped-in-v0440) (context on the row, a failed
 check into the message box), [Phase 28](#28--references--shipped-in-v0440) (references),
