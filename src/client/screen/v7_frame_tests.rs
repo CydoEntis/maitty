@@ -617,8 +617,6 @@ fn a_block_of_lines_ends_in_soft_corners_and_one_line_in_caps() {
     assert_eq!(block_ends(1, 3), ("▐", "▌"), "the sides between");
 }
 
-
-
 /// The world split into two panes side by side, the second unfocused, an update waiting and,
 /// with `sheet`, the Inbox open: every hoverable chip on a border at once.
 fn border_chips_world(sheet: bool) -> App {
