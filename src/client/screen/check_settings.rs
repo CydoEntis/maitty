@@ -22,7 +22,7 @@ const EXIT_NOT_EXECUTABLE: i32 = 126;
 const EXIT_NOT_FOUND: i32 = 127;
 const COMMAND_PLACEHOLDER: &str = "e.g. npm test";
 const NO_CHECK: &str = "No check set.";
-/// The empty state's words as the handoff breaks them; a narrower host wraps them.
+/// The empty state's words as the reference breaks them; a narrower host wraps them.
 const EMPTY_LINES: [&str; 2] = [
     concat!("No check set. ", env!("APP_NAME"), " can run one command itself when an agent's"),
     "turn ends; the session isn't done until it passes. Agents keep working.",
@@ -206,6 +206,18 @@ pub(super) fn set_keeping_decor(table: &mut Table, key: &str, mut value: toml_ed
 /// The project Settings edits: the repository of the workspace you are in.
 pub(super) fn project_of(app: &App) -> Option<PathBuf> {
     app.active_ws().map(|w| w.git.as_ref().map_or_else(|| w.cwd.clone(), |g| g.root.clone()))
+}
+
+/// What the Check page's keys act on, as `on_check_page_key` finds it: none with no project
+/// open, else the draft if it is this project's, and whether the project has a checkpoint yet.
+pub(super) fn page_target(app: &App) -> Option<(Option<&CheckDraft>, bool)> {
+    let project = project_of(app)?;
+    let draft = app.screen.check_page.as_ref().filter(|d| same_path(&d.project, &project));
+    Some((draft, has_points(app, &project)))
+}
+
+pub(super) fn has_points(app: &App, project: &Path) -> bool {
+    !points(app, project).is_empty()
 }
 
 fn project_of_term(t: &TermInfo) -> PathBuf {
@@ -433,7 +445,7 @@ fn draw_buttons(app: &mut App, buf: &mut Buffer, x: u16, y: u16, right: u16, p: 
 
 /// The `PROJECT · <name>` modal.
 pub(in crate::client) fn draw_project_check(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, d: &CheckDraft) {
-    dim_all(buf, area, t);
+    dim_all(app, buf, area, t);
     let w = MODAL_W.min(area.width.saturating_sub(2));
     let h = MODAL_H.min(area.height.saturating_sub(2));
     let r = panel(app, buf, area, w, h, &format!("PROJECT · {}", folder_name(&d.project)), &[], t);

@@ -1,5 +1,5 @@
 //! The sidebar card: projects, their sessions in one to three lines each, and the lines they
-//! are drawn from. The layout is the v7 handoff's `drawSide` (`docs/design/v7/checks7.js`).
+//! are drawn from. Its rows are held to the reference frames (`side_frames.txt`).
 
 use super::check;
 use super::glyphs::Kind as State;
@@ -205,7 +205,7 @@ fn row_term(model: &[Proj], l: &Line) -> Option<TermId> {
     }
 }
 
-/// Where the sidebar's rows go (the handoff's X and RX): the selection bar's column, and the
+/// Where the sidebar's rows go (the reference's X and RX): the selection bar's column, and the
 /// last column right-aligned text reaches. Tints and clipped lines run one past it.
 #[derive(Debug, Clone, Copy)]
 struct Cols {
@@ -533,7 +533,7 @@ fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, changed: Option<(i
         gs = gs.add_modifier(Modifier::BOLD);
     }
     let gx = cols.x + 2 + indent;
-    // The 3-bar spinner is two cells wide; the name steps right to make room, as the handoff's does.
+    // The 3-bar spinner is two cells wide; the name steps right to make room, as the reference's does.
     let gw = (g.width() as u16).max(1);
     put(buf, gx, y, &[seg(g, gs)], gx + gw);
     hit(app, Rect { x: gx, y, width: gw + 1, height: 1 }, ScreenHit::Why(s.term));
@@ -871,9 +871,9 @@ fn row_glyph(app: &mut App, buf: &mut Buffer, r: Rect, glyph: &str, bg: Color, f
 
 #[cfg(test)]
 mod frame_tests {
-    use crate::client::v7_fixture::{LAYOUTS, Layout, SIZES, STAGES, Stage, frame, world};
+    use crate::client::reference_fixture::{LAYOUTS, Layout, SIZES, STAGES, Stage, frame, world};
 
-    /// The v7 reference's sidebar rows, as the fixture should draw them (see the file's header).
+    /// The reference's sidebar rows, as the fixture should draw them (see the file's header).
     const FRAMES: &str = include_str!("side_frames.txt");
     /// A cell the reference leaves to the app: the working spinner's frame.
     const ANY: char = '◌';
@@ -913,7 +913,7 @@ mod frame_tests {
     }
 
     /// The reference's folders in the order the app lists them: a folder with a session that
-    /// needs you goes first, where the handoff's sample keeps its own order.
+    /// needs you goes first, where the reference's sample keeps its own order.
     fn in_app_order(rows: &[String], got: &[String]) -> Vec<String> {
         let blocks: Vec<&[String]> = rows.split(String::is_empty).filter(|b| !b.is_empty()).collect();
         let name = |b: &[String]| b[0].split_whitespace().nth(1).unwrap_or_default().to_string();
@@ -949,7 +949,7 @@ mod frame_tests {
         // The app leaves the agent's name off a working line; it is in the pane's title.
         let rows: Vec<Vec<char>> = want.rows.iter().map(|r| without_agent_on_working(r).chars().collect()).collect();
         // Sessions are one line now, each with its agent's mark (ADR 0021).
-        let rows = crate::client::v7_fixture::as_one_line_rows(rows, glyphs == "ascii", ANY);
+        let rows = crate::client::reference_fixture::as_one_line_rows(rows, glyphs == "ascii", ANY);
         let rows: Vec<String> = rows.iter().map(|r| r.iter().collect::<String>().trim_end().to_string()).collect();
         let want = Want { rows: in_app_order(&rows, &got), ..want };
         let n = want.rows.len();
@@ -976,7 +976,7 @@ mod frame_tests {
     #[test]
     fn a_folder_s_fold_button_is_a_coloured_mark_in_the_state_bars_column() {
         let mut app = world(Stage::Failed);
-        let buf = crate::client::v7_fixture::cells(&mut app, Layout::Flat, 160, 45, "unicode");
+        let buf = crate::client::reference_fixture::cells(&mut app, Layout::Flat, 160, 45, "unicode");
         let side = app.screen.side_rect;
         let y = (side.y..side.bottom()).find(|&y| (side.x..side.right()).any(|x| buf[(x, y)].symbol() == "−")).expect("an open folder");
         let x = (side.x..side.right()).find(|&x| buf[(x, y)].symbol() == "−").unwrap();
@@ -1051,7 +1051,7 @@ mod frame_tests {
         use ratatui::style::Modifier;
         let mut app = world(Stage::None);
         app.cfg.ui.spinner = crate::config::BARS_FRAMES.iter().map(|f| f.to_string()).collect();
-        let buf = crate::client::v7_fixture::cells(&mut app, Layout::Floating, 160, 45, "unicode");
+        let buf = crate::client::reference_fixture::cells(&mut app, Layout::Floating, 160, 45, "unicode");
         let (gx, gy) = (0..45u16).flat_map(|y| (0..160u16).map(move |x| (x, y))).find(|&(x, y)| buf[(x, y)].symbol() == "⣶").expect("the mark");
         assert!(buf[(gx, gy)].modifier.contains(Modifier::BOLD), "the mark is bold");
         let name: Vec<_> = (gx + 3..gx + 3 + "add-payments".len() as u16).map(|x| buf[(x, gy)].fg).collect();
@@ -1059,7 +1059,7 @@ mod frame_tests {
     }
 
     #[test]
-    fn the_sidebar_rows_match_the_v7_reference_in_every_layout_and_size() {
+    fn the_sidebar_rows_match_the_reference_in_every_layout_and_size() {
         for stage in STAGES {
             for layout in LAYOUTS {
                 for size in SIZES {
@@ -1074,7 +1074,7 @@ mod frame_tests {
 #[cfg(test)]
 mod v8_tests {
     use super::*;
-    use crate::client::v7_fixture::{LAYOUTS, Layout, Stage, cells, raw_text, world};
+    use crate::client::reference_fixture::{LAYOUTS, Layout, Stage, cells, raw_text, world};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use ratatui::style::Modifier;
 

@@ -366,7 +366,7 @@ fn step_key(app: &App, step: Step) -> String {
 
 /// The overlay's card, centred, and the row inside it where the typing goes.
 fn frame(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, title: &str, want_h: u16) -> (Rect, Rect) {
-    dim_all(buf, area, t);
+    dim_all(app, buf, area, t);
     hit(app, area, ScreenHit::Close);
     let w = MAX_W.min(area.width.saturating_sub(4));
     let h = want_h.min(area.height.saturating_sub(2));

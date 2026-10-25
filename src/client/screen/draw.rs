@@ -191,7 +191,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     }
     if let Some(term) = app.popup() {
         let whole = above;
-        dim_all(f.buffer_mut(), whole, t);
+        dim_all(app, f.buffer_mut(), whole, t);
         let w = (whole.width * 4 / 5).max(40).min(whole.width);
         let h = (whole.height * 3 / 4).max(12).min(whole.height);
         let r = Rect { x: whole.x + (whole.width - w) / 2, y: whole.y + (whole.height - h) / 2, width: w, height: h };
@@ -315,7 +315,7 @@ pub(in crate::client) fn armed(app: &App) -> bool {
 
 /// Shortcut mode is held while a popup or view it opened has the keys (ADR 0021). Normal with
 /// no view is the moment before it comes back, when keys still reach the pane.
-pub(in crate::client) fn shortcut_paused(app: &App) -> bool {
+pub(in crate::client) fn shortcut_waits(app: &App) -> bool {
     app.shortcut_held && !armed(app) && (app.mode != Mode::Normal || app.view_has_keys())
 }
 
@@ -718,7 +718,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
     let below = 1 + if ask { 2 } else { 0 };
     let inner = Rect { x: r.x + 3, y: r.y + 2, width: r.width.saturating_sub(6), height: r.height.saturating_sub(2 + below) };
     app.panes.push((term, inner));
-    // The whole inside of the card focuses the pane, as checks7.js's focus region does.
+    // The whole inside of the card focuses the pane, as the reference's focus region does.
     app.hits.push((inside, Hit::Pane(term)));
     app.hits.push((inner, Hit::Pane(term)));
     let copying = matches!(&app.mode, Mode::Copy(c) if c.term == term);

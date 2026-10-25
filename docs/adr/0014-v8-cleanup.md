@@ -5,8 +5,8 @@
 
 ## Context
 
-The v8 handoff (`docs/design/v8/`, `README.md` is the written spec; `app8.js` and
-`message-popover/msg.js` are the source of truth for layouts, strings and keys) cleans up
+The v8 handoff (a written spec with prototypes for layouts, strings and keys; its files
+are in git history, the current design is in [DESIGN](../DESIGN.md)) cleans up
 the TUI: a collapsed-sidebar strip, one key overlay, a redesigned Menu, Settings,
 toasts, the message popover, and it cuts the fleet commander, the Team tab, the sidebar's
 subagent tree and the helper mode. Before it arrived the user made decisions the handoff

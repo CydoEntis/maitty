@@ -1,4 +1,4 @@
-//! The app's layout, from the design handoff: projects (git repos) in the sidebar, each
+//! The app's layout: projects (git repos) in the sidebar, each
 //! project's worktrees with the sessions running in them, and the focused session full size
 //! (optionally split with a second). Most tools are centred overlays over a dimmed
 //! screen: jump, new pane, talk and keys. Settings uses a centred modal; review uses a right-hand sheet
@@ -799,7 +799,7 @@ impl App {
             self.screen.last_focus = None;
             self.splash = false;
             let home = self.cfg.start_dir().or_else(|| directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf())).unwrap_or_else(std::env::temp_dir);
-            self.screen_new_session(home, None, false);
+            self.screen_start_pane(home, None, false);
             return;
         }
         let proj_of = |t: TermId| model.iter().find(|p| p.sessions().any(|s| s.term == t)).map(|p| p.key.clone());
@@ -1122,7 +1122,7 @@ mod inbox;
 mod splash;
 mod tidy;
 #[cfg(test)]
-mod v7_frame_tests;
+mod frame_tests;
 #[cfg(test)]
-mod v7_ref;
+mod reference;
 pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_bar::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};

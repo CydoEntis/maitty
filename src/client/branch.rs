@@ -294,7 +294,7 @@ impl App {
 
 pub(super) fn draw_branches(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, v: &BranchView) {
     let buf = f.buffer_mut();
-    dim_all(buf, area, t);
+    dim_all(app, buf, area, t);
     let title = if v.current.is_empty() { format!("Switch branch · {}", tilde(&v.dir)) } else { format!("Switch branch · {} · on {}", tilde(&v.dir), v.current) };
     let r = panel(app, buf, area, 96, 30, &title, &[], t);
     let c = Style::default().bg(t.card);

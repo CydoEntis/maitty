@@ -516,11 +516,11 @@ pub(in crate::client) fn draw_check(app: &mut App, buf: &mut Buffer, inside: Rec
 
 #[cfg(test)]
 mod tests {
-    use super::super::v7_ref::{Ref, assert_same, layout_name, reference, text};
+    use super::super::reference::{Ref, assert_same, layout_name, reference, text};
     use super::*;
-    use crate::client::v7_fixture::{LAYOUTS, SIZES, Stage, world};
+    use crate::client::reference_fixture::{LAYOUTS, SIZES, Stage, world};
 
-    /// The handoff's output of a failing run (`OUT_FAIL`) and a passing one (`OUT_PASS`).
+    /// The reference's output of a failing run (`OUT_FAIL`) and a passing one (`OUT_PASS`).
     const OUT_FAIL: &str = "> affiliate-site@1.4.0 test\n> vitest run\n\n ✓ src/components/Footer.test.tsx (3)\n ✓ src/lib/price.test.ts (9)\n ✗ src/pages/legal.test.tsx > footer shows current year\n   AssertionError: expected '© 2025 Affiliate Co.'\n                   to equal '© 2026 Affiliate Co.'\n    ❯ src/pages/legal.test.tsx:18:32\n\n Test Files  1 failed | 11 passed (12)\n      Tests  1 failed | 58 passed (59)\n   Duration  14.21s";
     const OUT_PASS: &str = "> vitest run\n ✓ 12 test files · 59 tests\n   Duration  14.02s";
     /// The full output's length in 08: the daemon kept only its tail.
@@ -548,7 +548,7 @@ mod tests {
         draw_check(app, &mut buf, area, t.bg, &t, &mut v);
         app.view = Some(View::Check(v));
         let mut rows = text(&buf, area);
-        // The handoff's sample folder is a Windows path.
+        // The reference's sample folder is a Windows path.
         for row in rows.iter_mut().filter(|r| r.starts_with(" Folder")) {
             *row = row.replace('/', "\\");
         }
@@ -568,7 +568,7 @@ mod tests {
     }
 
     #[test]
-    fn a_short_failing_output_reads_as_the_handoff_draws_it() {
+    fn a_short_failing_output_reads_as_the_reference_draws_it() {
         matches_reference("07 Evidence · short output", Stage::Failed, OUT_FAIL, None, |_| {});
     }
 
@@ -588,7 +588,7 @@ mod tests {
     }
 
     /// The fixture's never-run check has no run time, and says which commit the repo file is
-    /// at; the handoff's sample shows a run and the time you chose.
+    /// at; the reference's sample shows a run and the time you chose.
     #[test]
     fn a_check_you_chose_never_to_run_explains_itself() {
         matches_reference("A5 Never for this repo", Stage::Never, "", Some(0), |want| {

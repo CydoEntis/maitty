@@ -9,8 +9,10 @@ const BEHIND_TEXT: f32 = 0.6;
 const BEHIND_DARK: f32 = 0.45;
 
 /// Dim everything already drawn behind a popup: text toward its ground and all of it darker.
-/// Pill ends keep their shape (their colour darkens like the pill's).
-pub(in crate::client) fn dim_all(buf: &mut Buffer, area: Rect, t: &Theme) {
+/// Pill ends keep their shape (their colour darkens like the pill's). What is under it takes no
+/// hover from here on (`hits_under_overlay`).
+pub(in crate::client) fn dim_all(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
+    app.hits_under_overlay = app.hits.len();
     let black = Color::Rgb(0, 0, 0);
     let area = area.intersection(buf.area);
     for y in area.top()..area.bottom() {
@@ -298,7 +300,7 @@ pub(in crate::client) fn normalize(p: &Path) -> PathBuf {
 
 pub(in crate::client) fn draw_finder(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, fd: &Finder) {
     let buf = f.buffer_mut();
-    dim_all(buf, area, t);
+    dim_all(app, buf, area, t);
     let title = if fd.for_setting.is_some() { "Choose the start folder" } else { "Open a folder" };
     let r = panel(app, buf, area, 92, 24, title, &[], t);
     let input = Rect { x: r.x + 1, y: r.y + 2, width: r.width - 2, height: 1 };
@@ -402,7 +404,7 @@ pub(in crate::client) fn np_places(p: &Proj) -> Vec<String> {
 /// the first one on screen (so `sel` stays visible).
 #[allow(clippy::too_many_arguments)]
 pub(in crate::client) fn query_list(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, title: &str, w: u16, rows: usize, query: &str, hint: &str, sel: usize) -> (Rect, Rect, usize) {
-    dim_all(buf, area, t);
+    dim_all(app, buf, area, t);
     let h = (rows as u16 + 8).max(12).min(area.height.saturating_sub(4));
     let r = panel(app, buf, area, w, h, title, &[], t);
     let q = Rect { x: r.x + 1, y: r.y + 2, width: r.width.saturating_sub(2), height: 1 };
@@ -511,7 +513,7 @@ pub(in crate::client) fn goto_rows(model: &[Proj], q: &str, heads: usize) -> Vec
 pub(in crate::client) fn draw_history(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, sel: usize) {
     let items: Vec<(u64, Option<TermId>, char, String)> = app.history.iter().rev().cloned().collect();
     let buf = f.buffer_mut();
-    dim_all(buf, area, t);
+    dim_all(app, buf, area, t);
     let h = (items.len() as u16 + 7).max(10).min(area.height.saturating_sub(4));
     let r = panel(app, buf, area, 104, h, "What happened", &[], t);
     let c = Style::default().bg(t.card);

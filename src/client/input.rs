@@ -138,6 +138,15 @@ impl App {
         }
     }
 
+    /// Going into a pane ends shortcut mode (ADR 0025): you go there to type, and a letter
+    /// meant for the new shell or agent must not run an action instead. An open side panel is
+    /// set aside, as a click into a pane does, so the next key reaches the pane, not the panel.
+    pub(super) fn leave_shortcut_mode(&mut self) {
+        self.mode = Mode::Normal;
+        self.shortcut_held = false;
+        self.view_set_aside = self.view_kind();
+    }
+
     /// A key that does nothing in shortcut mode says why, in a toast (ADR 0023): someone who
     /// thinks they are typing sees where their keys went. Once per `DEAD_KEY_HINT_EVERY`, and
     /// never over a toast still showing, so mashing keys doesn't keep it up or hide news.
@@ -155,7 +164,7 @@ impl App {
     }
 
     /// Which kind of view is open, to tell whether an action opened one.
-    fn view_kind(&self) -> Option<std::mem::Discriminant<View>> {
+    pub(super) fn view_kind(&self) -> Option<std::mem::Discriminant<View>> {
         self.view.as_ref().map(std::mem::discriminant)
     }
 
@@ -287,8 +296,9 @@ impl App {
                     // does: its own k, arrows and Esc must not run leader actions. Closing it
                     // returns to shortcut mode (`keep_shortcut_mode`).
                     let opened = self.view_has_keys() && (self.view_opened != opened_before || !had_keys);
-                    // Nothing opened: the mode holds, the key map stays away.
-                    if self.mode == Mode::Normal && !opened {
+                    // Nothing opened: the mode holds, the key map stays away. A pane it
+                    // started ended the mode (`leave_shortcut_mode`).
+                    if self.mode == Mode::Normal && !opened && self.shortcut_held {
                         self.mode = Mode::Prefix { since, acted: true };
                     }
                 } else if !acted
@@ -320,6 +330,7 @@ impl App {
                                 let mut words = text.split_whitespace();
                                 if let Some(branch) = words.next().map(str::to_string) {
                                     let base = words.next().map(str::to_string);
+                                    self.leave_shortcut_mode();
                                     self.notify(format!("creating worktree {branch}…"), false);
                                     self.cmd(Command::NewWorktree { ws, branch, base, cmd, split: None, from: None });
                                 }
@@ -905,7 +916,7 @@ impl App {
     /// The mouse pointer for what's under it: ↔ / ↕ over a line you can drag (in terminals
     /// that take OSC 22: Ghostty, kitty, foot, WezTerm; others keep their arrow).
     pub(super) fn pointer_for(&mut self, pos: Position) {
-        let want = match self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h) {
+        let want = match self.hover_hit(pos).map(|(_, h)| *h) {
             Some(Hit::Screen(screen::ScreenHit::Divider(i))) => match self.screen.dividers.get(i) {
                 Some((_, true, _)) => "col-resize",
                 Some(_) => "row-resize",

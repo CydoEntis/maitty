@@ -1,15 +1,13 @@
 # Intent: checks that Maitty runs itself
 
-Type: feature
-Author: Cody · Status: done (phase 15 shipped in v0.37.0)
-Date: 2026-10-22 · Plan: [phase 15](../../ROADMAP.md#15--checks-maitty-runs-itself--active-chosen-2026-10-22)
+Type: feature · Status: shipped in v0.37.0 · Date: 2026-10-22
 
 ## Problem
 
 "An agent saying 'done' turns its session done, even when the project's tests fail. You find out
 later, or not at all." (design brief v6)
 
-## Proposed outcome
+## Goal
 
 A project may name one **check** command. When an agent's turn ends, Maitty runs it in the
 session's worktree and records the exit code, the time, and the tail of the output. The session
@@ -17,14 +15,14 @@ reads done only if the check passed. A failure reads `failed: <check>`, shows in
 keeps the session visible. The user can re-run a check and override a failed one; the override
 is recorded and shows. A project with no check looks exactly as Maitty does today.
 
-## Affected users and systems
+## Scope
 
 Anyone running agents in a project with tests. The daemon (runs the check, holds the result,
 delays finished alerts and waiters), the protocol and saved session, the sidebar row, the
-why popover, a new evidence sheet, the Inbox, Settings, and the row menu. The design is the
-[v7 handoff](../../design/v7/README.md); `checks7.js` is its spec.
+why popover, a new evidence sheet, the Inbox, Settings, and the row menu. The design is in
+[DESIGN](../../DESIGN.md) and [UI](../../UI.md).
 
-## Constraints
+## Decisions
 
 - The daemon runs the check, never the client (ADR-0001). Maitty observed the result; an agent's
   claim never counts. The check's process does not inherit `MAITTY_PANE_TOKEN`.
@@ -44,12 +42,10 @@ why popover, a new evidence sheet, the Inbox, Settings, and the row menu. The de
 
 Stale detection (a result older than the files), a command supplied by the repo
 (`.maitty/checks.toml`) and its approval, further checkpoint kinds (`commits`, `approval`,
-`review`), the design's working shimmer and 3-bar spinner, the design's sidebar foot.
+`review`), the design's working shimmer and 3-bar spinner, the design's sidebar foot. Several of
+these came later, in phase 18.
 
-## Open questions
+## Links
 
-None for the first slice.
-
-## Tickets
-
-#94–#103, in order in [phase 15](../../ROADMAP.md#15--checks-maitty-runs-itself--active-chosen-2026-10-22).
+- Plan: [phase 15](../../ROADMAP.md#15--checks-maitty-runs-itself--shipped-in-v0370)
+- Tickets: #94–#103

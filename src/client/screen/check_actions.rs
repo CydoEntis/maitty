@@ -78,7 +78,7 @@ impl App {
 
     pub(in crate::client) fn override_check(&mut self, term: TermId, name: Option<String>, reason: String) {
         self.cmd(Command::OverrideCheck { term, name, reason });
-        // As checks7.js's doOverride: the evidence it now stands on is shown.
+        // After an override the evidence it now stands on is shown.
         if !matches!(&self.view, Some(crate::client::View::Check(v)) if v.term == term) {
             self.open_check_sheet(term);
         }
@@ -176,7 +176,7 @@ pub(in crate::client) fn draw_override(app: &mut App, f: &mut Frame, area: Rect,
     let info = app.snap.terms.get(term).and_then(|x| checkpoint(x, name.as_deref()).cloned()).unwrap_or_default();
     let mark = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).over;
     let buf = f.buffer_mut();
-    dim_all(buf, area, t);
+    dim_all(app, buf, area, t);
     let r = panel(app, buf, area, OVERRIDE_WIDTH, OVERRIDE_HEIGHT, OVERRIDE_TITLE, &[], t);
     let card = Style::default().bg(t.card);
     let bold = |c: Color| card.fg(c).add_modifier(Modifier::BOLD);

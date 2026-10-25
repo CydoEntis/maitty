@@ -27,7 +27,7 @@ one thing (ADR 0017, 0022).
 | `←` `↓` `↑` `→` | Move to the pane that way (left past the edge: the sidebar) |
 | `v` | Split side by side |
 | `h` | Split stacked |
-| `x` | Close the pane |
+| `x` | Close what has the keys: the side panel (Files, Changes, Branch, a check) when it has them, else the focused pane, after asking |
 | `Ctrl`+arrows | Resize the pane |
 | `PgUp` / `PgDn` | Scroll half a pane |
 | `z` | Collapse the sidebar (again brings it back) |
@@ -74,14 +74,17 @@ history, open the worktree picker, rename a session, send `Ctrl+Space` itself to
 
 The leader is `Ctrl+Space`. Press it and you are in **shortcut mode**: each key runs its
 action, and the mode stays for the next, so a run of actions is one key each. `Esc`, the
-leader again or a click go back to **input mode**, where keys type into the pane; nothing
-else does. A new shell, session, tab or split leaves you in shortcut mode, so press `Esc` to
-type into it. An action that opens a popup or sheet hands it the keys, and closing it returns
-to shortcut mode. The bar along the bottom always says which mode you are in: `TYPING · Ctrl+Space for
+leader again or a click go back to **input mode**, where keys type into the pane. So does
+an action that starts a pane for you to type into (ADR 0025): `n` a shell, `s` a session,
+`t` a tab, `v` / `h` a split, and `o` once its dialog starts the session; the next key goes
+to the new pane. An action that opens a popup or sheet hands it the keys, and closing it
+returns to shortcut mode; `Enter` (message the agent) is one of those. The bar along the bottom always says which mode you are in: `TYPING · Ctrl+Space for
 shortcuts`, or, while shortcut mode is on, a sky-blue bar with `SHORTCUT` and keys to press
 from your keymap (`n shell  s session  c changes  f files  i inbox  , settings  ? all keys
-Esc type`; a click on one runs it, a click on `TYPING` starts shortcut mode). While a popup has
-the keys it reads `SHORTCUT · paused`. In shortcut mode the focused pane's border is sky blue,
+Esc type`; a click on one runs it, a click on `TYPING` starts shortcut mode). While something
+other than the panes has the keys (the sidebar, a popup, Files, …) it names it and says how to
+use and leave it, such as `SIDEBAR · ↑↓ move · Enter open · Esc back`, adding `shortcut mode
+waits` when shortcut mode comes back after. In shortcut mode the focused pane's border is sky blue,
 and a key that does nothing shows "Shortcut mode — Esc to type".
 To send `Ctrl+Space` itself to the pane, search
 commands for "Send the leader key" or bind `send-prefix` to a key. One overlay holds every key

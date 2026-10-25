@@ -11,7 +11,7 @@ mod html;
 mod output;
 
 use super::screen::FIXED_NOW;
-use super::v7_fixture::{entry, git, in_repo, now, term, workspace};
+use super::reference_fixture::{entry, git, in_repo, now, term, workspace};
 use super::*;
 use crate::layout::{Dir, Node};
 use ratatui::Terminal;

@@ -867,7 +867,7 @@ pub const SPINNERS: &[(&str, &[&str])] = &[
     ("Blocks", &["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃", "▂"]),
     ("Bars", BARS_FRAMES),
 ];
-/// The v7 handoff's working spinner: three Braille bars, two columns wide. The ASCII glyph set
+/// The reference frames' working spinner: three Braille bars, two columns wide. The ASCII glyph set
 /// swaps it for `BARS_ASCII` (see `client::render::status_icon`).
 pub const BARS_FRAMES: &[&str] = &["⣰⡄", "⣼⡀", "⣶⡆", "⣧⡇", "⣆⡆", "⣤⡄", "⣸⡆", "⣴⡇", "⣇⡄", "⣦⡀"];
 pub const BARS_ASCII: &[&str] = &[". ", "o ", "O ", "o "];

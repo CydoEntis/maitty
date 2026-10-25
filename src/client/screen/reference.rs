@@ -1,11 +1,11 @@
-//! The v7 handoff's reference frames for the read-while-working screens, cut down to what is
-//! inside each sheet and popover (`v7_ref.txt`, from `docs/design/v7/render-frames.mjs`'s
-//! output: per preset, layout and size, the inside's position and size, then its rows with
+//! The reference frames for the read-while-working screens, cut down to what is
+//! inside each sheet and popover (`reference.txt`, a fixed fixture:
+//! per preset, layout and size, the inside's position and size, then its rows with
 //! trailing spaces trimmed). Frame lines are not in it; they are tested with the frame.
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
-const FRAMES: &str = include_str!("v7_ref.txt");
+const FRAMES: &str = include_str!("reference.txt");
 
 /// One reference: where the inside is on the screen, and its rows.
 pub(super) struct Ref {
@@ -14,7 +14,7 @@ pub(super) struct Ref {
 }
 
 impl Ref {
-    /// Row `i` as this package draws it where the handoff's sample data differs; `new` is
+    /// Row `i` as this package draws it where the reference's sample data differs; `new` is
     /// clipped like a drawn row, which keeps the inside's last column clear.
     pub fn set_row(&mut self, i: usize, new: &str) {
         self.rows[i] = new.chars().take(self.area.width.saturating_sub(1) as usize).collect::<String>().trim_end().to_string();
@@ -43,8 +43,8 @@ pub(super) fn text(buf: &Buffer, area: Rect) -> Vec<String> {
 }
 
 /// The layout names the references use, in the fixture's order.
-pub(super) fn layout_name(l: crate::client::v7_fixture::Layout) -> &'static str {
-    use crate::client::v7_fixture::Layout;
+pub(super) fn layout_name(l: crate::client::reference_fixture::Layout) -> &'static str {
+    use crate::client::reference_fixture::Layout;
     match l {
         Layout::Floating => "floating",
         Layout::Tiled => "tiled",
@@ -52,7 +52,7 @@ pub(super) fn layout_name(l: crate::client::v7_fixture::Layout) -> &'static str 
     }
 }
 
-/// A key-hint row (v8's action bar draws each key as a cap, which spaces the words out) is
+/// A key-hint row (the action bar draws each key as a cap, which spaces the words out) is
 /// the same row when it reads the same; every other row has to match exactly.
 fn same_row(got: &str, want: &str) -> bool {
     let bare = |r: &str| r.replace(['\u{e0b6}', '\u{e0b4}'], " ");
@@ -88,5 +88,5 @@ pub(super) fn assert_same(got: &[String], want: &Ref, what: &str) {
         let mark = if same_row(g, w) { ' ' } else { '≠' };
         report.push_str(&format!("{mark}{i:>2} got  |{g}\n    want |{w}\n"));
     }
-    panic!("{what}: the inside differs from the v7 reference\n{report}");
+    panic!("{what}: the inside differs from the reference\n{report}");
 }

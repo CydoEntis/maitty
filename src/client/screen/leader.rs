@@ -10,7 +10,7 @@ const NAME_MAX: usize = 40;
 /// it here too.
 pub(in crate::client) type MenuItem = (&'static str, Action);
 
-/// The Menu's groups, a blank row apart, in the handoff's order. "Shell here" starts a plain
+/// The Menu's groups, a blank row apart, in the reference's order. "Shell here" starts a plain
 /// shell (what `n` does); "Session" starts an agent straight away (`s`).
 pub(in crate::client) fn menu_groups() -> Vec<Vec<MenuItem>> {
     vec![
@@ -46,7 +46,7 @@ fn menu_label(app: &App, a: &Action, label: &'static str) -> &'static str {
 pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, sel: usize) {
     let look = Look::of(&app.cfg.ui);
     let buf = f.buffer_mut();
-    dim_all(buf, area, t);
+    dim_all(app, buf, area, t);
     hit(app, area, ScreenHit::Close);
     let groups = menu_groups();
     let lines: u16 = groups.iter().map(|items| items.len() as u16 + 1).sum();

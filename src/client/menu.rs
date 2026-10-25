@@ -97,7 +97,7 @@ pub(super) fn draw_confirm(app: &mut App, f: &mut ratatui::Frame, area: ratatui:
     use ratatui::layout::Rect;
     use ratatui::style::{Modifier, Style};
     let buf = f.buffer_mut();
-    dim_all(buf, area, t);
+    dim_all(app, buf, area, t);
     let widest_item = c.list.iter().map(|l| l.chars().count() + 10).max().unwrap_or(0);
     let w = (c.what.chars().count() + c.detail.chars().count() + 12).max(c.note.chars().count() + 8).max(widest_item).clamp(58, 90) as u16;
     // The list (its heading, at most CONFIRM_LIST_MAX items and a "more" line), then a gap.
@@ -421,6 +421,7 @@ impl App {
                     self.cmd(Command::FocusPane { term: t });
                 }
                 self.screen.pending_split = Some((t, std::time::Instant::now()));
+                self.leave_shortcut_mode();
                 self.cmd(Command::NewWorkspace { cwd: Some(cwd), name: None, cmd: None });
             }
             Act::Update => self.start_update(),

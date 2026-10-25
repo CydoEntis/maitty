@@ -1,4 +1,4 @@
-//! The "workspaces" layout from the design handoff: a sidebar of workspaces (one per repo)
+//! The "workspaces" layout: a sidebar of workspaces (one per repo)
 //! → their worktrees → the agent in each; borderless panes with one-row title bars; an
 //! answer bar on panes that need you; a crumb in the top bar and counts in the status line.
 //! Plus the app's own views that replace the pane area (Changes, Files), the

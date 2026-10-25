@@ -1,6 +1,5 @@
-//! The v7 handoff's sample world (`docs/design/v7/checks7.js`, `sessions()` and
-//! `drawEvidence`) as an `App`, for each of its check stages, and a frame of it as text to set
-//! beside the handoff's reference frames (`docs/design/v7/render-frames.mjs`).
+//! The reference sample world (its sessions and their check evidence) as an `App`, for each
+//! of its check stages, and a frame of it as text to set beside the reference frames.
 //!
 //! - affiliate-site ⎇ main: fix-footer (codex, 2m), whose check each stage changes, and
 //!   add-payments (claude, working)
@@ -16,7 +15,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use std::path::Path;
 
-/// The handoff's `stage`: what fix-footer's check came to.
+/// The reference's `stage`: what fix-footer's check came to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Stage {
     None,
@@ -35,7 +34,7 @@ pub(super) enum Stage {
 pub(super) const STAGES: [Stage; 10] =
     [Stage::None, Stage::Checking, Stage::Passed, Stage::Failed, Stage::Over, Stage::Couldnt, Stage::Approve, Stage::Never, Stage::Stale, Stage::Multi];
 
-/// The handoff's three frames.
+/// The reference's three frames.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Layout {
     Floating,
@@ -45,7 +44,7 @@ pub(super) enum Layout {
 
 pub(super) const LAYOUTS: [Layout; 3] = [Layout::Floating, Layout::Tiled, Layout::Flat];
 
-/// The handoff's frame sizes, widest first.
+/// The reference's frame sizes, widest first.
 pub(super) const SIZES: [(u16, u16); 3] = [(160, 45), (100, 30), (80, 24)];
 
 impl Layout {
@@ -59,11 +58,11 @@ impl Layout {
     }
 }
 
-/// 2026-10-22 00:00 UTC, the handoff's day.
+/// 2026-10-22 00:00 UTC, the reference's day.
 const DAY: u64 = 1_792_627_200;
 const HOUR: u64 = 3600;
 
-/// The unix time that reads `h:m:s` on this machine's clock on the handoff's day.
+/// The unix time that reads `h:m:s` on this machine's clock on the reference's day.
 pub(super) fn at(h: u64, m: u64, s: u64) -> u64 {
     let want = (h * HOUR + m * 60 + s) as i64;
     let guess = DAY + want as u64;
@@ -161,7 +160,7 @@ fn from_repo() -> CheckSource {
     CheckSource::Repo { file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(), commit: Some("a1b2c3d".into()), committed_at: Some(now() - 3 * 24 * HOUR), uncommitted: false }
 }
 
-/// fix-footer's checkpoints at `stage`, as `drawEvidence` reads them.
+/// fix-footer's checkpoints at `stage`, as the evidence sheet reads them.
 fn fix_footer_checks(stage: Stage, cwd: &Path) -> Vec<CheckInfo> {
     let ran = CheckInfo {
         name: "test".into(),
@@ -207,7 +206,7 @@ fn build_passed(ran: &CheckInfo) -> CheckInfo {
     CheckInfo { name: "build".into(), command: "npm run build".into(), state: CheckState::Passed, exit_code: Some(0), line_count: OUT_PASS_LINES, ..ran.clone() }
 }
 
-/// fix-footer's screen: codex's own transcript of the turn (`drawTerm`).
+/// fix-footer's screen: codex's own transcript of the turn.
 fn fix_footer_screen() -> vt100::Parser {
     let mut p = vt100::Parser::new(20, 80, 0);
     let lines = [
@@ -230,12 +229,12 @@ fn fix_footer_screen() -> vt100::Parser {
     p
 }
 
-/// The handoff's sample world with fix-footer's check at `stage`. Pins this thread's clock.
+/// The reference sample world with fix-footer's check at `stage`. Pins this thread's clock.
 pub(super) fn world(stage: Stage) -> App {
     FIXED_NOW.with(|n| n.set(Some(now())));
     let (tx, _rx) = mpsc::unbounded_channel();
     let (bg_tx, _bg_rx) = mpsc::unbounded_channel();
-    // The handoff has no padding round the screen; its frames are compared cell for cell.
+    // The reference has no padding round the screen; its frames are compared cell for cell.
     let cfg = Config { ui: crate::config::Ui { padding: "0".into(), ..Default::default() }, ..Default::default() };
     let mut app = App::new(cfg, tx, None, bg_tx);
     app.splash = false;
@@ -273,7 +272,7 @@ pub(super) fn world(stage: Stage) -> App {
     app
 }
 
-/// The world drawn in `layout` at `w`×`h`, every cell with its colours. The handoff has no mode
+/// The world drawn in `layout` at `w`×`h`, every cell with its colours. The reference has no mode
 /// bar (ADR 0024), which takes the bottom row: the world is drawn a row taller and that row, the
 /// bar's and nothing else, is left out, so the screen above it is laid out as at `w`×`h`.
 pub(super) fn cells(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str) -> ratatui::buffer::Buffer {
@@ -294,8 +293,8 @@ pub(super) fn cells(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str)
 
 /// `app` drawn in `layout` at `w`×`h` with the `glyphs` set (`unicode`, `ascii`, `nerd`), as
 /// text: one line per row, trailing spaces trimmed. `<APP>_SHOW=1` prints it under a heading
-/// like the handoff's reference frames.
-/// Row 0 as the handoff draws it: its tabs end without the `✕ ` the app gives each, and its frames
+/// like the reference frames.
+/// Row 0 as the reference draws it: its tabs end without the `✕ ` the app gives each, and its frames
 /// have no `+` chip after them (the app keeps one a cell clear of them, so a tab opens with a
 /// click). What the app adds
 /// reads as the title's own fill, so everything after it keeps its column.
@@ -333,15 +332,15 @@ fn without_new_tab_chip(row: &str) -> String {
     format!("{}{}{rest}", &out[..at], fill.to_string().repeat(CHIP.len() + cut))
 }
 
-/// The sidebar as the handoff's v7 frames draw it, from what v8 draws (ADR 0014). `rows` is the
-/// whole screen; the sidebar's rectangle and its rows' places come from `app`. What v8 changes
+/// The sidebar as the reference frames draw it, from what the app draws (ADR 0014). `rows` is the
+/// whole screen; the sidebar's rectangle and its rows' places come from `app`. What the app changes
 /// on purpose, put back:
 /// - the foot sits a row higher in Flat and has a divider above it; its `new` and `menu` chips
-///   read `+ new` and `a actions` (the app's `+ New` and `Menu`), the handoff's words at the same edges;
+///   read `+ new` and `a actions` (the app's `+ New` and `Menu`), the reference's words at the same edges;
 ///
 /// A second line that only names the state is gone from the app; `as_one_line_rows` drops it
 /// from the reference.
-fn as_the_handoff_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffer, app: &App, flat: bool) {
+fn as_the_reference_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffer, app: &App, flat: bool) {
     let side = app.screen.side_rect;
     if side.width < 4 || side.height < 6 {
         return;
@@ -371,7 +370,7 @@ fn as_the_handoff_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffer,
         let start = (end + 1).saturating_sub(9).min(foot.len() - 9);
         foot.splice(start..start + 9, chars("a actions"));
     }
-    // Lifted a row, the foot can sit under a modal that ends where the handoff's foot is.
+    // Lifted a row, the foot can sit under a modal that ends where the reference's foot is.
     if flat && find(&foot, "+ new").is_none() {
         let (nx, mend) = (side.x as usize + 2 - left, right - left);
         let mut text = vec![' '; mend];
@@ -385,9 +384,9 @@ fn as_the_handoff_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffer,
     rows[to][left..right].copy_from_slice(&foot);
 }
 
-/// A project row's `−` / `+` button, in the state bars' column, read as the caret the handoff
+/// A project row's `−` / `+` button, in the state bars' column, read as the caret the reference
 /// draws a column further in.
-fn with_the_handoff_carets(rows: &mut [Vec<char>], app: &App, glyphs: &str) {
+fn with_the_reference_carets(rows: &mut [Vec<char>], app: &App, glyphs: &str) {
     let (open, closed) = if glyphs == "ascii" { ('v', '>') } else { ('▾', '›') };
     for (r, h) in &app.hits {
         if !matches!(h, Hit::Screen(super::screen::ScreenHit::ToggleProj(_))) {
@@ -401,8 +400,8 @@ fn with_the_handoff_carets(rows: &mut [Vec<char>], app: &App, glyphs: &str) {
     }
 }
 
-/// The app bars only the selected row; the handoff also bars a failed check's row in red.
-fn with_the_handoff_failed_bars(rows: &mut [Vec<char>], app: &App, flat: bool, glyphs: &str) {
+/// The app bars only the selected row; the reference also bars a failed check's row in red.
+fn with_the_reference_failed_bars(rows: &mut [Vec<char>], app: &App, flat: bool, glyphs: &str) {
     let side = app.screen.side_rect;
     let bar_x = (side.x + if flat { 1 } else { 2 }) as usize;
     let bar = if glyphs == "ascii" { '|' } else { '▎' };
@@ -420,7 +419,7 @@ fn with_the_handoff_failed_bars(rows: &mut [Vec<char>], app: &App, flat: bool, g
     }
 }
 
-/// `app` drawn as `frame` does but as the app draws it: no handoff normalisation, rows in full.
+/// `app` drawn as `frame` does but as the app draws it: no reference normalisation, rows in full.
 pub(super) fn raw_text(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str) -> String {
     let buf = &cells(app, layout, w, h, glyphs);
     (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol()).collect::<String>().trim_end().to_string() + "\n").collect()
@@ -429,9 +428,9 @@ pub(super) fn raw_text(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &s
 pub(super) fn frame(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str) -> String {
     let buf = &cells(app, layout, w, h, glyphs);
     let mut rows: Vec<Vec<char>> = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().chars().next().unwrap_or(' ')).collect()).collect();
-    with_the_handoff_carets(&mut rows, app, glyphs);
-    with_the_handoff_failed_bars(&mut rows, app, layout == Layout::Flat, glyphs);
-    as_the_handoff_sidebar(&mut rows, buf, app, layout == Layout::Flat);
+    with_the_reference_carets(&mut rows, app, glyphs);
+    with_the_reference_failed_bars(&mut rows, app, layout == Layout::Flat, glyphs);
+    as_the_reference_sidebar(&mut rows, buf, app, layout == Layout::Flat);
     let text: String = rows
         .iter()
         .enumerate()
@@ -465,7 +464,7 @@ mod tests {
     }
 
     #[test]
-    fn the_world_holds_the_handoff_s_sessions_and_fix_footer_s_check() {
+    fn the_world_holds_the_reference_s_sessions_and_fix_footer_s_check() {
         let app = world(Stage::Failed);
         let names: Vec<&str> = app.snap.terms.values().map(|t| t.label.as_str()).collect();
         assert_eq!(names, ["fix-footer", "add-payments", "warm-finch", "quick-fox", "old-moth"]);
@@ -488,7 +487,7 @@ const AGENT_MARKS: [(&str, char, char); 5] = [("fix-footer", '◆', 'X'), ("add-
 /// The second lines that only name a session's state, which the app no longer draws.
 const STATE_ONLY_LINES: [&str; 5] = ["working", "finished", "finished · not seen", "needs you", "idle"];
 
-/// The v7 reference's sidebar rows as the app draws them on purpose since sessions became one
+/// The reference's sidebar rows as the app draws them on purpose since sessions became one
 /// line: a second line that only names the state is gone (the mark and the name's colour say
 /// it), and each session's row carries its agent's mark two spaces before its age, or where the
 /// age would end when there is none. A moving age (`any` in the reference) is any width, so the

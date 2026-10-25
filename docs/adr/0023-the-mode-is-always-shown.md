@@ -59,7 +59,7 @@ Amends ADR 0016 (input mode is now shown) and ADR 0021 (the mode's signs).
 ## Consequences
 
 Row 0 always gives the corner up to the mode tag, so the top-right title is shorter by up to
-26 cells; at 80 columns a second tab can give way. The v7 reference frame tests take the tag
-and its room out of row 0 (`v7_fixture::frame`), as they already take out the `+` chip.
+26 cells; at 80 columns a second tab can give way. The reference frame tests take the tag
+and its room out of row 0 (`reference_fixture::frame`), as they already take out the `+` chip.
 Revisit if the frame clashes with a terminal's own border, or if a hint toast ever hides
 news.

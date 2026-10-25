@@ -161,7 +161,7 @@ pub(in crate::client) fn draw_new_session(app: &mut App, f: &mut Frame, area: Re
     let model = app.screen_model();
     let agents = ns_agents(app);
     let buf = f.buffer_mut();
-    dim_all(buf, area, t);
+    dim_all(app, buf, area, t);
     let r = panel(app, buf, area, DIALOG_WIDTH, DIALOG_HEIGHT, "New session", &[], t);
     let card_bg = Style::default().bg(t.card);
     let projs: Vec<String> = model.iter().map(|p| p.name.clone()).collect();

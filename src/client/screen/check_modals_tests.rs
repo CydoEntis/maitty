@@ -1,15 +1,15 @@
-//! The v7 decide-screens: Override, the repo-command approval and Settings › Check, drawn on the
-//! handoff's sample world and set beside its reference frames, and the keys that make them hard
+//! The decide-screens: Override, the repo-command approval and Settings › Check, drawn on the
+//! reference sample world and set beside its reference frames, and the keys that make them hard
 //! to get wrong by reflex.
 use super::check_settings::{CheckDraft, CheckEdit};
 use super::*;
-use crate::client::v7_fixture::{LAYOUTS, SIZES, Stage, frame, now, world};
+use crate::client::reference_fixture::{LAYOUTS, SIZES, Stage, frame, now, world};
 use crate::client::{ClientMsg, mpsc};
 use crate::config::CheckDef;
 use crate::protocol::{ApprovalChoice, CheckSource};
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 
-/// Inside each modal, row by row, as the handoff's `render-frames.mjs` drew it (frame lines
+/// Inside each modal, row by row, as the reference frames draw it (frame lines
 /// excluded: they are the modal chrome's).
 const FRAMES: &str = include_str!("check_modals_frames.txt");
 const HOUR: u64 = 3600;
@@ -24,7 +24,7 @@ fn reference(preset: &str, w: u16, h: u16) -> Vec<String> {
     body[..end].lines().map(|l| l.replace('\\', std::path::MAIN_SEPARATOR_STR)).collect()
 }
 
-/// The modal's rectangle on a `w`×`h` screen, as the handoff places it.
+/// The modal's rectangle on a `w`×`h` screen, as the reference places it.
 fn modal_rect(preset: &str, w: u16, h: u16) -> (usize, usize, usize, usize) {
     let (mw, mh) = match preset.as_bytes()[0] {
         b'1' if preset.starts_with("12") => (70.min(w - 2), 15),
@@ -85,7 +85,7 @@ fn toast(app: &App) -> String {
 
 /// A click on the control drawn for `want`.
 fn click(app: &mut App, want: ScreenHit) {
-    frame(app, crate::client::v7_fixture::Layout::Floating, 160, 45, "unicode");
+    frame(app, crate::client::reference_fixture::Layout::Floating, 160, 45, "unicode");
     let (r, _) = *app.hits.iter().rev().find(|(_, h)| *h == Hit::Screen(want)).unwrap_or_else(|| panic!("nothing drawn for {want:?}"));
     for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
         app.on_mouse(MouseEvent { kind, column: r.x, row: r.y, modifiers: KeyModifiers::NONE });
@@ -134,7 +134,7 @@ fn preset(name: &str) -> App {
 }
 
 #[test]
-fn each_modal_matches_the_handoff_inside_in_every_layout_at_every_size() {
+fn each_modal_matches_the_reference_inside_in_every_layout_at_every_size() {
     let presets = [
         "12 Override?",
         "14 Settings · empty",
@@ -160,7 +160,7 @@ fn each_modal_matches_the_handoff_inside_in_every_layout_at_every_size() {
 #[test]
 fn the_override_keeps_its_mark_in_plain_ascii() {
     let mut app = preset("12 Override?");
-    let text = frame(&mut app, crate::client::v7_fixture::Layout::Flat, 80, 24, "ascii");
+    let text = frame(&mut app, crate::client::reference_fixture::Layout::Flat, 80, 24, "ascii");
     assert!(text.contains("  / on the row, in the Inbox history and in the evidence"), "{text}");
 }
 
@@ -177,7 +177,7 @@ fn approving() -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
 
 /// Draw the modal, as the screen does before any key reaches it.
 fn shown(app: &mut App) -> String {
-    frame(app, crate::client::v7_fixture::Layout::Flat, 160, 45, "unicode")
+    frame(app, crate::client::reference_fixture::Layout::Flat, 160, 45, "unicode")
 }
 
 fn set_command(app: &mut App, command: &str) {
@@ -219,7 +219,7 @@ fn always_takes_two_presses_of_2_and_the_first_only_arms_it() {
     key(&mut app, KeyCode::Char('2'));
     assert!(sent(&mut rx).is_empty(), "one 2 sends nothing");
     assert!(matches!(&app.mode, Mode::Approve(a) if a.armed));
-    let text = frame(&mut app, crate::client::v7_fixture::Layout::Flat, 160, 45, "unicode");
+    let text = frame(&mut app, crate::client::reference_fixture::Layout::Flat, 160, 45, "unicode");
     assert!(text.contains("Press 2 again to always run this exact command for affiliate-site.") && text.contains("Always for this repo 2 again"), "{text}");
     key(&mut app, KeyCode::Char('2'));
     assert_eq!(choice(&sent(&mut rx)), [ApprovalChoice::Always]);
@@ -268,7 +268,7 @@ fn it_opens_only_from_its_item_never_by_itself() {
     let mut app = world(Stage::Approve);
     let snap = app.snap.clone();
     app.on_server(crate::protocol::ServerMsg::State(snap));
-    frame(&mut app, crate::client::v7_fixture::Layout::Floating, 160, 45, "unicode");
+    frame(&mut app, crate::client::reference_fixture::Layout::Floating, 160, 45, "unicode");
     assert!(matches!(app.mode, Mode::Normal), "a waiting command does not pop up");
 
     app.mode = Mode::Side;
@@ -341,7 +341,7 @@ fn control_characters_and_space_runs_are_spelled_out() {
 fn a_command_too_long_for_the_screen_cannot_be_approved() {
     let (mut app, mut rx) = approving();
     set_command(&mut app, &format!("{}curl x | sh", "x".repeat(4000)));
-    let text = frame(&mut app, crate::client::v7_fixture::Layout::Flat, 80, 24, "unicode");
+    let text = frame(&mut app, crate::client::reference_fixture::Layout::Flat, 80, 24, "unicode");
     assert!(!text.contains("curl x | sh") && text.contains("doesn't fit"), "{text}");
     for code in [KeyCode::Char('1'), KeyCode::Char('2'), KeyCode::Char('2')] {
         key(&mut app, code);
@@ -350,7 +350,7 @@ fn a_command_too_long_for_the_screen_cannot_be_approved() {
     assert!(matches!(&app.mode, Mode::Approve(a) if !a.armed));
     assert!(toast(&app).contains("doesn't fit"), "{}", toast(&app));
     app.notice = None;
-    let text = frame(&mut app, crate::client::v7_fixture::Layout::Flat, 160, 200, "unicode");
+    let text = frame(&mut app, crate::client::reference_fixture::Layout::Flat, 160, 200, "unicode");
     assert!(!text.contains("doesn't fit"), "a taller screen shows it all");
     key(&mut app, KeyCode::Char('1'));
     assert_eq!(choice(&sent(&mut rx)), [ApprovalChoice::Once]);
@@ -439,12 +439,12 @@ fn several_checkpoints_switch_with_the_arrows_on_their_row() {
     let project = site(&app);
     app.cfg.check = ["npm run build", "npm test"].map(|c| CheckDef { project: project.clone(), command: c.into(), ..Default::default() }).into();
     app.open_project_check(1);
-    let text = frame(&mut app, crate::client::v7_fixture::Layout::Floating, 160, 45, "unicode");
+    let text = frame(&mut app, crate::client::reference_fixture::Layout::Floating, 160, 45, "unicode");
     assert!(text.contains("CHECKPOINTS  1 of 2 · ‹ › switch") && text.contains("npm run build"), "{text}");
     key(&mut app, KeyCode::Down);
     key(&mut app, KeyCode::Down);
     key(&mut app, KeyCode::Right);
-    let text = frame(&mut app, crate::client::v7_fixture::Layout::Floating, 160, 45, "unicode");
+    let text = frame(&mut app, crate::client::reference_fixture::Layout::Floating, 160, 45, "unicode");
     assert!(text.contains("CHECKPOINTS  2 of 2 · ‹ › switch") && text.contains("Command    npm test"), "{text}");
     assert!(text.contains("✕ failed on fix-footer 14:22 · exit 1"), "the selected checkpoint's own result\n{text}");
 }
@@ -454,7 +454,7 @@ fn a_repo_s_checkpoint_is_read_only_and_del_forgets_your_choice() {
     let mut app = world(Stage::Never);
     let mut rx = listening(&mut app);
     app.open_project_check(1);
-    let text = frame(&mut app, crate::client::v7_fixture::Layout::Floating, 160, 45, "unicode");
+    let text = frame(&mut app, crate::client::reference_fixture::Layout::Floating, 160, 45, "unicode");
     assert!(text.contains(concat!("Source    .", env!("APP_COMMAND"), "/checks.toml · a1b2c3d · never")) && text.contains("Forget choice Del"), "{text}");
     key(&mut app, KeyCode::Char('x'));
     assert!(matches!(&app.mode, Mode::ProjectCheck(d) if !d.editing && d.command.is_none()), "its command is not yours to type");
@@ -471,7 +471,7 @@ fn typing_edits_the_draft_and_escape_drops_it() {
         key(&mut app, KeyCode::Char(c));
     }
     assert!(matches!(&app.mode, Mode::ProjectCheck(d) if d.command.as_deref() == Some("npm test") && d.editing));
-    let text = frame(&mut app, crate::client::v7_fixture::Layout::Floating, 100, 30, "unicode");
+    let text = frame(&mut app, crate::client::reference_fixture::Layout::Floating, 100, 30, "unicode");
     assert!(text.contains("Command    npm test█"), "{text}");
     key(&mut app, KeyCode::Esc);
     assert!(matches!(app.mode, Mode::Normal) && app.cfg.check.is_empty(), "nothing saved");

@@ -1,14 +1,13 @@
-//! Every v7 preset drawn whole on the fixture's world and set beside the handoff's reference
-//! frames (`v7_frames/<preset>.txt`, cut from `docs/design/v7/render-frames.mjs`; see
-//! docs/TESTING.md), in Cards floating, Cards tiled and Flat at 160×45, 100×30 and 80×24, and
-//! in ASCII at Flat 80×24.
+//! Every reference preset drawn whole on the fixture's world and set beside the reference
+//! frames (`reference_frames/<preset>.txt`, fixed fixtures; see docs/TESTING.md), in Cards floating,
+//! Cards tiled and Flat at 160×45, 100×30 and 80×24, and in ASCII at Flat 80×24.
 //!
 //! Cells the reference leaves to the app (masks):
 //! - the pane's terminal text: the agent's own output;
-//! - the working spinner's cell (the user's spinner, not the handoff's 3-bar one) and ages the
+//! - the working spinner's cell (the user's spinner, not the reference's 3-bar one) and ages the
 //!   fixture can't pin to the sample (the working session reads `0s`, not `now`; the sample's
 //!   approval item is a minute younger than its own row);
-//! - the handoff's sample checkpoint kinds (commits, approval, review) become the fixture's
+//! - the reference's sample checkpoint kinds (commits, approval, review) become the fixture's
 //!   build and test.
 //!
 //! Where the sample cannot be the app's, the reference is changed to what the app draws, and
@@ -16,10 +15,10 @@
 //! - a folder with a session that needs you is listed first (the app's order);
 //! - quick-fox is finished and unseen, so it reads "finished · not seen", as the sample's Inbox
 //!   says (its sidebar says "finished");
-//! - a failed row's third line is its first failing line, the Inbox's sample line; checks7.js
+//! - a failed row's third line is its first failing line, the Inbox's sample line; the reference
 //!   sets "footer shows current year" outside the failed branch, so other rows drop it;
 //! - add-payments is a session of its own, not a second tab of fix-footer's pane, and the
-//!   pane's mark keeps its room where checks7.js draws the tab chips over it;
+//!   pane's mark keeps its room where the reference draws the tab chips over it;
 //! - a row waiting on a changed command (A4) shows the new command; a project with a check
 //!   that never ran (16) names it in the folder's meta;
 //! - a command you said never to (A5) reads "did not run" and its source names the file's
@@ -27,17 +26,17 @@
 //! - Why (13) does not add "1 of 59 tests failed": the app does not parse a command's output;
 //! - the C2 Inbox's footnote is an annotation, not a screen line;
 //! - pill caps (a Nerd Font option, on by default) are off, so buttons have square ends;
-//! - the mode bar along the bottom (ADR 0024) is not the handoff's: `v7_fixture::cells` draws
+//! - the mode bar along the bottom (ADR 0024) is not the reference's: `reference_fixture::cells` draws
 //!   a row taller and leaves out that row, the bar's.
 
 use super::screen::{CAP_L, CAP_R, GoRow, goto_rows};
-use super::v7_fixture::{Layout, Stage, cells, frame, world};
+use super::reference_fixture::{Layout, Stage, cells, frame, world};
 use super::*;
 use crate::protocol::{CheckSource, CheckState};
 
 /// A cell the reference leaves to the app.
 const ANY: char = '\u{1}';
-/// The handoff's working spinner with motion off: its third 3-bar frame, and ASCII's.
+/// The reference's working spinner with motion off: its third 3-bar frame, and ASCII's.
 const SPINNER: [&str; 2] = ["\u{28f6}\u{2846}", "O "];
 /// The sample's first failing line, as the Inbox shows it.
 const FAILING: &str = "✗ legal.test.tsx › footer shows current year";
@@ -135,32 +134,32 @@ fn rows_preset(stage: Stage) -> &'static str {
 
 fn frames(id: &str) -> &'static str {
     match id {
-        "01" => include_str!("v7_frames/01.txt"),
-        "02" => include_str!("v7_frames/02.txt"),
-        "03" => include_str!("v7_frames/03.txt"),
-        "04" => include_str!("v7_frames/04.txt"),
-        "05" => include_str!("v7_frames/05.txt"),
-        "06" => include_str!("v7_frames/06.txt"),
-        "07" => include_str!("v7_frames/07.txt"),
-        "08" => include_str!("v7_frames/08.txt"),
-        "09" => include_str!("v7_frames/09.txt"),
-        "10" => include_str!("v7_frames/10.txt"),
-        "11" => include_str!("v7_frames/11.txt"),
-        "12" => include_str!("v7_frames/12.txt"),
-        "13" => include_str!("v7_frames/13.txt"),
-        "14" => include_str!("v7_frames/14.txt"),
-        "15" => include_str!("v7_frames/15.txt"),
-        "16" => include_str!("v7_frames/16.txt"),
-        "17" => include_str!("v7_frames/17.txt"),
-        "A1" => include_str!("v7_frames/A1.txt"),
-        "A2" => include_str!("v7_frames/A2.txt"),
-        "A3" => include_str!("v7_frames/A3.txt"),
-        "A4" => include_str!("v7_frames/A4.txt"),
-        "A5" => include_str!("v7_frames/A5.txt"),
-        "B1" => include_str!("v7_frames/B1.txt"),
-        "B2" => include_str!("v7_frames/B2.txt"),
-        "C1" => include_str!("v7_frames/C1.txt"),
-        "C2" => include_str!("v7_frames/C2.txt"),
+        "01" => include_str!("reference_frames/01.txt"),
+        "02" => include_str!("reference_frames/02.txt"),
+        "03" => include_str!("reference_frames/03.txt"),
+        "04" => include_str!("reference_frames/04.txt"),
+        "05" => include_str!("reference_frames/05.txt"),
+        "06" => include_str!("reference_frames/06.txt"),
+        "07" => include_str!("reference_frames/07.txt"),
+        "08" => include_str!("reference_frames/08.txt"),
+        "09" => include_str!("reference_frames/09.txt"),
+        "10" => include_str!("reference_frames/10.txt"),
+        "11" => include_str!("reference_frames/11.txt"),
+        "12" => include_str!("reference_frames/12.txt"),
+        "13" => include_str!("reference_frames/13.txt"),
+        "14" => include_str!("reference_frames/14.txt"),
+        "15" => include_str!("reference_frames/15.txt"),
+        "16" => include_str!("reference_frames/16.txt"),
+        "17" => include_str!("reference_frames/17.txt"),
+        "A1" => include_str!("reference_frames/A1.txt"),
+        "A2" => include_str!("reference_frames/A2.txt"),
+        "A3" => include_str!("reference_frames/A3.txt"),
+        "A4" => include_str!("reference_frames/A4.txt"),
+        "A5" => include_str!("reference_frames/A5.txt"),
+        "B1" => include_str!("reference_frames/B1.txt"),
+        "B2" => include_str!("reference_frames/B2.txt"),
+        "C1" => include_str!("reference_frames/C1.txt"),
+        "C2" => include_str!("reference_frames/C2.txt"),
         _ => panic!("no frames for {id}"),
     }
 }
@@ -202,7 +201,7 @@ fn open(id: &str) -> App {
             let check = &mut app.snap.terms.get_mut(&1).unwrap().checks[0];
             check.previous_command = Some("npm test".into());
             check.command = "npm test && node scripts/seed.js".into();
-            check.source = CheckSource::Repo { file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(), commit: Some("9f3c2a1".into()), committed_at: Some(super::v7_fixture::now() - 2 * HOUR), uncommitted: false };
+            check.source = CheckSource::Repo { file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(), commit: Some("9f3c2a1".into()), committed_at: Some(super::reference_fixture::now() - 2 * HOUR), uncommitted: false };
         }
         _ => {}
     }
@@ -246,7 +245,7 @@ fn open(id: &str) -> App {
 
 // ---- the reference's side: where things are, and what the app may draw its own way ------------
 
-/// The handoff's grid for a `w`-wide frame (`render` in checks7.js).
+/// The reference's grid for a `w`-wide frame.
 struct Geometry {
     pane: Option<Rect>,
     /// Where the pane's title row's right-hand mark ends (exclusive).
@@ -277,7 +276,7 @@ fn geometry(id: &str, b: &Block) -> Geometry {
             Rect { x: px + 1, y: 1, width: right - px - 1, height: h - 1 }
         }
     });
-    // A modal or popover, and the handoff's hard shadow a cell right and down.
+    // A modal or popover, and the reference's hard shadow a cell right and down.
     let with_shadow = |r: Rect| vec![r, Rect { x: r.x + 1, y: r.y + 1, ..r }];
     let modal = |mw: u16, mh: u16| with_shadow(Rect { x: (w - mw) / 2, y: (h - mh) / 2, width: mw, height: mh });
     let overlays = match over {
@@ -342,7 +341,7 @@ fn app_sidebar(id: &str, stage: Stage, rows: Vec<Vec<char>>, inner_w: usize, asc
     let end = inner_w;
     let mut rows = rows;
     for row in &mut rows {
-        // checks7.js keeps the row's old command after the repo changed it.
+        // The reference keeps the row's old command after the repo changed it.
         if id == "A4" {
             swap_tail(row, "approve check: npm test", "approve check: npm test && node scripts/seed.js", 0, end);
         }
@@ -386,7 +385,7 @@ fn app_sidebar(id: &str, stage: Stage, rows: Vec<Vec<char>>, inner_w: usize, asc
     // Sessions are one line now, each with its agent's mark (ADR 0021).
     let n = rows.len();
     let foot_row = rows.pop().expect("the foot");
-    let mut rows = super::v7_fixture::as_one_line_rows(rows, ascii, ANY);
+    let mut rows = super::reference_fixture::as_one_line_rows(rows, ascii, ANY);
     for r in &mut rows {
         r.resize(inner_w, ' ');
     }
@@ -432,12 +431,12 @@ fn mask_key_bar(row: &mut [char], x0: usize, x1: usize) {
 }
 
 /// A modal's title row in `[x0, x1)` as the app draws it since modals took a pane's frame (the
-/// user's choice, 2026-10-24, docs/UI.md): the handoff's accent bar becomes the top border with
+/// user's choice, 2026-10-24, docs/UI.md): the reference's accent bar becomes the top border with
 /// the corners of its `bottom` row, its title a chip two in and `Esc close` a chip a `─` before
-/// the corner. Every other cell of the modal is still the handoff's.
+/// the corner. Every other cell of the modal is still the reference's.
 fn as_bordered_header(row: &mut [char], bottom: &[char], x0: usize, x1: usize) {
     let bar: String = row[x0..x1].iter().collect();
-    let title = bar.trim().strip_suffix("Esc close").unwrap_or_else(|| panic!("the handoff's title bar: {bar:?}")).trim_end();
+    let title = bar.trim().strip_suffix("Esc close").unwrap_or_else(|| panic!("the reference's title bar: {bar:?}")).trim_end();
     let top = |c: char| match c {
         '└' => '┌',
         '┘' => '┐',
@@ -463,7 +462,7 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
     let ascii = b.glyphs == "ascii";
     let inner_of = |rows: &[Vec<char>]| -> Vec<Vec<char>> { (si.y..si.bottom()).map(|y| rows[y as usize][si.x as usize..si.right() as usize].to_vec()).collect() };
     let mut side = app_sidebar(id, stage, inner_of(&source.rows), si.width as usize, ascii);
-    // 16's project has a check that never ran; checks7.js names it only once there is a result.
+    // 16's project has a check that never ran; the reference names it only once there is a result.
     if id == "16" {
         let passed = blocks(frames("03")).into_iter().find(|s| s.layout == b.layout && (s.w, s.h) == (b.w, b.h) && s.glyphs == b.glyphs).expect("03");
         let head = |rows: &[Vec<char>]| rows.iter().position(|r| find(r, "affiliate-site").is_some()).expect("the folder");
@@ -502,7 +501,7 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
     let top = &mut want[0];
     let w = top.len();
     swap(top, " 2  add-payments ", &(if flat { " " } else { "─" }).repeat(17), 0, w);
-    // checks7.js draws the tab chips over the pane's mark when they meet; the app gives the
+    // The reference draws the tab chips over the pane's mark when they meet; the app gives the
     // mark its room.
     if g.pane.is_some() {
         let mark = pane_mark(stage, b.glyphs == "ascii");
@@ -558,7 +557,7 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
             swap_tail(row, " · 1 of 59", "", x0, x1);
         }
     }
-    // The handoff casts a hard shadow; the app casts none, so what shows there is the app's.
+    // The reference casts a hard shadow; the app casts none, so what shows there is the app's.
     if let [frame, shadow] = g.overlays[..] {
         for y in shadow.y..shadow.bottom().min(b.h) {
             for x in shadow.x..shadow.right().min(b.w) {
@@ -616,7 +615,7 @@ fn conforms(id: &str) {
             report.push_str(&format!("===== {id} | {:?} | {}x{} | {}\n{diff}", b.layout, b.w, b.h, b.glyphs));
         }
     }
-    assert!(report.is_empty(), "{id}: the frames differ from the v7 reference\n{report}");
+    assert!(report.is_empty(), "{id}: the frames differ from the reference\n{report}");
 }
 
 #[test]
@@ -826,7 +825,7 @@ fn a_modal_title_is_on_the_accent() {
     }
 }
 
-/// Buttons have square ends by default, as the handoff draws them.
+/// Buttons have square ends by default, as the reference draws them.
 /// Turned on, they only put a cap where a square end had a blank of the button's colour.
 #[test]
 fn pill_caps_only_round_the_buttons_ends() {
@@ -911,7 +910,7 @@ fn press(app: &mut App, code: crossterm::event::KeyCode) {
     app.on_key(crossterm::event::KeyEvent::new(code, crossterm::event::KeyModifiers::NONE));
 }
 
-/// checks7.js's `act('modal')` keeps the Inbox under a modal opened from it; Esc goes back to
+/// The reference keeps the Inbox under a modal opened from it; Esc goes back to
 /// it, on the same item.
 #[test]
 fn esc_from_a_modal_opened_in_the_inbox_goes_back_to_the_inbox() {
@@ -944,11 +943,11 @@ fn not_now_keeps_its_last_cell_beside_an_armed_always() {
     let mut app = open("A3");
     let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
     let (x, y) = at(&buf, "Not now Esc");
-    assert_eq!(x + 11, 120, "where checks7.js puts its end");
+    assert_eq!(x + 11, 120, "where the reference puts its end");
     assert_eq!(buf[(120, y)].bg, app.theme.btn, "the button's trailing space is drawn");
 }
 
-/// checks7.js makes the whole inside of a pane's card its focus region, padding and all; the
+/// The reference makes the whole inside of a pane's card its focus region, padding and all; the
 /// terminal inside it still gets its own clicks.
 #[test]
 fn a_click_anywhere_inside_a_panes_card_is_the_pane() {
@@ -965,7 +964,7 @@ fn a_click_anywhere_inside_a_panes_card_is_the_pane() {
     }
 }
 
-/// checks7.js's doOverride shows the evidence the override stands on.
+/// After an override the evidence sheet shows the evidence the override stands on.
 #[test]
 fn overriding_from_the_inbox_opens_the_evidence() {
     use crossterm::event::KeyCode;
@@ -990,7 +989,7 @@ fn a_working_row_s_mark_and_name_are_the_working_colour() {
     }
 }
 
-/// Needs you and failed are two colours in the app-dark, as in the handoff (`needs`, `err`):
+/// Needs you and failed are two colours in the app-dark, as in the reference (`needs`, `err`):
 /// the Inbox's group chips, the row's glyph and question, and the failed result.
 #[test]
 fn needs_you_is_amber_and_failed_red_in_app_dark() {
@@ -1024,10 +1023,10 @@ fn a_check_that_could_not_run_is_violet_not_red_or_amber() {
 #[test]
 /// Backspace in the Inbox edits its search and never closes it or the app, whatever it holds.
 fn backspace_in_the_inbox_only_edits_its_search() {
-    for stage in v7_fixture::STAGES {
-        for (w, h) in v7_fixture::SIZES {
+    for stage in reference_fixture::STAGES {
+        for (w, h) in reference_fixture::SIZES {
             for keys in ["", "a", "zz"] {
-                let mut app = v7_fixture::world(stage);
+                let mut app = reference_fixture::world(stage);
                 app.cfg.ui.padding = "1".into();
                 app.open_goto();
                 let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();

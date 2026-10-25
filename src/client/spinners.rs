@@ -103,7 +103,7 @@ impl App {
 
 pub(super) fn draw(app: &mut App, frame: &mut Frame, area: Rect, theme: &Theme, view: &Picker) {
     let buf = frame.buffer_mut();
-    super::screen::dim_all(buf, area, theme);
+    super::screen::dim_all(app, buf, area, theme);
     let r = panel(app, buf, area, 62, 24, "Working spinner", &[], theme);
     if r.height < 10 || r.width < 16 {
         return;

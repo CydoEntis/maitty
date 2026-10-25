@@ -1,7 +1,7 @@
 //! Built-in themes plus per-key overrides from config. Pane contents keep the program's own
 //! colours; the theme only paints hydra's chrome (sidebar, title bars, status line).
 //!
-//! The roles follow the design handoff: `surf` for chrome, `card`/`card2` for panels and
+//! The roles: `surf` for chrome, `card`/`card2` for panels and
 //! action rows, `btn`/`hov` for buttons and the hovered row, `acc` (teal in Dark
 //! theme) for focus, `needs` (amber) only for "needs you".
 
@@ -437,7 +437,7 @@ impl Theme {
         }
     }
 
-    /// A theme from the design handoff's roles.
+    /// A theme from the full set of design roles.
     /// `c`: bg fg surf card card2 line dim text strong acc accInk needs ok err btn hov.
     fn design(c: [&str; 16], ws: [&str; 4], a: [&str; 7]) -> Theme {
         let h = |i: usize| hex(c[i]);
@@ -586,7 +586,7 @@ impl Theme {
                 ["#ff3df2", "#3df2ff", "#ffe14a", "#3dffa0"],
                 ["#ff4f5e", "#3dffa0", "#ffe14a", "#4f9dff", "#ff3df2", "#3df2ff", "#8a84b0"],
             ),
-            // The design handoff's palette, the default before the rename ("drover" is the
+            // The first design palette, the default before the rename ("drover" is the
             // app's first name).
             "hydra" | "drover" => Theme::design(
                 [
@@ -1091,7 +1091,7 @@ mod audit {
         super::mix(a, b, t)
     }
 
-    /// Every theme gives each status its own colour, as the handoff's roles do: working,
+    /// Every theme gives each status its own colour, as the design's roles do: working,
     /// needs you (amber), failed, done, checking and could not run.
     #[test]
     fn every_theme_gives_each_status_its_own_colour() {

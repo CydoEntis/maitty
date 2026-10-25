@@ -18,6 +18,7 @@ const MIN_HEIGHT: u16 = 10;
 
 pub fn draw(app: &mut App, f: &mut Frame) {
     app.hits.clear();
+    app.hits_under_overlay = 0;
     app.panes.clear();
     app.pane_frames.clear();
     let area = f.area();
@@ -76,11 +77,14 @@ fn tints(h: &super::Hit) -> bool {
 }
 
 /// Tint the topmost clickable region under the pointer, the one a click there would hit, once:
-/// every row, chip, button and ✕ shows it the same way, so no widget tints itself.
+/// every row, chip, button and ✕ shows it the same way, so no widget tints itself. Only the top
+/// layer: under an overlay nothing lights, and its backdrop (the click outside it, as wide as
+/// the room overlays draw in) is ground, not a control.
 fn tint_hovered(app: &App, buf: &mut Buffer, t: &crate::theme::Theme) {
     let Some(at) = app.hover else { return };
-    let Some((r, h)) = app.hits.iter().rev().find(|(r, _)| r.contains(at)) else { return };
-    if !tints(h) || *r == buf.area {
+    let Some((r, h)) = app.hover_hit(at) else { return };
+    let backdrop = *r == buf.area || *r == super::screen::above_bar(app, buf.area);
+    if !tints(h) || backdrop {
         return;
     }
     tint(buf, *r, t);
@@ -222,13 +226,13 @@ pub fn blend(a: Color, b: Color, t: f32) -> Color {
     }
 }
 
-/// Which working-spinner frame to show: it turns with motion on and rests on the handoff's
+/// Which working-spinner frame to show: it turns with motion on and rests on its
 /// third frame with motion off.
 fn working_step(app: &App, len: usize) -> usize {
     if app.motion_on() { (app.spinner_frame() % len as u64) as usize } else { REST_FRAME.min(len - 1) }
 }
 
-/// The frame the working spinner holds without motion (`checks7.js` `glyph`: `G.work[2]`).
+/// The frame the working spinner holds without motion (the third, as the reference frames draw it).
 const REST_FRAME: usize = 2;
 
 pub(super) fn status_icon(app: &App, s: Status) -> String {
@@ -521,7 +525,7 @@ fn draw_worktrees(
 fn draw_prompt(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::Theme, label: &str, input: &str, confirm: bool) {
     use super::design::{put, seg};
     let buf = f.buffer_mut();
-    super::screen::dim_all(buf, area, t);
+    super::screen::dim_all(app, buf, area, t);
     let title = label.trim().trim_end_matches(':');
     let mut chars = title.chars();
     let title: String = chars.next().map(|c| c.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default();

@@ -46,7 +46,7 @@ pub(in crate::client) fn np_command(app: &App, agent: &str, model: usize, task: 
 pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, np: &NewPaneHy) {
     let model = app.screen_model();
     let buf = f.buffer_mut();
-    dim_all(buf, area, t);
+    dim_all(app, buf, area, t);
     let r = panel(app, buf, area, 86, 21, "New", &[], t);
     let lab = |buf: &mut Buffer, y: u16, text: &str, row: u8| {
         put(buf, r.x + 3, y, &[seg(text, Style::default().fg(if np.row == row { t.accent } else { t.muted }).bg(t.card).add_modifier(Modifier::BOLD))], r.right());

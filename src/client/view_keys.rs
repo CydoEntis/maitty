@@ -613,6 +613,7 @@ impl App {
             PromptKind::NewWorkspace => {
                 // A group starts with a shell where you are.
                 let name = (!input.is_empty()).then_some(input);
+                self.leave_shortcut_mode();
                 self.cmd(Command::NewWorkspace { cwd: Some(self.here_dir()), name, cmd: None });
             }
             _ => {}
@@ -639,6 +640,7 @@ impl App {
 
     /// Switch to the workspace already open on this worktree, or open one.
     pub(super) fn open_worktree(&mut self, w: &WorktreeEntry, cmd: Option<String>) {
+        self.leave_shortcut_mode();
         if let Some(open) = self.snap.workspaces.iter().find(|x| same_dir(&x.cwd, &w.path)) {
             self.cmd(Command::SelectWorkspace { ws: open.id });
             if let Some(cmd) = cmd {

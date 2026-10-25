@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 const CARRY_OVER_FILES: [&str; 5] = ["src/cli.rs", "src/config.rs", "src/project.rs", "src/theme.rs", "src/client/themes.rs"];
 
 /// Source the app is built from: Rust and the adapters it installs. Reference frames (`.txt`)
-/// come from the design source and are regenerated with it.
+/// are fixtures that show the name and are updated by hand with a rename.
 fn sources(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(dir).expect("readable source dir") {
         let path = entry.expect("dir entry").path();

@@ -40,6 +40,12 @@ application-wide footer bar; the user's decision on 2026-10-24 reverses that for
 Amends ADR 0023 (the frame and the corner tag go; the toast and the always-shown mode stay) and
 ADR 0014's no-footer rule (this bar is the one exception).
 
+**Amended 2026-10-25:** the user found ` SHORTCUT · paused ` unclear (it showed with the sidebar
+focused and nothing visibly open). Paused is gone: whenever something other than the panes has
+the keys, held or not, the bar names it in a calm chip (not sky) with its own keys and the way
+out, e.g. `SIDEBAR · ↑↓ move · Enter open · Esc back`, plus `· shortcut mode waits` while
+shortcut mode is held. Under a popup it is still only words. See [UI](../UI.md) *Mode bar*.
+
 ## Alternatives considered
 
 - **Keep the corner tag and frame (ADR 0023):** the user found the bar clearer and preferred
@@ -50,7 +56,7 @@ ADR 0014's no-footer rule (this bar is the one exception).
 
 ## Consequences
 
-Every look loses one row to the bar. The v7 reference frame tests draw the world one row
-taller and leave out that row, the bar's (`v7_fixture::cells`), so the handoff's frames hold
+Every look loses one row to the bar. The reference frame tests draw the world one row
+taller and leave out that row, the bar's (`reference_fixture::cells`), so the reference frames hold
 cell for cell with no corner normalisation. Revisit if the bar should carry more (a session
 count, a clock) or if a theme's `sky` makes the lit bar hard to read.

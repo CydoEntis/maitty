@@ -228,7 +228,7 @@ impl App {
 
 pub(super) fn draw_find(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, v: &FindView) {
     let buf = f.buffer_mut();
-    dim_all(buf, area, t);
+    dim_all(app, buf, area, t);
     let tr = super::screen::tool_rect(area);
     let r = panel(app, buf, area, tr.width, tr.height, &format!("Find · {}", tilde(&v.dir)), &[], t);
     let c = Style::default().bg(t.card);

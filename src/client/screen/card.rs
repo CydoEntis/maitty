@@ -285,7 +285,7 @@ pub(in crate::client) fn close_width(look: Look, after_right: bool) -> u16 {
 }
 
 /// Spaces before the ✕: two after other right-hand segments. Alone, a square ✕'s chip starts on
-/// the padding before the segments, where the handoff puts it; a capped chip needs that cell
+/// the padding before the segments, where the reference frames put it; a capped chip needs that cell
 /// blank to stand clear of the border, so it starts a cell on.
 fn close_lead(look: Look, after_right: bool) -> u16 {
     if after_right { 2 } else { u16::from(look.caps) }
@@ -293,7 +293,7 @@ fn close_lead(look: Look, after_right: bool) -> u16 {
 
 /// Cells kept blank after the ✕'s chip. Flat's right-hand segments end on the zone's last
 /// column but one, and that last column is the next zone's rule, so a capped chip keeps a cell
-/// clear of it as it does of the border in Cards. Square ✕s keep their place in the handoff.
+/// clear of it as it does of the border in Cards. Square ✕s keep their place in the reference frames.
 fn close_trail(look: Look) -> u16 {
     u16::from(look.flat && look.caps)
 }

@@ -1,5 +1,4 @@
-//! The collapsed sidebar: the sessions as chips along row 0 (v8 `drawStrip`,
-//! `docs/design/v8/cleanup/app8.js`). The panes keep the full width and their tabs sit on row 1.
+//! The collapsed sidebar: the sessions as chips along row 0. The panes keep the full width and their tabs sit on row 1.
 use super::*;
 
 /// The longest a session's name is drawn on its chip.

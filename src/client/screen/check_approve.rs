@@ -250,7 +250,7 @@ impl App {
 pub(in crate::client) fn draw_approve(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme, a: &Approve) {
     let Some(term) = app.snap.terms.get(&a.term).cloned() else { return };
     let Some(info) = term.checks.iter().find(|c| c.name == a.name).cloned() else { return };
-    dim_all(buf, area, t);
+    dim_all(app, buf, area, t);
     let changed = info.previous_command.is_some();
     let w = WIDTH.min(area.width.saturating_sub(2));
     let roomy = area.height >= ROOMY_FROM_H;
@@ -319,7 +319,7 @@ pub(in crate::client) fn draw_approve(app: &mut App, buf: &mut Buffer, area: Rec
     let (always, always_key, always_kind) = (if short { "Always" } else { "Always for this repo" }, if a.armed { "2 again" } else { "2" }, if a.armed { BtnKind::Primary } else { BtnKind::Normal });
     bx = btn(app, buf, bx, by, always, always_key, always_kind, ScreenHit::Approve(ApproveHit::Always), right) + 1;
     bx = btn(app, buf, bx, by, if short { "Never" } else { "Never for this repo" }, "3", BtnKind::Risky, ScreenHit::Approve(ApproveHit::Never), right) + 1;
-    // The last button may take the padding column inside the border, as checks7.js's does.
+    // The last button may take the padding column inside the border, as the reference's does.
     btn(app, buf, bx, by, "Not now", "Esc", BtnKind::Normal, ScreenHit::Approve(ApproveHit::NotNow), r.right().saturating_sub(1));
     app.mark_shown(a, shown_hash(&info), whole);
 }
