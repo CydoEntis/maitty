@@ -1491,3 +1491,5 @@ mod tests;
 mod v7_fixture;
 #[cfg(test)]
 mod v7_frames_tests;
+#[cfg(test)]
+mod site_frames;

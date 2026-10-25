@@ -83,7 +83,7 @@ fn home() -> PathBuf {
     directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf()).unwrap_or_else(std::env::temp_dir).join("dev")
 }
 
-fn term(id: TermId, label: &str, agent: &str, status: Status, cwd: &Path, since: u64) -> TermInfo {
+pub(super) fn term(id: TermId, label: &str, agent: &str, status: Status, cwd: &Path, since: u64) -> TermInfo {
     TermInfo {
         id,
         cols: 80,
@@ -131,23 +131,23 @@ fn term(id: TermId, label: &str, agent: &str, status: Status, cwd: &Path, since:
 }
 
 /// A pane in a checkout of `root` on `branch`.
-fn in_repo(mut t: TermInfo, root: &Path, branch: &str) -> TermInfo {
+pub(super) fn in_repo(mut t: TermInfo, root: &Path, branch: &str) -> TermInfo {
     t.linked = t.cwd != root;
     (t.root, t.top, t.branch) = (Some(root.to_path_buf()), Some(t.cwd.clone()), Some(branch.into()));
     t
 }
 
-fn entry(path: &Path, branch: &str, main: bool, repo: &str) -> WorktreeEntry {
+pub(super) fn entry(path: &Path, branch: &str, main: bool, repo: &str) -> WorktreeEntry {
     WorktreeEntry { path: path.to_path_buf(), branch: branch.into(), main, repo: repo.into() }
 }
 
-fn workspace(id: WsId, name: &str, cwd: &Path, terms: &[TermId], git: Option<GitInfo>, color: u8) -> WorkspaceInfo {
+pub(super) fn workspace(id: WsId, name: &str, cwd: &Path, terms: &[TermId], git: Option<GitInfo>, color: u8) -> WorkspaceInfo {
     let tabs: Vec<TabInfo> = terms.iter().enumerate().map(|(i, &t)| TabInfo { id: id + 1 + i as TabId, name: String::new(), layout: Node::Leaf(t), focus: t }).collect();
     let active_tab = tabs[0].id;
     WorkspaceInfo { id, name: name.into(), cwd: cwd.to_path_buf(), tabs, active_tab, git, worktree: false, color, is_new: false, group: None }
 }
 
-fn git(root: &Path, branch: &str, worktrees: Vec<WorktreeEntry>) -> GitInfo {
+pub(super) fn git(root: &Path, branch: &str, worktrees: Vec<WorktreeEntry>) -> GitInfo {
     let repo = super::screen::folder_name(root);
     GitInfo { repo, branch: branch.into(), dirty: 0, linked: false, root: root.to_path_buf(), worktrees, ahead: 0 }
 }
