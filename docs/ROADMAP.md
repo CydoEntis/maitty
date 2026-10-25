@@ -11,7 +11,7 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-Latest release: **v0.45.0** (2026-10-25), wire protocol 46. Phases 1–30 are shipped (phase 11
+Latest release: **v0.46.0** (2026-10-25), wire protocol 47. Phases 1–31 are shipped (phase 11
 declined); the release history is in the GitHub Releases and git tags, not here. v0.44.0 added
 [Phase 27](#27--radar-and-sending-failures--shipped-in-v0440) (context on the row, a failed
 check into the message box), [Phase 28](#28--references--shipped-in-v0440) (references),
@@ -24,7 +24,7 @@ stands in for the open live checks (phases 17–29) and confirms status live for
 user runs: Claude Code, Codex, Qwen Code and DeepSeek. Also requested 2026-10-25:
 [Phase 30](#30--the-hairline-layout--shipped-in-v0450-live-checks-open), a fifth layout, and
 100 more built-in themes (162), both in v0.45.0. Planned next:
-[Phase 31](#31--panes-you-can-tell-apart--planned-2026-10-25), panes you can tell apart.
+[Phase 31](#31--panes-you-can-tell-apart--shipped-in-v0460-live-checks-open), panes you can tell apart, in v0.46.0.
 
 Open validation items (need a real session on the named platform):
 - Pi full-screen scrolling on Linux: waiting on the failing pane's "Pane info (scrolling,
@@ -555,13 +555,16 @@ answer key) wait for the user's call after trying it.
 1. the workspace chrome: config, sidebar, pane title and rule, status strip, bottom bar
 2. every menu, popup and side panel in the Hairline style (after 1)
 
-### 31 — Panes you can tell apart · planned 2026-10-25
+### 31 — Panes you can tell apart · shipped in v0.46.0, live checks open
 
-Asked by the user on 2026-10-25 while trying splits; not started (after the trial week unless the
-user says sooner). Decided 2026-10-25: every pane gets a number in all five layouts, reversing
+Asked by the user on 2026-10-25 while trying splits, and built the same night at their call. Also in
+v0.46.0: panes swap places (drag a title onto another pane, leader Alt+arrows, or the pane menu;
+protocol 47), a click on a pane or a strip segment gives that pane the keys, the strip marks your
+session, and Hairline's sidebar foot reads just `new` and `menu`. Decided 2026-10-25: every pane gets a number in all five layouts, reversing
 UI.md's "no number no key uses" rule for Grid and phase 30's removal in Hairline.
 
-1. every pane shows its number in its title, in all layouts, stable while the pane lives
+1. every pane of a split shows its number (its place in reading order) in all layouts; a lone
+   tab no longer shows a tab number
 2. closing a pane names it: the confirm says "Close pane 2 · <name>" and the pane being closed is
    lit while the confirm is up
 3. the focused pane is unmistakable in every layout while a menu or confirm is open
