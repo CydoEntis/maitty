@@ -29,11 +29,11 @@ application-wide footer bar; the user's decision on 2026-10-24 reverses that for
   in shortcut mode, so it does exactly what the key does and the mode stays.
 - **Paused** (a popup or view an action opened has the keys): ` SHORTCUT · paused ` (`muted` on
   `btn`) and no suggestions, since the popup shows its own keys. Under anything that has the
-  keys (a popup, modal or view opened from either mode, or the key map and its search) the bar
+  keys (a popup or modal from either mode, a view shortcut mode opened, or the key map and its search) the bar
   only says the mode: a click on it does nothing, so it never closes the popup, runs a
   suggestion or drops what was typed.
 - **Update and Restart** move from the top-right corner to the bar's right end, clickable
-  except while paused. The top-right title gets its corner back.
+  except under anything that has the keys. The top-right title gets its corner back.
 - **No frame round the window and no corner tag** in any mode. The focused pane's sky border
   in shortcut mode and the dead-key toast (ADR 0023) stay.
 
