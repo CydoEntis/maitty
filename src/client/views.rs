@@ -378,9 +378,15 @@ impl Edit {
         }
     }
 
-    /// Ctrl+X: what `copied` gives, removed: the selection, or the cursor's whole line.
-    pub fn cut(&mut self) -> String {
+    /// Ctrl+X: what `copied` gives, removed: the selection, or the cursor's whole line. None
+    /// when the file is empty and there is nothing to cut.
+    pub fn cut(&mut self) -> Option<String> {
+        if self.selection().is_none() && self.lines.len() == 1 && self.lines[0].is_empty() {
+            return None;
+        }
         let text = self.copied();
+        // Before the cursor moves onto the line: undoing the cut puts it back where it was.
+        self.checkpoint(None);
         if self.selection().is_none() {
             let last = self.lines.len() - 1;
             // The last line has no line break to take; the one before it gives up its own.
@@ -390,17 +396,16 @@ impl Edit {
                 r => (Some((r - 1, self.len(r - 1))), r, self.len(r)),
             };
         }
-        self.checkpoint(None);
         self.take_selection();
-        text
+        Some(text)
     }
 
     /// Before a change: remember the text as it is, unless the change continues the last one
     /// (`step`: typing on, or deleting on). A new change forgets what Ctrl+Z took back.
     fn checkpoint(&mut self, step: Option<Step>) {
-        // Replacing a selection is a change of its own, whatever does it.
-        let step = step.filter(|_| self.selection().is_none());
-        if step.is_some() && step == self.last_step {
+        // Replacing a selection starts a step of its own; typing on after it joins that step.
+        let replacing = self.selection().is_some();
+        if !replacing && step.is_some() && step == self.last_step {
             return;
         }
         self.last_step = step;

@@ -163,9 +163,10 @@ impl App {
                     self.notify(copied_note("copied", &text), false);
                 }
                 KeyCode::Char('x') if ctrl => {
-                    let text = ed.cut();
-                    copy::to_clipboard(&text);
-                    self.notify(copied_note("cut", &text), false);
+                    if let Some(text) = ed.cut() {
+                        copy::to_clipboard(&text);
+                        self.notify(copied_note("cut", &text), false);
+                    }
                 }
                 KeyCode::Char('v') if ctrl => self.paste_clipboard_into_editor(ed.path.clone()),
                 KeyCode::Char('z') if ctrl => {

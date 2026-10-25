@@ -9230,6 +9230,44 @@ mod files_panel_tests {
     }
 
     #[test]
+    fn undo_treats_typing_over_a_selection_and_a_line_cut_as_one_step_each() {
+        let (dir, mut app) = editing("undosteps");
+        for _ in 0..3 {
+            press(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+        }
+        for c in "var".chars() {
+            press(&mut app, KeyCode::Char(c), KeyModifiers::NONE);
+        }
+        assert_eq!(edit(&app).lines[0], "var line_1 = 1;");
+        press(&mut app, KeyCode::Char('z'), KeyModifiers::CONTROL);
+        assert_eq!(edit(&app).lines[0], "let line_1 = 1;", "one Ctrl+Z undoes the replacing and the typing");
+        press(&mut app, KeyCode::Down, KeyModifiers::NONE);
+        press(&mut app, KeyCode::Right, KeyModifiers::NONE);
+        press(&mut app, KeyCode::Right, KeyModifiers::NONE);
+        press(&mut app, KeyCode::Char('x'), KeyModifiers::CONTROL);
+        press(&mut app, KeyCode::Char('z'), KeyModifiers::CONTROL);
+        assert_eq!((edit(&app).lines[1].as_str(), edit(&app).row, edit(&app).col), ("let line_2 = 2;", 1, 5), "the line back, the cursor where it was");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ctrl_x_in_an_empty_file_does_nothing() {
+        let dir = project("emptycut");
+        std::fs::write(dir.join("empty.txt"), "").unwrap();
+        let mut app = screen_in(&dir, 160, 45);
+        app.act(Action::Files);
+        tree_read(&mut app, &dir);
+        select(&mut app, "empty.txt");
+        key(&mut app, KeyCode::Char('i'));
+        app.notice = None;
+        press(&mut app, KeyCode::Char('x'), KeyModifiers::CONTROL);
+        assert!(app.notice.is_none() && !edit(&app).dirty, "no cut, no toast");
+        press(&mut app, KeyCode::Char('z'), KeyModifiers::CONTROL);
+        assert_eq!(app.notice.as_ref().map(|(m, _, _)| m.as_str()), Some("nothing to undo"), "and no undo step");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_double_click_on_drawn_markdown_takes_a_word() {
         let (dir, mut app) = guide_open("mdword");
         let (_, buf) = frame(&mut app, 200, 50);
