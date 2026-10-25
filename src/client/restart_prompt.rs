@@ -78,6 +78,7 @@ impl Prompt {
     pub fn draw(&mut self, f: &mut Frame) {
         let t = &self.theme;
         super::screen::set_round(self.round);
+        super::screen::set_plain(None);
         let area = f.area();
         let buf = f.buffer_mut();
         fill(buf, area, t.bg);

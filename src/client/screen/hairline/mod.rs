@@ -156,7 +156,13 @@ pub(in crate::client) fn plain_on() -> bool {
 /// outside Hairline.
 pub(in crate::client) fn plain(segs: Vec<Seg>) -> Vec<Seg> {
     let Some(ground) = PLAIN.get() else { return segs };
-    let coloured = |c: Color| c != Color::Reset && crate::theme::contrast(c, ground) >= SURFACE_CONTRAST;
+    // Contrast is only known between RGB colours; a named one (the mono theme's) is a colour
+    // the terminal picks, never a tint of the ground.
+    let coloured = |c: Color| match (c, ground) {
+        (Color::Reset, _) => false,
+        (Color::Rgb(..), Color::Rgb(..)) => crate::theme::contrast(c, ground) >= SURFACE_CONTRAST,
+        _ => c != ground,
+    };
     segs.into_iter()
         .map(|(text, st)| match st.bg {
             Some(c) if coloured(c) => (text, Style { bg: None, ..st }.fg(c).add_modifier(Modifier::BOLD)),

@@ -74,6 +74,44 @@ fn every_surface_is_square_and_unfilled() {
     assert!(wrong.is_empty(), "rounded or filled:\n{}", wrong.join("\n"));
 }
 
+/// The mono theme's colours are named, not RGB: a chip's accent fill must still turn into its
+/// words' colour, never leave black words on the terminal's own (dark) ground.
+#[test]
+fn named_colours_stay_readable_as_plain_words() {
+    let mut unreadable = Vec::new();
+    for (name, open) in surfaces() {
+        for (w, h) in SIZES {
+            let mut app = hairline_world(2);
+            app.theme = crate::theme::Theme::named("mono");
+            open(&mut app);
+            let buf = draw(&mut app, w, h);
+            let mine = |p: Position| !app.panes.iter().any(|(_, r)| r.contains(p));
+            let dark = |c: Color| matches!(c, Color::Reset | Color::Black);
+            let bad = buf.area.positions().filter(|p| mine(*p)).find(|p| {
+                let c = &buf[(p.x, p.y)];
+                !c.symbol().trim().is_empty() && c.fg == Color::Black && dark(c.bg)
+            });
+            if let Some(p) = bad {
+                unreadable.push(format!("{name}, {w}x{h}: black on dark at {p:?}"));
+            }
+        }
+    }
+    assert!(unreadable.is_empty(), "{}", unreadable.join("\n"));
+}
+
+#[test]
+fn a_one_line_prompt_keeps_its_frame() {
+    let mut app = hairline_world(2);
+    app.act(Action::RenameTab);
+    let buf = draw(&mut app, 160, 45);
+    show("rename", &buf);
+    let t = app.theme.clone();
+    let corner = buf.area.positions().find(|p| buf[(p.x, p.y)].symbol() == "┌").expect("the prompt's box");
+    let below = Position { x: corner.x, y: corner.y + 1 };
+    assert_eq!((buf[(below.x, below.y)].symbol(), buf[(below.x, below.y)].fg), ("│", t.line), "its side stays");
+    assert!(buf.area.positions().any(|p| buf[(p.x, p.y)].symbol() == "└" && p.x == corner.x), "and its bottom");
+}
+
 #[test]
 fn a_menus_selection_is_a_raised_row_with_an_accent_bar() {
     let mut app = hairline_world(1);
