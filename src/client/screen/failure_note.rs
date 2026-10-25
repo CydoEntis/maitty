@@ -27,7 +27,11 @@ pub(in crate::client) struct FailureAsk {
 /// The message about a failed check: what ran, how it ended, and the last `TAIL_LINES` lines
 /// it printed, colour codes and control characters stripped.
 pub(super) fn failure_note(info: &CheckInfo, output: &str) -> String {
-    let check = if info.name.is_empty() { "The check".to_string() } else { format!("The {} check", info.name) };
+    // An escape in a repo's command could end the paste it goes in. A carriage return is kept
+    // as a space, not read as the output's overprint, so no part of the command is hidden.
+    let plain = |s: &str| clean(&s.replace(['\r', '\n'], " "));
+    let (name, command) = (plain(&info.name), plain(&info.command));
+    let check = if name.is_empty() { "The check".to_string() } else { format!("The {name} check") };
     let ended = match info.exit_code {
         Some(code) => format!("exited with {code}"),
         None => "did not finish".to_string(),
@@ -37,7 +41,7 @@ pub(super) fn failure_note(info: &CheckInfo, output: &str) -> String {
         lines.pop();
     }
     let lines = &lines[lines.len().saturating_sub(TAIL_LINES)..];
-    let mut note = format!("{check} failed: `{}` {ended}.", info.command);
+    let mut note = format!("{check} failed: `{command}` {ended}.");
     if lines.is_empty() {
         note.push_str(" It printed nothing.");
         return note;
@@ -269,6 +273,14 @@ mod tests {
         assert!(note.contains("The last 40 lines of its output:"), "{note}");
         assert!(!note.contains("line 60\n") && note.contains("```\nline 61\n") && note.contains("line 100\n```"), "{note}");
         assert!(!note.contains('\x1b'), "colour codes stripped");
+    }
+
+    #[test]
+    fn escapes_in_the_check_s_name_and_command_are_stripped() {
+        let info = CheckInfo { name: "te\x1b[201~st".into(), command: "npm test\x1b[201~\rrm -rf x".into(), ..failed(Some(1)) };
+        let note = failure_note(&info, "FAIL\n");
+        assert!(!note.contains('\x1b') && !note.contains('\r'), "{note:?}");
+        assert!(note.starts_with("The test check failed: `npm test rm -rf x` exited with 1."), "nothing hidden: {note:?}");
     }
 
     #[test]
