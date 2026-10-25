@@ -323,7 +323,7 @@ pub(super) fn draw_changes(app: &mut App, buf: &mut Buffer, area: Rect, t: &Them
     use super::views::ChangesRow;
     fill(buf, area, t.bg);
     let (green, red, yellow) = (t.done, t.err, Color::Rgb(0xe8, 0xc5, 0x65));
-    // The sheet's title says "Changes" and has the ✕: this line is the summary.
+    // The tab strip says "Changes" and the sheet has the ✕: this line is the summary.
     let mut left: Vec<Seg> = Vec::new();
     let right: Vec<Seg> = Vec::new();
     if let Some(r) = &v.review {

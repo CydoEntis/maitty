@@ -323,7 +323,7 @@ fn draw_rows(app: &mut App, buf: &mut Buffer, list: Rect, bg: Color, t: &Theme, 
 /// What follows the sheet's title: the project's folder.
 pub(in crate::client) fn references_title(app: &App) -> String {
     let Some(View::References(v)) = &app.view else { return String::new() };
-    format!("· {}", folder_name(&v.root))
+    folder_name(&v.root)
 }
 
 #[cfg(test)]

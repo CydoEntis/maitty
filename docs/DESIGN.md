@@ -100,7 +100,9 @@ screen). **Files**, **Changes**, **Branch** and **References** share one sheet w
 (`Files f · Changes c · Branch b · References a`), each tab at its own remembered width: Files a
 tree beside the open file (Markdown drawn), Changes the changed files and their diff, Branch the
 branch, ahead/behind, recent commits, the last check and snapshots, References the project's
-screenshots and design files, one line each (name, then kind, size and age muted at the right). The Inbox and the check evidence
+screenshots and design files, one line each (name, then kind, size and age muted at the right).
+The lit tab names the open view, so the sheet's top border does not repeat it: Files and
+Changes carry only the ✕, Branch and References their checkout's folder. The Inbox and the check evidence
 sheet dock in the same place without the strip. See UI › *the frame* (Sheet), *Inbox check
 groups* and *check evidence sheet*.
 

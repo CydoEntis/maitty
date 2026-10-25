@@ -385,7 +385,7 @@ pub(in crate::client) fn draw_branch(app: &mut App, buf: &mut Buffer, body: Rect
 /// What follows the sheet's title: the checkout's folder.
 pub(in crate::client) fn branch_title(app: &App) -> String {
     let Some(View::Branch(v)) = &app.view else { return String::new() };
-    format!("· {}", folder_name(&v.dir))
+    folder_name(&v.dir)
 }
 
 #[cfg(test)]

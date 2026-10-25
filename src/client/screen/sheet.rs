@@ -205,16 +205,18 @@ pub(in crate::client) fn heads_up(app: &App) -> Vec<(PathBuf, Overlap)> {
 }
 
 pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, kind: SheetKind, t: &Theme) {
+    // Files, Changes, Branch and References are named by the lit tab in their strip, so the
+    // title says only what the strip doesn't.
     let (title, sub, close) = match kind {
-        SheetKind::Inbox => ("INBOX", inbox_count(app).to_string(), ScreenHit::Close),
-        SheetKind::Changes | SheetKind::Both => ("Changes", String::new(), ScreenHit::ViewClose),
-        SheetKind::Files => ("Files", String::new(), ScreenHit::ViewClose),
-        SheetKind::Check => ("CHECK", check_title(app), ScreenHit::ViewClose),
-        SheetKind::Branch => ("BRANCH", branch_title(app), ScreenHit::ViewClose),
-        SheetKind::References => ("REFERENCES", references_title(app), ScreenHit::ViewClose),
+        SheetKind::Inbox => ("INBOX".to_string(), inbox_count(app).to_string(), ScreenHit::Close),
+        SheetKind::Both => ("Changes".to_string(), String::new(), ScreenHit::ViewClose),
+        SheetKind::Changes | SheetKind::Files => (String::new(), String::new(), ScreenHit::ViewClose),
+        SheetKind::Check => ("CHECK".to_string(), check_title(app), ScreenHit::ViewClose),
+        SheetKind::Branch => (branch_title(app), String::new(), ScreenHit::ViewClose),
+        SheetKind::References => (references_title(app), String::new(), ScreenHit::ViewClose),
     };
     // Lit while it has the keys; a click into a pane sets it aside, unlit, still open.
-    let mut c = Card::new(t, title);
+    let mut c = Card::new(t, &title);
     if sheet_has_keys(app) {
         c = c.lit(t.accent);
     }

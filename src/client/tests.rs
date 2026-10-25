@@ -4065,7 +4065,8 @@ second line
         app.open_changes(repo.clone());
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("─ Changes ") && o.contains("─ 1  claude "), "Changes docks beside the panes");
+        assert!(o.contains(" Changes c ") && o.contains("─ 1  claude "), "Changes docks beside the panes");
+        assert!(!o.contains("─ Changes "), "its lit tab names it; the title doesn't repeat it");
         let _ = std::fs::remove_dir_all(&repo);
     }
 
