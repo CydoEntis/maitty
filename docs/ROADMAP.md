@@ -741,6 +741,11 @@ Also: Files' editor selects and copies (user report 2026-10-24: no way to select
 Shift-selection, Ctrl+A and the mouse; Ctrl+C, Ctrl+X, Ctrl+V and the terminal's paste as text;
 Ctrl+Z / Ctrl+Y; the file shown (not edited) selects with the mouse and Ctrl+C copies. Built on
 `feat/editor-selection`; not checked live.
+Also: polish from the 0.43.3 trial (user decisions 2026-10-24): Grid panes lose their number chip
+(no key uses it; the top-left read `1  [1  name]`), and the sky frame and corner tag give way to
+one mode bar along the bottom with key suggestions from the keymap; Update and Restart move to
+its right end ([ADR 0024](adr/0024-the-mode-lives-in-a-bottom-bar.md)). Built on
+`feat/mode-bar`; not checked live.
 
 ## In scope
 
