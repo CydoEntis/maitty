@@ -178,9 +178,10 @@ pub(in crate::client) fn soften_block(buf: &mut Buffer, r: Rect, behind: &[(Colo
 const END_GLYPHS: [&str; 8] = [CAP_L, CAP_R, "▗", "▖", "▝", "▘", "▐", "▌"];
 
 /// Round the ends of a region just tinted (the pointer's hover), with rounded shapes on. An end
-/// cell holding only ground, or already a rounded end, becomes the region's cap or soft corner
-/// in its tinted colour, over `behind`, the ground there before the tint. An end with text in
-/// it stays square, so nothing is drawn over.
+/// already rounded keeps its shape in the tinted colour, over `behind`, the ground there before
+/// the tint. A one-line region's end holding only ground becomes a cap; a taller region's stays
+/// square, so a block of rows lights as one even block. An end with text in it stays square,
+/// so nothing is drawn over.
 pub(in crate::client) fn round_tinted(buf: &mut Buffer, r: Rect, behind: &[(Color, Color)], tint: impl Fn(Color) -> Color) {
     let r = r.intersection(buf.area);
     if !round() || r.width < 2 {
@@ -192,7 +193,7 @@ pub(in crate::client) fn round_tinted(buf: &mut Buffer, r: Rect, behind: &[(Colo
         for (x, glyph, under) in [(r.x, l, bl), (r.right() - 1, e, br)] {
             let cell = &mut buf[(x, y)];
             let shape = match cell.symbol() {
-                " " => cell.bg,
+                " " if r.height == 1 => cell.bg,
                 s if END_GLYPHS.contains(&s) => tint(cell.fg),
                 _ => continue,
             };

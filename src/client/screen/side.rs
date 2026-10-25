@@ -347,12 +347,13 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 fill(buf, row, rl.bg);
             }
             if look.round_rows && rl.bg != pb && row.width > 2 {
-                // The session's lines are one block; its ends stand where the edge bar would.
+                // A one-line row is a pill. A block of lines keeps square ends: caps would
+                // scallop it and quarter-cell corners notch it, so its lines meet as one block.
                 let first = (scroll..=i).rev().find(|&j| matches!(lines[j], Line::Sess(..)) || j == scroll).unwrap_or(i);
-                let block = row_rect(first, top + (first - scroll) as u16);
-                let (l, e) = block_ends(y - block.y, block.height);
-                buf[(row.x, y)].set_symbol(l).set_fg(rl.bg).set_bg(pb);
-                buf[(row.right() - 1, y)].set_symbol(e).set_fg(rl.bg).set_bg(pb);
+                if row_rect(first, top + (first - scroll) as u16).height == 1 {
+                    buf[(row.x, y)].set_symbol(CAP_L).set_fg(rl.bg).set_bg(pb);
+                    buf[(row.right() - 1, y)].set_symbol(CAP_R).set_fg(rl.bg).set_bg(pb);
+                }
             } else if let Some(c) = rl.bar {
                 check::edge(app, buf, cols.x, y, c, rl.bg);
             }

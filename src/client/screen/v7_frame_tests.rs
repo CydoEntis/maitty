@@ -389,34 +389,104 @@ fn round_tabs_cap_every_chip_on_the_ground_behind_the_title() {
     }
 }
 
+/// Every session row drawn on more than one line, in the order the sidebar lists them.
+fn block_rows(app: &App) -> Vec<(TermId, Rect)> {
+    let mut v: Vec<(TermId, Rect)> = app.hits.iter().filter_map(|(r, h)| match h {
+        super::super::Hit::Screen(ScreenHit::Session(t)) if r.height >= 2 => Some((*t, *r)),
+        _ => None,
+    }).collect();
+    v.sort_by_key(|(_, r)| r.y);
+    v
+}
+
+/// The first and last column of line `y` on the row's colour `c`.
+fn tinted_span(buf: &Buffer, row: Rect, y: u16, c: Color) -> Option<(u16, u16)> {
+    let lit: Vec<u16> = (row.x..row.right()).filter(|&x| buf[(x, y)].bg == c).collect();
+    Some((*lit.first()?, *lit.last()?))
+}
+
+/// The row's lines with, under each, `#` where the row's colour is the ground.
+fn shown(buf: &Buffer, row: Rect, c: Color) -> String {
+    (row.y..row.bottom()).map(|y| {
+        let text: String = (row.x..row.right()).map(|x| buf[(x, y)].symbol().to_string()).collect();
+        let tint: String = (row.x..row.right()).map(|x| if buf[(x, y)].bg == c { '#' } else { '.' }).collect();
+        format!("{text}\n{tint}\n")
+    }).collect()
+}
+
+/// A session that keeps a second line (what it asks, its agents, its check) is one even block
+/// when selected or hovered: every line lit across the same columns, no quarter-cell corners
+/// to notch it, and with `ui.rounded = full` square ends, since caps on each line would scallop.
 #[test]
-fn round_rows_draw_the_selected_session_as_one_softened_block_and_off_leaves_it_square() {
-    for layout in LAYOUTS {
-        for on in [false, true] {
-            let mut app = world(Stage::None);
-            app.cfg.ui.rounded = if on { crate::config::Rounding::Full } else { crate::config::Rounding::Off };
-            app.mode = Mode::Side;
-            let term = app.screen_model().iter().flat_map(|p| p.sessions().map(|s| s.term).collect::<Vec<_>>()).next().expect("a session");
-            app.screen.cursor_proj = None;
-            app.screen.cursor = Some(term);
-            buffer(&mut app, layout, 160, 45);
-            let row = app.hits.iter().find_map(|(r, h)| matches!(h, super::super::Hit::Screen(ScreenHit::Session(t)) if *t == term).then_some(*r)).expect("the session's row");
-            assert!(row.height >= 2, "a session is a block of lines: {layout:?}");
-            let buf = buffer(&mut app, layout, 160, 45);
-            let t = app.theme.clone();
-            for y in row.y..row.bottom() {
-                let (left, right) = (&buf[(row.x, y)], &buf[(row.right() - 1, y)]);
-                if on {
-                    let ends = block_ends(y - row.y, row.height);
-                    assert_eq!((left.symbol(), right.symbol()), ends, "line {y} of one block: {layout:?}");
-                    assert!(row.height == 1 || (left.symbol() != CAP_L && right.symbol() != CAP_R), "no pill per line: {layout:?}");
-                    assert_eq!((left.fg, right.fg), (t.sel_bg(), t.sel_bg()), "on the selection's colour: {layout:?}");
-                    assert_ne!(left.bg, t.sel_bg(), "over what is behind it, not the selection: {layout:?}");
-                } else {
-                    assert!(left.symbol() != CAP_L && right.symbol() != CAP_R, "square when off: {layout:?}");
+fn a_selected_or_hovered_two_line_session_is_one_even_block() {
+    use crate::config::Rounding;
+    for (stage, layout) in [Stage::None, Stage::Passed, Stage::Failed].into_iter().flat_map(|s| ["cards", "tiled", "compact", "grid"].map(|l| (s, l))) {
+        for side in ["left", "right"] {
+            for padding in ["0", "1", "2"] {
+                for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
+                    for selected in [true, false] {
+                        let mut app = v7_fixture::world(stage);
+                        app.snap.terms.get_mut(&2).expect("a session").subagents = vec!["a".into(), "b".into()];
+                        (app.cfg.ui.rounded, app.cfg.ui.sidebar_position, app.cfg.ui.padding) = (rounded, side.into(), padding.into());
+                        drawn_in(&mut app, layout);
+                        let rows = block_rows(&app);
+                        assert!(rows.len() >= 2, "sessions with a second line: {layout}");
+                        for (term, _) in rows {
+                            let at = format!("{stage:?} {layout} {side} pad {padding} {rounded:?} {} {term}", if selected { "selected" } else { "hovered" });
+                            app.hover = None;
+                            if selected {
+                                app.mode = Mode::Side;
+                                app.screen.cursor_proj = None;
+                                app.screen.cursor = Some(term);
+                            } else {
+                                app.mode = Mode::Normal;
+                                let row = block_rows(&app).into_iter().find(|(t, _)| *t == term).expect("the row").1;
+                                app.hover = Some(Position::new(row.x + row.width / 2, row.bottom() - 1));
+                            }
+                            let buf = drawn_in(&mut app, layout);
+                            let (_, row) = block_rows(&app).into_iter().find(|(t, _)| *t == term).expect("the row");
+                            let c = buf[(row.x + row.width / 2, row.y)].bg;
+                            if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
+                                println!("{at}\n{}", shown(&buf, row, c));
+                            }
+                            let spans: Vec<_> = (row.y..row.bottom()).map(|y| tinted_span(&buf, row, y, c)).collect();
+                            assert!(spans.iter().all(|s| s.is_some() && *s == spans[0]), "every line lit across the same columns {spans:?}: {at}\n{}", shown(&buf, row, c));
+                            for y in row.y..row.bottom() {
+                                for x in row.x..row.right() {
+                                    assert!(!["▗", "▖", "▝", "▘", CAP_L, CAP_R].contains(&buf[(x, y)].symbol()), "no corner or cap at {x},{y}: {at}\n{}", shown(&buf, row, c));
+                                }
+                                if rounded == Rounding::Full {
+                                    assert!((row.x..row.right()).all(|x| buf[(x, y)].bg == c), "square, the whole width: {at}\n{}", shown(&buf, row, c));
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+/// A session on one line keeps its half-circle caps when selected, with rounded shapes on.
+#[test]
+fn a_selected_one_line_session_ends_in_caps() {
+    for layout in ["cards", "tiled", "compact", "grid"] {
+        let mut app = world(Stage::None);
+        app.cfg.ui.rounded = crate::config::Rounding::Full;
+        drawn_in(&mut app, layout);
+        let (term, _) = app.hits.iter().find_map(|(r, h)| match h {
+            super::super::Hit::Screen(ScreenHit::Session(t)) if r.height == 1 => Some((*t, *r)),
+            _ => None,
+        }).expect("a one-line session");
+        app.mode = Mode::Side;
+        app.screen.cursor_proj = None;
+        app.screen.cursor = Some(term);
+        let buf = drawn_in(&mut app, layout);
+        let row = app.hits.iter().find_map(|(r, h)| matches!(h, super::super::Hit::Screen(ScreenHit::Session(t)) if *t == term).then_some(*r)).expect("the row");
+        let t = app.theme.clone();
+        let (left, right) = (&buf[(row.x, row.y)], &buf[(row.right() - 1, row.y)]);
+        assert_eq!((left.symbol(), right.symbol()), (CAP_L, CAP_R), "{layout}");
+        assert_eq!((left.fg, right.fg), (t.sel_bg(), t.sel_bg()), "on the selection's colour: {layout}");
     }
 }
 
@@ -546,3 +616,4 @@ fn a_block_of_lines_ends_in_soft_corners_and_one_line_in_caps() {
     assert_eq!(block_ends(1, 2), ("▝", "▘"));
     assert_eq!(block_ends(1, 3), ("▐", "▌"), "the sides between");
 }
+
