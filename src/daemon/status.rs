@@ -412,6 +412,9 @@ impl Daemon {
         if status == Status::Done && self.terms.get(&term).is_some_and(|t| t.awaiting_background) {
             return;
         }
+        // Every sound a window plays starts here or in `check_settled`: log it, so a sound
+        // nobody expected can be traced.
+        tracing::info!("pane {term}: windows told {status:?} (they may play its sound)");
         self.broadcast(|c| c.attach, ServerMsg::Attention { term, status });
         if (status != Status::Done || !self.is_helper(term))
             && let Some(t) = self.terms.get_mut(&term)
@@ -464,6 +467,7 @@ impl Daemon {
             let place = t.alert_place();
             let summary = t.summary.trim();
             let body = if summary.is_empty() { place } else { format!("{place} · {summary}") };
+            tracing::info!("pane {term}: no window open, desktop alert: {agent} {what}");
             if let Some(kind) = crate::alert::Kind::for_status(status) {
                 crate::alert::ring(&self.cfg.notify, kind);
             }
