@@ -735,12 +735,14 @@ impl Daemon {
         let ended = matches!(status, Status::Done | Status::Idle);
         if failed.is_some() {
             if ended {
+                tracing::info!("pane {term}: windows told Blocked by its check (they may play its sound)");
                 self.broadcast(|c| c.attach, ServerMsg::Attention { term, status: Status::Blocked });
                 self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{place}: check failed")));
                 self.alert(term, Status::Blocked, CHECK_FAILED_WHAT);
             }
         } else if let Some(command) = approve {
             if ended && t.checks.approval_told.replace(turn) != Some(turn) {
+                tracing::info!("pane {term}: windows told Blocked by its check (they may play its sound)");
                 self.broadcast(|c| c.attach, ServerMsg::Attention { term, status: Status::Blocked });
                 self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{place}: approve check: {command}")));
                 self.alert(term, Status::Blocked, NEEDS_APPROVAL_WHAT);
