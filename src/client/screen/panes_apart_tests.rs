@@ -376,8 +376,8 @@ fn press(app: &mut App, code: KeyCode, mods: KeyModifiers) {
 fn the_pane_menu_shows_the_real_bound_keys() {
     let mut app = split_world("floating", 2);
     let rows = pane_menu(&mut app);
-    assert_eq!(key_of(&rows, "Split side by side"), "v");
-    assert_eq!(key_of(&rows, "Split stacked"), "h");
+    assert_eq!(key_of(&rows, "Split side by side"), "h");
+    assert_eq!(key_of(&rows, "Split stacked"), "v");
     assert_eq!(key_of(&rows, "Close pane"), "x");
     assert_eq!(key_of(&rows, "Move pane right"), "Alt+→", "{rows:#?}");
     let rename = key_of(&rows, "Rename pane");

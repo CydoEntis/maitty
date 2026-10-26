@@ -19,7 +19,7 @@ ADR 0017: its rules still hold for every other default, and its test allows `?` 
 ## Alternatives considered
 
 - **Keep `F1`:** the user found it awkward.
-- **`h` for help:** `h` is split stacked (ADR 0017).
+- **`h` for help:** `h` is split side by side (ADR 0017).
 - **Keep copy mode on another letter:** the user chose no key.
 
 ## Consequences
