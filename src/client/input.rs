@@ -746,7 +746,7 @@ impl App {
             let hit = self.hits.iter().rev().find(|(r, _)| r.contains(pos)).map(|(_, h)| *h);
             let at = (m.column, m.row);
             match hit {
-                Some(Hit::Screen(screen::ScreenHit::Session(t) | screen::ScreenHit::RowChanges(t) | screen::ScreenHit::StripSession(t))) => self.menu_for_session(t, at),
+                Some(Hit::Screen(screen::ScreenHit::Session(t) | screen::ScreenHit::RowChanges(t))) => self.menu_for_session(t, at),
                 Some(Hit::Screen(screen::ScreenHit::Why(t))) if self.screen.side_rect.contains(pos) => self.menu_for_session(t, at),
                 Some(Hit::Screen(screen::ScreenHit::ToggleProj(pi))) => self.menu_for_project(pi, at),
                 _ => {

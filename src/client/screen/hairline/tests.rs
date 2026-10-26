@@ -90,13 +90,13 @@ fn nothing_is_rounded_or_boxed_even_with_rounding_on() {
 }
 
 #[test]
-fn the_bottom_is_the_strip_then_the_bar() {
+fn the_bottom_is_only_the_mode_bar() {
     for (label, app, buf) in every_frame() {
         let bar = mode_bar_row(&app, buf.area);
         assert_eq!(bar.y, buf.area.bottom() - 1, "{label}");
-        assert_eq!(framed(&app, buf.area).bottom(), bar.y - 1, "{label}: the layout ends over the strip");
-        let strip: String = (0..buf.area.width).map(|x| buf[(x, bar.y - 1)].symbol()).collect();
-        assert!(strip.starts_with(['━', '▸']), "{label}: {strip}");
+        assert_eq!(framed(&app, buf.area).bottom(), bar.y, "{label}: the layout runs down to the bar");
+        let over: String = (0..buf.area.width).map(|x| buf[(x, bar.y - 1)].symbol()).collect();
+        assert!(!over.contains('━'), "{label}: no status strip: {over}");
     }
 }
 
@@ -114,39 +114,6 @@ fn a_rule_says_the_panes_state() {
     assert_eq!(rule(&app, 3), vec![t.blocked], "needs you, not focused: amber");
     assert_eq!(rule(&app, 4), vec![t.line], "done, not focused: line");
     assert_eq!(rule(&app, 5), vec![t.line], "idle, not focused: line");
-}
-
-#[test]
-fn the_strip_has_a_segment_per_session_in_its_state_colour() {
-    let mut app = hairline_world(1);
-    let buf = draw(&mut app, 100, 30);
-    let t = app.theme.clone();
-    let y = mode_bar_row(&app, buf.area).y - 1;
-    let mut runs: Vec<(Color, u16)> = Vec::new();
-    for x in 0..buf.area.width {
-        let c = &buf[(x, y)];
-        match (c.symbol(), runs.last_mut()) {
-            ("━", Some((fg, n))) if *fg == c.fg && ["━", "▸"].contains(&buf[(x - 1, y)].symbol()) => *n += 1,
-            ("━", _) => runs.push((c.fg, 1)),
-            // The session on screen leads with a `▸`: its segment's colour is the line after it.
-            ("▸", _) => runs.push((buf[(x + 1, y)].fg, 1)),
-            _ => {}
-        }
-    }
-    // Sidebar order: warm-finch (pixls), fix-footer and add-payments, quick-fox and old-moth.
-    let colours: Vec<Color> = runs.iter().map(|(c, _)| *c).collect();
-    assert_eq!(colours, [t.blocked, t.done, t.accent, t.done, t.muted]);
-    let widths: Vec<u16> = runs.iter().map(|(_, n)| *n).collect();
-    assert!(widths.iter().max().unwrap() - widths.iter().min().unwrap() <= 1, "equal shares: {widths:?}");
-    assert_eq!(widths.iter().sum::<u16>() + 4, buf.area.width, "full width, a column between segments");
-}
-
-#[test]
-fn many_sessions_fall_back_to_a_cell_each() {
-    let sessions: Vec<(TermId, Color)> = (1..=20).map(|i| (i, Color::Reset)).collect();
-    let segs = super::strip::segments(&sessions, Rect::new(0, 0, 160, 1));
-    assert_eq!(segs.len(), 20);
-    assert!(segs.iter().enumerate().all(|(i, &(_, _, x, w))| w == 1 && x == 2 * i as u16), "left-aligned, one cell each");
 }
 
 #[test]
@@ -340,8 +307,8 @@ fn every_theme_draws_hairline_from_its_own_roles() {
         assert_eq!(buf[(r.x + 1, r.y + 1)].fg, t.accent, "{name}: the focused rule");
         let other = pane_at(&app, 3);
         assert_eq!(buf[(other.x + 1, other.y + 1)].fg, t.blocked, "{name}: needs you");
-        let strip = mode_bar_row(&app, buf.area).y - 1;
-        assert!((0..buf.area.width).any(|x| buf[(x, strip)].fg == t.blocked), "{name}: the strip says needs you");
+        let bar = mode_bar_row(&app, buf.area).y;
+        assert!((0..buf.area.width).any(|x| buf[(x, bar)].fg == t.blocked), "{name}: the bar says needs you");
     }
 }
 
@@ -388,4 +355,28 @@ fn the_bar_counts_who_needs_you_and_keeps_update_at_its_end() {
     let buf = draw(&mut app, 160, 45);
     let row: String = (bar.x..bar.right()).map(|x| buf[(x, bar.y)].symbol()).collect::<String>();
     assert!(row.trim_end().ends_with("all clear"), "{row}");
+}
+
+#[test]
+fn a_lone_tab_still_offers_a_plus_that_opens_a_tab() {
+    let mut app = hairline_world(1);
+    let buf = draw(&mut app, 120, 30);
+    let title = Rect { height: 1, ..pane_at(&app, app.focused().unwrap()) };
+    let (x, y) = find_in(&buf, title, "+").expect("a + on the only tab's title");
+    assert!(app.hits.iter().any(|(r, h)| *h == Hit::Screen(ScreenHit::NewTab) && r.x == x && r.y == y), "the + opens a tab");
+    show("one tab", &buf);
+}
+
+#[test]
+fn a_tab_out_of_view_shows_its_agents_state() {
+    let mut app = hairline_world(1);
+    let mut second = app.screen.tabs[app.screen.tab].clone();
+    (second.layout, second.focus, second.name) = (Node::Leaf(2), 2, "tests".into());
+    app.screen.tabs.push(second);
+    let buf = draw(&mut app, 160, 45);
+    let title = Rect { height: 1, ..pane_at(&app, app.focused().unwrap()) };
+    let (x, y) = find_in(&buf, title, "2 tests").expect("the other tab");
+    assert_eq!(buf[(x - 2, y)].fg, app.theme.accent, "its working agent's mark leads it, teal");
+    assert_ne!(buf[(x - 2, y)].symbol(), " ");
+    show("a working tab out of view", &buf);
 }

@@ -26,8 +26,7 @@ Panes split as in Tiled. The drawing differs:
   `strong`, `project · ⎇ branch`, the state word and the ✕) over a full-width `─` rule:
   teal focused, amber needs you, else `line`. `│` / `─` only between panes, never round
   the outside; two columns of padding inside.
-- **Bottom:** a status strip, one `━` segment per session in its state's colour, over the
-  mode bar, which adds the look and pane count after TYPING and `● N needs you` or
+- **Bottom:** the mode bar alone, which adds the look and pane count after TYPING and `● N needs you` or
   `all clear` at its right end (before Update or Restart, which keep the end). Shortcut mode
   keeps its sky row.
 - **Always square:** `ui.rounded` is ignored while Hairline is chosen (`Ui::rounding`), and
@@ -49,7 +48,9 @@ onto the theme's roles, so every theme draws it.
 ## Consequences
 
 A fifth look to test: `hairline/tests.rs` draws it at three sizes with one, two and four
-panes, and `hairline/surface_tests.rs` every menu, popup and side panel. Hairline costs two
-bottom rows instead of one. Menus, popups and panels draw with the same lines and no filled
+panes, and `hairline/surface_tests.rs` every menu, popup and side panel. Menus, popups and panels draw with the same lines and no filled
 chips (a flat theme and `hairline::plain`), so a new chip drawn by hand must go through
 `plain` to stay unfilled there.
+
+The status strip was later dropped at the user's request: the sidebar already shows every
+session's state, so the strip only cost a row. The tabs' marks keep a tab out of view in sight.

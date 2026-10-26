@@ -59,7 +59,7 @@ and sheets.
 - **Tiled**: the same boxes, edge to edge, never merged.
 - **Compact**: full-bleed zones, a header strip on row 0, zones split by one `│`.
 - **Grid**: boxes with gaps, each pane in its own colour by its place in the tab.
-- **Hairline**: no boxes at all, only `│` / `─` hairlines, and a status strip; always square
+- **Hairline**: no boxes at all, only `│` / `─` hairlines; always square
   (see *Hairline* below).
 
 `ui.padding` leaves 0, 1 or 2 empty cells round the screen. See UI › *layout and navigation*
@@ -157,15 +157,14 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
   two dim words, no keys: `new` at the left, `menu` at the right.
 - **Panes:** row 1 is the pane's number while the tab is split (bold: teal focused, amber when
   it needs you, else dim), the glyph, the name in `strong` bold, the session's tabs as
-  plain words when it has several (the current one teal), then `project · ⎇ branch` dim; at the
+  plain words when it has several (the current one teal, each led by its most urgent agent's
+  mark, so a tab out of view still shows it works or asks), on the top-left pane a dim `+` that
+  opens a tab (there even with one tab), then `project · ⎇ branch` dim; at the
   right the state (`needs you · 2m` or `needs you · approve check` amber bold, `working` teal,
   `done` green, `idle` dim) and
   the ✕. Row 2 is a `─` rule the pane's width: teal focused (`sky()` in shortcut mode), amber
   when it needs you and is not focused, else `line`. Panes side by side or stacked are parted
   by one `│` or `─`, never boxed; the terminal sits two columns in.
-- **Status strip:** the row over the mode bar, one `━` segment per session in the sidebar's
-  order, a column apart, in its state's colour (idle dim). The session on screen is yours: its
-  segment sits on `raised` and leads with a teal bold `▸`, the rest keeping its state's colour.
 - **Mode bar:** `TYPING` is a teal bold word, then `Hairline · 2 panes` dim, then the hint;
   whatever has the keys is named in `strong` bold, no chip. At the right `● N needs you` in
   amber bold, or `all clear` dim, just before Update or Restart. Shortcut mode keeps its sky row.
