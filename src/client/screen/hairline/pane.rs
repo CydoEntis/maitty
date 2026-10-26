@@ -91,8 +91,8 @@ fn draw_title(app: &mut App, buf: &mut Buffer, body: Rect, info: &TermInfo, focu
     if let Some(at) = glyph_at {
         hit(app, Rect { x: x0 + at, y, width: 1, height: 1 }, ScreenHit::Why(info.id));
     }
-    if is_top_left(app, info.id) && app.session_tabs().len() > 1 {
-        x = draw_tabs(app, buf, x, y, left_end, model, ink);
+    if is_top_left(app, info.id) {
+        x = draw_tabs(app, buf, x, y, left_end, model, t);
     }
     let meta = meta_text(app, info, model);
     let meta_x = x + GAP;
@@ -203,23 +203,25 @@ fn is_top_left(app: &App, term: TermId) -> bool {
     app.screen.leaf_rects.iter().min_by_key(|(_, lr)| (lr.y, lr.x)).is_some_and(|(id, _)| *id == term)
 }
 
-/// The session's tabs as plain words from `x`, the current one teal and bold, then a dim `+`
-/// that opens one. A tab that does not fit before `end` is left out, with the `+`; returns
-/// where the tabs end.
-fn draw_tabs(app: &mut App, buf: &mut Buffer, x: u16, y: u16, end: u16, model: &[Proj], ink: Ink) -> u16 {
+/// The session's tabs as plain words from `x` (only when it has several), each led by its
+/// state's mark, the current one teal and bold, then a dim `+` that opens one. A tab that does
+/// not fit before `end` is left out, with the `+`; returns where the tabs end.
+fn draw_tabs(app: &mut App, buf: &mut Buffer, x: u16, y: u16, end: u16, model: &[Proj], t: &Theme) -> u16 {
+    let ink = Ink::of(t);
     let st = Style::default().bg(ink.bg);
     let tabs = app.session_tabs();
     let mut at = x;
-    for (n, &i) in tabs.iter().enumerate() {
+    for (n, &i) in tabs.iter().enumerate().filter(|_| tabs.len() > 1) {
         let name = tab_name(&app.screen.tabs[i]).unwrap_or_else(|| session_name(app, model, app.screen.tabs[i].focus));
-        let label = format!("{} {name}", n + 1);
-        let w = label.width() as u16;
+        let style = if i == app.screen.tab { st.fg(ink.teal).add_modifier(Modifier::BOLD) } else { st.fg(ink.dim) };
+        let mut label: Vec<Seg> = tab_mark(app, i, t).map(|(g, c)| seg(format!("{g} "), st.fg(c).add_modifier(Modifier::BOLD))).into_iter().collect();
+        label.push(seg(format!("{} {name}", n + 1), style));
+        let w = segs_width(&label);
         let tx = at + GAP;
         if tx + w > end {
             return at;
         }
-        let style = if i == app.screen.tab { st.fg(ink.teal).add_modifier(Modifier::BOLD) } else { st.fg(ink.dim) };
-        put(buf, tx, y, &[seg(label, style)], end);
+        put(buf, tx, y, &label, end);
         hit(app, Rect { x: tx, y, width: w, height: 1 }, ScreenHit::TabPick(i));
         at = tx + w;
     }
@@ -229,6 +231,14 @@ fn draw_tabs(app: &mut App, buf: &mut Buffer, x: u16, y: u16, end: u16, model: &
         at += GAP + 1;
     }
     at
+}
+
+/// The mark of the tab's most urgent agent, so a tab out of view still shows it works or asks.
+fn tab_mark(app: &App, tab: usize, t: &Theme) -> Option<(String, Color)> {
+    let urgency = |i: &TermInfo| if pane_needs(i) { 0 } else { i.status.urgency() };
+    let leaves = app.screen.tabs.get(tab)?.layout.leaves();
+    let info = leaves.iter().filter_map(|id| app.snap.terms.get(id)).filter(|i| i.agent.is_some()).min_by_key(|i| urgency(i))?;
+    mark(app, info, t)
 }
 
 /// `project · ⎇ branch`, from the session's sidebar row, else the pane's own branch.
