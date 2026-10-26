@@ -25,8 +25,8 @@ one thing (ADR 0017, 0022).
 | Key | Action |
 |---|---|
 | `←` `↓` `↑` `→` | Move to the pane that way (left past the edge: the sidebar) |
-| `v` | Split side by side |
-| `h` | Split stacked |
+| `v` | Split stacked (new pane underneath) |
+| `h` | Split side by side (new pane beside) |
 | `x` | Close what has the keys: the side panel (Files, Changes, Branch, a check) when it has them, else the focused pane, after asking |
 | `Ctrl`+arrows | Resize the pane |
 | `Alt`+arrows | Swap the pane with the one that way |
@@ -129,7 +129,7 @@ or another program follow that program's own help.
 
 Every key is a leader key: there is no letter that acts by itself in the sidebar.
 The defaults are one key each, none but `?` needing Shift, chosen from what other apps use
-(ADR 0017, 0022): `v` / `h` split side by side / stacked, `c` Changes, `i` Inbox, `y` why, `k` stop
+(ADR 0017, 0022): `v` / `h` split stacked / side by side, `c` Changes, `i` Inbox, `y` why, `k` stop
 the agent, `Enter` message it, `o` session with options, `p` find a file, `g` worktrees, `b`
 Branch, `a` references, `l` what happened, `?` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image,
 `Ctrl`+arrows resize, `Alt`+arrows swap panes, `1`–`9` go to a tab. Your own `[keys.prefix]` entries still load.
