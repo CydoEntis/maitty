@@ -344,8 +344,9 @@ saved to the data directory a couple of seconds after it changes. On the next st
   opens as a shell.
 
 `maitty kill-server` keeps the session for next time, and `maitty kill-server --forget` discards it.
-Closing every pane yourself also starts fresh. A burst of panes dying at once, as at logoff or a
-crash, is not recorded, so the last good layout survives. Configure all of this under `[restore]`,
+Closing every pane yourself also starts fresh. A pane or agent that ends on its own is left out
+of the saved session for 15 seconds: a shutdown, reboot or logoff kills agents a moment before
+maitty, so the session from before it is the one that comes back. Configure all of this under `[restore]`,
 and per agent with `resume` / `resume_last`. Each pane's recent output is kept on disk so it is
 there after a restart; it can hold secrets that were on screen, so `output = false` (Settings ›
 Sessions › Keep each pane's recent output) stops saving it and deletes what was saved.

@@ -288,6 +288,7 @@ impl Daemon {
                 t.status = Status::None;
                 t.status_since = term::unix_now();
                 self.dirty = true;
+                self.last_loss = Some(now);
                 return;
             }
             // Claude's "still waiting for you", a minute after its turn ended, isn't a second

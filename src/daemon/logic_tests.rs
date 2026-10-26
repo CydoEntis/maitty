@@ -3284,3 +3284,40 @@ fn with_output_off_nothing_is_saved_and_what_was_saved_goes() {
     close(&mut d2, &[new]);
     assert!(!replay.contains(concat!(env!("APP_COMMAND"), " restarted here")) && !replay.contains("hunter2"), "{replay}");
 }
+
+/// One saved workspace with a Claude pane, restored without starting Claude.
+fn restored_claude_pane(d: &mut Daemon) -> TermId {
+    d.cfg.restore.agents = false;
+    let dir = std::env::temp_dir();
+    let pane = persist::SavedPane { cwd: Some(dir.clone()), agent: Some("claude".into()), session: Some("abc123".into()), ..Default::default() };
+    let tab = persist::SavedTab { name: String::new(), layout: crate::layout::Node::Leaf(1), focus: 1, panes: [(1, pane)].into() };
+    let ws = persist::SavedWs { name: "w".into(), cwd: dir, worktree: false, color: None, group: None, tabs: vec![tab], active_tab: 0 };
+    d.restore(persist::Saved { workspaces: vec![ws], active: 0, made_worktrees: Vec::new() });
+    d.workspaces[0].tabs[0].focus
+}
+
+#[test]
+fn an_agent_that_quits_stays_saved_until_the_server_outlives_the_hold() {
+    let (mut d, _rx) = daemon();
+    let id = restored_claude_pane(&mut d);
+    d.persist(false);
+    assert!(d.last_saved.contains("abc123"), "saved as a Claude conversation");
+    d.hook(id, "claude".into(), HookStatus::Gone, "SessionEnd", &[]);
+    d.persist(false);
+    assert!(d.last_saved.contains("abc123"), "a shutdown kills agents first: the save still resumes it");
+    d.last_loss = Some(Instant::now() - LOSS_HOLD - Duration::from_secs(1));
+    d.persist(false);
+    assert!(!d.last_saved.contains("abc123"), "still running after the hold: you quit it, so it's saved as a shell");
+    close(&mut d, &[id]);
+}
+
+#[test]
+fn the_server_waits_out_the_hold_before_forgetting_sessions() {
+    let (mut d, _rx) = daemon();
+    let id = restored_claude_pane(&mut d);
+    d.handle(Ev::Exited(id));
+    assert!(d.terms.is_empty() && d.had_terms, "the last pane ended on its own");
+    assert!(!d.should_exit(), "a reboot may be killing everything: don't exit and forget yet");
+    d.last_loss = Some(Instant::now() - LOSS_HOLD - Duration::from_secs(1));
+    assert!(d.should_exit(), "it was only that pane ending");
+}

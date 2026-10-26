@@ -66,9 +66,10 @@ const WORKTREE_SWEEP_FIRST: Duration = Duration::from_secs(60);
 const EVERYONE: ClientId = ClientId::MAX;
 /// A daemon nothing ever used (no panes, no clients) exits after this.
 const EXIT_WHEN_UNUSED_FOR: Duration = Duration::from_secs(30);
-/// Two panes ending on their own within this window means something killed them all
-/// (a reboot, a logoff): their sessions are kept for the next start.
-const MASS_EXIT_WINDOW: Duration = Duration::from_secs(5);
+/// How long a pane or agent ending on its own is kept out of the saved session. A shutdown
+/// or reboot kills agents and shells a moment before the server: a server still running
+/// after this saw a real exit, one killed within it keeps every session for the next start.
+const LOSS_HOLD: Duration = Duration::from_secs(15);
 
 #[allow(clippy::large_enum_variant)]
 pub enum Ev {
@@ -222,9 +223,8 @@ struct Daemon {
     last_worktree_sweep: Instant,
     /// The last automatic workspace move, for undo.
     auto_undo: Option<AutoUndo>,
-    /// Panes whose process ended on its own, recently. Several at once means a crash,
-    /// logoff or reboot is tearing things down, which must not overwrite the saved session.
-    natural_exits: Vec<Instant>,
+    /// When a pane's process or a pane's agent last ended on its own (see `LOSS_HOLD`).
+    last_loss: Option<Instant>,
 }
 
 pub fn run() -> Result<()> {
@@ -539,7 +539,7 @@ impl Daemon {
             adopt: None,
             adopted: None,
             last_worktree_sweep: crate::clock::ago(WORKTREE_SWEEP_EVERY - WORKTREE_SWEEP_FIRST),
-            natural_exits: Vec::new(),
+            last_loss: None,
             auto_undo: None,
         }
     }
@@ -571,7 +571,7 @@ impl Daemon {
                         self.last_save = Instant::now();
                         self.persist(false);
                     }
-                    if self.last_output_save.elapsed() > OUTPUT_SAVE_EVERY && !self.mass_exit() {
+                    if self.last_output_save.elapsed() > OUTPUT_SAVE_EVERY && !self.losing() {
                         self.last_output_save = Instant::now();
                         self.save_outputs(false);
                     }
@@ -585,11 +585,8 @@ impl Daemon {
             }
             if self.should_exit() {
                 tracing::info!("no panes left; exiting");
-                // The user closed everything, so start fresh next time. A mass exit is a
-                // crash or shutdown: leave the saved session for restore.
-                if !self.mass_exit() {
-                    persist::forget();
-                }
+                // The user closed everything, so start fresh next time.
+                persist::forget();
                 self.broadcast(|_| true, ServerMsg::Bye);
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 let _ = std::fs::remove_file(ipc::pid_file());
@@ -628,7 +625,7 @@ impl Daemon {
     fn should_exit(&self) -> bool {
         // A window still showing the app (empty projects, the splash) keeps it open: closing
         // the last pane mustn't close the app under you.
-        if !self.terms.is_empty() || self.pending_ops > 0 || self.clients.values().any(|c| c.attach) {
+        if !self.terms.is_empty() || self.pending_ops > 0 || self.clients.values().any(|c| c.attach) || self.losing() {
             return false;
         }
         // Exit once the last pane is closed and no window is left, or if nobody ever started one.
@@ -777,8 +774,7 @@ impl Daemon {
                     return;
                 }
                 if self.terms.contains_key(&tid) {
-                    self.natural_exits.retain(|t| t.elapsed() < MASS_EXIT_WINDOW);
-                    self.natural_exits.push(Instant::now());
+                    self.last_loss = Some(Instant::now());
                     self.remove_term(tid);
                 }
             }
@@ -867,6 +863,7 @@ impl Daemon {
                         if f.agent.is_none() {
                             t.session = None;
                             t.summary.clear();
+                            self.last_loss = Some(Instant::now());
                         }
                         t.agent = f.agent;
                         t.hooked = false;
