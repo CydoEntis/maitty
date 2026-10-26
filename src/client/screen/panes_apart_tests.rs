@@ -109,66 +109,6 @@ fn a_click_on_a_pane_s_title_row_takes_the_keys_from_a_side_panel_in_every_look(
     }
 }
 
-/// Where `term`'s strip segment was drawn.
-fn segment_of(app: &App, term: TermId) -> Rect {
-    app.hits.iter().find(|(_, h)| *h == Hit::Screen(ScreenHit::StripSession(term))).map(|(r, _)| *r).expect("a strip segment")
-}
-
-/// The colours along the focused pane's rule.
-fn rule_colours(app: &App, buf: &Buffer) -> Vec<Color> {
-    let focus = app.focused().expect("a focused pane");
-    let r = app.screen.leaf_rects.iter().find(|(id, _)| *id == focus).map(|(_, r)| *r).expect("the pane is on screen");
-    let mut c: Vec<Color> = (r.x..r.right() - 1).map(|x| buf[(x, r.y + 1)].fg).collect();
-    c.dedup();
-    c
-}
-
-#[test]
-fn a_strip_segment_gives_its_pane_the_keys_while_the_sidebar_holds_them() {
-    let mut app = split_world("hairline", 2);
-    let focus = app.focused().expect("a focused pane");
-    app.screen_side_set(SideItem::Sess(focus));
-    let buf = draw(&mut app, 160, 45);
-    assert_eq!(rule_colours(&app, &buf), vec![app.theme.line], "the sidebar has the keys: the rule is not lit");
-    let (tx, mut rx) = mpsc::unbounded_channel();
-    app.out = tx;
-    let seg = segment_of(&app, focus);
-    click(&mut app, seg.x + 1, seg.y);
-    assert_eq!(app.mode, Mode::Normal, "the sidebar lets go");
-    assert_eq!(focused_by(&mut rx), vec![focus]);
-    let buf = draw(&mut app, 160, 45);
-    assert_eq!(rule_colours(&app, &buf), vec![app.theme.accent], "the pane's rule is teal");
-    let bar: String = (0..160).map(|x| buf[(x, 44)].symbol()).collect();
-    assert!(bar.contains("TYPING"), "{bar}");
-    let other = 4;
-    app.screen_side_set(SideItem::Sess(focus));
-    draw(&mut app, 160, 45);
-    let seg = segment_of(&app, other);
-    click(&mut app, seg.x + 1, seg.y);
-    assert_eq!((app.mode.clone(), focused_by(&mut rx)), (Mode::Normal, vec![other]), "another session's segment opens it with the keys");
-}
-
-#[test]
-fn the_strip_marks_the_focused_session_s_segment() {
-    let mut app = split_world("hairline", 2);
-    let focus = app.focused().expect("a focused pane");
-    let buf = draw(&mut app, 160, 45);
-    let t = app.theme.clone();
-    let segments: Vec<TermId> = app.hits.iter().filter_map(|(_, h)| if let Hit::Screen(ScreenHit::StripSession(t)) = h { Some(*t) } else { None }).collect();
-    assert!(segments.len() == 4 && segments.contains(&focus), "a segment per row: {segments:?}");
-    for term in segments {
-        let r = segment_of(&app, term);
-        let cells: Vec<&ratatui::buffer::Cell> = (r.x..r.right()).map(|x| &buf[(x, r.y)]).collect();
-        if term == focus {
-            assert_eq!((cells[0].symbol(), cells[0].fg), ("▸", t.accent), "the focused segment leads with a teal ▸");
-            assert!(cells.iter().all(|c| c.bg == t.card2), "on the raised ground");
-            assert!(cells[1..].iter().all(|c| c.symbol() == "━" && c.fg == t.blocked), "its status colour stays: amber, as warm-finch in its split asks");
-        } else {
-            assert!(cells.iter().all(|c| c.symbol() == "━" && c.bg == t.bg), "{term}: a plain segment");
-        }
-    }
-}
-
 fn text(buf: &Buffer) -> String {
     let a = buf.area;
     (a.y..a.bottom()).map(|y| (a.x..a.right()).map(|x| buf[(x, y)].symbol()).collect::<String>().trim_end().to_string() + "\n").collect()

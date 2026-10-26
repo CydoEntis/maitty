@@ -11,13 +11,12 @@ use super::*;
 
 mod pane;
 mod side;
-mod strip;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod surface_tests;
 
-pub(in crate::client) use self::{pane::pane_frame, side::draw_side, strip::draw_strip};
+pub(in crate::client) use self::{pane::pane_frame, side::draw_side};
 
 /// The sidebar's width before you drag it, in columns; its `│` is one more.
 pub(in crate::client) const SIDE_W: u16 = 28;
@@ -51,39 +50,12 @@ impl Ink {
     pub fn of(t: &Theme) -> Ink {
         Ink { bg: t.bg, raised: t.card2, line: t.line, text: t.text, strong: t.strong, dim: t.muted, teal: t.accent, amber: t.blocked, green: t.done }
     }
-
-    /// A state's colour: working teal, needs you amber, done green, anything else dim.
-    pub fn of_status(self, status: Status) -> Color {
-        match status {
-            Status::Working => self.teal,
-            Status::Blocked => self.amber,
-            Status::Done => self.green,
-            _ => self.dim,
-        }
-    }
-
-    /// A sidebar session's colour: amber whenever it needs you, a check to approve included.
-    fn of_session(self, s: &Session) -> Color {
-        if check::needs_you(s) { self.amber } else { self.of_status(s.status) }
-    }
 }
 
 /// The working mark: the chosen spinner while motion is on (or in the ASCII set), else `⠿`.
 fn working_glyph(app: &App) -> String {
     let ascii = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons) == &glyphs::ASCII;
     if app.motion_on() || ascii { glyph(app, Status::Working) } else { STILL_WORKING.into() }
-}
-
-/// The sessions in sidebar order: the rows as the sidebar lists them, then those of folded
-/// projects. The strip draws its segments in this order.
-fn session_order(app: &App, model: &[Proj], t: &Theme) -> Vec<TermId> {
-    let mut order: Vec<TermId> = side_lines(app, model, t).iter().filter_map(|l| line_term(model, l)).collect();
-    for s in model.iter().flat_map(Proj::sessions) {
-        if !order.contains(&s.term) {
-            order.push(s.term);
-        }
-    }
-    order
 }
 
 /// A one-cell-wide `│` down `r`'s first column, in `colour`.

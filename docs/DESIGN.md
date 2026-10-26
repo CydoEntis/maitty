@@ -59,7 +59,7 @@ and sheets.
 - **Tiled**: the same boxes, edge to edge, never merged.
 - **Compact**: full-bleed zones, a header strip on row 0, zones split by one `│`.
 - **Grid**: boxes with gaps, each pane in its own colour by its place in the tab.
-- **Hairline**: no boxes at all, only `│` / `─` hairlines, and a status strip; always square
+- **Hairline**: no boxes at all, only `│` / `─` hairlines; always square
   (see *Hairline* below).
 
 `ui.padding` leaves 0, 1 or 2 empty cells round the screen. See UI › *layout and navigation*
@@ -163,9 +163,6 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
   the ✕. Row 2 is a `─` rule the pane's width: teal focused (`sky()` in shortcut mode), amber
   when it needs you and is not focused, else `line`. Panes side by side or stacked are parted
   by one `│` or `─`, never boxed; the terminal sits two columns in.
-- **Status strip:** the row over the mode bar, one `━` segment per session in the sidebar's
-  order, a column apart, in its state's colour (idle dim). The session on screen is yours: its
-  segment sits on `raised` and leads with a teal bold `▸`, the rest keeping its state's colour.
 - **Mode bar:** `TYPING` is a teal bold word, then `Hairline · 2 panes` dim, then the hint;
   whatever has the keys is named in `strong` bold, no chip. At the right `● N needs you` in
   amber bold, or `all clear` dim, just before Update or Restart. Shortcut mode keeps its sky row.

@@ -975,8 +975,6 @@ pub(super) enum ScreenHit {
     ToggleProj(usize),
     /// The sidebar's "+ new": a plain shell in the selected project.
     Session(TermId),
-    /// A status strip segment: its session's pane, with the keys.
-    StripSession(TermId),
     /// A button on the selected Inbox item: the key it stands for (`\n` Enter, `\x1b` Esc).
     InboxKey(char),
     CloseSplit(TermId),
