@@ -50,21 +50,10 @@ fn padded(app: &App, area: Rect) -> Rect {
     Rect { x: area.x + m, y: area.y + m, width: area.width.saturating_sub(2 * m), height: area.height.saturating_sub(2 * m) }
 }
 
-/// Rows along the bottom under the layout: the mode bar, and in Hairline the status strip over it.
-fn bottom_rows(app: &App) -> u16 {
-    if Look::of(&app.cfg.ui).hairline { 2 } else { 1 }
-}
-
-/// The room the screen is laid out in: inside the padding, above the mode bar (and the strip).
+/// The room the screen is laid out in: inside the padding, above the mode bar.
 pub(in crate::client) fn framed(app: &App, area: Rect) -> Rect {
     let r = padded(app, area);
-    Rect { height: r.height.saturating_sub(bottom_rows(app)), ..r }
-}
-
-/// Hairline's status strip: the row over the mode bar.
-fn strip_row(app: &App, area: Rect) -> Option<Rect> {
-    let bar = mode_bar_row(app, area);
-    (Look::of(&app.cfg.ui).hairline && bar.y > padded(app, area).y).then(|| Rect { y: bar.y - 1, ..bar })
+    Rect { height: r.height.saturating_sub(1), ..r }
 }
 
 /// The mode bar's row (ADR 0024): the bottom row inside the padding.
@@ -73,10 +62,10 @@ pub(in crate::client) fn mode_bar_row(app: &App, area: Rect) -> Rect {
     Rect { y: r.bottom().saturating_sub(1), height: r.height.min(1), ..r }
 }
 
-/// Where popups and their dimming go: the window above the mode bar (and the strip), so the
-/// mode stays in view and readable under any of them.
+/// Where popups and their dimming go: the window above the mode bar, so the mode stays in
+/// view and readable under any of them.
 pub(in crate::client) fn above_bar(app: &App, area: Rect) -> Rect {
-    let top = strip_row(app, area).unwrap_or_else(|| mode_bar_row(app, area)).y;
+    let top = mode_bar_row(app, area).y;
     Rect { height: top.saturating_sub(area.y), ..area }
 }
 
@@ -197,9 +186,6 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     if let Some(kind) = open_sheet(app).filter(|_| g.sheet.width >= SHEET_DRAWN_FROM) {
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
         draw_sheet_edge(app, f.buffer_mut(), &g, t);
-    }
-    if let Some(row) = strip_row(app, area) {
-        hairline::draw_strip(app, f.buffer_mut(), row, &model, t);
     }
     draw_mode_bar(app, f.buffer_mut(), mode_bar_row(app, area), t);
     app.screen.crumb_x = g.panes.x + 1;
