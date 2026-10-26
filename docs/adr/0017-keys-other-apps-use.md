@@ -14,8 +14,8 @@ asked for keys that are sensible and that many apps use, with no overlaps.
 
 The defaults are `DEFAULT_PREFIX_KEYS` in `src/keys.rs`: one key per action, no key bound
 twice, none needing Shift, and where another app has a habit, its key: `t` new tab and
-`Ctrl+W` close it (browsers), `x` close pane and `1`–`9` tabs (tmux), `v` / `h` split side by
-side / stacked (the user's choice: the line between the panes is vertical / horizontal), `c`
+`Ctrl+W` close it (browsers), `x` close pane and `1`–`9` tabs (tmux), `v` / `h` split stacked /
+side by side (the user's choice: `v` stacks the panes vertically, `h` lines them up horizontally), `c`
 copy mode, `p` find a file (editors' Ctrl+P), `/` search, `,` settings (VS Code), `F1` help,
 `Ctrl+V` paste, `Ctrl`+arrows resize, `Space` search commands. Hide sidebar, prompt jumps, new
 worktree, rename workspace and send-prefix have no default key; search commands finds them.

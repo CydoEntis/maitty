@@ -49,13 +49,14 @@ impl Daemon {
         }
     }
 
-    pub(super) fn mass_exit(&self) -> bool {
-        self.natural_exits.iter().filter(|t| t.elapsed() < MASS_EXIT_WINDOW).count() >= 2
+    /// A pane or agent ended on its own within `LOSS_HOLD`: it may be a shutdown under way.
+    pub(super) fn losing(&self) -> bool {
+        self.last_loss.is_some_and(|t| t.elapsed() < LOSS_HOLD)
     }
 
-    /// Write the session file if it changed. `force` skips the mass-exit guard.
+    /// Write the session file if it changed. `force` saves even while `losing`.
     pub(super) fn persist(&mut self, force: bool) {
-        if !self.cfg.restore.enabled || (!force && self.mass_exit()) {
+        if !self.cfg.restore.enabled || (!force && self.losing()) {
             return;
         }
         let saved = self.saved();
