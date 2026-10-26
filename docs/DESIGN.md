@@ -157,7 +157,9 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
   two dim words, no keys: `new` at the left, `menu` at the right.
 - **Panes:** row 1 is the pane's number while the tab is split (bold: teal focused, amber when
   it needs you, else dim), the glyph, the name in `strong` bold, the session's tabs as
-  plain words when it has several (the current one teal), then `project · ⎇ branch` dim; at the
+  plain words when it has several (the current one teal, each led by its most urgent agent's
+  mark, so a tab out of view still shows it works or asks), on the top-left pane a dim `+` that
+  opens a tab (there even with one tab), then `project · ⎇ branch` dim; at the
   right the state (`needs you · 2m` or `needs you · approve check` amber bold, `working` teal,
   `done` green, `idle` dim) and
   the ✕. Row 2 is a `─` rule the pane's width: teal focused (`sky()` in shortcut mode), amber

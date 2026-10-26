@@ -356,3 +356,27 @@ fn the_bar_counts_who_needs_you_and_keeps_update_at_its_end() {
     let row: String = (bar.x..bar.right()).map(|x| buf[(x, bar.y)].symbol()).collect::<String>();
     assert!(row.trim_end().ends_with("all clear"), "{row}");
 }
+
+#[test]
+fn a_lone_tab_still_offers_a_plus_that_opens_a_tab() {
+    let mut app = hairline_world(1);
+    let buf = draw(&mut app, 120, 30);
+    let title = Rect { height: 1, ..pane_at(&app, app.focused().unwrap()) };
+    let (x, y) = find_in(&buf, title, "+").expect("a + on the only tab's title");
+    assert!(app.hits.iter().any(|(r, h)| *h == Hit::Screen(ScreenHit::NewTab) && r.x == x && r.y == y), "the + opens a tab");
+    show("one tab", &buf);
+}
+
+#[test]
+fn a_tab_out_of_view_shows_its_agents_state() {
+    let mut app = hairline_world(1);
+    let mut second = app.screen.tabs[app.screen.tab].clone();
+    (second.layout, second.focus, second.name) = (Node::Leaf(2), 2, "tests".into());
+    app.screen.tabs.push(second);
+    let buf = draw(&mut app, 160, 45);
+    let title = Rect { height: 1, ..pane_at(&app, app.focused().unwrap()) };
+    let (x, y) = find_in(&buf, title, "2 tests").expect("the other tab");
+    assert_eq!(buf[(x - 2, y)].fg, app.theme.accent, "its working agent's mark leads it, teal");
+    assert_ne!(buf[(x - 2, y)].symbol(), " ");
+    show("a working tab out of view", &buf);
+}
