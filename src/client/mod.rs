@@ -223,6 +223,26 @@ fn cursor_code(program: Option<u8>, ui: &crate::config::Ui) -> u8 {
     if ui.cursor_blink { blinking } else { blinking + 1 }
 }
 
+
+/// Say once that the config file named a retired look (ADR 0027), and write what stands for it
+/// into the file, so it is not said again.
+fn settle_retired_layout(app: &mut App) {
+    let Some(r) = app.cfg.ui.retired_layout.take() else { return };
+    let mut writes: Vec<(&str, toml_edit::Value)> = vec![("ui.layout", r.kind.name().into())];
+    if r.gap {
+        writes.push(("ui.gap", "0".into()));
+    }
+    if r.pane_colors {
+        writes.push(("ui.pane_colors", true.into()));
+    }
+    for (path, value) in writes {
+        if let Err(e) = modal::write(path, value) {
+            app.notify(format!("{} (could not save it: {e:#})", r.note()), true);
+            return;
+        }
+    }
+    app.notify(r.note(), false);
+}
 #[cfg(test)]
 mod cursor_tests {
     use super::cursor_code;
@@ -520,6 +540,7 @@ async fn run_async(opts: Options) -> Result<()> {
     if let Some(e) = err {
         app.notify(format!("config error: {e}"), true);
     }
+    settle_retired_layout(&mut app);
 
     let mut terminal = ratatui::init();
     // A panic must leave the shell as it found it: ratatui's own hook leaves the alternate

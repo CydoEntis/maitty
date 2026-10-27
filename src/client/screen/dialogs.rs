@@ -184,9 +184,10 @@ pub(in crate::client) fn draw_new_pane(app: &mut App, f: &mut Frame, area: Rect,
 
 // Settings ------------------------------------------------------------------------------------
 
-/// A setting the current look ignores: Rounded in Hairline, which is always square.
+/// A setting the current look ignores: Hairline is always square, has no gaps and no pane
+/// colours (Rounded, Gap and Pane colours are Floating's).
 fn unused_here(app: &App, row: &SRow) -> bool {
-    matches!(row, SRow::Setting(s) if s.path == "ui.rounded") && Look::of(&app.cfg.ui).hairline
+    matches!(row, SRow::Setting(s) if matches!(s.path, "ui.rounded" | "ui.gap" | "ui.pane_colors")) && Look::of(&app.cfg.ui).hairline
 }
 
 /// The values a settings row offers as chips, and which one is current.
@@ -260,6 +261,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
                 Cat::General => "Gen",
                 Cat::Sessions => "Sess",
                 Cat::Appearance => "Look",
+                Cat::Alerts => "Alert",
                 Cat::Agents => "Agent",
                 Cat::Check => "Check",
                 Cat::Keys => "Keys",
@@ -298,6 +300,16 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
     // Detail lines only when versions differ or something needs saying.
     let host = crate::ipc::remote().map(|h| format!("Remote daemon ({h})")).unwrap_or_else(|| "Running daemon".into());
     let mut lines_used = 0u16;
+    // A newer release is out: said first, on every tab, with its button.
+    if let Some(next) = app.update_available.clone() {
+        lines_used += 1;
+        let lead = format!("↑ {} {next} is out — ", env!("APP_COMMAND"));
+        let y = vy + lines_used;
+        let x = put(buf, r.x + 4, y, &[seg(lead, c.fg(t.accent).add_modifier(Modifier::BOLD))], r.right() - 3);
+        let btn = button_pill(look, t, "Update now", "", true, t.card);
+        let end = put(buf, x, y, &btn, r.right() - 3);
+        hit(app, Rect { x, y, width: end.saturating_sub(x).max(1), height: 1 }, ScreenHit::Update);
+    }
     let mut say = |buf: &mut Buffer, text: String, style: Style| {
         lines_used += 1;
         put(buf, r.x + 4, vy + lines_used, &[seg(text, style)], r.right() - 3);
@@ -347,7 +359,7 @@ pub(in crate::client) fn draw_settings(app: &mut App, buf: &mut Buffer, r: Rect,
         Some(SRow::Bind { acts, .. }) if acts.len() > 1 => "Several keys; change them in the config file (o).".into(),
         Some(SRow::Bind { .. }) => "Enter, then press the new key.".into(),
         Some(SRow::Agent(row)) => row.help().to_string(),
-        Some(SRow::Version) => concat!("u looks for a newer ", env!("APP_COMMAND"), " now; Enter installs one that was found. The top-right pill says when one is out.").into(),
+        Some(SRow::Version) => concat!("u looks for a newer ", env!("APP_COMMAND"), " now; Enter installs one that was found. The Update button on the bottom bar says when one is out.").into(),
         None => String::new(),
     };
     // Lines: headings, rows with a blank between them, a wider gap between groups. The

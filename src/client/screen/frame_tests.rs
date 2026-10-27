@@ -9,19 +9,15 @@ use ratatui::Terminal;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use ratatui::backend::TestBackend;
 
-/// Preset 01 "No check set" from the reference: row 0 from the pane column on, and the last
-/// row (Flat: from the pane column on, the sidebar's foot being its own).
-const ROWS_01: [(Layout, u16, u16, &str, &str, &str); 10] = [
-    (Layout::Floating, 160, 45, "unicode", "┌─ 1  fix-footer  2  add-payments ────────────────────────────────────────────────────────────────────────────── ✓ done  ✕  ┐", "└────────────────────────────────┘ └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"),
-    (Layout::Floating, 100, 30, "unicode", "┌─ 1  fix-footer  2  add-payments ────────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘ └───────────────────────────────────────────────────────────────────────┘"),
-    (Layout::Floating, 80, 24, "unicode", "┌─ 1  fix-footer  2  add-payments ────── ✓ done  ✕  ┐", "└────────────────────────┘ └───────────────────────────────────────────────────┘"),
-    (Layout::Tiled, 160, 45, "unicode", "┌─ 1  fix-footer  2  add-payments ─────────────────────────────────────────────────────────────────────────────── ✓ done  ✕  ┐", "└────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"),
-    (Layout::Tiled, 100, 30, "unicode", "┌─ 1  fix-footer  2  add-payments ─────────────────────────── ✓ done  ✕  ┐", "└────────────────────────┘└────────────────────────────────────────────────────────────────────────┘"),
-    (Layout::Tiled, 80, 24, "unicode", "┌─ 1  fix-footer  2  add-payments ─────── ✓ done  ✕  ┐", "└────────────────────────┘└────────────────────────────────────────────────────┘"),
-    (Layout::Flat, 160, 45, "unicode", "│ 1  fix-footer  2  add-payments                                                                                    ✓ done  ✕", "│"),
-    (Layout::Flat, 100, 30, "unicode", "│ 1  fix-footer  2  add-payments                                ✓ done  ✕", "│"),
-    (Layout::Flat, 80, 24, "unicode", "│ 1  fix-footer  2  add-payments            ✓ done  ✕", "│"),
-    (Layout::Flat, 80, 24, "ascii", "│ 1  fix-footer  2  add-payments            + done  x", "│"),
+/// Preset 01 "No check set" from the reference: the last row. The reference's row 0 drew the
+/// tabs in the pane's title; they have a row of their own now (ADR 0028), checked apart.
+const ROWS_01: [(Layout, u16, u16, &str, &str); 6] = [
+    (Layout::Floating, 160, 45, "unicode", "└────────────────────────────────┘ └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"),
+    (Layout::Floating, 100, 30, "unicode", "└────────────────────────┘ └───────────────────────────────────────────────────────────────────────┘"),
+    (Layout::Floating, 80, 24, "unicode", "└────────────────────────┘ └───────────────────────────────────────────────────┘"),
+    (Layout::Tiled, 160, 45, "unicode", "└────────────────────────────────┘└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘"),
+    (Layout::Tiled, 100, 30, "unicode", "└────────────────────────┘└────────────────────────────────────────────────────────────────────────┘"),
+    (Layout::Tiled, 80, 24, "unicode", "└────────────────────────┘└────────────────────────────────────────────────────┘"),
 ];
 
 /// The modal sizes of presets 12 (Override?), A2 (Approve · read first) and 15 (Settings ·
@@ -38,13 +34,16 @@ fn world(stage: Stage) -> App {
     app
 }
 
-/// Where the reference puts the pane column: right of the sidebar and the gap; Flat's starts
-/// on the sidebar's last column.
+/// The row a pane's top border is on: under the tab row (ADR 0028).
+fn pane_y(_: Layout) -> u16 {
+    1
+}
+
+/// Where the reference puts the pane column: right of the sidebar and the gap.
 fn pane_x(layout: Layout, w: u16) -> u16 {
     match layout {
         Layout::Floating => side_w(w) + 1,
         Layout::Tiled => side_w(w),
-        Layout::Flat => side_w(w) - 1,
     }
 }
 
@@ -70,23 +69,24 @@ fn buffer(app: &mut App, layout: Layout, w: u16, h: u16) -> Buffer {
 
 #[test]
 fn preset_01_s_frame_is_the_reference_s_in_every_layout_and_size() {
-    for (layout, w, h, glyphs, top, last) in ROWS_01 {
+    for (layout, w, h, glyphs, last) in ROWS_01 {
         let mut app = world(Stage::None);
         let text = reference_fixture::frame(&mut app, layout, w, h, glyphs);
         let at = format!("{layout:?} {w}x{h} {glyphs}\n{text}");
         let r = rows(&text);
-        let px = pane_x(layout, w);
-        assert_eq!(from(&r[0], px), top, "row 0: {at}");
-        let bottom = if layout == Layout::Flat { from(&r[h as usize - 1], px) } else { from(&r[h as usize - 1], 0) };
-        assert_eq!(bottom, last, "last row: {at}");
-        if layout == Layout::Flat {
-            assert_eq!(col(&r, px, 0..h), "│".repeat(h as usize), "one rule between the sidebar and the pane: {at}");
-        } else {
-            let sw = side_w(w);
-            assert_eq!((r[0][0], r[0][sw as usize - 1]), ('┌', '┐'), "the sidebar's top corners: {at}");
-            for x in [0, sw - 1, px, w - 1] {
-                assert_eq!(col(&r, x, 1..h - 1), "│".repeat(h as usize - 2), "column {x}: {at}");
-            }
+        let (px, py) = (pane_x(layout, w), pane_y(layout));
+        let tabs = from(&r[0], px);
+        assert!(tabs.contains(" 1  fix-footer ") && tabs.contains(" 2  add-payments"), "row 0 is the tabs, each with its state: {at}");
+        let title = from(&r[py as usize], px);
+        assert!(title.starts_with("┌─ affiliate-site · ") && title.contains(" fix-footer ─") && title.ends_with("done ┐"), "the pane's top, its lone pane named by where it is: {at}");
+        assert_eq!(from(&r[h as usize - 1], 0), last, "last row: {at}");
+        let sw = side_w(w);
+        assert_eq!((r[0][0], r[0][sw as usize - 1]), ('┌', '┐'), "the sidebar's top corners: {at}");
+        for x in [0, sw - 1] {
+            assert_eq!(col(&r, x, 1..h - 1), "│".repeat(h as usize - 2), "column {x}: {at}");
+        }
+        for x in [px, w - 1] {
+            assert_eq!(col(&r, x, py + 1..h - 1), "│".repeat((h - py) as usize - 2), "column {x}: {at}");
         }
     }
 }
@@ -99,18 +99,18 @@ fn rounded_corners_round_every_card() {
         let text = reference_fixture::frame(&mut app, layout, 100, 30, "unicode");
         let r = rows(&text);
         let (sw, px) = (side_w(100), pane_x(layout, 100));
-        let corners = |x0: u16, x1: u16| [r[0][x0 as usize], r[0][x1 as usize], r[29][x0 as usize], r[29][x1 as usize]];
-        assert_eq!(corners(0, sw - 1), ['╭', '╮', '╰', '╯'], "sidebar, {layout:?}\n{text}");
-        assert_eq!(corners(px, 99), ['╭', '╮', '╰', '╯'], "pane, {layout:?}\n{text}");
+        let corners = |top: usize, x0: u16, x1: u16| [r[top][x0 as usize], r[top][x1 as usize], r[29][x0 as usize], r[29][x1 as usize]];
+        assert_eq!(corners(0, 0, sw - 1), ['╭', '╮', '╰', '╯'], "sidebar, {layout:?}\n{text}");
+        assert_eq!(corners(pane_y(layout) as usize, px, 99), ['╭', '╮', '╰', '╯'], "pane, {layout:?}\n{text}");
     }
 }
 
 #[test]
 fn a_failed_session_reads_failed_in_plain_ascii() {
     let mut app = world(Stage::Failed);
-    let text = reference_fixture::frame(&mut app, Layout::Flat, 80, 24, "ascii");
-    let top = text.lines().next().unwrap_or_default();
-    assert!(top.ends_with("x failed  x"), "{text}");
+    let text = reference_fixture::frame(&mut app, Layout::Tiled, 80, 24, "ascii");
+    let top = text.lines().nth(pane_y(Layout::Tiled) as usize).unwrap_or_default();
+    assert!(top.contains("x failed ┐"), "{text}");
 }
 
 #[test]
@@ -128,7 +128,7 @@ fn a_sheet_docks_72_wide_at_160_and_takes_the_pane_column_below_140() {
                 if w >= NARROW {
                     assert_eq!((g.sheet.x, g.sheet.width), (w - 72, 72), "{at}");
                     assert!(g.panes.x == px && g.panes.width > 0, "the panes stay between: {at}");
-                    assert_eq!(r[0][(w - 72) as usize], if layout == Layout::Flat { '│' } else { '┌' }, "{at}");
+                    assert_eq!(r[0][(w - 72) as usize], '┌', "{at}");
                 } else {
                     assert_eq!((g.sheet.x, g.panes.width), (px, 0), "the sheet takes the pane column: {at}");
                     app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
@@ -208,7 +208,7 @@ fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and
 }
 
 #[test]
-fn a_popover_sits_beside_the_sidebar_with_a_raised_title_and_no_shadow() {
+fn a_popover_sits_beside_the_sidebar_boxed_with_a_raised_title_and_no_shadow() {
     for layout in LAYOUTS {
         for (w, h) in SIZES {
             let mut app = world(Stage::Failed);
@@ -224,8 +224,11 @@ fn a_popover_sits_beside_the_sidebar_with_a_raised_title_and_no_shadow() {
             assert!((r.x..r.right()).all(|x| buf[(x, r.y)].bg == t.btn), "the title row is raised: {at}");
             let title: String = (r.x..r.x + 8).map(|x| buf[(x, r.y)].symbol().to_string()).collect();
             assert_eq!(title, "  WHY · ", "{at}");
-            assert!((r.y + 1..r.bottom()).all(|y| buf[(r.x, y)].bg == t.card && buf[(r.x, y)].symbol() == " "), "no border: {at}");
-            assert!(beside_and_under(r, w, h).all(|p| buf[p] == before[p]), "no shadow: {at}");
+            assert!((r.y + 1..r.bottom()).all(|y| buf[(r.x, y)].bg == t.card && buf[(r.x, y)].symbol() == " "), "its words a column in from its edge: {at}");
+            // Boxed as a pane is (ADR 0028), a cell outside it; nothing past the box.
+            assert!((r.y..r.bottom()).all(|y| buf[(r.x - 1, y)].symbol() == "│" && buf[(r.right(), y)].symbol() == "│"), "its box: {at}");
+            let outer = Rect { x: r.x - 1, y: r.y - 1, width: r.width + 2, height: r.height + 2 };
+            assert!(beside_and_under(outer, w, h).all(|p| buf[p] == before[p]), "no shadow: {at}");
         }
     }
 }
@@ -303,7 +306,7 @@ fn the_pointer_tints_exactly_the_region_under_it_once() {
     use super::super::Hit;
     let cases: [(&str, Pick); 4] = [
         ("a tab chip", |h| matches!(h, Hit::Screen(ScreenHit::TabPick(_)))),
-        ("a pane's ✕", |h| matches!(h, Hit::Screen(ScreenHit::CloseSplit(_)))),
+        ("a tab's ✕", |h| matches!(h, Hit::Screen(ScreenHit::CloseTab(_)))),
         ("a sidebar row", |h| matches!(h, Hit::Screen(ScreenHit::Session(3)))),
         ("a modal button", |h| matches!(h, Hit::Screen(ScreenHit::ConfirmYes))),
     ];
@@ -340,7 +343,9 @@ fn the_pointer_tints_exactly_the_region_under_it_once() {
 /// The cells of every tab chip (number and name) and the + chip in the pane title, left to right.
 fn tab_rects(app: &App) -> Vec<Rect> {
     use super::super::Hit;
-    let mut v: Vec<Rect> = app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(ScreenHit::TabPick(_) | ScreenHit::NewTab))).map(|(r, _)| *r).collect();
+    // The pane title's, not the sidebar's tab lines.
+    let side = app.screen.side_rect;
+    let mut v: Vec<Rect> = app.hits.iter().filter(|(r, h)| matches!(h, Hit::Screen(ScreenHit::TabPick(_) | ScreenHit::NewTab)) && !side.intersects(*r)).map(|(r, _)| *r).collect();
     v.sort_by_key(|r| r.x);
     v
 }
@@ -372,7 +377,7 @@ fn round_tabs_cap_every_chip_on_the_ground_behind_the_title() {
         let t = app.theme.clone();
         let rects = tab_rects(&app);
         assert_eq!(rects.len(), 3, "{layout:?}");
-        let ground = if layout == Layout::Flat { t.card } else { Color::Reset };
+        let ground = Color::Reset;
         for (r, was) in rects.iter().zip(&square) {
             assert_eq!(r.width, was.width + 2, "the hit rect holds both caps: {layout:?}");
             let (l, rt) = (&buf[(r.x, r.y)], &buf[(r.right() - 1, r.y)]);
@@ -547,48 +552,8 @@ fn a_selected_or_hovered_folder_row_ends_in_caps_only_when_rounded_in_full() {
     }
 }
 
-/// Compact rules a zone's left only where it meets another zone, measured in the room left
-/// inside the padding: the panes beside a left sidebar, a sidebar on the right. A left sidebar
-/// has none at any padding, so its selected or hovered folder row ends in caps.
-#[test]
-fn compact_rules_only_a_zone_beside_another_at_every_padding() {
-    use crate::config::Rounding;
-    for padding in ["0", "1", "2"] {
-        for side in ["left", "right"] {
-            for selected in [true, false] {
-                let at = format!("padding {padding}, sidebar {side}, {}", if selected { "selected" } else { "hovered" });
-                let mut app = world(Stage::None);
-                (app.cfg.ui.padding, app.cfg.ui.sidebar_position, app.cfg.ui.rounded) = (padding.into(), side.into(), Rounding::Full);
-                if selected {
-                    app.mode = Mode::Side;
-                    app.screen.cursor = None;
-                    app.screen.cursor_proj = Some(app.screen_model()[0].key.clone());
-                }
-                drawn_in(&mut app, "compact");
-                if !selected {
-                    let row = folder_row(&app);
-                    app.hover = Some(Position::new(row.x + 3, row.y));
-                }
-                let buf = drawn_in(&mut app, "compact");
-                let panes = grid(&app, framed(&app, buf.area)).panes;
-                let rule = |r: Rect| (r.y + 1..r.bottom()).filter(|&y| buf[(r.x, y)].symbol() == "│").count() as u16;
-                let (side_r, row) = (app.screen.side_rect, folder_row(&app));
-                if side == "left" {
-                    assert_eq!(rule(side_r), 0, "no rule left of the sidebar: {at}");
-                    assert_eq!(rule(panes), panes.height - 1, "the panes are ruled off the sidebar: {at}");
-                    let (left, right) = (&buf[(row.x, row.y)], &buf[(row.right() - 1, row.y)]);
-                    assert_eq!((left.symbol(), right.symbol()), (CAP_L, CAP_R), "{at}");
-                } else {
-                    assert_eq!(rule(side_r), side_r.height - 1, "the sidebar is ruled off the panes: {at}");
-                    assert_eq!(rule(panes), 0, "no rule left of the panes: {at}");
-                }
-            }
-        }
-    }
-}
-
 /// Rounded shapes reach every chip and floating card: the SESSIONS chip, + New and Menu on the
-/// plain ground, and the Menu, rounded in Cards and one softened block in Flat.
+/// plain ground, and the Menu.
 #[test]
 fn rounded_shapes_round_the_sidebar_chips_and_the_menu() {
     for layout in LAYOUTS {
@@ -602,8 +567,7 @@ fn rounded_shapes_round_the_sidebar_chips_and_the_menu() {
         let text = reference_fixture::raw_text(&mut app, layout, 100, 30, "unicode");
         let title = text.lines().find(|l| l.contains(" Menu ")).expect("the menu's title row");
         assert!(title.contains(&format!("{CAP_L} Menu {CAP_R}")), "the title chip is round: {layout:?}\n{title}");
-        let corner = if layout == Layout::Flat { "▗" } else { "╭" };
-        assert!(title.contains(corner), "the menu's corner is soft: {layout:?}\n{title}");
+        assert!(title.contains("╭"), "the menu's corner is soft: {layout:?}\n{title}");
     }
 }
 
@@ -652,25 +616,28 @@ fn a_hovered_border_chip_is_whole() {
         ("the bar's mode tag", |h| matches!(h, Hit::Screen(ScreenHit::Leader | ScreenHit::ShortcutMode))),
     ];
     let mut covered = std::collections::BTreeSet::new();
-    for layout in ["cards", "tiled", "compact", "grid"] {
+    for layout in ["floating", "tiled"] {
         for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
             for ((w, h), sheet) in SIZES.into_iter().flat_map(|s| [(s, false), (s, true)]) {
                 let mut app = border_chips_world(sheet);
                 app.cfg.ui.rounded = rounded;
                 let size = |app: &mut App| {
-                    (app.cfg.ui.layout, app.cfg.ui.panes) = (layout.into(), "floating".into());
+                    app.cfg.ui.layout = layout.into();
+                    app.cfg.ui.fold_retired_layout();
                     app.screen_fresh();
                     let mut term = Terminal::new(TestBackend::new(w, h)).expect("a test terminal");
                     term.draw(|f| crate::client::render::draw(app, f)).expect("a frame");
                     term.backend().buffer().clone()
                 };
                 size(&mut app);
-                // The border chips on row 0, the mode bar's own chips on its row: its tag a cell in
-                // (TYPING's hint after it takes the same click but is words, not a chip).
+                // The tabs and the sheet's ✕ on row 0, a pane's ✕ on its top border, the mode bar's
+                // own chips on its row: its tag a cell in (TYPING's hint after it takes the same
+                // click but is words, not a chip).
                 let bar = crate::client::screen::mode_bar_row(&app, Rect::new(0, 0, w, h));
                 let on_row = |r: &Rect, what: &str| match what {
                     "the bar's mode tag" => r.y == bar.y && r.x == bar.x + 1,
                     "the bar's update pill" => r.y == bar.y,
+                    "a pane's ✕" => true,
                     _ => r.y == 0,
                 };
                 let targets: Vec<(&str, Rect)> = chips.iter().flat_map(|(what, is)| app.hits.iter().filter(|(r, h)| on_row(r, what) && is(h)).map(|(r, _)| (*what, *r)).collect::<Vec<_>>()).collect();

@@ -36,9 +36,9 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0010](0010-optional-desktop-client.md) | Offer an optional desktop client over the shared session engine | Superseded by 0011 |
 | [0011](0011-keep-seshi-terminal-first.md) | Keep Seshi terminal-first | Accepted |
 | [0012](0012-flat-rendering-style.md) | Add a flat rendering style | Accepted |
-| [0013](0013-v7-frame.md) | Draw the v7 frame: tabs in the pane title, no margin | Proposed |
+| [0013](0013-v7-frame.md) | Draw the v7 frame: tabs in the pane title, no margin | Proposed, tabs in the title superseded by 0028 |
 | [0014](0014-v8-cleanup.md) | Bring over the v8 cleanup, keeping what the user already decided | Accepted, its no-footer rule amended by 0024 |
-| [0015](0015-four-named-layouts-and-grid.md) | Four named layouts, one setting, and the Grid style | Accepted, amended 2026-10-24 |
+| [0015](0015-four-named-layouts-and-grid.md) | Four named layouts, one setting, and the Grid style | Accepted, amended 2026-10-24, superseded in part by 0027 |
 | [0016](0016-sticky-shortcut-mode.md) | The leader opens a shortcut mode that stays until you leave it | Accepted, amended by 0021, 0023 and 0025 |
 | [0017](0017-keys-other-apps-use.md) | Default shortcuts: one key each, no Shift, keys other apps use | Accepted, amended by 0022 |
 | [0018](0018-rename-to-vibecasso.md) | The app is called Vibecasso | Accepted |
@@ -49,4 +49,7 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0023](0023-the-mode-is-always-shown.md) | The mode is always shown, the window is framed in shortcut mode, dead keys say so | Accepted, amended by 0024 |
 | [0024](0024-the-mode-lives-in-a-bottom-bar.md) | The mode lives in a bar along the bottom, with key suggestions | Accepted |
 | [0025](0025-a-new-pane-ends-shortcut-mode.md) | Starting a pane ends shortcut mode | Accepted |
-| [0026](0026-hairline-a-fifth-look.md) | Hairline, a fifth look with no boxes | Accepted |
+| [0026](0026-hairline-a-fifth-look.md) | Hairline, a fifth look with no boxes | Accepted, amended by 0027 |
+| [0027](0027-two-looks-and-tabs-in-the-sidebar.md) | Two looks, pane colours, and a session's tabs in the sidebar | Accepted, amended by 0028 |
+| [0028](0028-tab-rows-and-popups-drawn-like-panes.md) | A tab row in both looks, and every popup drawn like a pane | Accepted |
+| [0029](0029-alt-letters-and-closing-without-asking.md) | Alt+letter shortcuts, and closing an idle shell without asking | Accepted |

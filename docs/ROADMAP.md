@@ -25,6 +25,8 @@ user runs: Claude Code, Codex, Qwen Code and DeepSeek. Also requested 2026-10-25
 [Phase 30](#30--the-hairline-layout--shipped-in-v0450-live-checks-open), a fifth layout, and
 100 more built-in themes (162), both in v0.45.0. Planned next:
 [Phase 31](#31--panes-you-can-tell-apart--shipped-in-v0460-live-checks-open), panes you can tell apart, in v0.46.0.
+Built 2026-10-27, not released: [Phase 32](#32--two-looks-and-a-sessions-tabs-in-the-sidebar--built-not-released),
+two looks and a session's tabs in the sidebar.
 
 Open validation items (need a real session on the named platform):
 - Pi full-screen scrolling on Linux: waiting on the failing pane's "Pane info (scrolling,
@@ -572,6 +574,30 @@ UI.md's "no number no key uses" rule for Grid and phase 30's removal in Hairline
 5. open question for the user: swap the split defaults so `v` stacks and `h` goes side by side?
    Today `v` is a vertical divider (side by side) and `h` a horizontal one, as in Vim and tmux.
 
+### 32 — Two looks, and a session's tabs in the sidebar · built, not released
+
+Asked by the user on 2026-10-27: a second tab working out of view did not show anywhere, and five
+looks were too many to keep linked up. Decided the same day
+([ADR 0027](adr/0027-two-looks-and-tabs-in-the-sidebar.md)): keep Floating and Hairline; Grid's
+colours become the Pane colours option on Floating; Floating keeps square, corners and full.
+
+1. a session with two tabs or more lists them under its row, one line each with its own state;
+   a click shows the tab
+2. two looks: Tiled loads as Floating with no gaps, Grid as Floating with pane colours, Compact
+   as Hairline
+3. `ui.pane_colors`: each Floating pane's border in its own colour by its place
+4. Floating's tabs get a row of their own as Hairline's do; a tab's only pane is titled
+   `project · ⎇ branch`; a tab is named the same in the tab row and the sidebar
+   ([ADR 0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md))
+5. every popup, menu and toast boxed as its look boxes a pane; Gap and Pane colours greyed in
+   Hairline as Rounded is; the two sidebars share their row bookkeeping
+6. a tab out of view shows its state on its tab (it showed none until focused); the ✕ is on
+   the tab; `ui.sidebar_tabs` (all, busy, off); a retired look is said once and written back
+7. Settings regrouped (General, Appearance, Sessions, Alerts, Agents, Check, Keys) with updates
+   first and a banner on every tab; the splash says a release is out in a banner, `u` installs
+8. fewer steps: Alt+n/s/t/x/v/h run the everyday actions without the leader (`ui.alt_keys`), and
+   an idle shell closes without asking ([ADR 0029](adr/0029-alt-letters-and-closing-without-asking.md))
+
 ## In scope
 
 Everything below is shipped on `main` unless marked.
@@ -622,7 +648,7 @@ Everything below is shipped on `main` unless marked.
 
 **Identity**
 - Renamed hydra → Seshi (v0.30.1, ADR-0008), Seshi → Vibecasso (ADR-0018), then Vibecasso → Maitty (ADR-0020): the name lives in `Cargo.toml` (ADR-0019); one-time move of an old install — `config::migrate_old_names`
-- Night (default) and Day themes among 162 built-in themes (62 by v0.42.0); block MAITTY wordmark on the splash — shipped in v0.42.0 — `src/theme.rs`, `src/client/screen/splash.rs`
+- Night (default) and Day themes among 170 built-in themes (62 by v0.42.0); block MAITTY wordmark on the splash — shipped in v0.42.0 — `src/theme.rs`, `src/client/screen/splash.rs`
 
 **Extras**
 - Alert when an agent needs you: Maitty's two rising notes and an in-app notice; a desktop notification only with no window open. Completions stay quiet — `src/alert.rs`
@@ -669,8 +695,11 @@ Everything below is shipped on `main` unless marked.
 - [ADR-0018](adr/0018-rename-to-vibecasso.md) — The app was called Vibecasso (the name superseded by ADR-0020), a clean break; a vibecasso install carries over once. Rules out: a `vibecasso` command, new code or paths under the old name.
 - [ADR-0017](adr/0017-keys-other-apps-use.md) — Default shortcuts are one key each, none needing Shift, keys other apps use. Rules out: capital or Shift-symbol defaults (but `?`, ADR-0022); two keys for one action.
 - [ADR-0016](adr/0016-sticky-shortcut-mode.md) — The leader opens a shortcut mode that stays until Esc, the leader, a click into a pane or a typing action. Rules out: letters acting outside that shown mode.
-- [ADR-0013](adr/0013-v7-frame.md) — Draw the v7 frame: tabs in the pane title (the "no margin" part replaced by `ui.padding`, ADR-0021). Rules out: a separate tab row.
-- [ADR-0015](adr/0015-four-named-layouts-and-grid.md) — One Layout setting: Floating, Tiled, Compact, Grid; Grid is a look over the shared layout. Rules out: Grid's own sidebar, top bar, fixed grid, zoom and bare keys.
+- [ADR-0013](adr/0013-v7-frame.md) — Draw the v7 frame: tabs in the pane title (the "no margin" part replaced by `ui.padding`, ADR-0021; the tabs moved to a row of their own by ADR-0028).
+- [ADR-0015](adr/0015-four-named-layouts-and-grid.md) — One Layout setting: Floating, Tiled, Compact, Grid; Grid is a look over the shared layout (the four cut to Floating by ADR-0027). Rules out: Grid's own sidebar, top bar, fixed grid, zoom and bare keys.
+- [ADR-0029](adr/0029-alt-letters-and-closing-without-asking.md) — Alt+letter shortcuts for the everyday actions (`ui.alt_keys`); an idle shell closes without asking (amends ADR-0017). Rules out: bare keys acting outside shortcut mode; Alt+[ and Alt+].
+- [ADR-0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md) — A tab row over the panes in both looks; every popup and toast boxed as its look boxes a pane (amends ADR-0013). Rules out: tabs in a pane's title; frameless filled popups.
+- [ADR-0027](adr/0027-two-looks-and-tabs-in-the-sidebar.md) — Two looks, Floating and Hairline; Grid's colours an option on Floating; a session's tabs listed under its sidebar row. Rules out: a look per idea; a tab's state shown only on the pane title.
 - [ADR-0021](adr/0021-one-line-rows-one-rounding-sticky-mode.md) — One-line session rows, one rounding setting (full, corners, off), padding round the screen, and shortcut mode that stays until Esc, the leader or a click (amends ADR-0016). Rules out: a second line that only names the state; separate corner and pill-end switches.
 - [ADR-0022](adr/0022-question-mark-all-keys-c-changes.md) — `?` after the leader lists all keys, `c` opens Changes, copy mode has no default key (amends ADR-0017). Rules out: `F1` and `d` as defaults.
 - [ADR-0023](adr/0023-the-mode-is-always-shown.md) — The mode is always shown in the corner (`TYPING` or `SHORTCUT`), the window is framed in sky in shortcut mode, and a key with no action says how to type (amends ADR-0016 and ADR-0021). Rules out: an unlabelled input mode; keys dropped without a word.
@@ -681,7 +710,7 @@ Everything below is shipped on `main` unless marked.
 - Status reports need the pane's token or its process chain — `src/daemon/mod.rs` hook handling — AGENTS.md non-negotiable 5
 - Nothing in a cloned repo runs without the user's approval — `src/project.rs` — SECURITY.md
 - Client and daemon refuse to talk across protocol versions — `src/protocol.rs` `PROTOCOL_VERSION`, checked on `Hello` — ADR-0003
-- Config selects one of four looks (Floating, Tiled, Compact, Grid) over the one shared session layout — `src/config.rs` `Ui.layout` / `layout_kind`, `src/client/screen/card.rs` `Look::of` — ADR-0015
+- Config selects one of two looks (Floating, Hairline) over the one shared session layout; older looks fold into them — `src/config.rs` `Ui.layout` / `layout_kind` / `fold_retired_layout`, `src/client/screen/card.rs` `Look::of` — ADR-0027
 - Every built-in theme passes the contrast audit — `cargo test` (theme audit test in `src/theme.rs`) — readability
 - Both platform sides compile — `cargo check --target x86_64-unknown-linux-gnu` / `aarch64-apple-darwin` — AGENTS.md non-negotiable 3
 - clippy is clean — `cargo clippy --all-targets -- -D warnings` — CODE-STANDARDS

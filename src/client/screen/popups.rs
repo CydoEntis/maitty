@@ -84,7 +84,7 @@ pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, titl
 }
 
 /// A modal's box: `─` top and bottom, `│` sides, corners by the setting.
-fn panel_box(buf: &mut Buffer, r: Rect, look: Look, edge: Style) {
+pub(in crate::client) fn panel_box(buf: &mut Buffer, r: Rect, look: Look, edge: Style) {
     let (right_x, bottom) = (r.right() - 1, r.bottom() - 1);
     for x in r.x..r.right() {
         buf[(x, r.y)].set_symbol("─").set_style(edge);
@@ -123,13 +123,11 @@ pub(in crate::client) fn popover_rect(screen: Rect, side: Rect, w: u16, h: u16) 
 }
 
 /// A popover's frame at `r`: a body of `card` and a title row of `btn` with
-/// ` TITLE ` in `strong` bold, a column in; no border.
+/// ` TITLE ` in `strong` bold, a column in, boxed as the look boxes a pane (`popover_outline`).
 pub(in crate::client) fn popover_at(app: &mut App, buf: &mut Buffer, r: Rect, title: &str, t: &Theme) -> Rect {
     let r = r.intersection(buf.area);
     let look = Look::of(&app.cfg.ui);
-    if look.hairline {
-        hairline_outline(buf, r, look, t);
-    }
+    popover_outline(buf, r, look, t);
     fill(buf, r, t.card);
     fill(buf, Rect { height: 1, ..r }, t.btn);
     put(buf, r.x + 1, r.y, &[seg(format!(" {title} "), Style::default().fg(t.strong).bg(t.btn).add_modifier(Modifier::BOLD))], r.right());
@@ -137,15 +135,17 @@ pub(in crate::client) fn popover_at(app: &mut App, buf: &mut Buffer, r: Rect, ti
     r
 }
 
-/// Hairline's frame for a popover, which has none of its own: a square `line` box one cell
-/// outside `r`, so it floats over the panes without covering any of its own text.
-fn hairline_outline(buf: &mut Buffer, r: Rect, look: Look, t: &Theme) {
+/// A popover's box, drawn as the look draws a pane's (ADR 0028): a `line` box one cell outside
+/// `r`, so it floats over the panes without covering any of its own text; on `card` with
+/// corners by `ui.rounded` in Floating, square on the ground in Hairline.
+fn popover_outline(buf: &mut Buffer, r: Rect, look: Look, t: &Theme) {
     let outer = Rect { x: r.x.saturating_sub(1), y: r.y.saturating_sub(1), width: r.width + 2, height: r.height + 2 }.intersection(buf.area);
     if outer.width < 2 || outer.height < 2 {
         return;
     }
-    fill(buf, outer, t.bg);
-    panel_box(buf, outer, look, Style::default().fg(t.line).bg(t.bg));
+    let ground = if look.hairline { t.bg } else { t.card };
+    fill(buf, outer, ground);
+    panel_box(buf, outer, look, Style::default().fg(t.line).bg(ground));
 }
 
 pub(in crate::client) fn sel_row(app: &App, buf: &mut Buffer, r: Rect, y: u16, sel: bool, t: &Theme) -> Color {

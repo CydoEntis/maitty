@@ -93,13 +93,19 @@ pub struct Ui {
     /// Alt+arrows move between panes without the leader (off: they go to the program, for
     /// shells that jump words with them).
     pub alt_arrows: bool,
+    /// Alt with the leader's letter runs the everyday actions without it (`keys::ALT_LETTER_KEYS`:
+    /// new shell, session and tab, close, split). Off: those keys go to the program.
+    pub alt_keys: bool,
     /// Where plain `<app>` opens its first shell (and the one after you close everything).
     /// Empty: wherever you run the app. `~` is your home folder.
     pub start_dir: String,
     /// Sidebar sessions (and worktrees) that need you go first; the rest keep their place.
     pub attention_sort: bool,
-    /// The look (ADR 0015): "floating", "tiled", "compact", "grid" or "hairline". Read with `layout_kind`,
-    /// which also takes older files' "cards" (with `panes`) and "flat"; empty means unset.
+    /// A session's tabs as lines under its sidebar row (`SIDEBAR_TABS`): "all", "busy" (those
+    /// working or needing you, and the one on screen) or "off".
+    pub sidebar_tabs: String,
+    /// The look (ADR 0027): "floating" or "hairline". Read with `layout_kind`; an older file's
+    /// look is folded in by `fold_retired_layout`. Empty means unset.
     pub layout: String,
     /// "solid" (the default) paints everything the theme's `bg`, so a plain terminal shows the
     /// theme whole; "terminal" leaves chrome on the terminal's own background (so transparency
@@ -121,6 +127,12 @@ pub struct Ui {
     pub focus_border: String,
     /// One setting for every rounded shape (`Rounding`).
     pub rounded: Rounding,
+    /// Floating: each pane's border in its own colour, by its place in the tab (ADR 0027).
+    pub pane_colors: bool,
+    /// What `fold_retired_layout` changed, to say once and write back: the retired look's name
+    /// and the settings that stand for it now. Never read from or written to the file.
+    #[serde(skip)]
+    pub retired_layout: Option<RetiredLayout>,
     /// Show `· N agents` on a working session's row when the agent reports helpers.
     pub subagent_count: bool,
     /// The cursor's shape when the program in a pane doesn't ask for one: "terminal" (the
@@ -234,6 +246,9 @@ fn fold_legacy_corners(value: &mut toml::Table) {
     }
 }
 
+/// `ui.sidebar_tabs`' choices, in Settings' order.
+pub const SIDEBAR_TABS: &[&str] = &["all", "busy", "off"];
+
 /// `ui.cursor`'s choices, in Settings' order.
 pub const CURSOR_SHAPES: &[&str] = &["terminal", "block", "underline", "bar"];
 
@@ -320,45 +335,77 @@ impl Default for Mcp {
     }
 }
 
-/// The five looks over the one session layout (ADR 0015, ADR 0026).
+/// A retired look an older file named, and what stands for it now (`Ui::fold_retired_layout`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RetiredLayout {
+    /// How Settings called it: "Tiled", "Grid" or "Compact".
+    pub name: &'static str,
+    pub kind: LayoutKind,
+    /// `gap = 0` stands for it (Tiled).
+    pub gap: bool,
+    /// `pane_colors = true` stands for it (Grid).
+    pub pane_colors: bool,
+}
+
+impl RetiredLayout {
+    /// What the app says once when it starts with it.
+    pub fn note(&self) -> String {
+        let now = match (self.kind, self.gap, self.pane_colors) {
+            (LayoutKind::Hairline, ..) => "Hairline, lines only",
+            (_, true, _) => "Floating with no gap",
+            (_, _, true) => "Floating with Pane colours on",
+            _ => "Floating",
+        };
+        format!("The {} layout is now {now}. Change it in Settings › Appearance", self.name)
+    }
+}
+
+/// The two looks over the one session layout (ADR 0027).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayoutKind {
     Floating,
-    Tiled,
-    Compact,
-    Grid,
     /// No boxes: `│` / `─` hairlines, a title and rule per pane, and a status strip.
     Hairline,
 }
 
 /// Settings' Layout choices, in its order.
-pub const LAYOUT_NAMES: &[&str] = &["floating", "tiled", "compact", "grid", "hairline"];
+pub const LAYOUT_NAMES: &[&str] = &["floating", "hairline"];
 
 impl LayoutKind {
     /// Its value in `ui.layout`.
     pub fn name(self) -> &'static str {
         match self {
             LayoutKind::Floating => "floating",
-            LayoutKind::Tiled => "tiled",
-            LayoutKind::Compact => "compact",
-            LayoutKind::Grid => "grid",
             LayoutKind::Hairline => "hairline",
         }
     }
 }
 
 impl Ui {
-    /// The look chosen, reading older files too: "cards" (or no `layout` at all) with
-    /// `panes = "tiled"` is Tiled, other "cards" Floating, and "flat" Compact.
+    /// The look chosen; anything but "hairline" is Floating.
     pub fn layout_kind(&self) -> LayoutKind {
-        match self.layout.as_str() {
-            "tiled" => LayoutKind::Tiled,
-            "compact" | "flat" => LayoutKind::Compact,
-            "grid" => LayoutKind::Grid,
-            "hairline" => LayoutKind::Hairline,
-            "" | "cards" if self.panes == "tiled" => LayoutKind::Tiled,
-            _ => LayoutKind::Floating,
-        }
+        if self.layout == "hairline" { LayoutKind::Hairline } else { LayoutKind::Floating }
+    }
+
+    /// An older file's look, kept as near as the two looks allow (ADR 0027): Tiled (and Cards
+    /// with `panes = "tiled"`) is Floating with no gaps, Grid is Floating with pane colours,
+    /// and Compact (once "flat") is Hairline. The file itself is not rewritten.
+    pub fn fold_retired_layout(&mut self) {
+        let tiled = self.layout == "tiled" || (matches!(self.layout.as_str(), "" | "cards") && self.panes == "tiled");
+        let retired = if tiled {
+            self.gap = "0".into();
+            Some("Tiled")
+        } else if self.layout == "grid" {
+            self.pane_colors = true;
+            Some("Grid")
+        } else if matches!(self.layout.as_str(), "compact" | "flat") {
+            Some("Compact")
+        } else {
+            None
+        };
+        let kind = if retired == Some("Compact") { LayoutKind::Hairline } else { self.layout_kind() };
+        self.layout = kind.name().into();
+        self.retired_layout = retired.map(|name| RetiredLayout { name, kind, gap: tiled, pane_colors: name == "Grid" });
     }
 
     /// The rounding drawn: `rounded`, except that Hairline is always square (ADR 0026).
@@ -670,6 +717,15 @@ pub struct AgentDef {
     pub enabled: Option<bool>,
 }
 
+/// Shells, by their program name.
+const SHELL_PROGRAMS: &[&str] = &["pwsh", "powershell", "cmd", "bash", "zsh", "fish", "nu", "sh", "dash", "elvish", "xonsh"];
+
+/// Whether `program` (a name or a file name, any case, `.exe` or not) is a shell.
+pub fn is_shell(program: &str) -> bool {
+    let name = program.to_lowercase();
+    SHELL_PROGRAMS.contains(&name.strip_suffix(".exe").unwrap_or(&name))
+}
+
 /// Programs that run an agent's script rather than being the agent: they can't name it.
 const INTERPRETERS: &[&str] = &["node", "nodejs", "bun", "deno", "python", "python3", "py", "ruby", "java", "uv", "uvx", "npx", "pnpm", "tsx", "ts-node"];
 
@@ -678,8 +734,7 @@ const INTERPRETERS: &[&str] = &["node", "nodejs", "bun", "deno", "python", "pyth
 /// None when there's nothing to go on (a shell, no script).
 pub fn agent_from_command(program: &str, args: &[String]) -> Option<AgentDef> {
     let program = program.to_lowercase();
-    let shells = ["pwsh", "powershell", "cmd", "bash", "zsh", "fish", "nu", "sh", "dash", "elvish", "xonsh"];
-    if program.is_empty() || shells.contains(&program.as_str()) {
+    if program.is_empty() || is_shell(&program) {
         return None;
     }
     let (name, process, cmdline) = if INTERPRETERS.contains(&program.as_str()) {
@@ -809,8 +864,10 @@ impl Default for Ui {
             update_check: true,
             motion: true,
             alt_arrows: true,
+            alt_keys: true,
             start_dir: String::new(),
             attention_sort: true,
+            sidebar_tabs: "all".into(),
             layout: String::new(),
             background: "solid".into(),
             panes: "floating".into(),
@@ -820,6 +877,8 @@ impl Default for Ui {
             dim: "30%".into(),
             focus_border: "accent".into(),
             rounded: Rounding::Off,
+            pane_colors: false,
+            retired_layout: None,
             subagent_count: true,
             cursor: "terminal".into(),
             cursor_blink: true,
@@ -1270,7 +1329,7 @@ impl Config {
             cfg.theme = t.to_string();
         }
         // Settings shows the look by its name, whatever an older file called it.
-        cfg.ui.layout = cfg.ui.layout_kind().name().into();
+        cfg.ui.fold_retired_layout();
         validate_spinner(&cfg.ui.spinner)?;
         validate_checks(&cfg.check)?;
         validate_sessions(&cfg.sessions)?;
@@ -1445,7 +1504,12 @@ impl Config {
             (map, order)
         };
         let (prefixed, prefixed_order) = build(keys::DEFAULT_PREFIX_KEYS, &self.keys.prefix);
-        let globals: Vec<(&str, &str)> = keys::DEFAULT_GLOBAL_KEYS.iter().chain(if self.ui.alt_arrows { keys::ALT_ARROW_KEYS } else { &[] }).copied().collect();
+        let globals: Vec<(&str, &str)> = keys::DEFAULT_GLOBAL_KEYS
+            .iter()
+            .chain(if self.ui.alt_arrows { keys::ALT_ARROW_KEYS } else { &[] })
+            .chain(if self.ui.alt_keys { keys::ALT_LETTER_KEYS } else { &[] })
+            .copied()
+            .collect();
         let (global, _) = build(&globals, &self.keys.global);
         Keymap { prefix, prefixed, prefixed_order, global, warnings }
     }
@@ -1927,17 +1991,57 @@ shell = \"pwsh\"
 
     #[test]
     fn older_ui_configs_keep_their_look_under_its_new_name() {
-        let kind = |toml: &str| toml::from_str::<Config>(toml).unwrap().ui.layout_kind();
-        assert_eq!(kind("[ui]\npanes = 'tiled'"), LayoutKind::Tiled, "no layout line: Cards, tiled");
-        assert_eq!(kind("[ui]\nlayout = 'cards'\npanes = 'tiled'"), LayoutKind::Tiled);
-        assert_eq!(kind("[ui]\nlayout = 'cards'\npanes = 'floating'"), LayoutKind::Floating);
-        assert_eq!(kind("[ui]\nlayout = 'cards'"), LayoutKind::Floating);
-        assert_eq!(kind("[ui]\nlayout = 'flat'\npanes = 'floating'"), LayoutKind::Compact);
-        assert_eq!(kind(""), LayoutKind::Floating, "the default");
-        assert_eq!(kind("[ui]\nlayout = 'floating'\npanes = 'tiled'"), LayoutKind::Floating, "a new name wins over a leftover panes");
-        assert_eq!(kind("[ui]\nlayout = 'compact'"), LayoutKind::Compact);
-        assert_eq!(kind("[ui]\nlayout = 'grid'"), LayoutKind::Grid);
-        assert_eq!(kind("[ui]\nlayout = 'hairline'"), LayoutKind::Hairline);
+        let ui = |toml: &str| {
+            let mut ui = toml::from_str::<Config>(toml).unwrap().ui;
+            ui.fold_retired_layout();
+            (ui.layout_kind(), ui.gap, ui.pane_colors)
+        };
+        let floating = |gap: &str, colors: bool| (LayoutKind::Floating, gap.to_string(), colors);
+        assert_eq!(ui("[ui]
+panes = 'tiled'"), floating("0", false), "no layout line: Cards, tiled");
+        assert_eq!(ui("[ui]
+layout = 'cards'
+panes = 'tiled'"), floating("0", false));
+        assert_eq!(ui("[ui]
+layout = 'tiled'
+gap = '2'"), floating("0", false), "tiled had no gaps");
+        assert_eq!(ui("[ui]
+layout = 'cards'
+panes = 'floating'"), floating("1", false));
+        assert_eq!(ui(""), floating("1", false), "the default");
+        assert_eq!(ui("[ui]
+layout = 'floating'
+panes = 'tiled'"), floating("1", false), "a new name wins over a leftover panes");
+        assert_eq!(ui("[ui]
+layout = 'grid'"), floating("1", true), "grid is floating in colour");
+        assert_eq!(ui("[ui]
+layout = 'compact'").0, LayoutKind::Hairline);
+        assert_eq!(ui("[ui]
+layout = 'flat'
+panes = 'floating'").0, LayoutKind::Hairline);
+        assert_eq!(ui("[ui]
+layout = 'hairline'").0, LayoutKind::Hairline);
+    }
+
+    #[test]
+    fn a_retired_look_is_said_once_with_what_stands_for_it() {
+        let note = |toml: &str| {
+            let mut ui = toml::from_str::<Config>(toml).unwrap().ui;
+            ui.fold_retired_layout();
+            ui.retired_layout.map(|r| r.note())
+        };
+        assert_eq!(note("[ui]
+layout = 'compact'").as_deref(), Some("The Compact layout is now Hairline, lines only. Change it in Settings › Appearance"));
+        assert_eq!(note("[ui]
+layout = 'tiled'").as_deref(), Some("The Tiled layout is now Floating with no gap. Change it in Settings › Appearance"));
+        assert_eq!(note("[ui]
+layout = 'grid'").as_deref(), Some("The Grid layout is now Floating with Pane colours on. Change it in Settings › Appearance"));
+        for kept in ["", "[ui]
+layout = 'floating'", "[ui]
+layout = 'cards'", "[ui]
+layout = 'hairline'"] {
+            assert_eq!(note(kept), None, "{kept:?}: nothing to say");
+        }
     }
 
     #[test]

@@ -1208,6 +1208,15 @@ impl App {
                     self.screen_splash_action(c);
                 }
             }
+            // The release banner's key: install the newer one, or restart into it.
+            KeyCode::Char('u') if self.update_available.is_some() || self.restart_needed() => {
+                self.splash = false;
+                if self.update_available.is_some() {
+                    self.act(Action::Update);
+                } else {
+                    self.ask_restart();
+                }
+            }
             KeyCode::Char(c) => {
                 if let Some(i) = opts.iter().position(|(_, _, key)| *key == c) {
                     self.screen.splash_sel = i;
@@ -1256,8 +1265,15 @@ impl App {
                 self.screen.cursor = Some(t);
                 self.act(Action::Changes);
             }
-            ScreenHit::Update => self.act(Action::Update),
-            ScreenHit::Restart => self.ask_restart(),
+            // From the splash's banner too, which then goes.
+            ScreenHit::Update => {
+                self.splash = false;
+                self.act(Action::Update);
+            }
+            ScreenHit::Restart => {
+                self.splash = false;
+                self.ask_restart();
+            }
             ScreenHit::Why(term) => {
                 self.mode = Mode::Why { term, side: matches!(self.mode, Mode::Side) };
             }

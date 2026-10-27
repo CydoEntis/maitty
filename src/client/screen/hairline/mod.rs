@@ -44,12 +44,11 @@ pub(in crate::client) struct Ink {
     pub teal: Color,
     /// Needs you, and nothing else.
     pub amber: Color,
-    pub green: Color,
 }
 
 impl Ink {
     pub fn of(t: &Theme) -> Ink {
-        Ink { bg: t.bg, raised: t.card2, line: t.line, text: t.text, strong: t.strong, dim: t.muted, teal: t.accent, amber: t.blocked, green: t.done }
+        Ink { bg: t.bg, raised: t.card2, line: t.line, text: t.text, strong: t.strong, dim: t.muted, teal: t.accent, amber: t.blocked }
     }
 }
 

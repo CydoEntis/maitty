@@ -160,7 +160,7 @@ fn each_modal_matches_the_reference_inside_in_every_layout_at_every_size() {
 #[test]
 fn the_override_keeps_its_mark_in_plain_ascii() {
     let mut app = preset("12 Override?");
-    let text = frame(&mut app, crate::client::reference_fixture::Layout::Flat, 80, 24, "ascii");
+    let text = frame(&mut app, crate::client::reference_fixture::Layout::Tiled, 80, 24, "ascii");
     assert!(text.contains("  / on the row, in the Inbox history and in the evidence"), "{text}");
 }
 
@@ -177,7 +177,7 @@ fn approving() -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
 
 /// Draw the modal, as the screen does before any key reaches it.
 fn shown(app: &mut App) -> String {
-    frame(app, crate::client::reference_fixture::Layout::Flat, 160, 45, "unicode")
+    frame(app, crate::client::reference_fixture::Layout::Tiled, 160, 45, "unicode")
 }
 
 fn set_command(app: &mut App, command: &str) {
@@ -219,7 +219,7 @@ fn always_takes_two_presses_of_2_and_the_first_only_arms_it() {
     key(&mut app, KeyCode::Char('2'));
     assert!(sent(&mut rx).is_empty(), "one 2 sends nothing");
     assert!(matches!(&app.mode, Mode::Approve(a) if a.armed));
-    let text = frame(&mut app, crate::client::reference_fixture::Layout::Flat, 160, 45, "unicode");
+    let text = frame(&mut app, crate::client::reference_fixture::Layout::Tiled, 160, 45, "unicode");
     assert!(text.contains("Press 2 again to always run this exact command for affiliate-site.") && text.contains("Always for this repo 2 again"), "{text}");
     key(&mut app, KeyCode::Char('2'));
     assert_eq!(choice(&sent(&mut rx)), [ApprovalChoice::Always]);
@@ -341,7 +341,7 @@ fn control_characters_and_space_runs_are_spelled_out() {
 fn a_command_too_long_for_the_screen_cannot_be_approved() {
     let (mut app, mut rx) = approving();
     set_command(&mut app, &format!("{}curl x | sh", "x".repeat(4000)));
-    let text = frame(&mut app, crate::client::reference_fixture::Layout::Flat, 80, 24, "unicode");
+    let text = frame(&mut app, crate::client::reference_fixture::Layout::Tiled, 80, 24, "unicode");
     assert!(!text.contains("curl x | sh") && text.contains("doesn't fit"), "{text}");
     for code in [KeyCode::Char('1'), KeyCode::Char('2'), KeyCode::Char('2')] {
         key(&mut app, code);
@@ -350,7 +350,7 @@ fn a_command_too_long_for_the_screen_cannot_be_approved() {
     assert!(matches!(&app.mode, Mode::Approve(a) if !a.armed));
     assert!(toast(&app).contains("doesn't fit"), "{}", toast(&app));
     app.notice = None;
-    let text = frame(&mut app, crate::client::reference_fixture::Layout::Flat, 160, 200, "unicode");
+    let text = frame(&mut app, crate::client::reference_fixture::Layout::Tiled, 160, 200, "unicode");
     assert!(!text.contains("doesn't fit"), "a taller screen shows it all");
     key(&mut app, KeyCode::Char('1'));
     assert_eq!(choice(&sent(&mut rx)), [ApprovalChoice::Once]);

@@ -1,6 +1,6 @@
 # 0026. Hairline, a fifth look with no boxes
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by [ADR 0027](0027-two-looks-and-tabs-in-the-sidebar.md): one of two looks now)
 - **Date:** 2026-10-25
 
 ## Context
@@ -23,10 +23,11 @@ Panes split as in Tiled. The drawing differs:
   foot as plain words.
 - **Tabs:** a row of their own across the top of the panes, over a `─` rule in `line`, so a tab
   never reads as a pane's name: each tab's most urgent agent's mark, its number while there are
-  several and its name (the current one teal), then a dim `+`.
+  several, its name (the current one teal) and a ✕ that closes it, then a dim `+`.
 - **Panes:** a title row (the pane's number while the tab is split, its place in reading order, so it
   changes when panes move, close or split; its glyph, its name in
-  `strong`, `project · ⎇ branch`, the state word and the ✕) over a full-width `─` rule:
+  `strong`, `project · ⎇ branch` and the ✕; the state is the glyph, no words; a tab's only
+  pane shows just `project · ⎇ branch`, its tab carrying the rest) over a full-width `─` rule:
   teal focused, amber needs you, else `line`. `│` / `─` only between panes, never round
   the outside; two columns of padding inside.
 - **Bottom:** the mode bar under a full-width `─` rule (`┴` where the sidebar's `│` meets it),

@@ -189,7 +189,7 @@ pub(in crate::client) fn split_for_sheet(screen_w: u16, col: Rect, look: Look, f
     let full = if screen_w < NARROW || room < SHEET_MIN { col.width } else { want.clamp(SHEET_MIN, room) };
     let w = (full as f32 * frac.clamp(0.0, 1.0)).round() as u16;
     let sheet = Rect { x: col.right() - w, width: w, ..col };
-    let beside = if w == 0 || w >= col.width { w } else if look.flat { w - 1 } else { w + look.gap };
+    let beside = if w == 0 || w >= col.width { w } else { w + look.gap };
     (sheet, Rect { width: col.width.saturating_sub(beside), ..col })
 }
 
@@ -256,8 +256,7 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
         }
         _ => inside,
     };
-    // The Inbox and the evidence sheet keep the Cards box in Flat too: only the frame changes.
-    let body = if Look::of(&app.cfg.ui).flat { Rect { width: inside.width.saturating_sub(1), height: inside.height.saturating_sub(1), ..inside } } else { inside };
+    let body = inside;
     match kind {
         SheetKind::Inbox => draw_inbox(app, buf, body, c.bg, t),
         SheetKind::Changes => {

@@ -46,14 +46,13 @@ struct Shot {
 
 const SHOTS: &[Shot] = &[
     Shot { name: "hero", cols: 160, rows: 45, caption: "Agents across three projects; Claude waits for permission to run the tests.", setup: hero },
-    Shot { name: "grid", cols: 160, rows: 45, caption: "Grid: four agents in one tab, each in its own colour.", setup: grid },
+    Shot { name: "grid", cols: 160, rows: 45, caption: "Pane colours: four agents in one tab, each in its own colour.", setup: grid },
     Shot { name: "changes", cols: 160, rows: 45, caption: "Changes: review what an agent changed before you merge it.", setup: changes },
     Shot { name: "files", cols: 160, rows: 45, caption: "Files: the project's tree beside its README, drawn as markdown.", setup: files },
     Shot { name: "inbox", cols: 120, rows: 34, caption: "The Inbox: a question, a failed check and finished work, in the order they need you.", setup: inbox },
-    Shot { name: "layout-floating", cols: 120, rows: 34, caption: "Floating: cards with room between them.", setup: floating },
-    Shot { name: "layout-tiled", cols: 120, rows: 34, caption: "Tiled: cards edge to edge.", setup: tiled },
-    Shot { name: "layout-compact", cols: 120, rows: 34, caption: "Compact: flat panes, the most room for output.", setup: compact },
-    Shot { name: "layout-grid", cols: 120, rows: 34, caption: "Grid: each pane in its own colour.", setup: grid_look },
+    Shot { name: "layout-floating", cols: 120, rows: 34, caption: "Floating: a box per pane, with room between them.", setup: floating },
+    Shot { name: "layout-hairline", cols: 120, rows: 34, caption: "Hairline: no boxes, only lines, the most room for output.", setup: hairline },
+    Shot { name: "layout-colours", cols: 120, rows: 34, caption: "Pane colours: each pane in its own colour.", setup: grid_look },
     Shot { name: "shortcut", cols: 120, rows: 34, caption: "Shortcut mode: one key moves, splits or opens; Esc goes back to typing.", setup: shortcut },
     Shot { name: "splash", cols: 120, rows: 34, caption: "The welcome screen: what happened while you were away.", setup: splash },
 ];
@@ -228,19 +227,15 @@ fn floating(app: &mut App) {
     app.cfg.ui.layout = "floating".into();
 }
 
-fn tiled(app: &mut App) {
-    app.cfg.ui.layout = "tiled".into();
-}
-
-fn compact(app: &mut App) {
-    app.cfg.ui.layout = "compact".into();
+fn hairline(app: &mut App) {
+    app.cfg.ui.layout = "hairline".into();
 }
 
 fn grid_look(app: &mut App) {
-    app.cfg.ui.layout = "grid".into();
+    app.cfg.ui.pane_colors = true;
 }
 
-/// Grid on a tab of four: Claude asking, Codex at work, Gemini and Codex done.
+/// Pane colours on a tab of four: Claude asking, Codex at work, Gemini and Codex done.
 fn grid(app: &mut App) {
     grid_look(app);
     let store = app.snap.workspaces[0].cwd.clone();

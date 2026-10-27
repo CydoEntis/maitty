@@ -223,16 +223,40 @@ fn cap(key: &str, on: bool, t: &Theme) -> Vec<Seg> {
     chip(key, st.add_modifier(Modifier::BOLD))
 }
 
-/// The version, barely there, or how to get the next one.
-fn foot(app: &App, t: &Theme) -> Seg {
-    let note = Style::default().fg(t.accent).bg(t.bg).add_modifier(Modifier::BOLD);
+/// The version, barely there.
+fn foot(t: &Theme) -> Seg {
+    seg(format!(concat!(env!("APP_COMMAND"), " {}"), env!("CARGO_PKG_VERSION")), Style::default().fg(t.line).bg(t.bg))
+}
+
+/// A newer release, or one installed and waiting for a restart: what the splash's banner says,
+/// and what `u` and a click on it do.
+fn release_news(app: &App) -> Option<(String, &'static str, ScreenHit)> {
     if let Some(v) = &app.update_available {
-        seg(format!("↑ {v} is out: click Update at the top right"), note)
+        Some((format!(concat!("↑ ", env!("APP_COMMAND"), " {} is out"), v), "update", ScreenHit::Update))
     } else if app.restart_needed() {
-        seg("↻ a new version is installed: click Restart at the top right", note)
+        Some(("↻ a new version is installed".to_string(), "restart", ScreenHit::Restart))
     } else {
-        seg(format!(concat!(env!("APP_COMMAND"), " {}"), env!("CARGO_PKG_VERSION")), Style::default().fg(t.line).bg(t.bg))
+        None
     }
+}
+
+/// Rows the release banner takes: its box and a blank row under it.
+const BANNER_ROWS: u16 = 4;
+
+/// The release banner at `r`: boxed as the look boxes a pane (ADR 0028), the news in the accent
+/// and `u` with what it does at the right; a click on it does the same.
+fn draw_banner(app: &mut App, buf: &mut Buffer, r: Rect, (news, what, hit_as): (String, &str, ScreenHit), t: &Theme) {
+    let look = Look::of(&app.cfg.ui);
+    let ground = if look.hairline { t.bg } else { t.card };
+    fill(buf, r, ground);
+    panel_box(buf, r, look, Style::default().fg(t.accent).bg(ground));
+    let y = r.y + 1;
+    let mut key = crate::client::design::keycap(t, "u");
+    key.push(seg(format!(" {what}"), Style::default().fg(t.text).bg(ground)));
+    let key_x = r.right().saturating_sub(segs_width(&key) + 2);
+    put(buf, r.x + 2, y, &[seg(news, Style::default().fg(t.accent).bg(ground).add_modifier(Modifier::BOLD))], key_x.saturating_sub(1));
+    put(buf, key_x, y, &key, r.right().saturating_sub(1));
+    hit(app, r, hit_as);
 }
 
 pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t: &Theme) {
@@ -250,8 +274,10 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     let between = u16::from(!compact);
     let before_cards = if compact { 1 } else { 2 };
     let away_rows = if away.is_empty() { 0 } else { 2 };
+    let news = release_news(app);
+    let banner_rows = if news.is_some() { BANNER_ROWS } else { 0 };
     let cards: u16 = opts.iter().map(|o| rows_of(o.2)).sum::<u16>() + between * opts.len().saturating_sub(1) as u16;
-    let height = LOGO_ROWS + 1 + 2 + 1 + away_rows + before_cards + cards + 1 + 1;
+    let height = LOGO_ROWS + 1 + 2 + 1 + away_rows + before_cards + banner_rows + cards + 1 + 1;
     let mut y = area.y + (area.height.saturating_sub(height) / 2).saturating_sub(between).max(1);
     let center = |w: u16| area.x + area.width.saturating_sub(w) / 2;
     fill(f.buffer_mut(), area, t.bg);
@@ -277,6 +303,12 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
         y += away_rows;
     }
     y += before_cards;
+    // A release waiting: over the cards, where it can't be missed.
+    if let Some(news) = news {
+        let mw = CARD_MAX.min(area.width.saturating_sub(8));
+        draw_banner(app, f.buffer_mut(), Rect { x: center(mw), y, width: mw, height: 3 }, news, t);
+        y += banner_rows;
+    }
 
     // One card per choice; the chosen one is lifted, with a bar in the accent down its edge.
     let mw = CARD_MAX.min(area.width.saturating_sub(8));
@@ -319,7 +351,7 @@ pub(in crate::client) fn draw_splash(app: &mut App, f: &mut Frame, area: Rect, t
     put(f.buffer_mut(), hx, y, &hints, area.right());
     hit(app, Rect { x: hx, y, width: segs_width(&hints), height: 1 }, ScreenHit::SplashKey('?'));
 
-    let foot = foot(app, t);
+    let foot = foot(t);
     let fw = segs_width(std::slice::from_ref(&foot));
     put(f.buffer_mut(), area.right().saturating_sub(fw + 2), area.bottom().saturating_sub(1), &[foot], area.right());
 }
