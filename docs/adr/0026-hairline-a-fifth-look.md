@@ -21,12 +21,16 @@ Panes split as in Tiled. The drawing differs:
   headers with their branch; one row per session (`▎` marker, glyph, name, age or
   `needs you`), no second lines but a request to start helpers; `new` and `menu` pinned to the
   foot as plain words.
+- **Tabs:** a row of their own across the top of the panes, over a `─` rule in `line`, so a tab
+  never reads as a pane's name: each tab's most urgent agent's mark, its number while there are
+  several and its name (the current one teal), then a dim `+`.
 - **Panes:** a title row (the pane's number while the tab is split, its place in reading order, so it
   changes when panes move, close or split; its glyph, its name in
   `strong`, `project · ⎇ branch`, the state word and the ✕) over a full-width `─` rule:
   teal focused, amber needs you, else `line`. `│` / `─` only between panes, never round
   the outside; two columns of padding inside.
-- **Bottom:** the mode bar alone, which adds the look and pane count after TYPING and `● N needs you` or
+- **Bottom:** the mode bar under a full-width `─` rule (`┴` where the sidebar's `│` meets it),
+  which adds the look and pane count after TYPING and `● N needs you` or
   `all clear` at its right end (before Update or Restart, which keep the end). Shortcut mode
   keeps its sky row.
 - **Always square:** `ui.rounded` is ignored while Hairline is chosen (`Ui::rounding`), and

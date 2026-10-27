@@ -155,17 +155,21 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
   `raised` with a teal `▎` and a teal name; a row on screen without the keys is `raised`; one
   that needs you has an amber `▎` and an amber name. The foot, pinned to the bottom row, is
   two dim words, no keys: `new` at the left, `menu` at the right.
+- **Tabs:** a row of their own across the top of the pane column, then a `─` rule in `line`
+  (`├` where the sidebar's `│` meets it). Each tab is plain words: its most urgent agent's mark
+  (so a tab out of view still shows it works or asks), its number while the session has
+  several, and its name; the current one teal bold, the others dim. A dim `+` after them opens
+  a tab, there even with one tab.
 - **Panes:** row 1 is the pane's number while the tab is split (bold: teal focused, amber when
-  it needs you, else dim), the glyph, the name in `strong` bold, the session's tabs as
-  plain words when it has several (the current one teal, each led by its most urgent agent's
-  mark, so a tab out of view still shows it works or asks), on the top-left pane a dim `+` that
-  opens a tab (there even with one tab), then `project · ⎇ branch` dim; at the
+  it needs you, else dim), the glyph, the name in `strong` bold, then `project · ⎇ branch` dim;
+  no tabs, so the title names only its pane; at the
   right the state (`needs you · 2m` or `needs you · approve check` amber bold, `working` teal,
   `done` green, `idle` dim) and
   the ✕. Row 2 is a `─` rule the pane's width: teal focused (`sky()` in shortcut mode), amber
   when it needs you and is not focused, else `line`. Panes side by side or stacked are parted
   by one `│` or `─`, never boxed; the terminal sits two columns in.
-- **Mode bar:** `TYPING` is a teal bold word, then `Hairline · 2 panes` dim, then the hint;
+- **Mode bar:** under a full-width `─` rule in `line` (`┴` where the sidebar's `│` meets it).
+  `TYPING` is a teal bold word, then `Hairline · 2 panes` dim, then the hint;
   whatever has the keys is named in `strong` bold, no chip. At the right `● N needs you` in
   amber bold, or `all clear` dim, just before Update or Restart. Shortcut mode keeps its sky row.
 - **Menus, popups and panels:** the same lines. A modal (Settings, a confirm, override, approval,

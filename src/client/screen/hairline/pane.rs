@@ -67,7 +67,7 @@ fn rule_colour(app: &App, info: &TermInfo, focused: bool, ink: Ink, t: &Theme) -
     }
 }
 
-/// The title row: number, glyph, name, the tabs, `project · ⎇ branch` and at the right the
+/// The title row: number, glyph, name, `project · ⎇ branch` and at the right the
 /// load note, the state word and the ✕. The number, glyph and name never shrink while anything
 /// else is left to give way: the meta first, then the tabs, then the note, the ✕ and the state
 /// word.
@@ -87,12 +87,9 @@ fn draw_title(app: &mut App, buf: &mut Buffer, body: Rect, info: &TermInfo, focu
     let right = fit_right(app, info, ink, room.saturating_sub(head_w + GAP));
     let right_w = segs_width(&right.segs);
     let left_end = end.saturating_sub(if right_w > 0 { right_w + GAP } else { 0 });
-    let mut x = put(buf, x0, y, &head, left_end);
+    let x = put(buf, x0, y, &head, left_end);
     if let Some(at) = glyph_at {
         hit(app, Rect { x: x0 + at, y, width: 1, height: 1 }, ScreenHit::Why(info.id));
-    }
-    if is_top_left(app, info.id) {
-        x = draw_tabs(app, buf, x, y, left_end, model, t);
     }
     let meta = meta_text(app, info, model);
     let meta_x = x + GAP;
@@ -134,7 +131,7 @@ fn head_segs(app: &App, info: &TermInfo, focused: bool, model: &[Proj], t: &Them
 }
 
 /// An agent's mark in its state's colour; a shell has none.
-fn mark(app: &App, info: &TermInfo, t: &Theme) -> Option<(String, Color)> {
+pub(super) fn mark(app: &App, info: &TermInfo, t: &Theme) -> Option<(String, Color)> {
     info.agent.as_ref()?;
     let set = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons);
     let working = working_glyph(app);
@@ -196,49 +193,6 @@ fn state_word(info: &TermInfo, ink: Ink) -> Option<Seg> {
         Status::Done => seg("done", st.fg(ink.green)),
         _ => seg("idle", st.fg(ink.dim)),
     })
-}
-
-/// The tab's top-left pane carries the session's tabs.
-fn is_top_left(app: &App, term: TermId) -> bool {
-    app.screen.leaf_rects.iter().min_by_key(|(_, lr)| (lr.y, lr.x)).is_some_and(|(id, _)| *id == term)
-}
-
-/// The session's tabs as plain words from `x` (only when it has several), each led by its
-/// state's mark, the current one teal and bold, then a dim `+` that opens one. A tab that does
-/// not fit before `end` is left out, with the `+`; returns where the tabs end.
-fn draw_tabs(app: &mut App, buf: &mut Buffer, x: u16, y: u16, end: u16, model: &[Proj], t: &Theme) -> u16 {
-    let ink = Ink::of(t);
-    let st = Style::default().bg(ink.bg);
-    let tabs = app.session_tabs();
-    let mut at = x;
-    for (n, &i) in tabs.iter().enumerate().filter(|_| tabs.len() > 1) {
-        let name = tab_name(&app.screen.tabs[i]).unwrap_or_else(|| session_name(app, model, app.screen.tabs[i].focus));
-        let style = if i == app.screen.tab { st.fg(ink.teal).add_modifier(Modifier::BOLD) } else { st.fg(ink.dim) };
-        let mut label: Vec<Seg> = tab_mark(app, i, t).map(|(g, c)| seg(format!("{g} "), st.fg(c).add_modifier(Modifier::BOLD))).into_iter().collect();
-        label.push(seg(format!("{} {name}", n + 1), style));
-        let w = segs_width(&label);
-        let tx = at + GAP;
-        if tx + w > end {
-            return at;
-        }
-        put(buf, tx, y, &label, end);
-        hit(app, Rect { x: tx, y, width: w, height: 1 }, ScreenHit::TabPick(i));
-        at = tx + w;
-    }
-    if at + GAP < end {
-        put(buf, at + GAP, y, &[seg("+", st.fg(ink.dim))], end);
-        hit(app, Rect { x: at + GAP, y, width: 1, height: 1 }, ScreenHit::NewTab);
-        at += GAP + 1;
-    }
-    at
-}
-
-/// The mark of the tab's most urgent agent, so a tab out of view still shows it works or asks.
-fn tab_mark(app: &App, tab: usize, t: &Theme) -> Option<(String, Color)> {
-    let urgency = |i: &TermInfo| if pane_needs(i) { 0 } else { i.status.urgency() };
-    let leaves = app.screen.tabs.get(tab)?.layout.leaves();
-    let info = leaves.iter().filter_map(|id| app.snap.terms.get(id)).filter(|i| i.agent.is_some()).min_by_key(|i| urgency(i))?;
-    mark(app, info, t)
 }
 
 /// `project · ⎇ branch`, from the session's sidebar row, else the pane's own branch.

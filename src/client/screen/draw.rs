@@ -39,6 +39,8 @@ pub(in crate::client) struct Grid {
     pub edge: Rect,
     /// The sheet docked right of the panes, when one is open (else empty).
     pub sheet: Rect,
+    /// Hairline's tab row over the panes and the sheet (else empty).
+    pub tabs: Rect,
 }
 
 /// Most the padding round the screen may be, in cells.
@@ -50,10 +52,12 @@ fn padded(app: &App, area: Rect) -> Rect {
     Rect { x: area.x + m, y: area.y + m, width: area.width.saturating_sub(2 * m), height: area.height.saturating_sub(2 * m) }
 }
 
-/// The room the screen is laid out in: inside the padding, above the mode bar.
+/// The room the screen is laid out in: inside the padding, above the mode bar and, in
+/// Hairline, above the rule over it.
 pub(in crate::client) fn framed(app: &App, area: Rect) -> Rect {
     let r = padded(app, area);
-    Rect { height: r.height.saturating_sub(1), ..r }
+    let bar = if Look::of(&app.cfg.ui).hairline { 2 } else { 1 };
+    Rect { height: r.height.saturating_sub(bar), ..r }
 }
 
 /// The mode bar's row (ADR 0024): the bottom row inside the padding.
@@ -90,12 +94,17 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
     };
     // Collapsed, the sessions are chips on row 0 and the panes (with their tabs) start below it.
     let col = if strip_on(app) { Rect { y: col.y + 1, height: col.height.saturating_sub(1), ..col } } else { col };
+    let (tabs, col) = if look.hairline && col.height > hairline::TAB_ROWS {
+        (Rect { height: hairline::TAB_ROWS, ..col }, Rect { y: col.y + hairline::TAB_ROWS, height: col.height - hairline::TAB_ROWS, ..col })
+    } else {
+        (Rect::default(), col)
+    };
     let edge = if side.x > col.x { Rect { x: col.right(), width: gap.max(1), ..area } } else { Rect { x: col.x.saturating_sub(gap), width: gap.max(1), ..area } };
     let (sheet, panes) = match open_sheet(app) {
         Some(kind) => split_for_sheet(area.width, col, look, app.sheet_frac, wanted_w(app, kind, area.width)),
         None => (Rect::default(), col),
     };
-    Grid { side, panes, edge, sheet }
+    Grid { side, panes, edge, sheet, tabs }
 }
 
 /// Where the side sheet is this frame, the widest it could be, and the screen's width, for its
@@ -182,6 +191,11 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     }
     if g.panes.width > 0 {
         draw_main(app, f, g.panes, &model, t);
+    }
+    if Look::of(&app.cfg.ui).hairline {
+        hairline::draw_tab_row(app, f.buffer_mut(), g.tabs, &model, t);
+        let edge = (g.side.width >= SIDE_DRAWN_FROM).then_some(g.edge.x);
+        hairline::draw_bar_rule(f.buffer_mut(), Rect { y: room.bottom(), height: 1, ..room }, g.tabs, edge, g.side.x < g.edge.x, t);
     }
     if let Some(kind) = open_sheet(app).filter(|_| g.sheet.width >= SHEET_DRAWN_FROM) {
         draw_sheet(app, f.buffer_mut(), g.sheet, kind, t);
