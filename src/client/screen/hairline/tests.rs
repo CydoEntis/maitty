@@ -89,15 +89,49 @@ fn nothing_is_rounded_or_boxed_even_with_rounding_on() {
     }
 }
 
+/// The tab row over the panes: the tabs, then its rule.
+fn tab_row(app: &App, buf: &Buffer) -> Rect {
+    let tabs = grid(app, framed(app, buf.area)).tabs;
+    assert_eq!(tabs.height, 2, "a tab row and its rule");
+    Rect { height: 1, ..tabs }
+}
+
 #[test]
-fn the_bottom_is_only_the_mode_bar() {
+fn a_rule_parts_the_mode_bar_from_the_rest() {
     for (label, app, buf) in every_frame() {
         let bar = mode_bar_row(&app, buf.area);
         assert_eq!(bar.y, buf.area.bottom() - 1, "{label}");
-        assert_eq!(framed(&app, buf.area).bottom(), bar.y, "{label}: the layout runs down to the bar");
-        let over: String = (0..buf.area.width).map(|x| buf[(x, bar.y - 1)].symbol()).collect();
-        assert!(!over.contains('━'), "{label}: no status strip: {over}");
+        assert_eq!(framed(&app, buf.area).bottom(), bar.y - 1, "{label}: the layout runs down to the rule");
+        let over: String = (bar.x..bar.right()).map(|x| buf[(x, bar.y - 1)].symbol()).collect();
+        let edge = grid(&app, framed(&app, buf.area)).edge.x;
+        assert_eq!(buf[(edge, bar.y - 1)].symbol(), "┴", "{label}: the sidebar's line meets it");
+        assert_eq!(over.replace('┴', "─"), "─".repeat(bar.width as usize), "{label}: one rule, no strip: {over}");
     }
+}
+
+#[test]
+fn the_tabs_have_their_own_row_over_the_panes() {
+    for (label, app, buf) in every_frame() {
+        let row = tab_row(&app, &buf);
+        let top = app.screen.leaf_rects.iter().map(|(_, r)| r.y).min().unwrap();
+        assert_eq!(top, row.y + 2, "{label}: the panes start under the tab row's rule");
+        let rule: String = (row.x..row.right()).map(|x| buf[(x, row.y + 1)].symbol()).collect();
+        assert_eq!(rule, "─".repeat(row.width as usize), "{label}");
+        assert!(find_in(&buf, row, "+").is_some(), "{label}: the + is in the tab row");
+    }
+}
+
+#[test]
+fn a_pane_title_names_only_its_pane() {
+    let mut app = hairline_world(1);
+    let mut second = app.screen.tabs[app.screen.tab].clone();
+    (second.layout, second.focus, second.name) = (Node::Leaf(2), 2, "tests".into());
+    app.screen.tabs.push(second);
+    let buf = draw(&mut app, 160, 45);
+    let title = Rect { height: 1, ..pane_at(&app, app.focused().unwrap()) };
+    assert!(find_in(&buf, title, "tests").is_none(), "another tab is not in the pane's title");
+    assert!(find_in(&buf, title, "+").is_none(), "nor the +");
+    assert!(find_in(&buf, tab_row(&app, &buf), "2 tests").is_some(), "the tab row has it");
 }
 
 #[test]
@@ -284,7 +318,7 @@ fn a_sessions_tabs_are_plain_words_the_current_one_teal() {
     app.screen.tabs[app.screen.tab].name = "main".into();
     let buf = draw(&mut app, 160, 45);
     let t = app.theme.clone();
-    let title = Rect { height: 1, ..pane_at(&app, app.focused().unwrap()) };
+    let title = tab_row(&app, &buf);
     let (cx, _) = find_in(&buf, title, " main").expect("the current tab");
     let (ox, _) = find_in(&buf, title, "tests").expect("the other tab");
     let cx = cx + 1;
@@ -361,8 +395,9 @@ fn the_bar_counts_who_needs_you_and_keeps_update_at_its_end() {
 fn a_lone_tab_still_offers_a_plus_that_opens_a_tab() {
     let mut app = hairline_world(1);
     let buf = draw(&mut app, 120, 30);
-    let title = Rect { height: 1, ..pane_at(&app, app.focused().unwrap()) };
-    let (x, y) = find_in(&buf, title, "+").expect("a + on the only tab's title");
+    let row = tab_row(&app, &buf);
+    assert!(find_in(&buf, row, "1 ").is_none(), "a lone tab has no number");
+    let (x, y) = find_in(&buf, row, "+").expect("a + beside the only tab");
     assert!(app.hits.iter().any(|(r, h)| *h == Hit::Screen(ScreenHit::NewTab) && r.x == x && r.y == y), "the + opens a tab");
     show("one tab", &buf);
 }
@@ -374,8 +409,7 @@ fn a_tab_out_of_view_shows_its_agents_state() {
     (second.layout, second.focus, second.name) = (Node::Leaf(2), 2, "tests".into());
     app.screen.tabs.push(second);
     let buf = draw(&mut app, 160, 45);
-    let title = Rect { height: 1, ..pane_at(&app, app.focused().unwrap()) };
-    let (x, y) = find_in(&buf, title, "2 tests").expect("the other tab");
+    let (x, y) = find_in(&buf, tab_row(&app, &buf), "2 tests").expect("the other tab");
     assert_eq!(buf[(x - 2, y)].fg, app.theme.accent, "its working agent's mark leads it, teal");
     assert_ne!(buf[(x - 2, y)].symbol(), " ");
     show("a working tab out of view", &buf);
