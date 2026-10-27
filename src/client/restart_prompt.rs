@@ -164,13 +164,14 @@ mod tests {
     use ratatui::crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEventKind};
 
     const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
-    /// (ui.layout, ui.panes): Cards floating, Cards tiled, Flat.
-    const LAYOUTS: [(&str, &str); 3] = [("cards", "floating"), ("cards", "tiled"), ("flat", "tiled")];
+    /// (ui.layout, ui.panes): Cards floating and Cards tiled, as older files wrote them.
+    const LAYOUTS: [(&str, &str); 2] = [("cards", "floating"), ("cards", "tiled")];
     const OLD_PROTOCOL: u32 = 42;
 
     fn cfg(layout: (&str, &str)) -> Config {
         let mut cfg = Config::default();
         (cfg.ui.layout, cfg.ui.panes) = (layout.0.into(), layout.1.into());
+        cfg.ui.fold_retired_layout();
         cfg
     }
 

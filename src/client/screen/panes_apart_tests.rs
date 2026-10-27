@@ -174,19 +174,19 @@ fn the_top_left_pane_names_its_own_session_whichever_pane_has_focus() {
 }
 
 #[test]
-fn a_named_tab_keeps_its_name_beside_the_top_left_pane_s_own() {
+fn a_named_tab_keeps_its_name_on_its_tab_and_the_pane_its_own() {
     let mut app = split_world("floating", 2);
     app.screen.tabs[0].name = "build".into();
     let buf = draw(&mut app, 160, 45);
     let r = app.screen.leaf_rects.iter().min_by_key(|(_, r)| (r.y, r.x)).map(|(_, r)| *r).expect("a pane");
+    let tabs = |app: &App, buf: &Buffer| title_of(buf, crate::client::screen::grid(app, buf.area).tabs);
     let title = title_of(&buf, r);
-    assert!(title.contains("─ build ") && title.contains(" 1 · fix-footer "), "the tab's name in its chip, the pane's in its own: {title}");
+    assert!(tabs(&app, &buf).contains(" build ") && title.contains(" 1 · fix-footer ") && !title.contains("build"), "the tab's name on its tab, the pane's in its title: {} / {title}", tabs(&app, &buf));
     let mut second = app.screen.tabs[0].clone();
     (second.layout, second.focus, second.name) = (Node::Leaf(5), 5, String::new());
     app.screen.tabs.push(second);
     let buf = draw(&mut app, 160, 45);
-    let title = title_of(&buf, r);
-    assert!(title.contains(" 1 build ") && title.contains(" 1 · fix-footer "), "with several tabs the chip adds the tab's number: {title}");
+    assert!(tabs(&app, &buf).contains(" 1  build "), "with several tabs the tab adds its number: {}", tabs(&app, &buf));
 }
 
 #[test]

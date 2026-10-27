@@ -60,17 +60,21 @@ struct Block {
 
 fn blocks(file: &str) -> Vec<Block> {
     let mut out: Vec<Block> = Vec::new();
+    let mut skipping = false;
     for line in file.lines() {
         if let Some(head) = line.strip_prefix("===== ") {
             let parts: Vec<&str> = head.split(" | ").collect();
+            // The reference's Flat frames are of a look the app no longer has (ADR 0027).
             let layout = match parts[0] {
-                "floating" => Layout::Floating,
-                "tiled" => Layout::Tiled,
-                _ => Layout::Flat,
+                "floating" => Some(Layout::Floating),
+                "tiled" => Some(Layout::Tiled),
+                _ => None,
             };
+            skipping = layout.is_none();
+            let Some(layout) = layout else { continue };
             let (w, h) = parts[1].split_once('x').map(|(w, h)| (w.parse().unwrap(), h.parse().unwrap())).unwrap();
             out.push(Block { layout, w, h, glyphs: parts[2].into(), rows: Vec::new() });
-        } else if let Some(b) = out.last_mut() {
+        } else if !skipping && let Some(b) = out.last_mut() {
             let mut row: Vec<char> = line.replace('\\', std::path::MAIN_SEPARATOR_STR).chars().collect();
             row.resize(b.w as usize, ' ');
             b.rows.push(row);
@@ -253,7 +257,7 @@ struct Geometry {
     pane: Option<Rect>,
     /// Where the pane's title row's right-hand mark ends (exclusive).
     pane_end: u16,
-    /// The sheet's inside, between its side borders (or its left rule and the edge in Flat).
+    /// The sheet's inside, between its side borders.
     sheet: Option<Rect>,
     overlays: Vec<Rect>,
     side_inner: Rect,
@@ -262,23 +266,14 @@ struct Geometry {
 fn geometry(id: &str, b: &Block) -> Geometry {
     let (_, over) = preset(id);
     let (w, h) = (b.w, b.h);
-    let bordered = b.layout != Layout::Flat;
     let side_w = if w >= 200 { 40 } else if w >= 140 { 34 } else { 26 };
     let gut = u16::from(b.layout == Layout::Floating);
-    let ov = u16::from(!bordered);
     let sheet = matches!(over, Over::Evidence | Over::Inbox | Over::Override);
     let beside = sheet && w >= 140;
-    let px = side_w + gut - ov;
+    let px = side_w + gut;
     let pw = w - px;
-    let pane_w = if beside { pw - 72 - gut + ov } else { pw };
-    let pane = (!(sheet && !beside)).then(|| {
-        if bordered {
-            Rect { x: px + 1, y: 1, width: pane_w - 2, height: h - 2 }
-        } else {
-            let right = if beside { px + pane_w - 1 } else { w };
-            Rect { x: px + 1, y: 1, width: right - px - 1, height: h - 1 }
-        }
-    });
+    let pane_w = if beside { pw - 72 - gut } else { pw };
+    let pane = (!(sheet && !beside)).then(|| Rect { x: px + 1, y: 1, width: pane_w - 2, height: h - 2 });
     // A modal or popover, and the reference's hard shadow a cell right and down.
     let with_shadow = |r: Rect| vec![r, Rect { x: r.x + 1, y: r.y + 1, ..r }];
     let modal = |mw: u16, mh: u16| with_shadow(Rect { x: (w - mw) / 2, y: (h - mh) / 2, width: mw, height: mh });
@@ -292,10 +287,9 @@ fn geometry(id: &str, b: &Block) -> Geometry {
         }
         _ => Vec::new(),
     };
-    let side_inner = if bordered { Rect { x: 1, y: 1, width: side_w - 2, height: h - 2 } } else { Rect { x: 0, y: 1, width: side_w - 1, height: h - 1 } };
+    let side_inner = Rect { x: 1, y: 1, width: side_w - 2, height: h - 2 };
     let sheet = sheet.then(|| {
-        let (sx, sw) = if beside { (px + pane_w + gut - ov, 72) } else { (px, pw) };
-        // A sheet's content keeps the Cards box in Flat too.
+        let (sx, sw) = if beside { (px + pane_w + gut, 72) } else { (px, pw) };
         Rect { x: sx + 1, y: 1, width: sw - 2, height: h - 2 }
     });
     Geometry { pane, pane_end: px + pane_w - 1, sheet, overlays, side_inner }
@@ -500,8 +494,7 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
     });
     // The sample's second tab is add-payments, a session of its own in the app (the sidebar
     // lists it); fix-footer has one tab, so its title has no tab number either.
-    let flat = b.layout == Layout::Flat;
-    let fill = if flat { " " } else { "─" };
+    let fill = "─";
     let top = &mut want[0];
     let w = top.len();
     swap(top, " 2  add-payments ", &fill.repeat(17), 0, w);
@@ -510,7 +503,7 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
     // mark its room.
     if g.pane.is_some() {
         let mark = pane_mark(stage, b.glyphs == "ascii");
-        let mark: Vec<char> = (if flat { mark } else { format!(" {mark} ") }).chars().collect();
+        let mark: Vec<char> = format!(" {mark} ").chars().collect();
         let end = g.pane_end as usize;
         top[end - mark.len()..end].copy_from_slice(&mark);
     }
@@ -576,6 +569,31 @@ fn expected(id: &str, b: &Block) -> Vec<Vec<char>> {
                 if !frame.contains(ratatui::layout::Position { x, y }) {
                     want[y as usize][x as usize] = ANY;
                 }
+            }
+        }
+    }
+    // The reference's popover has no box; the app boxes it as a pane is, a cell outside it
+    // (ADR 0028), so that ring is the app's.
+    if matches!(preset(id).1, Over::Why)
+        && let Some(frame) = g.overlays.first()
+    {
+        let ring = Rect { x: frame.x.saturating_sub(1), y: frame.y.saturating_sub(1), width: frame.width + 2, height: frame.height + 2 };
+        for y in ring.y..ring.bottom().min(b.h) {
+            for x in ring.x..ring.right().min(b.w) {
+                if !frame.contains(ratatui::layout::Position { x, y }) {
+                    want[y as usize][x as usize] = ANY;
+                }
+            }
+        }
+    }
+    // The reference drew the tabs in the pane's top border; the app gives them a row of their
+    // own over the panes (ADR 0028), so the pane column's top rows, down to the box's top now,
+    // are the app's (`frame_tests` holds the tab row and the title).
+    if let Some(p) = g.pane {
+        let top = 1;
+        for row in want.iter_mut().take(top + 1) {
+            for cell in row.iter_mut().take((g.pane_end as usize + 1).min(b.w as usize)).skip(p.x as usize - 1) {
+                *cell = ANY;
             }
         }
     }
@@ -796,33 +814,17 @@ fn at(buf: &ratatui::buffer::Buffer, needle: &str) -> (u16, u16) {
 }
 
 #[test]
-fn flat_draws_its_zones_on_the_ground_under_a_card_strip() {
-    for id in ["01", "04", "C1"] {
-        let mut app = open(id);
-        let buf = cells(&mut app, Layout::Flat, 160, 45, "unicode");
-        let t = &app.theme;
-        let side = app.screen.side_rect;
-        let mid = side.x + side.width / 2;
-        assert_eq!(buf[(mid, 0)].bg, t.card, "{id}: row 0 is the header strip");
-        for y in [1, side.bottom() - 2] {
-            // The ground, or the terminal's own background standing for it.
-            let bg = buf[(mid, y)].bg;
-            assert!(bg == t.bg || bg == ratatui::style::Color::Reset, "{id}: the sidebar's body at row {y} is the ground, not {bg:?}");
-        }
-    }
-}
-
-#[test]
 fn a_failed_check_reads_in_err_on_its_row_its_sheet_and_its_pane() {
     let mut app = open("07");
     let buf = cells(&mut app, Layout::Floating, 160, 45, "unicode");
     let t = &app.theme;
-    let (x, y) = at(&buf, "✕ fix-footer");
-    assert_eq!(buf[(x, y)].fg, t.err, "the row's glyph");
-    assert_eq!(buf[(x - 2, y)].fg, t.accent, "the open row's bar is the accent, as any selected row's");
+    // The sidebar's row (its bar first; the tab row says the state too).
+    let (x, y) = at(&buf, "▎ ✕ fix-footer");
+    assert_eq!(buf[(x + 2, y)].fg, t.err, "the row's glyph");
+    assert_eq!(buf[(x, y)].fg, t.accent, "the open row's bar is the accent, as any selected row's");
     let (x, y) = at(&buf, "✕ failed   exit 1");
     assert_eq!(buf[(x, y)].bg, t.err, "the sheet's result chip");
-    let (x, y) = at(&buf, "✕ failed  ✕");
+    let (x, y) = at(&buf, "✕ failed ┐");
     assert_eq!(buf[(x, y)].fg, t.err, "the pane's mark");
 }
 
@@ -859,62 +861,6 @@ fn pill_caps_only_round_the_buttons_ends() {
             }
         }
         assert!(changed > 0, "{id}: the buttons have caps");
-    }
-}
-
-/// Flat honours `ui.rounded` as Cards does: off, no cap is drawn; on, caps appear and each
-/// one sits on the ground of the cell beside it (the zone's, not the theme's `bg`), so an
-/// end shows no notch of another colour.
-#[test]
-fn flat_rounds_its_pill_ends_on_the_ground_around_them() {
-    let caps = [CAP_L, CAP_R];
-    let mut total = 0;
-    for id in ["01", "04", "11", "12", "A2", "C1"] {
-        let mut square = open(id);
-        let plain = cells(&mut square, Layout::Flat, 160, 45, "unicode");
-        assert!(!plain.content().iter().any(|c| caps.contains(&c.symbol())), "{id}: pill_caps off draws no cap");
-
-        let mut round = open(id);
-        round.cfg.ui.rounded = crate::config::Rounding::Full;
-        let buf = cells(&mut round, Layout::Flat, 160, 45, "unicode");
-        let area = buf.area;
-        let mut seen = 0;
-        for y in area.top()..area.bottom() {
-            for x in area.left()..area.right() {
-                let cell = &buf[(x, y)];
-                let outside = match cell.symbol() {
-                    s if s == CAP_L => x.checked_sub(1),
-                    s if s == CAP_R => Some(x + 1).filter(|n| *n < area.right()),
-                    _ => continue,
-                };
-                seen += 1;
-                // A session row's cap stands on the sidebar's own ground, which can be the terminal's.
-                assert!(cell.bg != ratatui::style::Color::Reset || cell.fg != ratatui::style::Color::Reset, "{id}: the cap at {x},{y} has a ground");
-                // A tab chip on a title of its own colour has a cap that reads as a blank.
-                assert!(y == 0 || cell.bg != cell.fg, "{id}: the cap at {x},{y} is invisible");
-                if let Some(o) = outside {
-                    let beside = &buf[(o, y)];
-                    if !caps.contains(&beside.symbol()) && beside.symbol() == " " {
-                        assert_eq!(cell.bg, beside.bg, "{id}: the cap at {x},{y} sits on another colour than the cell beside it");
-                    }
-                }
-            }
-        }
-        total += seen;
-    }
-    assert!(total > 0, "Flat's buttons have round ends with pill_caps on");
-}
-
-/// Flat has no card edges, so rounded corners reach only a modal there: its box, all four.
-#[test]
-fn flat_corners_round_only_a_modal() {
-    let mut app = open("12");
-    let square = frame(&mut app, Layout::Flat, 160, 45, "unicode");
-    assert!(!square.contains(['╭', '╮', '╰', '╯']), "square is the default\n{square}");
-    app.cfg.ui.rounded = crate::config::Rounding::Full;
-    let rounded = frame(&mut app, Layout::Flat, 160, 45, "unicode");
-    for corner in ['╭', '╮', '╰', '╯'] {
-        assert_eq!(rounded.matches(corner).count(), 1, "the modal's {corner}, and nothing else is a box\n{rounded}");
     }
 }
 
@@ -963,7 +909,7 @@ fn not_now_keeps_its_last_cell_beside_an_armed_always() {
 /// terminal inside it still gets its own clicks.
 #[test]
 fn a_click_anywhere_inside_a_panes_card_is_the_pane() {
-    for (id, layout) in [("01", Layout::Floating), ("07", Layout::Floating), ("07", Layout::Tiled), ("01", Layout::Flat)] {
+    for (id, layout) in [("01", Layout::Floating), ("07", Layout::Floating), ("07", Layout::Tiled)] {
         let mut app = open(id);
         app.mode = Mode::Normal;
         let _ = cells(&mut app, layout, 160, 45, "unicode");

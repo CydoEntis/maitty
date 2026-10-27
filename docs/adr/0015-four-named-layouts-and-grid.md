@@ -1,6 +1,6 @@
 # 0015. Four named layouts, one setting, and the Grid style
 
-- **Status:** Accepted (amended 2026-10-24, see *Amendments*)
+- **Status:** Superseded in part by [ADR 0027](0027-two-looks-and-tabs-in-the-sidebar.md) (amended 2026-10-24, see *Amendments*)
 - **Date:** 2026-10-23
 
 ## Context
@@ -53,3 +53,6 @@ new proposal. Supersedes the names in ADR 0007 and ADR 0012, not their rules.
   the right; the user found both repeated what the title already said. The state shows only as
   its glyph inside the chip that names the pane (the current tab on the top-left pane). The
   rules live in [`docs/UI.md`](../UI.md) (the Grid paragraph and *Pane title*).
+- **2026-10-27:** [ADR 0027](0027-two-looks-and-tabs-in-the-sidebar.md) keeps Floating only.
+  Tiled is Floating with `gap = 0`, Grid's colours are the Pane colours option on Floating (its
+  title style is gone), and Compact loads as Hairline.

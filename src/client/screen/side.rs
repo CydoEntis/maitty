@@ -3,6 +3,7 @@
 
 use super::check;
 use super::glyphs::Kind as State;
+use super::side_tabs::{draw_tab_line, shown_tab_indexes, tab_line, tab_segs};
 use super::*;
 
 /// A line of the sidebar tree.
@@ -20,6 +21,9 @@ pub(in crate::client) enum Line {
     Third(TermId),
     /// A dim line under an agent: a queued follow-up. Shares the agent's highlight.
     Note(String, Color, TermId),
+    /// One of a session's tabs (its owner, and where the tab is in `screen.tabs`), under its
+    /// row while it has two or more (`side_tabs`).
+    Tab(TermId, usize),
     /// Nothing running in a folder project.
     Empty(usize),
     Gap,
@@ -106,6 +110,7 @@ pub(in crate::client) fn session_lines(app: &App, s: &Session, t: &Theme, out: &
         let more = if s.queued.len() > 1 { format!(" (+{})", s.queued.len() - 1) } else { String::new() };
         out.push(Line::Note(format!("⏵ next: {next}{more}"), notes_c, s.term));
     }
+    out.extend(shown_tab_indexes(app, s.term).into_iter().map(|i| Line::Tab(s.term, i)));
 }
 
 /// A helper's row steps in this far under the session that started it, per level.
@@ -211,21 +216,16 @@ fn row_term(model: &[Proj], l: &Line) -> Option<TermId> {
 struct Cols {
     x: u16,
     rx: u16,
-    flat: bool,
     /// Rounded rows end in a cap on the last cell of their tint, so nothing else is drawn there.
     cap: bool,
     /// A folder row starts a cell before X, so its fold button keeps X and its left end is a
-    /// blank cell that can take a cap: with caps on, unless that cell is a Flat zone's left rule.
+    /// blank cell that can take a cap: with caps on.
     lead: bool,
 }
 
 impl Cols {
-    /// `ruled`: a Flat zone has a `│` rule down its left (`card::ruled`).
-    fn of(r: Rect, flat: bool, cap: bool, ruled: bool) -> Cols {
-        let (left, right) = if flat { (1, 2) } else { (2, 3) };
-        // In Flat the tint ends on RX itself, so right-aligned text steps back a cell for the cap.
-        let rx = r.right().saturating_sub(right + u16::from(cap && flat));
-        Cols { x: r.x + left, rx, flat, cap, lead: cap && !(flat && ruled) }
+    fn of(r: Rect, cap: bool) -> Cols {
+        Cols { x: r.x + 2, rx: r.right().saturating_sub(3), cap, lead: cap }
     }
 
     /// A folder's row: `row`, a cell longer on the left when it can end in a cap there.
@@ -234,10 +234,9 @@ impl Cols {
         Rect { x: self.x - lead, width: self.row(y).width + lead, ..self.row(y) }
     }
 
-    /// The end (exclusive) of a row's tint: a column past RX inside a card; in Flat that
-    /// column is the pane's divider.
+    /// The end (exclusive) of a row's tint: a column past RX inside a card.
     fn tint_end(self) -> u16 {
-        self.rx + if self.flat { 1 + u16::from(self.cap) } else { 2 }
+        self.rx + 2
     }
 
     /// The end (exclusive) of anything drawn on a row, so a cut line's `…` stays in sight. A cap
@@ -284,30 +283,17 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     card(app, buf, r, &c, t);
     app.screen.side_rect = r;
     hit(app, r, ScreenHit::SideFocus);
-    draw_head(app, buf, r, model, t, focused_side, look.flat);
-    let cols = Cols::of(r, look.flat, look.round_rows, ruled(app, buf, r));
+    draw_head(app, buf, r, model, t, focused_side);
+    let cols = Cols::of(r, look.round_rows);
     let screen_w = buf.area.width;
     let lines = fitted_lines(app, model, t, screen_w);
-    let shown: Vec<TermId> = app.screen.tabs.get(app.screen.tab).map(|t| t.layout.leaves()).unwrap_or_default();
-    // In a split, the split's row (its first pane's) is the open one, whichever side you're on.
-    let focus = app.focused().map(|f| if shown.len() > 1 && shown.contains(&f) { shown[0] } else { f });
+    let focus = open_row(app);
     let top = r.y + 2;
     // The foot is lifted a row off the bottom (Cards: it sits above the border), a divider over it.
     let foot_y = r.bottom().saturating_sub(2);
     let list_h = foot_y.saturating_sub(1).saturating_sub(top) as usize;
     let scroll = side_scroll(app, model, &lines, focus, list_h);
-
-    app.screen.visible = lines.iter().filter_map(|l| line_term(model, l)).collect();
-    app.screen.side_items = lines
-        .iter()
-        .filter_map(|l| match l {
-            Line::Proj(pi) => Some(SideItem::Proj(model[*pi].key.clone())),
-            Line::Sess(..) => line_term(model, l).map(SideItem::Sess),
-            _ => None,
-        })
-        .collect();
-    app.screen.row_y.clear();
-    app.screen.proj_keys = model.iter().map(|p| p.key.clone()).collect();
+    note_rows(app, model, &lines);
 
     let on = app.motion_on();
     let mut gliding: Option<u16> = None;
@@ -317,7 +303,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
         let last = indents.last().copied().unwrap_or(0);
         indents.push(match l {
             Line::Sess(.., depth) => u16::from(*depth) * HELPER_INDENT,
-            Line::Note(..) | Line::Detail(..) | Line::Third(..) => last,
+            Line::Note(..) | Line::Detail(..) | Line::Third(..) | Line::Tab(..) => last,
             _ => 0,
         });
     }
@@ -385,18 +371,45 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
         }
         draw_line(app, buf, model, line, cols, y, indent, pb, t, screen_w < NARROW);
     }
-    let plain = Style::default().bg(pb);
-    if scroll > 0 {
-        put(buf, cols.rx + 1, top, &[seg("▲", plain.fg(t.muted))], cols.end());
-    }
-    if scroll + list_h < lines.len() {
-        put(buf, cols.rx + 1, top + list_h as u16 - 1, &[seg("▼", plain.fg(t.muted))], cols.end());
-    }
+    scroll_marks(buf, cols.rx + 1, top, (scroll, list_h, lines.len()), Style::default().bg(pb).fg(t.muted));
     draw_foot(app, buf, r, cols, pb, t);
     if let Some(gy) = gliding.filter(|gy| (top..top + list_h as u16).contains(gy))
         && app.screen.row_y.get(&focus.unwrap_or_default()) != Some(&gy)
     {
         tint_row(look, buf, cols.x, gy, cols.tint_end() - cols.x, t.sel_bg(), pb);
+    }
+}
+
+/// The session row that is open: the focused pane's, or in a split the split's (its first
+/// pane's), whichever side of it has the keys.
+pub(super) fn open_row(app: &App) -> Option<TermId> {
+    let shown: Vec<TermId> = app.screen.tabs.get(app.screen.tab).map(|t| t.layout.leaves()).unwrap_or_default();
+    app.focused().map(|f| if shown.len() > 1 && shown.contains(&f) { shown[0] } else { f })
+}
+
+/// What the keyboard and the mouse read back from the rows drawn: their order and places.
+pub(super) fn note_rows(app: &mut App, model: &[Proj], lines: &[Line]) {
+    app.screen.visible = lines.iter().filter_map(|l| line_term(model, l)).collect();
+    app.screen.side_items = lines
+        .iter()
+        .filter_map(|l| match l {
+            Line::Proj(pi) => Some(SideItem::Proj(model[*pi].key.clone())),
+            Line::Sess(..) => line_term(model, l).map(SideItem::Sess),
+            _ => None,
+        })
+        .collect();
+    app.screen.row_y.clear();
+    app.screen.proj_keys = model.iter().map(|p| p.key.clone()).collect();
+}
+
+/// `▲` at the list's top when lines are scrolled off above, `▼` at its bottom when more are
+/// below, in column `x`. `(scroll, list_h, len)`: the first line shown, the rows, the lines.
+pub(super) fn scroll_marks(buf: &mut Buffer, x: u16, top: u16, (scroll, list_h, len): (usize, usize, usize), st: Style) {
+    if scroll > 0 {
+        put(buf, x, top, &[seg("▲", st)], x + 1);
+    }
+    if scroll + list_h < len {
+        put(buf, x, top + list_h as u16 - 1, &[seg("▼", st)], x + 1);
     }
 }
 
@@ -430,12 +443,12 @@ fn row_look(picked: bool, ground: Color, t: &Theme) -> RowLook {
 
 /// The title chip, "SESSIONS 5", and right of it ●n needing you (asking, or waiting for a check
 /// to be approved) and ✕n failed checks, each only when there are any.
-fn draw_head(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme, lit: bool, flat: bool) {
+fn draw_head(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme, lit: bool) {
     let all: Vec<&Session> = model.iter().flat_map(|p| p.sessions()).collect();
     let needs = all.iter().filter(|s| check::needs_you(s)).count();
     let failed = all.iter().filter(|s| check::shown(s).is_some_and(check::failed)).count();
     let marks = check::marks(app);
-    let ground = if flat { Style::default().bg(t.card) } else { Style::default() };
+    let ground = Style::default();
     let mut right = Vec::new();
     if needs > 0 {
         right.push(seg(format!("{}{needs}", marks.needs), ground.fg(t.blocked).add_modifier(Modifier::BOLD)));
@@ -446,18 +459,18 @@ fn draw_head(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme
     }
     let rw = segs_width(&right);
     // A card's counts sit a space in from its corner, with a space either side.
-    let rx = r.right().saturating_sub(if flat { 1 } else { 2 } + rw);
+    let rx = r.right().saturating_sub(2 + rw);
     let (chip_bg, ink, count) = if lit { (t.accent, t.acc_ink, t.acc_ink) } else { (t.btn, t.strong, t.text) };
     let chip = Style::default().bg(chip_bg);
     let host = crate::ipc::remote().map(|h| format!(" ⇄ {h}")).unwrap_or_default();
     let mut title = vec![seg(" SESSIONS", chip.fg(ink).add_modifier(Modifier::BOLD)), seg(format!(" {}{host} ", all.len()), chip.fg(count))];
     if Look::of(&app.cfg.ui).caps {
-        title = round_ends(title, if flat { t.card } else { Color::Reset });
+        title = round_ends(title, Color::Reset);
     }
-    put(buf, r.x + if flat { 1 } else { 2 }, r.y, &title, rx.saturating_sub(1));
+    put(buf, r.x + 2, r.y, &title, rx.saturating_sub(1));
     if rw > 0 {
-        let pad = if flat { vec![] } else { vec![seg(" ", ground)] };
-        put(buf, rx.saturating_sub(pad.len() as u16), r.y, &[pad.clone(), right, pad].concat(), r.right());
+        let pad = seg(" ", ground);
+        put(buf, rx.saturating_sub(1), r.y, &[vec![pad.clone()], right, vec![pad]].concat(), r.right());
     }
 }
 
@@ -743,6 +756,14 @@ fn draw_line(app: &mut App, buf: &mut Buffer, model: &[Proj], line: &Line, cols:
             put(buf, cols.x + 2, y, &[seg("empty  ", st.fg(t.muted).add_modifier(Modifier::ITALIC)), seg(nk, st.fg(t.accent).add_modifier(Modifier::BOLD)), seg(" new shell", st.fg(t.muted))], cols.end());
             hit(app, row, ScreenHit::ShellIn(*pi));
         }
+        Line::Tab(owner, tab) => {
+            let Some(line) = tab_line(app, model, *owner, *tab, t) else { return };
+            let name_fg = if line.current { t.accent } else { t.text };
+            // Right-aligned as the session row's age is, a column clear of the border.
+            let end = cols.rx + 1;
+            let segs = tab_segs(&line, end.saturating_sub(x), Style::default().bg(pb), name_fg, t.line);
+            draw_tab_line(app, buf, row, x, end, segs, *tab);
+        }
         // A quiet heading: "SSH 2 ────".
         Line::Section(kind, n) => {
             let st = Style::default().bg(pb);
@@ -918,16 +939,16 @@ mod frame_tests {
         (!rows.is_empty()).then_some(Want { counts, rows, foot })
     }
 
-    /// The title's counts: right-aligned a column in from the corner on a card, at the edge in Flat.
-    fn counts(text: &str, r: ratatui::layout::Rect, flat: bool, n: usize) -> String {
+    /// The title's counts: right-aligned a column in from the corner.
+    fn counts(text: &str, r: ratatui::layout::Rect, n: usize) -> String {
         let row: Vec<char> = text.lines().nth(r.y as usize).unwrap_or_default().chars().collect();
-        let end = (r.right() - if flat { 1 } else { 2 }) as usize;
+        let end = (r.right() - 2) as usize;
         (end - n..end).map(|x| row.get(x).copied().unwrap_or(' ')).collect()
     }
 
-    /// The sidebar's inner rows: columns X-1..RX+1 of a card (X..RX in Flat), between its border rows.
-    fn inner(text: &str, r: ratatui::layout::Rect, flat: bool) -> Vec<String> {
-        let last = if flat { r.bottom() - 1 } else { r.bottom() - 2 };
+    /// The sidebar's inner rows: columns X-1..RX+1 of the card, between its border rows.
+    fn inner(text: &str, r: ratatui::layout::Rect) -> Vec<String> {
+        let last = r.bottom() - 2;
         let lines: Vec<Vec<char>> = text.lines().map(|l| l.chars().collect()).collect();
         (r.y + 1..=last)
             .map(|y| {
@@ -970,7 +991,7 @@ mod frame_tests {
         let want = wanted(stage, layout, size, glyphs).unwrap_or_else(|| panic!("no reference for {stage:?} {layout:?} {size:?} {glyphs}"));
         let mut app = world(stage);
         let text = frame(&mut app, layout, size.0, size.1, glyphs);
-        let got = inner(&text, app.screen.side_rect, layout == Layout::Flat);
+        let got = inner(&text, app.screen.side_rect);
         // The app leaves the agent's name off a working line; it is in the pane's title.
         let rows: Vec<Vec<char>> = want.rows.iter().map(|r| without_agent_on_working(r).chars().collect()).collect();
         // Sessions are one line now, each with its agent's mark (ADR 0021).
@@ -983,15 +1004,14 @@ mod frame_tests {
             && got[n..got.len() - 1].iter().all(String::is_empty)
             && got.last() == Some(&want.foot);
         assert!(ok, "{stage:?} {layout:?} {size:?} {glyphs}\nwant:\n{}\n----- {}\ngot:\n{}", want.rows.join("\n"), want.foot, got.join("\n"));
-        let flat = layout == Layout::Flat;
         assert!(text.lines().nth(app.screen.side_rect.y as usize).is_some_and(|l| l.contains(" SESSIONS 5 ")), "{stage:?} {layout:?} {size:?}: the title");
-        assert_eq!(counts(&text, app.screen.side_rect, flat, want.counts.chars().count()), want.counts, "{stage:?} {layout:?} {size:?} {glyphs}: the title's counts");
+        assert_eq!(counts(&text, app.screen.side_rect, want.counts.chars().count()), want.counts, "{stage:?} {layout:?} {size:?} {glyphs}: the title's counts");
     }
 
     fn rows_at(stage: Stage, layout: Layout, w: u16, h: u16) -> Vec<String> {
         let mut app = world(stage);
         let text = frame(&mut app, layout, w, h, "unicode");
-        inner(&text, app.screen.side_rect, layout == Layout::Flat)
+        inner(&text, app.screen.side_rect)
     }
 
     fn has(rows: &[String], needle: &str) -> bool {
@@ -1001,7 +1021,7 @@ mod frame_tests {
     #[test]
     fn a_folder_s_fold_button_is_a_coloured_mark_in_the_state_bars_column() {
         let mut app = world(Stage::Failed);
-        let buf = crate::client::reference_fixture::cells(&mut app, Layout::Flat, 160, 45, "unicode");
+        let buf = crate::client::reference_fixture::cells(&mut app, Layout::Tiled, 160, 45, "unicode");
         let side = app.screen.side_rect;
         let y = (side.y..side.bottom()).find(|&y| (side.x..side.right()).any(|x| buf[(x, y)].symbol() == "−")).expect("an open folder");
         let x = (side.x..side.right()).find(|&x| buf[(x, y)].symbol() == "−").unwrap();
@@ -1032,13 +1052,13 @@ mod frame_tests {
         let row_for = |name: &str| {
             let mut app = world(Stage::Multi);
             app.snap.terms.get_mut(&1).unwrap().checks[1].name = name.into();
-            let text = frame(&mut app, Layout::Flat, 80, 24, "unicode");
-            let rows = inner(&text, app.screen.side_rect, true);
+            let text = frame(&mut app, Layout::Tiled, 80, 24, "unicode");
+            let rows = inner(&text, app.screen.side_rect);
             rows.iter().find(|r| r.contains("failed:")).cloned().unwrap_or_default()
         };
         assert_eq!(row_for("e2e").trim_start_matches(['▎', ' ']), "failed: e2e ✓✕", "room for both");
-        assert_eq!(row_for("integration").trim_start_matches(['▎', ' ']), "failed: integration", "the glyphs give way");
-        assert_eq!(row_for("integration-suite").trim_start_matches(['▎', ' ']), "failed: integration…", "a word that can't fit is cut, not dropped");
+        assert_eq!(row_for("functional").trim_start_matches(['▎', ' ']), "failed: functional", "the glyphs give way");
+        assert_eq!(row_for("integration-suite").trim_start_matches(['▎', ' ']), "failed: integratio…", "a word that can't fit is cut, not dropped");
     }
 
     /// The working row's first line and its second, with the Appearance spinner `frames` in
@@ -1047,7 +1067,7 @@ mod frame_tests {
         let mut app = world(Stage::None);
         app.cfg.ui.spinner = frames.iter().map(|f| f.to_string()).collect();
         let text = frame(&mut app, layout, 160, 45, glyphs);
-        let rows = inner(&text, app.screen.side_rect, layout == Layout::Flat);
+        let rows = inner(&text, app.screen.side_rect);
         let at = rows.iter().position(|r| r.contains("add-payments")).expect("the working row");
         (rows[at].trim().trim_start_matches('▎').trim().to_string(), rows[at + 1].trim().to_string())
     }
@@ -1059,8 +1079,8 @@ mod frame_tests {
         assert_ne!(second, "working", "the spinner says working: there is no line for it");
         let (one_cell, _) = working_rows(&["|"], "unicode", Layout::Floating);
         assert!(one_cell.starts_with("| add-payments"), "a one-column choice keeps the name where it was: {one_cell:?}");
-        let (flat, _) = working_rows(crate::config::BARS_FRAMES, "unicode", Layout::Flat);
-        assert!(flat.starts_with("⣶⡆ add-payments"), "{flat:?}");
+        let (tiled, _) = working_rows(crate::config::BARS_FRAMES, "unicode", Layout::Tiled);
+        assert!(tiled.starts_with("⣶⡆ add-payments"), "{tiled:?}");
     }
 
     #[test]
@@ -1091,7 +1111,6 @@ mod frame_tests {
                     check(stage, layout, size, "unicode");
                 }
             }
-            check(stage, Layout::Flat, (80, 24), "ascii");
         }
     }
 }
@@ -1470,12 +1489,12 @@ mod v8_tests {
         app.act(Action::ToggleSidebar);
         app.side_frac = 0.0;
         assert!(!app.sidebar && !app.side_hidden && super::super::draw::strip_on(&app), "z: the strip");
-        assert_eq!(super::super::draw::grid(&app, area).panes.y, 1, "the panes start under the strip");
+        assert_eq!(super::super::draw::grid(&app, area).tabs.y, 1, "the tabs start under the strip");
         app.act(Action::HideSidebar);
         app.side_frac = 0.0;
         assert!(app.side_hidden && !super::super::draw::strip_on(&app), "Z: hidden");
         let g = super::super::draw::grid(&app, area);
-        assert_eq!((g.panes.x, g.panes.y, g.panes.width), (0, 0, 120), "hidden gives the panes everything");
+        assert_eq!((g.tabs.x, g.tabs.y, g.panes.x, g.panes.width), (0, 0, 0, 120), "hidden gives the tabs and panes everything");
         app.act(Action::ToggleSidebar);
         assert!(app.sidebar && !app.side_hidden, "z restores the sidebar");
         app.act(Action::HideSidebar);

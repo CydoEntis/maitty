@@ -360,11 +360,11 @@ mod screen_tests {
                 let screen = draw(&mut app, w, h);
                 show(&screen);
                 let g = screen::grid(&app, Rect::new(0, 0, w, h));
-                assert_eq!((g.side.width, g.panes.width, g.panes.y), (0, w, 1), "{w}x{h} {position}: the panes take the full width and start under the strip");
+                assert_eq!((g.side.width, g.panes.width, g.tabs.y), (0, w, 1), "{w}x{h} {position}: the tabs and panes take the full width and start under the strip");
                 let on_row0 = |hit: screen::ScreenHit| app.hits.iter().find(|(r, h)| *h == Hit::Screen(hit) && r.y == 0).map(|(r, _)| *r);
                 assert!(on_row0(screen::ScreenHit::Session(1)).is_some() && on_row0(screen::ScreenHit::Session(2)).is_some(), "{w}x{h} {position}: a chip per session");
                 assert!(on_row0(screen::ScreenHit::ExpandSidebar).is_some() && on_row0(screen::ScreenHit::Actions).is_some(), "{w}x{h} {position}: expand and Menu stay clickable");
-                assert!(screen.lines().nth(1).unwrap().contains(" + "), "the pane's tabs moved down to row 1: {}", screen.lines().nth(1).unwrap());
+                assert!(screen.lines().nth(1).unwrap().trim_end().ends_with(" +"), "the tabs moved down to row 1: {}", screen.lines().nth(1).unwrap());
                 let click = |app: &mut App, r: Rect| {
                     for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
                         app.on_mouse(MouseEvent { kind, column: r.x + 1, row: r.y, modifiers: KeyModifiers::NONE });
@@ -638,12 +638,13 @@ mod screen_tests {
         show(&text);
         let lines: Vec<&str> = text.lines().collect();
         assert!(!text.contains(concat!(">_ ", env!("APP_COMMAND"))), "no logo");
-        // The grid: no margin, the sidebar card the full height from the corner, the pane
-        // card beside it from row 0 with the tabs in its title.
+        // The grid: no margin, the sidebar card the full height from the corner, the tabs on
+        // row 0 beside it (ADR 0028), the pane card right under them.
         assert!(lines[0].starts_with("┌─"), "the sidebar card from the very corner: {}", lines[0]);
-        assert!(lines[0].contains("● needs you") && text.contains("claude"), "the active pane keeps its session and state: {}", lines[0]);
+        assert!(lines[1].contains("● needs you") && text.contains("claude"), "the active pane keeps its session and state: {}", lines[1]);
         assert!(text.contains("+ New") && text.contains("Menu"), "New and Actions stay in the sidebar foot");
-        assert!(lines[0].contains("─ claude ") && lines[0].contains("  + ") && !lines[0].contains('▯'), "the tab's name in the pane's title (a lone tab has no number), then the + chip; no layout switch: {}", lines[0]);
+        assert!(lines[0].contains(" claude ✕") && lines[0].trim_end().ends_with("  +") && !lines[0].contains('▯'), "the tab's name on the tab row (a lone tab has no number), then the + chip; no layout switch: {}", lines[0]);
+        assert!(lines[1].contains("─ shop-api · ⎇ main "), "a lone pane's title says where it is, its tab naming it: {}", lines[1]);
         // Projects and their sessions, nothing in between.
         assert!(text.contains("−  shop-api") && text.contains("SESSIONS") && text.contains("●1"), "a project: its fold arrow and name; what needs you in the sidebar's title");
         assert!(!text.contains("AGENTS") && !text.contains("TERMINALS") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "no heading per kind of session");
@@ -670,11 +671,12 @@ mod screen_tests {
             show(&o);
             assert!(o.contains(needle), "overlay shows {needle}");
         }
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 1, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        let tab = |c: modal::Cat| modal::Cat::ALL.iter().position(|x| *x == c).unwrap();
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: tab(modal::Cat::Sessions), sel: 0, editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains(" General ") && o.contains(" Sessions ") && o.contains("NEW SESSIONS") && o.contains("Sessions may start helpers"), "the Sessions page opens on new sessions and helpers");
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 2, sel: 0, editing: None, capturing: false, scroll: 0 }));
+        assert!(o.contains(" General ") && o.contains(" Sessions ") && o.contains("NEW SESSIONS") && o.contains("Tabs in the sidebar"), "the Sessions page opens on new sessions and the sidebar");
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: tab(modal::Cat::Appearance), sel: 0, editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert!(o.contains("Gap") && !o.contains("Corners") && o.contains("PREVIEW") && o.contains("focused") && o.contains("dimmed"), "the pane settings, with a preview");
@@ -688,6 +690,29 @@ mod screen_tests {
         // Small windows keep it all.
         let o = draw(&mut app, 100, 30);
         assert!(!o.contains("⣿") && o.contains("New session"));
+    }
+
+    #[test]
+    fn a_release_waiting_is_a_banner_over_the_splash_s_cards_in_every_look() {
+        for look in ["floating", "hairline"] {
+            for (w, h) in [(160u16, 45u16), (80, 24)] {
+                let (_, mut app) = super::design_tests::render_with(w, h);
+                app.cfg.ui.layout = look.into();
+                app.splash = true;
+                let plain = draw(&mut app, w, h);
+                assert!(!plain.contains("is out"), "{look} {w}x{h}: no banner without a release");
+                app.update_available = Some("9.9.9".into());
+                let o = draw(&mut app, w, h);
+                show(&o);
+                let lines: Vec<&str> = o.lines().collect();
+                let at = lines.iter().position(|l| l.contains(concat!("↑ ", env!("APP_COMMAND"), " 9.9.9 is out")) && l.contains("u  update")).unwrap_or_else(|| panic!("{look} {w}x{h}: the banner
+{o}"));
+                let cards = lines.iter().position(|l| l.contains("New session")).expect("the cards");
+                assert!(at < cards, "{look} {w}x{h}: over the cards");
+                assert!(lines[at - 1].contains('─') && lines[at + 1].contains('─'), "{look} {w}x{h}: boxed");
+                assert!(app.hits.iter().any(|(_, h)| *h == Hit::Screen(screen::ScreenHit::Update)), "a click on it updates");
+            }
+        }
     }
 
     /// The splash at the design's three sizes: the tagline, the cards with Resume chosen and its
@@ -773,7 +798,7 @@ mod screen_tests {
         assert!(o.contains("Run npm test -- checkout?") && o.contains("Reply m") && o.contains("Open o"), "the question and what to do about it");
         assert!(o.contains("↑↓") && o.contains("select") && o.contains("Esc") && o.contains("close"), "the sheet's keys");
         // It's docked beside the panes, not over them: the session's card is still there.
-        assert!(o.contains("─ claude "), "the panes reflow beside it");
+        assert!(o.contains("─ shop-api · ⎇ main "), "the panes reflow beside it");
         // 2 answers the selected question without going there.
         app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::GoTo { .. }), "still in the Inbox");
@@ -795,23 +820,23 @@ mod screen_tests {
 
     #[test]
     fn a_context_menu_pads_its_bottom_like_its_top() {
-        for layout in ["flat", "cards"] {
-            let (_, mut app) = super::design_tests::render_with(230, 50);
-            app.splash = false;
-            app.mode = Mode::Normal;
-            app.cfg.ui.layout = layout.into();
-            app.menu_for_pane(1, (60, 1));
-            app.screen_fresh();
-            let mut term = Terminal::new(TestBackend::new(230, 50)).unwrap();
-            term.draw(|f| render::draw(&mut app, f)).unwrap();
-            let buf = term.backend().buffer().clone();
-            let card = app.theme.card;
-            let x = 62;
-            let last_item = (0..50u16).rev().find(|&y| (62..90).any(|x| buf[(x, y)].symbol() == "C") && buf[(x, y)].bg == card).expect("the Close pane row");
-            let below = |n: u16| buf[(x, last_item + n)].bg;
-            assert_eq!(below(1), card, "{layout}: one padding row under the last item");
-            assert_ne!(below(2), card, "{layout}: the card ends there, as it began one row above the first item");
-        }
+        let layout = "floating";
+        let (_, mut app) = super::design_tests::render_with(230, 50);
+        app.splash = false;
+        app.mode = Mode::Normal;
+        app.cfg.ui.layout = layout.into();
+        app.cfg.ui.fold_retired_layout();
+        app.menu_for_pane(1, (60, 1));
+        app.screen_fresh();
+        let mut term = Terminal::new(TestBackend::new(230, 50)).unwrap();
+        term.draw(|f| render::draw(&mut app, f)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let card = app.theme.card;
+        let x = 62;
+        let last_item = (0..50u16).rev().find(|&y| (62..90).any(|x| buf[(x, y)].symbol() == "C") && buf[(x, y)].bg == card).expect("the Close pane row");
+        let below = |n: u16| buf[(x, last_item + n)].bg;
+        assert_eq!(below(1), card, "{layout}: one padding row under the last item");
+        assert!(matches!(buf[(x, last_item + 2)].symbol(), "─" | "╰" | "└"), "{layout}: then its box, as it began one row above the first item");
     }
 
     #[test]
@@ -917,33 +942,6 @@ mod screen_tests {
         assert_eq!(buffer[(inner.x - 1, inner.y)].bg, surface, "the padding shares the terminal's solid surface");
         assert_eq!(buffer[(inner.x, inner.y)].bg, surface, "the terminal canvas keeps its background");
         assert_eq!(buffer[(inner.x + inner.width, inner.y)].bg, surface, "the opposite padding stays visible without a seam");
-        show(&draw(&mut app, 160, 45));
-    }
-
-    #[test]
-    fn flat_terminal_ground_is_the_zone_body_under_a_card_strip_and_keeps_ansi_colors() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.cfg.ui.layout = "flat".into();
-        let mut parser = vt100::Parser::new(20, 80, 0);
-        parser.process(b"\x1b[40mX\x1b[49mY");
-        app.parsers.insert(1, parser);
-
-        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(160, 45)).unwrap();
-        terminal.draw(|frame| render::draw(&mut app, frame)).unwrap();
-
-        let (_, inner) = app.panes[0];
-        let buffer = terminal.backend().buffer();
-        assert_eq!(
-            buffer[(inner.x, inner.y)].bg,
-            ratatui::style::Color::Indexed(0),
-            "explicit ANSI black remains the program's choice"
-        );
-        // The theme's ground, handed back to the terminal's own background (SGR 49) when
-        // the app draws on it.
-        let ground = |bg| bg == app.theme.bg || bg == ratatui::style::Color::Reset;
-        assert!(ground(buffer[(inner.x + 1, inner.y)].bg), "the default terminal ground is the zone's body, as the reference's panel draws it");
-        assert!(ground(buffer[(inner.x + 2, inner.y)].bg), "empty terminal cells keep the same ground");
-        assert_eq!(buffer[(inner.x + inner.width / 2, 0)].bg, app.theme.card, "only row 0 is the card strip");
         show(&draw(&mut app, 160, 45));
     }
 
@@ -1291,10 +1289,11 @@ mod screen_tests {
     }
 
     #[test]
-    fn grid_draws_each_pane_in_its_own_colour_by_place() {
+    fn pane_colours_draw_each_pane_in_its_own_colour_by_place() {
         for corners in ["square", "rounded"] {
             let (_, mut app) = super::design_tests::render_with(200, 50);
-            (app.cfg.ui.layout, app.cfg.ui.rounded) = ("grid".into(), if corners == "rounded" { crate::config::Rounding::Corners } else { crate::config::Rounding::Off });
+            app.cfg.ui.pane_colors = true;
+            (app.cfg.ui.layout, app.cfg.ui.rounded) = ("floating".into(), if corners == "rounded" { crate::config::Rounding::Corners } else { crate::config::Rounding::Off });
             let [a, b, c] = three_panes(&mut app);
             app.screen_fresh();
             let mut term = Terminal::new(TestBackend::new(200, 50)).unwrap();
@@ -1315,219 +1314,56 @@ mod screen_tests {
         }
     }
 
-    /// The Grid frame with three panes at `w`x`h`: its rows, and where each pane's box is.
-    fn grid_frame(w: u16, h: u16) -> (App, [TermId; 3], Vec<String>) {
-        let (_, mut app) = super::design_tests::render_with(w, h);
-        app.cfg.ui.layout = "grid".into();
-        let panes = three_panes(&mut app);
-        let o = draw(&mut app, w, h);
-        show(&o);
-        let rows = o.lines().map(str::to_string).collect();
-        (app, panes, rows)
-    }
-
-    /// A pane's top border as text.
-    fn top_border(app: &App, rows: &[String], term: TermId) -> String {
-        let r = app.pane_frames.iter().find(|(t, _)| *t == term).unwrap().1;
-        rows[r.y as usize].chars().skip(r.x as usize).take(r.width as usize).collect()
-    }
-
     /// Where `term`'s box is drawn.
     fn card_of(app: &App, term: TermId) -> Rect {
         app.pane_frames.iter().find(|(t, _)| *t == term).unwrap().1
     }
 
-    /// The hits of kind `want` on `term`'s top border.
-    fn border_hits(app: &App, term: TermId, want: Hit) -> Vec<Rect> {
-        let card = card_of(app, term);
-        app.hits.iter().filter(|(r, h)| *h == want && r.y == card.y && r.x >= card.x && r.right() <= card.right()).map(|(r, _)| *r).collect()
-    }
-
-    #[test]
-    fn grid_names_each_pane_once_with_its_state_glyph_and_its_number_inside() {
-        let (app, [a, b, c], rows) = grid_frame(200, 50);
-        let (ta, tb, tc) = (top_border(&app, &rows, a), top_border(&app, &rows, b), top_border(&app, &rows, c));
-        let spinner = crate::client::design::glyph(&app, Status::Working);
-        assert!(ta.starts_with("┌─ ▲  1 · claude   + ─"), "needs you inside the current tab, then pane 1 before the name: {ta}");
-        assert_eq!(ta.matches(" 1 ").count(), 1, "a lone tab has no number chip: only the pane's 1: {ta}");
-        assert!(tb.starts_with(&format!("┌─ {spinner} 2 · codex ─")), "one name chip, the spinner and pane 2 inside it: {tb}");
-        assert!(tc.starts_with("┌─ 3 · shell ─"), "no state for a shell, pane 3: {tc}");
-        for (top, name) in [(&ta, "claude"), (&tb, "codex"), (&tc, "shell")] {
-            assert!(!top.contains("needs you") && !top.contains("working"), "no state words: {top}");
-            assert_eq!(top.matches(name).count(), 1, "the name is not repeated on the right: {top}");
-            let before_close = top.rsplit_once(" ✕ ").map(|(l, _)| l.to_string()).unwrap_or_default();
-            assert!(before_close.ends_with('─'), "only the ✕ on the right: {top}");
-        }
-        let why = |term| border_hits(&app, term, Hit::Screen(screen::ScreenHit::Why(term))).iter().map(|r| r.x).collect::<Vec<_>>();
-        let (ca, cb) = (card_of(&app, a), card_of(&app, b));
-        assert_eq!(why(a), [ca.x + 2], "the glyph in the tab opens why");
-        assert_eq!(why(b), [cb.x + 2], "the glyph in the name opens why");
-        assert!(why(c).is_empty(), "a shell shows no state to explain");
-    }
-
-    #[test]
-    fn grid_shows_the_top_left_pane_s_state_only_as_a_glyph_in_its_current_tab() {
-        for (w, h) in [(160, 45), (80, 24)] {
-            for status in [Status::Working, Status::Blocked, Status::Done] {
-                let (_, mut app) = super::design_tests::render_with(w, h);
-                app.cfg.ui.layout = "grid".into();
-                let [a, ..] = three_panes(&mut app);
-                app.snap.terms.get_mut(&a).unwrap().status = status;
-                let buf = drawn(&mut app, w, h);
-                let card = card_of(&app, a);
-                let top: String = (card.x..card.right()).map(|x| buf[(x, card.y)].symbol()).collect();
-                let at = format!("{w}x{h} {status:?}: {top}");
-                for words in ["working", "needs you", "done"] {
-                    assert!(!top.contains(words), "no state words: {at}");
-                }
-                assert!(top.matches("cl").count() <= 1, "the name is not repeated on the right: {at}");
-                let tab = border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab)));
-                assert_eq!(tab.len(), 1, "the current tab is drawn: {at}");
-                let inside: Vec<Rect> = border_hits(&app, a, Hit::Screen(screen::ScreenHit::Why(a))).into_iter().filter(|r| r.x >= tab[0].x && r.right() <= tab[0].right()).collect();
-                let want = match status {
-                    Status::Working => Some(crate::client::design::glyph(&app, Status::Working)),
-                    Status::Blocked => Some("▲".to_string()),
-                    _ => None,
-                };
-                match want {
-                    Some(g) => {
-                        assert_eq!(inside.len(), 1, "the glyph sits inside the current tab: {at}");
-                        assert_eq!(buf[(inside[0].x + 1, card.y)].symbol(), g, "{at}");
-                        assert_eq!(inside[0].x, tab[0].x, "at the front of the tab: {at}");
-                    }
-                    None => assert!(inside.is_empty() && !top.contains('▲'), "done shows no glyph in Grid: {at}"),
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn a_grid_tab_shows_working_needs_you_and_done_as_glyphs_only() {
-        for (w, h) in [(160, 45), (80, 24)] {
-            let (_, mut app) = super::design_tests::render_with(w, h);
-            app.cfg.ui.layout = "grid".into();
-            let [a, b, c] = three_panes(&mut app);
-            for (term, status) in [(a, Status::Working), (b, Status::Blocked), (c, Status::Done)] {
-                let info = app.snap.terms.get_mut(&term).unwrap();
-                info.status = status;
-                info.agent.get_or_insert_with(|| "opencode".into());
-            }
-            let o = draw(&mut app, w, h);
-            show(&o);
-            let rows: Vec<String> = o.lines().map(str::to_string).collect();
-            let (ta, tb, tc) = (top_border(&app, &rows, a), top_border(&app, &rows, b), top_border(&app, &rows, c));
-            let spinner = crate::client::design::glyph(&app, Status::Working);
-            assert!(ta.starts_with(&format!("┌─ {spinner} 1 · ")), "{w}x{h}: working, in the current tab: {ta}");
-            assert!(tb.starts_with("┌─ ▲  "), "{w}x{h}: needs you, in the name chip: {tb}");
-            assert!(tc.starts_with("┌─ ") && !tc.contains('▲') && !tc.contains(&spinner), "{w}x{h}: done shows no glyph: {tc}");
-            for top in [&ta, &tb, &tc] {
-                assert!(!["working", "needs you", "done"].iter().any(|word| top.contains(word)), "{w}x{h}: no state words: {top}");
-            }
-        }
-    }
-
-    #[test]
-    fn a_click_on_a_grid_state_glyph_opens_why_and_the_tab_still_picks() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.cfg.ui.layout = "grid".into();
-        let [a, b, _] = three_panes(&mut app);
-        app.snap.terms.get_mut(&b).unwrap().status = Status::Working;
-        let press = |app: &mut App, x: u16, y: u16| app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x, row: y, modifiers: KeyModifiers::NONE });
-        for term in [a, b] {
-            drawn(&mut app, 160, 45);
-            let glyph = *border_hits(&app, term, Hit::Screen(screen::ScreenHit::Why(term))).last().unwrap();
-            press(&mut app, glyph.x + 1, glyph.y);
-            assert!(matches!(app.mode, Mode::Why { term: t, .. } if t == term), "the glyph opens why");
-            app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        }
-        drawn(&mut app, 160, 45);
-        let pick = Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab));
-        let tab = border_hits(&app, a, pick)[0];
-        let name = ratatui::layout::Position::new(tab.right() - 2, tab.y);
-        let hit = app.hits.iter().rev().find(|(r, _)| r.contains(name)).map(|(_, h)| *h);
-        assert_eq!(hit, Some(pick), "the rest of the tab still picks it");
-    }
-
     #[test]
     fn a_narrow_title_keeps_its_status_glyph_last_in_every_look() {
         let mut failures = Vec::new();
-        for layout in ["grid", "floating", "compact"] {
-            for split in [false, true] {
-                for (mode, update) in [("off", false), ("lit", false), ("held", false), ("off", true), ("lit", true), ("held", true)] {
-                    for w in 56..=110u16 {
-                        let (_, mut app) = super::design_tests::render_with(w, 24);
-                        (app.cfg.ui.layout, app.cfg.ui.rounded, app.cfg.ui.which_key) = (layout.into(), crate::config::Rounding::Full, false);
-                        app.update_available = update.then(|| "0.44.0".into());
-                        if split {
-                            let [_, b, _] = three_panes(&mut app);
-                            app.snap.terms.get_mut(&b).unwrap().status = Status::Blocked;
+        let layout = "floating";
+        for split in [false, true] {
+            for (mode, update) in [("off", false), ("lit", false), ("held", false), ("off", true), ("lit", true), ("held", true)] {
+                for w in 56..=110u16 {
+                    let (_, mut app) = super::design_tests::render_with(w, 24);
+                    (app.cfg.ui.layout, app.cfg.ui.rounded, app.cfg.ui.which_key) = (layout.into(), crate::config::Rounding::Full, false);
+                    app.cfg.ui.fold_retired_layout();
+                    app.update_available = update.then(|| "0.44.0".into());
+                    if split {
+                        let [_, b, _] = three_panes(&mut app);
+                        app.snap.terms.get_mut(&b).unwrap().status = Status::Blocked;
+                    }
+                    if mode != "off" {
+                        app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+                    }
+                    if mode == "held" {
+                        tap(&mut app, ',');
+                    }
+                    let buf = drawn(&mut app, w, 24);
+                    // The panes along the top: the modal covers any below.
+                    let top = app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap_or(0);
+                    let blocked: Vec<Rect> = app.pane_frames.iter().filter(|(id, r)| r.y == top && app.snap.terms[id].status == Status::Blocked).map(|(_, r)| *r).collect();
+                    assert!(!blocked.is_empty(), "{layout} {w}: a blocked pane is drawn");
+                    for r in blocked {
+                        let row: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
+                        // A modal (Settings, held open) can lie over the title: nothing to read there.
+                        if !row.starts_with(['┌', '╭']) {
+                            continue;
                         }
-                        if mode != "off" {
-                            app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
+                        if !row.contains('▲') && !row.contains('●') {
+                            failures.push(format!("{layout} split {split} {mode} update {update} {w}: {row}"));
                         }
-                        if mode == "held" {
-                            tap(&mut app, ',');
-                        }
-                        let buf = drawn(&mut app, w, 24);
-                        // The panes along the top: the modal covers any below.
-                        let blocked: Vec<Rect> = app.pane_frames.iter().filter(|(id, r)| r.y == 0 && app.snap.terms[id].status == Status::Blocked).map(|(_, r)| *r).collect();
-                        assert!(!blocked.is_empty(), "{layout} {w}: a blocked pane is drawn");
-                        for r in blocked {
-                            let row: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
-                            if !row.contains('▲') && !row.contains('●') {
-                                failures.push(format!("{layout} split {split} {mode} update {update} {w}: {row}"));
-                            }
-                            // Grid draws it in a chip, on its own amber, with no words.
-                            let amber = (r.x..r.right()).any(|x| buf[(x, r.y)].symbol() == "▲" && needs_you_stands_out(&app, &buf, x, r.y));
-                            if layout == "grid" && mode == "off" && (!amber || row.contains("needs you")) {
-                                failures.push(format!("{layout} split {split} {mode} update {update} {w}: not a glyph on its chip: {row}"));
-                            }
-                        }
-                        // Typing says so on the mode bar at every width.
-                        let (_, bar) = bar_text(&app, &buf);
-                        if mode == "off" && !bar.contains(" TYPING ") {
-                            failures.push(format!("{layout} split {split} {mode} update {update} {w}: no TYPING on the bar: {bar}"));
-                        }
+                    }
+                    // Typing says so on the mode bar at every width.
+                    let (_, bar) = bar_text(&app, &buf);
+                    if mode == "off" && !bar.contains(" TYPING ") {
+                        failures.push(format!("{layout} split {split} {mode} update {update} {w}: no TYPING on the bar: {bar}"));
                     }
                 }
             }
         }
         assert!(failures.is_empty(), "the status glyph is on the title:\n{}", failures.join("\n"));
-    }
-
-    #[test]
-    fn a_narrow_grid_pane_shortens_its_name_and_keeps_its_glyph_in_the_chip() {
-        let mut shortened = false;
-        // Narrowing step by step: the current tab stays, with the glyph at its front.
-        for w in 41..=110 {
-            let (_, mut app) = super::design_tests::render_with(w, 20);
-            app.cfg.ui.layout = "grid".into();
-            let [a, b, _] = three_panes(&mut app);
-            app.snap.terms.get_mut(&b).unwrap().label = "codex-reviews-the-footer".into();
-            let o = draw(&mut app, w, 20);
-            let rows: Vec<String> = o.lines().map(str::to_string).collect();
-            let (ta, tb) = (top_border(&app, &rows, a), top_border(&app, &rows, b));
-            let tab = border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab)));
-            assert!(tab.len() == 1 && ta.contains("▲  1"), "{w}: the current tab, its glyph inside: {ta}");
-            assert!(!ta.contains("needs you") && ta.matches("claude").count() <= 1, "{w}: {ta}");
-            let spinner = crate::client::design::glyph(&app, Status::Working);
-            assert!(tb.contains(&format!("{spinner} 2")) && tb.matches("codex").count() <= 1, "{w}: the name chip carries the spinner and the number: {tb}");
-            shortened |= tb.contains(&format!("{spinner} 2 · codex-")) && tb.contains('…');
-        }
-        assert!(shortened, "somewhere a name chip shortens its name and keeps its glyph");
-        // Narrower still, a tab that cannot fit at its shortest (a session of several tabs, so
-        // with its number chip) gives way to its glyph alone.
-        let (_, mut app) = super::design_tests::render_with(40, 20);
-        app.cfg.ui.layout = "grid".into();
-        let [a, ..] = three_panes(&mut app);
-        let mut second = app.screen.tabs[0].clone();
-        (second.layout, second.focus) = (crate::layout::Node::Leaf(a), a);
-        app.screen.tabs.push(second);
-        let o = draw(&mut app, 40, 20);
-        let rows: Vec<String> = o.lines().map(str::to_string).collect();
-        let ta = top_border(&app, &rows, a);
-        assert!(ta.starts_with("┌─ ▲ ─"), "the glyph alone: {ta}");
-        assert!(border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(app.screen.tab))).is_empty(), "the tab gave way: {ta}");
     }
 
     fn drawn(app: &mut App, w: u16, h: u16) -> ratatui::buffer::Buffer {
@@ -1546,10 +1382,11 @@ mod screen_tests {
     #[test]
     fn the_new_tab_chip_is_raised_and_a_cell_clear_of_the_tabs_in_every_look() {
         use crate::config::Rounding;
-        for layout in ["floating", "tiled", "compact", "grid"] {
+        for layout in ["floating", "tiled", "grid"] {
             for rounded in [Rounding::Off, Rounding::Full] {
                 let (_, mut app) = super::design_tests::render_with(160, 45);
                 (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
+                app.cfg.ui.fold_retired_layout();
                 let buf = drawn(&mut app, 160, 45);
                 let at = format!("{layout} {rounded:?}");
                 let t = app.theme.clone();
@@ -1568,61 +1405,6 @@ mod screen_tests {
         }
     }
 
-    #[test]
-    fn grid_draws_the_name_chip_in_the_pane_s_colour_with_a_readable_glyph() {
-        use crate::config::Rounding;
-        for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
-            for focus_b in [false, true] {
-                let (_, mut app) = super::design_tests::render_with(200, 50);
-                (app.cfg.ui.layout, app.cfg.ui.rounded) = ("grid".into(), rounded);
-                let [a, b, _] = three_panes(&mut app);
-                if focus_b {
-                    (app.screen.tabs[0].focus, app.snap.workspaces[0].tabs[0].focus) = (b, b);
-                }
-                let buf = drawn(&mut app, 200, 50);
-                let t = app.theme.clone();
-                let colours = t.grid_colors();
-                let chip = |own, focused| if focused { (t.ink_on(own), own) } else { (t.strong, crate::theme::mix(own, t.bg, 0.28)) };
-                let at = format!("{rounded:?} focus on b {focus_b}");
-                let y = card_of(&app, a).y;
-                let why = |term| border_hits(&app, term, Hit::Screen(screen::ScreenHit::Why(term)));
-                let (wa, wb) = (why(a), why(b));
-                // b's name chip with the spinner at its front, on the pane's colour.
-                let (b_ink, b_chip) = chip(colours[1], focus_b);
-                let x = wb[0].x + 1;
-                let cell = &buf[(x, y)];
-                assert_eq!((cell.fg, cell.bg), (b_ink, b_chip), "b's spinner on the pane's colour: {at}");
-                assert_eq!(buf[(x - 1, y)].bg, b_chip, "b's spinner is padded on its chip: {at}");
-                let end = &buf[(x - 2, y)];
-                if rounded == Rounding::Full {
-                    assert_eq!((end.symbol(), end.fg), (screen::CAP_L, b_chip), "b's chip is capped: {at}");
-                } else {
-                    assert_ne!(end.bg, b_chip, "b's chip is square: {at}");
-                }
-                let name = &buf[(wb[0].right() + 1, y)];
-                assert_eq!((name.symbol(), name.fg, name.bg), ("2", b_ink, b_chip), "b's number and name after its spinner, one chip: {at}");
-                // Needs you, at the front of the current tab: amber, set apart from the chip.
-                let glyph = &buf[(wa[0].x + 1, y)];
-                assert_eq!(glyph.symbol(), "▲", "{at}");
-                assert!(glyph.modifier.contains(ratatui::style::Modifier::BOLD), "{at}");
-                assert!(needs_you_stands_out(&app, &buf, wa[0].x + 1, y), "needs you stands out: {at}");
-            }
-        }
-    }
-
-    #[test]
-    fn a_working_glyph_in_the_current_tab_takes_the_tab_s_ink() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.cfg.ui.layout = "grid".into();
-        let [a, ..] = three_panes(&mut app);
-        app.snap.terms.get_mut(&a).unwrap().status = Status::Working;
-        let buf = drawn(&mut app, 160, 45);
-        let t = app.theme.clone();
-        let glyph = *border_hits(&app, a, Hit::Screen(screen::ScreenHit::Why(a))).last().unwrap();
-        let cell = &buf[(glyph.x + 1, glyph.y)];
-        assert_eq!((cell.fg, cell.bg), (t.acc_ink, t.accent), "the spinner reads on the tab's accent");
-    }
-
     /// The three panes, the current tab at `place` among three tabs of the session; the other
     /// two show pane `c` and are named `other-tab-1` and `other-tab-2`.
     fn three_tabs(app: &mut App, place: usize) -> [TermId; 3] {
@@ -1639,92 +1421,192 @@ mod screen_tests {
         [a, b, c]
     }
 
+    /// One session in three tabs, each tab one pane: an idle agent, one working and one that
+    /// needs you, the first tab on screen.
+    fn tabbed_session(layout: &str) -> (App, [TermId; 3]) {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.cfg.ui.layout = layout.into();
+        let [a, b, c] = three_panes(&mut app);
+        let owner = app.screen.tabs[0].owner;
+        let tab = |id| screen::ScreenTab { layout: crate::layout::Node::Leaf(id), focus: id, owner, used: 0, name: String::new() };
+        (app.screen.tabs, app.screen.tab) = (vec![tab(a), tab(b), tab(c)], 0);
+        for (id, agent, status) in [(a, "claude", Status::Idle), (b, "codex", Status::Working), (c, "gemini", Status::Blocked)] {
+            let info = app.snap.terms.get_mut(&id).unwrap();
+            (info.agent, info.status) = (Some(agent.into()), status);
+        }
+        (app, [a, b, c])
+    }
+
+    /// The sidebar's rows as text, top to bottom.
+    fn side_text(app: &App, buf: &ratatui::buffer::Buffer) -> Vec<String> {
+        let r = app.screen.side_rect;
+        (r.y..r.bottom()).map(|y| (r.x..r.right()).map(|x| buf[(x, y)].symbol()).collect::<String>()).collect()
+    }
+
+    #[test]
+    fn a_session_s_tabs_each_show_their_own_state_under_its_row() {
+        for layout in ["floating", "hairline"] {
+            let (mut app, _) = tabbed_session(layout);
+            let buf = drawn(&mut app, 160, 45);
+            let rows = side_text(&app, &buf);
+            show(&rows.join("
+"));
+            let line = |n: &str| rows.iter().position(|r| r.contains(&format!("{n} "))).unwrap_or_else(|| panic!("{layout}: tab line {n}
+{}", rows.join("
+")));
+            let (one, two, three) = (line("├ 1"), line("├ 2"), line("└ 3"));
+            assert_eq!((two, three), (one + 1, one + 2), "{layout}: one line per tab, in order");
+            let spinner = crate::client::design::glyph(&app, Status::Working);
+            assert!(rows[two].contains(&spinner), "{layout}: the working tab says so though it is not on screen: {}", rows[two]);
+            assert!(rows[three].contains("needs you"), "{layout}: so does the one that needs you: {}", rows[three]);
+        }
+    }
+
+    #[test]
+    fn a_tab_out_of_view_shows_its_state_on_its_tab() {
+        for layout in ["floating", "hairline"] {
+            let (mut app, _) = tabbed_session(layout);
+            let buf = drawn(&mut app, 160, 45);
+            let row = screen::grid(&app, buf.area).tabs;
+            let tabs: String = (row.x..row.right()).map(|x| buf[(x, row.y)].symbol()).collect();
+            show(&tabs);
+            // Each tab's glyph: the first mark left of its number.
+            let glyph_before = |n: &str| {
+                let at = tabs.find(&format!("{n} ")).unwrap_or_else(|| panic!("{layout}: tab {n}: {tabs}"));
+                let x = row.x + tabs[..at].chars().count() as u16;
+                let gx = (row.x..x).rev().find(|&x| buf[(x, row.y)].symbol() != " ").expect("a glyph");
+                (buf[(gx, row.y)].symbol().to_string(), buf[(gx, row.y)].fg)
+            };
+            let (working, _) = glyph_before("2");
+            assert!(working != "○" && working != "✕", "{layout}: the working tab, not on screen, says so: {tabs}");
+            let (blocked, colour) = glyph_before("3");
+            assert!(["▲", "●"].contains(&blocked.as_str()) && colour == app.theme.blocked, "{layout}: so does the one that needs you, in its colour: {tabs}");
+        }
+    }
+
+    #[test]
+    fn closing_an_idle_shell_asks_nothing_and_an_agent_still_asks() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        // Closing from the sidebar acts on the row the cursor is on.
+        let shell = *app.snap.terms.iter().find(|(_, t)| t.agent.is_none()).map(|(id, _)| id).expect("a shell");
+        app.snap.terms.get_mut(&shell).unwrap().process = "pwsh.exe".into();
+        app.screen.cursor = Some(shell);
+        app.mode = Mode::Normal;
+        app.act(Action::ClosePane);
+        assert!(!matches!(app.mode, Mode::Confirm(_)), "nothing to lose: closed at once");
+        let agent = *app.snap.terms.iter().find(|(_, t)| t.agent.is_some()).map(|(id, _)| id).expect("an agent");
+        app.screen.cursor = Some(agent);
+        app.mode = Mode::Normal;
+        app.act(Action::ClosePane);
+        assert!(matches!(app.mode, Mode::Confirm(_)), "an agent asks first");
+        let (_, mut busy) = super::design_tests::render_with(160, 45);
+        busy.snap.terms.get_mut(&shell).unwrap().process = "npm".into();
+        busy.screen.cursor = Some(shell);
+        busy.mode = Mode::Normal;
+        busy.act(Action::ClosePane);
+        assert!(matches!(busy.mode, Mode::Confirm(_)), "a shell running something asks first");
+    }
+
+    #[test]
+    fn alt_letters_run_the_everyday_actions_without_the_leader_unless_turned_off() {
+        let alt = |c: char| crate::keys::KeySpec::from_event(&KeyEvent::new(KeyCode::Char(c), KeyModifiers::ALT));
+        let on = Config::default().keymap();
+        for (c, want) in [('n', Action::ShellHere), ('s', Action::StartSession), ('t', Action::NewTab), ('x', Action::ClosePane)] {
+            assert_eq!(on.global.get(&alt(c)), Some(&want), "Alt+{c}");
+        }
+        let mut cfg = Config::default();
+        cfg.ui.alt_keys = false;
+        assert!(!cfg.keymap().global.contains_key(&alt('x')), "off: Alt+x goes to the program");
+    }
+
+    #[test]
+    fn the_sidebar_shows_all_busy_or_no_tab_lines_as_set() {
+        for layout in ["floating", "hairline"] {
+            for (setting, want) in [("all", vec!["├ 1", "├ 2", "└ 3"]), ("busy", vec!["├ 2", "└ 3"]), ("off", vec![])] {
+                let (mut app, _) = tabbed_session(layout);
+                // The working tab on screen; the idle one is busy only while it is.
+                app.screen.tab = 1;
+                app.cfg.ui.sidebar_tabs = setting.into();
+                let buf = drawn(&mut app, 160, 45);
+                let rows = side_text(&app, &buf);
+                let got: Vec<&str> = ["├ 1", "└ 1", "├ 2", "└ 2", "├ 3", "└ 3"].into_iter().filter(|n| rows.iter().any(|r| r.contains(&format!("{n} ")))).collect();
+                assert_eq!(got, want, "{layout} {setting}
+{}", rows.join("
+"));
+            }
+        }
+    }
+
+    #[test]
+    fn clicking_a_tab_line_shows_that_tab() {
+        for layout in ["floating", "hairline"] {
+            let (mut app, [_, _, c]) = tabbed_session(layout);
+            let buf = drawn(&mut app, 160, 45);
+            let rows = side_text(&app, &buf);
+            let y = app.screen.side_rect.y + rows.iter().position(|r| r.contains("└ 3")).expect("tab 3's line") as u16;
+            let x = app.screen.side_rect.x + 6;
+            app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x, row: y, modifiers: KeyModifiers::NONE });
+            assert_eq!(app.screen.tab, 2, "{layout}: the third tab is on screen");
+            assert_eq!(app.screen.tabs[2].focus, c, "{layout}");
+        }
+    }
+
+    #[test]
+    fn a_session_with_one_tab_has_no_tab_lines() {
+        for layout in ["floating", "hairline"] {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            app.cfg.ui.layout = layout.into();
+            let buf = drawn(&mut app, 160, 45);
+            let rows = side_text(&app, &buf);
+            assert!(!rows.iter().any(|r| r.contains("├ 1") || r.contains("└ 1")), "{layout}
+{}", rows.join("
+"));
+        }
+    }
+
     #[test]
     fn a_narrow_title_keeps_the_current_tab_before_any_other() {
         use crate::config::Rounding;
         let mut failures = Vec::new();
         let mut others_dropped = false;
-        for layout in ["grid", "floating", "tiled", "compact"] {
-            for rounded in [Rounding::Off, Rounding::Full] {
-                for place in 0..3 {
-                    for w in 44..=110u16 {
-                        let (_, mut app) = super::design_tests::render_with(w, 24);
-                        (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
-                        let [a, ..] = three_tabs(&mut app, place);
-                        app.snap.terms.get_mut(&a).unwrap().status = Status::Working;
-                        let buf = drawn(&mut app, w, 24);
-                        let card = card_of(&app, a);
-                        let top: String = (card.x..card.right()).map(|x| buf[(x, card.y)].symbol()).collect();
-                        let at = format!("{layout} {rounded:?} current {place} {w}: {top}");
-                        show(&at);
-                        let tab = |i| border_hits(&app, a, Hit::Screen(screen::ScreenHit::TabPick(i)));
-                        let shown = |i| tab(i).len() == 1;
-                        let others = (0..3).filter(|&i| i != place).filter(|&i| shown(i)).count();
-                        if others > 0 && !(shown(place) && top.contains("claude")) {
-                            failures.push(format!("another tab kept over the current one, or while it shortens: {at}"));
-                        }
-                        let plus = !border_hits(&app, a, Hit::Screen(screen::ScreenHit::NewTab)).is_empty();
-                        if plus && !(0..3).all(shown) {
-                            failures.push(format!("+ without every tab: {at}"));
-                        }
-                        let spinner = crate::client::design::glyph(&app, Status::Working);
-                        if !top.contains(&spinner) {
-                            failures.push(format!("no state on the title: {at}"));
-                        }
-                        // Grid draws it inside the current tab whenever that tab shows.
-                        let why = border_hits(&app, a, Hit::Screen(screen::ScreenHit::Why(a)));
-                        if layout == "grid" && shown(place) && !why.iter().any(|g| tab(place)[0].x <= g.x && g.right() <= tab(place)[0].right()) {
-                            failures.push(format!("the glyph is not in the current tab: {at}"));
-                        }
-                        others_dropped |= shown(place) && others < 2;
+        let layout = "floating";
+        for rounded in [Rounding::Off, Rounding::Full] {
+            for place in 0..3 {
+                for w in 44..=110u16 {
+                    let (_, mut app) = super::design_tests::render_with(w, 24);
+                    (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
+                    app.cfg.ui.fold_retired_layout();
+                    let [a, ..] = three_tabs(&mut app, place);
+                    app.snap.terms.get_mut(&a).unwrap().status = Status::Working;
+                    let buf = drawn(&mut app, w, 24);
+                    let card = card_of(&app, a);
+                    let title: String = (card.x..card.right()).map(|x| buf[(x, card.y)].symbol()).collect();
+                    // The tabs have their own row over the panes (ADR 0028).
+                    let row = screen::grid(&app, buf.area).tabs;
+                    let top: String = (row.x..row.right()).map(|x| buf[(x, row.y)].symbol()).collect();
+                    let at = format!("{layout} {rounded:?} current {place} {w}: {top} / {title}");
+                    show(&at);
+                    let on_row = |want: Hit| app.hits.iter().filter(|(r, h)| *h == want && r.y == row.y && row.intersects(*r)).count();
+                    let shown = |i| on_row(Hit::Screen(screen::ScreenHit::TabPick(i))) == 1;
+                    let others = (0..3).filter(|&i| i != place).filter(|&i| shown(i)).count();
+                    if others > 0 && !(shown(place) && top.contains("claude")) {
+                        failures.push(format!("another tab kept over the current one, or while it shortens: {at}"));
                     }
+                    let plus = on_row(Hit::Screen(screen::ScreenHit::NewTab)) > 0;
+                    if plus && !(0..3).all(shown) {
+                        failures.push(format!("+ without every tab: {at}"));
+                    }
+                    let spinner = crate::client::design::glyph(&app, Status::Working);
+                    if !title.contains(&spinner) {
+                        failures.push(format!("no state on the title: {at}"));
+                    }
+                    others_dropped |= shown(place) && others < 2;
                 }
             }
         }
         assert!(failures.is_empty(), "{}", failures.join("
 "));
         assert!(others_dropped, "somewhere the other tabs give way and the current one stays");
-    }
-
-    #[test]
-    fn needs_you_stands_out_on_a_chip_of_a_like_colour() {
-        let (_, mut app) = super::design_tests::render_with(200, 50);
-        app.cfg.ui.layout = "grid".into();
-        let [a, _, c] = three_panes(&mut app);
-        let d = 4;
-        let mut info = app.snap.terms[&c].clone();
-        (info.id, info.agent, info.status) = (d, Some("gemini".into()), Status::Blocked);
-        app.snap.terms.insert(d, info);
-        app.screen.pending_split = Some((c, Instant::now()));
-        app.screen.split_dir = Some(crate::layout::Dir::Right);
-        app.screen_place(d, Some(c));
-        assert!(crate::theme::contrast(app.theme.grid_colors()[3], app.theme.blocked) < 1.5, "the fourth pane's colour is close to `blocked` in this theme");
-        // Pane 4 focused, on its own colour; then an accent like `blocked`, so the current tab is too.
-        for (focus, like_accent) in [(d, false), (a, true)] {
-            if like_accent {
-                app.theme.accent = app.theme.blocked;
-            }
-            (app.screen.tabs[0].focus, app.snap.workspaces[0].tabs[0].focus) = (focus, focus);
-            let buf = drawn(&mut app, 200, 50);
-            show(&(0..2).map(|y| (0..200).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>()).collect::<Vec<_>>().join("\n"));
-            for term in [a, d] {
-                let card = card_of(&app, term);
-                let at = format!("pane {term}, focus on {focus}");
-                let x = (card.x..card.right()).find(|&x| buf[(x, card.y)].symbol() == "▲").unwrap_or_else(|| panic!("needs you is drawn: {at}"));
-                assert!(needs_you_stands_out(&app, &buf, x, card.y), "{at}");
-            }
-        }
-    }
-
-    /// Whether the needs-you glyph at `x`, `y` is in amber or on it, its ground set apart from
-    /// the chip it sits in (the cell after its patch) and the glyph readable on that ground.
-    fn needs_you_stands_out(app: &App, buf: &ratatui::buffer::Buffer, x: u16, y: u16) -> bool {
-        // With `background = "terminal"` the theme's own ground is drawn as Reset.
-        let solid = |c: ratatui::style::Color| if c == ratatui::style::Color::Reset { app.theme.bg } else { c };
-        let (glyph, after) = (&buf[(x, y)], &buf[(x + 2, y)]);
-        let (fg, bg, chip) = (solid(glyph.fg), solid(glyph.bg), solid(after.bg));
-        let amber = fg == app.theme.blocked || bg == app.theme.blocked;
-        amber && crate::theme::contrast(bg, chip) >= 1.5 && crate::theme::contrast(fg, bg) >= 3.0
     }
 
     #[test]
@@ -1775,7 +1657,8 @@ mod screen_tests {
         let o = draw(&mut app, 260, 50);
         show(&o);
         assert!(o.contains(" 1 ") && o.contains(" 2 "), "a tab bar");
-        assert_eq!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_)))).count(), 2, "both tabs in the top-left pane's title");
+        let side = app.screen.side_rect;
+        assert_eq!(app.hits.iter().filter(|(r, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_))) && !side.intersects(*r)).count(), 2, "both tabs in the top-left pane's title");
         assert_eq!(app.hits.iter().filter(|(_, h)| *h == Hit::Screen(screen::ScreenHit::NewTab)).count(), 1, "one + chip after the tabs");
     }
 
@@ -1830,7 +1713,11 @@ mod screen_tests {
         let o = draw(&mut app, 160, 45);
         show(&o);
         assert_eq!(app.session_tabs().len(), 2);
-        assert!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_)))).count() == 2 && !o.contains("2 shell"), "claude's two tabs, unnamed ones shown by number");
+        let side = app.screen.side_rect;
+        let title = o.lines().next().unwrap_or_default().chars().skip(side.right() as usize).collect::<String>();
+        let in_title = app.hits.iter().filter(|(r, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_))) && !side.intersects(*r)).count();
+        assert!(in_title == 2 && !title.contains("2 shell"), "claude's two tabs, unnamed ones shown by number: {title}");
+        assert!(o.contains("└ 2 shell"), "the sidebar names the shell's tab under claude's row");
         // Rename uses the same centered text editor as pane and project names.
         app.act(Action::RenameTab);
         for c in "tests".chars() {
@@ -1855,7 +1742,8 @@ mod screen_tests {
         assert_eq!(app.session_name(focus), "tests", "notices say the name you gave");
         app.screen_sync();
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains(" tests ") && !o.contains("2 tests"), "renamed: the pill is its name");
+        let title = o.lines().next().unwrap_or_default().chars().skip(app.screen.side_rect.right() as usize).collect::<String>();
+        assert!(title.contains(" tests ") && !title.contains("2 tests"), "renamed: the pill is its name: {title}");
         // Views get rebuilt (another session reuses the slot, the client restarts): the name stays.
         app.screen.tabs.iter_mut().for_each(|t| t.name.clear());
         app.screen_sync();
@@ -1865,7 +1753,8 @@ mod screen_tests {
         app.screen_place(2, Some(3));
         draw(&mut app, 160, 45);
         assert_eq!(app.session_tabs().len(), 1);
-        assert!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_)))).count() == 1, "codex has one tab");
+        let side = app.screen.side_rect;
+        assert!(app.hits.iter().filter(|(r, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_))) && !side.intersects(*r)).count() == 1, "codex has one tab");
         // Back to claude: the tab you were last on there (the shell).
         app.screen_place(1, Some(2));
         assert_eq!(app.screen.tabs[app.screen.tab].focus, 3, "back on the shell tab");
@@ -2008,6 +1897,8 @@ mod screen_tests {
         // The leader key's close, from the sidebar: the cursor's row, and the keys stay too.
         let on = app.screen.cursor.or_else(|| app.screen.side_items.iter().find_map(|i| match i { screen::SideItem::Sess(t) => Some(*t), _ => None })).unwrap();
         app.screen_side_set(screen::SideItem::Sess(on));
+        // Something running in it, so there is something to lose and it asks.
+        app.snap.terms.get_mut(&on).unwrap().process = "npm".into();
         app.mode = Mode::Prefix { since: std::time::Instant::now(), acted: false };
         app.act(Action::ClosePane);
         assert!(matches!(&app.mode, Mode::Confirm(c) if c.act == crate::client::menu::Act::End(vec![on])), "it asks about the row the cursor is on");
@@ -2048,15 +1939,14 @@ mod screen_tests {
         app.act(Action::Settings);
         let o = draw(&mut app, 160, 45);
         show(&o);
-        for g in ["INPUT", "STARTUP", "SHELL"] {
+        for g in ["UPDATES", "STARTUP", "INPUT"] {
             assert!(o.contains(g), "General is grouped: {g}");
         }
-        let input = o.find("INPUT").unwrap();
-        let startup = o.find("STARTUP").unwrap();
-        assert!(input < startup, "INPUT before STARTUP");
-        assert!(o.contains("› Leader key"), "the first row is selected");
-        // Appearance has one theme control that opens the searchable browser.
-        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert!(design::settings_rows(modal::Cat::General).iter().any(|r| design::settings_group(r) == "SHELL"), "and SHELL, further down");
+        let (updates, startup, input) = (o.find("UPDATES").unwrap(), o.find("STARTUP").unwrap(), o.find("INPUT").unwrap());
+        assert!(updates < startup && startup < input, "UPDATES, then STARTUP, then INPUT");
+        assert!(o.contains("› Version"), "the first row, the version, is selected");
+        // Appearance, the next tab, has one theme control that opens the searchable browser.
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         let o = draw(&mut app, 160, 45);
         show(&o);
@@ -2193,7 +2083,8 @@ mod screen_tests {
         let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
-        assert_eq!((buf[(159, 0)].symbol(), buf[(159, 0)].fg), ("┐", app.theme.sky()), "the focused border turns sky");
+        let top = app.pane_frames[0].1.y;
+        assert_eq!((buf[(159, top)].symbol(), buf[(159, top)].fg), ("┐", app.theme.sky()), "the focused border turns sky");
         let (row, text) = bar_text(&app, &buf);
         assert!(text.starts_with("  SHORTCUT  ") && buf[(row.right() - 1, row.y)].bg == app.theme.sky(), "the mode bar lit, its tag a column in: {text}");
         // The delayed overview groups common commands; ? opens the full reference instead.
@@ -2546,9 +2437,10 @@ mod screen_tests {
 
     #[test]
     fn padding_leaves_air_round_the_whole_screen_in_every_layout() {
-        for layout in ["floating", "tiled", "compact", "grid"] {
+        for layout in ["floating", "tiled", "grid"] {
             let (_, mut app) = super::design_tests::render_with(160, 45);
             app.cfg.ui.layout = layout.into();
+            app.cfg.ui.fold_retired_layout();
             app.cfg.ui.padding = "1".into();
             let o = draw(&mut app, 160, 45);
             show(&o);
@@ -2648,6 +2540,7 @@ mod screen_tests {
         assert_ne!(fg_at(focus), fg_at(other), "the unfocused pane's text is faded");
         // Tiled: no margin, cards edge to edge; square corners when asked.
         app.cfg.ui.panes = "tiled".into();
+        app.cfg.ui.fold_retired_layout();
         app.cfg.ui.rounded = crate::config::Rounding::Off;
         let o = draw(&mut app, 160, 45);
         show(&o);
@@ -2667,38 +2560,6 @@ mod screen_tests {
         assert!(side.contains("asks: Run npm"), "a question keeps its line: {side}");
         assert!(o.contains("+ New") && o.contains("Menu"), "both controls fit at the sidebar foot");
         assert!(!o.contains("? keys") && !o.contains("inbox"), "there is no full-width status footer");
-    }
-
-    #[test]
-    fn flat_layout_keeps_the_same_sessions_and_exposes_focus_zone_controls() {
-        let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.cfg.ui.layout = "flat".into();
-        let main = draw(&mut app, 160, 45);
-        show(&main);
-        let top = main.lines().next().unwrap();
-        assert!(top.starts_with(' ') && top.chars().nth(33) == Some('│'), "flat has no outside margin, and one rule parts the sidebar from the panes: {top}");
-        assert!(main.contains("claude") && main.contains("shell"), "the existing sessions remain visible");
-        assert!(main.contains("+ New") && main.contains("Menu"), "the sidebar keeps its two mouse-accessible controls");
-        assert!(!main.lines().last().unwrap_or_default().contains("PANE"), "the full-width footer is gone");
-        assert!(!main.contains('╭') && !main.contains('╮') && !main.contains('╰') && !main.contains('╯'), "flat uses square zones without card borders");
-        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Screen(screen::ScreenHit::NewShell)), "New is clickable from the sidebar foot");
-        assert!(app.hits.iter().any(|(_, hit)| *hit == Hit::Screen(screen::ScreenHit::Actions)), "Actions is clickable from the sidebar foot");
-
-        // Tab, Shift+Tab and Esc belong to the program in the pane, as in Cards; the leader
-        // key map focuses the sidebar.
-        for (code, mods) in [(KeyCode::Tab, KeyModifiers::NONE), (KeyCode::BackTab, KeyModifiers::SHIFT), (KeyCode::Esc, KeyModifiers::NONE)] {
-            app.on_key(KeyEvent::new(code, mods));
-            assert_eq!(app.mode, Mode::Normal, "{code:?} stays with the pane");
-        }
-        app.act(Action::BrowseTree);
-        assert_eq!(app.mode, Mode::Side, "the sidebar takes the keys from the key map");
-        let sidebar = draw(&mut app, 160, 45);
-        assert!(sidebar.contains("+ New") && sidebar.contains("Menu"), "sidebar navigation stays visible while focused");
-
-        app.act(Action::Settings);
-        let settings = draw(&mut app, 160, 45);
-        assert!(settings.contains("Settings") && settings.contains("Esc close"), "the Settings modal has its square status row");
-        assert!(app.hits.iter().any(|(rect, hit)| rect.y > 0 && *hit == Hit::Screen(screen::ScreenHit::Close)), "the flat modal close control is mouse reachable");
     }
 
     #[test]
@@ -2762,8 +2623,9 @@ mod screen_tests {
             app.on_mouse(MouseEvent { kind, column: x, row: y, modifiers: KeyModifiers::NONE });
             draw(app, 160, 45);
         };
-        // The pane carries a ✕.
-        assert!(app.hits.iter().any(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::CloseSplit(_)))), "a ✕ on the pane");
+        // Each tab carries a ✕ (ADR 0028); the lone pane's title has none.
+        assert_eq!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::CloseTab(_)))).count(), 3, "a ✕ on each tab");
+        assert!(!app.hits.iter().any(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::CloseSplit(_)))), "none on the lone pane");
         // Double-click: rename it in its pill.
         let first = app.session_tabs()[0];
         let at = pill(&app, first);
@@ -3053,6 +2915,8 @@ mod screen_tests {
     #[test]
     fn x_closes_and_x_confirms() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
+        // Something running in it, so closing it asks.
+        app.snap.terms.get_mut(&3).unwrap().process = "npm".into();
         app.menu_act(menu::Act::End(vec![3]));
         assert!(matches!(app.mode, Mode::Confirm(_)), "closing asks first");
         app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
@@ -3246,7 +3110,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_two_row_toast_sits_above_the_input_area_with_its_bar_and_close() {
+    fn a_two_row_toast_sits_above_the_input_area_boxed_with_its_side_and_close() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         app.notify_card("Copied to clipboard".into(), "214 characters · 5 lines from swift-lynx".into(), None, false);
         let buf = frame(&mut app, 160, 45);
@@ -3255,10 +3119,9 @@ mod screen_tests {
         assert!(row_text(&buf, top + 1).contains("✓ Copied to clipboard") && row_text(&buf, top + 1).trim_end().ends_with('│'), "{}", row_text(&buf, top + 1));
         assert!(row_text(&buf, top + 1).contains("✕"), "the close sits on the title row");
         assert!(row_text(&buf, top + 2).contains("214 characters · 5 lines from swift-lynx"));
-        assert!(row_text(&buf, top + h).trim_start().is_empty() || !row_text(&buf, top + h).contains("╯"), "nothing else under the card");
-        let x = (0..160u16).find(|&x| buf[(x, top + 1)].symbol() == "▌").expect("the bar");
-        for y in top..top + h {
-            assert_eq!((buf[(x, y)].symbol(), buf[(x, y)].fg, buf[(x, y)].bg), ("▌", t.accent, t.card), "the bar runs the card's full height");
+        let x = (0..160u16).find(|&x| buf[(x, top + 1)].symbol() == "┃").expect("the side");
+        for y in top + 1..top + h - 1 {
+            assert_eq!((buf[(x, y)].symbol(), buf[(x, y)].fg, buf[(x, y)].bg), ("┃", t.accent, t.card), "the side runs between the box's top and bottom");
         }
         assert_eq!(buf[(x + 1, top + 2)].bg, t.card);
         let title = (x..160).find(|&c| buf[(c, top + 1)].symbol() == "C").unwrap();
@@ -3268,35 +3131,23 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_toast_s_corners_follow_the_rounding_setting_in_every_look() {
+    fn a_toast_s_corners_follow_the_rounding_setting_as_a_pane_s_do() {
         use crate::config::Rounding;
-        for layout in ["floating", "tiled", "compact", "grid"] {
-            for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
-                let (_, mut app) = super::design_tests::render_with(160, 45);
-                (app.cfg.ui.layout, app.cfg.ui.rounded) = (layout.into(), rounded);
-                app.notify_card("Copied to clipboard".into(), "9 characters".into(), None, false);
-                let buf = frame(&mut app, 160, 45);
-                let t = app.theme.clone();
-                let at = format!("{layout} {rounded:?}");
-                let (top, bottom) = (45 - 4 - 5 - BAR, 45 - 5 - 1 - BAR);
-                let mark = (0..160u16).find(|&x| buf[(x, top + 1)].symbol() == "✓").expect("the mark");
-                let close = (mark..160u16).find(|&x| buf[(x, top + 1)].symbol() == "✕").expect("the close");
-                let (left, right) = (mark - 2, close + 3);
-                let cell = |x: u16, y: u16| (buf[(x, y)].symbol().to_string(), buf[(x, y)].fg);
-                if rounded == Rounding::Off {
-                    for y in top..=bottom {
-                        assert_eq!(cell(left, y), ("▌".into(), t.accent), "a square bar: {at}");
-                        assert_eq!((buf[(right, y)].symbol(), buf[(right, y)].bg), (" ", t.card), "a square edge: {at}");
-                    }
-                } else {
-                    assert_eq!([cell(left, top), cell(left, top + 1), cell(left, bottom)], [("▗".into(), t.accent), ("▐".into(), t.accent), ("▝".into(), t.accent)], "the bar is the soft left edge: {at}");
-                    assert_eq!([cell(right, top), cell(right, top + 1), cell(right, bottom)], [("▖".into(), t.card), ("▌".into(), t.card), ("▘".into(), t.card)], "soft right edge: {at}");
-                    assert_ne!(buf[(right, top)].bg, t.card, "over what lies behind: {at}");
-                }
-            }
+        for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            app.cfg.ui.rounded = rounded;
+            app.notify_card("Copied to clipboard".into(), "9 characters".into(), None, false);
+            let buf = frame(&mut app, 160, 45);
+            let t = app.theme.clone();
+            let (top, bottom) = (45 - 4 - 5 - BAR, 45 - 5 - 1 - BAR);
+            let side = (0..160u16).find(|&x| buf[(x, top + 1)].symbol() == "┃").expect("the side");
+            let right = (side + 1..160u16).find(|&x| buf[(x, top + 1)].symbol() == "│").expect("the right side");
+            let want = if rounded == Rounding::Off { ["┌", "┐", "└", "┘"] } else { ["╭", "╮", "╰", "╯"] };
+            let got = [(side, top), (right, top), (side, bottom), (right, bottom)].map(|p| buf[p].symbol().to_string());
+            assert_eq!(got, want.map(String::from), "{rounded:?}");
+            assert_eq!(buf[(side, top)].fg, t.line, "{rounded:?}: the box in `line`");
         }
     }
-
     #[test]
     fn a_three_row_toast_previews_in_dim_italics() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
@@ -3532,7 +3383,7 @@ second line
         let o = draw(&mut app, 160, 45);
         show(&o);
         let title = o.lines().find(|l| l.contains("▲ 62% CPU · 5.0 GB")).expect("said in the pane's title");
-        assert!(title.contains('✕'), "on the title border, beside the state: {title}");
+        assert!(title.contains('●'), "on the title border, beside the state: {title}");
         let model = app.screen_model();
         assert!(!screen::side_lines(&app, &model, &app.theme).iter().any(|l| matches!(l, screen::Line::Note(text, ..) if text.starts_with("▲"))), "and no longer under its sidebar row");
         assert!(!o.contains("subagents"), "no subagent heading to fold");
@@ -4073,7 +3924,7 @@ second line
         app.open_changes(repo.clone());
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains(" Changes c ") && o.contains("─ claude "), "Changes docks beside the panes");
+        assert!(o.contains(" Changes c ") && o.contains("─ shop-api · ⎇ main "), "Changes docks beside the panes");
         assert!(!o.contains("─ Changes "), "its lit tab names it; the title doesn't repeat it");
         let _ = std::fs::remove_dir_all(&repo);
     }
@@ -4240,11 +4091,7 @@ second line
         let cards = draw(&mut app, 160, 45);
         assert!(!cards.lines().last().unwrap_or_default().contains("inbox"));
         assert!(!cards.lines().last().unwrap_or_default().contains("settings"));
-        app.cfg.ui.layout = "flat".into();
-        let flat = draw(&mut app, 160, 45);
-        assert!(!flat.lines().last().unwrap_or_default().contains("PANE"));
-        assert!(!flat.lines().last().unwrap_or_default().contains("settings"));
-        assert!(flat.contains("+ New") && flat.contains("Menu"), "sidebar controls remain in the sidebar");
+        assert!(cards.contains("+ New") && cards.contains("Menu"), "sidebar controls remain in the sidebar");
     }
 
     #[test]
@@ -4260,15 +4107,16 @@ second line
         let version = rows_here.iter().position(|r| matches!(r, design::SRow::Version)).expect("a Version row");
         assert_eq!(design::settings_group(&rows_here[version]), "UPDATES");
         let check = rows_here.iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == "ui.update_check")).expect("Check for updates");
-        assert_eq!(version, check + 1, "right under Check for updates");
+        assert_eq!((version, check), (0, 1), "Updates head General: the version, then Check for updates");
         assert!(!o.contains("Installed here") && !o.contains("This window"), "the detail lines only show when something differs");
         let rows = design::settings_rows(modal::Cat::General);
         let sections: Vec<(&str, &str)> = rows.iter().filter_map(|r| match r { design::SRow::Setting(s) => Some((design::settings_group(r), s.label)), _ => None }).collect();
         let pos = |label: &str| sections.iter().position(|(_, l)| *l == label).unwrap_or_else(|| panic!("{label} is on the General page"));
         assert_eq!(sections[pos("Leader key")].0, "INPUT");
         assert_eq!(sections[pos("Editor")].0, "SHELL");
-        assert!(pos("Leader key") < pos("Mouse") && pos("Mouse") < pos("Leader waits for next key") && pos("Leader waits for next key") < pos("Splash screen"), "input first");
-        assert!(pos("Splash screen") < pos("Editor") && pos("Editor") < pos("Shell"), "then the shell");
+        assert!(pos("Check for updates") < pos("Splash screen") && pos("Splash screen") < pos("Leader key"), "updates, then startup, then input");
+        assert!(pos("Leader key") < pos("Mouse") && pos("Mouse") < pos("Leader waits for next key") && pos("Leader waits for next key") < pos("Shell"), "input, then the shell");
+        assert!(pos("Shell") < pos("Editor"), "the shell first in its group");
         // How it looks lives on the Appearance page, not here.
         for label in ["Layout", "Background", "Sidebar side", "Motion"] {
             assert!(!sections.iter().any(|(_, l)| *l == label), "{label} is not a General setting");
@@ -4475,7 +4323,7 @@ second line
             let mut term = Terminal::new(TestBackend::new(120, 30)).unwrap();
             term.draw(|f| render::draw(app, f)).unwrap();
             let buf = term.backend().buffer().clone();
-            let y = (0..30).find(|&y| (0..120).any(|x| buf[(x, y)].symbol() == "✕")).unwrap();
+            let y = app.pane_frames[0].1.y;
             let x = 119;
             let side = (1..29).filter(|&y| buf[(0u16, y)].fg == app.theme.accent).count();
             (buf[(x, y)].fg, side)
@@ -4505,9 +4353,9 @@ second line
     }
 
     #[test]
-    fn grid_shows_shortcut_mode_on_the_focused_border_too() {
+    fn pane_colours_show_shortcut_mode_on_the_focused_border_too() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
-        app.cfg.ui.layout = "grid".into();
+        app.cfg.ui.pane_colors = true;
         let border = |app: &mut App| {
             let mut term = Terminal::new(TestBackend::new(160, 45)).unwrap();
             term.draw(|f| render::draw(app, f)).unwrap();
@@ -5016,7 +4864,7 @@ second line
         tap(&mut app, 'y');
         shortcut_tag(&mut app);
         let (_, inner) = *app.panes.first().expect("a pane on screen");
-        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: inner.x + 2, row: inner.y + 2, modifiers: KeyModifiers::NONE });
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: inner.x + 2, row: inner.bottom() - 2, modifiers: KeyModifiers::NONE });
         assert_eq!(shortcut_tag(&mut app), None, "a click, even under a popup");
     }
 
@@ -5107,6 +4955,7 @@ second line
                 for (mode, update) in [("lit", false), ("held", false), ("typing", true), ("lit", true), ("held", true)] {
                     let (_, mut app) = super::design_tests::render_with(80, h);
                     (app.cfg.ui.layout, app.cfg.ui.rounded, app.cfg.ui.which_key) = (layout.into(), crate::config::Rounding::Full, false);
+                    app.cfg.ui.fold_retired_layout();
                     app.update_available = update.then(|| "0.44.0".into());
                     if mode != "typing" {
                         app.on_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL));
@@ -5166,6 +5015,7 @@ second line
     fn framed_app(layout: &str, padding: &str, side: &str) -> App {
         let mut app = shortcut_mode();
         (app.cfg.ui.layout, app.cfg.ui.padding, app.cfg.ui.motion) = (layout.into(), padding.into(), false);
+        app.cfg.ui.fold_retired_layout();
         match side {
             "right" => app.cfg.ui.sidebar_position = "right".into(),
             "collapsed" => app.sidebar = false,
@@ -5175,7 +5025,7 @@ second line
         app
     }
 
-    const LOOKS: [&str; 4] = ["floating", "tiled", "compact", "grid"];
+    const LOOKS: [&str; 3] = ["floating", "tiled", "grid"];
     const SIDES: [&str; 4] = ["left", "right", "collapsed", "hidden"];
 
     #[test]
@@ -5195,7 +5045,7 @@ second line
                         assert!(!ring(&buf).iter().any(|c| ["▀", "▄", "█"].contains(&c.symbol())), "{at}: no solid frame");
                         if padding != "0" {
                             assert!(ring(&buf).iter().all(|c| c.symbol() == " "), "{at}: the padding stays plain");
-                        } else if side == "left" && layout != "compact" {
+                        } else if side == "left" {
                             assert_ne!(buf[(0, 22)].fg, app.theme.sky(), "{at}: the sidebar's edge on the window keeps its colour");
                         }
                     }
@@ -5245,6 +5095,7 @@ second line
                 for mode in ["typing", "lit", "held"] {
                     let (_, mut app) = super::design_tests::render_with(w, h);
                     app.cfg.ui.layout = layout.into();
+                    app.cfg.ui.fold_retired_layout();
                     into_mode(&mut app, mode);
                     let buf = drawn(&mut app, w, h);
                     let text = buf_text(&buf);
@@ -5449,6 +5300,7 @@ second line
             for mode in ["typing", "lit"] {
                 let (_, mut app) = super::design_tests::render_with(160, 45);
                 app.cfg.ui.layout = layout.into();
+                app.cfg.ui.fold_retired_layout();
                 three_panes(&mut app);
                 into_mode(&mut app, mode);
                 let buf = drawn(&mut app, 160, 45);
@@ -5563,12 +5415,15 @@ second line
             for mode in ["lit", "held", "typing"] {
                 let (_, mut app) = super::design_tests::render_with(160, 45);
                 app.cfg.ui.layout = layout.into();
+                app.cfg.ui.fold_retired_layout();
                 into_mode(&mut app, mode);
                 let buf = drawn(&mut app, 160, 45);
-                let pane = app.pane_frames.iter().map(|(_, r)| *r).filter(|r| r.y == 0).max_by_key(|r| r.right()).expect("the top-right pane");
-                let row: String = (pane.x..pane.right()).map(|x| buf[(x, 0)].symbol()).collect();
-                let close = (pane.x..pane.right()).rev().find(|&x| buf[(x, 0)].symbol() == "✕").unwrap_or_else(|| panic!("{layout} {mode}: the ✕: {row}"));
-                assert!(close + 5 >= pane.right(), "{layout} {mode}: the ✕ at the corner: {row}");
+                let top = app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap_or(0);
+                let pane = app.pane_frames.iter().map(|(_, r)| *r).filter(|r| r.y == top).max_by_key(|r| r.right()).expect("the top-right pane");
+                let row: String = (pane.x..pane.right()).map(|x| buf[(x, pane.y)].symbol()).collect();
+                // A lone pane's ✕ is on its tab: its mark ends the title, at the corner.
+                let close = (pane.x..pane.right()).rev().find(|&x| buf[(x, pane.y)].symbol() == "●").unwrap_or_else(|| panic!("{layout} {mode}: the mark: {row}"));
+                assert!(close + 14 >= pane.right(), "{layout} {mode}: the mark at the corner: {row}");
                 closes.push(close);
             }
             assert!(closes.windows(2).all(|p| p[0] == p[1]), "{layout}: the ✕ holds still: {closes:?}");
@@ -5609,8 +5464,9 @@ second line
                     let side = app.screen.side_rect;
                     let title: String = (side.x..side.right()).map(|x| buf[(x, 0)].symbol()).collect();
                     assert!(title.contains("SESSIONS") && title.contains("●1"), "{at}: the sidebar's title and count: {row}");
-                    let pane = app.pane_frames.iter().map(|(_, r)| *r).find(|r| r.y == 0).expect("a pane along the top");
-                    let words: String = (pane.x..pane.right()).map(|x| buf[(x, 0)].symbol()).collect();
+                    let top = app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap_or(0);
+                    let pane = app.pane_frames.iter().map(|(_, r)| *r).find(|r| r.y == top).expect("a pane along the top");
+                    let words: String = (pane.x..pane.right()).map(|x| buf[(x, pane.y)].symbol()).collect();
                     assert!(words.contains('●'), "{at}: the pane's status: {row}");
                     let (_, bar) = bar_text(&app, &buf);
                     assert!(bar.trim().starts_with(bar_words(mode)), "{at}: {bar}");
@@ -5719,14 +5575,14 @@ mod settings_splash_tests {
         app.splash = false;
         app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 0, sel: 1, editing: None, capturing: false, scroll: 0 }));
         let settings = draw(&mut app);
-        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 2, sel: design::settings_rows(modal::Cat::Appearance).iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme")).unwrap(), editing: None, capturing: false, scroll: 0 }));
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: 1, sel: design::settings_rows(modal::Cat::Appearance).iter().position(|r| matches!(r, design::SRow::Setting(s) if s.path == "theme")).unwrap(), editing: None, capturing: false, scroll: 0 }));
         let keys = draw(&mut app);
         if std::env::var(concat!(env!("APP_ENV"), "_SHOW")).is_ok() {
             println!("{splash}\n{settings}\n{keys}");
         }
         assert!(splash.contains(env!("APP_TAGLINE")));
         assert!(splash.contains("Resume where you left off") && splash.contains("New session") && splash.contains("Open a project…"));
-        for page in ["General", "Sessions", "Appearance", "Agents", "Keys"] {
+        for page in ["General", "Appearance", "Sessions", "Alerts", "Agents", "Keys"] {
             assert!(settings.contains(page), "page {page}");
         }
         assert!(settings.contains("Leader key") && settings.contains("Splash screen"));
@@ -5767,9 +5623,9 @@ mod settings_v8_tests {
     }
 
     #[test]
-    fn the_tabs_are_general_sessions_appearance_agents_check_keys() {
+    fn the_tabs_are_general_appearance_sessions_alerts_agents_check_keys() {
         let names: Vec<&str> = Cat::ALL.iter().map(|c| c.label()).collect();
-        assert_eq!(names, ["General", "Sessions", "Appearance", "Agents", "Check", "Keys"]);
+        assert_eq!(names, ["General", "Appearance", "Sessions", "Alerts", "Agents", "Check", "Keys"]);
         let (_, mut app) = super::design_tests::render_with(160, 45);
         open(&mut app, Cat::General, 0);
         let o = draw(&mut app, 160, 45);
@@ -5788,7 +5644,7 @@ mod settings_v8_tests {
     #[test]
     fn one_layout_setting_names_each_look() {
         let layout = modal::SETTINGS.iter().find(|s| s.path == "ui.layout").expect("a Layout row");
-        assert!(matches!(layout.kind, modal::Kind::Choice(c) if c == ["floating", "tiled", "compact", "grid", "hairline"]), "{:?}", layout.kind);
+        assert!(matches!(layout.kind, modal::Kind::Choice(c) if c == ["floating", "hairline"]), "{:?}", layout.kind);
         assert!(!modal::SETTINGS.iter().any(|s| s.path == "ui.panes"), "no separate Cards spacing");
     }
 
@@ -5801,6 +5657,18 @@ mod settings_v8_tests {
         app.cfg.ui.layout = "hairline".into();
         let row = rounded(&draw(&mut app, 160, 45));
         assert!(row.contains("not in Hairline") && !row.contains("corners"), "{row}");
+    }
+
+    #[test]
+    fn floating_only_settings_say_they_do_not_apply_in_hairline() {
+        for label in ["Pane colours", "Gap"] {
+            let (_, mut app) = super::design_tests::render_with(160, 45);
+            let line = |o: &str| o.lines().find(|l| l.contains(label)).unwrap_or_else(|| panic!("the {label} row")).to_string();
+            open(&mut app, Cat::Appearance, row_of(Cat::Appearance, label));
+            assert!(!line(&draw(&mut app, 160, 45)).contains("not in Hairline"), "{label}: Floating offers it");
+            app.cfg.ui.layout = "hairline".into();
+            assert!(line(&draw(&mut app, 160, 45)).contains("not in Hairline"), "{label}");
+        }
     }
 
     #[test]
@@ -5825,12 +5693,12 @@ mod settings_v8_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         open(&mut app, Cat::Sessions, 0);
         let o = draw(&mut app, 160, 45);
-        for want in ["NEW SESSIONS", "Agent", "last used", "Where", "new worktree", "this folder", "HELPERS", "Sessions may start helpers", "ask", "always", "never", "Helpers at once"] {
+        for want in ["NEW SESSIONS", "Agent", "last used", "Where", "new worktree", "this folder", "SIDEBAR", "Tabs in the sidebar", "WORKTREES"] {
             assert!(o.contains(want), "Sessions shows {want}: {o}");
         }
         let rows = design::settings_rows(Cat::Sessions);
         let groups: Vec<&str> = rows.iter().map(design::settings_group).collect();
-        assert_eq!(&groups[..4], ["NEW SESSIONS", "NEW SESSIONS", "HELPERS", "HELPERS"]);
+        assert_eq!(&groups[..4], ["NEW SESSIONS", "NEW SESSIONS", "SIDEBAR", "SIDEBAR"]);
         assert!(!o.contains("+ starts"), "the + chips start shells, so there is nothing to choose: {o}");
     }
 
@@ -5839,9 +5707,11 @@ mod settings_v8_tests {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         open(&mut app, Cat::Agents, 0);
         let o = draw(&mut app, 160, 45);
-        for want in ["AGENT STATUS", "Claude Code", "Codex", "✓ read from the process and screen", "Connect agents…", "SUBAGENTS", "Count on the session row", "AGENTS TALKING TO AGENTS", "Agents may approve prompts"] {
+        for want in ["AGENT STATUS", "Claude Code", "Codex", "✓ read from the process and screen", "Connect agents…", "HELPERS", "Sessions may start helpers", "Count on the session row", "LIMITS"] {
             assert!(o.contains(want), "Agents shows {want}: {o}");
         }
+        // Further down, past the fold at this size.
+        assert!(design::settings_rows(Cat::Agents).iter().any(|r| design::settings_group(r) == "AGENTS TALKING TO AGENTS"), "agents talking to agents is on the page");
         app.claude_hooks = Some(true);
         let o = draw(&mut app, 160, 45);
         super::check_settings_tests::show(&o);
@@ -5895,7 +5765,7 @@ mod settings_v8_tests {
     #[test]
     fn labels_show_whole_at_80_by_24() {
         let (_, mut app) = super::design_tests::render_with(80, 24);
-        for (cat, label) in [(Cat::General, "Alt+arrows move between panes"), (Cat::General, "Leader waits for next key"), (Cat::Sessions, "Sessions may start helpers"), (Cat::Sessions, "Bring sessions back after restart"), (Cat::Agents, "Count on the session row")] {
+        for (cat, label) in [(Cat::General, "Alt+arrows move between panes"), (Cat::General, "Leader waits for next key"), (Cat::Agents, "Sessions may start helpers"), (Cat::Sessions, "Bring sessions back after restart"), (Cat::Alerts, "Phone: say what it's doing"), (Cat::Agents, "Count on the session row")] {
             open(&mut app, cat, row_of(cat, label));
             let o = draw(&mut app, 80, 24);
             assert!(o.contains(label), "{label} is whole at 80x24: {o}");
@@ -5978,8 +5848,8 @@ mod check_row_tests {
     use ratatui::style::Modifier;
 
     const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
-    /// (ui.layout, ui.panes): Cards floating, Cards tiled, Flat.
-    const LAYOUTS: [(&str, &str); 3] = [("cards", "floating"), ("cards", "tiled"), ("flat", "tiled")];
+    /// (ui.layout, ui.panes): Cards floating and Cards tiled, as older files wrote them.
+    const LAYOUTS: [(&str, &str); 2] = [("cards", "floating"), ("cards", "tiled")];
     const NAME: &str = "t-row";
     const COMMAND: &str = "just ci";
     const EDGE_BAR: &str = "▎";
@@ -6017,6 +5887,7 @@ mod check_row_tests {
     fn scene(w: u16, h: u16, layout: (&str, &str), extra: &[(&str, Status, Option<CheckInfo>)]) -> App {
         let (_, mut app) = super::design_tests::render_with(w, h);
         (app.cfg.ui.layout, app.cfg.ui.panes) = (layout.0.into(), layout.1.into());
+        app.cfg.ui.fold_retired_layout();
         for (i, (label, status, check)) in extra.iter().enumerate() {
             let id = 20 + i as TermId;
             let mut t = app.snap.terms[&2].clone();
@@ -6068,7 +5939,7 @@ mod check_row_tests {
 
     /// The column a row's edge bar is drawn in: the reference's X.
     fn bar_column(app: &App) -> u16 {
-        app.screen.side_rect.x + if app.cfg.ui.layout == "flat" { 1 } else { 2 }
+        app.screen.side_rect.x + 2
     }
 
     fn label(layout: (&str, &str), w: u16, h: u16) -> String {
@@ -6447,11 +6318,10 @@ mod check_why_tests {
 
     type Layout = fn(&mut App);
 
-    fn layouts() -> [(&'static str, Layout); 3] {
+    fn layouts() -> [(&'static str, Layout); 2] {
         [
             ("cards floating", |a| a.cfg.ui.panes = "floating".into()),
-            ("cards tiled", |a| a.cfg.ui.panes = "tiled".into()),
-            ("flat", |a| a.cfg.ui.layout = "flat".into()),
+            ("cards tiled", |a| a.cfg.ui.gap = "0".into()),
         ]
     }
 
@@ -6601,11 +6471,10 @@ mod check_sheet_tests {
 
     type Layout = fn(&mut App);
 
-    fn layouts() -> [(&'static str, Layout); 3] {
+    fn layouts() -> [(&'static str, Layout); 2] {
         [
             ("cards floating", |a| a.cfg.ui.panes = "floating".into()),
-            ("cards tiled", |a| a.cfg.ui.panes = "tiled".into()),
-            ("flat", |a| a.cfg.ui.layout = "flat".into()),
+            ("cards tiled", |a| a.cfg.ui.gap = "0".into()),
         ]
     }
 
@@ -6994,8 +6863,8 @@ mod check_inbox_tests {
     use ratatui::buffer::Buffer;
 
     const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
-    /// (ui.layout, ui.panes): Cards floating, Cards tiled, Flat.
-    const LAYOUTS: [(&str, &str); 3] = [("cards", "floating"), ("cards", "tiled"), ("flat", "tiled")];
+    /// (ui.layout, ui.panes): Cards floating and Cards tiled, as older files wrote them.
+    const LAYOUTS: [(&str, &str); 2] = [("cards", "floating"), ("cards", "tiled")];
     const COMMAND: &str = "just ci";
     const FAILING_LINE: &str = "FAIL footer.test.ts";
     const QUESTION: &str = "Run npm test -- checkout?";
@@ -7026,6 +6895,7 @@ mod check_inbox_tests {
     fn scene(w: u16, h: u16, layout: (&str, &str), extra: &[Extra]) -> App {
         let (_, mut app) = super::design_tests::render_with(w, h);
         (app.cfg.ui.layout, app.cfg.ui.panes) = (layout.0.into(), layout.1.into());
+        app.cfg.ui.fold_retired_layout();
         for (i, (label, status, check)) in extra.iter().enumerate() {
             let id = 20 + i as TermId;
             let mut t = app.snap.terms[&2].clone();
@@ -7348,11 +7218,10 @@ mod check_settings_tests {
 
     pub(super) type Layout = fn(&mut App);
 
-    pub(super) fn layouts() -> [(&'static str, Layout); 3] {
+    pub(super) fn layouts() -> [(&'static str, Layout); 2] {
         [
             ("cards floating", |a| a.cfg.ui.panes = "floating".into()),
-            ("cards tiled", |a| a.cfg.ui.panes = "tiled".into()),
-            ("flat", |a| a.cfg.ui.layout = "flat".into()),
+            ("cards tiled", |a| a.cfg.ui.gap = "0".into()),
         ]
     }
 
@@ -7620,11 +7489,10 @@ mod check_wiring_tests {
     type Rx = mpsc::UnboundedReceiver<ClientMsg>;
     type Layout = fn(&mut App);
 
-    fn layouts() -> [(&'static str, Layout); 3] {
+    fn layouts() -> [(&'static str, Layout); 2] {
         [
             ("cards floating", |a| a.cfg.ui.panes = "floating".into()),
-            ("cards tiled", |a| a.cfg.ui.panes = "tiled".into()),
-            ("flat", |a| a.cfg.ui.layout = "flat".into()),
+            ("cards tiled", |a| a.cfg.ui.gap = "0".into()),
         ]
     }
 
@@ -8309,8 +8177,8 @@ mod restart_tests {
     use ratatui::backend::TestBackend;
 
     const SIZES: [(u16, u16); 3] = [(80, 24), (100, 30), (160, 45)];
-    /// (ui.layout, ui.panes): Cards floating, Cards tiled, Flat.
-    const LAYOUTS: [(&str, &str); 3] = [("cards", "floating"), ("cards", "tiled"), ("flat", "tiled")];
+    /// (ui.layout, ui.panes): Cards floating and Cards tiled, as older files wrote them.
+    const LAYOUTS: [(&str, &str); 2] = [("cards", "floating"), ("cards", "tiled")];
     const OLD_DAEMON: &str = "0.36.11";
     const INSTALLED: &str = "9.9.9";
 
@@ -8318,6 +8186,7 @@ mod restart_tests {
     fn scene(w: u16, h: u16, layout: (&str, &str)) -> (App, mpsc::UnboundedReceiver<ClientMsg>) {
         let (_, mut app) = super::design_tests::render_with(w, h);
         (app.cfg.ui.layout, app.cfg.ui.panes) = (layout.0.into(), layout.1.into());
+        app.cfg.ui.fold_retired_layout();
         let (tx, rx) = mpsc::unbounded_channel();
         app.out = tx;
         app.got_state = true;
@@ -10711,7 +10580,7 @@ mod pane_swap_tests {
     use ratatui::backend::TestBackend;
     use ratatui::layout::{Position, Rect};
 
-    const LAYOUTS: [&str; 5] = ["floating", "tiled", "compact", "grid", "hairline"];
+    const LAYOUTS: [&str; 4] = ["floating", "tiled", "grid", "hairline"];
     /// Wide enough that Compact splits too.
     const W: u16 = 200;
     const H: u16 = 45;
@@ -10723,6 +10592,7 @@ mod pane_swap_tests {
         let (tx, rx) = mpsc::unbounded_channel();
         app.out = tx;
         app.cfg.ui.layout = layout.into();
+        app.cfg.ui.fold_retired_layout();
         let mut split = Node::Leaf(1);
         split.split(1, Dir::Right, 2);
         app.snap.workspaces[0].tabs = vec![

@@ -35,7 +35,7 @@ impl Ref {
 }
 
 /// The reference for `preset` (its full name, `07 Evidence · short output`) in `layout`
-/// (`floating`, `tiled`, `flat`) at `w`×`h`.
+/// (`floating`, `tiled`) at `w`×`h`.
 pub(super) fn reference(preset: &str, layout: &str, w: u16, h: u16) -> Ref {
     let head = format!("===== {preset} | {layout} | {w}x{h} | ");
     let mut lines = FRAMES.lines();
@@ -61,7 +61,6 @@ pub(super) fn layout_name(l: crate::client::reference_fixture::Layout) -> &'stat
     match l {
         Layout::Floating => "floating",
         Layout::Tiled => "tiled",
-        Layout::Flat => "flat",
     }
 }
 

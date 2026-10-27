@@ -51,14 +51,11 @@ pick; checking is a sweeping ring. An agent's own mark is `✻` Claude, `◆` Co
 
 ## Layouts
 
-One Layout setting picks the look ([ADR 0015](adr/0015-four-named-layouts-and-grid.md),
-[ADR 0026](adr/0026-hairline-a-fifth-look.md)); every look has the same sessions, tabs, splits
-and sheets.
+One Layout setting picks the look ([ADR 0027](adr/0027-two-looks-and-tabs-in-the-sidebar.md));
+both have the same sessions, tabs, splits and sheets.
 
-- **Floating** (the default): each pane a box, with gaps between.
-- **Tiled**: the same boxes, edge to edge, never merged.
-- **Compact**: full-bleed zones, a header strip on row 0, zones split by one `│`.
-- **Grid**: boxes with gaps, each pane in its own colour by its place in the tab.
+- **Floating** (the default): each pane a box, `ui.gap` (0, 1 or 2) between them. **Pane
+  colours** (`ui.pane_colors`) gives each pane's border its own colour by its place in the tab.
 - **Hairline**: no boxes at all, only `│` / `─` hairlines; always square
   (see *Hairline* below).
 
@@ -83,18 +80,24 @@ mark, the name in its state's colour when it wants a look (shimmering while work
 when it needs you), then the agent's mark, its context past half full (`✻ 72%`, red from 85%),
 uncommitted `+N −N` and the age. A second and third
 line, always `muted`, appear only when they say more: a question, a check result, the first
-failing line. The foot holds **+ New** and **Menu**. Collapsed, the sessions become chips along
+failing line. A session with two tabs or more lists them under it, one line each: `├`/`└`, the
+tab's number and name (the one on screen in the accent), and its most urgent agent's glyph and
+word at the right; a click shows that tab. The foot holds **+ New** and **Menu**. Collapsed, the sessions become chips along
 row 0; hidden, the panes take everything. See UI › *sidebar check result* and *collapsed
 sidebar*.
 
 ## Pane titles and tabs
 
-The title sits on the pane's top border (a header strip in Compact). The top-left pane carries
-the session's tabs as chips, the current one in the accent, then a **+** chip for a new tab;
-other panes show their session's name. While a tab is split, every pane's number (its place in
+The session's tabs have a row of their own over the panes in both looks
+([ADR 0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md)): in Floating the tab chips right over the boxes, each led by its state's glyph (on screen or
+not) and ended by its ✕, the current one in the accent, then a **+** chip for a new tab. A tab
+is named the same everywhere: its own name, else its focused session's. The title sits on the
+pane's top border and names its own pane: a tab's only pane reads `project · ⎇ branch`, its tab
+naming and closing it. While a tab is split, every pane's number (its place in
 reading order, from 1, so it changes when panes move, close or split) leads its name: `2 · claude`. On the right: the session's status mark (it
-opens why) and a ✕; closing asks first, naming the pane (`Close pane 2 · claude`) and lighting
-its lines in the red until you answer. In Grid a chip names each pane and its state is the glyph alone. Unfocused panes fade;
+opens why) and a ✕; closing asks first when something would be lost (an agent, or a shell running
+a program; an idle shell closes at once, ADR 0029), naming the pane (`Close pane 2 · claude`) and lighting
+its lines in the red until you answer. Unfocused panes fade;
 the focused border is the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane
 focus*.
 
@@ -113,7 +116,9 @@ groups* and *check evidence sheet*.
 
 ## Modals and popovers
 
-Deciding is a modal: centred, framed like a pane (the title as an accent chip on the top border,
+Everything that floats over the screen is boxed as the look boxes a pane: a `line` box round
+`card` with corners by `ui.rounded` in Floating, a square line box on the ground in Hairline
+([ADR 0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md)). Deciding is a modal: centred, framed like a pane (the title as an accent chip on the top border,
 `Esc close` at the right), the screen behind dimmed, no shadow. Settings, override, command
 approval and the key overlay are modals. Small explanations (why, a row's menu, the message and
 helpers popovers) open beside their row with a `◂` pointer; a menu row ends in its key, the bound leader
@@ -122,9 +127,10 @@ of keycaps. See UI › *UI conventions*, *check modals and settings* and *why po
 
 ## Toasts
 
-One component for every notice: bottom right, above the agent's input area, a `card` with a
-full-height `▌` bar in the notice's colour (`err`, `blocked` for needs you, `done`, else the
-accent), a bold title, a detail line and an optional preview in italics. It slides in and fades
+One component for every notice: bottom right, above the agent's input area, boxed as a pane is
+in its look, its left side inside the box a heavy `┃` in the notice's colour (`err`, `blocked`
+for needs you, `done`, else the accent), a bold title, a detail line and an optional preview in
+italics. It slides in and fades
 out with motion on. See UI › *the frame* (Toast).
 
 ## Mode bar
@@ -141,7 +147,8 @@ no click. **Update** or **Restart** sits at its right end when waiting. See UI �
 
 ## Hairline
 
-Less frame, more work ([ADR 0026](adr/0026-hairline-a-fifth-look.md)). Every line is one
+Less frame, more work ([ADR 0026](adr/0026-hairline-a-fifth-look.md); Compact's settings load
+as Hairline, [ADR 0027](adr/0027-two-looks-and-tabs-in-the-sidebar.md)). Every line is one
 weight in `line`; colour is kept for state, and amber still means only needs you. It draws
 from the theme's roles (`hairline::Ink`: `raised` is `card2`, `dim` is `muted`, `teal` the
 accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` does not apply.
@@ -151,21 +158,22 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
   the glyph, the name and its age at the right, or `needs you` in amber (a split whose own
   pane is fine but whose pane beside it asks names that pane instead: `▸ warm-finch`). A
   helper steps in under the session that started it, and a request to start helpers keeps its
-  amber line under the row. The focused row is
+  amber line under the row, and a session's tabs, when it has several, each a line under it
+  (as in Floating; the one on screen teal). The focused row is
   `raised` with a teal `▎` and a teal name; a row on screen without the keys is `raised`; one
   that needs you has an amber `▎` and an amber name. The foot, pinned to the bottom row, is
   two dim words, no keys: `new` at the left, `menu` at the right.
 - **Tabs:** a row of their own across the top of the pane column, then a `─` rule in `line`
   (`├` where the sidebar's `│` meets it). Each tab is plain words: its most urgent agent's mark
   (so a tab out of view still shows it works or asks), its number while the session has
-  several, and its name; the current one teal bold, the others dim. A dim `+` after them opens
-  a tab, there even with one tab.
+  several, its name and a dim ✕ (it closes the tab, or a lone tab's only pane; a lone tab that
+  is split has none); the current one teal bold, the others dim. A dim `+` after them opens
+  a tab, there even with one tab. A `│` in `line` closes each tab and the `+`, meeting the rule
+  in a `┴`.
 - **Panes:** row 1 is the pane's number while the tab is split (bold: teal focused, amber when
   it needs you, else dim), the glyph, the name in `strong` bold, then `project · ⎇ branch` dim;
-  no tabs, so the title names only its pane; at the
-  right the state (`needs you · 2m` or `needs you · approve check` amber bold, `working` teal,
-  `done` green, `idle` dim) and
-  the ✕. Row 2 is a `─` rule the pane's width: teal focused (`sky()` in shortcut mode), amber
+  at the right the ✕. The state shows as the glyph alone, no words. A tab's only pane leaves its
+  glyph, name and ✕ to the tab, so its title is just `project · ⎇ branch`. Row 2 is a `─` rule the pane's width: teal focused (`sky()` in shortcut mode), amber
   when it needs you and is not focused, else `line`. Panes side by side or stacked are parted
   by one `│` or `─`, never boxed; the terminal sits two columns in.
 - **Mode bar:** under a full-width `─` rule in `line` (`┴` where the sidebar's `│` meets it).
@@ -178,7 +186,7 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
   popover (why, a row's `⋯`, the message and helpers asks) is framed the same, with the `◂`
   in the accent. The side sheet is a zone like a pane: its tabs (or title) on the first row,
   a `─` rule under it lit teal under the open tab while it has the keys, and a `│` to its left.
-  The toast keeps its `▌` bar and gets a hairline frame. No chip is filled: a key and what it
+  The toast is a square line box on the ground, its left side the notice's colour. No chip is filled: a key and what it
   does are words (the key `strong` bold), the chosen option or primary button is the accent's
   words, a danger button the red's. A selected row is `raised` with an accent marker. The
   collapsed sidebar's chips and the splash's keys are words too; the splash's wordmark stays.
@@ -190,7 +198,9 @@ See UI › *Hairline* for sizes, what gives way and what takes a click.
 
 Centred on the ground: the name as a wordmark in 5-row block letters drawn as filled cells, its
 "AI" in the accent; under it the swell, one rolling `▁▂▃▄▅▄▃▂` line fading into the ground at
-each end; the tagline in italics; then the choice cards (Resume, New session, Open a project),
+each end; the tagline in italics; then, when a release is out (or installed and waiting for a restart), a
+banner boxed as the look boxes a pane in the accent: `↑ maitty 0.47.0 is out` and `u update`,
+which `u` or a click does; then the choice cards (Resume, New session, Open a project),
 the chosen one with an accent `▌` edge. On the first start of a version the letters rise from
 the deep colour one by one and the swell fades in. Night has its own wordmark, swell and deep
 colours; other themes take them from their text and accent. See UI › *splash*.

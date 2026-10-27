@@ -68,9 +68,8 @@ pub(in crate::client) fn pane_bg(t: &Theme) -> Color {
 /// How the cards are laid out and drawn, from the settings.
 #[derive(Clone, Copy)]
 pub(in crate::client) struct Look {
-    pub flat: bool,
-    /// Grid: each pane a box in its own colour (ADR 0015).
-    pub grid: bool,
+    /// Pane colours: each pane a box in its own colour (Floating only, ADR 0027).
+    pub pane_colors: bool,
     /// Hairline: no boxes, only `│` / `─` hairlines, and always square (ADR 0026). Drawing
     /// asks this, and takes its colours from `hairline::Ink`.
     pub hairline: bool,
@@ -89,22 +88,19 @@ impl Look {
     pub fn of(ui: &crate::config::Ui) -> Look {
         use crate::config::LayoutKind;
         let kind = ui.layout_kind();
-        let flat = kind == LayoutKind::Compact;
         let hairline = kind == LayoutKind::Hairline;
-        let tiled = kind == LayoutKind::Tiled || flat || hairline;
         let rounding = ui.rounding();
         Look {
-            flat,
-            grid: kind == LayoutKind::Grid,
+            pane_colors: ui.pane_colors && !hairline,
             hairline,
             rounded: rounding.corners(),
-            gap: if tiled { 0 } else { ui.gap.parse().unwrap_or(1).min(2) },
-            dim: if flat { 0.0 } else { match ui.dim.as_str() {
+            gap: if hairline { 0 } else { ui.gap.parse().unwrap_or(1).min(2) },
+            dim: match ui.dim.as_str() {
                 "off" => 0.0,
                 "subtle" => DIM_SUBTLE,
                 "60%" => DIM_STRONG,
                 _ => DIM_DEFAULT,
-            } },
+            },
             caps: rounding.caps(),
             round_tabs: rounding.caps(),
             round_rows: rounding.caps(),
@@ -137,12 +133,6 @@ pub(in crate::client) fn round_ends(segs: Vec<Seg>, outer: Color) -> Vec<Seg> {
     out
 }
 
-/// What lies behind a pane's title chips: the header strip in Flat, the desk the top border
-/// is drawn on in Cards (no ground of its own).
-pub(in crate::client) fn title_ground(look: Look, t: &Theme) -> Color {
-    if look.flat { t.card } else { Color::Reset }
-}
-
 /// A pill as wide as `w`: the selected row of a list, an input, the answer bar.
 pub(in crate::client) fn row_pill(look: Look, buf: &mut Buffer, x: u16, y: u16, w: u16, bg: Color, outer: Color) {
     if w < 2 {
@@ -161,22 +151,6 @@ pub(in crate::client) fn block_ends(i: u16, n: u16) -> (&'static str, &'static s
         (0, _) => ("▗", "▖"),
         (i, n) if i + 1 == n => ("▝", "▘"),
         _ => ("▐", "▌"),
-    }
-}
-
-/// Soften the corners of the block at `r` (already drawn) over what lay behind it, `behind`
-/// at each line's ends: the block's colour stays in the cut cell's foreground.
-pub(in crate::client) fn soften_block(buf: &mut Buffer, r: Rect, behind: &[(Color, Color)]) {
-    let r = r.intersection(buf.area);
-    if r.width < 2 {
-        return;
-    }
-    for (i, y) in (r.y..r.bottom()).enumerate() {
-        let (l, e) = block_ends(i as u16, r.height);
-        let (bl, br) = behind.get(i).copied().unwrap_or((Color::Reset, Color::Reset));
-        let (lf, rf) = (buf[(r.x, y)].bg, buf[(r.right() - 1, y)].bg);
-        buf[(r.x, y)].set_symbol(l).set_fg(lf).set_bg(bl);
-        buf[(r.right() - 1, y)].set_symbol(e).set_fg(rf).set_bg(br);
     }
 }
 
@@ -261,15 +235,12 @@ pub(in crate::client) struct Card<'a> {
     /// The ✕ at the right of the top border, and what a click on it does.
     pub close: Option<ScreenHit>,
     pub border: Color,
-    /// Focused: the border (Cards) or the left rule (Flat), and the title chip, in `border`.
+    /// Focused: the border and the title chip in `border`.
     pub bold: bool,
     /// The title's ink when not focused.
     pub title_fg: Color,
     /// The inside's ground.
     pub bg: Color,
-    /// Floats over the screen (a menu, an overlay): in Compact, with rounded shapes, its ends
-    /// are softened over what lies behind it.
-    pub float: bool,
     /// Docked beside the panes (the side sheet): in Hairline a zone like a pane, a title over a
     /// rule and a `│` to its left, not a box.
     pub docked: bool,
@@ -277,7 +248,7 @@ pub(in crate::client) struct Card<'a> {
 
 impl<'a> Card<'a> {
     pub fn new(t: &Theme, title: &'a str) -> Card<'a> {
-        Card { title, sub: "", chips: Vec::new(), right: Vec::new(), close: None, border: t.line, bold: false, title_fg: t.strong, bg: pane_bg(t), float: false, docked: false }
+        Card { title, sub: "", chips: Vec::new(), right: Vec::new(), close: None, border: t.line, bold: false, title_fg: t.strong, bg: pane_bg(t), docked: false }
     }
 
     /// The focused look: the border and the title chip in `c`.
@@ -290,7 +261,7 @@ impl<'a> Card<'a> {
 
 /// How wide a card's ✕ is drawn on its top border, the spaces round it included.
 pub(in crate::client) fn close_width(look: Look, after_right: bool) -> u16 {
-    close_lead(look, after_right) + 2 * u16::from(look.caps) + 2 + close_trail(look)
+    close_lead(look, after_right) + 2 * u16::from(look.caps) + 2
 }
 
 /// Spaces before the ✕: two after other right-hand segments. Alone, a square ✕'s chip starts on
@@ -300,13 +271,6 @@ fn close_lead(look: Look, after_right: bool) -> u16 {
     if after_right { 2 } else { u16::from(look.caps) }
 }
 
-/// Cells kept blank after the ✕'s chip. Flat's right-hand segments end on the zone's last
-/// column but one, and that last column is the next zone's rule, so a capped chip keeps a cell
-/// clear of it as it does of the border in Cards. Square ✕s keep their place in the reference frames.
-fn close_trail(look: Look) -> u16 {
-    u16::from(look.flat && look.caps)
-}
-
 /// The ✕'s click target, which the pointer's tint lights: the ✕ and a cell each side, and with
 /// caps a space more each side inside them, so the hovered ✕ is a whole chip like the others
 /// rather than two caps pressed against the glyph.
@@ -314,16 +278,14 @@ fn close_chip_w(look: Look) -> u16 {
     if look.caps { 5 } else { 3 }
 }
 
-/// Where a card's title chip starts: on the top border two in (Cards), one in on the header
-/// strip (Flat).
-pub(in crate::client) fn title_x(look: Look, r: Rect) -> u16 {
-    r.x + if look.flat { 1 } else { 2 }
+/// Where a card's title chip starts: on the top border two in.
+pub(in crate::client) fn title_x(r: Rect) -> u16 {
+    r.x + 2
 }
 
-/// Where a card's right-hand segments end (exclusive): a padding space before the corner
-/// (Cards), a column before the zone's edge (Flat).
-pub(in crate::client) fn right_end(look: Look, r: Rect) -> u16 {
-    r.right().saturating_sub(if look.flat { 1 } else { 2 })
+/// Where a card's right-hand segments end (exclusive): a padding space before the corner.
+pub(in crate::client) fn right_end(r: Rect) -> u16 {
+    r.right().saturating_sub(2)
 }
 
 /// The title chip, at most `room` wide: the title (and its sub, dropped first) padded by a
@@ -360,56 +322,46 @@ fn plain_title_chip(c: &Card, t: &Theme, room: u16) -> Vec<Seg> {
     out
 }
 
-/// Draw a card. Cards: a box in `line` (`border` when focused) with square or rounded
-/// corners, the title chip on the top border two in and the right-hand segments ending three
-/// before the corner. Flat: no box; the first row is a header strip of `card` with the chip one
-/// in and the right-hand segments one from the edge, and a zone that doesn't start at the
-/// screen's edge has a `│` rule down its left (in `border` when focused). Returns the inside.
+/// Draw a card: a box in `line` (`border` when focused) with square or rounded corners, the
+/// title chip on the top border two in and the right-hand segments ending three before the
+/// corner (a docked card in Hairline is a zone instead). Returns the inside.
 pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card, t: &Theme) -> Rect {
     let look = Look::of(&app.cfg.ui);
     let r = r.intersection(buf.area);
     if r.width < 4 || r.height < 2 {
         return Rect { width: 0, height: 0, ..r };
     }
-    let soften = c.float && look.caps && look.flat;
-    let behind = if soften { ends_behind(buf, r) } else { Vec::new() };
-    let inside = if look.flat {
-        flat_frame(buf, r, c, t, ruled(app, buf, r))
-    } else if look.hairline && c.docked {
+    let inside = if look.hairline && c.docked {
         // No second `│` beside one already there (the sidebar's, when it takes the pane column).
         hairline_zone(buf, r, c, t, ruled(app, buf, r) && buf[(r.x - 1, r.y)].symbol() != "│")
     } else {
         box_frame(buf, r, c, look)
     };
-    if soften {
-        soften_block(buf, r, &behind);
-    }
-    let ground = if look.flat { t.card } else { t.bg };
+    let ground = t.bg;
     let mut right = c.right.clone();
     if c.close.is_some() {
         let lead = " ".repeat(close_lead(look, !right.is_empty()) as usize);
         let inner = if look.caps { " " } else { "" };
         let close = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close;
-        let trail = " ".repeat(close_trail(look) as usize);
-        right.push(seg(format!("{lead}{inner}{close}{inner} {trail}"), Style::default().fg(t.muted)));
+        right.push(seg(format!("{lead}{inner}{close}{inner} "), Style::default().fg(t.muted)));
     }
-    let end = right_end(look, r);
+    let end = right_end(r);
     let rw = segs_width(&right);
     let rx = end.saturating_sub(rw);
-    let chip_x = title_x(look, r);
+    let chip_x = title_x(r);
     let shown = rw > 0 && rx > chip_x + 1;
     if shown {
-        let pad = u16::from(!look.flat);
-        let space = seg(" ".repeat(pad as usize), Style::default());
+        let pad = 1;
+        let space = seg(" ", Style::default());
         let segs: Vec<Seg> = std::iter::once(space.clone()).chain(right).chain(std::iter::once(space)).map(|(s, st)| (s, if st.bg.is_none() { st.bg(ground) } else { st })).collect();
         put(buf, rx - pad, r.y, &segs, end + pad);
         if let Some(h) = c.close {
             let w = close_chip_w(look);
-            hit(app, Rect { x: end.saturating_sub(w + close_trail(look)), y: r.y, width: w, height: 1 }, h);
+            hit(app, Rect { x: end.saturating_sub(w), y: r.y, width: w, height: 1 }, h);
         }
     }
     let chip_end = if shown { rx.saturating_sub(2) } else { end };
-    put(buf, chip_x, r.y, &title_chip(look, c, t, chip_end.saturating_sub(chip_x), title_ground(look, t)), chip_end);
+    put(buf, chip_x, r.y, &title_chip(look, c, t, chip_end.saturating_sub(chip_x), Color::Reset), chip_end);
     inside
 }
 
@@ -417,7 +369,7 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
 fn box_frame(buf: &mut Buffer, r: Rect, c: &Card, look: Look) -> Rect {
     fill(buf, Rect { x: r.x + 1, y: r.y + 1, width: r.width - 2, height: r.height - 2 }, c.bg);
     let b = Style::default().fg(c.border);
-    let b = if look.grid && c.bold { b.add_modifier(Modifier::BOLD) } else { b };
+    let b = if look.pane_colors && c.bold { b.add_modifier(Modifier::BOLD) } else { b };
     let (x, y, right, bottom) = (r.x, r.y, r.right() - 1, r.bottom() - 1);
     for xx in x + 1..right {
         buf[(xx, y)].set_symbol("─").set_style(b);
@@ -435,7 +387,7 @@ fn box_frame(buf: &mut Buffer, r: Rect, c: &Card, look: Look) -> Rect {
     Rect { x: x + 1, y: y + 1, width: r.width - 2, height: r.height - 2 }
 }
 
-/// Whether a Flat zone at `r` has a `│` rule down its left: it does not start at the left of
+/// Whether a docked zone at `r` has a `│` rule down its left: it does not start at the left of
 /// the room the screen is laid out in (the window less its padding), as the panes beside a
 /// left sidebar, or a sidebar on the right.
 pub(in crate::client) fn ruled(app: &App, buf: &Buffer, r: Rect) -> bool {
@@ -458,21 +410,6 @@ fn hairline_zone(buf: &mut Buffer, r: Rect, c: &Card, t: &Theme, ruled: bool) ->
         buf[(xx, r.y + 1)].set_symbol("─").set_style(rule);
     }
     Rect { x: r.x + lead, y: r.y + 2, width: r.width - lead, height: r.height.saturating_sub(2) }
-}
-
-/// The Flat zone: a header strip of `card` on its first row, and a `│` rule down its left
-/// when `ruled`.
-fn flat_frame(buf: &mut Buffer, r: Rect, c: &Card, t: &Theme, ruled: bool) -> Rect {
-    fill(buf, r, c.bg);
-    fill(buf, Rect { height: 1, ..r }, t.card);
-    if ruled {
-        buf[(r.x, r.y)].set_symbol("│").set_style(Style::default().fg(t.line).bg(t.card));
-        let rule = Style::default().fg(if c.bold { c.border } else { t.line }).bg(c.bg);
-        for yy in r.y + 1..r.bottom() {
-            buf[(r.x, yy)].set_symbol("│").set_style(rule);
-        }
-    }
-    Rect { x: r.x + 1, y: r.y + 1, width: r.width - 1, height: r.height - 1 }
 }
 
 /// Fade everything inside `r` toward its own ground by `amount`, keeping colours recognisable.

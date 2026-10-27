@@ -62,21 +62,23 @@ pub struct Setting {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cat {
     General,
-    Sessions,
     Appearance,
+    Sessions,
+    Alerts,
     Agents,
     Check,
     Keys,
 }
 
 impl Cat {
-    pub const ALL: [Cat; 6] = [Cat::General, Cat::Sessions, Cat::Appearance, Cat::Agents, Cat::Check, Cat::Keys];
+    pub const ALL: [Cat; 7] = [Cat::General, Cat::Appearance, Cat::Sessions, Cat::Alerts, Cat::Agents, Cat::Check, Cat::Keys];
 
     pub fn label(self) -> &'static str {
         match self {
             Cat::General => "General",
             Cat::Sessions => "Sessions",
             Cat::Appearance => "Appearance",
+            Cat::Alerts => "Alerts",
             Cat::Agents => "Agents",
             Cat::Check => "Check",
             Cat::Keys => "Keys",
@@ -87,57 +89,61 @@ impl Cat {
 
 pub const SETTINGS: &[Setting] = &[
     // General
-    Setting { path: "prefix", label: "Leader key", kind: Kind::Key, cat: Cat::General, help: "Press it, let go, then a key. Enter, then press the new leader." },
-    Setting { path: "ui.splash", label: "Splash screen", kind: Kind::Bool, cat: Cat::General, help: concat!("Show the ", env!("APP_COMMAND"), " and what happened while you were away when you start.") },
     Setting { path: "ui.update_check", label: "Check for updates", kind: Kind::Bool, cat: Cat::General, help: concat!("On start, and every few hours while open, look for a newer ", env!("APP_COMMAND"), ". The Update button installs it.") },
+    Setting { path: "ui.splash", label: "Splash screen", kind: Kind::Bool, cat: Cat::General, help: concat!("Show the ", env!("APP_COMMAND"), " and what happened while you were away when you start.") },
+    Setting { path: "ui.splash_animation", label: "Splash animation", kind: Kind::Choice(&["cold start", "always", "never"]), cat: Cat::General, help: "The wordmark falls into place. cold start: the first start of a version, or when nothing is running. Off with Motion off." },
+    Setting { path: "prefix", label: "Leader key", kind: Kind::Key, cat: Cat::General, help: "Press it, let go, then a key. Enter, then press the new leader." },
     Setting { path: "ui.mouse", label: "Mouse", kind: Kind::Bool, cat: Cat::General, help: "Click, hover, scroll and drag. Hold Shift to select text with your terminal instead." },
+    Setting { path: "ui.alt_keys", label: "Alt+letter shortcuts", kind: Kind::Bool, cat: Cat::General, help: "Alt+n shell, Alt+s session, Alt+t tab, Alt+x close, Alt+v / Alt+h split, without the leader." },
     Setting { path: "ui.alt_arrows", label: "Alt+arrows move between panes", kind: Kind::Bool, cat: Cat::General, help: "Without the leader. Turn it off if your shell jumps words with Alt+arrows." },
     Setting { path: "ui.which_key", label: "Leader waits for next key", kind: Kind::Bool, cat: Cat::General, help: "After the leader, list every key if you pause. Off: the Menu and ? list them." },
-    Setting { path: "ui.start_dir", label: "Start folder", kind: Kind::Folder, cat: Cat::General, help: concat!("Where plain `", env!("APP_COMMAND"), "` opens, and the shell after you close everything. Empty: where you run it. ~ is home.") },
-    Setting { path: "editor", label: "Editor", kind: Kind::Program(EDITORS), cat: Cat::General, help: concat!("Opens files from ", env!("APP_COMMAND"), ". Empty: $VISUAL, $EDITOR, then code. nvim, hx, … open inside ", env!("APP_COMMAND"), ".") },
     Setting { path: "shell", label: "Shell", kind: Kind::Program(SHELLS), cat: Cat::General, help: "The shell new sessions run. Empty: pwsh / powershell on Windows, $SHELL elsewhere." },
+    Setting { path: "editor", label: "Editor", kind: Kind::Program(EDITORS), cat: Cat::General, help: concat!("Opens files from ", env!("APP_COMMAND"), ". Empty: $VISUAL, $EDITOR, then code. nvim, hx, … open inside ", env!("APP_COMMAND"), ".") },
+    Setting { path: "ui.start_dir", label: "Start folder", kind: Kind::Folder, cat: Cat::General, help: concat!("Where plain `", env!("APP_COMMAND"), "` opens, and the shell after you close everything. Empty: where you run it. ~ is home.") },
     Setting { path: "shell_integration", label: "PowerShell folder tracking", kind: Kind::Bool, cat: Cat::General, help: concat!("Lets ", env!("APP_COMMAND"), " see where PowerShell sessions cd to.") },
+    // Appearance
+    Setting { path: "theme", label: "Theme", kind: Kind::Choice(crate::theme::BUILTIN), cat: Cat::Appearance, help: "Enter to search and preview themes. Enter in the browser applies your choice." },
+    Setting { path: "ui.layout", label: "Layout", kind: Kind::Choice(crate::config::LAYOUT_NAMES), cat: Cat::Appearance, help: "floating: a box per pane. hairline: no boxes, only lines." },
+    Setting { path: "ui.sidebar_position", label: "Sidebar side", kind: Kind::Choice(&["left", "right"]), cat: Cat::Appearance, help: "Which edge the sidebar sits on." },
+    Setting { path: "ui.padding", label: "Padding", kind: Kind::Choice(&["0", "1", "2"]), cat: Cat::Appearance, help: "Space round the whole screen, in rows and columns." },
+    Setting { path: "ui.background", label: "Background", kind: Kind::Choice(&["terminal", "solid"]), cat: Cat::Appearance, help: concat!("terminal: your terminal's background shows through. solid: ", env!("APP_COMMAND"), " paints every cell.") },
+    Setting { path: "ui.motion", label: "Motion", kind: Kind::Bool, cat: Cat::Appearance, help: "Slides, glides and fades (under 150 ms). Always off over SSH." },
+    Setting { path: "ui.gap", label: "Gap", kind: Kind::Choice(&["0", "1", "2"]), cat: Cat::Appearance, help: "Space between floating panes, in rows stacked and columns side by side." },
+    Setting { path: "ui.pane_colors", label: "Pane colours", kind: Kind::Bool, cat: Cat::Appearance, help: "Floating: each pane's border in its own colour, by its place in the tab." },
+    Setting { path: "ui.rounded", label: "Rounded", kind: Kind::Choice(crate::config::Rounding::NAMES), cat: Cat::Appearance, help: "full: round corners and round ends everywhere (needs a Nerd Font). corners: rounded squares, square ends. off: all square." },
+    Setting { path: "ui.dim", label: "Dim unfocused", kind: Kind::Choice(&["off", "subtle", "30%", "60%"]), cat: Cat::Appearance, help: "How far the panes you're not in fade. Their colours stay recognisable." },
+    Setting { path: "ui.focus_border", label: "Focus border", kind: Kind::Choice(&["accent", "bright", "none"]), cat: Cat::Appearance, help: "How the pane you're in is outlined." },
+    Setting { path: "ui.cursor", label: "Cursor", kind: Kind::Choice(crate::config::CURSOR_SHAPES), cat: Cat::Appearance, help: "The caret where a pane's program picks none: the terminal's own, block, underline or bar. vim keeps its own." },
+    Setting { path: "ui.cursor_blink", label: "Cursor blink", kind: Kind::Bool, cat: Cat::Appearance, help: "Blink that caret. No effect with your terminal's own cursor." },
+    Setting { path: "ui.glyphs", label: "Status glyphs", kind: Kind::Choice(&["auto", "dots", "unicode", "ascii", "nerd"]), cat: Cat::Appearance, help: "dots: a coloured dot and a word per session. unicode, ascii, nerd: a shape per state. auto: dots, or ascii if your icons are." },
+    Setting { path: "ui.spinner", label: "Working spinner", kind: Kind::Spinner, cat: Cat::Appearance, help: "How a working agent's mark moves: Snake, Pulse, Braille and more. Other status icons keep their meaning." },
     // Sessions
     Setting { path: "sessions.agent", label: "Agent", kind: Kind::Choice(crate::config::NEW_AGENTS), cat: Cat::Sessions, help: concat!("Which agent leader s starts. last used is the last one you started from ", env!("APP_NAME"), ".") },
     Setting { path: "sessions.where", label: "Where", kind: Kind::Choice(crate::config::NEW_WHERE), cat: Cat::Sessions, help: "new worktree: its own branch, so sessions side by side don't collide." },
-    Setting { path: "sessions.helpers", label: "Sessions may start helpers", kind: Kind::Choice(crate::config::HELPERS_MAY), cat: Cat::Sessions, help: "ask: the first time, the row asks you once (1 allow · 2 always in this project · 3 no). always and never answer for you." },
-    Setting { path: "sessions.helpers_at_once", label: "Helpers at once", kind: Kind::Choice(crate::config::HELPERS_AT_ONCE), cat: Cat::Sessions, help: "Per session. Extra helpers wait their turn." },
-    Setting { path: "auto_continue", label: "Continue after a limit", kind: Kind::Bool, cat: Cat::Sessions, help: "An agent stopped by its plan limit is told \"continue\" once the limit resets." },
+    Setting { path: "ui.sidebar_tabs", label: "Tabs in the sidebar", kind: Kind::Choice(crate::config::SIDEBAR_TABS), cat: Cat::Sessions, help: "A session's tabs as lines under its row. busy: only those working or needing you, and the one on screen." },
     Setting { path: "ui.attention_sort", label: "Sort sidebar by attention", kind: Kind::Bool, cat: Cat::Sessions, help: "Sessions that need you float to the top of their group. The rest keep their place." },
-    Setting { path: "notify.sound", label: "Alert sounds", kind: Kind::Bool, cat: Cat::Sessions, help: "Two rising notes when an agent needs you, one soft note when a background session finishes." },
-    Setting { path: "notify.phone_topic", label: "Phone alerts (ntfy topic)", kind: Kind::Text, cat: Cat::Sessions, help: concat!("Subscribe to a hard-to-guess topic in the free ntfy app and put it here. Empty is off. ", env!("APP_COMMAND"), " test-alert tries it.") },
-    Setting { path: "notify.phone_after", label: "Phone: after waiting (s)", kind: Kind::Int { step: 30, min: 0, max: 3600 }, cat: Cat::Sessions, help: "Only once an agent has waited this long unanswered, so it stays quiet while you're at your desk." },
-    Setting { path: "notify.phone_done", label: "Phone: when one finishes too", kind: Kind::Bool, cat: Cat::Sessions, help: "Also when an agent finishes and nobody has looked (after the same wait)." },
-    Setting { path: "notify.phone_text", label: "Phone: say what it's doing", kind: Kind::Bool, cat: Cat::Sessions, help: "Put the agent's task in the alert. Off: just which agent and where. On ntfy.sh the topic is the only secret." },
+    Setting { path: "worktree.per_agent", label: "Own worktree per agent", kind: Kind::Bool, cat: Cat::Sessions, help: "An agent started in a repo's main folder gets its own branch and folder." },
+    Setting { path: "worktree.command", label: "Start in new worktrees", kind: Kind::Text, cat: Cat::Sessions, help: "A command to run in every new worktree (e.g. claude). Empty: a shell." },
     Setting { path: "worktree.delete_with_last", label: "Remove worktree with last agent", kind: Kind::Bool, cat: Cat::Sessions, help: concat!("Closing the last thing in a worktree ", env!("APP_COMMAND"), " made removes its folder; the branch stays. Never with changes.") },
     Setting { path: "restore.enabled", label: "Bring sessions back after restart", kind: Kind::Bool, cat: Cat::Sessions, help: concat!("Agents keep going in the background; after a reboot ", env!("APP_COMMAND"), " rebuilds your sessions.") },
     Setting { path: "restore.agents", label: "Resume agents", kind: Kind::Bool, cat: Cat::Sessions, help: "Restart agents in their last conversation (claude --resume, codex resume)." },
     Setting { path: "restore.commands", label: "Re-run commands", kind: Kind::Bool, cat: Cat::Sessions, help: "Run again the commands sessions were started with (lazygit, a dev server, ...)." },
     Setting { path: "restore.output", label: "Keep each pane's recent output", kind: Kind::Bool, cat: Cat::Sessions, help: "Saved to disk so it's there after a restart. May include secrets shown on screen; off deletes it." },
     Setting { path: "scrollback", label: "Scrollback lines", kind: Kind::Int { step: 1000, min: 1000, max: 100_000 }, cat: Cat::Sessions, help: "How much history each session keeps for scrolling and search." },
-    // Appearance
-    Setting { path: "ui.splash_animation", label: "Splash animation", kind: Kind::Choice(&["cold start", "always", "never"]), cat: Cat::Appearance, help: "The wordmark falls into place. cold start: the first start of a version, or when nothing is running. Off with Motion off." },
-    Setting { path: "ui.layout", label: "Layout", kind: Kind::Choice(crate::config::LAYOUT_NAMES), cat: Cat::Appearance, help: "floating: boxes with gaps. tiled: boxes edge to edge. compact: thin rules. grid: a colour per pane. hairline: only lines." },
-    Setting { path: "ui.background", label: "Background", kind: Kind::Choice(&["terminal", "solid"]), cat: Cat::Appearance, help: concat!("terminal: your terminal's background shows through. solid: ", env!("APP_COMMAND"), " paints every cell.") },
-    Setting { path: "ui.sidebar_position", label: "Sidebar side", kind: Kind::Choice(&["left", "right"]), cat: Cat::Appearance, help: "Which edge the sidebar sits on." },
-    Setting { path: "ui.motion", label: "Motion", kind: Kind::Bool, cat: Cat::Appearance, help: "Slides, glides and fades (under 150 ms). Always off over SSH." },
-    Setting { path: "ui.padding", label: "Padding", kind: Kind::Choice(&["0", "1", "2"]), cat: Cat::Appearance, help: "Space round the whole screen, in rows and columns." },
-    Setting { path: "ui.gap", label: "Gap", kind: Kind::Choice(&["0", "1", "2"]), cat: Cat::Appearance, help: "Space between floating panes, in rows stacked and columns side by side." },
-    Setting { path: "ui.dim", label: "Dim unfocused", kind: Kind::Choice(&["off", "subtle", "30%", "60%"]), cat: Cat::Appearance, help: "How far the panes you're not in fade. Their colours stay recognisable." },
-    Setting { path: "ui.focus_border", label: "Focus border", kind: Kind::Choice(&["accent", "bright", "none"]), cat: Cat::Appearance, help: "How the pane you're in is outlined." },
-    Setting { path: "ui.rounded", label: "Rounded", kind: Kind::Choice(crate::config::Rounding::NAMES), cat: Cat::Appearance, help: "full: round corners and round ends everywhere (needs a Nerd Font). corners: rounded squares, square ends. off: all square." },
-    Setting { path: "ui.cursor", label: "Cursor", kind: Kind::Choice(crate::config::CURSOR_SHAPES), cat: Cat::Appearance, help: "The caret where a pane's program picks none: the terminal's own, block, underline or bar. vim keeps its own." },
-    Setting { path: "ui.cursor_blink", label: "Cursor blink", kind: Kind::Bool, cat: Cat::Appearance, help: "Blink that caret. No effect with your terminal's own cursor." },
-    Setting { path: "theme", label: "Theme", kind: Kind::Choice(crate::theme::BUILTIN), cat: Cat::Appearance, help: "Enter to search and preview themes. Enter in the browser applies your choice." },
-    Setting { path: "ui.glyphs", label: "Status glyphs", kind: Kind::Choice(&["auto", "dots", "unicode", "ascii", "nerd"]), cat: Cat::Appearance, help: "dots: a coloured dot and a word per session. unicode, ascii, nerd: a shape per state. auto: dots, or ascii if your icons are." },
-    Setting { path: "ui.spinner", label: "Working spinner", kind: Kind::Spinner, cat: Cat::Appearance, help: "How a working agent's mark moves: Snake, Pulse, Braille and more. Other status icons keep their meaning." },
+    // Alerts
+    Setting { path: "notify.sound", label: "Alert sounds", kind: Kind::Bool, cat: Cat::Alerts, help: "Two rising notes when an agent needs you, one soft note when a background session finishes." },
+    Setting { path: "notify.phone_topic", label: "Phone alerts (ntfy topic)", kind: Kind::Text, cat: Cat::Alerts, help: concat!("Subscribe to a hard-to-guess topic in the free ntfy app and put it here. Empty is off. ", env!("APP_COMMAND"), " test-alert tries it.") },
+    Setting { path: "notify.phone_after", label: "Phone: after waiting (s)", kind: Kind::Int { step: 30, min: 0, max: 3600 }, cat: Cat::Alerts, help: "Only once an agent has waited this long unanswered, so it stays quiet while you're at your desk." },
+    Setting { path: "notify.phone_done", label: "Phone: when one finishes too", kind: Kind::Bool, cat: Cat::Alerts, help: "Also when an agent finishes and nobody has looked (after the same wait)." },
+    Setting { path: "notify.phone_text", label: "Phone: say what it's doing", kind: Kind::Bool, cat: Cat::Alerts, help: "Put the agent's task in the alert. Off: just which agent and where. On ntfy.sh the topic is the only secret." },
     // Agents
+    Setting { path: "detection.working_window_ms", label: "Working window (ms)", kind: Kind::Int { step: 250, min: 250, max: 10_000 }, cat: Cat::Agents, help: "For agents without hooks: output this recent counts as working." },
+    Setting { path: "sessions.helpers", label: "Sessions may start helpers", kind: Kind::Choice(crate::config::HELPERS_MAY), cat: Cat::Agents, help: "ask: the first time, the row asks you once (1 allow · 2 always in this project · 3 no). always and never answer for you." },
+    Setting { path: "sessions.helpers_at_once", label: "Helpers at once", kind: Kind::Choice(crate::config::HELPERS_AT_ONCE), cat: Cat::Agents, help: "Per session. Extra helpers wait their turn." },
     Setting { path: "ui.subagent_count", label: "Count on the session row", kind: Kind::Bool, cat: Cat::Agents, help: "Shows \"· 4 agents\" on a working row only when the agent reports helpers. Claude does; Codex doesn't." },
-    Setting { path: "worktree.per_agent", label: "Own worktree per agent", kind: Kind::Bool, cat: Cat::Agents, help: "An agent started in a repo's main folder gets its own branch and folder." },
-    Setting { path: "worktree.command", label: "Start in new worktrees", kind: Kind::Text, cat: Cat::Agents, help: "A command to run in every new worktree (e.g. claude). Empty: a shell." },
+    Setting { path: "auto_continue", label: "Continue after a limit", kind: Kind::Bool, cat: Cat::Agents, help: "An agent stopped by its plan limit is told \"continue\" once the limit resets." },
     Setting { path: "mcp.approve", label: "Agents may approve prompts", kind: Kind::Choice(&["never", "safe", "always"]), cat: Cat::Agents, help: concat!("Through ", env!("APP_COMMAND"), " mcp. safe: only commands on [mcp] safe (tests, lint, git status…). Saying no is always allowed.") },
     Setting { path: "mcp.scope", label: "Agents can reach", kind: Kind::Choice(&["project", "all"]), cat: Cat::Agents, help: concat!("project: only sessions in the calling agent's own repo. Set up with: ", env!("APP_COMMAND"), " integrate mcp") },
-    Setting { path: "detection.working_window_ms", label: "Working window (ms)", kind: Kind::Int { step: 250, min: 250, max: 10_000 }, cat: Cat::Agents, help: "For agents without hooks: output this recent counts as working." },
 ];
 
 pub fn in_cat(cat: Cat) -> Vec<&'static Setting> {

@@ -116,8 +116,10 @@ fn the_tabs_have_their_own_row_over_the_panes() {
         let top = app.screen.leaf_rects.iter().map(|(_, r)| r.y).min().unwrap();
         assert_eq!(top, row.y + 2, "{label}: the panes start under the tab row's rule");
         let rule: String = (row.x..row.right()).map(|x| buf[(x, row.y + 1)].symbol()).collect();
-        assert_eq!(rule, "─".repeat(row.width as usize), "{label}");
-        assert!(find_in(&buf, row, "+").is_some(), "{label}: the + is in the tab row");
+        assert_eq!(rule.replace('┴', "─"), "─".repeat(row.width as usize), "{label}");
+        let (px, _) = find_in(&buf, row, "+").expect("the + is in the tab row");
+        assert_eq!(buf[(px + 2, row.y)].symbol(), "│", "{label}: a line closes the +");
+        assert_eq!(buf[(px + 2, row.y + 1)].symbol(), "┴", "{label}: and meets the rule");
     }
 }
 
@@ -214,7 +216,7 @@ fn the_name_stays_whole_while_the_meta_gives_way() {
     let t = app.theme.clone();
     let r = pane_at(&app, 1);
     let title: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
-    assert!(title.contains("fix-footer") && title.contains('…') && title.contains("done"), "{title}");
+    assert!(title.contains("fix-footer") && title.contains('…') && title.contains('✕'), "{title}");
     let (x, y) = find_in(&buf, Rect { height: 1, ..r }, "1 ● fix-footer").unwrap();
     assert_eq!(x, r.x + PANE_PAD, "the pane's number leads the title, then the glyph");
     let x = x + 2;
@@ -232,8 +234,7 @@ fn a_check_to_approve_needs_you_everywhere() {
     let buf = draw(&mut app, 160, 45);
     let t = app.theme.clone();
     let r = pane_at(&app, 4);
-    let (x, _) = find_in(&buf, Rect { height: 1, ..r }, "needs you · approve check").expect("its state word");
-    assert_eq!(buf[(x, r.y)].fg, t.blocked);
+    assert_eq!(buf[(r.x + PANE_PAD, r.y)].fg, t.blocked, "its number is amber");
     assert_eq!(buf[(r.x + 1, r.y + 1)].fg, t.blocked, "its rule is amber");
     let bar = mode_bar_row(&app, buf.area);
     assert!(find_in(&buf, bar, "● 2 needs you").is_some(), "counted with warm-finch in the bar");
@@ -248,7 +249,7 @@ fn a_split_row_names_the_pane_that_needs_you() {
     let row: String = (side.x..side.right()).map(|x| buf[(x, y)].symbol()).collect();
     assert!(row.contains("fix-footer") && row.contains("▸ warm-finch"), "{row}");
     let r = pane_at(&app, 1);
-    assert!(find_in(&buf, Rect { height: 1, ..r }, "done").is_some(), "its own pane is done");
+    assert_eq!(buf[(r.x + PANE_PAD + 2, r.y)].fg, app.theme.done, "its own pane's glyph says done");
 }
 
 #[test]
@@ -291,22 +292,45 @@ fn title_controls_win_and_the_rest_of_the_title_focuses() {
     let title = Rect { height: 1, ..r };
     let (cx, _) = find_in(&buf, title, "✕").unwrap();
     assert_eq!(hit_at(&app, cx, r.y), Some(Hit::Screen(ScreenHit::CloseSplit(3))));
-    let (wx, _) = find_in(&buf, title, "needs you").unwrap();
-    assert_eq!(hit_at(&app, wx, r.y), Some(Hit::Screen(ScreenHit::Why(3))));
-    assert_eq!(hit_at(&app, wx - 3, r.y), Some(Hit::Pane(3)), "blank title space focuses the pane");
+    let glyph = r.x + PANE_PAD + 2;
+    assert_eq!(hit_at(&app, glyph, r.y), Some(Hit::Screen(ScreenHit::Why(3))), "the glyph opens why");
+    assert_eq!(hit_at(&app, cx - 3, r.y), Some(Hit::Pane(3)), "blank title space focuses the pane");
 }
 
 #[test]
-fn a_title_says_its_state_in_words() {
+fn a_title_shows_its_state_by_its_glyph_not_words() {
     let mut app = hairline_world(4);
     let buf = draw(&mut app, 160, 45);
     let t = app.theme.clone();
-    for (term, word, colour) in [(1, "done", t.done), (3, "needs you · 3m", t.blocked), (5, "idle", t.muted)] {
+    for (term, colour) in [(1, t.done), (3, t.blocked)] {
         let r = pane_at(&app, term);
         let title: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
-        let at = title.find(word).unwrap_or_else(|| panic!("{word} on {term}: {title}"));
-        assert_eq!(buf[(r.x + title[..at].chars().count() as u16, r.y)].fg, colour, "{word}");
+        for word in ["done", "needs you", "working", "idle"] {
+            assert!(!title.contains(word), "no {word} on {term}: {title}");
+        }
+        assert_eq!(buf[(r.x + PANE_PAD + 2, r.y)].fg, colour, "{term}'s glyph: {title}");
     }
+}
+
+#[test]
+fn a_lone_panes_tab_carries_its_name_and_its_close() {
+    let mut app = hairline_world(1);
+    let buf = draw(&mut app, 160, 45);
+    let focus = app.focused().unwrap();
+    let title: String = {
+        let r = pane_at(&app, focus);
+        (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect()
+    };
+    assert!(title.trim_start().starts_with("affiliate-site") && !title.contains('✕'), "the title leaves the glyph, name and ✕ to the tab: {title}");
+    let row = tab_row(&app, &buf);
+    let (x, y) = find_in(&buf, row, "✕").expect("the tab's ✕");
+    assert_eq!(hit_at(&app, x, y), Some(Hit::Screen(ScreenHit::CloseSplit(focus))), "it closes the only pane");
+    let mut second = app.screen.tabs[app.screen.tab].clone();
+    (second.layout, second.focus) = (Node::Leaf(2), 2);
+    app.screen.tabs.push(second);
+    let buf = draw(&mut app, 160, 45);
+    let (x, y) = find_in(&buf, tab_row(&app, &buf), "✕").unwrap();
+    assert_eq!(hit_at(&app, x, y), Some(Hit::Screen(ScreenHit::CloseTab(app.screen.tab))), "with several tabs it closes the tab");
 }
 
 #[test]
@@ -413,4 +437,23 @@ fn a_tab_out_of_view_shows_its_agents_state() {
     assert_eq!(buf[(x - 2, y)].fg, app.theme.accent, "its working agent's mark leads it, teal");
     assert_ne!(buf[(x - 2, y)].symbol(), " ");
     show("a working tab out of view", &buf);
+}
+
+#[test]
+fn a_toast_is_boxed_as_each_look_boxes_a_pane() {
+    for (look, corner, ground) in [("hairline", "┌", "bg"), ("floating", "╭", "card")] {
+        let mut app = hairline_world(1);
+        app.cfg.ui.layout = look.into();
+        app.notify("Saved the theme".into(), false);
+        let buf = draw(&mut app, 160, 45);
+        show(look, &buf);
+        let t = app.theme.clone();
+        let want = if ground == "bg" { t.bg } else { t.card };
+        let (x, y) = find_text(&buf, "Saved the theme").expect("the toast");
+        assert_eq!(buf[(x, y)].bg, want, "{look}: its words on the look's ground for a box");
+        let left = (0..x).rev().find(|&xx| buf[(xx, y)].symbol() == "┃").expect("its coloured left side");
+        assert_eq!(buf[(left, y)].fg, t.accent, "{look}: the side in the notice's colour");
+        assert_eq!(buf[(left, y - 1)].symbol(), corner, "{look}: the box's corner over it, as a pane's");
+        assert_eq!(buf[(left, y - 1)].fg, t.line, "{look}: the box in `line`");
+    }
 }

@@ -337,10 +337,16 @@ impl App {
         }
     }
 
-    /// What a menu item does; closing things asks first.
+    /// A pane whose closing loses nothing: no agent, and nothing but its shell running.
+    fn nothing_to_lose(&self, term: TermId) -> bool {
+        self.snap.terms.get(&term).is_some_and(|t| t.agent.is_none() && crate::config::is_shell(&t.process))
+    }
+
+    /// What a menu item does; closing things asks first, unless nothing would be lost.
     pub(super) fn menu_act(&mut self, a: Act) {
         let model = self.screen_model();
         let ask: Option<Confirm> = match &a {
+            Act::End(ts) if ts.iter().all(|t| self.nothing_to_lose(*t)) => None,
             Act::End(ts) if ts.len() == 1 => {
                 let name = super::screen::session_name(self, &model, ts[0]);
                 let path = self.snap.terms.get(&ts[0]).map(|t| t.cwd.display().to_string()).unwrap_or_default();

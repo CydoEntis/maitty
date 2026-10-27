@@ -609,8 +609,8 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     ("ctrl+r", "reload-config"),
 ];
 
-/// Bindings active without the prefix: Alt+1–9 go to a tab. Nothing else is taken from
-/// programs.
+/// Bindings active without the prefix: Alt+1–9 go to a tab. With `ALT_ARROW_KEYS` and
+/// `ALT_LETTER_KEYS` (each with its own switch) these are all that is taken from programs.
 pub const DEFAULT_GLOBAL_KEYS: &[(&str, &str)] = &[
     ("alt+1", "select-tab-1"),
     ("alt+2", "select-tab-2"),
@@ -621,6 +621,17 @@ pub const DEFAULT_GLOBAL_KEYS: &[(&str, &str)] = &[
     ("alt+7", "select-tab-7"),
     ("alt+8", "select-tab-8"),
     ("alt+9", "select-tab-9"),
+];
+
+/// The everyday actions without the leader (`ui.alt_keys`): the leader's own letters, held
+/// with Alt. No Alt+[ or Alt+]: terminals send those as the start of an escape sequence.
+pub const ALT_LETTER_KEYS: &[(&str, &str)] = &[
+    ("alt+n", "shell-here"),
+    ("alt+s", "start-session"),
+    ("alt+t", "new-tab"),
+    ("alt+x", "close-pane"),
+    ("alt+v", "split-down"),
+    ("alt+h", "split-right"),
 ];
 
 /// Moving between panes without the leader (`ui.alt_arrows`).

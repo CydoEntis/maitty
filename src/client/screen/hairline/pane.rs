@@ -68,9 +68,8 @@ fn rule_colour(app: &App, info: &TermInfo, focused: bool, ink: Ink, t: &Theme) -
 }
 
 /// The title row: number, glyph, name, `project · ⎇ branch` and at the right the
-/// load note, the state word and the ✕. The number, glyph and name never shrink while anything
-/// else is left to give way: the meta first, then the tabs, then the note, the ✕ and the state
-/// word.
+/// load note and the ✕. The number, glyph and name never shrink while anything else is left
+/// to give way: the meta first, then the note, then the ✕.
 fn draw_title(app: &mut App, buf: &mut Buffer, body: Rect, info: &TermInfo, focused: bool, model: &[Proj], t: &Theme) {
     let ink = Ink::of(t);
     let y = body.y;
@@ -79,7 +78,7 @@ fn draw_title(app: &mut App, buf: &mut Buffer, body: Rect, info: &TermInfo, focu
     let (mut head, glyph_at) = head_segs(app, info, focused, model, t);
     let room = end.saturating_sub(x0);
     // The name shortens only once nothing else is left to give way.
-    let before_name = segs_width(&head[..head.len() - 1]);
+    let before_name = segs_width(&head[..head.len().saturating_sub(1)]);
     if let Some(name) = head.last_mut() {
         name.0 = truncate(&name.0, room.saturating_sub(before_name) as usize);
     }
@@ -91,16 +90,13 @@ fn draw_title(app: &mut App, buf: &mut Buffer, body: Rect, info: &TermInfo, focu
     if let Some(at) = glyph_at {
         hit(app, Rect { x: x0 + at, y, width: 1, height: 1 }, ScreenHit::Why(info.id));
     }
-    let meta = meta_text(app, info, model);
-    let meta_x = x + GAP;
+    let meta = project_branch(app, info, model);
+    let meta_x = if head.is_empty() { x } else { x + GAP };
     if !meta.is_empty() && left_end >= meta_x + META_MIN {
         put(buf, meta_x, y, &[seg(truncate(&meta, (left_end - meta_x) as usize), st.fg(ink.dim))], left_end);
     }
     let rx = end.saturating_sub(right_w);
     put(buf, rx, y, &right.segs, end);
-    if let Some((at, w)) = right.word {
-        hit(app, Rect { x: rx + at, y, width: w, height: 1 }, ScreenHit::Why(info.id));
-    }
     if right.close {
         hit(app, Rect { x: end.saturating_sub(1), y, width: 1, height: 1 }, ScreenHit::CloseSplit(info.id));
     }
@@ -108,8 +104,11 @@ fn draw_title(app: &mut App, buf: &mut Buffer, body: Rect, info: &TermInfo, focu
 
 /// Number, glyph and name: the pane's number while the tab is split (teal focused, amber when
 /// it needs you, else dim), its state's mark and its name in `strong`, bold. Also where the mark
-/// sits in them, when there is one.
+/// sits in them, when there is one. A tab's only pane has none: the tab row already shows them.
 fn head_segs(app: &App, info: &TermInfo, focused: bool, model: &[Proj], t: &Theme) -> (Vec<Seg>, Option<u16>) {
+    if lone_pane(app, info.id) {
+        return (Vec::new(), None);
+    }
     let ink = Ink::of(t);
     let st = Style::default().bg(ink.bg);
     let mut out = Vec::new();
@@ -140,68 +139,34 @@ pub(super) fn mark(app: &App, info: &TermInfo, t: &Theme) -> Option<(String, Col
     Some((m.glyph.to_string(), m.color))
 }
 
-/// The right of the title as it fits `room`: its pieces, where the state word sits (offset,
-/// width) for its click, and whether the ✕ is drawn.
+/// The right of the title as it fits `room`, and whether the ✕ is in it.
 struct Right {
     segs: Vec<Seg>,
-    word: Option<(u16, u16)>,
     close: bool,
 }
 
-/// The load note, the state word and the ✕, each dropped in turn when `room` is short: the note
-/// first, then the ✕, then the word.
+/// The load note and the ✕, the note dropped first when `room` is short. A tab's only pane
+/// has no ✕: its tab's closes it. The state shows as the glyph, so it has no words here.
 fn fit_right(app: &App, info: &TermInfo, ink: Ink, room: u16) -> Right {
     let st = Style::default().bg(ink.bg);
     let note = match info.resume_at {
         Some(at) => Some(format!("⏸ limit · continues in {}", until(at))),
         None => load_note(info.cpu, info.mem).map(|(load, _)| load),
     };
-    let word = state_word(info, ink);
-    let close = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close;
-    let tries = [(true, true, true), (false, true, true), (false, true, false), (false, false, false)];
-    for (with_note, with_word, with_close) in tries {
+    let close = (!lone_pane(app, info.id)).then(|| glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close);
+    let tries = [(true, true), (false, true), (false, false)];
+    for (with_note, with_close) in tries {
         let mut segs = Vec::new();
-        let mut at = None;
         if let Some(n) = note.as_ref().filter(|_| with_note) {
-            segs.push(seg(format!("{n}  "), st.fg(ink.dim)));
+            segs.push(seg(n.clone(), st.fg(ink.dim)));
         }
-        if let Some(w) = word.clone().filter(|_| with_word) {
-            at = Some((segs_width(&segs), w.0.width() as u16));
-            segs.push(w);
-        }
-        if with_close {
-            segs.push(seg(if segs.is_empty() { close.to_string() } else { format!("  {close}") }, st.fg(ink.dim)));
+        if let Some(c) = close.filter(|_| with_close) {
+            segs.push(seg(if segs.is_empty() { c.to_string() } else { format!("  {c}") }, st.fg(ink.dim)));
         }
         if segs_width(&segs) <= room {
-            return Right { segs, word: at, close: with_close };
+            return Right { close: with_close && close.is_some(), segs };
         }
     }
-    Right { segs: Vec::new(), word: None, close: false }
+    Right { segs: Vec::new(), close: false }
 }
 
-/// What an agent is doing, in the handoff's words and colours; a shell says nothing.
-fn state_word(info: &TermInfo, ink: Ink) -> Option<Seg> {
-    info.agent.as_ref()?;
-    let st = Style::default().bg(ink.bg);
-    let needs = st.fg(ink.amber).add_modifier(Modifier::BOLD);
-    if check::approving(info.status, info.check()) {
-        return Some(seg("needs you · approve check", needs));
-    }
-    Some(match info.status {
-        Status::Blocked => seg(format!("needs you · {}", age(info.since)), needs),
-        Status::Working => seg("working", st.fg(ink.teal)),
-        Status::Done => seg("done", st.fg(ink.green)),
-        _ => seg("idle", st.fg(ink.dim)),
-    })
-}
-
-/// `project · ⎇ branch`, from the session's sidebar row, else the pane's own branch.
-fn meta_text(app: &App, info: &TermInfo, model: &[Proj]) -> String {
-    let branch_mark = check::marks(app).branch;
-    let (project, branch) = match find(model, info.id) {
-        Some((p, w, _)) => (p.name.clone(), w.branch.clone()),
-        None => (String::new(), info.branch.clone().unwrap_or_default()),
-    };
-    let branch = if branch.is_empty() { String::new() } else { format!("{branch_mark} {branch}") };
-    [project, branch].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ")
-}
