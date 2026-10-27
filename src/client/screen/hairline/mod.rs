@@ -1,6 +1,6 @@
 //! Hairline (ADR 0026): the workspace with no boxes. A sidebar of one-line sessions beside a
 //! `│`, each pane a title row over a `─` rule whose colour is its state, `│` / `─` between
-//! panes, and a status strip over the mode bar. Always square, whatever `ui.rounded` says.
+//! panes, the session's tabs in a row over the panes, and a rule over the mode bar. Always square, whatever `ui.rounded` says.
 //!
 //! Drawing that has a Hairline variant asks `Look::of(..).hairline` once and comes here; the
 //! colours come from `Ink`, the handoff's tokens mapped onto the theme's roles.
@@ -11,12 +11,13 @@ use super::*;
 
 mod pane;
 mod side;
+mod tabs;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod surface_tests;
 
-pub(in crate::client) use self::{pane::pane_frame, side::draw_side};
+pub(in crate::client) use self::{pane::pane_frame, side::draw_side, tabs::{TAB_ROWS, draw_tab_row}};
 
 /// The sidebar's width before you drag it, in columns; its `│` is one more.
 pub(in crate::client) const SIDE_W: u16 = 28;
@@ -79,6 +80,22 @@ fn rule(buf: &mut Buffer, x: u16, y: u16, w: u16, colour: Color, bg: Color) {
 /// The `│` between the sidebar and the panes, on the column you drag to resize it.
 pub(in crate::client) fn draw_side_rule(buf: &mut Buffer, edge: Rect, t: &Theme) {
     vline(buf, Rect { width: 1, ..edge }, t.line, t.bg);
+}
+
+/// The rule over the mode bar along `r`, and where the sidebar's `│` at column `edge` meets it
+/// and the tab row's rule, a joint (`┴`, and `├` or `┤` by the side the sidebar is on).
+pub(in crate::client) fn draw_bar_rule(buf: &mut Buffer, r: Rect, tabs: Rect, edge: Option<u16>, side_left: bool, t: &Theme) {
+    rule(buf, r.x, r.y, r.width, t.line, t.bg);
+    let Some(x) = edge else { return };
+    let mut joint = |y: u16, symbol: &str| {
+        if let Some(px) = buf.cell_mut((x, y)) {
+            px.set_symbol(symbol).set_style(Style::default().fg(t.line).bg(t.bg));
+        }
+    };
+    joint(r.y, "┴");
+    if tabs.height > 0 {
+        joint(tabs.y + 1, if side_left { "├" } else { "┤" });
+    }
 }
 
 /// A pane needs you: its own agent asks, or its own check waits for approval. The sidebar's
