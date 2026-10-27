@@ -2,6 +2,8 @@
 
 - **Status:** Proposed
 - **Date:** 2026-10-22
+- **Superseded in part:** the tabs have a row of their own over the panes, not the pane's
+  title ([ADR 0028](0028-tab-rows-and-popups-drawn-like-panes.md)).
 - **Note:** The modal frame below (an accent title row, a hard shadow) is superseded by the
   user's decision of 2026-10-24: modals are framed like panes, with no shadow (see
   `docs/UI.md`, *Project-specific: UI conventions*).

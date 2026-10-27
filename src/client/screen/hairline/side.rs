@@ -1,6 +1,8 @@
 //! Hairline's sidebar: `sessions` and its count, dim project headers with their branch, one row
-//! per session (no second lines), and the new and menu hints pinned to the foot.
+//! per session (no second lines) with its tabs under it while it has several, and the new and
+//! menu hints pinned to the foot.
 
+use super::super::side_tabs::{draw_tab_line, tab_line, tab_segs};
 use super::*;
 
 /// Where a row's pieces go, from the sidebar's left edge (the handoff's columns): the `▎`
@@ -30,8 +32,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     draw_head(buf, r, model, ink, side_has_keys);
     let lines = hairline_lines(app, model, t);
     let shown: Vec<TermId> = app.screen.tabs.get(app.screen.tab).map(|tab| tab.layout.leaves()).unwrap_or_default();
-    // A split is one row (its first pane's), whichever side of it has the keys.
-    let focus = app.focused().map(|f| if shown.len() > 1 && shown.contains(&f) { shown[0] } else { f });
+    let focus = open_row(app);
     let top = r.y + 2;
     let foot = r.height >= 6;
     let list_end = if foot { r.bottom().saturating_sub(2) } else { r.bottom() };
@@ -64,6 +65,13 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 app.screen.row_y.insert(s.term, y);
                 draw_session(app, buf, s, Row { r, y, indent, state }, model, ink, t);
             }
+            Line::Tab(owner, tab) => {
+                let Some(line) = tab_line(app, model, *owner, *tab, t) else { continue };
+                let x = r.x + NAME_IN + indent;
+                let name_fg = if line.current { ink.teal } else { ink.text };
+                let segs = tab_segs(&line, text_end(r).saturating_sub(x), Style::default().bg(ink.bg), name_fg, ink.line);
+                draw_tab_line(app, buf, Rect { x: r.x, y, width: r.width, height: 1 }, x, text_end(r), segs, *tab);
+            }
             Line::Section(kind, n) => {
                 put(buf, r.x + TEXT_IN, y, &[seg(format!("{} {n}", kind.heading().to_lowercase()), Style::default().fg(ink.dim).bg(ink.bg))], text_end(r));
             }
@@ -75,13 +83,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
             _ => {}
         }
     }
-    let dim = Style::default().fg(ink.dim).bg(ink.bg);
-    if scroll > 0 {
-        put(buf, text_end(r).saturating_sub(1), top, &[seg("▲", dim)], text_end(r));
-    }
-    if scroll + list_h < lines.len() {
-        put(buf, text_end(r).saturating_sub(1), top + list_h as u16 - 1, &[seg("▼", dim)], text_end(r));
-    }
+    scroll_marks(buf, text_end(r).saturating_sub(1), top, (scroll, list_h, lines.len()), Style::default().fg(ink.dim).bg(ink.bg));
     if foot {
         draw_foot(app, buf, r, ink);
     }
@@ -98,27 +100,12 @@ fn hairline_lines(app: &App, model: &[Proj], t: &Theme) -> Vec<Line> {
     let mut lines = side_lines(app, model, t);
     lines.retain(|l| match l {
         Line::Detail(term) => find(model, *term).is_some_and(|(.., s)| s.helpers_wanted > 0),
-        _ => matches!(l, Line::Section(..) | Line::Proj(_) | Line::Sess(..) | Line::Empty(_) | Line::Gap),
+        _ => matches!(l, Line::Section(..) | Line::Proj(_) | Line::Sess(..) | Line::Tab(..) | Line::Empty(_) | Line::Gap),
     });
     if matches!(lines.last(), Some(Line::Gap)) {
         lines.pop();
     }
     lines
-}
-
-/// What the keyboard and the mouse read back from the rows drawn: their order and places.
-fn note_rows(app: &mut App, model: &[Proj], lines: &[Line]) {
-    app.screen.visible = lines.iter().filter_map(|l| line_term(model, l)).collect();
-    app.screen.side_items = lines
-        .iter()
-        .filter_map(|l| match l {
-            Line::Proj(pi) => Some(SideItem::Proj(model[*pi].key.clone())),
-            Line::Sess(..) => line_term(model, l).map(SideItem::Sess),
-            _ => None,
-        })
-        .collect();
-    app.screen.row_y.clear();
-    app.screen.proj_keys = model.iter().map(|p| p.key.clone()).collect();
 }
 
 /// `sessions` and how many, dim; `sessions` teal while the sidebar has the keys.

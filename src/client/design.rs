@@ -795,6 +795,15 @@ impl AgentRow {
     }
 }
 
+/// The settings' headings in the order they come, each tab's in turn.
+const GROUP_ORDER: [&str; 19] = [
+    "UPDATES", "STARTUP", "INPUT", "SHELL",
+    "THEME", "LAYOUT", "PANES", "STATUS",
+    "NEW SESSIONS", "SIDEBAR", "WORKTREES", "RESTARTS", "HISTORY",
+    "SOUND", "PHONE",
+    AGENT_STATUS_GROUP, "HELPERS", "LIMITS", "AGENTS TALKING TO AGENTS",
+];
+
 /// The small caps heading a settings row sits under.
 pub(super) fn settings_group(row: &SRow) -> &'static str {
     match row {
@@ -802,24 +811,25 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
         SRow::Agent(_) => AGENT_STATUS_GROUP,
         SRow::Version => "UPDATES",
         SRow::Setting(s) => match s.path {
-            "sessions.agent" | "sessions.where" => "NEW SESSIONS",
-            "sessions.helpers" | "sessions.helpers_at_once" => "HELPERS",
-            "ui.subagent_count" => "SUBAGENTS",
-            "theme" => "THEME",
-            "ui.spinner" | "ui.glyphs" => "STATUS INDICATORS",
-            "prefix" | "ui.mouse" | "ui.which_key" | "ui.alt_arrows" => "INPUT",
-            "ui.layout" | "ui.padding" | "ui.background" | "ui.sidebar_position" | "ui.motion" => "LAYOUT",
-            "ui.splash" | "ui.splash_animation" => "STARTUP",
             "ui.update_check" => "UPDATES",
+            "ui.splash" | "ui.splash_animation" => "STARTUP",
+            "prefix" | "ui.mouse" | "ui.which_key" | "ui.alt_keys" | "ui.alt_arrows" => "INPUT",
             "shell" | "editor" | "shell_integration" | "ui.start_dir" => "SHELL",
-            "ui.attention_sort" => "SIDEBAR",
-            "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.rounded" | "ui.cursor" | "ui.cursor_blink" => "PANES",
-            p if p.starts_with("notify.") => "ALERTS",
+            "theme" => "THEME",
+            "ui.layout" | "ui.padding" | "ui.background" | "ui.sidebar_position" | "ui.motion" => "LAYOUT",
+            "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pane_colors" | "ui.rounded" | "ui.cursor" | "ui.cursor_blink" => "PANES",
+            "ui.spinner" | "ui.glyphs" => "STATUS",
+            "sessions.agent" | "sessions.where" => "NEW SESSIONS",
+            "ui.attention_sort" | "ui.sidebar_tabs" => "SIDEBAR",
             "worktree.delete_with_last" | "worktree.per_agent" | "worktree.command" => "WORKTREES",
             p if p.starts_with("restore.") => "RESTARTS",
             "scrollback" => "HISTORY",
+            "notify.sound" => "SOUND",
+            p if p.starts_with("notify.") => "PHONE",
+            "detection.working_window_ms" => AGENT_STATUS_GROUP,
+            "sessions.helpers" | "sessions.helpers_at_once" | "ui.subagent_count" => "HELPERS",
+            "auto_continue" => "LIMITS",
             p if p.starts_with("mcp.") => "AGENTS TALKING TO AGENTS",
-            p if p.starts_with("detection.") => "STATUS DETECTION",
             _ => "OTHER",
         },
     }
@@ -842,20 +852,14 @@ pub(super) fn settings_rows(cat: super::modal::Cat) -> Vec<SRow> {
     if cat == super::modal::Cat::Agents {
         rows.extend([AgentRow::Claude, AgentRow::Codex, AgentRow::SetUp].map(SRow::Agent));
     }
-    rows.extend(super::modal::in_cat(cat).into_iter().map(SRow::Setting));
+    // Updates first, so a waiting one is in your face: the version row heads General.
     if cat == super::modal::Cat::General {
         rows.push(SRow::Version);
     }
-    // Grouped under their headings, in the order the headings first come.
-    let order: Vec<&str> = rows.iter().map(settings_group).fold(Vec::new(), |mut v, g| {
-        if !v.contains(&g) {
-            v.push(g);
-        }
-        v
-    });
-    const FIRST: [&str; 8] = ["INPUT", "STARTUP", "LAYOUT", "SHELL", "NEW SESSIONS", "HELPERS", AGENT_STATUS_GROUP, "SUBAGENTS"];
-    let order: Vec<&str> = FIRST.into_iter().filter(|g| order.contains(g)).chain(order.iter().copied().filter(|g| !FIRST.contains(g))).collect();
-    rows.sort_by_key(|r| order.iter().position(|g| *g == settings_group(r)).unwrap_or(99));
+    rows.extend(super::modal::in_cat(cat).into_iter().map(SRow::Setting));
+    // Grouped under their headings, in `GROUP_ORDER` (a heading not there goes last); rows keep
+    // their order within a group.
+    rows.sort_by_key(|r| GROUP_ORDER.iter().position(|g| *g == settings_group(r)).unwrap_or(usize::MAX));
     if cat == super::modal::Cat::Keys {
         for (_, items) in key_rows() {
             for (label, acts) in items {

@@ -36,9 +36,12 @@ replay_bytes = 2097152      # output kept per pane by the daemon, replayed on re
 [ui]
 start_dir = ""              # where plain `maitty` opens, e.g. "~/code" (empty: where you run it)
 attention_sort = true       # sidebar: sessions that need you first, the rest keep their place
+sidebar_tabs = "all"        # all | busy | off: a session's tabs as lines under its row
+alt_keys = true             # Alt+n/s/t/x/v/h: shell, session, tab, close, split without the leader
 sidebar = true              # <leader> z collapses it
 sidebar_position = "left"   # left | right
-layout = "floating"         # floating | tiled | compact | grid | hairline (older "cards" / "flat" still read)
+layout = "floating"         # floating | hairline (older tiled, grid, compact, cards, flat still read)
+pane_colors = false         # floating: each pane's border in its own colour
 rounded = "off"             # full (needs a Nerd Font) | corners | off; hairline is always square (older `corners = "rounded"` still read)
 # padding = "1"             # 0 | 1 | 2: space round the screen
 # background = "solid"      # solid: paint the theme everywhere | terminal: your terminal's (transparent, image) shows through

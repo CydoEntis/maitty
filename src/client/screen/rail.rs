@@ -36,8 +36,8 @@ fn chip_segs(app: &App, s: &Session, on: bool, lit: bool, ground: Color, t: &The
 /// the selected one is always kept in view.
 pub(super) fn draw(app: &mut App, buf: &mut Buffer, area: Rect, model: &[Proj], t: &Theme) {
     let look = Look::of(&app.cfg.ui);
-    let ground = if look.flat { t.card } else { t.bg };
-    let chip_bg = if look.flat { t.card2 } else { t.card };
+    let ground = t.bg;
+    let chip_bg = t.card;
     let row = Rect { height: 1, ..area };
     fill(buf, row, ground);
     app.screen.side_rect = Rect::default();

@@ -34,26 +34,25 @@ pub(super) enum Stage {
 pub(super) const STAGES: [Stage; 10] =
     [Stage::None, Stage::Checking, Stage::Passed, Stage::Failed, Stage::Over, Stage::Couldnt, Stage::Approve, Stage::Never, Stage::Stale, Stage::Multi];
 
-/// The reference's three frames.
+/// The reference's boxed frames: Floating, and Tiled (Floating with no gaps). Its Flat frames
+/// are of a look the app no longer has (ADR 0027).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Layout {
     Floating,
     Tiled,
-    Flat,
 }
 
-pub(super) const LAYOUTS: [Layout; 3] = [Layout::Floating, Layout::Tiled, Layout::Flat];
+pub(super) const LAYOUTS: [Layout; 2] = [Layout::Floating, Layout::Tiled];
 
 /// The reference's frame sizes, widest first.
 pub(super) const SIZES: [(u16, u16); 3] = [(160, 45), (100, 30), (80, 24)];
 
 impl Layout {
-    /// `[ui] layout` and `[ui] panes`.
-    fn config(self) -> (&'static str, &'static str) {
+    /// `[ui] gap`.
+    fn gap(self) -> &'static str {
         match self {
-            Layout::Floating => ("cards", "floating"),
-            Layout::Tiled => ("cards", "tiled"),
-            Layout::Flat => ("flat", "tiled"),
+            Layout::Floating => "1",
+            Layout::Tiled => "0",
         }
     }
 }
@@ -277,8 +276,7 @@ pub(super) fn world(stage: Stage) -> App {
 /// bar's and nothing else, is left out, so the screen above it is laid out as at `w`×`h`.
 pub(super) fn cells(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str) -> ratatui::buffer::Buffer {
     FIXED_NOW.with(|n| n.set(Some(now())));
-    let (l, p) = layout.config();
-    (app.cfg.ui.layout, app.cfg.ui.panes, app.cfg.ui.glyphs) = (l.into(), p.into(), glyphs.into());
+    (app.cfg.ui.layout, app.cfg.ui.gap, app.cfg.ui.glyphs) = ("floating".into(), layout.gap().into(), glyphs.into());
     app.screen_fresh();
     let mut term = Terminal::new(TestBackend::new(w, h + 1)).expect("a test terminal");
     term.draw(|f| render::draw(app, f)).expect("a frame");
@@ -340,7 +338,7 @@ fn without_new_tab_chip(row: &str) -> String {
 ///
 /// A second line that only names the state is gone from the app; `as_one_line_rows` drops it
 /// from the reference.
-fn as_the_reference_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffer, app: &App, flat: bool) {
+fn as_the_reference_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffer, app: &App) {
     let side = app.screen.side_rect;
     if side.width < 4 || side.height < 6 {
         return;
@@ -348,7 +346,7 @@ fn as_the_reference_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffe
     let (left, right) = (side.x as usize + 1, side.right() as usize - 1);
     let foot_y = side.bottom() as usize - 2;
     // The foot: the divider over it goes (only its own run of `─`, a modal may cross that row).
-    let divider_from = left + usize::from(!flat);
+    let divider_from = left + 1;
     for x in divider_from..right {
         // A modal's bottom border can lie on this row: it is on the modal's ground, not the sidebar's.
         let modal = [app.theme.card, app.theme.card2].contains(&buf[(x as u16, (foot_y - 1) as u16)].bg);
@@ -370,18 +368,9 @@ fn as_the_reference_sidebar(rows: &mut [Vec<char>], buf: &ratatui::buffer::Buffe
         let start = (end + 1).saturating_sub(9).min(foot.len() - 9);
         foot.splice(start..start + 9, chars("a actions"));
     }
-    // Lifted a row, the foot can sit under a modal that ends where the reference's foot is.
-    if flat && find(&foot, "+ new").is_none() {
-        let (nx, mend) = (side.x as usize + 2 - left, right - left);
-        let mut text = vec![' '; mend];
-        text[nx..nx + 5].copy_from_slice(&chars("+ new"));
-        text[mend - 9..].copy_from_slice(&chars("a actions"));
-        foot = text;
-    }
     foot.truncate(right - left);
     rows[foot_y][left..right].fill(' ');
-    let to = if flat { foot_y + 1 } else { foot_y };
-    rows[to][left..right].copy_from_slice(&foot);
+    rows[foot_y][left..right].copy_from_slice(&foot);
 }
 
 /// A project row's `−` / `+` button, in the state bars' column, read as the caret the reference
@@ -401,9 +390,9 @@ fn with_the_reference_carets(rows: &mut [Vec<char>], app: &App, glyphs: &str) {
 }
 
 /// The app bars only the selected row; the reference also bars a failed check's row in red.
-fn with_the_reference_failed_bars(rows: &mut [Vec<char>], app: &App, flat: bool, glyphs: &str) {
+fn with_the_reference_failed_bars(rows: &mut [Vec<char>], app: &App, glyphs: &str) {
     let side = app.screen.side_rect;
-    let bar_x = (side.x + if flat { 1 } else { 2 }) as usize;
+    let bar_x = (side.x + 2) as usize;
     let bar = if glyphs == "ascii" { '|' } else { '▎' };
     let folders: Vec<usize> = app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(super::screen::ScreenHit::ToggleProj(_)))).map(|(r, _)| r.y as usize).collect();
     let failed = |term: &crate::protocol::TermId| app.snap.terms.get(term).is_some_and(|i| i.reported_check().is_some_and(|c| c.state == crate::protocol::CheckState::Failed));
@@ -429,8 +418,8 @@ pub(super) fn frame(app: &mut App, layout: Layout, w: u16, h: u16, glyphs: &str)
     let buf = &cells(app, layout, w, h, glyphs);
     let mut rows: Vec<Vec<char>> = (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol().chars().next().unwrap_or(' ')).collect()).collect();
     with_the_reference_carets(&mut rows, app, glyphs);
-    with_the_reference_failed_bars(&mut rows, app, layout == Layout::Flat, glyphs);
-    as_the_reference_sidebar(&mut rows, buf, app, layout == Layout::Flat);
+    with_the_reference_failed_bars(&mut rows, app, glyphs);
+    as_the_reference_sidebar(&mut rows, buf, app);
     let text: String = rows
         .iter()
         .enumerate()
