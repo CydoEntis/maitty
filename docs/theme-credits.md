@@ -15,7 +15,7 @@ unmerged pass (GitHub through Horizon in the table). Left out:
   GPL-3.0-or-later, LGPL-3.0).
 - Blackboard and Wombat: neither the original nor any port by its creator
   carries a license.
-- Alduin, Garbage Oracle and Sobrio: no license.
+- Alduin, Garbage Oracle, Sobrio and Flatlandia: no license.
 - Monokai Pro's other filters and Mirodark: their MIT repositories
   (loctvl842/monokai-pro.nvim, djjcast/mirodark) port another author's palette
   (Monokai's commercial theme, Jason W Ryan's Xresources) that has no license
@@ -109,6 +109,14 @@ Source links pin the researched revision. Preserve the existing `gruvbox` and
 | Fluoromachine | Added | Standard | [maxmx03/fluoromachine.nvim](https://github.com/maxmx03/fluoromachine.nvim/blob/a279f667168e742df059caf1f1f4daf1de24f4f8/lua/fluoromachine/colors/fluoromachine.lua) | [MIT](https://github.com/maxmx03/fluoromachine.nvim/blob/a279f667168e742df059caf1f1f4daf1de24f4f8/LICENSE) |
 | SynthWave '84 | Added | Standard | [robb0wen/synthwave-vscode](https://github.com/robb0wen/synthwave-vscode/blob/ecfa2fe1279f7233663fa3f98a96e6756000567b/themes/synthwave-color-theme.json) | [MIT](https://github.com/robb0wen/synthwave-vscode/blob/ecfa2fe1279f7233663fa3f98a96e6756000567b/LICENSE) |
 | Horizon | Added | Standard | [jolaleye/horizon-theme-vscode](https://github.com/jolaleye/horizon-theme-vscode/blob/5ae91b6d49bf291e0a34c0a1cb277d9738aadd90/themes/horizon.json) | [MIT](https://github.com/jolaleye/horizon-theme-vscode/blob/5ae91b6d49bf291e0a34c0a1cb277d9738aadd90/LICENSE) |
+| SpaceCamp | Added | Lite | [jaredgorski/SpaceCamp](https://github.com/jaredgorski/SpaceCamp/blob/8945b4a2bfaaa16fbcee9f1d7c00cb9c1256b591/colors/spacecamp_lite.vim) | [MIT](https://github.com/jaredgorski/SpaceCamp/blob/8945b4a2bfaaa16fbcee9f1d7c00cb9c1256b591/LICENSE) |
+| Mellifluous | Added | Mellifluous dark | [ramojus/mellifluous.nvim](https://github.com/ramojus/mellifluous.nvim/blob/ec0575bdb63594c5e7fba6eb9607b009aa1fb74e/lua/mellifluous/colors/colorsets/mellifluous.lua) | [MIT](https://github.com/ramojus/mellifluous.nvim/blob/ec0575bdb63594c5e7fba6eb9607b009aa1fb74e/LICENSE) |
+| Text to Colorscheme | Added | Default (gruvbox) | [svermeulen/text-to-colorscheme.nvim](https://github.com/svermeulen/text-to-colorscheme.nvim/blob/f5fcd3df60dac59fb3f7686e8524297b005c7405/lua/text-to-colorscheme/internal/builtin_palettes_provider.lua) | [MIT](https://github.com/svermeulen/text-to-colorscheme.nvim/blob/f5fcd3df60dac59fb3f7686e8524297b005c7405/LICENSE) |
+| Token | Added | Dark | [ThorstenRhau/token](https://github.com/ThorstenRhau/token/blob/ac6b6c656f20f4095b5ec6912c600ec0c964979d/lua/token/palette.lua) | [BSD-3-Clause](https://github.com/ThorstenRhau/token/blob/ac6b6c656f20f4095b5ec6912c600ec0c964979d/LICENSE) |
+| Flexoki | Added | Dark | [kepano/flexoki-neovim](https://github.com/kepano/flexoki-neovim/blob/c3e2251e813d29d885a7cbbe9808a7af234d845d/lua/flexoki/palette.lua) | [MIT](https://github.com/kepano/flexoki-neovim/blob/c3e2251e813d29d885a7cbbe9808a7af234d845d/LICENSE) |
+| Simple Dark | Added | Standard | [tek256/simple-dark](https://github.com/tek256/simple-dark/blob/dbab5cc1e3ffbf4339a1ad806a2d8cba865da6db/colors/simple-dark.vim) | [MIT](https://github.com/tek256/simple-dark/blob/dbab5cc1e3ffbf4339a1ad806a2d8cba865da6db/LICENSE) |
+| Eldar | Added | Standard | [agude/vim-eldar](https://github.com/agude/vim-eldar/blob/35ef01e99f9bc1432cafbe7a87ac989e9ff503cd/colors/eldar.vim) | [MIT](https://github.com/agude/vim-eldar/blob/35ef01e99f9bc1432cafbe7a87ac989e9ff503cd/LICENSE.md) |
+| Turtles | Added | Standard | [kxzk/turtles](https://github.com/kxzk/turtles/blob/eb228e49f98e8631bcbc84b8fe090e37a87fb3cf/colors/turtles.vim) | [MIT](https://github.com/kxzk/turtles/blob/eb228e49f98e8631bcbc84b8fe090e37a87fb3cf/colors/turtles.vim) |
 
 ## Mapping to Maitty
 
@@ -229,6 +237,13 @@ color where ANSI 8 is missing or sits on the background (contrast under 1.5).
   its orange `#fc9867` as in that port, and its accent is its yellow.
 - VS Code JSON themes (SynthWave '84, Horizon) set no ANSI white or bright
   black; their comment colors stand in, Horizon's composited over `#1c1e26`.
+- Mellifluous and Text to Colorscheme define colors as OkHSL and HSV; their hex
+  values come from each plugin's own conversion. Mellifluous has no cyan (its
+  yellow stands in), Text to Colorscheme no blue (its function yellow-green).
+- SpaceCamp Lite has no cyan; its green stands in. Eldar's black, white and
+  dark grey are Vim color names, read as X11 values.
+- Simple Dark is greys only; its ANSI slots are the greys of the repository's
+  Alacritty palette, as published.
 
 ## Attribution and license notices
 
@@ -308,6 +323,13 @@ The following upstream copyright notices apply to the MIT-licensed palettes:
 - maxmx03/fluoromachine.nvim: Copyright (c) 2022 Dracula Theme
 - robb0wen/synthwave-vscode: Copyright (c) 2019 Robb Owen
 - jolaleye/horizon-theme-vscode: Copyright (c) 2018 Jonathan Olaleye
+- jaredgorski/SpaceCamp: Copyright (c) 2019 Jared Gorski
+- ramojus/mellifluous.nvim: Copyright (c) 2024 Ramojus Lapinskas
+- svermeulen/text-to-colorscheme.nvim: Copyright (c) 2021 NpX
+- kepano/flexoki-neovim: Copyright (c) 2023 Steph Ango
+- tek256/simple-dark: Copyright (c) 2020 Devon
+- agude/vim-eldar: Copyright (c) 2016--2026 Alexander Gude
+- kxzk/turtles: Kade Killary (MIT, declared in the `colors/turtles.vim` header)
 
 Gruvbox declares MIT/X11 in its README and identifies morhetz as its author in
 its palette source; that revision contains no standalone copyright/license file.
@@ -344,6 +366,35 @@ The shared Apache license text follows; see their linked original license files
 for each project's application appendix.
 
 Miasma by xero is dedicated to the public domain under CC0-1.0.
+
+Token by Thorsten Rhau (Copyright (c) 2026, Thorsten Rhau) uses BSD-3-Clause:
+
+```text
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
 
 <details>
 <summary>Apache License, Version 2.0</summary>
