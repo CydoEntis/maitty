@@ -301,11 +301,11 @@ fn pane_menu(app: &mut App) -> Vec<String> {
     labels.iter().map(|label| rows.iter().find(|r| r.contains(label.as_str())).cloned().unwrap_or_else(|| panic!("{label} is drawn:\n{}", text(&buf)))).collect()
 }
 
-/// The keys at the right of `label`'s row, as one word.
-fn key_of(rows: &[String], label: &str) -> String {
-    let row = rows.iter().find(|r| r.contains(label)).unwrap_or_else(|| panic!("no {label}"));
-    let after = &row[row.find(label).unwrap() + label.len()..];
-    after.split('│').next().unwrap_or("").chars().filter(|c| !c.is_whitespace() && !CAP_L.contains(*c) && !CAP_R.contains(*c)).collect()
+/// The key that runs `label`'s item while the open menu has the keys (not drawn).
+fn key_of(app: &App, label: &str) -> String {
+    let Mode::ScreenMenu(m) = &app.mode else { panic!("no menu: {:?}", app.mode) };
+    let i = m.items.iter().position(|(l, _)| l == label).unwrap_or_else(|| panic!("no {label}"));
+    crate::client::menu::menu_keys(app, &m.items)[i].as_ref().map(|k| k.label()).unwrap_or_default()
 }
 
 fn press(app: &mut App, code: KeyCode, mods: KeyModifiers) {
@@ -316,11 +316,13 @@ fn press(app: &mut App, code: KeyCode, mods: KeyModifiers) {
 fn the_pane_menu_shows_the_real_bound_keys() {
     let mut app = split_world("floating", 2);
     let rows = pane_menu(&mut app);
-    assert_eq!(key_of(&rows, "Split side by side"), "h");
-    assert_eq!(key_of(&rows, "Split stacked"), "v");
-    assert_eq!(key_of(&rows, "Close pane"), "x");
-    assert_eq!(key_of(&rows, "Move pane right"), "Alt+→", "{rows:#?}");
-    let rename = key_of(&rows, "Rename pane");
+    assert_eq!(key_of(&app, "Split side by side"), "h");
+    assert_eq!(key_of(&app, "Split stacked"), "v");
+    assert_eq!(key_of(&app, "Close pane"), "x");
+    assert_eq!(key_of(&app, "Move pane right"), "Alt+→");
+    let split = rows.iter().find(|r| r.contains("Split side by side")).expect("drawn");
+    assert!(!split.contains(" h "), "the key isn't drawn: {split}");
+    let rename = key_of(&app, "Rename pane");
     assert!(rename.len() == 1 && !["v", "h", "x"].contains(&rename.as_str()), "no binding: a letter of its own, clear of the bound keys: {rename}");
 }
 
@@ -332,8 +334,8 @@ fn the_pane_menu_follows_a_rebinding() {
     app.keymap.prefixed.insert(w, Action::ClosePane);
     app.keymap.prefixed_order.retain(|k| k.code != KeyCode::Char('x') || !k.mods.is_empty());
     app.keymap.prefixed_order.push(w);
-    let rows = pane_menu(&mut app);
-    assert_eq!(key_of(&rows, "Close pane"), "w");
+    pane_menu(&mut app);
+    assert_eq!(key_of(&app, "Close pane"), "w");
     press(&mut app, KeyCode::Char('w'), KeyModifiers::NONE);
     assert!(matches!(&app.mode, Mode::Confirm(c) if c.title.starts_with("Close pane")), "the new key runs it: {:?}", app.mode);
 }
@@ -346,17 +348,17 @@ fn a_bound_key_the_menu_moves_with_gives_way_to_a_letter() {
     app.keymap.prefixed.insert(j, Action::SplitRight);
     app.keymap.prefixed_order.retain(|k| *k != j);
     app.keymap.prefixed_order.push(j);
-    let rows = pane_menu(&mut app);
-    let key = key_of(&rows, "Split side by side");
+    pane_menu(&mut app);
+    let key = key_of(&app, "Split side by side");
     assert!(key.len() == 1 && key != "j", "j moves in the menu, so the item takes a letter: {key}");
     press(&mut app, KeyCode::Char('j'), KeyModifiers::NONE);
     assert!(matches!(&app.mode, Mode::ScreenMenu(m) if m.sel == 1), "j still moves: {:?}", app.mode);
     let Mode::ScreenMenu(m) = &app.mode else { unreachable!() };
     let keys = crate::client::menu::menu_chars(&app, &m.items);
     let i = m.items.iter().position(|(l, _)| l == "Split side by side").expect("the item");
-    assert_eq!(keys[i].map(String::from), Some(key.clone()), "the letter shown is the one it answers to");
+    assert_eq!(keys[i].map(String::from), Some(key.clone()), "the letter given is the one it answers to");
     press(&mut app, KeyCode::Char(key.chars().next().unwrap()), KeyModifiers::NONE);
-    assert!(!matches!(app.mode, Mode::ScreenMenu(_)), "the letter shown runs it: {:?}", app.mode);
+    assert!(!matches!(app.mode, Mode::ScreenMenu(_)), "the letter runs it: {:?}", app.mode);
 }
 
 #[test]

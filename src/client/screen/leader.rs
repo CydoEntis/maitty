@@ -1,4 +1,4 @@
-//! The Menu (the common commands, each run by the leader key shown beside it) and tabs (new,
+//! The Menu (the common commands) and tabs (new,
 //! renamed in their pill). The key map, search and All keys are in `keyoverlay`.
 
 use super::*;
@@ -6,8 +6,8 @@ use super::*;
 /// How long a tab's typed name may get.
 const NAME_MAX: usize = 40;
 
-/// A Menu row: its name and what it does. The leader key bound to it, shown at the right, runs
-/// it here too.
+/// A Menu row: its name and what it does. The leader key bound to it runs it here too, but the
+/// Menu doesn't show it: a bare letter beside a row reads as a key that works anywhere.
 pub(in crate::client) type MenuItem = (&'static str, Action);
 
 /// The Menu's groups, a blank row apart, in the reference's order. "Shell here" starts a plain
@@ -41,8 +41,7 @@ fn menu_label(app: &App, a: &Action, label: &'static str) -> &'static str {
     }
 }
 
-/// The Menu: a card at the bottom left, over the sidebar's foot. Groups a blank row apart;
-/// each row is run by the leader key at its right.
+/// The Menu: a card at the bottom left, over the sidebar's foot. Groups a blank row apart.
 pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, sel: usize) {
     let look = Look::of(&app.cfg.ui);
     let buf = f.buffer_mut();
@@ -51,7 +50,7 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
     let groups = menu_groups();
     let lines: u16 = groups.iter().map(|items| items.len() as u16 + 1).sum();
     let w = 46.min(area.width.saturating_sub(4));
-    let h = (lines + 5).min(area.height.saturating_sub(2));
+    let h = (lines + 3).min(area.height.saturating_sub(2));
     let side = grid(app, framed(app, area)).side;
     let x = (if side.width > 0 { side.x + 1 } else { area.x + 3 }).min(area.right().saturating_sub(w));
     let y = area.bottom().saturating_sub(4 + h).max(area.y);
@@ -64,14 +63,14 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
     let mut yy = r.y + 2;
     let mut i = 0usize;
     for (g, items) in groups.iter().enumerate() {
-        if yy >= inside.bottom().saturating_sub(2) {
+        if yy >= inside.bottom().saturating_sub(1) {
             break;
         }
         if g > 0 {
             yy += 1;
         }
         for (label, a) in items {
-            if yy >= inside.bottom().saturating_sub(2) {
+            if yy >= inside.bottom().saturating_sub(1) {
                 i += 1;
                 continue;
             }
@@ -87,15 +86,7 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
                 ls = ls.add_modifier(Modifier::BOLD);
             }
             let label = menu_label(app, a, label);
-            // The leader key that does the same, at the right; it runs the row in here too.
-            let bound = crate::client::design::key_text(app, std::slice::from_ref(a));
-            let keys = bound.split("  ").next().filter(|k| !k.is_empty()).map(|k| crate::client::design::keycap(t, &k.replace(' ', ""))).unwrap_or_default();
-            let kw = segs_width(&keys);
-            if kw > 0 {
-                put(buf, rr.right().saturating_sub(kw + 1), yy, &keys, rr.right());
-            }
-            let room = r.right().saturating_sub(6 + if kw > 0 { kw + 1 } else { 0 });
-            let end = put(buf, r.x + 4, yy, &[seg(label, ls)], room);
+            let end = put(buf, r.x + 4, yy, &[seg(label, ls)], r.right().saturating_sub(6));
             if *a == Action::Jump && needs > 0 {
                 put(buf, end + 1, yy, &[seg(format!("● {needs}"), st.fg(t.blocked).add_modifier(Modifier::BOLD))], r.right().saturating_sub(6));
             } else if *a == Action::Settings && app.restart_pending() {
@@ -106,11 +97,6 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
             i += 1;
         }
     }
-    let lead = app.keymap.prefix.to_string().replace("C-", "Ctrl+");
-    let cs = Style::default().bg(t.card);
-    let mut foot = crate::client::design::keycap(t, &lead);
-    foot.push(seg(" then a key works anywhere", cs.fg(t.muted)));
-    put(buf, r.x + 3, inside.bottom().saturating_sub(1), &foot, r.right().saturating_sub(2));
 }
 
 impl App {

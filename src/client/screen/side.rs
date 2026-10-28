@@ -752,8 +752,7 @@ fn draw_line(app: &mut App, buf: &mut Buffer, model: &[Proj], line: &Line, cols:
         // Nothing running: one click starts a shell there.
         Line::Empty(pi) => {
             let st = Style::default().bg(pb);
-            let nk = k(app, &Action::ShellHere);
-            put(buf, cols.x + 2, y, &[seg("empty  ", st.fg(t.muted).add_modifier(Modifier::ITALIC)), seg(nk, st.fg(t.accent).add_modifier(Modifier::BOLD)), seg(" new shell", st.fg(t.muted))], cols.end());
+            put(buf, cols.x + 2, y, &[seg("empty  ", st.fg(t.muted).add_modifier(Modifier::ITALIC)), seg("new shell", st.fg(t.accent).add_modifier(Modifier::BOLD))], cols.end());
             hit(app, row, ScreenHit::ShellIn(*pi));
         }
         Line::Tab(owner, tab) => {
