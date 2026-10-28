@@ -252,22 +252,17 @@ impl Daemon {
             .collect()
     }
 
-    /// Now and then: worktrees the app made that nothing runs in any more (their session
-    /// crashed, or ended some way other than you closing it) and that hold nothing of their
-    /// own go, as they would have when you closed their last session.
-    pub(super) fn sweep_worktrees(&mut self) {
-        if !self.cfg.worktree.delete_with_last {
-            return;
-        }
-        let idle: Vec<PathBuf> = self.made_worktrees.iter().filter(|m| !self.runs_in(m)).cloned().collect();
-        if idle.is_empty() {
+    /// Now and then: forget the app-made worktrees whose folder is gone. Nothing is removed
+    /// here; a folder goes only when you close its last pane or tick it in the clean-up list.
+    pub(super) fn forget_vanished_worktrees(&mut self) {
+        let made = self.made_worktrees.clone();
+        if made.is_empty() {
             return;
         }
         let tx = self.tx.clone();
         tokio::task::spawn_blocking(move || {
-            let (gone, here): (Vec<PathBuf>, Vec<PathBuf>) = idle.into_iter().partition(|p| !p.is_dir());
-            let safe = here.into_iter().filter(|p| crate::tidy::standing(p).safe()).collect();
-            let _ = tx.blocking_send(Ev::WorktreeSwept { safe, gone });
+            let gone: Vec<PathBuf> = made.into_iter().filter(|p| !p.is_dir()).collect();
+            let _ = tx.blocking_send(Ev::WorktreesVanished { gone });
         });
     }
 
@@ -300,8 +295,9 @@ impl Daemon {
         (go, stay)
     }
 
-    /// After you close something: remove worktrees the app made that nothing runs in any
-    /// more. Git refuses if there are uncommitted changes, and the branch is always kept.
+    /// After you close a pane or workspace: remove the worktrees the app made that nothing
+    /// runs in any more, but only those that hold nothing of their own (clean, and every
+    /// commit also on another branch). Any other stays, with the reason.
     pub(super) fn cleanup_worktrees(&mut self, client: ClientId, tops: Vec<PathBuf>) {
         if !self.cfg.worktree.delete_with_last {
             return;
@@ -318,13 +314,18 @@ impl Daemon {
             self.pending_ops += 1;
             let repo = crate::gitfs::head(&top).map(|h| h.main_root);
             tokio::task::spawn_blocking(move || {
-                // Give the closed programs a moment to let go of the folder (Windows locks it).
-                std::thread::sleep(Duration::from_millis(800));
-                let branch = git::branch_of(&top);
-                let result = git::remove_worktree(&top, false, false).map_err(|e| format!("{e:#}")).map(|()| {
-                    // A branch already merged has nothing left in it: it goes too.
-                    repo.zip(branch).is_some_and(|(repo, b)| git::delete_if_merged(&repo, &b))
-                });
+                let standing = crate::tidy::standing(&top);
+                let result = if standing.safe() {
+                    // Give the closed programs a moment to let go of the folder (Windows locks it).
+                    std::thread::sleep(Duration::from_millis(800));
+                    let branch = git::branch_of(&top);
+                    git::remove_worktree(&top, false, false).map_err(|e| format!("{e:#}")).map(|()| {
+                        // A branch already merged has nothing left in it: it goes too.
+                        repo.zip(branch).is_some_and(|(repo, b)| git::delete_if_merged(&repo, &b))
+                    })
+                } else {
+                    Err(format!("{}; remove it from the clean-up list when you're done", standing.says()))
+                };
                 let _ = tx.blocking_send(Ev::WorktreeAutoRemoved { client, path: top, result });
             });
         }

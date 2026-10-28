@@ -501,10 +501,98 @@ fn a_clean_up_only_takes_worktrees_nothing_runs_in() {
     d.made_worktrees.push(busy.clone());
     let tops = d.worktrees_of(&[t]);
     d.close_term(t);
-    d.cleanup_worktrees(EVERYONE, tops);
+    d.cleanup_worktrees(0, tops);
     assert!(busy.is_dir(), "closing one pane must not delete a worktree while its sibling is still starting");
     assert!(d.terms.contains_key(&sibling), "the sibling pane remains alive");
     close(&mut d, &[sibling]);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Handle daemon events until a worktree's automatic removal reports, and return how it went.
+fn auto_removal(d: &mut Daemon, rx: &mut mpsc::Receiver<Ev>) -> Result<bool, String> {
+    let until = Instant::now() + Duration::from_secs(60);
+    while Instant::now() < until {
+        match rx.try_recv() {
+            Ok(Ev::WorktreeAutoRemoved { client, path, result }) => {
+                d.handle(Ev::WorktreeAutoRemoved { client, path, result: result.clone() });
+                return result;
+            }
+            Ok(ev) => d.handle(ev),
+            Err(_) => std::thread::sleep(Duration::from_millis(20)),
+        }
+    }
+    panic!("no worktree removal reported");
+}
+
+/// A repo with `merged` (cut from main, nothing of its own) and `mine` (a commit only there),
+/// each with a workspace the app made.
+fn repo_with_two_made_worktrees(d: &mut Daemon, name: &str) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+    let root = std::env::temp_dir().join(format!(concat!(env!("APP_COMMAND"), "-{}-{}"), name, std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let repo = root.join("repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    let git = |dir: &std::path::Path, args: &[&str]| crate::proc::git(dir, args).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    git(&repo, &["config", "user.email", "t@t"]);
+    git(&repo, &["config", "user.name", "t"]);
+    std::fs::write(repo.join("a.ts"), "a").unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "-qm", "one"]);
+    let (merged, mine) = (root.join("merged"), root.join("mine"));
+    git(&repo, &["worktree", "add", "-q", "-b", "merged", merged.to_str().unwrap()]);
+    git(&repo, &["worktree", "add", "-q", "-b", "mine", mine.to_str().unwrap()]);
+    std::fs::write(mine.join("b.ts"), "b").unwrap();
+    git(&mine, &["add", "."]);
+    git(&mine, &["commit", "-qm", "only here"]);
+    for wt in [&merged, &mine] {
+        d.command(0, Command::NewWorkspace { cwd: Some(wt.clone()), name: None, cmd: None }).unwrap();
+        d.made_worktrees.push(wt.clone());
+    }
+    (root, merged, mine)
+}
+
+#[test]
+fn closing_a_worktrees_last_pane_removes_it_only_when_nothing_lives_only_there() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (root, merged, mine) = repo_with_two_made_worktrees(&mut d, "close-last");
+    let last_pane = |d: &Daemon, wt: &std::path::Path| d.terms.values().find(|t| same_path(&t.cwd, wt)).map(|t| t.id).expect("a pane there");
+
+    let t = last_pane(&d, &mine);
+    d.command(0, Command::ClosePane { term: t }).unwrap();
+    let kept = auto_removal(&mut d, &mut rx).expect_err("a commit only there stays");
+    assert!(mine.is_dir() && kept.contains("not merged anywhere"), "kept with the reason, got: {kept}");
+
+    let t = last_pane(&d, &merged);
+    d.command(0, Command::ClosePane { term: t }).unwrap();
+    auto_removal(&mut d, &mut rx).expect("a merged, clean one goes");
+    assert!(!merged.is_dir(), "its folder is gone");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn nothing_removes_a_worktree_on_its_own_while_no_pane_is_closed() {
+    let (rt, (mut d, mut rx)) = (runtime(), daemon());
+    let _in_rt = rt.enter();
+    let (root, merged, mine) = repo_with_two_made_worktrees(&mut d, "idle");
+    // A tab and a split beside the first pane: closing either leaves the worktree in use.
+    let ws = d.workspaces.iter().find(|w| same_path(&w.cwd, &merged)).map(|w| w.id).unwrap();
+    d.command(0, Command::NewTab { ws, name: None, cmd: None }).unwrap();
+    let tab = d.workspaces.iter().find(|w| w.id == ws).unwrap().active_tab;
+    d.command(0, Command::CloseTab { ws, tab }).unwrap();
+    let first = d.workspaces.iter().find(|w| w.id == ws).unwrap().tabs[0].focus;
+    d.command(0, Command::Split { term: first, dir: crate::layout::Dir::Right, cmd: None, cwd: None }).unwrap();
+    let split = d.workspaces.iter().find(|w| w.id == ws).unwrap().tabs[0].focus;
+    d.command(0, Command::ClosePane { term: split }).unwrap();
+    // The checks that used to run on a timer only forget folders that are gone.
+    d.forget_vanished_worktrees();
+    std::thread::sleep(Duration::from_millis(1500));
+    while let Ok(ev) = rx.try_recv() {
+        assert!(!matches!(ev, Ev::WorktreeAutoRemoved { .. }), "no removal was asked for");
+        d.handle(ev);
+    }
+    assert!(merged.is_dir() && mine.is_dir(), "both folders stand");
+    assert!(d.terms.contains_key(&first), "the first pane still runs");
     let _ = std::fs::remove_dir_all(&root);
 }
 

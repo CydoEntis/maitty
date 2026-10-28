@@ -58,12 +58,10 @@ const AGENT_SHOWS_WITHIN: Duration = Duration::from_secs(45);
 const QUEUE_MOST: usize = 20;
 /// A helper just started counts as working this long: its agent hasn't reported yet.
 const HELPER_SETTLES: Duration = Duration::from_secs(45);
-/// How often worktrees left behind (a session that crashed) are looked for, and how soon
-/// after the server starts the first look is.
-const WORKTREE_SWEEP_EVERY: Duration = Duration::from_secs(10 * 60);
-const WORKTREE_SWEEP_FIRST: Duration = Duration::from_secs(60);
-/// Stands in for a client when a notice is for every window (nobody asked).
-const EVERYONE: ClientId = ClientId::MAX;
+/// How often the app-made worktrees whose folder is gone are forgotten, and how soon after
+/// the server starts the first check is.
+const VANISHED_CHECK_EVERY: Duration = Duration::from_secs(10 * 60);
+const VANISHED_CHECK_FIRST: Duration = Duration::from_secs(60);
 /// A daemon nothing ever used (no panes, no clients) exits after this.
 const EXIT_WHEN_UNUSED_FOR: Duration = Duration::from_secs(30);
 /// How long a pane or agent ending on its own is kept out of the saved session. A shutdown
@@ -99,11 +97,11 @@ pub enum Ev {
     CodexUsage { facts: Vec<usage::CodexPaneFacts>, limits: Option<Vec<Limit>> },
     /// A worktree made for an agent started from a shell (`Command::AgentWorktree`).
     AgentWorktreeMade { client: ClientId, result: Result<PathBuf, String> },
-    /// A worktree removed (or kept) after its last pane closed.
+    /// A worktree removed after you closed its last pane (`Ok`: whether its merged branch went
+    /// too), or kept with the reason (`Err`).
     WorktreeAutoRemoved { client: ClientId, path: PathBuf, result: Result<bool, String> },
-    /// The sweep's findings: the app-made worktrees nothing runs in that are safe to remove,
-    /// and ones whose folder is already gone.
-    WorktreeSwept { safe: Vec<PathBuf>, gone: Vec<PathBuf> },
+    /// App-made worktrees whose folder is already gone.
+    WorktreesVanished { gone: Vec<PathBuf> },
     /// A clean-up you asked for is done: what went (and whether its merged branch went
     /// too), and what stayed and why.
     WorktreesTidied { client: ClientId, removed: Vec<(String, bool)>, kept: Vec<(String, String)> },
@@ -220,7 +218,7 @@ struct Daemon {
     adopt: Option<(PathBuf, TermId)>,
     /// The spare's folder, handed over: its on_create hook already ran.
     adopted: Option<PathBuf>,
-    last_worktree_sweep: Instant,
+    last_vanished_check: Instant,
     /// The last automatic workspace move, for undo.
     auto_undo: Option<AutoUndo>,
     /// When a pane's process or a pane's agent last ended on its own (see `LOSS_HOLD`).
@@ -538,7 +536,7 @@ impl Daemon {
             spare_making: false,
             adopt: None,
             adopted: None,
-            last_worktree_sweep: crate::clock::ago(WORKTREE_SWEEP_EVERY - WORKTREE_SWEEP_FIRST),
+            last_vanished_check: crate::clock::ago(VANISHED_CHECK_EVERY - VANISHED_CHECK_FIRST),
             last_loss: None,
             auto_undo: None,
         }
@@ -562,9 +560,9 @@ impl Daemon {
                     self.auto_continue();
                     self.poll_codex();
                     self.poll_git();
-                    if self.last_worktree_sweep.elapsed() >= WORKTREE_SWEEP_EVERY {
-                        self.last_worktree_sweep = Instant::now();
-                        self.sweep_worktrees();
+                    if self.last_vanished_check.elapsed() >= VANISHED_CHECK_EVERY {
+                        self.last_vanished_check = Instant::now();
+                        self.forget_vanished_worktrees();
                     }
                     self.publish_activity();
                     if self.last_save.elapsed() > SAVE_EVERY {
@@ -1024,23 +1022,18 @@ impl Daemon {
             Ev::WorktreeAutoRemoved { client, path, result } => {
                 self.pending_ops -= 1;
                 let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                let msg = match result {
+                let msg = match &result {
                     Ok(true) => format!("removed worktree {name} and its merged branch"),
                     Ok(false) => format!("removed worktree {name} (its branch is kept)"),
-                    Err(_) => format!("kept worktree {name}: it has uncommitted changes"),
+                    Err(why) => format!("kept worktree {name}: {why}"),
                 };
-                // The sweep answers to nobody: say what went, to every window, and nothing
-                // about what stayed.
-                if client != EVERYONE {
-                    self.send(client, ServerMsg::Notice(msg));
-                } else if result.is_ok() {
-                    self.broadcast(|c| c.attach, ServerMsg::Notice(format!("{msg}: nothing was running in it")));
-                }
+                // The daemon log is the only record of why a folder went, or stayed.
+                tracing::info!("{msg} ({}) after its last pane was closed", path.display());
+                self.send(client, ServerMsg::Notice(msg));
                 self.dirty = true;
             }
-            Ev::WorktreeSwept { safe, gone } => {
+            Ev::WorktreesVanished { gone } => {
                 self.made_worktrees.retain(|m| !gone.iter().any(|g| same_path(g, m)));
-                self.cleanup_worktrees(EVERYONE, safe);
             }
             Ev::WorktreesTidied { client, removed, kept } => {
                 self.pending_ops -= 1;
