@@ -1,4 +1,4 @@
-# 0029. Alt+letter shortcuts, and closing an idle shell without asking
+# 0029. Alt+letter shortcuts, and every close asks first
 
 - **Status:** Accepted
 - **Date:** 2026-10-27
@@ -23,10 +23,10 @@ direct shortcut needs a modifier.
   Input) turns them off for shells that use those keys. Each is rebindable under `[keys.global]`,
   and Settings › Keys lists them under "Without the leader".
   No Alt+[ or Alt+]: terminals send those as the start of an escape sequence.
-- **Closing asks only when something would be lost:** a pane with no agent whose running
-  program is its shell (`config::is_shell`) closes at once; a pane with an agent, or a shell
-  running a program, asks as before. A tab's ✕ already closed shells at once and an agent's on a
-  second click.
+- **Every close asks first:** a pane, a tab (its ✕, a middle click, the leader's close) and an
+  idle shell alike, in the one confirm (`menu::Confirm`, danger). Closing an idle shell at once
+  was tried first and dropped on 2026-10-27 at the user's word: a close you didn't mean, from a
+  key now one press away, is worse than the extra Enter.
 - The leader and shortcut mode stay as they are, for everything.
 
 ## Alternatives considered
@@ -36,6 +36,8 @@ direct shortcut needs a modifier.
   Windows Terminal keeps Ctrl+Shift+D (duplicate tab) for itself.
 - **Ctrl+D to split:** it is end-of-input, how a shell exits and Claude Code quits.
 - **Never confirm a close:** an agent's work in progress is one keypress from gone.
+- **Confirm only when something would be lost** (an idle shell closes at once): shipped in
+  0.47.0, then dropped; a pane closed by a stray Alt+x surprised the user.
 
 ## Consequences
 

@@ -96,8 +96,6 @@ pub(super) struct Screen {
     pub new_tab: Option<(Instant, TermId)>,
     /// Counts frames, for `ScreenTab::used`.
     pub tick: u64,
-    /// A tab's ✕ clicked once with an agent in it: a second click closes it.
-    pub close_armed: Option<(usize, Instant)>,
     /// Where the sessions were drawn last frame, and the splits between them.
     pub leaf_rects: Vec<(TermId, Rect)>,
     pub dividers: Vec<(Rect, bool, Vec<bool>)>,

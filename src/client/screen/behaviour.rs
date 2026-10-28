@@ -130,17 +130,8 @@ impl App {
         if self.screen.tabs.iter().filter(|t| t.owner == tab.owner).count() < 2 {
             return;
         }
-        let leaves = tab.layout.leaves();
-        let agents: Vec<String> = leaves.iter().filter_map(|id| self.snap.terms.get(id)).filter_map(|t| t.agent.clone()).collect();
-        let armed = self.screen.close_armed.take().is_some_and(|(at, when)| at == i && when.elapsed().as_secs() < 4);
-        if !agents.is_empty() && !armed {
-            self.screen.close_armed = Some((i, Instant::now()));
-            self.notify(format!("{} is running in this tab: close it again to stop it", agents.join(", ")), false);
-            return;
-        }
-        for term in leaves {
-            self.cmd(Command::ClosePane { term });
-        }
+        // Asked first, as closing a pane is.
+        self.menu_act(crate::client::menu::Act::End(tab.layout.leaves()));
     }
 
     /// Move tab `from` to where tab `to` is (both of the same session); returns where it is
@@ -163,7 +154,6 @@ impl App {
         } else {
             current
         };
-        self.screen.close_armed = None;
         to
     }
 
