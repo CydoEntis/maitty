@@ -54,4 +54,5 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0028](0028-tab-rows-and-popups-drawn-like-panes.md) | A tab row in both looks, and every popup drawn like a pane | Accepted, amended by 0030 |
 | [0029](0029-alt-letters-and-closing-without-asking.md) | Alt+letter shortcuts, and every close asks first | Accepted |
 | [0030](0030-panes-titled-like-an-editor.md) | Panes titled like an editor's, and toasts drawn to suit each look | Accepted, amended by 0031 |
-| [0031](0031-tabs-name-a-project-and-splits-have-no-title.md) | The tab row lists the project's tabs, and a split has no title | Accepted |
+| [0031](0031-tabs-name-a-project-and-splits-have-no-title.md) | The tab row lists the project's tabs, and a split has no title | Accepted, tab row amended by 0032 |
+| [0032](0032-a-session-owns-its-tabs.md) | A session owns its tabs, and picking it shows it | Accepted |

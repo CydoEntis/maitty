@@ -1,6 +1,6 @@
 # 0031. The tab row lists the project's tabs, and a split has no title
 
-- **Status:** Accepted
+- **Status:** Accepted, the tab row amended by 0032
 - **Date:** 2026-10-28
 - **Amends:** [ADR 0030](0030-panes-titled-like-an-editor.md) (pane titles),
   [ADR 0028](0028-tab-rows-and-popups-drawn-like-panes.md) (the tab row) and

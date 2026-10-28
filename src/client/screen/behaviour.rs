@@ -76,6 +76,14 @@ impl App {
             }
             return;
         }
+        // You picked this session: its own tab, not the shell tab you were last on in it.
+        if self.screen.show_own.take() == Some(f)
+            && let Some(i) = self.screen.tabs.iter().position(|t| t.layout.contains(f))
+        {
+            self.screen.tab = i;
+            self.screen.tabs[i].focus = f;
+            return;
+        }
         // A session with tabs: the one you were last on (unless you're already in one of them).
         let here = self.screen.tabs.get(self.screen.tab).is_some_and(|t| t.owner == f && t.layout.contains(f));
         if !here && let Some(i) = (0..self.screen.tabs.len()).filter(|i| self.screen.tabs[*i].owner == f).max_by_key(|i| self.screen.tabs[*i].used) {
@@ -144,16 +152,11 @@ impl App {
         pending.take().map(|asked| asked.owner)
     }
 
-    /// The tabs of the project you're in, in the sidebar's order: each session's tabs together.
+    /// The tabs of the session you're on, in order: only its own, never another session's.
     /// Both the tab row and the number keys walk this list.
     pub(in crate::client) fn session_tabs(&self) -> Vec<usize> {
         let Some(owner) = self.screen.tabs.get(self.screen.tab).map(|t| t.owner) else { return Vec::new() };
-        let owned = |term: TermId| (0..self.screen.tabs.len()).filter(move |&i| self.screen.tabs[i].owner == term);
-        let model = self.screen_model();
-        match model.iter().find(|p| p.sessions().any(|s| s.term == owner)) {
-            Some(p) => p.sessions().flat_map(|s| owned(s.term)).collect(),
-            None => owned(owner).collect(),
-        }
+        (0..self.screen.tabs.len()).filter(|i| self.screen.tabs[*i].owner == owner).collect()
     }
 
     /// Close a session's tab and what's in it (one of several: its last tab is the session,
@@ -223,6 +226,7 @@ impl App {
 
     /// Show a session: it becomes the focused one.
     pub(in crate::client) fn screen_focus(&mut self, term: TermId) {
+        self.screen.show_own = Some(term);
         self.screen.cursor = None;
         self.mode = Mode::Normal;
         self.cmd(Command::FocusPane { term });

@@ -1814,6 +1814,43 @@ mod screen_tests {
     }
 
     #[test]
+    fn sessions_of_one_project_are_not_each_others_tabs() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.screen.tabs.clear();
+        // Four sessions opened one after another, as in the sidebar's project.
+        app.screen_place(1, None);
+        for (id, prev) in [(2, 1), (3, 2)] {
+            app.screen_place(id, Some(prev));
+        }
+        app.snap.terms.insert(4, app.snap.terms[&3].clone());
+        app.snap.terms.get_mut(&4).unwrap().id = 4;
+        app.screen_place(4, Some(3));
+        draw(&mut app, 160, 45);
+        assert_eq!(app.session_tabs().len(), 1, "the tab row shows this session's tabs only");
+        let side = app.screen.side_rect;
+        let chips = app.hits.iter().filter(|(r, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_))) && !side.intersects(*r)).count();
+        assert_eq!(chips, 1, "one chip, not one per session of the project");
+    }
+
+    #[test]
+    fn picking_a_session_shows_its_own_tab_not_the_shell_you_were_last_on() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, _rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.screen.tabs.clear();
+        app.screen_place(1, None);
+        app.act(Action::NewTab);
+        app.screen.new_tab.borrow_mut().as_mut().expect("armed").known.remove(&3);
+        app.screen_place(3, Some(1));
+        assert_eq!(app.screen.tabs[app.screen.tab].focus, 3, "on claude's shell tab");
+        // Its row is picked in the sidebar: the session itself shows, not the shell.
+        app.screen_focus(1);
+        app.screen_place(1, Some(3));
+        assert_eq!(app.screen.tabs[app.screen.tab].focus, 1, "the picked session is the one on screen");
+        assert!(app.screen.tabs[app.screen.tab].layout.contains(1));
+    }
+
+    #[test]
     fn a_session_has_tabs_of_its_own() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // claude (1), codex (2), and a shell (3).
@@ -1875,12 +1912,12 @@ mod screen_tests {
         app.screen_sync();
         let o = draw(&mut app, 160, 45);
         assert!(o.contains(" tests "), "the name comes back from the daemon: {o}");
-        // Another session: the tab row lists the whole project's tabs, so codex's one joins claude's two.
+        // Another session: its own tab row, with none of claude's tabs in it.
         app.screen_place(2, Some(3));
         draw(&mut app, 160, 45);
-        assert_eq!(app.session_tabs().len(), 3);
+        assert_eq!(app.session_tabs().len(), 1);
         let side = app.screen.side_rect;
-        assert!(app.hits.iter().filter(|(r, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_))) && !side.intersects(*r)).count() == 3, "the project's three tabs");
+        assert!(app.hits.iter().filter(|(r, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_))) && !side.intersects(*r)).count() == 1, "codex has one tab");
         // Back to claude: the tab you were last on there (the shell).
         app.screen_place(1, Some(2));
         assert_eq!(app.screen.tabs[app.screen.tab].focus, 3, "back on the shell tab");
@@ -3142,7 +3179,7 @@ mod screen_tests {
         // Picking another session shows it alone; the split is still there to go back to.
         app.screen_place(c, Some(b));
         assert_eq!(app.screen.tabs[app.screen.tab].layout, crate::layout::Node::Leaf(c), "full size");
-        assert_eq!(app.session_tabs().len(), 2, "the project's tabs: this one, and the split kept as its session's, not made a tab of this one");
+        assert_eq!(app.session_tabs().len(), 1, "c's tab row is c's alone: the kept split is another session's, not a tab of this one");
         assert_eq!(app.screen.tabs[app.screen.tab].owner, c, "this tab is c's own");
         assert!(app.screen.tabs.iter().any(|t| t.layout.leaves() == vec![a, b]), "the split is kept: {:?}", app.screen.tabs);
         app.screen_place(a, Some(c));

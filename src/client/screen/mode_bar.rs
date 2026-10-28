@@ -298,7 +298,7 @@ fn only_says(app: &App) -> bool {
     shortcut_waits(app) || !matches!(app.mode, Mode::Normal | Mode::Side | Mode::Prefix { .. })
 }
 
-/// After TYPING: which tab of the project this is and how many splits it shows, dim. When
+/// After TYPING: which tab of its session this is and how many splits it shows, dim. When
 /// narrow the hint after it goes first, then this.
 fn layout_piece(app: &App, t: &Theme) -> Option<Piece> {
     let n = app.screen.leaf_rects.len();

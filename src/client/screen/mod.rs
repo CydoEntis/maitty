@@ -97,6 +97,9 @@ pub(super) struct Screen {
     /// any other session clears it (`App::cmd`), so a session you start instead is never
     /// taken for the tab. A `RefCell` because `cmd` only borrows the app.
     pub new_tab: std::cell::RefCell<Option<PendingTab>>,
+    /// A session picked from the sidebar, the go-to list or a sheet: it shows its own tab, not
+    /// the one you were last on in it. Taken by the next focus change.
+    pub show_own: Option<TermId>,
     /// Counts frames, for `ScreenTab::used`.
     pub tick: u64,
     /// Where the sessions were drawn last frame, and the splits between them.
