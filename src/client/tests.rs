@@ -1485,7 +1485,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn closing_an_idle_shell_asks_nothing_and_an_agent_still_asks() {
+    fn every_close_asks_first_an_idle_shell_too() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // Closing from the sidebar acts on the row the cursor is on.
         let shell = *app.snap.terms.iter().find(|(_, t)| t.agent.is_none()).map(|(id, _)| id).expect("a shell");
@@ -1493,7 +1493,7 @@ mod screen_tests {
         app.screen.cursor = Some(shell);
         app.mode = Mode::Normal;
         app.act(Action::ClosePane);
-        assert!(!matches!(app.mode, Mode::Confirm(_)), "nothing to lose: closed at once");
+        assert!(matches!(app.mode, Mode::Confirm(_)), "an idle shell asks first too");
         let agent = *app.snap.terms.iter().find(|(_, t)| t.agent.is_some()).map(|(id, _)| id).expect("an agent");
         app.screen.cursor = Some(agent);
         app.mode = Mode::Normal;
@@ -1520,6 +1520,18 @@ mod screen_tests {
         let mut cfg = Config::default();
         cfg.ui.alt_keys = false;
         assert!(!cfg.keymap().global.contains_key(&alt('x')), "off: Alt+x goes to the program");
+    }
+
+    #[test]
+    fn alt_x_in_the_sidebar_closes_the_selected_session_and_asks_for_an_agent() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let focused = app.focused();
+        let agent = *app.snap.terms.iter().find(|(id, t)| t.agent.is_some() && Some(**id) != focused).map(|(id, _)| id).expect("an agent not in focus");
+        app.screen_side_set(screen::SideItem::Sess(agent));
+        app.mode = Mode::Side;
+        app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::ALT));
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, crate::client::menu::Act::End(ts) if *ts == vec![agent])), "asks to close the row's session: {:?}", app.mode);
+        assert_eq!(app.focused(), focused, "it doesn't go into the pane");
     }
 
     #[test]
@@ -1778,10 +1790,10 @@ mod screen_tests {
         // Back to claude: the tab you were last on there (the shell).
         app.screen_place(1, Some(2));
         assert_eq!(app.screen.tabs[app.screen.tab].focus, 3, "back on the shell tab");
-        // Closing claude's own tab while claude runs takes a second click.
+        // Closing a tab asks first.
         let mine = app.screen.tabs.iter().position(|t| t.layout.contains(1)).unwrap();
         app.close_tab(mine);
-        assert!(app.notice.as_ref().is_some_and(|(m, ..)| m.contains("close it again")), "{:?}", app.notice);
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, crate::client::menu::Act::End(ts) if ts.contains(&1))), "{:?}", app.mode);
     }
 
     #[test]
@@ -2675,10 +2687,12 @@ mod screen_tests {
         let order: Vec<TermId> = app.session_tabs().iter().map(|i| app.screen.tabs[*i].focus).collect();
         assert_eq!(order.last(), Some(&moved), "dragged to the end: {order:?}");
         assert_eq!(app.screen.tabs[app.screen.tab].focus, moved, "still the tab you're on");
-        // A middle click closes a tab (a shell: no second click needed).
+        // A middle click closes a tab, once you say so (a shell too).
         let shell_tab = app.session_tabs().into_iter().find(|i| app.screen.tabs[*i].focus == 3).unwrap();
         let at = pill(&app, shell_tab);
         mouse(&mut app, MouseEventKind::Down(MouseButton::Middle), at);
+        assert!(matches!(app.mode, Mode::Confirm(_)), "it asks first: {:?}", app.mode);
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         let closed = std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, crate::protocol::ClientMsg::Command(crate::protocol::Command::ClosePane { term: 3 })));
         assert!(closed, "the shell's pane is closed");
     }

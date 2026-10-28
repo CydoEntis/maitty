@@ -52,4 +52,4 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0026](0026-hairline-a-fifth-look.md) | Hairline, a fifth look with no boxes | Accepted, amended by 0027 |
 | [0027](0027-two-looks-and-tabs-in-the-sidebar.md) | Two looks, pane colours, and a session's tabs in the sidebar | Accepted, amended by 0028 |
 | [0028](0028-tab-rows-and-popups-drawn-like-panes.md) | A tab row in both looks, and every popup drawn like a pane | Accepted |
-| [0029](0029-alt-letters-and-closing-without-asking.md) | Alt+letter shortcuts, and closing an idle shell without asking | Accepted |
+| [0029](0029-alt-letters-and-closing-without-asking.md) | Alt+letter shortcuts, and every close asks first | Accepted |

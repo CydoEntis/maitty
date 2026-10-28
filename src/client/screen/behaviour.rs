@@ -130,17 +130,8 @@ impl App {
         if self.screen.tabs.iter().filter(|t| t.owner == tab.owner).count() < 2 {
             return;
         }
-        let leaves = tab.layout.leaves();
-        let agents: Vec<String> = leaves.iter().filter_map(|id| self.snap.terms.get(id)).filter_map(|t| t.agent.clone()).collect();
-        let armed = self.screen.close_armed.take().is_some_and(|(at, when)| at == i && when.elapsed().as_secs() < 4);
-        if !agents.is_empty() && !armed {
-            self.screen.close_armed = Some((i, Instant::now()));
-            self.notify(format!("{} is running in this tab: close it again to stop it", agents.join(", ")), false);
-            return;
-        }
-        for term in leaves {
-            self.cmd(Command::ClosePane { term });
-        }
+        // Asked first, as closing a pane is.
+        self.menu_act(crate::client::menu::Act::End(tab.layout.leaves()));
     }
 
     /// Move tab `from` to where tab `to` is (both of the same session); returns where it is
@@ -163,7 +154,6 @@ impl App {
         } else {
             current
         };
-        self.screen.close_armed = None;
         to
     }
 
@@ -605,6 +595,12 @@ impl App {
             self.mode = Mode::Prefix { since: Instant::now(), acted: false };
             return;
         }
+        // A key that needs no leader acts here as it does over a pane, on the sidebar's row
+        // where it has one (Alt+x closes the selected session), instead of being typed.
+        if let Some(a) = self.keymap.global.get(&spec).cloned() {
+            self.act(a);
+            return;
+        }
         let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
         if k.code == KeyCode::Enter && proj.is_none() && let Some(c) = self.screen.cursor && self.helpers_asked(c) {
             self.open_helpers(c, true);
@@ -664,7 +660,8 @@ impl App {
             },
             KeyCode::Esc => self.screen_side_leave(),
             _ if spec == self.keymap.prefix => self.mode = Mode::Prefix { since: Instant::now(), acted: false },
-            // Nothing else acts from the sidebar: an action is the leader and its key (ADR 0014).
+            // Nothing else acts from the sidebar: an action is the leader and its key, or a key
+            // with no leader (ADR 0014, ADR 0029).
             // Anything else is typing: leave the sidebar and hand the key over.
             _ => {
                 self.screen_side_leave();
