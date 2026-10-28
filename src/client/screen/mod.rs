@@ -765,23 +765,50 @@ impl App {
 
     /// Keep the remembered bits in step with a new state: project order, the current
     /// project, the split pair, the branch lists.
-    pub(super) fn screen_sync(&mut self) {
-        // The daemon owns pane topology and restores it across client restarts. Rebuild the
-        // visible tabs from that snapshot before handling focus changes, which otherwise
-        // turns the first focused restored pane into a one-leaf tab and strands its siblings.
-        if self.screen.last_focus.is_none() && !self.snap.workspaces.is_empty() {
-            let previous = self.screen.tabs.clone();
-            let restored: Vec<ScreenTab> = self.snap.workspaces.iter().flat_map(|workspace| &workspace.tabs).filter(|source| source.layout.leaves().len() > 1).map(|source| {
+    /// The tabs to show for the daemon's: a split, or a pane in another session's tab (its
+    /// `tab_of`), with that session's own pane as a tab of its own first. Whose tab each is
+    /// comes from the daemon, which keeps it across restarts; else from this view's tabs, else
+    /// the split's first pane.
+    fn restored_tabs(&self) -> Vec<ScreenTab> {
+        let previous = &self.screen.tabs;
+        let owner_of = |leaves: &[TermId]| {
+            let kept = leaves.iter().find_map(|id| self.snap.terms.get(id).and_then(|t| t.tab_of)).filter(|o| self.snap.terms.contains_key(o));
+            let prior = previous.iter().find(|tab| tab.layout.leaves().iter().any(|id| leaves.contains(id))).map(|tab| tab.owner);
+            kept.or(prior).unwrap_or(leaves[0])
+        };
+        let sources: Vec<&crate::protocol::TabInfo> = self.snap.workspaces.iter().flat_map(|w| &w.tabs).collect();
+        let owners: Vec<TermId> = sources.iter().map(|s| owner_of(&s.layout.leaves())).collect();
+        let shown = |i: usize| {
+            let leaves = sources[i].layout.leaves();
+            // A split, a tab of another session's, or a session's own pane that has other tabs.
+            leaves.len() > 1 || owners[i] != leaves[0] || owners.iter().enumerate().any(|(j, o)| j != i && *o == leaves[0])
+        };
+        let mut out: Vec<ScreenTab> = (0..sources.len())
+            .filter(|&i| shown(i))
+            .map(|i| {
+                let source = sources[i];
                 let leaves = source.layout.leaves();
                 let prior = previous.iter().find(|tab| tab.layout.leaves().iter().any(|id| leaves.contains(id)));
                 ScreenTab {
                     layout: source.layout.clone(),
                     focus: if source.layout.contains(source.focus) { source.focus } else { source.layout.first_leaf() },
-                    owner: prior.map_or_else(|| source.layout.first_leaf(), |tab| tab.owner),
+                    owner: owners[i],
                     used: prior.map_or(0, |tab| tab.used),
                     name: prior.map_or_else(|| source.name.clone(), |tab| if tab.name.is_empty() { source.name.clone() } else { tab.name.clone() }),
                 }
-            }).collect();
+            })
+            .collect();
+        // Each session's own tab before its others, keeping the daemon's order otherwise.
+        out.sort_by_key(|tab| !tab.layout.contains(tab.owner));
+        out
+    }
+
+    pub(super) fn screen_sync(&mut self) {
+        // The daemon owns pane topology and restores it across client restarts. Rebuild the
+        // visible tabs from that snapshot before handling focus changes, which otherwise
+        // turns the first focused restored pane into a one-leaf tab and strands its siblings.
+        if self.screen.last_focus.is_none() && !self.snap.workspaces.is_empty() {
+            let restored = self.restored_tabs();
             if !restored.is_empty() {
                 self.screen.tabs = restored;
                 self.screen.tab = self.screen.tabs.iter().position(|tab| tab.layout.contains(self.focused().unwrap_or(tab.focus))).unwrap_or(0);
