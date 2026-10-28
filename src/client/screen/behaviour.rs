@@ -46,6 +46,8 @@ impl App {
             take_out(&mut self.screen.tabs, f);
             self.screen.tabs.push(ScreenTab { layout: Node::Leaf(f), focus: f, owner, used: 0, name: String::new() });
             self.screen.tab = self.screen.tabs.len() - 1;
+            // The daemon keeps whose tab it is, so a restart brings it back as that session's.
+            self.cmd(Command::SetTabOf { term: f, owner: Some(owner) });
             return;
         }
         if let Some(p) = beside {
@@ -63,7 +65,11 @@ impl App {
             let tab = &mut self.screen.tabs[i];
             tab.layout.split(p, dir, f);
             tab.focus = f;
+            let owner = tab.owner;
             self.screen.tab = i;
+            if owner != f {
+                self.cmd(Command::SetTabOf { term: f, owner: Some(owner) });
+            }
             return;
         }
         // A session with tabs: the one you were last on (unless you're already in one of them).

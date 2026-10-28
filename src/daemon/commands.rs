@@ -82,6 +82,12 @@ impl Daemon {
                     t.name = name;
                 }
             }
+            Command::SetTabOf { term, owner } => {
+                let owner = owner.filter(|o| *o != term && self.terms.contains_key(o));
+                if let Some(t) = self.terms.get_mut(&term) {
+                    t.tab_of = owner;
+                }
+            }
             Command::SelectTab { ws, tab } => {
                 let w = self.ws_mut(ws)?;
                 if w.tabs.iter().any(|t| t.id == tab) {
