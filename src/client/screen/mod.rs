@@ -67,6 +67,9 @@ pub(super) struct Saved {
     pub recent: Vec<String>,
     /// The side sheet's width per kind of view (`SheetKind::key`), as you sized it.
     pub sheet_w: HashMap<String, u16>,
+    /// Each session's tabs that are not its own, as (session, the tab's first pane) in tab
+    /// order (`tab_memory`): the daemon has no tabs, so this puts them back on start.
+    pub session_tabs: Vec<(TermId, TermId)>,
 }
 
 #[derive(Debug, Default)]
@@ -783,6 +786,7 @@ impl App {
                     name: prior.map_or_else(|| source.name.clone(), |tab| if tab.name.is_empty() { source.name.clone() } else { tab.name.clone() }),
                 }
             }).collect();
+            let restored = tab_memory::restore(restored, &self.screen.saved.session_tabs, |id| self.snap.terms.contains_key(&id));
             if !restored.is_empty() {
                 self.screen.tabs = restored;
                 self.screen.tab = self.screen.tabs.iter().position(|tab| tab.layout.contains(self.focused().unwrap_or(tab.focus))).unwrap_or(0);
@@ -859,6 +863,12 @@ impl App {
         }
         self.screen.tabs = tabs;
         self.screen.tab = self.screen.tab.min(self.screen.tabs.len().saturating_sub(1));
+        // Nothing to remember before the daemon's panes have arrived.
+        let remembered = tab_memory::remember(&self.screen.tabs);
+        if !self.snap.terms.is_empty() && remembered != self.screen.saved.session_tabs {
+            self.screen.saved.session_tabs = remembered;
+            self.screen.save();
+        }
         if self.screen.proj.as_ref().is_none_or(|k| !model.iter().any(|p| &p.key == k)) {
             self.screen.proj = focus.and_then(proj_of).or_else(|| model.first().map(|p| p.key.clone()));
         }
@@ -1102,6 +1112,7 @@ pub(super) fn k(app: &App, a: &Action) -> String {
 
 mod rail;
 mod behaviour;
+mod tab_memory;
 mod branch_sheet;
 mod references_sheet;
 mod card;
