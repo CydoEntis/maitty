@@ -605,6 +605,12 @@ impl App {
             self.mode = Mode::Prefix { since: Instant::now(), acted: false };
             return;
         }
+        // A key that needs no leader acts here as it does over a pane, on the sidebar's row
+        // where it has one (Alt+x closes the selected session), instead of being typed.
+        if let Some(a) = self.keymap.global.get(&spec).cloned() {
+            self.act(a);
+            return;
+        }
         let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
         if k.code == KeyCode::Enter && proj.is_none() && let Some(c) = self.screen.cursor && self.helpers_asked(c) {
             self.open_helpers(c, true);
@@ -664,7 +670,8 @@ impl App {
             },
             KeyCode::Esc => self.screen_side_leave(),
             _ if spec == self.keymap.prefix => self.mode = Mode::Prefix { since: Instant::now(), acted: false },
-            // Nothing else acts from the sidebar: an action is the leader and its key (ADR 0014).
+            // Nothing else acts from the sidebar: an action is the leader and its key, or a key
+            // with no leader (ADR 0014, ADR 0029).
             // Anything else is typing: leave the sidebar and hand the key over.
             _ => {
                 self.screen_side_leave();
