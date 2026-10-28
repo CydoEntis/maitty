@@ -97,6 +97,9 @@ pub(super) struct Screen {
     /// any other session clears it (`App::cmd`), so a session you start instead is never
     /// taken for the tab. A `RefCell` because `cmd` only borrows the app.
     pub new_tab: std::cell::RefCell<Option<PendingTab>>,
+    /// Where the toast is drawn this frame (empty: none). It sits over the panes, so a click
+    /// there is the toast's, never the program's under it.
+    pub toast_rect: Rect,
     /// A session picked from the sidebar, the go-to list or a sheet: it shows its own tab, not
     /// the one you were last on in it. Taken by the next focus change.
     pub show_own: Option<TermId>,

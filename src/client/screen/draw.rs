@@ -855,6 +855,7 @@ const TOAST_ABOVE_INPUT: u16 = 5;
 /// title with a ✕; row 2 the detail; an optional row 3 a preview in dim italics. It clears
 /// after `toast_hold` (errors a little longer), or with the ✕ / Esc.
 pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
+    app.screen.toast_rect = Rect::default();
     if let Some(flash) = app.copy_flash.as_ref().filter(|f| f.live())
         && let Some((_, pane)) = app.panes.iter().find(|(term, _)| *term == flash.term)
     {
@@ -907,6 +908,7 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     let x = fx + ((area.right().saturating_sub(fx)) as f32 * slide).round() as u16;
     let y = area.bottom().saturating_sub(h + TOAST_ABOVE_INPUT);
     let r = Rect { x, y, width: area.right().saturating_sub(x).min(w), height: h };
+    app.screen.toast_rect = r;
     let ink = |c: Color, bg: Color| if fade > 0.0 { blend(c, bg, fade) } else { c };
     // Floating: a `line` outline on the ground with round corners whatever `ui.rounded` says
     // (the box glyphs need no Nerd Font), its left side a heavy rule in the notice's colour.

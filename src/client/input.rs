@@ -525,8 +525,10 @@ impl App {
         }
         self.screen_fresh();
         // Ctrl+click opens a link; double-click copies a word (or a path, or a link).
+        let on_toast = self.screen.toast_rect.contains(pos);
         if m.kind == MouseEventKind::Down(MouseButton::Left)
             && !self.splash
+            && !on_toast
             && matches!(self.mode, Mode::Normal)
             && !self.screen.sheet_rect.contains(pos)
             && let Some((term, row, col)) = self.pane_cell(pos)
@@ -562,6 +564,7 @@ impl App {
         // the app (select text); right-click stays the app's menu.
         if self.screen.drag.is_none()
             && !self.splash
+            && !on_toast
             && matches!(self.mode, Mode::Normal)
             && !self.screen.sheet_rect.contains(pos)
             && !m.modifiers.contains(KeyModifiers::SHIFT)

@@ -3133,6 +3133,52 @@ mod screen_tests {
     }
 
     #[test]
+    fn clicking_the_note_about_a_session_takes_you_there() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.cfg.ui.motion = false;
+        app.mode = Mode::Side;
+        let term = app.snap.terms.keys().copied().find(|t| Some(*t) != app.focused()).expect("a session that is not on screen");
+        app.notify("codex finished".into(), false);
+        app.notice_term = Some(term);
+        draw(&mut app, 160, 45);
+        let r = app.hits.iter().rev().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::Session(term)) && r.width > 20 && r.height >= 3).then_some(*r)).expect("the toast's click area");
+        for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+            app.on_mouse(MouseEvent { kind, column: r.x + 6, row: r.y + 2, modifiers: KeyModifiers::NONE });
+        }
+        assert!(
+            std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: t }) if t == term)),
+            "the click on the note went to session {term}"
+        );
+    }
+
+    #[test]
+    fn a_click_on_a_note_over_a_program_that_wants_the_mouse_is_the_notes() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.cfg.ui.motion = false;
+        app.mode = Mode::Normal;
+        // The focused pane's program asks for the mouse, as Claude Code's full-screen view does.
+        let focused = app.focused().expect("a focused pane");
+        app.parsers.get_mut(&focused).expect("its screen").process(b"\x1b[?1000h\x1b[?1006h");
+        let term = app.snap.terms.keys().copied().find(|t| *t != focused).expect("a session that is not on screen");
+        app.notify("codex finished".into(), false);
+        app.notice_term = Some(term);
+        draw(&mut app, 160, 45);
+        let r = app.hits.iter().rev().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::Session(term)) && r.width > 20 && r.height >= 3).then_some(*r)).expect("the toast's click area");
+        let at = (r.x + 6, r.y + 2);
+        assert!(app.panes.iter().any(|(_, p)| p.contains(ratatui::layout::Position::new(at.0, at.1))), "the note sits over the pane's text");
+        for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+            app.on_mouse(MouseEvent { kind, column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
+        }
+        let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(sent.iter().any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: t }) if *t == term)), "the click went to session {term}: {sent:?}");
+        assert!(!sent.iter().any(|m| matches!(m, ClientMsg::Input { .. })), "and none of it reached the program: {sent:?}");
+    }
+
+    #[test]
     fn a_note_about_a_session_is_a_way_there() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let term = *app.snap.terms.keys().next().unwrap();
@@ -8425,6 +8471,25 @@ mod restart_tests {
                 click(&mut app, r);
                 assert!(matches!(&app.mode, Mode::Confirm(c) if is_restart(&c.act)), "{layout:?} {w}x{h}");
             }
+        }
+    }
+
+    #[test]
+    fn the_restart_button_works_over_a_program_that_wants_the_mouse() {
+        for layout in LAYOUTS {
+            let (mut app, _rx) = scene(160, 45, layout);
+            let focused = app.focused().expect("a focused pane");
+            app.parsers.get_mut(&focused).expect("its screen").process(b"\x1b[?1000h\x1b[?1006h");
+            app.update_installed(INSTALLED.into());
+            app.notify("installed".into(), false);
+            app.notice_restart = true;
+            draw(&mut app, 160, 45);
+            let r = restart_hit(&app, 45).unwrap_or_else(|| panic!("{layout:?}: the toast button"));
+            assert!(app.panes.iter().any(|(_, p)| p.contains(ratatui::layout::Position::new(r.x + r.width / 2, r.y))), "{layout:?}: the button sits over the pane's text");
+            for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
+                app.on_mouse(MouseEvent { kind, column: r.x + r.width / 2, row: r.y, modifiers: KeyModifiers::NONE });
+            }
+            assert!(matches!(&app.mode, Mode::Confirm(c) if is_restart(&c.act)), "{layout:?}: the click asked to restart: {:?}", app.mode);
         }
     }
 
