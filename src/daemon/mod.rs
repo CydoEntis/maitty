@@ -97,9 +97,8 @@ pub enum Ev {
     CodexUsage { facts: Vec<usage::CodexPaneFacts>, limits: Option<Vec<Limit>> },
     /// A worktree made for an agent started from a shell (`Command::AgentWorktree`).
     AgentWorktreeMade { client: ClientId, result: Result<PathBuf, String> },
-    /// A worktree removed after you closed its last pane (`Ok`: whether its merged branch went
-    /// too), or kept with the reason (`Err`).
-    WorktreeAutoRemoved { client: ClientId, path: PathBuf, result: Result<bool, String> },
+    /// What became of a worktree after you closed its last pane.
+    WorktreeAutoRemoved { client: ClientId, path: PathBuf, result: Removal },
     /// App-made worktrees whose folder is already gone.
     WorktreesVanished { gone: Vec<PathBuf> },
     /// A clean-up you asked for is done: what went (and whether its merged branch went
@@ -1023,13 +1022,16 @@ impl Daemon {
                 self.pending_ops -= 1;
                 let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                 let msg = match &result {
-                    Ok(true) => format!("removed worktree {name} and its merged branch"),
-                    Ok(false) => format!("removed worktree {name} (its branch is kept)"),
-                    Err(why) => format!("kept worktree {name}: {why}"),
+                    Removal::Removed { with_branch: true } => format!("removed worktree {name} and its merged branch"),
+                    Removal::Removed { with_branch: false } => format!("removed worktree {name} (its branch is kept)"),
+                    Removal::Kept(why) | Removal::Unmerged(why) => format!("kept worktree {name}: {why}"),
                 };
                 // The daemon log is the only record of why a folder went, or stayed.
                 tracing::info!("{msg} ({}) after its last pane was closed", path.display());
-                self.send(client, ServerMsg::Notice(msg));
+                match result {
+                    Removal::Unmerged(why) => self.send(client, ServerMsg::AskRemoveWorktree { path, name, why }),
+                    Removal::Removed { .. } | Removal::Kept(_) => self.send(client, ServerMsg::Notice(msg)),
+                }
                 self.dirty = true;
             }
             Ev::WorktreesVanished { gone } => {

@@ -297,7 +297,8 @@ impl Daemon {
 
     /// After you close a pane or workspace: remove the worktrees the app made that nothing
     /// runs in any more, but only those that hold nothing of their own (clean, and every
-    /// commit also on another branch). Any other stays, with the reason.
+    /// commit also on another branch). One with commits found nowhere else is offered to you;
+    /// one with uncommitted changes stays.
     pub(super) fn cleanup_worktrees(&mut self, client: ClientId, tops: Vec<PathBuf>) {
         if !self.cfg.worktree.delete_with_last {
             return;
@@ -319,15 +320,28 @@ impl Daemon {
                     // Give the closed programs a moment to let go of the folder (Windows locks it).
                     std::thread::sleep(Duration::from_millis(800));
                     let branch = git::branch_of(&top);
-                    git::remove_worktree(&top, false, false).map_err(|e| format!("{e:#}")).map(|()| {
+                    match git::remove_worktree(&top, false, false) {
                         // A branch already merged has nothing left in it: it goes too.
-                        repo.zip(branch).is_some_and(|(repo, b)| git::delete_if_merged(&repo, &b))
-                    })
+                        Ok(()) => Removal::Removed { with_branch: repo.zip(branch).is_some_and(|(repo, b)| git::delete_if_merged(&repo, &b)) },
+                        Err(e) => Removal::Kept(format!("{e:#}")),
+                    }
+                } else if standing.dirty > 0 {
+                    Removal::Kept(format!("{}; remove it from the clean-up list when you're done", standing.says()))
                 } else {
-                    Err(format!("{}; remove it from the clean-up list when you're done", standing.says()))
+                    Removal::Unmerged(standing.says())
                 };
                 let _ = tx.blocking_send(Ev::WorktreeAutoRemoved { client, path: top, result });
             });
         }
     }
+}
+
+/// What became of a worktree after you closed its last pane.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Removal {
+    Removed { with_branch: bool },
+    /// Left alone, with the reason.
+    Kept(String),
+    /// Clean but holding commits found nowhere else: you are asked.
+    Unmerged(String),
 }

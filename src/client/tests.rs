@@ -3780,6 +3780,42 @@ second line
     }
 
     #[test]
+    fn a_closed_worktree_with_work_only_there_asks_and_enter_keeps_it() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.out = tx;
+        let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
+        let ask = |app: &mut App| {
+            app.mode = Mode::Normal;
+            app.on_server(ServerMsg::AskRemoveWorktree { path: PathBuf::from("/wt/task"), name: "task".into(), why: "not merged anywhere".into() });
+        };
+        let removals = |rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::protocol::ClientMsg>| {
+            std::iter::from_fn(|| rx.try_recv().ok())
+                .filter_map(|m| match m {
+                    crate::protocol::ClientMsg::Command(crate::protocol::Command::TidyWorktrees { items }) => Some(items),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        ask(&mut app);
+        assert!(matches!(&app.mode, Mode::Confirm(c) if c.what == "task" && c.note.contains("not merged anywhere") && c.danger), "it asks, and says why");
+        let o = draw(&mut app, 100, 30);
+        assert!(o.contains("Keep worktree?") && o.contains("Remove folder"), "{o}");
+        app.on_key(key(KeyCode::Enter));
+        assert!(matches!(app.mode, Mode::Normal) && removals(&mut rx).is_empty(), "Enter keeps the folder and sends nothing");
+        ask(&mut app);
+        app.on_key(key(KeyCode::Esc));
+        assert!(removals(&mut rx).is_empty(), "Esc keeps it too");
+        ask(&mut app);
+        app.on_key(key(KeyCode::Char('r')));
+        assert_eq!(removals(&mut rx), [vec![(PathBuf::from("/wt/task"), false)]], "only the button's key removes it, and never forces");
+        // Another dialog is open: the question waits as a notice, nothing is replaced.
+        app.mode = Mode::Prompt { kind: PromptKind::NewWorkspace, input: String::new() };
+        app.on_server(ServerMsg::AskRemoveWorktree { path: PathBuf::from("/wt/task"), name: "task".into(), why: "not merged anywhere".into() });
+        assert!(matches!(app.mode, Mode::Prompt { .. }), "the open dialog stays");
+    }
+
+    #[test]
     fn you_can_ask_for_an_update_check_and_are_told_what_it_found() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let said = |app: &App| app.notice.as_ref().map(|(m, _, err)| (m.clone(), *err)).unwrap();

@@ -1,5 +1,6 @@
 //! The daemon's own logic, driven through a real daemon with real panes (plain shells).
 
+use super::worktrees::Removal;
 use super::*;
 use std::time::Duration;
 
@@ -509,7 +510,7 @@ fn a_clean_up_only_takes_worktrees_nothing_runs_in() {
 }
 
 /// Handle daemon events until a worktree's automatic removal reports, and return how it went.
-fn auto_removal(d: &mut Daemon, rx: &mut mpsc::Receiver<Ev>) -> Result<bool, String> {
+fn auto_removal(d: &mut Daemon, rx: &mut mpsc::Receiver<Ev>) -> Removal {
     let until = Instant::now() + Duration::from_secs(60);
     while Instant::now() < until {
         match rx.try_recv() {
@@ -560,13 +561,24 @@ fn closing_a_worktrees_last_pane_removes_it_only_when_nothing_lives_only_there()
 
     let t = last_pane(&d, &mine);
     d.command(0, Command::ClosePane { term: t }).unwrap();
-    let kept = auto_removal(&mut d, &mut rx).expect_err("a commit only there stays");
-    assert!(mine.is_dir() && kept.contains("not merged anywhere"), "kept with the reason, got: {kept}");
+    let asked = auto_removal(&mut d, &mut rx);
+    assert!(matches!(&asked, Removal::Unmerged(why) if why.contains("not merged anywhere")), "a commit only there is offered, got: {asked:?}");
+    assert!(mine.is_dir(), "and its folder stands until you say");
+
+    let dirty = root.join("dirty");
+    crate::proc::git(&root.join("repo"), &["worktree", "add", "-q", "-b", "dirty", dirty.to_str().unwrap()]).unwrap();
+    std::fs::write(dirty.join("wip.ts"), "w").unwrap();
+    d.command(0, Command::NewWorkspace { cwd: Some(dirty.clone()), name: None, cmd: None }).unwrap();
+    d.made_worktrees.push(dirty.clone());
+    let t = last_pane(&d, &dirty);
+    d.command(0, Command::ClosePane { term: t }).unwrap();
+    let kept = auto_removal(&mut d, &mut rx);
+    assert!(matches!(&kept, Removal::Kept(why) if why.contains("uncommitted")) && dirty.is_dir(), "uncommitted work stays, got: {kept:?}");
 
     let t = last_pane(&d, &merged);
     d.command(0, Command::ClosePane { term: t }).unwrap();
-    auto_removal(&mut d, &mut rx).expect("a merged, clean one goes");
-    assert!(!merged.is_dir(), "its folder is gone");
+    let gone = auto_removal(&mut d, &mut rx);
+    assert!(matches!(gone, Removal::Removed { .. }) && !merged.is_dir(), "a merged, clean one goes, got: {gone:?}");
     let _ = std::fs::remove_dir_all(&root);
 }
 

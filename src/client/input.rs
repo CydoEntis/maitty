@@ -300,6 +300,11 @@ impl App {
             Mode::Confirm(c) if matches!(c.act, crate::client::menu::Act::OverrideCheck(..)) => self.on_override_key(*c, &k),
             Mode::Approve(a) => self.on_approve_key(*a, &k),
             Mode::ProjectCheck(d) => self.on_project_check_key(*d, &k),
+            // Enter keeps the folder: a stray Enter right after closing must not remove it.
+            Mode::Confirm(c) if k.code == KeyCode::Enter && matches!(c.act, crate::client::menu::Act::RemoveKept(_)) => {
+                self.mode = Mode::Normal;
+                self.confirm_done(None);
+            }
             Mode::Confirm(c) => match k.code {
                 KeyCode::Enter | KeyCode::Char('y') => {
                     self.mode = Mode::Normal;

@@ -127,6 +127,7 @@ impl App {
                 self.undo_hint = false;
                 self.notify(n, false)
             }
+            ServerMsg::AskRemoveWorktree { path, name, why } => self.ask_remove_worktree(path, name, why),
             ServerMsg::AutoWorkspace(n) => {
                 self.notify(n, false);
                 self.undo_hint = true;

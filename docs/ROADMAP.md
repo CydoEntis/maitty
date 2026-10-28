@@ -641,7 +641,7 @@ Everything below is shipped on `main` unless marked.
 
 **Code and git**
 - Worktrees per agent, create / move / remove with hooks — shipped — `src/daemon/git.rs`, `src/project.rs`
-- Worktree clean-up: closing the last pane of a worktree Maitty made removes it only when it is clean and everything in it is merged (otherwise it stays and says why; every removal or keep is in `daemon.log`), and a list per repo says why each is still around and removes the ones you tick — shipped — `src/tidy.rs`, `src/daemon/worktrees.rs`, `src/client/screen/tidy.rs`
+- Worktree clean-up: closing the last pane of a worktree Maitty made removes it only when it is clean and everything in it is merged (clean with commits found nowhere else: it asks, and Enter keeps the folder; uncommitted changes: it stays and says why; every removal or keep is in `daemon.log`), and a list per repo says why each is still around and removes the ones you tick — shipped — `src/tidy.rs`, `src/daemon/worktrees.rs`, `src/client/screen/tidy.rs`
 - Files (tree, preview, in-place edit, external editor), find file, search code — shipped — `src/client/files.rs`, `src/client/find.rs`, `src/client/views.rs`
 - Changes (diff, review marks, commit, open a PR, git init offer), branch switcher — shipped — `src/client/branch.rs`, `src/client/views.rs`
 - Worktree hooks (`.maitty.toml` `on_create` / `on_remove`, run once allowed; `on_create` finishes before anything starts in the worktree) — shipped — `src/project.rs`, `Ev::WorktreeCreated` in `src/daemon/mod.rs`

@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 47;
+pub const PROTOCOL_VERSION: u32 = 48;
 
 pub type TermId = u32;
 pub type WsId = u32;
@@ -304,6 +304,9 @@ pub enum ServerMsg {
     Error(String),
     /// Informational message for the status bar.
     Notice(String),
+    /// You closed the last pane of a worktree that holds commits found nowhere else: ask
+    /// whether its folder goes too (its branch stays either way).
+    AskRemoveWorktree { path: PathBuf, name: String, why: String },
     /// A program in a pane copied text (OSC 52): put it on the user's clipboard.
     Clipboard { term: TermId, text: String },
     /// An agent started in a new repo, which became a workspace (undoable).
@@ -845,6 +848,7 @@ mod tests {
             ServerMsg::Reply(Reply::Text("screen".into())),
             ServerMsg::Error("nope".into()),
             ServerMsg::Notice("saved".into()),
+            ServerMsg::AskRemoveWorktree { path: PathBuf::from("/w/task"), name: "task".into(), why: "not merged anywhere".into() },
             ServerMsg::Clipboard { term: 3, text: "copied".into() },
             ServerMsg::AutoWorkspace("api".into()),
             ServerMsg::Raise,

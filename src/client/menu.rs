@@ -49,6 +49,9 @@ pub enum Act {
     TidyOpen(usize),
     /// Remove these worktrees (each: its folder, and whether to lose uncommitted changes).
     Tidy(Vec<(PathBuf, bool)>),
+    /// Remove the folder of a worktree you just closed, which holds commits found nowhere
+    /// else; its branch stays.
+    RemoveKept(PathBuf),
     /// Install the newest the app without interrupting the running sessions.
     Update,
     /// Stop the daemon so the window reconnects to the installed version.
@@ -337,6 +340,27 @@ impl App {
         }
     }
 
+    /// The server kept a worktree you closed because it holds commits found nowhere else:
+    /// ask whether its folder goes. Enter keeps it; only the button's key removes it.
+    pub(super) fn ask_remove_worktree(&mut self, path: PathBuf, name: String, why: String) {
+        if !matches!(self.mode, Mode::Normal) {
+            self.notify(format!("kept worktree {name}: {why}"), false);
+            return;
+        }
+        self.mode = Mode::Confirm(Box::new(Confirm {
+            title: "Keep worktree?".into(),
+            sub: String::new(),
+            what: name,
+            detail: path.display().to_string(),
+            note: format!("It's {why}. Its folder stays unless you remove it; its branch stays either way."),
+            list: Vec::new(),
+            yes: "Remove folder".into(),
+            key: 'r',
+            danger: true,
+            act: Act::RemoveKept(path),
+        }));
+    }
+
     /// What a menu item does; closing things asks first, a plain shell too.
     pub(super) fn menu_act(&mut self, a: Act) {
         let model = self.screen_model();
@@ -529,6 +553,10 @@ impl App {
             Act::Tidy(items) => {
                 self.notify("Cleaning up worktrees…".into(), false);
                 self.cmd(Command::TidyWorktrees { items });
+            }
+            Act::RemoveKept(path) => {
+                self.notify("Removing the worktree's folder…".into(), false);
+                self.cmd(Command::TidyWorktrees { items: vec![(path, false)] });
             }
             Act::RightClicks(t) => {
                 if !self.screen.right_clicks.remove(&t) {
