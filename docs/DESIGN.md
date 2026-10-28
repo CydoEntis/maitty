@@ -59,7 +59,7 @@ both have the same sessions, tabs, splits and sheets.
 - **Hairline**: no boxes at all, only `│` / `─` hairlines; always square
   (see *Hairline* below).
 
-`ui.padding` leaves 0, 1 or 2 empty cells round the screen. See UI › *layout and navigation*
+`ui.padding` leaves 0 (the default), 1 or 2 empty cells round the screen. See UI › *layout and navigation*
 and *the frame*.
 
 ## Chips, rounding and padding
@@ -91,12 +91,15 @@ sidebar*.
 The session's tabs have a row of their own over the panes in both looks
 ([ADR 0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md)): in Floating the tab chips right over the boxes, each led by its state's glyph (on screen or
 not) and ended by its ✕, the current one in the accent, then a **+** chip for a new tab. A tab
-is named the same everywhere: its own name, else its focused session's. The title sits on the
-pane's top border and names its own pane: a tab's only pane reads `project · ⎇ branch`, its tab
-naming and closing it. While a tab is split, every pane's number (its place in
-reading order, from 1, so it changes when panes move, close or split) leads its name: `2 · claude`. On the right: the session's status mark (it
-opens why) and a ✕; closing always asks first (ADR 0029), naming the pane (`Close pane 2 · claude`) and lighting
-its lines in the red until you answer. Unfocused panes fade;
+is named the same everywhere: its own name, else its focused session's. Panes are titled as an
+editor's are ([ADR 0030](adr/0030-panes-titled-like-an-editor.md)): a tab's only pane has no
+title (a plain top border), its tab naming it, showing its state (the glyph opens why) and
+closing it. While a tab is split, each pane's title is one chip on its top border: its number
+(its place in reading order, from 1, so it changes when panes move, close or split), its
+state's glyph and its name, `2 ● claude`, and at most a load note at the right; no state word,
+no ✕. Every tab has a ✕; a pane closes with Alt+x, leader `x` or its menu. Closing always
+asks first (ADR 0029), naming the pane (`Close pane 2 · claude`) and lighting its lines in the
+red until you answer. Unfocused panes fade;
 the focused border is the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane
 focus*.
 
@@ -126,10 +129,11 @@ of keycaps. See UI › *UI conventions*, *check modals and settings* and *why po
 
 ## Toasts
 
-One component for every notice: bottom right, above the agent's input area, boxed as a pane is
-in its look, its left side inside the box a heavy `┃` in the notice's colour (`err`, `blocked`
-for needs you, `done`, else the accent), a bold title, a detail line and an optional preview in
-italics. It slides in and fades
+One component for every notice: bottom right, above the agent's input area, its left side a
+heavy `┃` in the notice's colour (`err`, `blocked` for needs you, `done`, else the accent), a
+bold title, a detail line and an optional preview in italics. Floating draws it as a `line`
+outline on the ground, always with round corners; Hairline as a solid `card2` block with no
+outline, the `┃` its left edge (ADR 0030). It slides in and fades
 out with motion on. See UI › *the frame* (Toast).
 
 ## Mode bar
@@ -157,7 +161,8 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
   the glyph, the name and its age at the right, or `needs you` in amber (a split whose own
   pane is fine but whose pane beside it asks names that pane instead: `▸ warm-finch`). A
   helper steps in under the session that started it, and a request to start helpers keeps its
-  amber line under the row, and a session's tabs, when it has several, each a line under it
+  amber line under the row, and a session's other tabs, when it has several, each a line under it
+  (not the tab its own pane is in: the row is that one)
   (as in Floating; the one on screen teal). The focused row is
   `raised` with a teal `▎` and a teal name; a row on screen without the keys is `raised`; one
   that needs you has an amber `▎` and an amber name. The foot, pinned to the bottom row, is
@@ -165,14 +170,14 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
 - **Tabs:** a row of their own across the top of the pane column, then a `─` rule in `line`
   (`├` where the sidebar's `│` meets it). Each tab is plain words: its most urgent agent's mark
   (so a tab out of view still shows it works or asks), its number while the session has
-  several, its name and a dim ✕ (it closes the tab, or a lone tab's only pane; a lone tab that
-  is split has none); the current one teal bold, the others dim. A dim `+` after them opens
+  several, its name and a dim ✕ (it closes the tab, or a lone tab's only pane, asking first);
+  the current one teal bold, the others dim. A dim `+` after them opens
   a tab, there even with one tab. A `│` in `line` closes each tab and the `+`, meeting the rule
   in a `┴`.
-- **Panes:** row 1 is the pane's number while the tab is split (bold: teal focused, amber when
-  it needs you, else dim), the glyph, the name in `strong` bold, then `project · ⎇ branch` dim;
-  at the right the ✕. The state shows as the glyph alone, no words. A tab's only pane leaves its
-  glyph, name and ✕ to the tab, so its title is just `project · ⎇ branch`. Row 2 is a `─` rule the pane's width: teal focused (`sky()` in shortcut mode), amber
+- **Panes:** in a split, row 1 is the pane's number (bold: teal focused, amber when it needs
+  you, else dim), the glyph, the name in `strong` bold, then `project · ⎇ branch` dim; at the
+  right at most a load note, no ✕. The state shows as the glyph alone, no words. A tab's only
+  pane has no title row or rule: the terminal starts under the tab row (ADR 0030). Row 2 is a `─` rule the pane's width: teal focused (`sky()` in shortcut mode), amber
   when it needs you and is not focused, else `line`. Panes side by side or stacked are parted
   by one `│` or `─`, never boxed; the terminal sits two columns in.
 - **Mode bar:** under a full-width `─` rule in `line` (`┴` where the sidebar's `│` meets it).
@@ -185,7 +190,7 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
   popover (why, a row's `⋯`, the message and helpers asks) is framed the same, with the `◂`
   in the accent. The side sheet is a zone like a pane: its tabs (or title) on the first row,
   a `─` rule under it lit teal under the open tab while it has the keys, and a `│` to its left.
-  The toast is a square line box on the ground, its left side the notice's colour. No chip is filled: a key and what it
+  The toast is a solid `card2` block, no frame, its left edge a heavy `┃` in the notice's colour. No chip is filled: a key and what it
   does are words (the key `strong` bold), the chosen option or primary button is the accent's
   words, a danger button the red's. A selected row is `raised` with an accent marker. The
   collapsed sidebar's chips and the splash's keys are words too; the splash's wordmark stays.

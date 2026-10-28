@@ -641,10 +641,10 @@ mod screen_tests {
         // The grid: no margin, the sidebar card the full height from the corner, the tabs on
         // row 0 beside it (ADR 0028), the pane card right under them.
         assert!(lines[0].starts_with("┌─"), "the sidebar card from the very corner: {}", lines[0]);
-        assert!(lines[1].contains("● needs you") && text.contains("claude"), "the active pane keeps its session and state: {}", lines[1]);
+        assert!(lines[0].contains("● claude"), "the tab keeps its session and state: {}", lines[0]);
         assert!(text.contains("+ New") && text.contains("Menu"), "New and Actions stay in the sidebar foot");
         assert!(lines[0].contains(" claude ✕") && lines[0].trim_end().ends_with("  +") && !lines[0].contains('▯'), "the tab's name on the tab row (a lone tab has no number), then the + chip; no layout switch: {}", lines[0]);
-        assert!(lines[1].contains("─ shop-api · ⎇ main "), "a lone pane's title says where it is, its tab naming it: {}", lines[1]);
+        assert!(!lines[1].contains("claude") && !lines[1].contains("needs you") && !lines[1].contains('✕'), "a lone pane has no title: its tab names it: {}", lines[1]);
         // Projects and their sessions, nothing in between.
         assert!(text.contains("−  shop-api") && text.contains("SESSIONS") && text.contains("●1"), "a project: its fold arrow and name; what needs you in the sidebar's title");
         assert!(!text.contains("AGENTS") && !text.contains("TERMINALS") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "no heading per kind of session");
@@ -781,7 +781,7 @@ mod screen_tests {
         p.process(b"* Waiting for 1 dynamic workflow to finish");
         app.parsers.insert(1, p);
         let o = draw(&mut app, 160, 45);
-        assert!(o.contains("needs you") && !o.contains("● answer") && !o.contains(" Yes 1 "), "no buttons that would only type a digit");
+        assert!(!o.contains("● answer") && !o.contains(" Yes 1 "), "no buttons that would only type a digit");
     }
 
     #[test]
@@ -798,7 +798,7 @@ mod screen_tests {
         assert!(o.contains("Run npm test -- checkout?") && o.contains("Reply m") && o.contains("Open o"), "the question and what to do about it");
         assert!(o.contains("↑↓") && o.contains("select") && o.contains("Esc") && o.contains("close"), "the sheet's keys");
         // It's docked beside the panes, not over them: the session's card is still there.
-        assert!(o.contains("─ shop-api · ⎇ main "), "the panes reflow beside it");
+        assert!(o.contains("fix the flaky checkout test"), "the panes reflow beside it");
         // 2 answers the selected question without going there.
         app.on_key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE));
         assert!(matches!(app.mode, Mode::GoTo { .. }), "still in the Inbox");
@@ -1348,7 +1348,8 @@ mod screen_tests {
                     for r in blocked {
                         let row: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
                         // A modal (Settings, held open) can lie over the title: nothing to read there.
-                        if !row.starts_with(['┌', '╭']) {
+                        // A lone pane has no title: its tab shows the state.
+                        if !split || !row.starts_with(['┌', '╭']) {
                             continue;
                         }
                         if !row.contains('▲') && !row.contains('●') {
@@ -1454,8 +1455,9 @@ mod screen_tests {
             let line = |n: &str| rows.iter().position(|r| r.contains(&format!("{n} "))).unwrap_or_else(|| panic!("{layout}: tab line {n}
 {}", rows.join("
 ")));
-            let (one, two, three) = (line("├ 1"), line("├ 2"), line("└ 3"));
-            assert_eq!((two, three), (one + 1, one + 2), "{layout}: one line per tab, in order");
+            let (two, three) = (line("├ 2"), line("└ 3"));
+            assert_eq!(three, two + 1, "{layout}: one line per tab, in order");
+            assert!(!rows.iter().any(|r| r.contains("├ 1 ") || r.contains("└ 1 ")), "{layout}: no line for the tab the session's own pane is in: its row is that one");
             let spinner = crate::client::design::glyph(&app, Status::Working);
             assert!(rows[two].contains(&spinner), "{layout}: the working tab says so though it is not on screen: {}", rows[two]);
             assert!(rows[three].contains("needs you"), "{layout}: so does the one that needs you: {}", rows[three]);
@@ -1554,7 +1556,7 @@ mod screen_tests {
     #[test]
     fn the_sidebar_shows_all_busy_or_no_tab_lines_as_set() {
         for layout in ["floating", "hairline"] {
-            for (setting, want) in [("all", vec!["├ 1", "├ 2", "└ 3"]), ("busy", vec!["├ 2", "└ 3"]), ("off", vec![])] {
+            for (setting, want) in [("all", vec!["├ 2", "└ 3"]), ("busy", vec!["├ 2", "└ 3"]), ("off", vec![])] {
                 let (mut app, _) = tabbed_session(layout);
                 // The working tab on screen; the idle one is busy only while it is.
                 app.screen.tab = 1;
@@ -3092,7 +3094,8 @@ mod screen_tests {
         // Its title bar still says what it is.
         let o = draw(&mut app, 200, 50);
         let name = app.snap.terms[&b].agent.clone().unwrap_or_else(|| "shell".into());
-        let bar = o.lines().find(|l| l.contains('✕') && l.matches('✕').count() == 2).unwrap_or_default();
+        show(&o);
+        let bar = o.lines().find(|l| l.contains("┌─ 1 ") && l.contains("┌─ 2 ")).unwrap_or_default();
         assert!(bar.matches(name.as_str()).count() >= 1, "the split pane's title names it ({name}): {bar}");
         // b needs you: a's row says so.
         app.snap.terms.get_mut(&b).unwrap().status = Status::Blocked;
@@ -3158,9 +3161,9 @@ mod screen_tests {
         assert!(row_text(&buf, top + 2).contains("214 characters · 5 lines from swift-lynx"));
         let x = (0..160u16).find(|&x| buf[(x, top + 1)].symbol() == "┃").expect("the side");
         for y in top + 1..top + h - 1 {
-            assert_eq!((buf[(x, y)].symbol(), buf[(x, y)].fg, buf[(x, y)].bg), ("┃", t.accent, t.card), "the side runs between the box's top and bottom");
+            assert_eq!((buf[(x, y)].symbol(), buf[(x, y)].fg, buf[(x, y)].bg), ("┃", t.accent, t.bg), "the side runs between the box's top and bottom");
         }
-        assert_eq!(buf[(x + 1, top + 2)].bg, t.card);
+        assert_eq!(buf[(x + 1, top + 2)].bg, t.bg, "Floating: an outline on the ground, no filled block");
         let title = (x..160).find(|&c| buf[(c, top + 1)].symbol() == "C").unwrap();
         assert_eq!((buf[(title, top + 1)].fg, buf[(title, top + 1)].modifier.contains(ratatui::style::Modifier::BOLD)), (t.strong, true));
         let detail = (x..160).find(|&c| buf[(c, top + 2)].symbol() == "2").unwrap();
@@ -3168,7 +3171,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_toast_s_corners_follow_the_rounding_setting_as_a_pane_s_do() {
+    fn a_floating_toast_is_round_whatever_the_rounding_setting() {
         use crate::config::Rounding;
         for rounded in [Rounding::Off, Rounding::Corners, Rounding::Full] {
             let (_, mut app) = super::design_tests::render_with(160, 45);
@@ -3179,7 +3182,7 @@ mod screen_tests {
             let (top, bottom) = (45 - 4 - 5 - BAR, 45 - 5 - 1 - BAR);
             let side = (0..160u16).find(|&x| buf[(x, top + 1)].symbol() == "┃").expect("the side");
             let right = (side + 1..160u16).find(|&x| buf[(x, top + 1)].symbol() == "│").expect("the right side");
-            let want = if rounded == Rounding::Off { ["┌", "┐", "└", "┘"] } else { ["╭", "╮", "╰", "╯"] };
+            let want = ["╭", "╮", "╰", "╯"];
             let got = [(side, top), (right, top), (side, bottom), (right, bottom)].map(|p| buf[p].symbol().to_string());
             assert_eq!(got, want.map(String::from), "{rounded:?}");
             assert_eq!(buf[(side, top)].fg, t.line, "{rounded:?}: the box in `line`");
@@ -3197,8 +3200,9 @@ mod screen_tests {
         assert!(row_text(&buf, top + 3).contains("\"cargo test\""), "{}", row_text(&buf, top + 3));
         let q = (0..160u16).find(|&x| buf[(x, top + 3)].symbol() == "\"").unwrap();
         assert_eq!((buf[(q, top + 3)].fg, buf[(q, top + 3)].modifier.contains(ratatui::style::Modifier::ITALIC)), (t.muted, true));
-        assert_eq!(buf[(160 - 3, top + 4)].bg, t.card, "the card ends right under the preview");
-        assert_ne!(buf[(160 - 3, top + 5)].bg, t.card, "and no further");
+        let side = (0..160u16).find(|&x| buf[(x, top + 1)].symbol() == "┃").expect("the side");
+        assert_eq!(buf[(side, top + 4)].symbol(), "╰", "the box ends right under the preview");
+        assert_ne!(buf[(side, top + 5)].symbol(), "╰", "and no further");
     }
 
     #[test]
@@ -3419,8 +3423,8 @@ second line
         (app.snap.terms.get_mut(&on).unwrap().cpu, app.snap.terms.get_mut(&on).unwrap().mem) = (62.0, gb(5));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        let title = o.lines().find(|l| l.contains("▲ 62% CPU · 5.0 GB")).expect("said in the pane's title");
-        assert!(title.contains('●'), "on the title border, beside the state: {title}");
+        let title = o.lines().find(|l| l.contains("▲ 62% CPU · 5.0 GB")).expect("said on the pane's top border");
+        assert!(title.contains('┐'), "on the top border, at its right: {title}");
         let model = app.screen_model();
         assert!(!screen::side_lines(&app, &model, &app.theme).iter().any(|l| matches!(l, screen::Line::Note(text, ..) if text.starts_with("▲"))), "and no longer under its sidebar row");
         assert!(!o.contains("subagents"), "no subagent heading to fold");
@@ -3842,16 +3846,16 @@ second line
         };
         let t = app.theme.clone();
         app.notify("Copied".into(), false);
-        assert_eq!(toast(&mut app, "Copied"), (t.card, t.strong, "✓".to_string(), t.accent), "a plain note: the accent");
+        assert_eq!(toast(&mut app, "Copied"), (t.bg, t.strong, "✓".to_string(), t.accent), "a plain note: the accent");
         app.notify("Couldn't save".into(), true);
-        assert_eq!(toast(&mut app, "Couldn't"), (t.card, t.strong, "✕".to_string(), t.err), "an error");
+        assert_eq!(toast(&mut app, "Couldn't"), (t.bg, t.strong, "✕".to_string(), t.err), "an error");
         // claude (1) is on a prompt; codex (2) isn't.
         app.notify("pane-one needs you".into(), false);
         app.notice_term = Some(1);
-        assert_eq!(toast(&mut app, "pane-one"), (t.card, t.strong, "●".to_string(), t.blocked), "needs you: its state's colour");
+        assert_eq!(toast(&mut app, "pane-one"), (t.bg, t.strong, "●".to_string(), t.blocked), "needs you: its state's colour");
         app.notify("pane-two finished".into(), false);
         app.notice_term = Some(2);
-        assert_eq!(toast(&mut app, "pane-two"), (t.card, t.strong, "✓".to_string(), t.done), "finished");
+        assert_eq!(toast(&mut app, "pane-two"), (t.bg, t.strong, "✓".to_string(), t.done), "finished");
     }
 
     #[test]
@@ -3961,7 +3965,7 @@ second line
         app.open_changes(repo.clone());
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains(" Changes c ") && o.contains("─ shop-api · ⎇ main "), "Changes docks beside the panes");
+        assert!(o.contains(" Changes c ") && o.contains("fix the flaky checkout test"), "Changes docks beside the panes");
         assert!(!o.contains("─ Changes "), "its lit tab names it; the title doesn't repeat it");
         let _ = std::fs::remove_dir_all(&repo);
     }
@@ -5446,9 +5450,9 @@ second line
     }
 
     #[test]
-    fn the_top_right_title_reaches_the_corner_and_holds_still_in_every_mode() {
+    fn the_top_right_pane_top_holds_still_in_every_mode() {
         for layout in LOOKS {
-            let mut closes = Vec::new();
+            let mut closes: Vec<String> = Vec::new();
             for mode in ["lit", "held", "typing"] {
                 let (_, mut app) = super::design_tests::render_with(160, 45);
                 app.cfg.ui.layout = layout.into();
@@ -5458,12 +5462,11 @@ second line
                 let top = app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap_or(0);
                 let pane = app.pane_frames.iter().map(|(_, r)| *r).filter(|r| r.y == top).max_by_key(|r| r.right()).expect("the top-right pane");
                 let row: String = (pane.x..pane.right()).map(|x| buf[(x, pane.y)].symbol()).collect();
-                // A lone pane's ✕ is on its tab: its mark ends the title, at the corner.
-                let close = (pane.x..pane.right()).rev().find(|&x| buf[(x, pane.y)].symbol() == "●").unwrap_or_else(|| panic!("{layout} {mode}: the mark: {row}"));
-                assert!(close + 14 >= pane.right(), "{layout} {mode}: the mark at the corner: {row}");
-                closes.push(close);
+                // A lone pane's name, state and ✕ are on its tab: its top says nothing.
+                assert!(!row.contains('✕') && !row.contains("needs you") && !row.contains("claude"), "{layout} {mode}: {row}");
+                closes.push(row);
             }
-            assert!(closes.windows(2).all(|p| p[0] == p[1]), "{layout}: the ✕ holds still: {closes:?}");
+            assert!(closes.windows(2).all(|p| p[0] == p[1]), "{layout}: the pane's top holds still: {closes:?}");
         }
     }
 
@@ -5503,8 +5506,8 @@ second line
                     assert!(title.contains("SESSIONS") && title.contains("●1"), "{at}: the sidebar's title and count: {row}");
                     let top = app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap_or(0);
                     let pane = app.pane_frames.iter().map(|(_, r)| *r).find(|r| r.y == top).expect("a pane along the top");
-                    let words: String = (pane.x..pane.right()).map(|x| buf[(x, pane.y)].symbol()).collect();
-                    assert!(words.contains('●'), "{at}: the pane's status: {row}");
+                    let tabs: String = (pane.x..pane.right()).map(|x| buf[(x, pane.y.saturating_sub(1))].symbol()).collect();
+                    assert!(tabs.contains('●'), "{at}: the session's status on its tab: {row}");
                     let (_, bar) = bar_text(&app, &buf);
                     assert!(bar.trim().starts_with(bar_words(mode)), "{at}: {bar}");
                     let pill = match release { "update" => Some("↑"), "restart" => Some("↻"), _ => None };
@@ -10744,17 +10747,11 @@ mod pane_swap_tests {
     }
 
     #[test]
-    fn the_close_button_on_a_title_is_not_a_drag_handle() {
-        let mut tried = 0;
+    fn a_split_panes_title_has_no_close_button() {
         for layout in LAYOUTS {
-            let (mut app, _rx) = side_by_side(layout);
-            // Compact titles have no ✕.
-            let Some(close) = app.hits.iter().rev().find(|(_, h)| *h == Hit::Screen(screen::ScreenHit::CloseSplit(2))).map(|(r, _)| *r) else { continue };
-            mouse(&mut app, MouseEventKind::Down(MouseButton::Left), close.as_position());
-            assert!(!matches!(app.screen.drag, Some(screen::Drag::Pane { .. })), "{layout}");
-            tried += 1;
+            let (app, _rx) = side_by_side(layout);
+            assert!(!app.hits.iter().any(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::CloseSplit(_)))), "{layout}: the tab's ✕, Alt+x or the pane's menu close it");
         }
-        assert!(tried >= 3, "the layouts with a ✕ were tried");
     }
 
     #[test]

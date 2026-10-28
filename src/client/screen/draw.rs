@@ -230,15 +230,16 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
     g.panes
 }
 
-/// What a tab's ✕ does: close the tab while the session has several, else close its only
-/// pane. A lone tab that is split has none; each pane's title has its own.
+/// What a tab's ✕ does: close the tab, or a session's only tab's only pane. Panes have no ✕
+/// of their own (ADR 0030), so every tab has one. Each asks first.
 pub(in crate::client) fn tab_close(app: &App, tab: usize, tabs: usize) -> Option<ScreenHit> {
     if tabs > 1 {
         return Some(ScreenHit::CloseTab(tab));
     }
+    // A session's only tab: its only pane, or (split, its panes having no ✕) all of them.
     match app.screen.tabs.get(tab)?.layout.leaves().as_slice() {
         [only] => Some(ScreenHit::CloseSplit(*only)),
-        _ => None,
+        _ => Some(ScreenHit::CloseTab(tab)),
     }
 }
 
@@ -519,6 +520,10 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
             continue;
         }
         hit(app, Rect { x: at, y, width: w, height: 1 }, ScreenHit::TabPick(i));
+        // The tab's glyph opens why, as a split pane's does: a lone pane's state is only here.
+        if marks[n].is_some() && let Some(agent) = tab_agent(app, i).map(|a| a.id) {
+            hit(app, Rect { x: at + u16::from(look.round_tabs) + 1, y, width: 1, height: 1 }, ScreenHit::Why(agent));
+        }
         if let Some(h) = closes[n] {
             let close_w = if look.round_tabs { 3 } else { 2 };
             hit(app, Rect { x: at + w - close_w, y, width: 2, height: 1 }, h);
@@ -545,52 +550,21 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
     out
 }
 
-/// A session's mark on its pane: glyph and word, bold in its colour (working is the
-/// Appearance spinner). A shell has none.
+/// A session's mark on its pane: its glyph, bold in its colour (working is the Appearance
+/// spinner). A shell has none.
 fn pane_mark(app: &App, info: &TermInfo, t: &Theme) -> Option<PaneMark> {
     info.agent.as_ref()?;
     let set = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons);
     let spinner = glyph(app, Status::Working);
     let step = if app.motion_on() { check::ring_step(app.spinner_frame(), set.ring.len()) } else { 0 };
     let m = Kind::of(info.status, info.check(), info.asleep).mark(set, t, step, &spinner);
-    Some(PaneMark { glyph: m.glyph.to_string(), word: m.word.to_string(), style: Style::default().fg(m.color).add_modifier(Modifier::BOLD) })
+    Some(PaneMark { glyph: m.glyph.to_string(), style: Style::default().fg(m.color).add_modifier(Modifier::BOLD) })
 }
 
-/// A session's mark on its pane, whose word can go while its glyph stays.
+/// A session's mark on its pane.
 struct PaneMark {
     glyph: String,
-    word: String,
     style: Style,
-}
-
-/// How wide the card's ✕ is drawn: with its gap after other right-hand segments.
-fn close_w(look: Look, c: &Card) -> u16 {
-    if c.close.is_some() { close_width(look, !c.right.is_empty()) } else { 0 }
-}
-
-/// The right of a pane's title in a narrow card: the load note goes first, then the mark's
-/// word, then the ✕; the mark's glyph is the last thing to go, since status must stay in view.
-/// Returns where the mark sits (a click opens why).
-fn fit_right(look: Look, r: Rect, c: &mut Card, note: Option<Seg>, mark: Option<PaneMark>) -> Option<Rect> {
-    let end = right_end(r);
-    // The card draws its right-hand segments only with two cells to spare after the title's start.
-    let avail = end.saturating_sub(title_x(r) + 2);
-    let full = mark.as_ref().map(|m| seg(format!("{} {}", m.glyph, m.word), m.style));
-    let short = mark.as_ref().map(|m| seg(m.glyph.clone(), m.style));
-    let tries = [(note.clone(), full.clone(), true), (None, full, true), (None, short.clone(), true), (None, short, false)];
-    let close = c.close;
-    for (note, mark, closes) in tries {
-        c.right = note.into_iter().chain(mark.clone()).collect();
-        c.close = if closes { close } else { None };
-        if segs_width(&c.right) + close_w(look, c) <= avail {
-            return mark.map(|m| {
-                let w = m.0.width() as u16;
-                Rect { x: end.saturating_sub(close_w(look, c) + w), y: r.y, width: w, height: 1 }
-            });
-        }
-    }
-    c.right.clear();
-    None
 }
 
 /// How far an unfocused pane's own colour (Pane colours) fades toward the ground.
@@ -638,9 +612,9 @@ fn grid_color(app: &App, term: TermId, t: &Theme) -> Color {
     colors[grid_index(app, term) % colors.len()]
 }
 
-/// A pane as a card. Its title: the tabs of the session on screen when it's the top-left pane
-/// of the tab, else one chip with its session's name; on the right, the session's mark (it
-/// opens why) and a ✕ that closes the pane. The terminal sits inside, 3 columns and 2 rows in.
+/// A pane as a card, or Hairline's zone. A split pane's title is its number, state glyph (it
+/// opens why) and name; a lone pane has none (ADR 0030). The terminal sits inside, 3 columns
+/// and 2 rows in.
 /// Unfocused cards fade; one that needs you keeps its amber.
 pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, term: TermId, focused: bool, model: &[Proj], t: &Theme) {
     let Some(info) = app.snap.terms.get(&term).cloned() else { return };
@@ -744,16 +718,14 @@ fn card_frame(app: &mut App, buf: &mut Buffer, r: Rect, info: &TermInfo, focused
     let flare = if app.cfg.ui.focus_border == "bright" { t.accent } else { t.strong };
     let border = if flash > 0.0 { blend(border, flare, flash) } else { border };
     let mut c = Card::new(t, "");
-    let mark = pane_mark(app, info, t);
-    // What it's waiting for, beside its state: a usage limit, or what it takes of the machine.
+    // What it's waiting for: a usage limit, or what it takes of the machine. Its state is the
+    // glyph in the title (and on its tab); it has no ✕: the tab's, Alt+x or its menu close it.
     let note = match info.resume_at {
         Some(at) => Some((format!("⏸ limit · continues in {}", until(at)), t.muted)),
         None => load_note(info.cpu, info.mem).map(|(load, heavy)| (load, if heavy { t.err } else { t.muted })),
     };
-    let note = note.map(|(note, colour)| seg(format!("{note}  "), Style::default().fg(colour)));
-    // A tab's only pane is closed from its tab (`tab_close`); a split's each from its own title.
-    c.close = (!lone_pane(app, term)).then_some(ScreenHit::CloseSplit(term));
-    let mark_at = fit_right(look, r, &mut c, note, mark);
+    let note = note.map(|(note, colour)| seg(note, Style::default().fg(colour)));
+    c.right = note.into_iter().filter(|n| n.0.width() as u16 + 2 <= right_end(r).saturating_sub(title_x(r) + 2) / 2).collect();
     if let Some(parser) = app.parsers.get(&term) {
         c.bg = crate::client::render::terminal_surface_bg(parser.screen(), c.bg);
     }
@@ -763,21 +735,43 @@ fn card_frame(app: &mut App, buf: &mut Buffer, r: Rect, info: &TermInfo, focused
     } else if look.pane_colors {
         c.border = border;
     }
-    // The title runs up to two cells before the right-hand segments and the ✕.
-    let right_w = segs_width(&c.right) + close_w(look, &c);
-    let title_end = right_end(r).saturating_sub(right_w + 2);
-    let caps = if look.round_tabs { 2 } else { 0 };
-    let label = Some(project_branch(app, info, model)).filter(|l| lone_pane(app, term) && !l.is_empty()).unwrap_or_else(|| numbered(app, term, &session_name(app, model, term)));
-    let name = cut_label(&label, title_end.saturating_sub(title_x(r) + 2 + caps) as usize);
-    let chip = vec![name_chip(&name, focused, t)];
-    c.chips = if look.round_tabs { round_ends(chip, Color::Reset) } else { chip };
-
+    // A tab's only pane has no title: its tab names it (as an editor's lone pane, ADR 0030).
+    // A split's: number, state glyph and name, in one chip.
+    let mut mark_at = None;
+    if !lone_pane(app, term) {
+        let right_w = segs_width(&c.right);
+        let title_end = right_end(r).saturating_sub(if right_w > 0 { right_w + 2 } else { 0 });
+        let caps = if look.round_tabs { 2 } else { 0 };
+        let mark = pane_mark(app, info, t);
+        let room = title_end.saturating_sub(title_x(r) + caps) as usize;
+        let chip = title_chip(&numbered(app, term, &session_name(app, model, term)), mark.as_ref(), focused, room, t);
+        mark_at = mark.as_ref().map(|_| Rect { x: title_x(r) + caps / 2 + chip[0].0.width() as u16, y: r.y, width: 1, height: 1 });
+        c.chips = if look.round_tabs { round_ends(chip, Color::Reset) } else { chip };
+    }
     let inside = card(app, buf, r, &c, t);
-    // After the tabs' hits, so a click on the glyph inside the current tab opens why.
+    // After the card's hits, so a click on the glyph opens why.
     if let Some(at) = mark_at {
         hit(app, at, ScreenHit::Why(term));
     }
     (inside, terminal_bg)
+}
+
+/// A split pane's title chip, at most `room` wide: ` 2 ` then the state glyph in its colour
+/// (an agent's) and the name, as Hairline's title reads. The name is cut first, then the
+/// glyph; the number stays.
+fn title_chip(label: &str, mark: Option<&PaneMark>, lit: bool, room: usize, t: &Theme) -> Vec<Seg> {
+    let (bg, fg) = if lit { (t.accent, t.acc_ink) } else { (t.btn, t.strong) };
+    let st = Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD);
+    let (front, name) = match label.split_once(NUMBER_SEP) {
+        Some((n, name)) if n.chars().all(|c| c.is_ascii_digit()) => (format!(" {n} "), name),
+        _ => (" ".to_string(), label),
+    };
+    let glyph = mark.filter(|_| room >= front.width() + 4).map(|m| seg(format!("{} ", m.glyph), m.style.bg(bg).fg(if lit { t.acc_ink } else { m.style.fg.unwrap_or(fg) })));
+    let used = front.width() + glyph.as_ref().map_or(0, |g| g.0.width()) + 1;
+    let mut out = vec![seg(front, st)];
+    out.extend(glyph);
+    out.push(seg(format!("{} ", cut_label(name, room.saturating_sub(used))), st));
+    out
 }
 
 /// A scrollbar in the margin right of the terminal when there's history: where you are, click
@@ -929,14 +923,22 @@ pub(in crate::client) fn draw_toast(app: &mut App, buf: &mut Buffer, area: Rect,
     let y = area.bottom().saturating_sub(h + TOAST_ABOVE_INPUT);
     let r = Rect { x, y, width: area.right().saturating_sub(x).min(w), height: h };
     let ink = |c: Color, bg: Color| if fade > 0.0 { blend(c, bg, fade) } else { c };
-    // Boxed as the look boxes a pane, as every popup is (ADR 0028): `line` round `card` with
-    // corners by `ui.rounded` in Floating, a square line frame on the ground in Hairline. Its
-    // left side, inside the box, is a heavy rule in the notice's colour.
-    let bg = if look.hairline { t.bg } else { t.card };
+    // Floating: a `line` outline on the ground with round corners whatever `ui.rounded` says
+    // (the box glyphs need no Nerd Font), its left side a heavy rule in the notice's colour.
+    // Hairline, which has no boxes: a solid block in `card2` (its `card` is the ground), its
+    // left edge that rule (ADR 0028).
+    let bg = if look.hairline { t.card2 } else { t.bg };
     fill(buf, r, bg);
-    panel_box(buf, r, look, Style::default().fg(ink(t.line, bg)).bg(bg));
-    for yy in r.y + 1..r.bottom().saturating_sub(1) {
-        buf[(r.x, yy)].set_symbol("┃").set_style(Style::default().fg(ink(colour, bg)).bg(bg));
+    let bar = Style::default().fg(ink(colour, bg)).bg(bg);
+    if look.hairline {
+        for yy in r.y..r.bottom() {
+            buf[(r.x, yy)].set_symbol("┃").set_style(bar);
+        }
+    } else {
+        panel_box(buf, r, Look { rounded: true, ..look }, Style::default().fg(ink(t.line, bg)).bg(bg));
+        for yy in r.y + 1..r.bottom().saturating_sub(1) {
+            buf[(r.x, yy)].set_symbol("┃").set_style(bar);
+        }
     }
     // Rows 2 and 3 start under the title, one column in from the border; the title also
     // leaves the mark's column and the ✕'s.

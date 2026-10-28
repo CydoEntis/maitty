@@ -127,9 +127,6 @@ impl App {
     /// closed from the sidebar). With an agent in it, a second click within a few seconds.
     pub(in crate::client) fn close_tab(&mut self, i: usize) {
         let Some(tab) = self.screen.tabs.get(i) else { return };
-        if self.screen.tabs.iter().filter(|t| t.owner == tab.owner).count() < 2 {
-            return;
-        }
         // Asked first, as closing a pane is.
         self.menu_act(crate::client::menu::Act::End(tab.layout.leaves()));
     }

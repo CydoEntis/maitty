@@ -78,7 +78,7 @@ fn preset_01_s_frame_is_the_reference_s_in_every_layout_and_size() {
         let tabs = from(&r[0], px);
         assert!(tabs.contains(" 1  fix-footer ") && tabs.contains(" 2  add-payments"), "row 0 is the tabs, each with its state: {at}");
         let title = from(&r[py as usize], px);
-        assert!(title.starts_with("┌─ affiliate-site · ") && title.contains(" fix-footer ─") && title.ends_with("done ┐"), "the pane's top, its lone pane named by where it is: {at}");
+        assert!(title.starts_with("┌─") && title.ends_with('┐') && title.chars().skip(1).take(title.chars().count() - 2).all(|c| c == '─'), "a lone pane's top is a plain border: its tab names it: {at}");
         assert_eq!(from(&r[h as usize - 1], 0), last, "last row: {at}");
         let sw = side_w(w);
         assert_eq!((r[0][0], r[0][sw as usize - 1]), ('┌', '┐'), "the sidebar's top corners: {at}");
@@ -109,8 +109,8 @@ fn rounded_corners_round_every_card() {
 fn a_failed_session_reads_failed_in_plain_ascii() {
     let mut app = world(Stage::Failed);
     let text = reference_fixture::frame(&mut app, Layout::Tiled, 80, 24, "ascii");
-    let top = text.lines().nth(pane_y(Layout::Tiled) as usize).unwrap_or_default();
-    assert!(top.contains("x failed ┐"), "{text}");
+    let tabs = text.lines().next().unwrap_or_default();
+    assert!(tabs.contains("x 1  fix-footer"), "its tab says failed by its glyph: {text}");
 }
 
 #[test]
@@ -607,8 +607,7 @@ fn shown_row(buf: &Buffer, y: u16, x0: u16, x1: u16, lit: Color) -> String {
 fn a_hovered_border_chip_is_whole() {
     use super::super::Hit;
     use crate::config::Rounding;
-    let chips: [(&str, Pick); 6] = [
-        ("a pane's ✕", |h| matches!(h, Hit::Screen(ScreenHit::CloseSplit(_)))),
+    let chips: [(&str, Pick); 5] = [
         ("the sheet's ✕", |h| matches!(h, Hit::Screen(ScreenHit::Close | ScreenHit::ViewClose))),
         ("a tab chip", |h| matches!(h, Hit::Screen(ScreenHit::TabPick(_)))),
         ("the + chip", |h| matches!(h, Hit::Screen(ScreenHit::NewTab))),
