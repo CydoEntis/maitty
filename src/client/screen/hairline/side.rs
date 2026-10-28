@@ -2,7 +2,7 @@
 //! per session (no second lines) with its tabs under it while it has several, and the new and
 //! menu hints pinned to the foot.
 
-use super::super::side_tabs::{draw_tab_line, own_panes, shape, tab_line, tab_segs};
+use super::super::side_tabs::{draw_tab_line, tab_line, tab_segs};
 use super::*;
 
 /// Where a row's pieces go, from the sidebar's left edge (the handoff's columns): the `▎`
@@ -30,6 +30,10 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     hit(app, r, ScreenHit::SideFocus);
     let side_has_keys = side_focused(app);
     draw_head(buf, r, model, ink, side_has_keys);
+    // The line under the header, level with the tab row's rule: teal (sky in shortcut mode) while
+    // the sidebar has the keys, so which of sidebar and panes you are in is never a guess.
+    let lit = if armed(app) { t.sky() } else { ink.teal };
+    rule(buf, r.x, r.y + 1, r.width, if side_has_keys { lit } else { ink.line }, ink.bg);
     let lines = hairline_lines(app, model, t);
     let shown: Vec<TermId> = app.screen.tabs.get(app.screen.tab).map(|tab| tab.layout.leaves()).unwrap_or_default();
     let focus = open_row(app);
@@ -211,7 +215,7 @@ fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, at: Row, model: &[
     } else if s.is_agent {
         age(s.since)
     } else {
-        shape(own_panes(app, s.term)).to_string()
+        String::new()
     };
     let right_fg = if needs { ink.amber } else { ink.dim };
     let rw = if menu { 1 } else { right.width() as u16 };

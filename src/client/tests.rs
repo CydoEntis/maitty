@@ -361,11 +361,11 @@ mod screen_tests {
                 let screen = draw(&mut app, w, h);
                 show(&screen);
                 let g = screen::grid(&app, Rect::new(0, 0, w, h));
-                assert_eq!((g.side.width, g.panes.width, g.tabs.y), (0, w, 1), "{w}x{h} {position}: the tabs and panes take the full width and start under the strip");
+                assert_eq!((g.side.width, g.panes.width, g.tabs.y), (0, w, 2), "{w}x{h} {position}: the pane's box takes the full width and starts under the strip, the tabs a row inside it");
                 let on_row0 = |hit: screen::ScreenHit| app.hits.iter().find(|(r, h)| *h == Hit::Screen(hit) && r.y == 0).map(|(r, _)| *r);
                 assert!(on_row0(screen::ScreenHit::Session(1)).is_some() && on_row0(screen::ScreenHit::Session(2)).is_some(), "{w}x{h} {position}: a chip per session");
                 assert!(on_row0(screen::ScreenHit::ExpandSidebar).is_some() && on_row0(screen::ScreenHit::Actions).is_some(), "{w}x{h} {position}: expand and Menu stay clickable");
-                assert!(screen.lines().nth(1).unwrap().contains("  +") && screen.lines().nth(1).unwrap().trim_end().ends_with("◫ ⤢"), "the tabs moved down to row 1: {}", screen.lines().nth(1).unwrap());
+                assert!(screen.lines().nth(2).unwrap().contains("  +") && screen.lines().nth(2).unwrap().contains("◫ ⤢"), "the tabs moved down to row 2: {}", screen.lines().nth(2).unwrap());
                 let click = |app: &mut App, r: Rect| {
                     for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
                         app.on_mouse(MouseEvent { kind, column: r.x + 1, row: r.y, modifiers: KeyModifiers::NONE });
@@ -642,10 +642,10 @@ mod screen_tests {
         // The grid: no margin, the sidebar card the full height from the corner, the tabs on
         // row 0 beside it (ADR 0028), the pane card right under them.
         assert!(lines[0].starts_with("┌─"), "the sidebar card from the very corner: {}", lines[0]);
-        assert!(lines[0].contains("● claude"), "the tab keeps its session and state: {}", lines[0]);
+        assert!(lines[1].contains("● claude"), "the tab keeps its session and state: {}", lines[1]);
         assert!(text.contains("+ New") && text.contains("Menu"), "New and Actions stay in the sidebar foot");
-        assert!(lines[0].contains(" claude ▢ ✕") && lines[0].contains("  +") && lines[0].trim_end().ends_with("◫ ⤢") && !lines[0].contains('▯'), "the tab's name and split shape on the tab row (a lone tab has no number), the + chip, then split and zoom at the right: {}", lines[0]);
-        assert!(!lines[1].contains("claude") && !lines[1].contains("needs you") && !lines[1].contains('✕'), "a lone pane has no title: its tab names it: {}", lines[1]);
+        assert!(lines[1].contains(" claude ✕") && lines[1].contains("  +") && lines[1].contains("◫ ⤢") && !lines[1].contains('▯'), "the tab's name on the tab row inside the pane's box (a lone tab has no number), the + chip, then split and zoom at the right: {}", lines[1]);
+        assert!(!lines[2].contains("claude") && !lines[2].contains("needs you") && !lines[2].contains('✕'), "a lone pane has no title: its tab names it: {}", lines[2]);
         // Projects and their sessions, nothing in between.
         assert!(text.contains("−  shop-api") && text.contains("SESSIONS") && text.contains("●1"), "a project: its fold arrow and name; what needs you in the sidebar's title");
         assert!(!text.contains("AGENTS") && !text.contains("TERMINALS") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "no heading per kind of session");
@@ -1818,7 +1818,7 @@ mod screen_tests {
         assert_eq!(app.session_name(focus), "tests", "notices say the name you gave");
         app.screen_sync();
         let o = draw(&mut app, 160, 45);
-        let title = o.lines().next().unwrap_or_default().chars().skip(app.screen.side_rect.right() as usize).collect::<String>();
+        let title = o.lines().nth(1).unwrap_or_default().chars().skip(app.screen.side_rect.right() as usize).collect::<String>();
         assert!(title.contains(" tests ") && !title.contains("2 tests"), "renamed: the pill is its name: {title}");
         // Views get rebuilt (another session reuses the slot, the client restarts): the name stays.
         app.screen.tabs.iter_mut().for_each(|t| t.name.clear());
@@ -5496,7 +5496,7 @@ second line
                     assert!(title.contains("SESSIONS") && title.contains("●1"), "{at}: the sidebar's title and count: {row}");
                     let top = app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap_or(0);
                     let pane = app.pane_frames.iter().map(|(_, r)| *r).find(|r| r.y == top).expect("a pane along the top");
-                    let tabs: String = (pane.x..pane.right()).map(|x| buf[(x, pane.y.saturating_sub(1))].symbol()).collect();
+                    let tabs: String = (pane.x..pane.right()).map(|x| buf[(x, pane.y + 1)].symbol()).collect();
                     assert!(tabs.contains('●'), "{at}: the session's status on its tab: {row}");
                     let (_, bar) = bar_text(&app, &buf);
                     assert!(bar.trim().starts_with(bar_words(mode)), "{at}: {bar}");

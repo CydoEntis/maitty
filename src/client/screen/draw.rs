@@ -73,6 +73,11 @@ pub(in crate::client) fn mode_bar_row(app: &App, area: Rect) -> Rect {
     Rect { y: r.bottom().saturating_sub(1), height: r.height.min(1), ..r }
 }
 
+/// The tab on screen shows one pane: it has only one, or its focused pane is zoomed.
+fn one_pane_shown(app: &App) -> bool {
+    app.screen.tabs.get(app.screen.tab).is_some_and(|tab| tab.layout.leaves().len() == 1 || app.screen.zoom == Some(app.screen.tab))
+}
+
 /// Where popups and their dimming go: the window above the mode bar, so the mode stays in
 /// view and readable under any of them.
 pub(in crate::client) fn above_bar(app: &App, area: Rect) -> Rect {
@@ -115,7 +120,19 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
         Some(kind) => split_for_sheet(area.width, col, look, app.sheet_frac, wanted_w(app, kind, area.width)),
         None => (Rect::default(), col),
     };
-    let (tabs, panes) = if look.hairline { (hair_tabs, panes) } else { carve(panes) };
+    let (tabs, panes) = if look.hairline {
+        (hair_tabs, panes)
+    } else if one_pane_shown(app) && panes.height > FLOAT_TAB_ROW + 2 && panes.width > 0 {
+        // A tab's only pane: the box starts level with the sidebar's, and the tabs are its first
+        // row inside the border, where the box's padding row was.
+        (Rect { y: panes.y + 1, height: FLOAT_TAB_ROW, ..panes }, panes)
+    } else if panes.height > FLOAT_PLATE_ROWS + 2 && panes.width > 0 {
+        // Split panes: a plate of its own over them, its top edge level with the sidebar's and
+        // the tabs in its one row (`draw_tab_chips` draws its edges).
+        (Rect { y: panes.y + 1, height: FLOAT_TAB_ROW, ..panes }, Rect { y: panes.y + FLOAT_PLATE_ROWS, height: panes.height - FLOAT_PLATE_ROWS, ..panes })
+    } else {
+        carve(panes)
+    };
     Grid { side, panes, edge, sheet, tabs }
 }
 
@@ -265,11 +282,23 @@ pub(in crate::client) fn lone_pane(app: &App, term: TermId) -> bool {
 
 /// Floating's tab row: the chips' own row, right over the boxes (no gap: rows are scarce).
 const FLOAT_TAB_ROW: u16 = 1;
+/// Rows of the plate over split panes in Floating: its top edge and the tab row.
+const FLOAT_PLATE_ROWS: u16 = 2;
 
 /// Floating's tabs along the first row of `r`, lined up with the pane titles' chips.
 fn draw_tab_chips(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme) {
     if r.height == 0 || r.width < 4 {
         return;
+    }
+    // Over split panes the tabs have a plate of their own: its top edge on the row above, `│` at
+    // each end of this one. A lone pane's box is that edge, and has the sides.
+    if !one_pane_shown(app) && r.y > 0 {
+        let look = Look::of(&app.cfg.ui);
+        let [tl, tr, ..] = corners(look);
+        let (edge, x1) = (Style::default().fg(t.line).bg(t.bg), r.right() - 1);
+        put(buf, r.x, r.y - 1, &[seg(tl, edge), seg("─".repeat(r.width as usize - 2), edge), seg(tr, edge)], r.right());
+        put(buf, r.x, r.y, &[seg("│", edge)], r.x + 1);
+        put(buf, x1, r.y, &[seg("│", edge)], r.right());
     }
     let mut row = Rect { x: r.x + 1, width: r.width - 2, height: 1, ..r };
     row.width = tab_tools(app, buf, row, t.muted, t.strong, Color::Reset, t.accent) - row.x;
@@ -493,7 +522,6 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
     let mut at = row.x;
     let tabs = app.session_tabs();
     let closes: Vec<Option<ScreenHit>> = tabs.iter().map(|&i| if i == app.screen.tab { tab_close(app, i, tabs.len()) } else { None }).collect();
-    let panes: Vec<usize> = tabs.iter().map(|&i| app.screen.tabs[i].layout.leaves().len()).collect();
     let marks: Vec<Option<(String, Color)>> = tabs.iter().map(|&i| super::side_tabs::tab_mark(app, i, t).map(|(g, _, c)| (g, c))).collect();
     let labels: Vec<(Option<String>, String)> = tabs.iter().enumerate().map(|(n, &i)| tab_label(app, model, i, n, tabs.len() > 1)).collect();
     let names: Vec<String> = labels.iter().map(|(_, name)| name.clone()).collect();
@@ -506,7 +534,6 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
         let mut pair: Vec<Seg> = marks[n].iter().map(|(g, c)| seg(format!(" {g}"), number.fg(if on { t.acc_ink } else { *c }).add_modifier(Modifier::BOLD))).collect();
         pair.extend(labels[n].0.as_ref().map(|head| seg(format!(" {head} "), number)));
         pair.push(label);
-        pair.push(seg(format!("{} ", super::side_tabs::shape(panes[n])), if on { current } else { Style::default().fg(t.muted).bg(t.card) }));
         if closes[n].is_some() {
             let (fg, bg) = if on { if lit { (t.acc_ink, t.accent) } else { (t.strong, t.btn) } } else { (t.muted, t.card) };
             pair.push(seg("✕ ", Style::default().fg(fg).bg(bg)));

@@ -444,3 +444,34 @@ fn the_tab_row_ends_in_split_and_zoom_and_zoom_fills_the_tab_with_the_focused_pa
         }
     }
 }
+
+#[test]
+fn the_line_under_the_sidebar_or_the_tabs_is_teal_where_the_keys_are() {
+    let mut app = hairline_world(1);
+    let t = app.theme.clone();
+    for (side_has_keys, label) in [(false, "a lone pane has the keys"), (true, "the sidebar has the keys")] {
+        app.mode = if side_has_keys { Mode::Side } else { Mode::Normal };
+        let buf = draw(&mut app, 160, 45);
+        let g = grid(&app, framed(&app, buf.area));
+        assert_eq!(g.side.y, g.tabs.y, "the sidebar's header and the tab row sit on one row");
+        let (side_rule, tab_rule) = (&buf[(g.side.x + 3, g.side.y + 1)], &buf[(g.tabs.x + 3, g.tabs.y + 1)]);
+        assert_eq!((side_rule.symbol(), tab_rule.symbol()), ("─", "─"), "{label}: both rules are drawn on the same row");
+        assert_eq!(side_rule.fg, if side_has_keys { t.accent } else { t.line }, "{label}: the sidebar's line");
+        assert_eq!(tab_rule.fg, if side_has_keys { t.line } else { t.accent }, "{label}: the tab row's line");
+    }
+}
+
+#[test]
+fn in_floating_the_sidebar_and_the_pane_box_start_on_one_row_with_the_tabs_inside() {
+    for panes in [1, 2] {
+        let mut app = hairline_world(panes);
+        app.cfg.ui.layout = "floating".into();
+        let buf = draw(&mut app, 160, 45);
+        let g = grid(&app, framed(&app, buf.area));
+        let top = if panes == 1 { app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap() } else { g.tabs.y - 1 };
+        assert_eq!(top, g.side.y, "{panes} pane(s): the sidebar's top edge and the pane box's (or the tab plate's) are one row");
+        assert_eq!(g.tabs.y, g.side.y + 1, "{panes} pane(s): the tabs sit on the first row inside it");
+        let row: String = (g.tabs.x..g.tabs.right()).map(|x| buf[(x, g.tabs.y)].symbol()).collect();
+        assert!(row.contains("fix-footer") && row.contains('⤢'), "{panes} pane(s): the tab row is there: {row}");
+    }
+}

@@ -21,16 +21,23 @@ a split has no title.
   bottom bar.
 - **The tab row lists every tab of the current project**, numbered 1–n in the sidebar's order
   (each session's tabs together); the number keys (`Alt+1`–`9`, leader `1`–`9`) and next/previous
-  tab walk the same list. Each tab shows its agent's state, its name, its split shape (`▢` one
-  pane, `◫` two, `◧` more) and, on the open tab only, a ✕.
+  tab walk the same list. Each tab shows its agent's state, its name and, on the open tab only,
+  a ✕. (A split-shape icon per tab was tried and removed: it did nothing.)
 - **`◫` and `⤢`** sit fixed at the row's right end: split the focused pane, and zoom it to fill
   the tab (and back). Zoom belongs to the tab and is not saved.
 - **Sidebar tab lines** have no numbers and use a session row's look: state glyph, name, then the
-  agent's age, or the split shape for a tab of shells; the open one raised with a teal `▎`, one
+  agent's age; the open one raised with a teal `▎`, one
   that needs you with an amber `▎` and name.
 - **The bottom bar** after `TYPING` reads `tab 1/3 · 2 splits`, and at the right end shows
   `● N needs you` (the session's name when it is one), the tab's `⎇ branch` and its `▲ CPU · RAM`.
   Needs you keeps its place before the hints; the branch and load show only while the rest fits.
+
+- **Floating: one top edge.** The sidebar's top edge and the pane box's are one row. A tab's
+  only pane has the tab row as the first row inside its border; split panes get a plate (top
+  edge and the tab row) above their boxes.
+- **Hairline: where the keys are.** The line under the sidebar's header and the one under the
+  tab row sit on one row; whichever has the keys is teal (sky in shortcut mode). A split's own
+  rule says it for a pane in a split.
 
 ## Not taken from the handoff
 

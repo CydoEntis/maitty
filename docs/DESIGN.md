@@ -97,8 +97,8 @@ editor's are ([ADR 0030](adr/0030-panes-titled-like-an-editor.md)): a tab's only
 title (a plain top border), its tab naming it, showing its state (the glyph opens why) and
 closing it. A split's panes have no title at all ([ADR 0031](adr/0031-tabs-name-a-project-and-splits-have-no-title.md)):
 the tab names where you are, and a pane's top edge says its state, teal when focused and amber
-when it needs you. The tab row lists every tab of the project, numbered 1–n, each with its
-split shape (`▢ ◫ ◧`) and a ✕ on the open one only, and ends in `◫` (split) and `⤢` (zoom the
+when it needs you. The tab row lists every tab of the project, numbered 1–n, each with
+a ✕ on the open one only, and ends in `◫` (split) and `⤢` (zoom the
 focused pane). A pane closes with Alt+x, leader `x` or its menu. Closing always
 asks first (ADR 0029), naming the pane (`Close pane 2 · claude`) and lighting its lines in the
 red until you answer. Unfocused panes fade;
@@ -172,7 +172,7 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
 - **Tabs:** a row of their own across the top of the pane column, then a `─` rule in `line`
   (`├` where the sidebar's `│` meets it). Each tab is plain words: its most urgent agent's mark
   (so a tab out of view still shows it works or asks), its number (the project's tabs are
-  numbered 1–n), its name, its split shape and, on the current one only, a dim ✕ (it closes the
+  numbered 1–n), its name and, on the current one only, a dim ✕ (it closes the
   tab, or a lone tab's only pane, asking first);
   the current one teal bold, the others dim. `◫` and `⤢` sit at the row's right end. A dim `+` after them opens
   a tab, there even with one tab. A `│` in `line` closes each tab and the `+`, meeting the rule
