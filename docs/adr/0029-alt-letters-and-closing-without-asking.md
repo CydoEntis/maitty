@@ -15,9 +15,13 @@ direct shortcut needs a modifier.
 ## Decision
 
 - **Alt+letter:** the everyday actions run without the leader, on the leader's own letters held
-  with Alt (`keys::ALT_LETTER_KEYS`): Alt+n new shell, Alt+s new session, Alt+t new tab, Alt+x
-  close the pane, Alt+v and Alt+h split. `ui.alt_keys` (on by default, Settings › General ›
-  Input) turns them off for shells that use those keys. Each is rebindable under `[keys.global]`.
+  with Alt (`keys::ALT_LETTER_KEYS`): Alt+n new shell, Alt+a new session, Alt+x close the
+  pane, Alt+s split side by side, Alt+d split down. None is a key an agent needs: Claude Code takes Alt+v (paste an
+  image, on Windows) and Alt+t (thinking), so the splits are not the leader's v and h, a new
+  session is Alt+a (an agent), and a new tab has no Alt key. Alt+d is readline's delete-word; the user chose it anyway.
+  `ui.alt_keys` (on by default, Settings › General ›
+  Input) turns them off for shells that use those keys. Each is rebindable under `[keys.global]`,
+  and Settings › Keys lists them under "Without the leader".
   No Alt+[ or Alt+]: terminals send those as the start of an escape sequence.
 - **Closing asks only when something would be lost:** a pane with no agent whose running
   program is its shell (`config::is_shell`) closes at once; a pane with an agent, or a shell
@@ -28,10 +32,11 @@ direct shortcut needs a modifier.
 ## Alternatives considered
 
 - **Drop the leader for bare keys:** every letter would be taken from the agent you type to.
-- **Ctrl+Shift shortcuts:** many terminals can't tell Ctrl+Shift+letter from Ctrl+letter.
+- **Ctrl+Shift shortcuts:** many terminals can't tell Ctrl+Shift+letter from Ctrl+letter, and
+  Windows Terminal keeps Ctrl+Shift+D (duplicate tab) for itself.
+- **Ctrl+D to split:** it is end-of-input, how a shell exits and Claude Code quits.
 - **Never confirm a close:** an agent's work in progress is one keypress from gone.
 
 ## Consequences
 
-Six Alt+letters are taken from programs while `ui.alt_keys` is on; readline's Alt+t
-(transpose words) is among them. All keys lists them under "without the leader".
+Five Alt keys are taken from programs while `ui.alt_keys` is on. All keys lists them under "without the leader".

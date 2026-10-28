@@ -456,28 +456,23 @@ impl App {
             let spec = KeySpec::from_event(k);
             match row {
                 Some(design::SRow::Setting(s)) => self.save_setting(s.path, spec.to_config().into()),
-                Some(design::SRow::Bind { acts, .. }) if acts.len() == 1 => {
+                Some(design::SRow::Bind { acts, direct, .. }) if acts.len() == 1 => {
                     let act = &acts[0];
                     let Some(name) = act.to_config() else { return true };
                     let new = spec.to_config();
+                    let (table, map) = if direct { ("global", &self.keymap.global) } else { ("prefix", &self.keymap.prefixed) };
                     // Unbind the old keys, then bind the new one.
-                    let old: Vec<String> = self
-                        .keymap
-                        .prefixed_order
-                        .iter()
-                        .filter(|key| self.keymap.prefixed.get(key) == Some(act))
-                        .map(|key| key.to_config())
-                        .filter(|key| *key != new)
-                        .collect();
+                    let old: Vec<String> = map.iter().filter(|(_, b)| *b == act).map(|(key, _)| key.to_config()).filter(|key| *key != new).collect();
                     let mut result = Ok(());
                     for o in old {
-                        result = result.and_then(|_| modal::write_at(&["keys", "prefix", &o], "none".into()));
+                        result = result.and_then(|_| modal::write_at(&["keys", table, &o], "none".into()));
                     }
-                    result = result.and_then(|_| modal::write_at(&["keys", "prefix", &new], name.into()));
+                    result = result.and_then(|_| modal::write_at(&["keys", table, &new], name.into()));
                     match result {
                         Ok(()) => {
                             self.reload_config();
-                            self.notify(format!("{} is now {} {}", act.describe(), self.keymap.prefix, spec), false);
+                            let keys = if direct { design::long_key(&spec) } else { format!("{} {}", self.keymap.prefix, spec) };
+                            self.notify(format!("{} is now {keys}", act.describe()), false);
                         }
                         Err(e) => self.notify(format!("{e:#}"), true),
                     }

@@ -752,13 +752,55 @@ pub(super) fn key_rows() -> Vec<(&'static str, Vec<(&'static str, Vec<crate::key
         .collect()
 }
 
+/// The Keys page's heading for the keys pressed on their own, with no leader first.
+pub(super) const DIRECT_GROUP: &str = "WITHOUT THE LEADER";
+
+/// The keys that need no leader, for the Keys page: the Alt+letters (each changed on its own),
+/// then going to a tab and moving focus. A row lists one action whatever key it has now, so an
+/// Alt+letter turned off with `ui.alt_keys` reads "not set" there.
+fn direct_key_rows() -> Vec<(&'static str, Vec<crate::keys::Action>)> {
+    use crate::keys::Action as A;
+    use crate::layout::Dir::*;
+    let label_of = |a: &A| {
+        super::screen::key_groups().into_iter().flat_map(|(_, rows)| rows).find(|r| r.acts == [a.clone()]).map(|r| r.label).unwrap_or("")
+    };
+    let mut rows: Vec<(&'static str, Vec<A>)> = crate::keys::ALT_LETTER_KEYS
+        .iter()
+        .filter_map(|(_, name)| name.parse::<A>().ok())
+        .map(|a| (label_of(&a), vec![a]))
+        .collect();
+    rows.push(("Go to tab 1–9", (1..=9).map(A::SelectTab).collect()));
+    rows.extend([Left, Up, Down, Right].map(|d| (single_label(&A::Focus(d)), vec![A::Focus(d)])));
+    rows
+}
+
+/// The keys bound to `acts` with no leader, as Settings shows them: one each ("Alt+n"), or
+/// "Alt+1–9" for a run of tabs.
+fn direct_key_text(app: &App, acts: &[crate::keys::Action]) -> String {
+    let firsts: Vec<String> = acts
+        .iter()
+        .filter_map(|a| {
+            let mut keys: Vec<_> = app.keymap.global.iter().filter(|(_, b)| *b == a).map(|(k, _)| *k).collect();
+            keys.sort_by_key(|k| k.to_config());
+            keys.first().map(long_key)
+        })
+        .collect();
+    match (firsts.first(), firsts.last()) {
+        (Some(first), Some(last)) if acts.len() > 4 && firsts.len() == acts.len() => {
+            format!("{}–{}", first, last.rsplit('+').next().unwrap_or(last))
+        }
+        _ => firsts.join(" "),
+    }
+}
+
 // ---- settings view -------------------------------------------------------------------------
 
 /// A row of a settings page: a setting, or (on the Keys page) a shortcut.
 #[derive(Debug, Clone)]
 pub(super) enum SRow {
     Setting(&'static super::modal::Setting),
-    Bind { label: &'static str, acts: Vec<crate::keys::Action> },
+    /// `direct`: pressed on its own (`[keys.global]`), not after the leader.
+    Bind { label: &'static str, acts: Vec<crate::keys::Action>, direct: bool },
     /// A line of the Agents page that is not a setting: what the app can tell about an agent.
     Agent(AgentRow),
     /// General's UPDATES: which version this is, whether it is current, and the way to check
@@ -807,6 +849,7 @@ const GROUP_ORDER: [&str; 19] = [
 /// The small caps heading a settings row sits under.
 pub(super) fn settings_group(row: &SRow) -> &'static str {
     match row {
+        SRow::Bind { direct: true, .. } => DIRECT_GROUP,
         SRow::Bind { label, .. } => key_rows().into_iter().find(|(_, items)| items.iter().any(|(l, _)| l == label)).map(|(g, _)| g).unwrap_or("KEYS"),
         SRow::Agent(_) => AGENT_STATUS_GROUP,
         SRow::Version => "UPDATES",
@@ -863,9 +906,10 @@ pub(super) fn settings_rows(cat: super::modal::Cat) -> Vec<SRow> {
     if cat == super::modal::Cat::Keys {
         for (_, items) in key_rows() {
             for (label, acts) in items {
-                rows.push(SRow::Bind { label, acts });
+                rows.push(SRow::Bind { label, acts, direct: false });
             }
         }
+        rows.extend(direct_key_rows().into_iter().map(|(label, acts)| SRow::Bind { label, acts, direct: true }));
     }
     rows
 }
@@ -887,8 +931,8 @@ pub(super) fn control(app: &App, t: &Theme, row: &SRow, v: &SettingsView, select
         return super::screen::chip("press the new key…", Style::default().bg(t.accent).fg(t.acc_ink).add_modifier(Modifier::BOLD));
     }
     match row {
-        SRow::Bind { acts, .. } => {
-            let keys = key_text(app, acts);
+        SRow::Bind { acts, direct, .. } => {
+            let keys = if *direct { direct_key_text(app, acts) } else { key_text(app, acts) };
             if keys.is_empty() {
                 vec![seg("not set", Style::default().fg(t.muted))]
             } else {
