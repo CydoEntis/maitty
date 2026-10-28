@@ -7,6 +7,10 @@ use super::*;
 
 pub(in crate::client) use crate::gitfs::WT_NAMES;
 
+/// How long a new tab waits for its shell to arrive from the server, which takes moments; past
+/// this the request is dropped so a session that opens later is not taken for the tab.
+const NEW_TAB_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
 impl App {
 
     /// Where a session that just got the focus shows: beside the one it was opened from, in
@@ -29,7 +33,7 @@ impl App {
                 None
             }
         };
-        let new_tab = self.screen.new_tab.take().filter(|(at, _)| at.elapsed().as_secs() < 60).map(|(_, owner)| owner);
+        let new_tab = self.screen.new_tab.take().filter(|(at, _)| at.elapsed() < NEW_TAB_WAIT).map(|(_, owner)| owner);
         let take_out = |tabs: &mut Vec<ScreenTab>, f: TermId| {
             for tab in tabs.iter_mut() {
                 if tab.layout.contains(f)
