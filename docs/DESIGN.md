@@ -83,8 +83,8 @@ uncommitted `+N −N` and the age. A second and third
 line, always `muted`, appear only when they say more: a question, a check result, the first
 failing line. A session with two tabs or more lists them under it, one line each, flush with the
 name and with no branch marks: the tab's number and name (the one on screen in the accent), and its most urgent agent's glyph and
-word at the right; a click shows that tab. The foot holds **+ New** and **Menu**. Collapsed, the sessions become chips along
-row 0; hidden, the panes take everything. See UI › *sidebar check result* and *collapsed
+word at the right; a click shows that tab. The foot holds **+ New** and **Menu**. Collapsed, the sessions become a narrow
+column (each project its first letter, each session its mark and first letter); hidden, the panes take everything. See UI › *sidebar check result* and *collapsed
 sidebar*.
 
 ## Pane titles and tabs

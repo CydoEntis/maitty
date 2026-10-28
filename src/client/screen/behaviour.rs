@@ -657,8 +657,8 @@ impl App {
                     self.screen_side_set(last);
                 }
             }
-            // The collapsed strip: ← → and 1–9 (only while it has the keys) switch sessions.
-            KeyCode::Left | KeyCode::Right | KeyCode::Char('1'..='9') if super::draw::strip_on(self) && plain => self.strip_switch(spec.code),
+            // The collapsed column: ↑ ↓ ← → and 1–9 (only while it has the keys) switch sessions.
+            KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right | KeyCode::Char('1'..='9') if super::draw::strip_on(self) && plain => self.strip_switch(spec.code),
             KeyCode::Right => match &proj {
                 Some(key) => self.screen_fold(key, Some(true)),
                 None => {
@@ -714,8 +714,8 @@ impl App {
         let sessions: Vec<TermId> = self.screen.side_items.iter().filter_map(|i| if let SideItem::Sess(t) = i { Some(*t) } else { None }).collect();
         let here = sessions.iter().position(|t| Some(*t) == self.screen.cursor.or(self.focused()));
         let to = match code {
-            KeyCode::Left => here.map_or(0, |i| i.saturating_sub(1)),
-            KeyCode::Right => here.map_or(0, |i| (i + 1).min(sessions.len().saturating_sub(1))),
+            KeyCode::Left | KeyCode::Up => here.map_or(0, |i| i.saturating_sub(1)),
+            KeyCode::Right | KeyCode::Down => here.map_or(0, |i| (i + 1).min(sessions.len().saturating_sub(1))),
             KeyCode::Char(c) => c.to_digit(10).map_or(0, |d| d as usize - 1),
             _ => return,
         };

@@ -472,16 +472,18 @@ it and holds the swell still.
 
 The sidebar has three states (`App::sidebar`, `App::side_hidden`): full, **collapsed** and **hidden**.
 Leader `z` (`Action::ToggleSidebar`) swaps full and collapsed; Hide sidebar (`Action::HideSidebar`, search only) hides
-the sessions or brings the sidebar back. The `»` chip (`«` with the sidebar on the right) and the `+n more` chip
+the sessions or brings the sidebar back. The `»` chip (`«` with the sidebar on the right) and the `…` row
 restore it. There are no bare-letter keys for this in the sidebar.
 
-- **Collapsed** (`screen/rail.rs`): the sessions are chips along row 0, not a column. A `»` chip first, then one chip per
-  session in the sidebar's order: its mark (same glyph and colour as the row) and its full name, at most 16
-  characters, on `card`. The selected chip is `accent` with `acc_ink` text while the strip has the keys,
-  else `btn`. Chips that don't fit give way to a `+n more` chip (with an amber `●n` when hidden ones need you) that opens the sidebar; the selected chip is kept in view. A `menu` chip keeps mouse access to the Menu at the right.
-  The panes take the full width and start on row 1, so their tabs stay visible. `ui.rounded` (Settings › Appearance › Rounded: `full`, `corners` or `off`, off by default) is the one shape setting. `corners` rounds every box's corners only. `full` rounds them too, and caps every chip (tabs, the SESSIONS title, card titles, + New, Menu, buttons, menu rows) on whatever ground it sits, the pointer's hover, and draws a selected or failed session row as one block, in place of the edge bar: half-circle caps for one line, square ends for more so its lines read as one even block, never a pill per line; what is right-aligned stops a cell short of the cap. The Settings tab strip carries no update dot: the mode bar's pill and the splash announce updates, and the version lives in one row, General › UPDATES › Version (`maitty 0.42.0 · up to date · u check now`, or `9.9.9 is out · Enter to update`; Enter or a click acts, `u` checks from any tab). Above the pages, only what is off shows: an installed or daemon version that differs, or a pending restart with Restart now.
-- **Strip focus** is the sidebar focus with the sidebar collapsed (leader Focus the sidebar). `←` `→` and `1`–`9` switch
-  sessions, opening each in the pane while the keys stay on the strip; `1`–`9` mean nothing elsewhere. Enter focuses the pane, Esc leaves.
+- **Collapsed** (`screen/rail.rs`, ADR 0033): a narrow column, `RAIL_W` (5) wide, down the sidebar's side; the panes take the rest
+  and keep the top row. A `»` chip first (`«` with the sidebar on the right), then each project as its first letter in the
+  project's colour and, under it, each of its sessions as its mark (same glyph and colour as the row) and the first letter of its
+  name, in the sidebar's order, a blank row between projects. The selected row is `accent` with `acc_ink` text while the column has the
+  keys, else `btn`. At the foot a `+` chip starts a shell and a `≡` chip opens the Menu. Rows that don't fit scroll, the selected one kept in view, and a `…` in the
+  last place opens the sidebar. A click on a project's letter opens the sidebar. In Hairline the `│` rule stays beside the column.
+  `ui.rounded` (Settings › Appearance › Rounded: `full`, `corners` or `off`, off by default) is the one shape setting. `corners` rounds every box's corners only. `full` rounds them too, and caps every chip (tabs, the SESSIONS title, card titles, + New, Menu, buttons, menu rows) on whatever ground it sits, the pointer's hover, and draws a selected or failed session row as one block, in place of the edge bar: half-circle caps for one line, square ends for more so its lines read as one even block, never a pill per line; what is right-aligned stops a cell short of the cap. The Settings tab strip carries no update dot: the mode bar's pill and the splash announce updates, and the version lives in one row, General › UPDATES › Version (`maitty 0.42.0 · up to date · u check now`, or `9.9.9 is out · Enter to update`; Enter or a click acts, `u` checks from any tab). Above the pages, only what is off shows: an installed or daemon version that differs, or a pending restart with Restart now.
+- **Column focus** is the sidebar focus with the sidebar collapsed (leader Focus the sidebar). `↑` `↓`, `←` `→` and `1`–`9` switch
+  sessions, opening each in the pane while the keys stay on the column; `1`–`9` mean nothing elsewhere. Enter focuses the pane, Esc leaves.
 - **Hidden**: no sessions and no strip; the panes take everything. Reach them again with leader `z` or `Z`.
 
 A session an agent started (a helper) steps in two columns under the session that started it, to two levels. A row asking to start helpers keeps its second line (`wants to start N helpers`), which gives way last.

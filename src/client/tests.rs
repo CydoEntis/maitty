@@ -346,10 +346,11 @@ mod screen_tests {
     }
 
     #[test]
-    fn the_collapsed_strip_puts_the_sessions_on_row_zero_and_keeps_mouse_access() {
-        for (w, h) in [(80, 24), (100, 30), (160, 45)] {
+    fn the_collapsed_column_keeps_every_session_and_mouse_access_beside_the_panes() {
+        for (w, h, layout) in [(80, 24, "floating"), (100, 30, "hairline"), (160, 45, "floating"), (160, 45, "hairline")] {
             for position in ["left", "right"] {
                 let (_, mut app) = super::design_tests::render_with(w, h);
+                app.cfg.ui.layout = layout.into();
                 app.cfg.ui.sidebar_position = position.into();
                 app.sidebar = false;
                 app.snap.terms.get_mut(&2).unwrap().label = "Review payments".into();
@@ -361,20 +362,21 @@ mod screen_tests {
                 let screen = draw(&mut app, w, h);
                 show(&screen);
                 let g = screen::grid(&app, Rect::new(0, 0, w, h));
-                assert_eq!((g.side.width, g.panes.width, g.tabs.y), (0, w, 2), "{w}x{h} {position}: the pane's box takes the full width and starts under the strip, the tabs a row inside it");
-                let on_row0 = |hit: screen::ScreenHit| app.hits.iter().find(|(r, h)| *h == Hit::Screen(hit) && r.y == 0).map(|(r, _)| *r);
-                assert!(on_row0(screen::ScreenHit::Session(1)).is_some() && on_row0(screen::ScreenHit::Session(2)).is_some(), "{w}x{h} {position}: a chip per session");
-                assert!(on_row0(screen::ScreenHit::ExpandSidebar).is_some() && on_row0(screen::ScreenHit::Actions).is_some(), "{w}x{h} {position}: expand and Menu stay clickable");
-                assert!(screen.lines().nth(2).unwrap().contains("  +") && screen.lines().nth(2).unwrap().contains("◫ ⤢"), "the tabs moved down to row 2: {}", screen.lines().nth(2).unwrap());
+                assert_eq!(g.side.width, screen::RAIL_W, "{w}x{h} {layout} {position}: a narrow column");
+                assert!(g.tabs.y <= 1, "{w}x{h} {layout} {position}: the panes keep the top row");
+                let in_column = |hit: screen::ScreenHit| app.hits.iter().find(|(r, h)| *h == Hit::Screen(hit) && r.x >= g.side.x && r.right() <= g.side.right()).map(|(r, _)| *r);
+                assert!(in_column(screen::ScreenHit::Session(1)).is_some() && in_column(screen::ScreenHit::Session(2)).is_some(), "{w}x{h} {position}: a row per session");
+                assert!(in_column(screen::ScreenHit::ExpandSidebar).is_some() && in_column(screen::ScreenHit::Actions).is_some() && in_column(screen::ScreenHit::NewShell).is_some(), "{w}x{h} {position}: expand, Menu and New stay clickable");
+                assert!(screen.lines().nth(g.tabs.y as usize).unwrap().contains("◫ ⤢"), "the tabs sit on row {}: {}", g.tabs.y, screen.lines().nth(g.tabs.y as usize).unwrap());
                 let click = |app: &mut App, r: Rect| {
                     for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
                         app.on_mouse(MouseEvent { kind, column: r.x + 1, row: r.y, modifiers: KeyModifiers::NONE });
                     }
                 };
-                let chip = on_row0(screen::ScreenHit::Session(2)).unwrap();
-                click(&mut app, chip);
+                let row = in_column(screen::ScreenHit::Session(2)).unwrap();
+                click(&mut app, row);
                 assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, ClientMsg::Command(Command::FocusPane { term: 2 }))));
-                // More sessions than fit: a `+n more` chip opens the sidebar.
+                // More sessions than fit: the last row is a `…` that opens the sidebar.
                 for id in 4..60 {
                     let mut t = app.snap.terms[&2].clone();
                     t.id = id;
@@ -382,9 +384,9 @@ mod screen_tests {
                     app.snap.workspaces[0].tabs.push(TabInfo { id: 100 + id, name: String::new(), layout: crate::layout::Node::Leaf(id), focus: id });
                 }
                 let screen = draw(&mut app, w, h);
-                assert!(screen.lines().next().unwrap().contains(" more"), "{w}x{h} {position}: chips that don't fit give way to +n more: {}", screen.lines().next().unwrap());
-                let expand = app.hits.iter().rev().find(|(r, h)| *h == Hit::Screen(screen::ScreenHit::ExpandSidebar) && r.y == 0 && r.x > 6).map(|(r, _)| *r).expect("the +n more chip");
-                click(&mut app, expand);
+                let y = screen.lines().position(|l| l.chars().skip(g.side.x as usize).take(g.side.width as usize).any(|c| c == '…')).unwrap_or_else(|| panic!("{w}x{h} {position}: rows that don't fit give way to a …"));
+                let more = app.hits.iter().rev().find(|(r, h)| *h == Hit::Screen(screen::ScreenHit::ExpandSidebar) && r.y as usize == y).map(|(r, _)| *r).expect("the … row opens the sidebar");
+                click(&mut app, more);
                 assert!(app.sidebar);
                 draw(&mut app, w, h);
                 assert!(app.screen.side_rect.width > 7);
@@ -6303,7 +6305,7 @@ mod check_row_tests {
     }
 
     #[test]
-    fn the_collapsed_strip_shows_the_same_glyphs() {
+    fn the_collapsed_column_shows_the_same_glyphs() {
         let (w, h) = (160, 45);
         for layout in LAYOUTS {
             for c in &CASES {
@@ -6312,8 +6314,8 @@ mod check_row_tests {
                 app.side_frac = 0.0;
                 let buf = render(&mut app, w, h);
                 show(&buf, &format!("rail {} {:?}", label(layout, w, h), c.state));
-                let found = (0..w).any(|x| buf[(x, 0)].symbol() == c.glyph);
-                assert!(found, "{} {:?}: {} in the strip", label(layout, w, h), c.state, c.glyph);
+                let found = (0..8u16).any(|x| (0..h).any(|y| buf[(x, y)].symbol() == c.glyph));
+                assert!(found, "{} {:?}: {} in the column", label(layout, w, h), c.state, c.glyph);
             }
         }
     }

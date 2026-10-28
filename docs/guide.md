@@ -43,8 +43,8 @@ and your configured custom ones; rows click and the wheel scrolls.
 - One row is selected: a neutral tint with a **▎** bar at its left edge (lime while the sidebar has
   the keys, dim when a pane does). The open session keeps a dim bar while you browse with the
   keyboard. Hover is a separate, quieter tint.
-- Collapsing the sidebar (leader, then `z`) moves the sessions into a strip of chips along
-  the top row: click a chip to go to it, `»` (`«` with the sidebar on the right) or `+n more` to expand the sidebar again.
+- Collapsing the sidebar (leader, then `z`) leaves a narrow column
+  down the side, each project as its first letter in its colour and each session as its mark and first letter: click a row to go to it, `»` (`«` with the sidebar on the right) or `…` to expand the sidebar again.
 - Things that need you sort to the top; everything else keeps its place. Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
 - A session taking a real share of the machine says so in its pane's title, beside its state
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).

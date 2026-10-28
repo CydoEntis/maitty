@@ -105,7 +105,7 @@ Caps Lock does not change shortcut meaning, and no default but `?` needs Shift (
 0022). The
 [README](../README.md#shortcuts) lists the defaults.
 
-Mouse entry: **Menu** has a chip in the collapsed strip (row 0); with the sessions hidden
+Mouse entry: **Menu** has a chip (`≡`) in the collapsed column; with the sessions hidden
 (search commands for "Hide sidebar"), use the leader. Click a row to run it; the wheel moves the selection. Close buttons
 dismiss overlays.
 
@@ -423,8 +423,8 @@ in Maitty's own history); a click goes back to the newest output. An agent that 
 far as the wheel paged it up; typing to the agent clears it, since the agent scrolls to its
 prompt itself.
 
-Leader `z` collapses the sessions into a strip of chips on the top row (click a chip to
-focus it, `»` or `+n more` to expand); with the strip focused, `←` `→` and `1`-`9` switch
+Leader `z` collapses the sessions into a narrow column (click a row to focus it, `»` or
+the `…` row to expand); with the column focused, `↑` `↓`, `←` `→` and `1`-`9` switch
 sessions. "Hide sidebar" (search commands) hides the sessions completely; `z` brings them back.
 
 | Keys | Action |

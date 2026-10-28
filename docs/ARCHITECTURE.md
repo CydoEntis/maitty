@@ -304,7 +304,7 @@ outside Maitty. No provider-specific status adapter is needed.
   …); each mode has a `draw_*` and an `on_*_key` function.
 - **Hit testing.** Drawing registers clickable rects (`hit(app, rect, ScreenHit::…)`);
   mouse handling looks them up, so drawing and clicking can't drift.
-  `client/screen/rail.rs` renders the collapsed sidebar from the same session
+  `client/screen/rail.rs` renders the collapsed sidebar (a narrow column) from the same session
   model and status glyphs; it shares focus, hit testing and scroll state.
 - **Background work.** Slow work runs in `spawn_bg` and returns a `Bg` message.
 - **Other programs** go through `proc.rs` (`proc::git`, `proc::run`, `proc::shell`,

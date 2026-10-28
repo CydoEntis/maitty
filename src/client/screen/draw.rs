@@ -93,7 +93,9 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
     let look = Look::of(&app.cfg.ui);
     let default_w = if look.hairline { hairline::SIDE_W } else { side_w(area.width) };
     let full = app.screen.saved.side_w.unwrap_or(default_w).clamp(SIDE_MIN, SIDE_MAX).min(area.width / 2);
-    let sw = (full as f32 * app.side_frac).round() as u16;
+    // Collapsed, the sidebar is the narrow column (`rail`); only hiding it takes the room.
+    let rail_w = if app.side_hidden { 0 } else { rail::RAIL_W.min(area.width / 2) };
+    let sw = ((full as f32 * app.side_frac).round() as u16).max(rail_w);
     // Hairline keeps a column for the `│` between the sidebar and the panes.
     let gap = if sw == 0 { 0 } else if look.hairline { 1 } else { look.gap };
     let (side, col) = if app.cfg.ui.sidebar_position == "right" {
@@ -103,8 +105,6 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
         let x = area.x + sw + gap;
         (Rect { width: sw, ..area }, Rect { x, width: area.right().saturating_sub(x), ..area })
     };
-    // Collapsed, the sessions are chips on row 0 and the panes (with their tabs) start below it.
-    let col = if strip_on(app) { Rect { y: col.y + 1, height: col.height.saturating_sub(1), ..col } } else { col };
     // The tabs have a row of their own over the panes in both looks (ADR 0028): Hairline's
     // over a rule across the whole column, Floating's chips right over the boxes only, the side
     // sheet being a card of its own.
@@ -168,7 +168,7 @@ fn draw_sheet_edge(app: &mut App, buf: &mut Buffer, g: &Grid, t: &Theme) {
     hit(app, edge, ScreenHit::SheetEdge);
 }
 
-/// The sessions are collapsed into the strip on row 0 (`z`), not hidden (`Z`).
+/// The sessions are collapsed into the narrow column (`z`), not hidden (`Z`).
 pub(in crate::client) fn strip_on(app: &App) -> bool {
     !app.sidebar && !app.side_hidden
 }
@@ -209,8 +209,11 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
             }
         }
         hit(app, g.edge, ScreenHit::SideEdge);
-    } else if strip_on(app) {
-        rail::draw(app, f.buffer_mut(), room, &model, t);
+    } else if !app.side_hidden {
+        rail::draw(app, f.buffer_mut(), g.side, &model, t);
+        if Look::of(&app.cfg.ui).hairline {
+            hairline::draw_side_rule(f.buffer_mut(), g.edge, t);
+        }
     } else {
         // Hidden: nothing to point at, nothing to move a cursor over.
         app.screen.side_rect = Rect::default();
@@ -225,7 +228,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         draw_tab_chips(app, f.buffer_mut(), g.tabs, &model, t);
     } else {
         hairline::draw_tab_row(app, f.buffer_mut(), g.tabs, &model, t);
-        let edge = (g.side.width >= SIDE_DRAWN_FROM).then_some(g.edge.x);
+        let edge = (g.side.width > 0).then_some(g.edge.x);
         hairline::draw_bar_rule(f.buffer_mut(), Rect { y: room.bottom(), height: 1, ..room }, g.tabs, edge, g.side.x < g.edge.x, t);
     }
     if let Some(kind) = open_sheet(app).filter(|_| g.sheet.width >= SHEET_DRAWN_FROM) {

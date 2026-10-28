@@ -1465,14 +1465,16 @@ mod v8_tests {
     }
 
     #[test]
-    fn z_collapses_into_the_strip_and_capital_z_hides_and_each_restores() {
+    fn z_collapses_into_the_column_and_capital_z_hides_and_each_restores() {
         let mut app = world(Stage::None);
         let area = ratatui::layout::Rect::new(0, 0, 120, 30);
         assert!(app.sidebar && !app.side_hidden);
         app.act(Action::ToggleSidebar);
         app.side_frac = 0.0;
-        assert!(!app.sidebar && !app.side_hidden && super::super::draw::strip_on(&app), "z: the strip");
-        assert_eq!(super::super::draw::grid(&app, area).tabs.y, 2, "the pane's box starts under the strip, the tabs a row inside it");
+        assert!(!app.sidebar && !app.side_hidden && super::super::draw::strip_on(&app), "z: the column");
+        let g = super::super::draw::grid(&app, area);
+        assert_eq!((g.side.width, g.tabs.y), (crate::client::screen::RAIL_W, 1), "a narrow column stays, and the panes keep the top row");
+        assert!(g.panes.x >= g.side.right() && g.panes.right() == area.right(), "the panes take the rest of the width");
         app.act(Action::HideSidebar);
         app.side_frac = 0.0;
         assert!(app.side_hidden && !super::super::draw::strip_on(&app), "Z: hidden");
@@ -1486,45 +1488,50 @@ mod v8_tests {
     }
 
     #[test]
-    fn the_strip_switches_with_arrows_and_digits_only_while_it_has_the_keys() {
+    fn the_column_switches_with_arrows_and_digits_only_while_it_has_the_keys() {
         let mut app = world(Stage::None);
         let (w, h) = (160, 45);
         app.sidebar = false;
         let _ = raw_text(&mut app, Layout::Floating, w, h, "unicode");
-        let strip: String = raw_text(&mut app, Layout::Floating, w, h, "unicode").lines().next().unwrap().into();
-        for name in ["fix-footer", "add-payments", "warm-finch", "quick-fox", "old-moth"] {
-            assert!(strip.contains(name), "{name} is a chip: {strip}");
+        let text = raw_text(&mut app, Layout::Floating, w, h, "unicode");
+        let column: Vec<String> = text.lines().map(|l| l.chars().take(8).collect()).collect();
+        for letter in ['F', 'A', 'W', 'Q', 'O'] {
+            assert!(column.iter().any(|l| l.contains(letter)), "{letter} (a session's first letter) is in the column: {column:?}");
         }
-        assert!(strip.trim_start().starts_with('»'), "the expand chip comes first: {strip}");
+        assert!(column[0].trim_start().starts_with('»'), "the expand chip comes first: {column:?}");
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         app.out = tx;
         // The pane has the keys: a digit is typed into it, nothing switches.
         app.mode = Mode::Normal;
         app.on_key(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
         assert!(!std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, crate::protocol::ClientMsg::Command(crate::protocol::Command::FocusPane { .. }))));
-        // The strip has them: 1–9 jump, ← → step.
+        // The column has them: 1–9 jump, ↑ ↓ and ← → step.
         app.act(Action::BrowseTree);
         let _ = raw_text(&mut app, Layout::Floating, w, h, "unicode");
         app.on_key(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
         assert_eq!(app.screen.cursor, app.screen.side_items.iter().filter_map(|i| if let SideItem::Sess(t) = i { Some(*t) } else { None }).nth(2));
-        assert_eq!(app.mode, Mode::Side, "the keys stay on the strip");
+        assert_eq!(app.mode, Mode::Side, "the keys stay on the column");
         let third = app.screen.cursor;
         app.on_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
         assert_ne!(app.screen.cursor, third);
         app.on_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
         assert_eq!(app.screen.cursor, third);
+        app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_ne!(app.screen.cursor, third, "down steps to the next row");
+        app.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.screen.cursor, third, "up steps back");
         assert!(std::iter::from_fn(|| rx.try_recv().ok()).any(|m| matches!(m, crate::protocol::ClientMsg::Command(crate::protocol::Command::FocusPane { .. }))), "the session opens in the pane");
     }
 
     #[test]
-    fn the_selected_chip_is_accent_with_ink_when_the_strip_has_the_keys_else_raised() {
+    fn the_selected_row_is_accent_with_ink_when_the_column_has_the_keys_else_raised() {
         let mut app = world(Stage::None);
         app.sidebar = false;
         let t = app.theme.clone();
         let chip = |app: &mut App| {
             let buf = cells(app, Layout::Floating, 160, 45, "unicode");
-            let x = (0..160u16).find(|x| (0..3).map(|i| buf[(x + i, 0)].symbol()).collect::<String>() == "fix").expect("the chip");
-            (buf[(x, 0)].bg, buf[(x, 0)].fg)
+            let (x, y) = (0..8u16).flat_map(|x| (0..45u16).map(move |y| (x, y))).find(|&(x, y)| buf[(x, y)].symbol() == "F").expect("fix-footer's letter");
+            (buf[(x, y)].bg, buf[(x, y)].fg)
         };
         chip(&mut app);
         app.act(Action::BrowseTree);

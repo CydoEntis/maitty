@@ -56,3 +56,4 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0030](0030-panes-titled-like-an-editor.md) | Panes titled like an editor's, and toasts drawn to suit each look | Accepted, amended by 0031 |
 | [0031](0031-tabs-name-a-project-and-splits-have-no-title.md) | The tab row lists the project's tabs, and a split has no title | Accepted, tab row amended by 0032 |
 | [0032](0032-a-session-owns-its-tabs.md) | A session owns its tabs, and picking it shows it | Accepted |
+| [0033](0033-the-collapsed-sidebar-is-a-column.md) | The collapsed sidebar is a narrow column, not a strip of chips | Accepted |
