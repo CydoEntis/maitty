@@ -1511,12 +1511,32 @@ mod screen_tests {
     fn alt_letters_run_the_everyday_actions_without_the_leader_unless_turned_off() {
         let alt = |c: char| crate::keys::KeySpec::from_event(&KeyEvent::new(KeyCode::Char(c), KeyModifiers::ALT));
         let on = Config::default().keymap();
-        for (c, want) in [('n', Action::ShellHere), ('s', Action::StartSession), ('t', Action::NewTab), ('x', Action::ClosePane)] {
+        for (c, want) in [('n', Action::ShellHere), ('a', Action::StartSession), ('x', Action::ClosePane), ('s', Action::SplitRight), ('d', Action::SplitDown)] {
             assert_eq!(on.global.get(&alt(c)), Some(&want), "Alt+{c}");
+        }
+        for c in ['v', 't'] {
+            assert!(!on.global.contains_key(&alt(c)), "Alt+{c} is Claude Code's");
         }
         let mut cfg = Config::default();
         cfg.ui.alt_keys = false;
         assert!(!cfg.keymap().global.contains_key(&alt('x')), "off: Alt+x goes to the program");
+    }
+
+    #[test]
+    fn settings_keys_lists_the_keys_that_need_no_leader() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let keys = modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Keys).unwrap();
+        let rows = design::settings_rows(modal::Cat::Keys);
+        let last = rows.len() - 1;
+        app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat: keys, sel: last, editing: None, capturing: false, scroll: 0 }));
+        let o = draw(&mut app, 160, 45);
+        show(&o);
+        assert!(o.contains(design::DIRECT_GROUP), "the heading
+{o}");
+        for (label, key) in [("Close pane", "Alt + x"), ("Split stacked", "Alt + d"), ("Go to tab 1–9", "Alt + 1–9")] {
+            assert!(o.lines().any(|l| l.contains(label) && l.contains(key)), "{label} {key}
+{o}");
+        }
     }
 
     #[test]

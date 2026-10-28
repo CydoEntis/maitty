@@ -595,7 +595,8 @@ colours become the Pane colours option on Floating; Floating keeps square, corne
    the tab; `ui.sidebar_tabs` (all, busy, off); a retired look is said once and written back
 7. Settings regrouped (General, Appearance, Sessions, Alerts, Agents, Check, Keys) with updates
    first and a banner on every tab; the splash says a release is out in a banner, `u` installs
-8. fewer steps: Alt+n/s/t/x/v/h run the everyday actions without the leader (`ui.alt_keys`), and
+8. fewer steps: Alt+n/a/x/s/d (shell, session, close, split side by side, split down) run without the leader
+   (`ui.alt_keys`; Settings › Keys lists and rebinds them under "Without the leader"), and
    an idle shell closes without asking ([ADR 0029](adr/0029-alt-letters-and-closing-without-asking.md))
 
 ## In scope
