@@ -131,8 +131,9 @@ impl App {
             self.notify("open a session first".into(), true);
             return;
         };
-        self.screen.new_tab = Some((Instant::now(), owner));
         self.screen_act(&Action::ShellHere);
+        // After the command goes, which clears it: this is the one session it is for.
+        self.screen.new_tab.set(Some((Instant::now(), owner)));
     }
 
     /// Rename the session you're on, in its pill: its name is the one the sidebar, the pill and

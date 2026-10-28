@@ -1683,7 +1683,7 @@ mod screen_tests {
         draw(&mut app, 200, 50);
         assert!(app.screen.leaf_rects[0].1.width < before, "dragging moves it");
         // A new tab for c in this session; the bar shows both.
-        app.screen.new_tab = Some((Instant::now(), app.screen.tabs[0].owner));
+        app.screen.new_tab.set(Some((Instant::now(), app.screen.tabs[0].owner)));
         app.screen_place(c, Some(a));
         assert_eq!(app.screen.tabs.len(), 2);
         assert_eq!(app.screen.tabs[1].owner, app.screen.tabs[0].owner, "a tab of the same session");
@@ -1725,6 +1725,25 @@ mod screen_tests {
     }
 
     #[test]
+    fn a_session_started_after_asking_for_a_tab_is_its_own_session() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let rows = |app: &App| app.screen_model().iter().flat_map(|p| p.sessions().map(|s| s.term).collect::<Vec<_>>()).collect::<Vec<_>>();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.screen.tabs.clear();
+        app.screen_place(1, None);
+        // A tab is asked for in claude's session, then a session is started instead.
+        app.act(Action::NewTab);
+        assert!(app.screen.new_tab.get().is_some(), "armed for the shell that answers it");
+        app.screen_new_session(PathBuf::from("/tmp"), Some("claude".into()), false);
+        app.screen_place(3, Some(1));
+        app.screen_fresh();
+        let own = app.screen.tabs.iter().find(|t| t.layout.contains(3)).expect("it has a tab");
+        assert_eq!(own.owner, 3, "its own session, not a tab of claude's");
+        assert!(rows(&app).contains(&3), "with its own sidebar row: {:?}", rows(&app));
+    }
+
+    #[test]
     fn a_session_has_tabs_of_its_own() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // claude (1), codex (2), and a shell (3).
@@ -1740,7 +1759,7 @@ mod screen_tests {
         app.out = tx;
         app.act(Action::NewTab);
         assert_eq!(app.mode, Mode::Normal, "nothing to answer first");
-        assert!(matches!(app.screen.new_tab, Some((_, 1))), "the next session is a tab of claude's: {:?}", app.screen.new_tab);
+        assert!(matches!(app.screen.new_tab.get(), Some((_, 1))), "the next session is a tab of claude's: {:?}", app.screen.new_tab.get());
         app.screen_place(3, Some(1));
         app.screen_fresh();
         assert!(!rows(&app).contains(&3), "the shell is one of claude's tabs, not a row of its own: {:?}", rows(&app));
@@ -2649,9 +2668,9 @@ mod screen_tests {
         app.out = tx;
         app.screen.tabs.clear();
         app.screen_place(1, None);
-        app.screen.new_tab = Some((Instant::now(), 1));
+        app.screen.new_tab.set(Some((Instant::now(), 1)));
         app.screen_place(3, Some(1));
-        app.screen.new_tab = Some((Instant::now(), 1));
+        app.screen.new_tab.set(Some((Instant::now(), 1)));
         app.screen_place(2, Some(3));
         assert_eq!(app.session_tabs().len(), 3, "claude's session with three tabs");
         draw(&mut app, 160, 45);
