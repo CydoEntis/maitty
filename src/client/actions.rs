@@ -53,8 +53,10 @@ impl App {
                 }
             }
             Action::ClosePane => {
-                // From the sidebar it's the row the cursor is on, as its x is.
-                if let Some(term) = self.screen.cursor.or(focused) {
+                // From the sidebar it's the row the cursor is on, as its x is; anywhere else
+                // it's the focused pane, whatever the cursor last rested on.
+                let side = matches!(self.mode, Mode::Side | Mode::Prefix { .. });
+                if let Some(term) = self.screen.cursor.filter(|_| side).or(focused) {
                     self.menu_act(menu::Act::End(vec![term]));
                 }
             }

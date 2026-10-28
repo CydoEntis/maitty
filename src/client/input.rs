@@ -809,7 +809,8 @@ impl App {
                 let double = self.last_click.is_some_and(|(prev, at)| prev == h && at.elapsed() < DOUBLE_CLICK);
                 self.last_click = Some((h, Instant::now()));
                 if matches!(self.mode, Mode::Prefix { .. } | Mode::Side) && !matches!(hh, screen::ScreenHit::Why(_)) {
-                    self.mode = Mode::Normal;
+                    // The cursor goes with the keys: left behind, close would act on its row.
+                    self.screen_side_leave();
                 }
                 self.on_hy_hit(hh, double);
                 self.dirty = true;
@@ -840,7 +841,7 @@ impl App {
                     // The sidebar or a docked panel holds the keys beside the panes, not over
                     // them: a click on a pane takes the keys straight to that pane.
                     let beside = screen::side_focused(self) || screen::sheet_has_keys(self);
-                    self.mode = Mode::Normal;
+                    self.screen_side_leave();
                     if !beside || !self.pane_frames.iter().any(|(_, r)| r.contains(pos)) {
                         return;
                     }

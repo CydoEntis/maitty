@@ -2020,6 +2020,27 @@ mod screen_tests {
     }
 
     #[test]
+    fn close_acts_on_the_focused_pane_after_leaving_the_sidebar() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        draw(&mut app, 160, 45);
+        let focused = app.focused().unwrap();
+        let other = *app.snap.terms.keys().find(|t| **t != focused).expect("a second session");
+        // A click that takes the keys back from the sidebar must not leave its cursor behind:
+        // close would act on that row, not on what you're in.
+        app.screen_side_set(screen::SideItem::Sess(other));
+        let (_, r) = app.pane_frames[0];
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: r.x + 10, row: r.y + 10, modifiers: KeyModifiers::NONE });
+        assert!(matches!(app.mode, Mode::Normal) && app.screen.cursor.is_none(), "the cursor goes with the keys");
+        app.act(Action::ClosePane);
+        assert!(matches!(&app.mode, Mode::Confirm(c) if c.act == crate::client::menu::Act::End(vec![focused])), "close asks about the focused pane");
+        // Even a cursor left behind in normal mode is not a target.
+        app.mode = Mode::Normal;
+        app.screen.cursor = Some(other);
+        app.act(Action::ClosePane);
+        assert!(matches!(&app.mode, Mode::Confirm(c) if c.act == crate::client::menu::Act::End(vec![focused])), "only the sidebar's own keys use its cursor");
+    }
+
+    #[test]
     fn sidebar_by_keyboard() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
