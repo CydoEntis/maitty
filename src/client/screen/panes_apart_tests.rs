@@ -145,7 +145,7 @@ fn every_pane_of_a_split_shows_its_number_in_reading_order_in_every_look() {
                 continue;
             }
             // A narrow chip cuts the name before the number: `2 · warm-f…`, at the least a bare `2`.
-            let want = if label.starts_with("hairline") { vec![format!("  {} ", n + 1)] } else { vec![format!(" {} · ", n + 1), format!(" {} ─", n + 1), format!(" {}  ", n + 1)] };
+            let want = if label.starts_with("hairline") { vec![format!("  {} ", n + 1)] } else { vec![format!(" {} ", n + 1)] };
             assert!(want.iter().any(|w| title.contains(w)), "{label}: pane {term} reads {want:?}: {title}\n{}", text(&buf));
             assert!(!title.contains(&format!(" {}…", n + 1)), "{label}: a name cut away leaves the bare number: {title}");
         }
@@ -166,8 +166,9 @@ fn the_top_left_pane_names_its_own_session_whichever_pane_has_focus() {
             let model = app.screen_model();
             for (n, (term, r)) in shown.iter().enumerate() {
                 let title = title_of(&buf, *r);
-                let want = format!("{} · {}", n + 1, session_name(&app, &model, *term));
-                assert!(title.contains(&want), "{look}, focus on pane {}: pane {} reads {want:?}: {title}", focus_on + 1, n + 1);
+                let name = session_name(&app, &model, *term);
+                let at = title.find(&format!(" {} ", n + 1)).unwrap_or_else(|| panic!("{look}: pane {}'s number: {title}", n + 1));
+                assert!(title[at..].contains(&name), "{look}, focus on pane {}: pane {} reads its number then {name:?}: {title}", focus_on + 1, n + 1);
             }
         }
     }
@@ -181,7 +182,7 @@ fn a_named_tab_keeps_its_name_on_its_tab_and_the_pane_its_own() {
     let r = app.screen.leaf_rects.iter().min_by_key(|(_, r)| (r.y, r.x)).map(|(_, r)| *r).expect("a pane");
     let tabs = |app: &App, buf: &Buffer| title_of(buf, crate::client::screen::grid(app, buf.area).tabs);
     let title = title_of(&buf, r);
-    assert!(tabs(&app, &buf).contains(" build ") && title.contains(" 1 · fix-footer ") && !title.contains("build"), "the tab's name on its tab, the pane's in its title: {} / {title}", tabs(&app, &buf));
+    assert!(tabs(&app, &buf).contains(" build ") && title.contains(" 1 ● fix-footer ") && !title.contains("build"), "the tab's name on its tab, the pane's in its title: {} / {title}", tabs(&app, &buf));
     let mut second = app.screen.tabs[0].clone();
     (second.layout, second.focus, second.name) = (Node::Leaf(5), 5, String::new());
     app.screen.tabs.push(second);
@@ -374,4 +375,17 @@ fn pressing_a_shown_key_runs_its_item() {
     assert_eq!(app.mode, Mode::Normal);
     let after = app.screen.tabs[0].layout.leaves();
     assert_eq!(after, before.iter().rev().copied().collect::<Vec<_>>(), "Alt+→ moves the pane right");
+}
+
+#[test]
+fn a_sessions_only_tab_split_still_has_a_close_that_asks_for_all_its_panes() {
+    for look in ["floating", "hairline"] {
+        let mut app = split_world(look, 3);
+        draw(&mut app, 160, 45);
+        let close = app.hits.iter().find_map(|(r, h)| matches!(h, Hit::Screen(crate::client::screen::ScreenHit::CloseTab(_))).then_some(*r));
+        let close = close.unwrap_or_else(|| panic!("{look}: the tab has a ✕"));
+        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: close.x, row: close.y, modifiers: KeyModifiers::NONE });
+        let leaves = app.screen.tabs[app.screen.tab].layout.leaves();
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, crate::client::menu::Act::End(ts) if *ts == leaves)), "{look}: asks to close every pane: {:?}", app.mode);
+    }
 }

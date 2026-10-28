@@ -264,8 +264,14 @@ pub(super) fn draw_themes(
             panel.right().saturating_sub(2),
         );
     }
-    panel_bar(buf, panel, theme, &[("↑↓", "move"), ("PgUp/PgDn", "page"), ("Enter", "apply"), ("Esc", "back")]);
+    // The key hints sit where the one list row would on a tiny screen: the list wins.
+    if panel.height >= THEMES_BAR_MIN_H {
+        panel_bar(buf, panel, theme, &[("↑↓", "move"), ("PgUp/PgDn", "page"), ("Enter", "apply"), ("Esc", "back")]);
+    }
 }
+
+/// The fewest rows the Themes panel needs to show its key hints under a list row.
+const THEMES_BAR_MIN_H: u16 = 7;
 
 fn draw_preview(buf: &mut ratatui::buffer::Buffer, area: Rect, name: &str) {
     let theme = Theme::named(name);

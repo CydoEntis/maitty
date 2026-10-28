@@ -216,7 +216,7 @@ fn the_name_stays_whole_while_the_meta_gives_way() {
     let t = app.theme.clone();
     let r = pane_at(&app, 1);
     let title: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
-    assert!(title.contains("fix-footer") && title.contains('…') && title.contains('✕'), "{title}");
+    assert!(title.contains("fix-footer") && title.contains('…') && !title.contains('✕'), "no ✕ on a pane: {title}");
     let (x, y) = find_in(&buf, Rect { height: 1, ..r }, "1 ● fix-footer").unwrap();
     assert_eq!(x, r.x + PANE_PAD, "the pane's number leads the title, then the glyph");
     let x = x + 2;
@@ -285,16 +285,15 @@ fn the_stacked_divider_is_grabbed_on_the_line_drawn() {
 }
 
 #[test]
-fn title_controls_win_and_the_rest_of_the_title_focuses() {
+fn the_glyph_opens_why_and_the_rest_of_the_title_focuses() {
     let mut app = hairline_world(2);
     let buf = draw(&mut app, 160, 45);
     let r = pane_at(&app, 3);
     let title = Rect { height: 1, ..r };
-    let (cx, _) = find_in(&buf, title, "✕").unwrap();
-    assert_eq!(hit_at(&app, cx, r.y), Some(Hit::Screen(ScreenHit::CloseSplit(3))));
+    assert!(find_in(&buf, title, "✕").is_none(), "no ✕ on a pane: the tab's, Alt+x or its menu close it");
     let glyph = r.x + PANE_PAD + 2;
     assert_eq!(hit_at(&app, glyph, r.y), Some(Hit::Screen(ScreenHit::Why(3))), "the glyph opens why");
-    assert_eq!(hit_at(&app, cx - 3, r.y), Some(Hit::Pane(3)), "blank title space focuses the pane");
+    assert_eq!(hit_at(&app, r.right() - 3, r.y), Some(Hit::Pane(3)), "blank title space focuses the pane");
 }
 
 #[test]
@@ -313,15 +312,13 @@ fn a_title_shows_its_state_by_its_glyph_not_words() {
 }
 
 #[test]
-fn a_lone_panes_tab_carries_its_name_and_its_close() {
+fn a_lone_pane_has_no_title_row_and_its_tab_carries_its_close() {
     let mut app = hairline_world(1);
     let buf = draw(&mut app, 160, 45);
     let focus = app.focused().unwrap();
-    let title: String = {
-        let r = pane_at(&app, focus);
-        (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect()
-    };
-    assert!(title.trim_start().starts_with("affiliate-site") && !title.contains('✕'), "the title leaves the glyph, name and ✕ to the tab: {title}");
+    let r = pane_at(&app, focus);
+    let (_, inner) = *app.panes.iter().find(|(id, _)| *id == focus).unwrap();
+    assert_eq!(inner.y, r.y, "the terminal starts at the pane's top: no title row, no rule");
     let row = tab_row(&app, &buf);
     let (x, y) = find_in(&buf, row, "✕").expect("the tab's ✕");
     assert_eq!(hit_at(&app, x, y), Some(Hit::Screen(ScreenHit::CloseSplit(focus))), "it closes the only pane");
@@ -440,20 +437,24 @@ fn a_tab_out_of_view_shows_its_agents_state() {
 }
 
 #[test]
-fn a_toast_is_boxed_as_each_look_boxes_a_pane() {
-    for (look, corner, ground) in [("hairline", "┌", "bg"), ("floating", "╭", "card")] {
+fn a_toast_is_a_round_outline_in_floating_and_a_solid_block_in_hairline() {
+    for (look, above, ground) in [("hairline", "┃", "card2"), ("floating", "╭", "bg")] {
         let mut app = hairline_world(1);
         app.cfg.ui.layout = look.into();
         app.notify("Saved the theme".into(), false);
         let buf = draw(&mut app, 160, 45);
         show(look, &buf);
         let t = app.theme.clone();
-        let want = if ground == "bg" { t.bg } else { t.card };
+        let want = if ground == "bg" { t.bg } else { t.card2 };
         let (x, y) = find_text(&buf, "Saved the theme").expect("the toast");
-        assert_eq!(buf[(x, y)].bg, want, "{look}: its words on the look's ground for a box");
+        assert_eq!(buf[(x, y)].bg, want, "{look}: its words on its ground");
         let left = (0..x).rev().find(|&xx| buf[(xx, y)].symbol() == "┃").expect("its coloured left side");
         assert_eq!(buf[(left, y)].fg, t.accent, "{look}: the side in the notice's colour");
-        assert_eq!(buf[(left, y - 1)].symbol(), corner, "{look}: the box's corner over it, as a pane's");
-        assert_eq!(buf[(left, y - 1)].fg, t.line, "{look}: the box in `line`");
+        assert_eq!(buf[(left, y - 1)].symbol(), above, "{look}: a round corner over the side, or the side runs on");
+        if look == "floating" {
+            assert_eq!(buf[(left, y - 1)].fg, t.line, "the outline in `line`");
+        } else {
+            assert!(!(0..160u16).any(|xx| ["┌", "┐", "└", "┘"].contains(&buf[(xx, y - 1)].symbol())), "no box in hairline");
+        }
     }
 }

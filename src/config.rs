@@ -873,7 +873,7 @@ impl Default for Ui {
             panes: "floating".into(),
             glyphs: "auto".into(),
             gap: "1".into(),
-            padding: "1".into(),
+            padding: "0".into(),
             dim: "30%".into(),
             focus_border: "accent".into(),
             rounded: Rounding::Off,
