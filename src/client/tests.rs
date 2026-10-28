@@ -58,6 +58,7 @@ mod design_tests {
             subagent_activity: Vec::new(),
             session: None,
             started_by: None,
+            tab_of: None,
             helper_ask: Vec::new(),
             queued: Vec::new(),
             root: None,
@@ -1534,6 +1535,21 @@ mod screen_tests {
         app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::ALT));
         assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, crate::client::menu::Act::End(ts) if *ts == vec![agent])), "asks to close the row's session: {:?}", app.mode);
         assert_eq!(app.focused(), focused, "it doesn't go into the pane");
+    }
+
+    #[test]
+    fn after_a_restart_a_sessions_tabs_come_back_as_its_tabs() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        // The daemon says the shell (3) is a tab of claude's (1); codex (2) is a session of its own.
+        app.snap.terms.get_mut(&3).unwrap().tab_of = Some(1);
+        (app.screen.tabs, app.screen.last_focus) = (Vec::new(), None);
+        app.screen_sync();
+        let mine: Vec<TermId> = app.screen.tabs.iter().filter(|t| t.owner == 1).map(|t| t.layout.first_leaf()).collect();
+        assert_eq!(mine, vec![1, 3], "claude's own tab first, then the shell's");
+        assert!(!app.screen.tabs.iter().any(|t| t.owner == 3), "the shell is no session of its own");
+        let model = app.screen_model();
+        let rows: Vec<TermId> = model.iter().flat_map(|p| p.sessions().map(|s| s.term).collect::<Vec<_>>()).collect();
+        assert!(!rows.contains(&3), "so it has no row in the sidebar: {rows:?}");
     }
 
     #[test]

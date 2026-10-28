@@ -14,6 +14,7 @@ struct Kept {
     model: String,
     grants: Option<Vec<String>>,
     started_by: Option<TermId>,
+    tab_of: Option<TermId>,
     queue: std::collections::VecDeque<String>,
 }
 
@@ -29,6 +30,7 @@ impl Kept {
             model: t.model.clone(),
             grants: t.grants.clone(),
             started_by: t.started_by,
+            tab_of: t.tab_of,
             queue: t.queue.clone(),
         }
     }
@@ -36,16 +38,22 @@ impl Kept {
     fn give(self, t: &mut Term) {
         (t.agent, t.session, t.cmd) = (self.agent, self.session, self.cmd);
         (t.label, t.name, t.first_prompt) = (self.label, self.name, self.first_prompt);
-        (t.model, t.grants, t.started_by) = (self.model, self.grants, self.started_by);
+        (t.model, t.grants, t.started_by, t.tab_of) = (self.model, self.grants, self.started_by, self.tab_of);
         t.queue = self.queue;
     }
 }
 
 impl Daemon {
-    /// `new` took `old`'s place: the helpers `old` started are still its.
+    /// `new` took `old`'s place: the helpers `old` started, and the panes in its tabs, are
+    /// still its.
     fn takes_over_helpers(&mut self, old: TermId, new: TermId) {
-        for t in self.terms.values_mut().filter(|t| t.started_by == Some(old)) {
-            t.started_by = Some(new);
+        for t in self.terms.values_mut() {
+            if t.started_by == Some(old) {
+                t.started_by = Some(new);
+            }
+            if t.tab_of == Some(old) {
+                t.tab_of = Some(new);
+            }
         }
     }
 
@@ -163,6 +171,7 @@ impl Daemon {
             model: term.model.clone(),
             label: term.label.clone(),
             started_by: term.started_by,
+            tab_of: term.tab_of,
             queue: term.queue.iter().cloned().collect(),
             account: term.account.clone(),
             subagent_activity: term.subagent_activity.clone(),
@@ -244,6 +253,7 @@ impl Daemon {
         // back in any order, so the links are made once all of them are up.
         let mut ids: HashMap<TermId, TermId> = HashMap::new();
         let mut started: Vec<(TermId, TermId)> = Vec::new();
+        let mut owned: Vec<(TermId, TermId)> = Vec::new();
         for sw in saved.workspaces {
             let mut tabs = Vec::new();
             for st in sw.tabs {
@@ -288,6 +298,7 @@ impl Daemon {
                             map.insert(old, new);
                             ids.insert(old, new);
                             started.extend(pane.started_by.map(|by| (new, by)));
+                            owned.extend(pane.tab_of.map(|owner| (new, owner)));
                             restored += 1;
                         }
                         Err(e) => tracing::warn!("restoring pane in {}: {e:#}", cwd.display()),
@@ -321,6 +332,11 @@ impl Daemon {
         for (term, by) in started {
             // The session that started it didn't come back: it's on its own.
             self.started(term, ids.get(&by).copied());
+        }
+        for (term, owner) in owned {
+            if let Some(t) = self.terms.get_mut(&term) {
+                t.tab_of = ids.get(&owner).copied();
+            }
         }
         self.active_ws = self.workspaces.get(saved.active).or(self.workspaces.first()).map(|w| w.id);
         self.dirty = true;
