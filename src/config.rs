@@ -13,6 +13,10 @@ use std::path::{Path, PathBuf};
 pub const EXAMPLE: &str = include_str!("../config.example.toml");
 pub const CODEX_QUEUED_QUESTION_PATTERN: &str = r"(?m)^[ \t]*\?[ \t]+[1-9][0-9]*[ \t]+questions?[ \t]*$|^[ \t]*enter[ \t]+submit[ \t]+ctrl\+\][ \t]+skip[ \t]+shift\+[^\r\n]*main prompt[ \t]*$";
 
+/// `ui.padding`'s default: a row above the screen, so the tabs don't touch the terminal's own
+/// tab bar, and none round the rest.
+pub const PADDING_TOP: &str = "top";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -119,7 +123,8 @@ pub struct Ui {
     pub glyphs: String,
     /// Space between floating cards: "0", "1" or "2" rows stacked (and columns side by side).
     pub gap: String,
-    /// Space round the whole screen, in every layout: "0", "1" or "2" rows (and columns).
+    /// Space round the whole screen, in every layout: "0", "1" or "2" rows (and columns), or
+    /// `PADDING_TOP` (the default), a row above only.
     pub padding: String,
     /// How far unfocused panes fade toward their background: "off", "subtle", "30%", "60%" ("40%" from older configs counts as 30%).
     pub dim: String,
@@ -873,7 +878,7 @@ impl Default for Ui {
             panes: "floating".into(),
             glyphs: "auto".into(),
             gap: "1".into(),
-            padding: "0".into(),
+            padding: PADDING_TOP.into(),
             dim: "30%".into(),
             focus_border: "accent".into(),
             rounded: Rounding::Off,

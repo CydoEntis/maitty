@@ -53,4 +53,5 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0027](0027-two-looks-and-tabs-in-the-sidebar.md) | Two looks, pane colours, and a session's tabs in the sidebar | Accepted, amended by 0028 and 0030 |
 | [0028](0028-tab-rows-and-popups-drawn-like-panes.md) | A tab row in both looks, and every popup drawn like a pane | Accepted, amended by 0030 |
 | [0029](0029-alt-letters-and-closing-without-asking.md) | Alt+letter shortcuts, and every close asks first | Accepted |
-| [0030](0030-panes-titled-like-an-editor.md) | Panes titled like an editor's, and toasts drawn to suit each look | Accepted |
+| [0030](0030-panes-titled-like-an-editor.md) | Panes titled like an editor's, and toasts drawn to suit each look | Accepted, amended by 0031 |
+| [0031](0031-tabs-name-a-project-and-splits-have-no-title.md) | The tab row lists the project's tabs, and a split has no title | Accepted |

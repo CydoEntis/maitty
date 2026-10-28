@@ -50,6 +50,8 @@ impl App {
             take_out(&mut self.screen.tabs, f);
             self.screen.tabs.push(ScreenTab { layout: Node::Leaf(f), focus: f, owner, used: 0, name: String::new() });
             self.screen.tab = self.screen.tabs.len() - 1;
+            // The daemon keeps whose tab it is, so a restart brings it back as that session's.
+            self.cmd(Command::SetTabOf { term: f, owner: Some(owner) });
             return;
         }
         if let Some(p) = beside {
@@ -67,7 +69,11 @@ impl App {
             let tab = &mut self.screen.tabs[i];
             tab.layout.split(p, dir, f);
             tab.focus = f;
+            let owner = tab.owner;
             self.screen.tab = i;
+            if owner != f {
+                self.cmd(Command::SetTabOf { term: f, owner: Some(owner) });
+            }
             return;
         }
         // A session with tabs: the one you were last on (unless you're already in one of them).
@@ -138,10 +144,16 @@ impl App {
         pending.take().map(|asked| asked.owner)
     }
 
-    /// The tabs of the session you're on, in order.
+    /// The tabs of the project you're in, in the sidebar's order: each session's tabs together.
+    /// Both the tab row and the number keys walk this list.
     pub(in crate::client) fn session_tabs(&self) -> Vec<usize> {
         let Some(owner) = self.screen.tabs.get(self.screen.tab).map(|t| t.owner) else { return Vec::new() };
-        (0..self.screen.tabs.len()).filter(|i| self.screen.tabs[*i].owner == owner).collect()
+        let owned = |term: TermId| (0..self.screen.tabs.len()).filter(move |&i| self.screen.tabs[i].owner == term);
+        let model = self.screen_model();
+        match model.iter().find(|p| p.sessions().any(|s| s.term == owner)) {
+            Some(p) => p.sessions().flat_map(|s| owned(s.term)).collect(),
+            None => owned(owner).collect(),
+        }
     }
 
     /// Close a session's tab and what's in it (one of several: its last tab is the session,
@@ -432,7 +444,6 @@ impl App {
         let focused = self.focused();
         match a {
             Action::Settings => self.screen_settings(),
-            Action::NewPane => self.screen_open_new_session(None),
             Action::StartSession => self.screen_start_session(None),
             // A plain shell in the project's own folder (the repo itself, not a worktree).
             Action::ShellHere => {
@@ -1343,11 +1354,14 @@ impl App {
             }
             ScreenHit::CloseTab(i) => self.close_tab(i),
             ScreenHit::NewTab => self.act(Action::NewTab),
+            ScreenHit::TabSplit => self.act(Action::SplitRight),
+            ScreenHit::TabZoom => {
+                let tab = self.screen.tab;
+                self.screen.zoom = if self.screen.zoom == Some(tab) { None } else { Some(tab) };
+            }
             ScreenHit::SideFocus => self.act(Action::BrowseTree),
             ScreenHit::ExpandSidebar => self.act(Action::ToggleSidebar),
             ScreenHit::NewShell => self.act(Action::ShellHere),
-            ScreenHit::NsOpt(row, i) => self.ns_pick(row, i),
-            ScreenHit::NsStart => self.ns_start(),
             ScreenHit::Actions => self.act(Action::Menu),
             ScreenHit::ActionRow(i) => self.actions_run(i),
             ScreenHit::Leader => self.open_keymap(None),

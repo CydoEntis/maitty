@@ -947,7 +947,7 @@ fn a_spare_fits_only_its_repo_and_its_agent() {
 }
 
 #[test]
-fn helpers_come_back_from_a_restart_under_their_starter() {
+fn helpers_and_tabs_come_back_from_a_restart_under_their_session() {
     let (mut d, _rx) = daemon();
     let dir = std::env::temp_dir();
     let child_activity = SubagentActivity {
@@ -988,7 +988,7 @@ fn helpers_come_back_from_a_restart_under_their_starter() {
             name: String::new(),
             layout: Node::Leaf(id),
             focus: id,
-            panes: [(id, persist::SavedPane { cwd: Some(dir.clone()), started_by: by, subagent_activity: if id == 71 { vec![child_activity.clone(), active_activity.clone()] } else { Vec::new() }, ..Default::default() })].into(),
+            panes: [(id, persist::SavedPane { cwd: Some(dir.clone()), started_by: by, tab_of: by.filter(|_| id == 71), subagent_activity: if id == 71 { vec![child_activity.clone(), active_activity.clone()] } else { Vec::new() }, ..Default::default() })].into(),
         }],
         active_tab: 0,
     };
@@ -1001,13 +1001,18 @@ fn helpers_come_back_from_a_restart_under_their_starter() {
     assert_eq!(d.terms[&helper].subagent_activity[1].state, SubagentState::ConnectionLost, "active child is unconfirmed after a daemon restart");
     assert_eq!(d.terms[&orphan].started_by, None, "a helper whose starter didn't come back is on its own");
     assert_eq!(d.terms[&starter].started_by, None);
+    // A pane in another session's tab comes back in that session's tab, by its new id.
+    assert_eq!(d.terms[&helper].tab_of, Some(starter), "71 was a tab of 70's: it is again");
+    assert_eq!((d.terms[&orphan].tab_of, d.terms[&starter].tab_of), (None, None), "the rest are their own");
     // And it's saved that way again.
     let saved = d.saved();
     assert_eq!(saved.workspaces[0].tabs[0].panes[&helper].started_by, Some(starter));
+    assert_eq!(saved.workspaces[0].tabs[0].panes[&helper].tab_of, Some(starter), "and saved that way again");
     assert_eq!(saved.workspaces[0].tabs[0].panes[&helper].subagent_activity.len(), 2);
     // A session saved before helpers were tracked still loads.
     let old: persist::SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":null,"session":null}"#).expect("an older pane");
     assert_eq!(old.started_by, None);
+    assert_eq!(old.tab_of, None, "a pane saved before tabs were kept is its own");
     assert!(old.subagent_activity.is_empty(), "panes saved before child activity still load");
     // Fleet and commander state an older version saved is read and ignored.
     let fleet: persist::SavedPane = serde_json::from_str(r#"{"cwd":null,"cmd":null,"agent":"claude","session":null,"commander":true,"fleet":{"goal":"ship it","size":3},"started_by":4}"#).expect("a pane from a fleet");

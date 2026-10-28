@@ -107,6 +107,7 @@ pub(super) fn term(id: TermId, label: &str, agent: &str, status: Status, cwd: &P
         subagent_activity: Vec::new(),
         session: None,
         started_by: None,
+        tab_of: None,
             helper_ask: Vec::new(),
         queued: Vec::new(),
         root: None,

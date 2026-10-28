@@ -58,6 +58,7 @@ mod design_tests {
             subagent_activity: Vec::new(),
             session: None,
             started_by: None,
+            tab_of: None,
             helper_ask: Vec::new(),
             queued: Vec::new(),
             root: None,
@@ -360,11 +361,11 @@ mod screen_tests {
                 let screen = draw(&mut app, w, h);
                 show(&screen);
                 let g = screen::grid(&app, Rect::new(0, 0, w, h));
-                assert_eq!((g.side.width, g.panes.width, g.tabs.y), (0, w, 1), "{w}x{h} {position}: the tabs and panes take the full width and start under the strip");
+                assert_eq!((g.side.width, g.panes.width, g.tabs.y), (0, w, 2), "{w}x{h} {position}: the pane's box takes the full width and starts under the strip, the tabs a row inside it");
                 let on_row0 = |hit: screen::ScreenHit| app.hits.iter().find(|(r, h)| *h == Hit::Screen(hit) && r.y == 0).map(|(r, _)| *r);
                 assert!(on_row0(screen::ScreenHit::Session(1)).is_some() && on_row0(screen::ScreenHit::Session(2)).is_some(), "{w}x{h} {position}: a chip per session");
                 assert!(on_row0(screen::ScreenHit::ExpandSidebar).is_some() && on_row0(screen::ScreenHit::Actions).is_some(), "{w}x{h} {position}: expand and Menu stay clickable");
-                assert!(screen.lines().nth(1).unwrap().trim_end().ends_with(" +"), "the tabs moved down to row 1: {}", screen.lines().nth(1).unwrap());
+                assert!(screen.lines().nth(2).unwrap().contains("  +") && screen.lines().nth(2).unwrap().contains("◫ ⤢"), "the tabs moved down to row 2: {}", screen.lines().nth(2).unwrap());
                 let click = |app: &mut App, r: Rect| {
                     for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
                         app.on_mouse(MouseEvent { kind, column: r.x + 1, row: r.y, modifiers: KeyModifiers::NONE });
@@ -641,10 +642,10 @@ mod screen_tests {
         // The grid: no margin, the sidebar card the full height from the corner, the tabs on
         // row 0 beside it (ADR 0028), the pane card right under them.
         assert!(lines[0].starts_with("┌─"), "the sidebar card from the very corner: {}", lines[0]);
-        assert!(lines[0].contains("● claude"), "the tab keeps its session and state: {}", lines[0]);
+        assert!(lines[1].contains("● claude"), "the tab keeps its session and state: {}", lines[1]);
         assert!(text.contains("+ New") && text.contains("Menu"), "New and Actions stay in the sidebar foot");
-        assert!(lines[0].contains(" claude ✕") && lines[0].trim_end().ends_with("  +") && !lines[0].contains('▯'), "the tab's name on the tab row (a lone tab has no number), then the + chip; no layout switch: {}", lines[0]);
-        assert!(!lines[1].contains("claude") && !lines[1].contains("needs you") && !lines[1].contains('✕'), "a lone pane has no title: its tab names it: {}", lines[1]);
+        assert!(lines[1].contains(" claude ✕") && lines[1].contains("  +") && lines[1].contains("◫ ⤢") && !lines[1].contains('▯'), "the tab's name on the tab row inside the pane's box (a lone tab has no number), the + chip, then split and zoom at the right: {}", lines[1]);
+        assert!(!lines[2].contains("claude") && !lines[2].contains("needs you") && !lines[2].contains('✕'), "a lone pane has no title: its tab names it: {}", lines[2]);
         // Projects and their sessions, nothing in between.
         assert!(text.contains("−  shop-api") && text.contains("SESSIONS") && text.contains("●1"), "a project: its fold arrow and name; what needs you in the sidebar's title");
         assert!(!text.contains("AGENTS") && !text.contains("TERMINALS") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "no heading per kind of session");
@@ -1348,12 +1349,13 @@ mod screen_tests {
                     for r in blocked {
                         let row: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
                         // A modal (Settings, held open) can lie over the title: nothing to read there.
-                        // A lone pane has no title: its tab shows the state.
-                        if !split || !row.starts_with(['┌', '╭']) {
+                        // A pane has no title: its tab shows the state, and a split's edge goes amber
+                        // while it needs you (a held modal dims everything behind it).
+                        if !split || mode != "off" || !row.starts_with(['┌', '╭']) {
                             continue;
                         }
-                        if !row.contains('▲') && !row.contains('●') {
-                            failures.push(format!("{layout} split {split} {mode} update {update} {w}: {row}"));
+                        if ![app.theme.blocked, app.theme.accent].contains(&buf[(r.x + 1, r.y)].fg) {
+                            failures.push(format!("{layout} split {split} {mode} update {update} {w}: {row} {:?} want {:?}", buf[(r.x + 1, r.y)].fg, app.theme.blocked));
                         }
                     }
                     // Typing says so on the mode bar at every width.
@@ -1444,23 +1446,35 @@ mod screen_tests {
         (r.y..r.bottom()).map(|y| (r.x..r.right()).map(|x| buf[(x, y)].symbol()).collect::<String>()).collect()
     }
 
+    /// The sidebar row that names `word` (a tab line shows its tab's name).
+    fn row_with(rows: &[String], word: &str) -> Option<usize> {
+        // The session's own row (claude's) may point at a tab beside it that needs you.
+        rows.iter().position(|r| r.contains(word) && (word == "claude" || !r.contains("claude")))
+    }
+
+    /// Whether the sidebar holds any tab line.
+    fn has_tab_lines(app: &App) -> bool {
+        let model = app.screen_model();
+        screen::side_lines(app, &model, &app.theme).iter().any(|l| matches!(l, screen::Line::Tab(..)))
+    }
+
     #[test]
     fn a_session_s_tabs_each_show_their_own_state_under_its_row() {
         for layout in ["floating", "hairline"] {
             let (mut app, _) = tabbed_session(layout);
             let buf = drawn(&mut app, 160, 45);
             let rows = side_text(&app, &buf);
-            show(&rows.join("
-"));
-            let line = |n: &str| rows.iter().position(|r| r.contains(&format!("{n} "))).unwrap_or_else(|| panic!("{layout}: tab line {n}
-{}", rows.join("
-")));
-            let (two, three) = (line("├ 2"), line("└ 3"));
+            show(&rows.join("\n"));
+            let line = |name: &str| row_with(&rows, name).unwrap_or_else(|| panic!("{layout}: tab line {name}\n{}", rows.join("\n")));
+            let (two, three) = (line("codex"), line("gemini"));
             assert_eq!(three, two + 1, "{layout}: one line per tab, in order");
-            assert!(!rows.iter().any(|r| r.contains("├ 1 ") || r.contains("└ 1 ")), "{layout}: no line for the tab the session's own pane is in: its row is that one");
+            assert_eq!(rows.iter().filter(|r| r.contains("claude")).count(), 1, "{layout}: no line for the tab the session's own pane is in: its row is that one");
             let spinner = crate::client::design::glyph(&app, Status::Working);
             assert!(rows[two].contains(&spinner), "{layout}: the working tab says so though it is not on screen: {}", rows[two]);
-            assert!(rows[three].contains("needs you"), "{layout}: so does the one that needs you: {}", rows[three]);
+            let side = app.screen.side_rect;
+            let at = rows[three].find("gemini").expect("the name");
+            let name_x = side.x + rows[three][..at].chars().count() as u16;
+            assert_eq!(buf[(name_x, side.y + three as u16)].fg, app.theme.blocked, "{layout}: the one that needs you has its name in amber: {}", rows[three]);
         }
     }
 
@@ -1537,6 +1551,33 @@ mod screen_tests {
     }
 
     #[test]
+    fn after_a_restart_a_sessions_tabs_come_back_as_its_tabs() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        // The daemon says the shell (3) is a tab of claude's (1); codex (2) is a session of its own.
+        app.snap.terms.get_mut(&3).unwrap().tab_of = Some(1);
+        (app.screen.tabs, app.screen.last_focus) = (Vec::new(), None);
+        app.screen_sync();
+        let mine: Vec<TermId> = app.screen.tabs.iter().filter(|t| t.owner == 1).map(|t| t.layout.first_leaf()).collect();
+        assert_eq!(mine, vec![1, 3], "claude's own tab first, then the shell's");
+        assert!(!app.screen.tabs.iter().any(|t| t.owner == 3), "the shell is no session of its own");
+        let model = app.screen_model();
+        let rows: Vec<TermId> = model.iter().flat_map(|p| p.sessions().map(|s| s.term).collect::<Vec<_>>()).collect();
+        assert!(!rows.contains(&3), "so it has no row in the sidebar: {rows:?}");
+    }
+
+    #[test]
+    fn padding_top_leaves_a_row_above_and_none_round_the_rest() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.cfg.ui.padding = crate::config::PADDING_TOP.into();
+        let buf = drawn(&mut app, 160, 45);
+        let row = |y: u16| (0..160u16).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert!(row(0).trim().is_empty(), "the top row is empty: {}", row(0));
+        assert!(row(1).starts_with("┌─ SESSIONS"), "the sidebar starts under it, at the left edge: {}", row(1));
+        assert_eq!(buf[(159, 4)].symbol(), "│", "the panes reach the right edge: {}", row(4));
+        assert_eq!(Config::default().ui.padding, crate::config::PADDING_TOP, "the default");
+    }
+
+    #[test]
     fn settings_keys_lists_the_keys_that_need_no_leader() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let keys = modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Keys).unwrap();
@@ -1556,14 +1597,14 @@ mod screen_tests {
     #[test]
     fn the_sidebar_shows_all_busy_or_no_tab_lines_as_set() {
         for layout in ["floating", "hairline"] {
-            for (setting, want) in [("all", vec!["├ 2", "└ 3"]), ("busy", vec!["├ 2", "└ 3"]), ("off", vec![])] {
+            for (setting, want) in [("all", vec!["codex", "gemini"]), ("busy", vec!["codex", "gemini"]), ("off", vec![])] {
                 let (mut app, _) = tabbed_session(layout);
                 // The working tab on screen; the idle one is busy only while it is.
                 app.screen.tab = 1;
                 app.cfg.ui.sidebar_tabs = setting.into();
                 let buf = drawn(&mut app, 160, 45);
                 let rows = side_text(&app, &buf);
-                let got: Vec<&str> = ["├ 1", "└ 1", "├ 2", "└ 2", "├ 3", "└ 3"].into_iter().filter(|n| rows.iter().any(|r| r.contains(&format!("{n} ")))).collect();
+                let got: Vec<&str> = ["codex", "gemini"].into_iter().filter(|n| row_with(&rows, n).is_some()).collect();
                 assert_eq!(got, want, "{layout} {setting}
 {}", rows.join("
 "));
@@ -1577,7 +1618,7 @@ mod screen_tests {
             let (mut app, [_, _, c]) = tabbed_session(layout);
             let buf = drawn(&mut app, 160, 45);
             let rows = side_text(&app, &buf);
-            let y = app.screen.side_rect.y + rows.iter().position(|r| r.contains("└ 3")).expect("tab 3's line") as u16;
+            let y = app.screen.side_rect.y + row_with(&rows, "gemini").expect("tab 3's line") as u16;
             let x = app.screen.side_rect.x + 6;
             app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: x, row: y, modifiers: KeyModifiers::NONE });
             assert_eq!(app.screen.tab, 2, "{layout}: the third tab is on screen");
@@ -1592,7 +1633,7 @@ mod screen_tests {
             app.cfg.ui.layout = layout.into();
             let buf = drawn(&mut app, 160, 45);
             let rows = side_text(&app, &buf);
-            assert!(!rows.iter().any(|r| r.contains("├ 1") || r.contains("└ 1")), "{layout}
+            assert!(!has_tab_lines(&app), "{layout}
 {}", rows.join("
 "));
         }
@@ -1631,8 +1672,8 @@ mod screen_tests {
                         failures.push(format!("+ without every tab: {at}"));
                     }
                     let spinner = crate::client::design::glyph(&app, Status::Working);
-                    if !title.contains(&spinner) {
-                        failures.push(format!("no state on the title: {at}"));
+                    if !top.contains(&spinner) {
+                        failures.push(format!("no state on the tabs: {at}"));
                     }
                     others_dropped |= shown(place) && others < 2;
                 }
@@ -1801,7 +1842,8 @@ mod screen_tests {
         let title = o.lines().next().unwrap_or_default().chars().skip(side.right() as usize).collect::<String>();
         let in_title = app.hits.iter().filter(|(r, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_))) && !side.intersects(*r)).count();
         assert!(in_title == 2 && !title.contains("2 shell"), "claude's two tabs, unnamed ones shown by number: {title}");
-        assert!(o.contains("└ 2 shell"), "the sidebar names the shell's tab under claude's row");
+        let in_side = |l: &str| l.chars().skip(side.x as usize).take(side.width as usize).collect::<String>();
+        assert!(o.lines().any(|l| in_side(l).contains(" shell")), "the sidebar names the shell's tab under claude's row, without a number");
         // Rename uses the same centered text editor as pane and project names.
         app.act(Action::RenameTab);
         for c in "tests".chars() {
@@ -1826,19 +1868,19 @@ mod screen_tests {
         assert_eq!(app.session_name(focus), "tests", "notices say the name you gave");
         app.screen_sync();
         let o = draw(&mut app, 160, 45);
-        let title = o.lines().next().unwrap_or_default().chars().skip(app.screen.side_rect.right() as usize).collect::<String>();
+        let title = o.lines().nth(1).unwrap_or_default().chars().skip(app.screen.side_rect.right() as usize).collect::<String>();
         assert!(title.contains(" tests ") && !title.contains("2 tests"), "renamed: the pill is its name: {title}");
         // Views get rebuilt (another session reuses the slot, the client restarts): the name stays.
         app.screen.tabs.iter_mut().for_each(|t| t.name.clear());
         app.screen_sync();
         let o = draw(&mut app, 160, 45);
         assert!(o.contains(" tests "), "the name comes back from the daemon: {o}");
-        // Another session: its own view, with its own rail.
+        // Another session: the tab row lists the whole project's tabs, so codex's one joins claude's two.
         app.screen_place(2, Some(3));
         draw(&mut app, 160, 45);
-        assert_eq!(app.session_tabs().len(), 1);
+        assert_eq!(app.session_tabs().len(), 3);
         let side = app.screen.side_rect;
-        assert!(app.hits.iter().filter(|(r, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_))) && !side.intersects(*r)).count() == 1, "codex has one tab");
+        assert!(app.hits.iter().filter(|(r, h)| matches!(h, Hit::Screen(screen::ScreenHit::TabPick(_))) && !side.intersects(*r)).count() == 3, "the project's three tabs");
         // Back to claude: the tab you were last on there (the shell).
         app.screen_place(1, Some(2));
         assert_eq!(app.screen.tabs[app.screen.tab].focus, 3, "back on the shell tab");
@@ -2214,7 +2256,7 @@ mod screen_tests {
         for header in ["NEW", "GO TO", "VIEW", "SET UP"] {
             assert!(!o.contains(header), "the Menu has no {header} header");
         }
-        assert!(o.contains("─ Menu ") && o.contains("Session with options…") && o.contains("Pane beside this") && o.contains("Inbox ● 1") && o.contains("Search commands"), "{o}");
+        assert!(o.contains("─ Menu ") && o.contains("Pane beside this") && o.contains("Inbox ● 1") && o.contains("Search commands"), "{o}");
         assert!(!o.contains("then a key works anywhere"), "no leader hint");
         let shell = o.lines().find(|l| l.contains("Shell here")).expect("Shell here");
         assert!(!shell.trim_end_matches(['│', ' ']).ends_with(" n"), "no bare letter beside a row: {shell}");
@@ -2270,10 +2312,6 @@ mod screen_tests {
 
     fn sent(rx: &mut mpsc::UnboundedReceiver<ClientMsg>) -> Vec<Command> {
         std::iter::from_fn(|| rx.try_recv().ok()).filter_map(|m| match m { ClientMsg::Command(c) => Some(c), _ => None }).collect()
-    }
-
-    fn plain(c: KeyCode) -> KeyEvent {
-        KeyEvent::new(c, KeyModifiers::NONE)
     }
 
     fn leader(app: &mut App, c: char) {
@@ -2339,66 +2377,17 @@ mod screen_tests {
     }
 
     #[test]
-    fn o_opens_the_new_session_dialog_with_its_rows_keys_and_buttons() {
-        let (_, mut app) = super::design_tests::render_with(100, 30);
-        let (tx, mut rx) = mpsc::unbounded_channel();
-        app.out = tx;
-        leader(&mut app, 'o');
-        assert!(matches!(&app.mode, Mode::NewSession(ns) if ns.row == 0), "opens on the Agent row");
-        let o = draw(&mut app, 100, 30);
-        show(&o);
-        for want in ["Agent", "Where", "Project", "claude", "codex", "gemini", "new worktree", "this folder", "Start", "Cancel", "shop-api", "1 of 1", "Opens claude in a new worktree of shop-api. You type the task there."] {
-            assert!(o.contains(want), "{want:?} in the dialog");
-        }
-        assert!(!o.contains("TASK") && !o.contains("GOAL"), "no goal field");
-        // Down to Where, Right to "this folder"; the sentence follows.
-        app.on_key(plain(KeyCode::Down));
-        app.on_key(plain(KeyCode::Right));
-        assert!(draw(&mut app, 100, 30).contains("Opens claude in the folder of shop-api. You type the task there."));
-        // Up to Agent, Right to codex.
-        app.on_key(plain(KeyCode::Up));
-        app.on_key(plain(KeyCode::Right));
-        assert!(draw(&mut app, 100, 30).contains("Opens codex in the folder of shop-api"));
-        // Esc cancels, nothing starts.
-        app.on_key(plain(KeyCode::Esc));
-        assert!(matches!(app.mode, Mode::Prefix { .. }), "back to shortcut mode, where the dialog was opened from");
-        app.on_key(plain(KeyCode::Esc));
-        assert!(sent(&mut rx).is_empty());
-        // Enter starts what it shows.
-        leader(&mut app, 'o');
-        app.on_key(plain(KeyCode::Right));
-        app.on_key(plain(KeyCode::Down));
-        app.on_key(plain(KeyCode::Right));
-        app.on_key(plain(KeyCode::Enter));
-        assert!(app.mode == Mode::Normal && !app.shortcut_held, "started: back to typing, into the new session");
-        let cmds = sent(&mut rx);
-        assert!(matches!(cmds.as_slice(), [Command::NewWorkspace { cwd: Some(cwd), cmd: Some(cmd), .. }] if cmd == "codex" && cwd.ends_with("shop-api")), "{cmds:?}");
-        // The Start button does the same.
-        leader(&mut app, 'o');
-        let _ = draw(&mut app, 100, 30);
-        let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::NsStart)).then_some((r.x + 1, r.y))).expect("Start is clickable");
-        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
-        assert!(matches!(sent(&mut rx).as_slice(), [Command::NewWorktree { cmd: Some(_), .. }]));
-        // Its options take clicks too.
-        leader(&mut app, 'o');
-        let _ = draw(&mut app, 100, 30);
-        let at = app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::NsOpt(1, 1))).then_some((r.x + 1, r.y))).expect("an option is clickable");
-        app.on_mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column: at.0, row: at.1, modifiers: KeyModifiers::NONE });
-        assert!(matches!(&app.mode, Mode::NewSession(ns) if ns.place == 1 && ns.row == 1));
-    }
-
-    #[test]
     fn the_menu_starts_a_shell_or_a_session_and_n_is_the_shell_key() {
         let rows = screen::action_items();
-        let labels: Vec<&str> = rows.iter().take(5).map(|(l, _)| *l).collect();
-        assert_eq!(labels, ["Shell here", "Session", "Session with options…", "Pane beside this", "Tab"], "Shell first");
+        let labels: Vec<&str> = rows.iter().take(4).map(|(l, _)| *l).collect();
+        assert_eq!(labels, ["Shell here", "Session", "Pane beside this", "Tab"], "Shell first");
         assert!(rows.iter().any(|(l, a)| *l == "Session" && *a == Action::StartSession));
         assert!(rows.iter().any(|(l, a)| *l == "Shell here" && *a == Action::ShellHere));
         let key = |c: &str| c.parse::<crate::keys::KeySpec>().unwrap();
         let (_, app) = super::design_tests::render_with(100, 30);
         assert_eq!(app.keymap.prefixed.get(&key("n")), Some(&Action::ShellHere));
         assert_eq!(app.keymap.prefixed.get(&key("s")), Some(&Action::StartSession));
-        assert_eq!(app.keymap.prefixed.get(&key("o")), Some(&Action::NewPane));
+        assert_eq!(app.keymap.prefixed.get(&key("o")), None, "the options dialog is gone, so `o` is free");
         let (_, mut app) = super::design_tests::render_with(100, 30);
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.out = tx;
@@ -2658,7 +2647,7 @@ mod screen_tests {
         // A binding written for it long ago is harmless, not an error.
         assert_eq!("start-fleet".parse::<Action>().unwrap(), Action::None);
         for (w, h) in [(160, 45), (100, 30)] {
-            app.act(Action::NewPane);
+            app.act(Action::NewSession);
             let o = draw(&mut app, w, h);
             assert!(!o.to_lowercase().contains("fleet") && !o.contains("GOAL"), "at {w}x{h}: {o}");
             app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
@@ -2710,8 +2699,8 @@ mod screen_tests {
             app.on_mouse(MouseEvent { kind, column: x, row: y, modifiers: KeyModifiers::NONE });
             draw(app, 160, 45);
         };
-        // Each tab carries a ✕ (ADR 0028); the lone pane's title has none.
-        assert_eq!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::CloseTab(_)))).count(), 3, "a ✕ on each tab");
+        // Only the tab on screen carries a ✕; the lone pane's title has none.
+        assert_eq!(app.hits.iter().filter(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::CloseTab(_)))).count(), 1, "a ✕ on the open tab only");
         assert!(!app.hits.iter().any(|(_, h)| matches!(h, Hit::Screen(screen::ScreenHit::CloseSplit(_)))), "none on the lone pane");
         // Double-click: rename it in its pill.
         let first = app.session_tabs()[0];
@@ -3141,12 +3130,10 @@ mod screen_tests {
         app.screen_fresh();
         let rows: Vec<TermId> = app.screen_model().iter().flat_map(|p| p.sessions().map(|s| s.term).collect::<Vec<_>>()).collect();
         assert!(rows.contains(&a) && !rows.contains(&b), "the pane beside a isn't a session of its own: {rows:?}");
-        // Its title bar still says what it is.
+        // A split pane has no title bar: its tab names it.
         let o = draw(&mut app, 200, 50);
-        let name = app.snap.terms[&b].agent.clone().unwrap_or_else(|| "shell".into());
         show(&o);
-        let bar = o.lines().find(|l| l.contains("┌─ 1 ") && l.contains("┌─ 2 ")).unwrap_or_default();
-        assert!(bar.matches(name.as_str()).count() >= 1, "the split pane's title names it ({name}): {bar}");
+        assert!(!o.lines().any(|l| l.contains("┌─ 1 ") || l.contains("┌─ 2 ")), "no title chips on the split's panes");
         // b needs you: a's row says so.
         app.snap.terms.get_mut(&b).unwrap().status = Status::Blocked;
         app.screen_fresh();
@@ -3155,7 +3142,8 @@ mod screen_tests {
         // Picking another session shows it alone; the split is still there to go back to.
         app.screen_place(c, Some(b));
         assert_eq!(app.screen.tabs[app.screen.tab].layout, crate::layout::Node::Leaf(c), "full size");
-        assert_eq!(app.session_tabs().len(), 1, "no tab bar: the split is kept as its session's, not made a tab of this one");
+        assert_eq!(app.session_tabs().len(), 2, "the project's tabs: this one, and the split kept as its session's, not made a tab of this one");
+        assert_eq!(app.screen.tabs[app.screen.tab].owner, c, "this tab is c's own");
         assert!(app.screen.tabs.iter().any(|t| t.layout.leaves() == vec![a, b]), "the split is kept: {:?}", app.screen.tabs);
         app.screen_place(a, Some(c));
         assert_eq!(app.screen.tabs[app.screen.tab].layout.leaves(), vec![a, b], "its row brings the split back");
@@ -3461,22 +3449,16 @@ second line
     }
 
     #[test]
-    fn a_session_taking_much_of_the_machine_says_so() {
+    fn the_tabs_load_is_said_at_the_bottom_bars_right_end() {
         let gb = |n: u64| n << 30;
-        assert_eq!(screen::load_note(5.0, gb(1)), None, "an ordinary session: nothing");
-        assert_eq!(screen::load_note(38.0, gb(1) / 2), Some(("▲ 38% CPU · 0.5 GB".to_string(), false)), "a fifth of the CPU or more");
-        assert_eq!(screen::load_note(3.0, gb(3)), Some(("▲ 3% CPU · 3.0 GB".to_string(), false)), "or gigabytes of memory");
-        assert!(screen::load_note(60.0, gb(1)).unwrap().1 && screen::load_note(1.0, gb(7)).unwrap().1, "heavy from half the CPU, or six gigabytes");
-        // Beside its state in the pane's title, in the working colour when heavy; not in the sidebar.
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let on = app.focused().unwrap();
         (app.snap.terms.get_mut(&on).unwrap().cpu, app.snap.terms.get_mut(&on).unwrap().mem) = (62.0, gb(5));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        let title = o.lines().find(|l| l.contains("▲ 62% CPU · 5.0 GB")).expect("said on the pane's top border");
-        assert!(title.contains('┐'), "on the top border, at its right: {title}");
-        let model = app.screen_model();
-        assert!(!screen::side_lines(&app, &model, &app.theme).iter().any(|l| matches!(l, screen::Line::Note(text, ..) if text.starts_with("▲"))), "and no longer under its sidebar row");
+        let bar = o.lines().last().expect("a bar");
+        assert!(bar.contains("▲ 62% CPU · 5.0 GB"), "said on the bottom bar: {bar}");
+        assert!(!o.lines().take(44).any(|l| l.contains("CPU")), "and nowhere else: not on a pane's title, not under a sidebar row");
         assert!(!o.contains("subagents"), "no subagent heading to fold");
     }
 
@@ -3995,7 +3977,7 @@ second line
         app.mode = Mode::ScreenSettings(Box::new(design::SettingsView { cat, sel: 0, editing: None, capturing: false, scroll: 0 }));
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains("SESSIONS") && o.contains("Inbox") && o.contains("New session with options"), "{o}");
+        assert!(o.contains("SESSIONS") && o.contains("Inbox") && o.contains("New session"), "{o}");
     }
 
     #[test]
@@ -4669,10 +4651,18 @@ second line
         assert!(matches!(app.mode, Mode::Normal), "after a click, closing the popup goes back to typing");
     }
 
-    /// The mode bar's row on `buf`, and its words.
+    /// The mode bar's row on `buf`, and its words: the mode's side, with the right end's
+    /// status (who needs you, the branch, the load) blanked, as Update or Restart is kept.
     fn bar_text(app: &App, buf: &ratatui::buffer::Buffer) -> (Rect, String) {
         let row = screen::mode_bar_row(app, buf.area);
-        (row, (row.x..row.right()).map(|x| buf[(x, row.y)].symbol()).collect())
+        let mut cells: Vec<char> = (row.x..row.right()).flat_map(|x| buf[(x, row.y)].symbol().chars().next()).collect();
+        let text: String = cells.iter().collect();
+        let start = ["● ", "⎇ ", "▲ ", "all clear"].iter().filter_map(|m| text.find(&format!("  {m}"))).min().map(|b| text[..b].chars().count() + 2);
+        if let Some(start) = start {
+            let end = (start..cells.len()).find(|&i| matches!(cells[i], '↑' | '↻')).map_or(cells.len(), |i| i.saturating_sub(1));
+            cells[start..end.max(start)].fill(' ');
+        }
+        (row, cells.into_iter().collect())
     }
 
     /// The mode bar's tag unless typing: `SHORTCUT` while lit, else the name of what has the
@@ -5199,7 +5189,7 @@ second line
     /// What the bar starts with in each mode.
     fn bar_words(mode: &str) -> &'static str {
         match mode {
-            "typing" => "TYPING  · Ctrl+Space for shortcuts",
+            "typing" => "TYPING",
             "lit" => "SHORTCUT",
             _ => "WHY  · shortcut mode waits · Esc close",
         }
@@ -5592,7 +5582,7 @@ second line
                     assert!(title.contains("SESSIONS") && title.contains("●1"), "{at}: the sidebar's title and count: {row}");
                     let top = app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap_or(0);
                     let pane = app.pane_frames.iter().map(|(_, r)| *r).find(|r| r.y == top).expect("a pane along the top");
-                    let tabs: String = (pane.x..pane.right()).map(|x| buf[(x, pane.y.saturating_sub(1))].symbol()).collect();
+                    let tabs: String = (pane.x..pane.right()).map(|x| buf[(x, pane.y + 1)].symbol()).collect();
                     assert!(tabs.contains('●'), "{at}: the session's status on its tab: {row}");
                     let (_, bar) = bar_text(&app, &buf);
                     assert!(bar.trim().starts_with(bar_words(mode)), "{at}: {bar}");
@@ -5632,7 +5622,6 @@ second line
             Action::Palette,
             Action::Help,
             Action::Settings,
-            Action::NewPane,
             Action::Jump,
             Action::Files,
             Action::Find(0),

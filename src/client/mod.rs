@@ -105,8 +105,6 @@ enum Mode {
     Finder(Box<screen::Finder>),
     /// The app layout: new pane (project, worktree, what to run).
     ScreenPane(screen::NewPaneHy),
-    /// The app layout: the new-session dialog (`c`).
-    NewSession(Box<screen::NewSess>),
     /// The app layout: the settings overlay.
     ScreenSettings(Box<design::SettingsView>),
     Themes { query: String, sel: usize, saving: bool },

@@ -283,7 +283,6 @@ impl App {
             }
             Mode::Finder(fd) => self.on_finder_key(*fd, &k),
             Mode::ScreenPane(np) => self.on_hy_pane_key(np, &k),
-            Mode::NewSession(ns) => self.on_new_session_key(*ns, &k),
             Mode::ScreenSettings(_) => self.screen_settings_key(&k),
             Mode::Themes { query, sel, saving } => self.on_theme_key(query, sel, saving, &k),
             Mode::Spinners(_) => self.on_spinner_key(&k),

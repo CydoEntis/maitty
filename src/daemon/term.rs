@@ -175,6 +175,8 @@ pub struct Term {
     pub grants: Option<Vec<String>>,
     /// The pane whose agent started this one, if one did.
     pub started_by: Option<TermId>,
+    /// The session whose tab this pane is in, when not its own.
+    pub tab_of: Option<TermId>,
     /// Whether this pane's agent may start helpers, and what it is waiting on you for.
     pub helpers: super::helpers::HelperState,
     /// Finished and not seen before a restart: stays "done" once it's back.
@@ -651,6 +653,7 @@ impl Term {
             subagent_seen: None,
             grants: None,
             started_by: None,
+            tab_of: None,
             helpers: Default::default(),
             progress_off: None,
             last_working_hook: None,

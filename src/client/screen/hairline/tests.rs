@@ -143,7 +143,7 @@ fn a_rule_says_the_panes_state() {
     let t = app.theme.clone();
     let rule = |app: &App, term: TermId| {
         let r = pane_at(app, term);
-        { let mut c: Vec<Color> = (r.x..r.right() - 1).map(|x| buf[(x, r.y + 1)].fg).collect(); c.dedup(); c }
+        { let mut c: Vec<Color> = (r.x..r.right() - 1).map(|x| buf[(x, r.y)].fg).collect(); c.dedup(); c }
     };
     let focus = app.focused().expect("a focused pane");
     assert_eq!(rule(&app, focus), vec![t.accent], "focused: teal");
@@ -210,22 +210,6 @@ fn the_foot_shows_new_and_menu_and_both_click() {
 }
 
 #[test]
-fn the_name_stays_whole_while_the_meta_gives_way() {
-    let mut app = hairline_world(2);
-    let buf = draw(&mut app, 100, 30);
-    let t = app.theme.clone();
-    let r = pane_at(&app, 1);
-    let title: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
-    assert!(title.contains("fix-footer") && title.contains('…') && !title.contains('✕'), "no ✕ on a pane: {title}");
-    let (x, y) = find_in(&buf, Rect { height: 1, ..r }, "1 ● fix-footer").unwrap();
-    assert_eq!(x, r.x + PANE_PAD, "the pane's number leads the title, then the glyph");
-    let x = x + 2;
-    let name = &buf[(x + 2, y)];
-    assert_eq!(name.fg, t.strong);
-    assert!(name.modifier.contains(Modifier::BOLD));
-}
-
-#[test]
 fn a_check_to_approve_needs_you_everywhere() {
     let mut app = hairline_world(4);
     let approve = crate::client::reference_fixture::world(Stage::Approve).snap.terms[&1].checks.clone();
@@ -234,8 +218,7 @@ fn a_check_to_approve_needs_you_everywhere() {
     let buf = draw(&mut app, 160, 45);
     let t = app.theme.clone();
     let r = pane_at(&app, 4);
-    assert_eq!(buf[(r.x + PANE_PAD, r.y)].fg, t.blocked, "its number is amber");
-    assert_eq!(buf[(r.x + 1, r.y + 1)].fg, t.blocked, "its rule is amber");
+    assert_eq!(buf[(r.x + 1, r.y)].fg, t.blocked, "its rule is amber");
     let bar = mode_bar_row(&app, buf.area);
     assert!(find_in(&buf, bar, "● 2 needs you").is_some(), "counted with warm-finch in the bar");
 }
@@ -248,8 +231,6 @@ fn a_split_row_names_the_pane_that_needs_you() {
     let (_, y) = find_in(&buf, side, "fix-footer").expect("the split's row");
     let row: String = (side.x..side.right()).map(|x| buf[(x, y)].symbol()).collect();
     assert!(row.contains("fix-footer") && row.contains("▸ warm-finch"), "{row}");
-    let r = pane_at(&app, 1);
-    assert_eq!(buf[(r.x + PANE_PAD + 2, r.y)].fg, app.theme.done, "its own pane's glyph says done");
 }
 
 #[test]
@@ -278,37 +259,11 @@ fn the_stacked_divider_is_grabbed_on_the_line_drawn() {
     let mut app = hairline_world(4);
     let buf = draw(&mut app, 160, 45);
     let r = pane_at(&app, app.focused().unwrap());
-    let y = r.bottom() - 1;
+    // The pane below draws its top rule on the row under this pane: that is the line, and the grab.
+    let y = r.bottom();
     assert_eq!(buf[(r.x + 3, y)].symbol(), "─");
     assert!(matches!(hit_at(&app, r.x + 3, y), Some(Hit::Screen(ScreenHit::Divider(_)))), "{:?}", hit_at(&app, r.x + 3, y));
     assert!(!matches!(hit_at(&app, r.x + 3, y - 1), Some(Hit::Screen(ScreenHit::Divider(_)))), "the terminal row over it is not the grab");
-}
-
-#[test]
-fn the_glyph_opens_why_and_the_rest_of_the_title_focuses() {
-    let mut app = hairline_world(2);
-    let buf = draw(&mut app, 160, 45);
-    let r = pane_at(&app, 3);
-    let title = Rect { height: 1, ..r };
-    assert!(find_in(&buf, title, "✕").is_none(), "no ✕ on a pane: the tab's, Alt+x or its menu close it");
-    let glyph = r.x + PANE_PAD + 2;
-    assert_eq!(hit_at(&app, glyph, r.y), Some(Hit::Screen(ScreenHit::Why(3))), "the glyph opens why");
-    assert_eq!(hit_at(&app, r.right() - 3, r.y), Some(Hit::Pane(3)), "blank title space focuses the pane");
-}
-
-#[test]
-fn a_title_shows_its_state_by_its_glyph_not_words() {
-    let mut app = hairline_world(4);
-    let buf = draw(&mut app, 160, 45);
-    let t = app.theme.clone();
-    for (term, colour) in [(1, t.done), (3, t.blocked)] {
-        let r = pane_at(&app, term);
-        let title: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
-        for word in ["done", "needs you", "working", "idle"] {
-            assert!(!title.contains(word), "no {word} on {term}: {title}");
-        }
-        assert_eq!(buf[(r.x + PANE_PAD + 2, r.y)].fg, colour, "{term}'s glyph: {title}");
-    }
 }
 
 #[test]
@@ -359,9 +314,9 @@ fn every_theme_draws_hairline_from_its_own_roles() {
         let t = app.theme.clone();
         let buf = draw(&mut app, 100, 30);
         let r = pane_at(&app, app.focused().unwrap());
-        assert_eq!(buf[(r.x + 1, r.y + 1)].fg, t.accent, "{name}: the focused rule");
+        assert_eq!(buf[(r.x + 1, r.y)].fg, t.accent, "{name}: the focused rule");
         let other = pane_at(&app, 3);
-        assert_eq!(buf[(other.x + 1, other.y + 1)].fg, t.blocked, "{name}: needs you");
+        assert_eq!(buf[(other.x + 1, other.y)].fg, t.blocked, "{name}: needs you");
         let bar = mode_bar_row(&app, buf.area).y;
         assert!((0..buf.area.width).any(|x| buf[(x, bar)].fg == t.blocked), "{name}: the bar says needs you");
     }
@@ -384,7 +339,7 @@ fn the_bar_keeps_shortcut_mode_and_names_what_has_the_keys() {
     show("sidebar has the keys", &buf);
     let (x, _) = find_in(&buf, bar, "SIDEBAR").expect("the holder");
     assert_eq!((buf[(x, bar.y)].fg, buf[(x, bar.y)].bg), (t.strong, t.bg), "a bold word, no chip");
-    assert!(row(&buf).trim_end().ends_with("● 1 needs you"), "{}", row(&buf));
+    assert!(row(&buf).contains("● warm-finch needs you"), "{}", row(&buf));
 }
 
 #[test]
@@ -402,14 +357,14 @@ fn the_bar_counts_who_needs_you_and_keeps_update_at_its_end() {
     let buf = draw(&mut app, 160, 45);
     let bar = mode_bar_row(&app, buf.area);
     let row: String = (bar.x..bar.right()).map(|x| buf[(x, bar.y)].symbol()).collect::<String>().trim_end().to_string();
-    assert!(row.starts_with(" TYPING  Hairline · 1 pane"), "{row}");
-    assert!(row.ends_with("● 1 needs you   ↑ Update 9.9.9"), "Update keeps the right end, needs you just before it: {row}");
+    assert!(row.starts_with(" TYPING  tab 1/1 · 1 split"), "{row}");
+    assert!(row.contains("● warm-finch needs you") && row.ends_with("↑ Update 9.9.9"), "Update keeps the right end, needs you before it: {row}");
     app.snap.terms.get_mut(&3).unwrap().status = Status::Done;
     app.snap.questions.clear();
     app.update_available = None;
     let buf = draw(&mut app, 160, 45);
     let row: String = (bar.x..bar.right()).map(|x| buf[(x, bar.y)].symbol()).collect::<String>();
-    assert!(row.trim_end().ends_with("all clear"), "{row}");
+    assert!(row.contains("all clear"), "{row}");
 }
 
 #[test]
@@ -456,5 +411,67 @@ fn a_toast_is_a_round_outline_in_floating_and_a_solid_block_in_hairline() {
         } else {
             assert!(!(0..160u16).any(|xx| ["┌", "┐", "└", "┘"].contains(&buf[(xx, y - 1)].symbol())), "no box in hairline");
         }
+    }
+}
+
+#[test]
+fn a_split_pane_has_a_rule_and_no_title_and_the_rule_focuses_it() {
+    let mut app = hairline_world(2);
+    let buf = draw(&mut app, 160, 45);
+    let r = pane_at(&app, 3);
+    let top: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol()).collect();
+    assert!(top.trim_end_matches('│').chars().all(|c| c == '─'), "the top row is only the rule: {top}");
+    let (_, inner) = *app.panes.iter().find(|(id, _)| *id == 3).unwrap();
+    assert_eq!(inner.y, r.y + 1, "the terminal starts under the rule");
+    assert_eq!(hit_at(&app, r.x + 3, r.y), Some(Hit::Pane(3)), "the rule focuses the pane");
+}
+
+#[test]
+fn the_tab_row_ends_in_split_and_zoom_and_zoom_fills_the_tab_with_the_focused_pane() {
+    for look in ["hairline", "floating"] {
+        let mut app = hairline_world(2);
+        app.cfg.ui.layout = look.into();
+        let buf = draw(&mut app, 160, 45);
+        let row = grid(&app, framed(&app, buf.area)).tabs;
+        let tools: String = (row.right().saturating_sub(8)..row.right()).map(|x| buf[(x, row.y)].symbol()).collect();
+        assert!(tools.contains('◫') && tools.contains('⤢'), "{look}: split and zoom at the row's right end: {tools}");
+        assert_eq!(app.screen.leaf_rects.len(), 2, "{look}: two panes before zoom");
+        for want in [1, 2] {
+            let at = app.hits.iter().find(|(_, h)| *h == Hit::Screen(ScreenHit::TabZoom)).map(|(r, _)| *r).expect("zoom is clickable");
+            app.on_mouse(crossterm::event::MouseEvent { kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left), column: at.x + 1, row: at.y, modifiers: crossterm::event::KeyModifiers::NONE });
+            draw(&mut app, 160, 45);
+            assert_eq!(app.screen.leaf_rects.len(), want, "{look}: zoom toggles the focused pane to fill the tab, and back");
+        }
+    }
+}
+
+#[test]
+fn the_line_under_the_sidebar_or_the_tabs_is_teal_where_the_keys_are() {
+    let mut app = hairline_world(1);
+    let t = app.theme.clone();
+    for (side_has_keys, label) in [(false, "a lone pane has the keys"), (true, "the sidebar has the keys")] {
+        app.mode = if side_has_keys { Mode::Side } else { Mode::Normal };
+        let buf = draw(&mut app, 160, 45);
+        let g = grid(&app, framed(&app, buf.area));
+        assert_eq!(g.side.y, g.tabs.y, "the sidebar's header and the tab row sit on one row");
+        let (side_rule, tab_rule) = (&buf[(g.side.x + 3, g.side.y + 1)], &buf[(g.tabs.x + 3, g.tabs.y + 1)]);
+        assert_eq!((side_rule.symbol(), tab_rule.symbol()), ("─", "─"), "{label}: both rules are drawn on the same row");
+        assert_eq!(side_rule.fg, if side_has_keys { t.accent } else { t.line }, "{label}: the sidebar's line");
+        assert_eq!(tab_rule.fg, if side_has_keys { t.line } else { t.accent }, "{label}: the tab row's line");
+    }
+}
+
+#[test]
+fn in_floating_the_sidebar_and_the_pane_box_start_on_one_row_with_the_tabs_inside() {
+    for panes in [1, 2] {
+        let mut app = hairline_world(panes);
+        app.cfg.ui.layout = "floating".into();
+        let buf = draw(&mut app, 160, 45);
+        let g = grid(&app, framed(&app, buf.area));
+        let top = if panes == 1 { app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap() } else { g.tabs.y - 1 };
+        assert_eq!(top, g.side.y, "{panes} pane(s): the sidebar's top edge and the pane box's (or the tab plate's) are one row");
+        assert_eq!(g.tabs.y, g.side.y + 1, "{panes} pane(s): the tabs sit on the first row inside it");
+        let row: String = (g.tabs.x..g.tabs.right()).map(|x| buf[(x, g.tabs.y)].symbol()).collect();
+        assert!(row.contains("fix-footer") && row.contains('⤢'), "{panes} pane(s): the tab row is there: {row}");
     }
 }

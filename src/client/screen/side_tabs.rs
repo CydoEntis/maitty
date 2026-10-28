@@ -7,14 +7,16 @@ use super::*;
 
 /// One of a session's tabs as its sidebar line shows it.
 pub(super) struct TabLine {
-    /// The last of the session's tabs: its branch is `└`, the others' `├`.
-    pub last: bool,
-    /// Its number and name: `2 tests`.
+    /// Its name: its own, else its focused session's.
     pub label: String,
     /// The tab on screen.
     pub current: bool,
+    /// An agent in it needs you.
+    pub needs: bool,
     /// Its most urgent agent's glyph, word and colour; none for a tab of shells.
     pub mark: Option<(String, String, Color)>,
+    /// When that agent's state began, for its age at the right.
+    pub since: Option<u64>,
 }
 
 /// The tabs of session `owner`, in order, when it has two or more; a lone tab is the row itself.
@@ -38,10 +40,17 @@ pub(super) fn shown_tab_indexes(app: &App, owner: TermId) -> Vec<usize> {
 
 /// Tab `tab` of session `owner` as its line shows it.
 pub(super) fn tab_line(app: &App, model: &[Proj], owner: TermId, tab: usize, t: &Theme) -> Option<TabLine> {
-    let n = session_tab_indexes(app, owner).iter().position(|&i| i == tab)?;
+    session_tab_indexes(app, owner).contains(&tab).then_some(())?;
     let screen_tab = app.screen.tabs.get(tab)?;
     let name = tab_name(screen_tab).unwrap_or_else(|| session_name(app, model, screen_tab.focus));
-    Some(TabLine { last: shown_tab_indexes(app, owner).last() == Some(&tab), label: format!("{} {name}", n + 1), current: tab == app.screen.tab, mark: tab_mark(app, tab, t) })
+    let agent = tab_agent(app, tab);
+    Some(TabLine {
+        label: name,
+        current: tab == app.screen.tab,
+        needs: agent.is_some_and(|a| check::needs(a.status, a.check())),
+        mark: tab_mark(app, tab, t),
+        since: agent.map(|a| a.since),
+    })
 }
 
 /// The mark of the tab's most urgent agent (`tab_agent`): glyph, word and colour.
@@ -54,20 +63,18 @@ pub(super) fn tab_mark(app: &App, tab: usize, t: &Theme) -> Option<(String, Stri
     Some((m.glyph.to_string(), m.word.to_string(), m.color))
 }
 
-/// The line's left (branch, number and name) and right (the mark) in `room` columns on `st`.
-/// The mark's word gives way first, then the name shortens; the glyph stays.
-pub(super) fn tab_segs(line: &TabLine, room: u16, st: Style, name_fg: Color, branch_fg: Color) -> (Vec<Seg>, Vec<Seg>) {
-    let branch = if line.last { "└ " } else { "├ " };
-    let mark = |word: bool| {
-        line.mark.as_ref().map(|(g, w, c)| seg(if word { format!("{g} {w}") } else { g.clone() }, st.fg(*c).add_modifier(Modifier::BOLD)))
-    };
-    let wide = |m: &Option<Seg>| m.as_ref().map_or(0, |(s, _)| s.width() as u16 + 1);
-    let left_w = branch.width() as u16 + line.label.width() as u16;
-    let full = mark(true);
-    let right = if left_w + wide(&full) <= room { full } else { mark(false) };
-    let name_room = room.saturating_sub(branch.width() as u16 + wide(&right)) as usize;
+/// The line's left (state glyph and name) and right (the agent's age) in `room` columns on `st`. The name shortens first; the glyph stays.
+pub(super) fn tab_segs(line: &TabLine, room: u16, st: Style, name_fg: Color, dim: Color) -> (Vec<Seg>, Vec<Seg>) {
+    let right = line.since.map(age).unwrap_or_default();
+    let right_w = right.width() as u16;
+    // A tab of shells has no glyph, but its name keeps the column an agent's would.
+    let glyph = line.mark.as_ref().map_or_else(|| seg("  ", st), |(g, _, c)| seg(format!("{g} "), st.fg(*c).add_modifier(Modifier::BOLD)));
+    let glyph_w = glyph.0.width() as u16;
+    let name_room = room.saturating_sub(glyph_w + right_w + 1) as usize;
     let name_st = if line.current { st.fg(name_fg).add_modifier(Modifier::BOLD) } else { st.fg(name_fg) };
-    (vec![seg(branch, st.fg(branch_fg)), seg(truncate(&line.label, name_room), name_st)], right.into_iter().collect())
+    let mut left = vec![glyph];
+    left.push(seg(truncate(&line.label, name_room), name_st));
+    (left, vec![seg(right, st.fg(dim))])
 }
 
 /// Draw `line`'s pieces between `x` and `end` on row `y`, the mark against `end`; a click on the

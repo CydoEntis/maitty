@@ -825,7 +825,7 @@ fn a_failed_check_reads_in_err_on_its_row_its_sheet_and_its_pane() {
     let (x, y) = at(&buf, "✕ failed   exit 1");
     assert_eq!(buf[(x, y)].bg, t.err, "the sheet's result chip");
     let (_, y) = at(&buf, "✕ fix-footer");
-    assert_eq!(y, 0, "the tab says it by its glyph; a lone pane has no title");
+    assert_eq!(y, 1, "the tab says it by its glyph, on the first row inside the pane's box; a lone pane has no title");
 }
 
 #[test]
@@ -916,7 +916,7 @@ fn a_click_anywhere_inside_a_panes_card_is_the_pane() {
         let (_, card) = app.pane_frames[0];
         let (_, term) = app.panes[0];
         let top = |x: u16, y: u16| app.hits.iter().rev().find(|(r, _)| r.contains(ratatui::layout::Position { x, y })).map(|(_, h)| *h);
-        for (x, y) in [(card.x + 1, card.y + 1), (term.x - 1, term.y), (card.right() - 2, card.bottom() - 2), (term.x, term.y)] {
+        for (x, y) in [(card.x + 1, card.y + 2), (term.x - 1, term.y), (card.right() - 2, card.bottom() - 2), (term.x, term.y)] {
             assert_eq!(top(x, y), Some(Hit::Pane(1)), "{id} {layout:?}: ({x},{y})");
         }
     }

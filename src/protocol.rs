@@ -100,6 +100,9 @@ pub enum Command {
     CloseTab { ws: WsId, tab: TabId },
     RenameTab { ws: WsId, tab: TabId, name: String },
     SelectTab { ws: WsId, tab: TabId },
+    /// `term` is one of `owner`'s tabs (a session's second tab, a split in it); None: its own.
+    /// Kept across restarts, so a session's tabs come back as its tabs.
+    SetTabOf { term: TermId, owner: Option<TermId> },
     /// `cwd`: where the new pane starts (default: where the split pane is).
     Split { term: TermId, dir: Dir, cmd: Option<String>, cwd: Option<PathBuf> },
     ClosePane { term: TermId },
@@ -506,6 +509,9 @@ pub struct TermInfo {
     /// The pane whose agent started this one, if one did.
     #[serde(default)]
     pub started_by: Option<TermId>,
+    /// The session whose tab this pane is in, when not its own (`Command::SetTabOf`).
+    #[serde(default)]
+    pub tab_of: Option<TermId>,
     /// The helpers this session asked to start and is waiting on you for, one task each. Not
     /// empty means the row needs you ("wants to start N helpers"); `AnswerHelpers` answers it.
     #[serde(default)]

@@ -93,7 +93,7 @@ close`), and a key that isn't a shortcut says "Shortcut mode — Esc to type". E
 
 | | |
 |---|---|
-| **Sessions** | `n` new shell · `s` new session · `o` session with options · `Enter` message the agent · `k` stop it · `i` inbox · `y` why this status |
+| **Sessions** | `n` new shell · `s` new session · `Enter` message the agent · `k` stop it · `i` inbox · `y` why this status |
 | **Panes** | arrows move · `v` split side by side · `h` split stacked · `x` close · `Ctrl`+arrows resize · `z` collapse the sidebar |
 | **Tabs** | `t` new · `Ctrl+W` close · `r` rename · `]` / `[` next / previous · `1`–`9` go to tab |
 | **Project** | `f` files · `p` find a file · `/` search code · `c` changes · `g` worktrees · `b` branches · `e` the sidebar |

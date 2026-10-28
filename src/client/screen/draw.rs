@@ -3,7 +3,6 @@
 
 use super::*;
 use crate::brand::{APP_COMMAND};
-use super::glyphs::{self, Kind};
 
 // ---- main screen ---------------------------------------------------------------------------
 
@@ -46,10 +45,18 @@ pub(in crate::client) struct Grid {
 /// Most the padding round the screen may be, in cells.
 const PADDING_MAX: u16 = 2;
 
-/// The window less the padding setting all round.
+/// The window less the padding setting: that many cells all round, or with `top` (the
+/// default) one row above only, so the tabs don't touch the terminal's own tab bar while the
+/// panes still reach its sides and foot.
 fn padded(app: &App, area: Rect) -> Rect {
-    let m = app.cfg.ui.padding.parse().unwrap_or(1).min(PADDING_MAX);
-    Rect { x: area.x + m, y: area.y + m, width: area.width.saturating_sub(2 * m), height: area.height.saturating_sub(2 * m) }
+    let (top, m) = match app.cfg.ui.padding.as_str() {
+        crate::config::PADDING_TOP => (1, 0),
+        n => {
+            let m = n.parse().unwrap_or(0).min(PADDING_MAX);
+            (m, m)
+        }
+    };
+    Rect { x: area.x + m, y: area.y + top, width: area.width.saturating_sub(2 * m), height: area.height.saturating_sub(top + m) }
 }
 
 /// The room the screen is laid out in: inside the padding, above the mode bar and, in
@@ -64,6 +71,11 @@ pub(in crate::client) fn framed(app: &App, area: Rect) -> Rect {
 pub(in crate::client) fn mode_bar_row(app: &App, area: Rect) -> Rect {
     let r = padded(app, area);
     Rect { y: r.bottom().saturating_sub(1), height: r.height.min(1), ..r }
+}
+
+/// The tab on screen shows one pane: it has only one, or its focused pane is zoomed.
+fn one_pane_shown(app: &App) -> bool {
+    app.screen.tabs.get(app.screen.tab).is_some_and(|tab| tab.layout.leaves().len() == 1 || app.screen.zoom == Some(app.screen.tab))
 }
 
 /// Where popups and their dimming go: the window above the mode bar, so the mode stays in
@@ -108,7 +120,19 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
         Some(kind) => split_for_sheet(area.width, col, look, app.sheet_frac, wanted_w(app, kind, area.width)),
         None => (Rect::default(), col),
     };
-    let (tabs, panes) = if look.hairline { (hair_tabs, panes) } else { carve(panes) };
+    let (tabs, panes) = if look.hairline {
+        (hair_tabs, panes)
+    } else if one_pane_shown(app) && panes.height > FLOAT_TAB_ROW + 2 && panes.width > 0 {
+        // A tab's only pane: the box starts level with the sidebar's, and the tabs are its first
+        // row inside the border, where the box's padding row was.
+        (Rect { y: panes.y + 1, height: FLOAT_TAB_ROW, ..panes }, panes)
+    } else if panes.height > FLOAT_PLATE_ROWS + 2 && panes.width > 0 {
+        // Split panes: a plate of its own over them, its top edge level with the sidebar's and
+        // the tabs in its one row (`draw_tab_chips` draws its edges).
+        (Rect { y: panes.y + 1, height: FLOAT_TAB_ROW, ..panes }, Rect { y: panes.y + FLOAT_PLATE_ROWS, height: panes.height - FLOAT_PLATE_ROWS, ..panes })
+    } else {
+        carve(panes)
+    };
     Grid { side, panes, edge, sheet, tabs }
 }
 
@@ -256,28 +280,49 @@ pub(in crate::client) fn lone_pane(app: &App, term: TermId) -> bool {
     matches!(app.screen.leaf_rects.as_slice(), [(id, _)] if *id == term)
 }
 
-/// `project · ⎇ branch`, from the session's sidebar row, else the pane's own branch.
-pub(in crate::client) fn project_branch(app: &App, info: &TermInfo, model: &[Proj]) -> String {
-    let branch_mark = check::marks(app).branch;
-    let (project, branch) = match find(model, info.id) {
-        Some((p, w, _)) => (p.name.clone(), w.branch.clone()),
-        None => (String::new(), info.branch.clone().unwrap_or_default()),
-    };
-    let branch = if branch.is_empty() { String::new() } else { format!("{branch_mark} {branch}") };
-    [project, branch].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ")
-}
-
 /// Floating's tab row: the chips' own row, right over the boxes (no gap: rows are scarce).
 const FLOAT_TAB_ROW: u16 = 1;
+/// Rows of the plate over split panes in Floating: its top edge and the tab row.
+const FLOAT_PLATE_ROWS: u16 = 2;
 
 /// Floating's tabs along the first row of `r`, lined up with the pane titles' chips.
 fn draw_tab_chips(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme) {
     if r.height == 0 || r.width < 4 {
         return;
     }
-    let row = Rect { x: r.x + 1, width: r.width - 2, height: 1, ..r };
+    // Over split panes the tabs have a plate of their own: its top edge on the row above, `│` at
+    // each end of this one. A lone pane's box is that edge, and has the sides.
+    if !one_pane_shown(app) && r.y > 0 {
+        let look = Look::of(&app.cfg.ui);
+        let [tl, tr, ..] = corners(look);
+        let (edge, x1) = (Style::default().fg(t.line).bg(t.bg), r.right() - 1);
+        put(buf, r.x, r.y - 1, &[seg(tl, edge), seg("─".repeat(r.width as usize - 2), edge), seg(tr, edge)], r.right());
+        put(buf, r.x, r.y, &[seg("│", edge)], r.x + 1);
+        put(buf, x1, r.y, &[seg("│", edge)], r.right());
+    }
+    let mut row = Rect { x: r.x + 1, width: r.width - 2, height: 1, ..r };
+    row.width = tab_tools(app, buf, row, t.muted, t.strong, Color::Reset, t.accent) - row.x;
     let chips = tab_strip(app, model, row, true, t);
     put(buf, row.x, row.y, &chips, row.right());
+}
+
+/// The tab row's fixed right end: `◫` splits the focused pane and `⤢` zooms it (lit while it
+/// is). Drawn over the row's last cells; returns where the tabs must end. Too narrow a row
+/// has none.
+pub(in crate::client) fn tab_tools(app: &mut App, buf: &mut Buffer, row: Rect, fg: Color, hover: Color, bg: Color, lit: Color) -> u16 {
+    const TOOLS_W: u16 = 5;
+    if row.width < TOOLS_W * 4 {
+        return row.right();
+    }
+    let zoomed = app.screen.zoom == Some(app.screen.tab);
+    let tools = [("◫", row.right() - TOOLS_W + 1, ScreenHit::TabSplit, false), ("⤢", row.right() - 2, ScreenHit::TabZoom, zoomed)];
+    for (glyph, x, h, on) in tools {
+        let cell = Rect { x, y: row.y, width: 1, height: 1 };
+        let colour = if on { lit } else if hovered(app, cell) { hover } else { fg };
+        put(buf, x, row.y, &[seg(glyph, Style::default().fg(colour).bg(bg))], x + 1);
+        hit(app, Rect { x: x.saturating_sub(1), y: row.y, width: 3, height: 1 }, h);
+    }
+    row.right() - TOOLS_W
 }
 
 pub(in crate::client) fn find(model: &[Proj], term: TermId) -> Option<(&Proj, &Wt, &Session)> {
@@ -324,7 +369,7 @@ pub(in crate::client) fn draw_main(app: &mut App, f: &mut Frame, area: Rect, mod
         .tabs
         .get(app.screen.tab)
         .map(|tab| tab.layout.clone())
-        .filter(|l| l.contains(focus) && l.leaves().len() > 1);
+        .filter(|l| l.contains(focus) && l.leaves().len() > 1 && app.screen.zoom != Some(app.screen.tab));
     let Some(layout) = layout else {
         app.screen.leaf_rects = vec![(focus, area)];
         draw_session(app, f, area, focus, true, model, t);
@@ -357,8 +402,9 @@ pub(in crate::client) fn draw_main(app: &mut App, f: &mut Frame, area: Rect, mod
             let g = gap_x.max(1);
             Rect { x: div.x.saturating_sub(g), width: g + 2, ..div }
         } else if look.hairline {
-            // Hairline draws the `─` on the upper pane's last row: that row is the grab.
-            div
+            // Hairline draws the `─` as the lower pane's top rule, on the row under the upper
+            // pane: that row is the grab.
+            Rect { y: div.y + 1, ..div }
         } else {
             let h = gap_y.max(1);
             Rect { y: div.y.saturating_sub(h), height: h, ..div }
@@ -475,7 +521,7 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
     let mut out = Vec::new();
     let mut at = row.x;
     let tabs = app.session_tabs();
-    let closes: Vec<Option<ScreenHit>> = tabs.iter().map(|&i| tab_close(app, i, tabs.len())).collect();
+    let closes: Vec<Option<ScreenHit>> = tabs.iter().map(|&i| if i == app.screen.tab { tab_close(app, i, tabs.len()) } else { None }).collect();
     let marks: Vec<Option<(String, Color)>> = tabs.iter().map(|&i| super::side_tabs::tab_mark(app, i, t).map(|(g, _, c)| (g, c))).collect();
     let labels: Vec<(Option<String>, String)> = tabs.iter().enumerate().map(|(n, &i)| tab_label(app, model, i, n, tabs.len() > 1)).collect();
     let names: Vec<String> = labels.iter().map(|(_, name)| name.clone()).collect();
@@ -550,23 +596,6 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
     out
 }
 
-/// A session's mark on its pane: its glyph, bold in its colour (working is the Appearance
-/// spinner). A shell has none.
-fn pane_mark(app: &App, info: &TermInfo, t: &Theme) -> Option<PaneMark> {
-    info.agent.as_ref()?;
-    let set = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons);
-    let spinner = glyph(app, Status::Working);
-    let step = if app.motion_on() { check::ring_step(app.spinner_frame(), set.ring.len()) } else { 0 };
-    let m = Kind::of(info.status, info.check(), info.asleep).mark(set, t, step, &spinner);
-    Some(PaneMark { glyph: m.glyph.to_string(), style: Style::default().fg(m.color).add_modifier(Modifier::BOLD) })
-}
-
-/// A session's mark on its pane.
-struct PaneMark {
-    glyph: String,
-    style: Style,
-}
-
 /// How far an unfocused pane's own colour (Pane colours) fades toward the ground.
 const GRID_UNFOCUSED_FADE: f32 = 0.42;
 
@@ -587,14 +616,6 @@ pub(in crate::client) fn pane_number(app: &App, term: TermId) -> Option<usize> {
 
 /// Between a pane's number and its name in a title chip.
 const NUMBER_SEP: &str = " · ";
-
-/// A pane's name with its number in front (`2 · claude`) while it has one.
-pub(in crate::client) fn numbered(app: &App, term: TermId, name: &str) -> String {
-    match pane_number(app, term) {
-        Some(n) => format!("{n}{NUMBER_SEP}{name}"),
-        None => name.to_string(),
-    }
-}
 
 /// `label` cut to `room` columns. A numbered name keeps its number: the name is cut first
 /// (`2 · warm-f…`), then the ` · `, leaving the bare number (`2`).
@@ -636,7 +657,7 @@ pub(in crate::client) fn draw_session(app: &mut App, f: &mut Frame, r: Rect, ter
         let inner = Rect { x: inside.x + pad, width: inside.width.saturating_sub(2 * pad), height: inside.height.saturating_sub(below), ..inside };
         (inside, inner, surface)
     } else {
-        let (inside, terminal_bg) = card_frame(app, f.buffer_mut(), r, &info, focused, model, t);
+        let (inside, terminal_bg) = card_frame(app, f.buffer_mut(), r, &info, focused, t);
         // The terminal: 3 columns in, a row below the title, down to the last row inside.
         let below = 1 + if ask { 2 } else { 0 };
         (inside, Rect { x: r.x + 3, y: r.y + 2, width: r.width.saturating_sub(6), height: r.height.saturating_sub(2 + below) }, terminal_bg)
@@ -688,7 +709,7 @@ pub(in crate::client) fn closing(app: &App, term: TermId) -> bool {
 
 /// A Floating pane's frame: the box (or zone) with its title on the top border.
 /// Returns the inside and the terminal's ground.
-fn card_frame(app: &mut App, buf: &mut Buffer, r: Rect, info: &TermInfo, focused: bool, model: &[Proj], t: &Theme) -> (Rect, Color) {
+fn card_frame(app: &mut App, buf: &mut Buffer, r: Rect, info: &TermInfo, focused: bool, t: &Theme) -> (Rect, Color) {
     let look = Look::of(&app.cfg.ui);
     let term = info.id;
     let grid_color = look.pane_colors.then(|| grid_color(app, term, t));
@@ -718,60 +739,21 @@ fn card_frame(app: &mut App, buf: &mut Buffer, r: Rect, info: &TermInfo, focused
     let flare = if app.cfg.ui.focus_border == "bright" { t.accent } else { t.strong };
     let border = if flash > 0.0 { blend(border, flare, flash) } else { border };
     let mut c = Card::new(t, "");
-    // What it's waiting for: a usage limit, or what it takes of the machine. Its state is the
-    // glyph in the title (and on its tab); it has no ✕: the tab's, Alt+x or its menu close it.
-    let note = match info.resume_at {
-        Some(at) => Some((format!("⏸ limit · continues in {}", until(at)), t.muted)),
-        None => load_note(info.cpu, info.mem).map(|(load, heavy)| (load, if heavy { t.err } else { t.muted })),
-    };
-    let note = note.map(|(note, colour)| seg(note, Style::default().fg(colour)));
-    c.right = note.into_iter().filter(|n| n.0.width() as u16 + 2 <= right_end(r).saturating_sub(title_x(r) + 2) / 2).collect();
     if let Some(parser) = app.parsers.get(&term) {
         c.bg = crate::client::render::terminal_surface_bg(parser.screen(), c.bg);
     }
     let terminal_bg = c.bg;
+    // A split has no title: the tab names it. Its edge says what the title did: lit on the
+    // focused pane, amber on one that needs you.
     if focused || closing {
         c = c.lit(border);
+    } else if check::needs(info.status, info.check()) {
+        c = c.lit(t.blocked);
     } else if look.pane_colors {
         c.border = border;
     }
-    // A tab's only pane has no title: its tab names it (as an editor's lone pane, ADR 0030).
-    // A split's: number, state glyph and name, in one chip.
-    let mut mark_at = None;
-    if !lone_pane(app, term) {
-        let right_w = segs_width(&c.right);
-        let title_end = right_end(r).saturating_sub(if right_w > 0 { right_w + 2 } else { 0 });
-        let caps = if look.round_tabs { 2 } else { 0 };
-        let mark = pane_mark(app, info, t);
-        let room = title_end.saturating_sub(title_x(r) + caps) as usize;
-        let chip = title_chip(&numbered(app, term, &session_name(app, model, term)), mark.as_ref(), focused, room, t);
-        mark_at = mark.as_ref().map(|_| Rect { x: title_x(r) + caps / 2 + chip[0].0.width() as u16, y: r.y, width: 1, height: 1 });
-        c.chips = if look.round_tabs { round_ends(chip, Color::Reset) } else { chip };
-    }
     let inside = card(app, buf, r, &c, t);
-    // After the card's hits, so a click on the glyph opens why.
-    if let Some(at) = mark_at {
-        hit(app, at, ScreenHit::Why(term));
-    }
     (inside, terminal_bg)
-}
-
-/// A split pane's title chip, at most `room` wide: ` 2 ` then the state glyph in its colour
-/// (an agent's) and the name, as Hairline's title reads. The name is cut first, then the
-/// glyph; the number stays.
-fn title_chip(label: &str, mark: Option<&PaneMark>, lit: bool, room: usize, t: &Theme) -> Vec<Seg> {
-    let (bg, fg) = if lit { (t.accent, t.acc_ink) } else { (t.btn, t.strong) };
-    let st = Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD);
-    let (front, name) = match label.split_once(NUMBER_SEP) {
-        Some((n, name)) if n.chars().all(|c| c.is_ascii_digit()) => (format!(" {n} "), name),
-        _ => (" ".to_string(), label),
-    };
-    let glyph = mark.filter(|_| room >= front.width() + 4).map(|m| seg(format!("{} ", m.glyph), m.style.bg(bg).fg(if lit { t.acc_ink } else { m.style.fg.unwrap_or(fg) })));
-    let used = front.width() + glyph.as_ref().map_or(0, |g| g.0.width()) + 1;
-    let mut out = vec![seg(front, st)];
-    out.extend(glyph);
-    out.push(seg(format!("{} ", cut_label(name, room.saturating_sub(used))), st));
-    out
 }
 
 /// A scrollbar in the margin right of the terminal when there's history: where you are, click

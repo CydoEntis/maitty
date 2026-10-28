@@ -1211,6 +1211,7 @@ impl Daemon {
                     checks: t.checks.infos(),
                     subagents: t.subagents.iter().map(|(_, k)| k.clone()).collect(),
                     started_by: t.started_by,
+                    tab_of: t.tab_of.filter(|o| self.terms.contains_key(o)),
                     helper_ask: t.helpers.asked.clone(),
                     queued: t.queue.iter().cloned().collect(),
                     subagent_activity: t.subagent_activity.clone(),

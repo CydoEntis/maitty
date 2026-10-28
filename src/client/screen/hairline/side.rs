@@ -30,6 +30,10 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
     hit(app, r, ScreenHit::SideFocus);
     let side_has_keys = side_focused(app);
     draw_head(buf, r, model, ink, side_has_keys);
+    // The line under the header, level with the tab row's rule: teal (sky in shortcut mode) while
+    // the sidebar has the keys, so which of sidebar and panes you are in is never a guess.
+    let lit = if armed(app) { t.sky() } else { ink.teal };
+    rule(buf, r.x, r.y + 1, r.width, if side_has_keys { lit } else { ink.line }, ink.bg);
     let lines = hairline_lines(app, model, t);
     let shown: Vec<TermId> = app.screen.tabs.get(app.screen.tab).map(|tab| tab.layout.leaves()).unwrap_or_default();
     let focus = open_row(app);
@@ -67,10 +71,17 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
             }
             Line::Tab(owner, tab) => {
                 let Some(line) = tab_line(app, model, *owner, *tab, t) else { continue };
-                let x = r.x + NAME_IN + indent;
-                let name_fg = if line.current { ink.teal } else { ink.text };
-                let segs = tab_segs(&line, text_end(r).saturating_sub(x), Style::default().bg(ink.bg), name_fg, ink.line);
-                draw_tab_line(app, buf, Rect { x: r.x, y, width: r.width, height: 1 }, x, text_end(r), segs, *tab);
+                let row = Rect { x: r.x, y, width: r.width, height: 1 };
+                let bg = if line.current { ink.raised } else { ink.bg };
+                fill(buf, row, bg);
+                let marker = if line.current { Some(ink.teal) } else { line.needs.then_some(ink.amber) };
+                if let Some(c) = marker {
+                    put(buf, r.x, y, &[seg("▎", Style::default().fg(c).bg(bg))], r.x + 1);
+                }
+                let x = r.x + GLYPH_IN + indent;
+                let name_fg = if line.needs { ink.amber } else if line.current { ink.teal } else { ink.text };
+                let segs = tab_segs(&line, text_end(r).saturating_sub(x), Style::default().bg(bg), name_fg, ink.dim);
+                draw_tab_line(app, buf, row, x, text_end(r), segs, *tab);
             }
             Line::Section(kind, n) => {
                 put(buf, r.x + TEXT_IN, y, &[seg(format!("{} {n}", kind.heading().to_lowercase()), Style::default().fg(ink.dim).bg(ink.bg))], text_end(r));

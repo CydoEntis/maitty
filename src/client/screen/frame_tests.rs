@@ -34,9 +34,9 @@ fn world(stage: Stage) -> App {
     app
 }
 
-/// The row a pane's top border is on: under the tab row (ADR 0028).
+/// The row a lone pane's top border is on: level with the sidebar's, the tabs inside it (ADR 0031).
 fn pane_y(_: Layout) -> u16 {
-    1
+    0
 }
 
 /// Where the reference puts the pane column: right of the sidebar and the gap.
@@ -75,8 +75,8 @@ fn preset_01_s_frame_is_the_reference_s_in_every_layout_and_size() {
         let at = format!("{layout:?} {w}x{h} {glyphs}\n{text}");
         let r = rows(&text);
         let (px, py) = (pane_x(layout, w), pane_y(layout));
-        let tabs = from(&r[0], px);
-        assert!(tabs.contains(" 1  fix-footer ") && tabs.contains(" 2  add-payments"), "row 0 is the tabs, each with its state: {at}");
+        let tabs = from(&r[1], px);
+        assert!(tabs.contains(" 1  fix-footer ") && tabs.contains(" 2  add-payments"), "row 1, inside the pane's box, is the tabs, each with its state: {at}");
         let title = from(&r[py as usize], px);
         assert!(title.starts_with("┌─") && title.ends_with('┐') && title.chars().skip(1).take(title.chars().count() - 2).all(|c| c == '─'), "a lone pane's top is a plain border: its tab names it: {at}");
         assert_eq!(from(&r[h as usize - 1], 0), last, "last row: {at}");
@@ -109,7 +109,7 @@ fn rounded_corners_round_every_card() {
 fn a_failed_session_reads_failed_in_plain_ascii() {
     let mut app = world(Stage::Failed);
     let text = reference_fixture::frame(&mut app, Layout::Tiled, 80, 24, "ascii");
-    let tabs = text.lines().next().unwrap_or_default();
+    let tabs = text.lines().nth(1).unwrap_or_default();
     assert!(tabs.contains("x 1  fix-footer"), "its tab says failed by its glyph: {text}");
 }
 
@@ -133,7 +133,7 @@ fn a_sheet_docks_72_wide_at_160_and_takes_the_pane_column_below_140() {
                     assert_eq!((g.sheet.x, g.panes.width), (px, 0), "the sheet takes the pane column: {at}");
                     app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
                     let back = reference_fixture::frame(&mut app, layout, w, h, "unicode");
-                    assert!(back.lines().next().unwrap_or_default().contains(" fix-footer "), "Esc brings the pane back: {back}");
+                    assert!(back.lines().nth(1).unwrap_or_default().contains(" fix-footer "), "Esc brings the pane back: {back}");
                 }
             }
         }
@@ -637,7 +637,7 @@ fn a_hovered_border_chip_is_whole() {
                     "the bar's mode tag" => r.y == bar.y && r.x == bar.x + 1,
                     "the bar's update pill" => r.y == bar.y,
                     "a pane's ✕" => true,
-                    _ => r.y == 0,
+                    _ => r.y <= 1,
                 };
                 let targets: Vec<(&str, Rect)> = chips.iter().flat_map(|(what, is)| app.hits.iter().filter(|(r, h)| on_row(r, what) && is(h)).map(|(r, _)| (*what, *r)).collect::<Vec<_>>()).collect();
                 for (what, r) in targets {

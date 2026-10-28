@@ -67,9 +67,6 @@ pub(super) struct Saved {
     pub recent: Vec<String>,
     /// The side sheet's width per kind of view (`SheetKind::key`), as you sized it.
     pub sheet_w: HashMap<String, u16>,
-    /// Each session's tabs that are not its own, as (session, the tab's first pane) in tab
-    /// order (`tab_memory`): the daemon has no tabs, so this puts them back on start.
-    pub session_tabs: Vec<(TermId, TermId)>,
 }
 
 #[derive(Debug, Default)]
@@ -94,6 +91,8 @@ pub(super) struct Screen {
     /// Where the file preview was drawn (wheel scrolls it; paging uses its height).
     pub preview_rect: Rect,
     pub tab: usize,
+    /// The tab whose focused pane fills it (`⤢`).
+    pub zoom: Option<usize>,
     /// A new tab was asked for in this session: the shell that answers it goes in it. Starting
     /// any other session clears it (`App::cmd`), so a session you start instead is never
     /// taken for the tab. A `RefCell` because `cmd` only borrows the app.
@@ -778,24 +777,50 @@ impl App {
 
     /// Keep the remembered bits in step with a new state: project order, the current
     /// project, the split pair, the branch lists.
-    pub(super) fn screen_sync(&mut self) {
-        // The daemon owns pane topology and restores it across client restarts. Rebuild the
-        // visible tabs from that snapshot before handling focus changes, which otherwise
-        // turns the first focused restored pane into a one-leaf tab and strands its siblings.
-        if self.screen.last_focus.is_none() && !self.snap.workspaces.is_empty() {
-            let previous = self.screen.tabs.clone();
-            let restored: Vec<ScreenTab> = self.snap.workspaces.iter().flat_map(|workspace| &workspace.tabs).filter(|source| source.layout.leaves().len() > 1).map(|source| {
+    /// The tabs to show for the daemon's: a split, or a pane in another session's tab (its
+    /// `tab_of`), with that session's own pane as a tab of its own first. Whose tab each is
+    /// comes from the daemon, which keeps it across restarts; else from this view's tabs, else
+    /// the split's first pane.
+    fn restored_tabs(&self) -> Vec<ScreenTab> {
+        let previous = &self.screen.tabs;
+        let owner_of = |leaves: &[TermId]| {
+            let kept = leaves.iter().find_map(|id| self.snap.terms.get(id).and_then(|t| t.tab_of)).filter(|o| self.snap.terms.contains_key(o));
+            let prior = previous.iter().find(|tab| tab.layout.leaves().iter().any(|id| leaves.contains(id))).map(|tab| tab.owner);
+            kept.or(prior).unwrap_or(leaves[0])
+        };
+        let sources: Vec<&crate::protocol::TabInfo> = self.snap.workspaces.iter().flat_map(|w| &w.tabs).collect();
+        let owners: Vec<TermId> = sources.iter().map(|s| owner_of(&s.layout.leaves())).collect();
+        let shown = |i: usize| {
+            let leaves = sources[i].layout.leaves();
+            // A split, a tab of another session's, or a session's own pane that has other tabs.
+            leaves.len() > 1 || owners[i] != leaves[0] || owners.iter().enumerate().any(|(j, o)| j != i && *o == leaves[0])
+        };
+        let mut out: Vec<ScreenTab> = (0..sources.len())
+            .filter(|&i| shown(i))
+            .map(|i| {
+                let source = sources[i];
                 let leaves = source.layout.leaves();
                 let prior = previous.iter().find(|tab| tab.layout.leaves().iter().any(|id| leaves.contains(id)));
                 ScreenTab {
                     layout: source.layout.clone(),
                     focus: if source.layout.contains(source.focus) { source.focus } else { source.layout.first_leaf() },
-                    owner: prior.map_or_else(|| source.layout.first_leaf(), |tab| tab.owner),
+                    owner: owners[i],
                     used: prior.map_or(0, |tab| tab.used),
                     name: prior.map_or_else(|| source.name.clone(), |tab| if tab.name.is_empty() { source.name.clone() } else { tab.name.clone() }),
                 }
-            }).collect();
-            let restored = tab_memory::restore(restored, &self.screen.saved.session_tabs, |id| self.snap.terms.contains_key(&id));
+            })
+            .collect();
+        // Each session's own tab before its others, keeping the daemon's order otherwise.
+        out.sort_by_key(|tab| !tab.layout.contains(tab.owner));
+        out
+    }
+
+    pub(super) fn screen_sync(&mut self) {
+        // The daemon owns pane topology and restores it across client restarts. Rebuild the
+        // visible tabs from that snapshot before handling focus changes, which otherwise
+        // turns the first focused restored pane into a one-leaf tab and strands its siblings.
+        if self.screen.last_focus.is_none() && !self.snap.workspaces.is_empty() {
+            let restored = self.restored_tabs();
             if !restored.is_empty() {
                 self.screen.tabs = restored;
                 self.screen.tab = self.screen.tabs.iter().position(|tab| tab.layout.contains(self.focused().unwrap_or(tab.focus))).unwrap_or(0);
@@ -872,12 +897,6 @@ impl App {
         }
         self.screen.tabs = tabs;
         self.screen.tab = self.screen.tab.min(self.screen.tabs.len().saturating_sub(1));
-        // Nothing to remember before the daemon's panes have arrived.
-        let remembered = tab_memory::remember(&self.screen.tabs);
-        if !self.snap.terms.is_empty() && remembered != self.screen.saved.session_tabs {
-            self.screen.saved.session_tabs = remembered;
-            self.screen.save();
-        }
         if self.screen.proj.as_ref().is_none_or(|k| !model.iter().any(|p| &p.key == k)) {
             self.screen.proj = focus.and_then(proj_of).or_else(|| model.first().map(|p| p.key.clone()));
         }
@@ -1007,6 +1026,10 @@ pub(super) enum ScreenHit {
     TabPick(usize),
     CloseTab(usize),
     NewTab,
+    /// The tab row's `◫`: split the focused pane.
+    TabSplit,
+    /// The tab row's `⤢`: the focused pane fills the tab, or goes back.
+    TabZoom,
     /// Outside an overlay: closes it.
     Close,
     /// Inside an overlay's panel: nothing.
@@ -1017,9 +1040,6 @@ pub(super) enum ScreenHit {
     NpBeside(usize),
     NpWhere(usize),
     NpGo,
-    /// The new-session dialog: an option on a row (row, option), and Start.
-    NsOpt(u8, usize),
-    NsStart,
     NpTask,
     NpModel(usize),
     SetTab(usize),
@@ -1121,7 +1141,6 @@ pub(super) fn k(app: &App, a: &Action) -> String {
 
 mod rail;
 mod behaviour;
-mod tab_memory;
 mod branch_sheet;
 mod references_sheet;
 mod card;
@@ -1159,4 +1178,4 @@ mod frame_tests;
 mod panes_apart_tests;
 #[cfg(test)]
 mod reference;
-pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_bar::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, references_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};
+pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_bar::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, references_sheet::*, check_actions::*, check_approve::*, keyoverlay::*};
