@@ -604,7 +604,7 @@ colours become the Pane colours option on Floating; Floating keeps square, corne
    own (the daemon keeps `tab_of`); the toast a round outline in Floating and a solid
    block with a coloured left edge in Hairline
    ([ADR 0030](adr/0030-panes-titled-like-an-editor.md))
-10. Alt+r renames the tab (`ui.alt_keys`), shipped in v0.50.5; and (asked 2026-10-28) Floating's
+10. Renaming the tab is the leader's `r` only: Alt+r turns on the NVIDIA FPS overlay, so it was dropped; and (asked 2026-10-28) Floating's
     tab row sits in the header over the pane boxes, not inside them
     ([ADR 0035](adr/0035-the-tab-row-sits-outside-the-pane-boxes.md))
 

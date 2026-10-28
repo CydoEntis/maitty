@@ -1529,11 +1529,11 @@ mod screen_tests {
     fn alt_letters_run_the_everyday_actions_without_the_leader_unless_turned_off() {
         let alt = |c: char| crate::keys::KeySpec::from_event(&KeyEvent::new(KeyCode::Char(c), KeyModifiers::ALT));
         let on = Config::default().keymap();
-        for (c, want) in [('n', Action::ShellHere), ('a', Action::StartSession), ('x', Action::ClosePane), ('s', Action::SplitRight), ('d', Action::SplitDown), ('r', Action::RenameTab)] {
+        for (c, want) in [('n', Action::ShellHere), ('a', Action::StartSession), ('x', Action::ClosePane), ('s', Action::SplitRight), ('d', Action::SplitDown)] {
             assert_eq!(on.global.get(&alt(c)), Some(&want), "Alt+{c}");
         }
-        for c in ['v', 't'] {
-            assert!(!on.global.contains_key(&alt(c)), "Alt+{c} is Claude Code's");
+        for c in ['v', 't', 'r'] {
+            assert!(!on.global.contains_key(&alt(c)), "Alt+{c} is not ours: Claude Code's, or NVIDIA's overlay");
         }
         let mut cfg = Config::default();
         cfg.ui.alt_keys = false;
