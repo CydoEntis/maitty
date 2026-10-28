@@ -604,6 +604,9 @@ colours become the Pane colours option on Floating; Floating keeps square, corne
    own (the daemon keeps `tab_of`); the toast a round outline in Floating and a solid
    block with a coloured left edge in Hairline
    ([ADR 0030](adr/0030-panes-titled-like-an-editor.md))
+10. Alt+r renames the tab (`ui.alt_keys`), shipped in v0.50.5; and (asked 2026-10-28) Floating's
+    tab row sits in the header over the pane boxes, not inside them
+    ([ADR 0035](adr/0035-the-tab-row-sits-outside-the-pane-boxes.md))
 
 ## In scope
 
@@ -676,6 +679,7 @@ Everything below is shipped on `main` unless marked.
 - Separate desktop GUI client — declined 2026-10-17: keep Maitty terminal-first and use T3 Code when a chat-first GUI is wanted. Revisit only through a new proposal (ADR-0011).
 - Other structural terminal layouts (workspaces, tree, dock, alternate sidebar) — declined 2026-10-03. Flat is an accepted rendering style of the shared session layout, per ADR-0012; it does not introduce another session model.
 - Phase 7 proposals canceled 2026-10-17: named hosts and remote panes/agents (#23); terminal graphics and Kitty keyboard protocol (#27); launcher, templates, recording/replay, screenshots and key display (#29); web terminal and SSH server mode (#30); package-manager distribution (#31). Revisit only through a new proposal. This does not remove shipped SSH remote-client support.
+- Claude Code's own fork list showing forks that are not running (seen 2026-10-28): the `main / fork …` block with token counts is drawn by Claude inside the pane; Maitty only shows it. Not fixed, the user's call. Not checked: whether the sidebar's `N agents` count can stay stuck after a missed subagent stop (`src/daemon/status.rs`); look there first if it is reported.
 - Fleet work declined 2026-10-24 (the fleet was removed in phase 19): the phase 9 live fleet check, the designed team view, pause the fleet, stop all, cost per fleet.
 
 ## Later
@@ -704,6 +708,7 @@ Everything below is shipped on `main` unless marked.
 - [ADR-0016](adr/0016-sticky-shortcut-mode.md) — The leader opens a shortcut mode that stays until Esc, the leader, a click into a pane or a typing action. Rules out: letters acting outside that shown mode.
 - [ADR-0013](adr/0013-v7-frame.md) — Draw the v7 frame: tabs in the pane title (the "no margin" part replaced by `ui.padding`, ADR-0021; the tabs moved to a row of their own by ADR-0028).
 - [ADR-0015](adr/0015-four-named-layouts-and-grid.md) — One Layout setting: Floating, Tiled, Compact, Grid; Grid is a look over the shared layout (the four cut to Floating by ADR-0027). Rules out: Grid's own sidebar, top bar, fixed grid, zoom and bare keys.
+- [ADR-0035](adr/0035-the-tab-row-sits-outside-the-pane-boxes.md) — Floating's tab row sits over the pane boxes, level with the sidebar's top, not inside them (amends ADR-0028, ADR-0031). Rules out: tabs or a plate inside a pane's border.
 - [ADR-0029](adr/0029-alt-letters-and-closing-without-asking.md) — Alt+letter shortcuts for the everyday actions (`ui.alt_keys`); every close asks first (amends ADR-0017). Rules out: bare keys acting outside shortcut mode; Alt+[ and Alt+].
 - [ADR-0030](adr/0030-panes-titled-like-an-editor.md) — Panes titled like an editor's: no title on a lone pane, no ✕ or state word on a split pane's; sidebar tab lines skip the session's own tab; padding 0; toasts per look (amends ADR-0027, ADR-0028). Rules out: tabs back in the pane border.
 - [ADR-0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md) — A tab row over the panes in both looks; every popup and toast boxed as its look boxes a pane (amends ADR-0013). Rules out: tabs in a pane's title; frameless filled popups.

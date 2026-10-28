@@ -825,7 +825,7 @@ fn a_failed_check_reads_in_err_on_its_row_its_sheet_and_its_pane() {
     let (x, y) = at(&buf, "✕ failed   exit 1");
     assert_eq!(buf[(x, y)].bg, t.err, "the sheet's result chip");
     let (_, y) = at(&buf, "✕ fix-footer");
-    assert_eq!(y, 1, "the tab says it by its glyph, on the first row inside the pane's box; a lone pane has no title");
+    assert_eq!(y, 0, "the tab says it by its glyph, on the row over the pane's box; a lone pane has no title");
 }
 
 #[test]

@@ -1454,13 +1454,13 @@ mod v8_tests {
         app.side_frac = 0.0;
         assert!(!app.sidebar && !app.side_hidden && super::super::draw::strip_on(&app), "z: the column");
         let g = super::super::draw::grid(&app, area);
-        assert_eq!((g.side.width, g.tabs.y), (crate::client::screen::RAIL_W, 1), "a narrow column stays, and the panes keep the top row");
+        assert_eq!((g.side.width, g.tabs.y), (crate::client::screen::RAIL_W, 0), "a narrow column stays, and the tab row keeps the top row");
         assert!(g.panes.x >= g.side.right() && g.panes.right() == area.right(), "the panes take the rest of the width");
         app.act(Action::HideSidebar);
         app.side_frac = 0.0;
         assert!(app.side_hidden && !super::super::draw::strip_on(&app), "Z: hidden");
         let g = super::super::draw::grid(&app, area);
-        assert_eq!((g.tabs.x, g.tabs.y, g.panes.x, g.panes.width), (0, 1, 0, 120), "hidden gives the tabs and panes everything");
+        assert_eq!((g.tabs.x, g.tabs.y, g.panes.x, g.panes.width), (0, 0, 0, 120), "hidden gives the tabs and panes everything");
         app.act(Action::ToggleSidebar);
         assert!(app.sidebar && !app.side_hidden, "z restores the sidebar");
         app.act(Action::HideSidebar);

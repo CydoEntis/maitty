@@ -1,4 +1,4 @@
-//! The main screen: the sidebar, the panes (the top-left one carrying the tabs in its title),
+//! The main screen: the sidebar, the tab row over the panes, the panes,
 //! the sheet, the mode bar along the bottom and the toast.
 
 use super::*;
@@ -73,11 +73,6 @@ pub(in crate::client) fn mode_bar_row(app: &App, area: Rect) -> Rect {
     Rect { y: r.bottom().saturating_sub(1), height: r.height.min(1), ..r }
 }
 
-/// The tab on screen shows one pane: it has only one, or its focused pane is zoomed.
-fn one_pane_shown(app: &App) -> bool {
-    app.screen.tabs.get(app.screen.tab).is_some_and(|tab| tab.layout.leaves().len() == 1 || app.screen.zoom == Some(app.screen.tab))
-}
-
 /// Where popups and their dimming go: the window above the mode bar, so the mode stays in
 /// view and readable under any of them.
 pub(in crate::client) fn above_bar(app: &App, area: Rect) -> Rect {
@@ -120,19 +115,7 @@ pub(in crate::client) fn grid(app: &App, area: Rect) -> Grid {
         Some(kind) => split_for_sheet(area.width, col, look, app.sheet_frac, wanted_w(app, kind, area.width)),
         None => (Rect::default(), col),
     };
-    let (tabs, panes) = if look.hairline {
-        (hair_tabs, panes)
-    } else if one_pane_shown(app) && panes.height > FLOAT_TAB_ROW + 2 && panes.width > 0 {
-        // A tab's only pane: the box starts level with the sidebar's, and the tabs are its first
-        // row inside the border, where the box's padding row was.
-        (Rect { y: panes.y + 1, height: FLOAT_TAB_ROW, ..panes }, panes)
-    } else if panes.height > FLOAT_PLATE_ROWS + 2 && panes.width > 0 {
-        // Split panes: a plate of its own over them, its top edge level with the sidebar's and
-        // the tabs in its one row (`draw_tab_chips` draws its edges).
-        (Rect { y: panes.y + 1, height: FLOAT_TAB_ROW, ..panes }, Rect { y: panes.y + FLOAT_PLATE_ROWS, height: panes.height - FLOAT_PLATE_ROWS, ..panes })
-    } else {
-        carve(panes)
-    };
+    let (tabs, panes) = if look.hairline { (hair_tabs, panes) } else { carve(panes) };
     Grid { side, panes, edge, sheet, tabs }
 }
 
@@ -283,27 +266,15 @@ pub(in crate::client) fn lone_pane(app: &App, term: TermId) -> bool {
     matches!(app.screen.leaf_rects.as_slice(), [(id, _)] if *id == term)
 }
 
-/// Floating's tab row: the chips' own row, right over the boxes (no gap: rows are scarce).
+/// Floating's tab row: the chips' own row over the boxes, outside them (no gap: rows are scarce).
 const FLOAT_TAB_ROW: u16 = 1;
-/// Rows of the plate over split panes in Floating: its top edge and the tab row.
-const FLOAT_PLATE_ROWS: u16 = 2;
 
 /// Floating's tabs along the first row of `r`, lined up with the pane titles' chips.
 fn draw_tab_chips(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme) {
     if r.height == 0 || r.width < 4 {
         return;
     }
-    // Over split panes the tabs have a plate of their own: its top edge on the row above, `│` at
-    // each end of this one. A lone pane's box is that edge, and has the sides.
-    if !one_pane_shown(app) && r.y > 0 {
-        let look = Look::of(&app.cfg.ui);
-        let [tl, tr, ..] = corners(look);
-        let (edge, x1) = (Style::default().fg(t.line).bg(t.bg), r.right() - 1);
-        put(buf, r.x, r.y - 1, &[seg(tl, edge), seg("─".repeat(r.width as usize - 2), edge), seg(tr, edge)], r.right());
-        put(buf, r.x, r.y, &[seg("│", edge)], r.x + 1);
-        put(buf, x1, r.y, &[seg("│", edge)], r.right());
-    }
-    let mut row = Rect { x: r.x + 1, width: r.width - 2, height: 1, ..r };
+    let mut row = Rect { height: 1, ..r };
     row.width = tab_tools(app, buf, row, t.muted, t.strong, Color::Reset, t.accent) - row.x;
     let chips = tab_strip(app, model, row, true, t);
     put(buf, row.x, row.y, &chips, row.right());

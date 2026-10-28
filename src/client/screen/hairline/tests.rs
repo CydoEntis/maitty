@@ -462,15 +462,15 @@ fn the_line_under_the_sidebar_or_the_tabs_is_teal_where_the_keys_are() {
 }
 
 #[test]
-fn in_floating_the_sidebar_and_the_pane_box_start_on_one_row_with_the_tabs_inside() {
+fn in_floating_the_tab_row_is_level_with_the_sidebar_s_top_and_the_pane_box_is_under_it() {
     for panes in [1, 2] {
         let mut app = hairline_world(panes);
         app.cfg.ui.layout = "floating".into();
         let buf = draw(&mut app, 160, 45);
         let g = grid(&app, framed(&app, buf.area));
-        let top = if panes == 1 { app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap() } else { g.tabs.y - 1 };
-        assert_eq!(top, g.side.y, "{panes} pane(s): the sidebar's top edge and the pane box's (or the tab plate's) are one row");
-        assert_eq!(g.tabs.y, g.side.y + 1, "{panes} pane(s): the tabs sit on the first row inside it");
+        let top = app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap();
+        assert_eq!(g.tabs.y, g.side.y, "{panes} pane(s): the tab row is on the sidebar's top row");
+        assert_eq!(top, g.tabs.y + 1, "{panes} pane(s): the pane box starts right under the tab row, so the tabs are outside it");
         let row: String = (g.tabs.x..g.tabs.right()).map(|x| buf[(x, g.tabs.y)].symbol()).collect();
         assert!(row.contains("fix-footer") && row.contains('⤢'), "{panes} pane(s): the tab row is there: {row}");
     }
