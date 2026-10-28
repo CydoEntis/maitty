@@ -96,8 +96,8 @@ pub(super) struct Screen {
     pub tab: usize,
     /// A new tab was asked for in this session: the shell that answers it goes in it. Starting
     /// any other session clears it (`App::cmd`), so a session you start instead is never
-    /// taken for the tab. A `Cell` because `cmd` only borrows the app.
-    pub new_tab: std::cell::Cell<Option<(Instant, TermId)>>,
+    /// taken for the tab. A `RefCell` because `cmd` only borrows the app.
+    pub new_tab: std::cell::RefCell<Option<PendingTab>>,
     /// Counts frames, for `ScreenTab::used`.
     pub tick: u64,
     /// Where the sessions were drawn last frame, and the splits between them.
@@ -181,6 +181,15 @@ pub(super) struct Screen {
 pub(super) enum SideItem {
     Proj(String),
     Sess(TermId),
+}
+
+/// A tab asked for and not yet answered: whose it is, and the panes that existed when it was
+/// asked for, none of which can be its shell.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct PendingTab {
+    pub at: Instant,
+    pub owner: TermId,
+    pub known: HashSet<TermId>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -133,7 +133,8 @@ impl App {
         };
         self.screen_act(&Action::ShellHere);
         // After the command goes, which clears it: this is the one session it is for.
-        self.screen.new_tab.set(Some((Instant::now(), owner)));
+        let known = self.snap.terms.keys().copied().collect();
+        *self.screen.new_tab.borrow_mut() = Some(PendingTab { at: Instant::now(), owner, known });
     }
 
     /// Rename the session you're on, in its pill: its name is the one the sidebar, the pill and

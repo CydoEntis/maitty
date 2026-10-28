@@ -1683,7 +1683,7 @@ mod screen_tests {
         draw(&mut app, 200, 50);
         assert!(app.screen.leaf_rects[0].1.width < before, "dragging moves it");
         // A new tab for c in this session; the bar shows both.
-        app.screen.new_tab.set(Some((Instant::now(), app.screen.tabs[0].owner)));
+        *app.screen.new_tab.borrow_mut() = Some(screen::PendingTab { at: Instant::now(), owner: app.screen.tabs[0].owner, known: HashSet::new() });
         app.screen_place(c, Some(a));
         assert_eq!(app.screen.tabs.len(), 2);
         assert_eq!(app.screen.tabs[1].owner, app.screen.tabs[0].owner, "a tab of the same session");
@@ -1734,13 +1734,42 @@ mod screen_tests {
         app.screen_place(1, None);
         // A tab is asked for in claude's session, then a session is started instead.
         app.act(Action::NewTab);
-        assert!(app.screen.new_tab.get().is_some(), "armed for the shell that answers it");
+        assert!(app.screen.new_tab.borrow().is_some(), "armed for the shell that answers it");
         app.screen_new_session(PathBuf::from("/tmp"), Some("claude".into()), false);
         app.screen_place(3, Some(1));
         app.screen_fresh();
         let own = app.screen.tabs.iter().find(|t| t.layout.contains(3)).expect("it has a tab");
         assert_eq!(own.owner, 3, "its own session, not a tab of claude's");
         assert!(rows(&app).contains(&3), "with its own sidebar row: {:?}", rows(&app));
+    }
+
+    #[test]
+    fn a_pending_tab_takes_only_the_new_shell_not_another_pane_that_gets_the_focus() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let (tx, _rx) = mpsc::unbounded_channel();
+        app.out = tx;
+        app.screen.tabs.clear();
+        app.screen_place(1, None);
+        app.act(Action::NewTab);
+        // You pick another session before the shell arrives: it stays its own, and the tab waits.
+        app.screen_place(2, Some(1));
+        assert!(app.screen.tabs.iter().find(|t| t.layout.contains(2)).is_some_and(|t| t.owner == 2), "an existing session is not a tab");
+        assert!(app.screen.new_tab.borrow().is_some(), "the request is still waiting");
+        // A pane an agent started is not it either.
+        let mut helper = app.snap.terms[&3].clone();
+        helper.id = 40;
+        helper.started_by = Some(2);
+        app.snap.terms.insert(40, helper);
+        app.screen_place(40, Some(2));
+        assert!(app.screen.tabs.iter().find(|t| t.layout.contains(40)).is_some_and(|t| t.owner == 40), "a helper keeps its own place");
+        // The shell the request is for: new, and nobody's helper.
+        let mut shell = app.snap.terms[&3].clone();
+        shell.id = 41;
+        shell.started_by = None;
+        app.snap.terms.insert(41, shell);
+        app.screen_place(41, Some(40));
+        assert!(app.screen.tabs.iter().find(|t| t.layout.contains(41)).is_some_and(|t| t.owner == 1), "the new shell is claude's tab");
+        assert!(app.screen.new_tab.borrow().is_none(), "answered once");
     }
 
     #[test]
@@ -1759,7 +1788,9 @@ mod screen_tests {
         app.out = tx;
         app.act(Action::NewTab);
         assert_eq!(app.mode, Mode::Normal, "nothing to answer first");
-        assert!(matches!(app.screen.new_tab.get(), Some((_, 1))), "the next session is a tab of claude's: {:?}", app.screen.new_tab.get());
+        assert!(matches!(&*app.screen.new_tab.borrow(), Some(p) if p.owner == 1), "the next session is a tab of claude's: {:?}", app.screen.new_tab.borrow());
+        // The fake world already has shell 3; for this test it is the one that arrives.
+        app.screen.new_tab.borrow_mut().as_mut().expect("armed").known.remove(&3);
         app.screen_place(3, Some(1));
         app.screen_fresh();
         assert!(!rows(&app).contains(&3), "the shell is one of claude's tabs, not a row of its own: {:?}", rows(&app));
@@ -2668,9 +2699,9 @@ mod screen_tests {
         app.out = tx;
         app.screen.tabs.clear();
         app.screen_place(1, None);
-        app.screen.new_tab.set(Some((Instant::now(), 1)));
+        *app.screen.new_tab.borrow_mut() = Some(screen::PendingTab { at: Instant::now(), owner: 1, known: HashSet::new() });
         app.screen_place(3, Some(1));
-        app.screen.new_tab.set(Some((Instant::now(), 1)));
+        *app.screen.new_tab.borrow_mut() = Some(screen::PendingTab { at: Instant::now(), owner: 1, known: HashSet::new() });
         app.screen_place(2, Some(3));
         assert_eq!(app.session_tabs().len(), 3, "claude's session with three tabs");
         draw(&mut app, 160, 45);

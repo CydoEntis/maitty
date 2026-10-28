@@ -33,7 +33,7 @@ impl App {
                 None
             }
         };
-        let new_tab = self.screen.new_tab.take().filter(|(at, _)| at.elapsed() < NEW_TAB_WAIT).map(|(_, owner)| owner);
+        let new_tab = self.answered_new_tab(f);
         let take_out = |tabs: &mut Vec<ScreenTab>, f: TermId| {
             for tab in tabs.iter_mut() {
                 if tab.layout.contains(f)
@@ -119,6 +119,23 @@ impl App {
                 self.screen.tab = self.screen.tabs.len() - 1;
             }
         }
+    }
+
+    /// The session `f` is the new tab of, if a tab was asked for and `f` is its shell: a pane
+    /// that did not exist then and no agent started. Any other pane that takes the focus
+    /// leaves the request waiting; once its time is up it is dropped.
+    fn answered_new_tab(&mut self, f: TermId) -> Option<TermId> {
+        let mut pending = self.screen.new_tab.borrow_mut();
+        let asked = pending.as_ref()?;
+        if asked.at.elapsed() >= NEW_TAB_WAIT {
+            *pending = None;
+            return None;
+        }
+        let is_its_shell = !asked.known.contains(&f) && self.snap.terms.get(&f).is_some_and(|t| t.started_by.is_none());
+        if !is_its_shell {
+            return None;
+        }
+        pending.take().map(|asked| asked.owner)
     }
 
     /// The tabs of the session you're on, in order.

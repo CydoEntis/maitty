@@ -1152,7 +1152,7 @@ impl App {
 
     fn cmd(&self, c: Command) {
         if matches!(c, Command::NewWorkspace { .. } | Command::NewTab { .. } | Command::NewWorktree { .. } | Command::AgentWorktree { .. }) {
-            self.screen.new_tab.set(None);
+            *self.screen.new_tab.borrow_mut() = None;
         }
         self.send(ClientMsg::Command(c));
     }
