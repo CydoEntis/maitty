@@ -43,7 +43,7 @@ sidebar_position = "left"   # left | right
 layout = "floating"         # floating | hairline (older tiled, grid, compact, cards, flat still read)
 pane_colors = false         # floating: each pane's border in its own colour
 rounded = "off"             # full (needs a Nerd Font) | corners | off; hairline is always square (older `corners = "rounded"` still read)
-# padding = "1"             # 0 | 1 | 2: space round the screen
+# padding = "0"             # 0 | 1 | 2: space round the screen
 # background = "solid"      # solid: paint the theme everywhere | terminal: your terminal's (transparent, image) shows through
 # cursor = "terminal"       # terminal | block | underline | bar, when a pane's program picks none
 # cursor_blink = true

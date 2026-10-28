@@ -574,7 +574,7 @@ UI.md's "no number no key uses" rule for Grid and phase 30's removal in Hairline
 5. open question for the user: swap the split defaults so `v` stacks and `h` goes side by side?
    Today `v` is a vertical divider (side by side) and `h` a horizontal one, as in Vim and tmux.
 
-### 32 — Two looks, and a session's tabs in the sidebar · built, not released
+### 32 — Two looks, and a session's tabs in the sidebar · 1–8 shipped in v0.47.0–v0.47.2, 9 built, not released
 
 Asked by the user on 2026-10-27: a second tab working out of view did not show anywhere, and five
 looks were too many to keep linked up. Decided the same day
@@ -598,6 +598,11 @@ colours become the Pane colours option on Floating; Floating keeps square, corne
 8. fewer steps: Alt+n/a/x/s/d (shell, session, close, split side by side, split down) run without the leader
    (`ui.alt_keys`; Settings › Keys lists and rebinds them under "Without the leader"), and
    every close asks first ([ADR 0029](adr/0029-alt-letters-and-closing-without-asking.md))
+9. panes titled like an editor's (asked 2026-10-28): a lone pane has no title, a split pane's is
+   number, glyph and name with no state word or ✕, every tab has a ✕; sidebar tab lines skip the
+   session's own tab; padding defaults to 0; the toast a round outline in Floating and a solid
+   block with a coloured left edge in Hairline
+   ([ADR 0030](adr/0030-panes-titled-like-an-editor.md))
 
 ## In scope
 
@@ -699,6 +704,7 @@ Everything below is shipped on `main` unless marked.
 - [ADR-0013](adr/0013-v7-frame.md) — Draw the v7 frame: tabs in the pane title (the "no margin" part replaced by `ui.padding`, ADR-0021; the tabs moved to a row of their own by ADR-0028).
 - [ADR-0015](adr/0015-four-named-layouts-and-grid.md) — One Layout setting: Floating, Tiled, Compact, Grid; Grid is a look over the shared layout (the four cut to Floating by ADR-0027). Rules out: Grid's own sidebar, top bar, fixed grid, zoom and bare keys.
 - [ADR-0029](adr/0029-alt-letters-and-closing-without-asking.md) — Alt+letter shortcuts for the everyday actions (`ui.alt_keys`); every close asks first (amends ADR-0017). Rules out: bare keys acting outside shortcut mode; Alt+[ and Alt+].
+- [ADR-0030](adr/0030-panes-titled-like-an-editor.md) — Panes titled like an editor's: no title on a lone pane, no ✕ or state word on a split pane's; sidebar tab lines skip the session's own tab; padding 0; toasts per look (amends ADR-0027, ADR-0028). Rules out: tabs back in the pane border.
 - [ADR-0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md) — A tab row over the panes in both looks; every popup and toast boxed as its look boxes a pane (amends ADR-0013). Rules out: tabs in a pane's title; frameless filled popups.
 - [ADR-0027](adr/0027-two-looks-and-tabs-in-the-sidebar.md) — Two looks, Floating and Hairline; Grid's colours an option on Floating; a session's tabs listed under its sidebar row. Rules out: a look per idea; a tab's state shown only on the pane title.
 - [ADR-0021](adr/0021-one-line-rows-one-rounding-sticky-mode.md) — One-line session rows, one rounding setting (full, corners, off), padding round the screen, and shortcut mode that stays until Esc, the leader or a click (amends ADR-0016). Rules out: a second line that only names the state; separate corner and pill-end switches.

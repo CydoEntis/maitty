@@ -824,8 +824,8 @@ fn a_failed_check_reads_in_err_on_its_row_its_sheet_and_its_pane() {
     assert_eq!(buf[(x, y)].fg, t.accent, "the open row's bar is the accent, as any selected row's");
     let (x, y) = at(&buf, "✕ failed   exit 1");
     assert_eq!(buf[(x, y)].bg, t.err, "the sheet's result chip");
-    let (x, y) = at(&buf, "✕ failed ┐");
-    assert_eq!(buf[(x, y)].fg, t.err, "the pane's mark");
+    let (_, y) = at(&buf, "✕ fix-footer");
+    assert_eq!(y, 0, "the tab says it by its glyph; a lone pane has no title");
 }
 
 #[test]
