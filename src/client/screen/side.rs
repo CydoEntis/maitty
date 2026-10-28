@@ -559,13 +559,7 @@ fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, changed: Option<(i
     put(buf, gx, y, &[seg(g, gs)], gx + gw);
     hit(app, Rect { x: gx, y, width: gw + 1, height: 1 }, ScreenHit::Why(s.term));
     let menu = hovered(app, cols.row(y)) && !rl.picked;
-    let when = if !ages {
-        String::new()
-    } else if s.is_agent {
-        age(s.since)
-    } else {
-        side_tabs::shape(side_tabs::own_panes(app, s.term)).to_string()
-    };
+    let when = if ages && s.is_agent { age(s.since) } else { String::new() };
     let nx = gx + gw + 1;
     // The hovered row's ⋯ takes the last column, a space before it: over the age's place (at
     // least two wide), else in two columns of its own. A row with `+N −N` and no age keeps
@@ -1478,12 +1472,12 @@ mod v8_tests {
         app.act(Action::ToggleSidebar);
         app.side_frac = 0.0;
         assert!(!app.sidebar && !app.side_hidden && super::super::draw::strip_on(&app), "z: the strip");
-        assert_eq!(super::super::draw::grid(&app, area).tabs.y, 1, "the tabs start under the strip");
+        assert_eq!(super::super::draw::grid(&app, area).tabs.y, 2, "the pane's box starts under the strip, the tabs a row inside it");
         app.act(Action::HideSidebar);
         app.side_frac = 0.0;
         assert!(app.side_hidden && !super::super::draw::strip_on(&app), "Z: hidden");
         let g = super::super::draw::grid(&app, area);
-        assert_eq!((g.tabs.x, g.tabs.y, g.panes.x, g.panes.width), (0, 0, 0, 120), "hidden gives the tabs and panes everything");
+        assert_eq!((g.tabs.x, g.tabs.y, g.panes.x, g.panes.width), (0, 1, 0, 120), "hidden gives the tabs and panes everything");
         app.act(Action::ToggleSidebar);
         assert!(app.sidebar && !app.side_hidden, "z restores the sidebar");
         app.act(Action::HideSidebar);

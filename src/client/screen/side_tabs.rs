@@ -17,22 +17,6 @@ pub(super) struct TabLine {
     pub mark: Option<(String, String, Color)>,
     /// When that agent's state began, for its age at the right.
     pub since: Option<u64>,
-    /// How many panes it splits into: a tab of shells shows its shape instead of an age.
-    pub panes: usize,
-}
-
-/// A tab's split shape as one glyph: one pane, two side by side, or a main pane with others.
-pub(super) fn shape(panes: usize) -> &'static str {
-    match panes {
-        0 | 1 => "▢",
-        2 => "◫",
-        _ => "◧",
-    }
-}
-
-/// How many panes the tab holding `term` splits into.
-pub(super) fn own_panes(app: &App, term: TermId) -> usize {
-    app.screen.tabs.iter().find(|tab| tab.layout.contains(term)).map_or(1, |tab| tab.layout.leaves().len())
 }
 
 /// The tabs of session `owner`, in order, when it has two or more; a lone tab is the row itself.
@@ -66,7 +50,6 @@ pub(super) fn tab_line(app: &App, model: &[Proj], owner: TermId, tab: usize, t: 
         needs: agent.is_some_and(|a| check::needs(a.status, a.check())),
         mark: tab_mark(app, tab, t),
         since: agent.map(|a| a.since),
-        panes: screen_tab.layout.leaves().len(),
     })
 }
 
@@ -80,13 +63,9 @@ pub(super) fn tab_mark(app: &App, tab: usize, t: &Theme) -> Option<(String, Stri
     Some((m.glyph.to_string(), m.word.to_string(), m.color))
 }
 
-/// The line's left (state glyph and name) and right (the agent's age, else the tab's split
-/// shape) in `room` columns on `st`. The name shortens first; the glyph stays.
+/// The line's left (state glyph and name) and right (the agent's age) in `room` columns on `st`. The name shortens first; the glyph stays.
 pub(super) fn tab_segs(line: &TabLine, room: u16, st: Style, name_fg: Color, dim: Color) -> (Vec<Seg>, Vec<Seg>) {
-    let right = match line.since {
-        Some(since) => age(since),
-        None => shape(line.panes).to_string(),
-    };
+    let right = line.since.map(age).unwrap_or_default();
     let right_w = right.width() as u16;
     // A tab of shells has no glyph, but its name keeps the column an agent's would.
     let glyph = line.mark.as_ref().map_or_else(|| seg("  ", st), |(g, _, c)| seg(format!("{g} "), st.fg(*c).add_modifier(Modifier::BOLD)));
