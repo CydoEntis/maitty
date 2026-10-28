@@ -214,8 +214,6 @@ pub enum Action {
     BrowseTree,
     /// Recent and project files; Enter puts the path in the prompt.
     Files,
-    /// The new-session dialog: agent, where and project (`c`).
-    NewPane,
     /// A new session straight away with the defaults in Settings › Sessions (`n`, `+`).
     StartSession,
     /// The selected worktree's changes (review and ship).
@@ -317,7 +315,6 @@ impl Action {
             Action::Settings => "Settings".into(),
             Action::BrowseTree => "Focus the sidebar".into(),
             Action::Files => "Files".into(),
-            Action::NewPane => "New session with options…".into(),
             Action::StartSession => "New session".into(),
             Action::Changes => "Changes".into(),
             Action::StopAgent => "Stop agent".into(),
@@ -400,7 +397,6 @@ impl Action {
             Action::Settings => "settings".into(),
             Action::BrowseTree => "browse-tree".into(),
             Action::Files => "files".into(),
-            Action::NewPane => "new".into(),
             Action::StartSession => "start-session".into(),
             Action::Jump => "jump".into(),
             Action::NewSession => "new-beside".into(),
@@ -499,7 +495,8 @@ impl FromStr for Action {
             "settings" => Action::Settings,
             "browse-tree" | "browse" => Action::BrowseTree,
             "files" => Action::Files,
-            "new-pane" | "new" => Action::NewPane,
+            // The options dialog these named is gone; a saved binding stays loadable and does nothing.
+            "new-pane" | "new" => Action::None,
             "start-session" => Action::StartSession,
             "jump" => Action::Jump,
             "new-session" | "new-beside" => Action::NewSession,
@@ -550,7 +547,6 @@ pub const DEFAULT_PREFIX_KEYS: &[(&str, &str)] = &[
     // Sessions
     ("n", "shell-here"),
     ("s", "start-session"),
-    ("o", "new-pane"),
     ("enter", "message"),
     ("k", "stop-agent"),
     ("i", "jump"),

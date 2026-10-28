@@ -29,27 +29,10 @@ pub(in crate::client) enum Line {
     Gap,
 }
 
-/// A session's load is said under its row from here: a fifth of the machine's CPU, or two
-/// gigabytes. And in the working colour from here, where it's the reason the PC is slow.
-const LOAD_SAID_CPU: f32 = 20.0;
-const LOAD_SAID_MEM: u64 = 2 << 30;
-const LOAD_HEAVY_CPU: f32 = 50.0;
-const LOAD_HEAVY_MEM: u64 = 6 << 30;
-
 /// Below this many screen columns a row's age gives way.
 const AGES_FROM: u16 = 100;
 /// The folder meta is shown only when at least this many columns are left for it.
 const META_MIN_COLS: u16 = 6;
-
-/// "▲ 38% CPU · 2.1 GB" for a session that's taking a real share of the machine, and whether
-/// it's heavy. Nothing for one that isn't.
-pub(in crate::client) fn load_note(cpu: f32, mem: u64) -> Option<(String, bool)> {
-    if cpu < LOAD_SAID_CPU && mem < LOAD_SAID_MEM {
-        return None;
-    }
-    let gb = mem as f64 / f64::from(1u32 << 30);
-    Some((format!("▲ {cpu:.0}% CPU · {gb:.1} GB"), cpu >= LOAD_HEAVY_CPU || mem >= LOAD_HEAVY_MEM))
-}
 
 /// A session has a second line only when it says more than the row does: the mark and the
 /// name's colour already say working, needs you, done or idle. What is left: a question, a check
@@ -576,7 +559,13 @@ fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, changed: Option<(i
     put(buf, gx, y, &[seg(g, gs)], gx + gw);
     hit(app, Rect { x: gx, y, width: gw + 1, height: 1 }, ScreenHit::Why(s.term));
     let menu = hovered(app, cols.row(y)) && !rl.picked;
-    let when = if ages && s.is_agent { age(s.since) } else { String::new() };
+    let when = if !ages {
+        String::new()
+    } else if s.is_agent {
+        age(s.since)
+    } else {
+        side_tabs::shape(side_tabs::own_panes(app, s.term)).to_string()
+    };
     let nx = gx + gw + 1;
     // The hovered row's ⋯ takes the last column, a space before it: over the age's place (at
     // least two wide), else in two columns of its own. A row with `+N −N` and no age keeps
@@ -757,10 +746,11 @@ fn draw_line(app: &mut App, buf: &mut Buffer, model: &[Proj], line: &Line, cols:
         }
         Line::Tab(owner, tab) => {
             let Some(line) = tab_line(app, model, *owner, *tab, t) else { return };
-            let name_fg = if line.current { t.accent } else { t.text };
+            let name_fg = if line.needs { t.blocked } else if line.current { t.accent } else { t.text };
             // Right-aligned as the session row's age is, a column clear of the border.
             let end = cols.rx + 1;
-            let segs = tab_segs(&line, end.saturating_sub(x), Style::default().bg(pb), name_fg, t.line);
+            let x = cols.x + 2 + indent;
+            let segs = tab_segs(&line, end.saturating_sub(x), Style::default().bg(pb), name_fg, t.muted);
             draw_tab_line(app, buf, row, x, end, segs, *tab);
         }
         // A quiet heading: "SSH 2 ────".

@@ -188,7 +188,6 @@ impl App {
             Action::Jump,
             Action::BrowseTree,
             Action::StartSession,
-            Action::NewPane,
             Action::ShellHere,
             Action::SplitRight,
             Action::SplitDown,

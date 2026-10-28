@@ -23,6 +23,7 @@ fn suggestions() -> [(Action, &'static str); 7] {
 const GAP: u16 = 2;
 
 /// One thing on the bar, the cells before it, and what a click on it does.
+#[derive(Clone)]
 struct Piece {
     segs: Vec<Seg>,
     gap: u16,
@@ -167,7 +168,6 @@ fn keys_holder(app: &App) -> Option<Holder> {
         Mode::Finder(fd) if fd.for_setting.is_some() => holder("OPEN FOLDER", &[("", "type a path"), ("Tab", "complete"), ("Enter", "open")], ("Esc", "back")),
         Mode::Finder(_) => holder("OPEN FOLDER", &[("", "type a path"), ("Tab", "complete"), ("Enter", "open")], ("Esc", "close")),
         Mode::ScreenPane(_) => holder("NEW PANE", &[("↑↓", "rows"), ("←→", "choose"), ("Enter", "start")], ("Esc", "close")),
-        Mode::NewSession(_) => holder("NEW SESSION", &[("↑↓", "rows"), ("←→", "pick"), ("Enter", "start")], ("Esc", "cancel")),
         Mode::Themes { .. } => holder("THEMES", &[("", "type to filter"), ("↑↓", "move"), ("Enter", "apply")], ("Esc", "back")),
         Mode::Spinners(_) => holder("SPINNERS", &[("↑↓", "preview"), ("Enter", "apply")], ("Esc", "back")),
         Mode::ScreenMenu(_) => holder("MENU", &[("↑↓", "move"), ("Enter", "pick")], ("Esc", "close")),
@@ -298,24 +298,47 @@ fn only_says(app: &App) -> bool {
     shortcut_waits(app) || !matches!(app.mode, Mode::Normal | Mode::Side | Mode::Prefix { .. })
 }
 
-/// Hairline, after TYPING: the look's name and how many panes the tab shows, dim. When narrow
-/// the hint after it goes first, then this.
+/// After TYPING: which tab of the project this is and how many splits it shows, dim. When
+/// narrow the hint after it goes first, then this.
 fn layout_piece(app: &App, t: &Theme) -> Option<Piece> {
     let n = app.screen.leaf_rects.len();
+    let tabs = app.session_tabs();
+    let at = tabs.iter().position(|&i| i == app.screen.tab)?;
     (n > 0 && app.focused().is_some()).then(|| {
-        let words = format!("Hairline · {n} pane{}", if n == 1 { "" } else { "s" });
+        let words = format!("tab {}/{} · {n} split{}", at + 1, tabs.len(), if n == 1 { "" } else { "s" });
         Piece { segs: vec![seg(words, Style::default().fg(t.muted).bg(t.bg))], gap: GAP, hit: None }
     })
 }
 
-/// Hairline's right end: how many sessions need you in amber, shortest last, or `all clear`.
-fn alerts(needs: usize, t: &Theme) -> Vec<Piece> {
+/// The right end's first piece: how many sessions need you in amber (the session's name when
+/// it is one), shortest last, or `all clear`.
+fn alerts(app: &App, needs: usize, t: &Theme) -> Vec<Piece> {
     let amber = Style::default().fg(t.blocked).bg(t.bg).add_modifier(Modifier::BOLD);
     let words = |text: String, st: Style| Piece { segs: vec![seg(text, st)], gap: 0, hit: None };
     if needs == 0 {
         return vec![words("all clear".into(), Style::default().fg(t.muted).bg(t.bg))];
     }
-    vec![words(format!("● {needs} needs you"), amber), words(format!("● {needs}"), amber)]
+    let lone = (needs == 1).then(|| app.snap.terms.values().find(|i| check::needs(i.status, i.check())).map(|i| session_name(app, &app.screen_model(), i.id))).flatten();
+    let full = match lone {
+        Some(name) => format!("● {name} needs you"),
+        None => format!("● {needs} needs you"),
+    };
+    vec![words(full, amber), words(format!("● {needs} needs you"), amber), words(format!("● {needs}"), amber)]
+}
+
+/// The tab's checkout branch, dim: `⎇ bold-raven`.
+fn branch_piece(app: &App, t: &Theme) -> Option<Piece> {
+    let branch = app.focused().and_then(|f| app.snap.terms.get(&f)).and_then(|i| i.branch.clone())?;
+    let words = format!("{} {branch}", check::marks(app).branch);
+    Some(Piece { segs: vec![seg(words, Style::default().fg(t.muted).bg(t.bg))], gap: GAP, hit: None })
+}
+
+/// What the tab's panes take of the machine, dim: `▲ 3% CPU · 1.2 GB`.
+fn load_piece(app: &App, t: &Theme) -> Option<Piece> {
+    let leaves = app.screen.tabs.get(app.screen.tab)?.layout.leaves();
+    let (cpu, mem) = leaves.iter().filter_map(|id| app.snap.terms.get(id)).fold((0.0f32, 0u64), |(c, m), i| (c + i.cpu, m + i.mem));
+    let gb = mem as f64 / f64::from(1u32 << 30);
+    Some(Piece { segs: vec![seg(format!("▲ {cpu:.0}% CPU · {gb:.1} GB"), Style::default().fg(t.muted).bg(t.bg))], gap: GAP, hit: None })
 }
 
 /// Draw the mode bar on `row`: lit, who has the keys, or typing, with Update or Restart at its
@@ -337,23 +360,44 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
         let (tag, hint) = typing(app, t);
         (tag, hint, Vec::new())
     };
-    let hairline = Look::of(&app.cfg.ui).hairline && ground == t.bg;
-    if hairline && holder.is_none() && let Some(p) = layout_piece(app, t) {
+    let calm = ground == t.bg;
+    if calm && holder.is_none() && let Some(p) = layout_piece(app, t) {
         middle.insert(0, p);
     }
     let releases: Vec<Piece> = [Release::Words, Release::Version, Release::Arrow].into_iter().filter_map(|r| release_pill(app, r, t)).collect();
     let round = Look::of(&app.cfg.ui).round_tabs;
     let caps = |p: &Piece| if round && p.segs.first().is_some_and(|(_, s)| s.bg != Some(ground)) { round_ends(p.segs.clone(), ground) } else { p.segs.clone() };
     let room = row.width.saturating_sub(2);
-    // Needs you keeps its place before the mode's hints, the look and Update do.
-    let alerts = if hairline { alerts(super::hairline::needing(app), t) } else { Vec::new() };
-    let alert = alerts.into_iter().find(|a| width(&[&tag]) + GAP + segs_width(&a.segs) <= room);
-    let alert_w = alert.as_ref().map_or(0, |a| segs_width(&a.segs) + GAP);
-    let (left, release) = fit(room.saturating_sub(alert_w), &tag, &middle, &tail, &releases);
-    if let Some(a) = &alert {
-        let release_w = release.map_or(0, |r| segs_width(&r.segs) + GAP);
-        let x = row.right().saturating_sub(1 + release_w + segs_width(&a.segs));
-        put(buf, x, row.y, &a.segs, row.right());
+    // The right end: needs you keeps its place before the mode's hints and Update do; the
+    // branch and the load are there only while the whole left side still fits beside them.
+    let release_room = |release: Option<&Piece>| release.map_or(0, |r| segs_width(&r.segs) + GAP);
+    let mut right: Vec<Piece> = Vec::new();
+    let mut left_and_release = None;
+    if calm {
+        let tag_w = width(&[&tag]);
+        let needing = alerts(app, super::hairline::needing(app), t);
+        if let Some(alert) = needing.into_iter().find(|a| tag_w + GAP + segs_width(&a.segs) <= room) {
+            let alert_w = GAP + segs_width(&alert.segs);
+            let (left, release) = fit(room.saturating_sub(alert_w), &tag, &middle, &tail, &releases);
+            let used = width(&left) + release_room(release) + alert_w;
+            right.push(alert);
+            for extra in branch_piece(app, t).into_iter().chain(load_piece(app, t)) {
+                let more = extra.gap + segs_width(&extra.segs);
+                if used + right[1..].iter().map(|p| p.gap + segs_width(&p.segs)).sum::<u16>() + more <= room {
+                    right.push(extra);
+                }
+            }
+            left_and_release = Some((left, release));
+        }
+    }
+    let right_w: u16 = right.iter().map(|p| p.gap + segs_width(&p.segs)).sum();
+    let (left, release) = left_and_release.unwrap_or_else(|| fit(room, &tag, &middle, &tail, &releases));
+    if !right.is_empty() {
+        let mut x = row.right().saturating_sub(1 + release_room(release) + right_w);
+        for p in &right {
+            x += p.gap;
+            x = put(buf, x, row.y, &p.segs, row.right());
+        }
     }
     let words_only = only_says(app);
     let mut x = row.x + 1;

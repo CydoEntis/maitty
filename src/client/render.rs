@@ -172,10 +172,6 @@ fn draw_overlays(app: &mut App, f: &mut Frame, area: Rect, t: &crate::theme::The
             let np = np.clone();
             super::screen::draw_new_pane(app, f, area, &t, &np);
         }
-        Mode::NewSession(ns) => {
-            let ns = (**ns).clone();
-            super::screen::draw_new_session(app, f, area, &t, &ns);
-        }
         Mode::ScreenSettings(_) => super::screen::draw_settings_modal(app, f.buffer_mut(), area, &t),
         Mode::Approve(a) => {
             let a = (**a).clone();

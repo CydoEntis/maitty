@@ -29,8 +29,8 @@ Two looks: **Floating** (a box per pane) and **Hairline** (lines only). `ui.layo
   (`Ui::fold_retired_layout`): Tiled (and Cards with `panes = "tiled"`) is Floating with
   `gap = 0`, Grid is Floating with pane colours, Compact (once Flat) is Hairline.
 
-A session with two tabs or more lists them under its row in both sidebars, one line each:
-`├`/`└`, the tab's number and name (the tab on screen in the accent, or teal in Hairline), and
+A session with two tabs or more lists them under its row in both sidebars, one line each,
+flush with the name and with no branch marks: the tab's number and name (the tab on screen in the accent, or teal in Hairline), and
 its most urgent agent's glyph and word at the right (`side_tabs.rs`). A click on a line shows
 that tab. A session with one tab stays one row.
 

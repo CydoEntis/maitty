@@ -2,7 +2,7 @@
 //! per session (no second lines) with its tabs under it while it has several, and the new and
 //! menu hints pinned to the foot.
 
-use super::super::side_tabs::{draw_tab_line, tab_line, tab_segs};
+use super::super::side_tabs::{draw_tab_line, own_panes, shape, tab_line, tab_segs};
 use super::*;
 
 /// Where a row's pieces go, from the sidebar's left edge (the handoff's columns): the `▎`
@@ -67,10 +67,17 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
             }
             Line::Tab(owner, tab) => {
                 let Some(line) = tab_line(app, model, *owner, *tab, t) else { continue };
-                let x = r.x + NAME_IN + indent;
-                let name_fg = if line.current { ink.teal } else { ink.text };
-                let segs = tab_segs(&line, text_end(r).saturating_sub(x), Style::default().bg(ink.bg), name_fg, ink.line);
-                draw_tab_line(app, buf, Rect { x: r.x, y, width: r.width, height: 1 }, x, text_end(r), segs, *tab);
+                let row = Rect { x: r.x, y, width: r.width, height: 1 };
+                let bg = if line.current { ink.raised } else { ink.bg };
+                fill(buf, row, bg);
+                let marker = if line.current { Some(ink.teal) } else { line.needs.then_some(ink.amber) };
+                if let Some(c) = marker {
+                    put(buf, r.x, y, &[seg("▎", Style::default().fg(c).bg(bg))], r.x + 1);
+                }
+                let x = r.x + GLYPH_IN + indent;
+                let name_fg = if line.needs { ink.amber } else if line.current { ink.teal } else { ink.text };
+                let segs = tab_segs(&line, text_end(r).saturating_sub(x), Style::default().bg(bg), name_fg, ink.dim);
+                draw_tab_line(app, buf, row, x, text_end(r), segs, *tab);
             }
             Line::Section(kind, n) => {
                 put(buf, r.x + TEXT_IN, y, &[seg(format!("{} {n}", kind.heading().to_lowercase()), Style::default().fg(ink.dim).bg(ink.bg))], text_end(r));
@@ -204,7 +211,7 @@ fn draw_session(app: &mut App, buf: &mut Buffer, s: &Session, at: Row, model: &[
     } else if s.is_agent {
         age(s.since)
     } else {
-        String::new()
+        shape(own_panes(app, s.term)).to_string()
     };
     let right_fg = if needs { ink.amber } else { ink.dim };
     let rw = if menu { 1 } else { right.width() as u16 };
