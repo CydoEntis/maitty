@@ -17,7 +17,9 @@ pub(in crate::client) fn draw_tab_row(app: &mut App, buf: &mut Buffer, r: Rect, 
     let ink = Ink::of(t);
     fill(buf, Rect { height: 1, ..r }, ink.bg);
     rule(buf, r.x, r.y + 1, r.width, ink.line, ink.bg);
-    draw_tabs(app, buf, r.x + PANE_PAD, r.y, r.right().saturating_sub(PANE_PAD), model, t);
+    let row = Rect { x: r.x + PANE_PAD, width: r.width.saturating_sub(2 * PANE_PAD), height: 1, ..r };
+    let end = tab_tools(app, buf, row, ink.dim, ink.strong, ink.bg, ink.teal);
+    draw_tabs(app, buf, row.x, r.y, end, model, t);
 }
 
 /// The `│` right of a tab (or the `+`) at `x`, meeting the rule under it in a `┴`.
@@ -41,7 +43,8 @@ fn draw_tabs(app: &mut App, buf: &mut Buffer, x: u16, y: u16, end: u16, model: &
         let style = if i == app.screen.tab { st.fg(ink.teal).add_modifier(Modifier::BOLD) } else { st.fg(ink.dim) };
         let mut label: Vec<Seg> = tab_mark(app, i, t).map(|(g, c)| seg(format!("{g} "), st.fg(c).add_modifier(Modifier::BOLD))).into_iter().collect();
         label.push(seg(if tabs.len() > 1 { format!("{} {name}", n + 1) } else { name }, style));
-        let close = tab_close(app, i, tabs.len());
+        label.push(seg(format!(" {}", super::super::side_tabs::shape(app.screen.tabs[i].layout.leaves().len())), st.fg(ink.dim)));
+        let close = if i == app.screen.tab { tab_close(app, i, tabs.len()) } else { None };
         if close.is_some() {
             label.push(seg(format!(" {}", glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close), st.fg(ink.dim)));
         }

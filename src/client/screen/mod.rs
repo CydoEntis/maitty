@@ -91,6 +91,8 @@ pub(super) struct Screen {
     /// Where the file preview was drawn (wheel scrolls it; paging uses its height).
     pub preview_rect: Rect,
     pub tab: usize,
+    /// The tab whose focused pane fills it (`⤢`).
+    pub zoom: Option<usize>,
     /// The next session that opens goes in a new tab (Ctrl+Space w), until this time.
     /// A new tab was asked for in this session: the next session to show goes in it.
     pub new_tab: Option<(Instant, TermId)>,
@@ -1014,6 +1016,10 @@ pub(super) enum ScreenHit {
     TabPick(usize),
     CloseTab(usize),
     NewTab,
+    /// The tab row's `◫`: split the focused pane.
+    TabSplit,
+    /// The tab row's `⤢`: the focused pane fills the tab, or goes back.
+    TabZoom,
     /// Outside an overlay: closes it.
     Close,
     /// Inside an overlay's panel: nothing.
@@ -1024,9 +1030,6 @@ pub(super) enum ScreenHit {
     NpBeside(usize),
     NpWhere(usize),
     NpGo,
-    /// The new-session dialog: an option on a row (row, option), and Start.
-    NsOpt(u8, usize),
-    NsStart,
     NpTask,
     NpModel(usize),
     SetTab(usize),
@@ -1165,4 +1168,4 @@ mod frame_tests;
 mod panes_apart_tests;
 #[cfg(test)]
 mod reference;
-pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_bar::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, references_sheet::*, check_actions::*, check_approve::*, keyoverlay::*, newsession::*};
+pub(in crate::client) use self::{card::*, dialogs::*, leader::*, popups::*, draw::*, mode_bar::*, side::*, splash::*, sheet::*, popover::*, helpers_ask::*, heads::*, tidy::*, check_sheet::*, branch_sheet::*, references_sheet::*, check_actions::*, check_approve::*, keyoverlay::*};

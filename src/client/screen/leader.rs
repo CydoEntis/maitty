@@ -17,7 +17,6 @@ pub(in crate::client) fn menu_groups() -> Vec<Vec<MenuItem>> {
         vec![
             ("Shell here", Action::ShellHere),
             ("Session", Action::StartSession),
-            ("Session with options…", Action::NewPane),
             ("Pane beside this", Action::SplitRight),
             ("Tab", Action::NewTab),
         ],

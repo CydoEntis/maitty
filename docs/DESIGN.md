@@ -81,8 +81,8 @@ mark, the name in its state's colour when it wants a look (shimmering while work
 when it needs you), then the agent's mark, its context past half full (`✻ 72%`, red from 85%),
 uncommitted `+N −N` and the age. A second and third
 line, always `muted`, appear only when they say more: a question, a check result, the first
-failing line. A session with two tabs or more lists them under it, one line each: `├`/`└`, the
-tab's number and name (the one on screen in the accent), and its most urgent agent's glyph and
+failing line. A session with two tabs or more lists them under it, one line each, flush with the
+name and with no branch marks: the tab's number and name (the one on screen in the accent), and its most urgent agent's glyph and
 word at the right; a click shows that tab. The foot holds **+ New** and **Menu**. Collapsed, the sessions become chips along
 row 0; hidden, the panes take everything. See UI › *sidebar check result* and *collapsed
 sidebar*.
@@ -95,10 +95,11 @@ not) and ended by its ✕, the current one in the accent, then a **+** chip for 
 is named the same everywhere: its own name, else its focused session's. Panes are titled as an
 editor's are ([ADR 0030](adr/0030-panes-titled-like-an-editor.md)): a tab's only pane has no
 title (a plain top border), its tab naming it, showing its state (the glyph opens why) and
-closing it. While a tab is split, each pane's title is one chip on its top border: its number
-(its place in reading order, from 1, so it changes when panes move, close or split), its
-state's glyph and its name, `2 ● claude`, and at most a load note at the right; no state word,
-no ✕. Every tab has a ✕; a pane closes with Alt+x, leader `x` or its menu. Closing always
+closing it. A split's panes have no title at all ([ADR 0031](adr/0031-tabs-name-a-project-and-splits-have-no-title.md)):
+the tab names where you are, and a pane's top edge says its state, teal when focused and amber
+when it needs you. The tab row lists every tab of the project, numbered 1–n, each with its
+split shape (`▢ ◫ ◧`) and a ✕ on the open one only, and ends in `◫` (split) and `⤢` (zoom the
+focused pane). A pane closes with Alt+x, leader `x` or its menu. Closing always
 asks first (ADR 0029), naming the pane (`Close pane 2 · claude`) and lighting its lines in the
 red until you answer. Unfocused panes fade;
 the focused border is the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane
@@ -170,21 +171,22 @@ accent, `amber` `blocked`, `green` `done`), so every theme has it. `ui.rounded` 
   two dim words, no keys: `new` at the left, `menu` at the right.
 - **Tabs:** a row of their own across the top of the pane column, then a `─` rule in `line`
   (`├` where the sidebar's `│` meets it). Each tab is plain words: its most urgent agent's mark
-  (so a tab out of view still shows it works or asks), its number while the session has
-  several, its name and a dim ✕ (it closes the tab, or a lone tab's only pane, asking first);
-  the current one teal bold, the others dim. A dim `+` after them opens
+  (so a tab out of view still shows it works or asks), its number (the project's tabs are
+  numbered 1–n), its name, its split shape and, on the current one only, a dim ✕ (it closes the
+  tab, or a lone tab's only pane, asking first);
+  the current one teal bold, the others dim. `◫` and `⤢` sit at the row's right end. A dim `+` after them opens
   a tab, there even with one tab. A `│` in `line` closes each tab and the `+`, meeting the rule
   in a `┴`.
-- **Panes:** in a split, row 1 is the pane's number (bold: teal focused, amber when it needs
-  you, else dim), the glyph, the name in `strong` bold, then `project · ⎇ branch` dim; at the
-  right at most a load note, no ✕. The state shows as the glyph alone, no words. A tab's only
-  pane has no title row or rule: the terminal starts under the tab row (ADR 0030). Row 2 is a `─` rule the pane's width: teal focused (`sky()` in shortcut mode), amber
-  when it needs you and is not focused, else `line`. Panes side by side or stacked are parted
-  by one `│` or `─`, never boxed; the terminal sits two columns in.
+- **Panes:** a split pane has no title: its first row is a `─` rule the pane's width, teal
+  focused (`sky()` in shortcut mode), amber when it needs you and is not focused, else `line`
+  (ADR 0031). A tab's only pane has no rule: the terminal starts under the tab row (ADR 0030).
+  Panes side by side are parted by one `│`; a pane below another is parted by its own top rule.
+  Never boxed; the terminal sits two columns in.
 - **Mode bar:** under a full-width `─` rule in `line` (`┴` where the sidebar's `│` meets it).
-  `TYPING` is a teal bold word, then `Hairline · 2 panes` dim, then the hint;
+  `TYPING` is a teal bold word, then `tab 1/3 · 2 splits` dim, then the hint;
   whatever has the keys is named in `strong` bold, no chip. At the right `● N needs you` in
-  amber bold, or `all clear` dim, just before Update or Restart. Shortcut mode keeps its sky row.
+  amber bold (the session's name when it is one), or `all clear` dim, then `⎇ branch` and
+  `▲ CPU · RAM` dim while they fit, just before Update or Restart. Shortcut mode keeps its sky row.
 - **Menus, popups and panels:** the same lines. A modal (Settings, a confirm, override, approval,
   the key map, new session, themes) is a solid `bg` box in a square `line` frame over the
   dimmed screen, its title plain words on the top border, `Esc close` dim at its right. A

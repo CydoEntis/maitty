@@ -28,7 +28,6 @@ fn surfaces() -> Vec<(&'static str, Open)> {
         ("confirm close", |app| app.act(Action::ClosePane)),
         ("rename", |app| app.act(Action::RenameTab)),
         ("new session dialog", |app| app.act(Action::NewSession)),
-        ("new pane", |app| app.act(Action::NewPane)),
         ("history", |app| app.act(Action::History)),
         ("themes", |app| app.open_themes()),
         ("inbox", |app| app.act(Action::Jump)),

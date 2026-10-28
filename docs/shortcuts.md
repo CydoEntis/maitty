@@ -14,7 +14,6 @@ one thing (ADR 0017, 0022).
 |---|---|
 | `n` | New shell where you are |
 | `s` | New session, started straight away with your default agent |
-| `o` | New session with options (agent, where, project) |
 | `Enter` | Message the agent |
 | `k` | Stop the agent |
 | `i` | Inbox: what needs you, then every session |
@@ -130,7 +129,7 @@ or another program follow that program's own help.
 Every key is a leader key: there is no letter that acts by itself in the sidebar.
 The defaults are one key each, none but `?` needing Shift, chosen from what other apps use
 (ADR 0017, 0022): `v` / `h` split stacked / side by side, `c` Changes, `i` Inbox, `y` why, `k` stop
-the agent, `Enter` message it, `o` session with options, `p` find a file, `g` worktrees, `b`
+the agent, `Enter` message it, `p` find a file, `g` worktrees, `b`
 Branch, `a` references, `l` what happened, `?` all keys, `Ctrl+W` close tab, `Ctrl+V` paste an image,
 `Ctrl`+arrows resize, `Alt`+arrows swap panes, `1`–`9` go to a tab. Your own `[keys.prefix]` entries still load.
 
@@ -138,7 +137,7 @@ Branch, `a` references, `l` what happened, `?` all keys, `Ctrl+W` close tab, `Ct
 
 | Keys | Action |
 | --- | --- |
-| The key shown beside a row | Run it (the same leader key works anywhere): `n` Shell here, `s` Session, `o` Session with options…, `v` Pane beside this, `t` Tab, `i` Inbox, `Space` Search commands, `?` All keys, `z` Collapse sidebar, `,` Settings |
+| The key shown beside a row | Run it (the same leader key works anywhere): `n` Shell here, `s` Session, `v` Pane beside this, `t` Tab, `i` Inbox, `Space` Search commands, `?` All keys, `z` Collapse sidebar, `,` Settings |
 | Up, Down, Enter | Choose and run a row |
 | Esc | Close the Menu |
 

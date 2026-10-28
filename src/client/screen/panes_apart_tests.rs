@@ -134,74 +134,30 @@ fn every_split() -> impl Iterator<Item = (String, App, Buffer)> {
 }
 
 #[test]
-fn every_pane_of_a_split_shows_its_number_in_reading_order_in_every_look() {
+fn no_pane_has_a_title_in_any_look() {
     for (label, app, buf) in every_split() {
-        let mut shown = app.screen.leaf_rects.clone();
-        shown.sort_by_key(|(_, r)| (r.y, r.x));
-        for (n, (term, r)) in shown.iter().enumerate() {
-            let title = title_of(&buf, *r);
-            if shown.len() < 2 {
-                assert!(!title.contains("1 ·") && !title.trim_start().starts_with("1 "), "{label}: a lone pane has no number: {title}");
-                continue;
-            }
-            // A narrow chip cuts the name before the number: `2 · warm-f…`, at the least a bare `2`.
-            let want = if label.starts_with("hairline") { vec![format!("  {} ", n + 1)] } else { vec![format!(" {} ", n + 1)] };
-            assert!(want.iter().any(|w| title.contains(w)), "{label}: pane {term} reads {want:?}: {title}\n{}", text(&buf));
-            assert!(!title.contains(&format!(" {}…", n + 1)), "{label}: a name cut away leaves the bare number: {title}");
+        // A lone pane's top row is its terminal's first line; a split's is its edge.
+        for (term, r) in app.screen.leaf_rects.iter().filter(|_| app.screen.leaf_rects.len() > 1) {
+            let top = title_of(&buf, *r);
+            assert!(!top.chars().any(char::is_alphanumeric), "{label}: pane {term}'s top edge carries no words, its tab names it: {top}\n{}", text(&buf));
         }
     }
 }
 
 #[test]
-fn the_top_left_pane_names_its_own_session_whichever_pane_has_focus() {
-    for look in ["floating", "tiled", "compact", "grid"] {
-        for focus_on in [1, 2] {
-            let mut app = split_world(look, 3);
-            let (w, h) = wide(look);
-            draw(&mut app, w, h);
-            let mut shown = app.screen.leaf_rects.clone();
-            shown.sort_by_key(|(_, r)| (r.y, r.x));
-            app.screen.tabs[0].focus = shown[focus_on].0;
-            let buf = draw(&mut app, w, h);
-            let model = app.screen_model();
-            for (n, (term, r)) in shown.iter().enumerate() {
-                let title = title_of(&buf, *r);
-                let name = session_name(&app, &model, *term);
-                let at = title.find(&format!(" {} ", n + 1)).unwrap_or_else(|| panic!("{look}: pane {}'s number: {title}", n + 1));
-                assert!(title[at..].contains(&name), "{look}, focus on pane {}: pane {} reads its number then {name:?}: {title}", focus_on + 1, n + 1);
-            }
-        }
-    }
-}
-
-#[test]
-fn a_named_tab_keeps_its_name_on_its_tab_and_the_pane_its_own() {
+fn a_named_tab_keeps_its_name_on_its_tab() {
     let mut app = split_world("floating", 2);
     app.screen.tabs[0].name = "build".into();
     let buf = draw(&mut app, 160, 45);
     let r = app.screen.leaf_rects.iter().min_by_key(|(_, r)| (r.y, r.x)).map(|(_, r)| *r).expect("a pane");
     let tabs = |app: &App, buf: &Buffer| title_of(buf, crate::client::screen::grid(app, buf.area).tabs);
     let title = title_of(&buf, r);
-    assert!(tabs(&app, &buf).contains(" build ") && title.contains(" 1 ● fix-footer ") && !title.contains("build"), "the tab's name on its tab, the pane's in its title: {} / {title}", tabs(&app, &buf));
+    assert!(tabs(&app, &buf).contains(" build ") && !title.contains("build"), "the tab's name on its tab, none on the pane: {} / {title}", tabs(&app, &buf));
     let mut second = app.screen.tabs[0].clone();
     (second.layout, second.focus, second.name) = (Node::Leaf(5), 5, String::new());
     app.screen.tabs.push(second);
     let buf = draw(&mut app, 160, 45);
-    assert!(tabs(&app, &buf).contains(" 1  build "), "with several tabs the tab adds its number: {}", tabs(&app, &buf));
-}
-
-#[test]
-fn a_hairline_number_is_teal_focused_amber_when_it_needs_you_else_dim() {
-    let mut app = split_world("hairline", 3);
-    let buf = draw(&mut app, 160, 45);
-    let t = app.theme.clone();
-    for (term, want) in [(1, t.accent), (3, t.blocked), (4, t.muted)] {
-        let r = app.screen.leaf_rects.iter().find(|(id, _)| *id == term).map(|(_, r)| *r).expect("the pane is on screen");
-        let cell = &buf[(r.x + hairline::PANE_PAD, r.y)];
-        assert!(cell.symbol().chars().all(|c| c.is_ascii_digit()), "pane {term} leads with its number: {}", title_of(&buf, r));
-        assert_eq!(cell.fg, want, "pane {term}");
-        assert!(cell.modifier.contains(Modifier::BOLD), "pane {term}");
-    }
+    assert!(tabs(&app, &buf).contains(" 1 ") && tabs(&app, &buf).contains(" build "), "with several tabs the tab adds its number: {}", tabs(&app, &buf));
 }
 
 /// The cells of `r` drawn in exactly `colour`.
@@ -224,7 +180,7 @@ fn closing_a_pane_names_it_and_lights_it_in_every_look() {
         let rect = |term: TermId| app.screen.leaf_rects.iter().find(|(id, _)| *id == term).map(|(_, r)| *r).expect("the pane is on screen");
         let (closing, kept) = (rect(second), rect(first));
         let t = app.theme.clone();
-        let line = |r: Rect| if look == "hairline" { (r.x + 1, r.y + 1) } else if look == "compact" { (r.x, r.y + 1) } else { (r.x, r.y) };
+        let line = |r: Rect| if look == "hairline" { (r.x + 1, r.y) } else if look == "compact" { (r.x, r.y + 1) } else { (r.x, r.y) };
         assert_eq!(buf[line(closing)].fg, t.err, "{look}: the pane being closed is lit, bright over the dimmed screen:\n{screen}");
         // Compact lights its zone's `│` rule, as it does for focus; the others their border or rule.
         assert!(cells_in(&buf, closing, t.err) > 20, "{look}: its lines, not a cell");
