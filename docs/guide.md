@@ -45,7 +45,7 @@ and your configured custom ones; rows click and the wheel scrolls.
   keyboard. Hover is a separate, quieter tint.
 - Collapsing the sidebar (leader, then `z`) leaves a narrow column
   down the side, each project as its first letter in its colour and each session as its mark and first letter: click a row to go to it, `»` (`«` with the sidebar on the right) or `…` to expand the sidebar again.
-- Things that need you sort to the top; everything else keeps its place. Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
+- Nothing moves in the sidebar by itself: a session that needs you or finishes keeps its row (its mark and name say so, and the Inbox lists what needs you), and a session on another machine stays with the folder it was started from. Idle agents stay running; no sleep screen is shown for sessions saved by older releases.
 - A session taking a real share of the machine says so in its pane's title, beside its state
   (`▲ 38% CPU · 2.1 GB`, from a fifth of the CPU or two gigabytes).
 - **Hairline** (Settings › Appearance › Layout) draws all this with no boxes: one row per

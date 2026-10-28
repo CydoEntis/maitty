@@ -9,8 +9,6 @@ use super::*;
 /// A line of the sidebar tree.
 #[derive(Debug, Clone)]
 pub(in crate::client) enum Line {
-    /// The heading over the other machines' sessions (with how many).
-    Section(Kind, usize),
     Proj(usize),
     /// An agent or shell (pi, wi, si), and how deep it sits under the session that started it (0: not under anyone).
     Sess(usize, usize, usize, u8),
@@ -107,35 +105,27 @@ type Rows = Vec<(usize, usize)>;
 pub(in crate::client) fn side_lines(app: &App, model: &[Proj], t: &Theme) -> Vec<Line> {
     let mut out = Vec::new();
     for (pi, p) in model.iter().enumerate() {
-        if p.kind == Kind::Ssh && (pi == 0 || model[pi - 1].kind != p.kind) {
-            let n = model.iter().filter(|q| q.kind == p.kind).map(|q| q.sessions().count()).sum();
-            out.push(Line::Section(p.kind, n));
-        }
         out.push(Line::Proj(pi));
         if app.screen.saved.closed.contains(&format!("p:{}", p.key)) {
             out.push(Line::Gap);
             continue;
         }
-        // Just the sessions: the ones that need you first, the rest where they were (the repo
-        // folder's before the worktrees' when equal).
+        // Just the sessions, where they were (the repo folder's before the worktrees').
         let every: Rows = (0..p.wts.len()).flat_map(|wi| (0..p.wts[wi].sessions.len()).map(move |si| (wi, si))).collect();
         let mut rows = every;
         // Your order (dragged) otherwise.
         let order = &app.screen.saved.session_order;
         let at = |t: TermId| order.iter().position(|x| *x == t).unwrap_or(usize::MAX);
-        let sort = app.cfg.ui.attention_sort;
         rows.sort_by_key(|&(wi, si)| {
             let s = &p.wts[wi].sessions[si];
             let mine = at(s.term);
-            (sort && settled(s.status), if mine == usize::MAX { !p.wts[wi].main } else { false }, mine, s.term)
+            (if mine == usize::MAX { !p.wts[wi].main } else { false }, mine, s.term)
         });
-        // Helpers: the sessions a session started sit under it, in the order above. One that
-        // needs you has sorted to the top and stays there, on its own.
+        // Helpers: the sessions a session started sit under it, in the order above.
         let term_of = |r: &(usize, usize)| p.wts[r.0].sessions[r.1].term;
         let starter = |r: &(usize, usize)| {
             let s = &p.wts[r.0].sessions[r.1];
-            let floats = sort && !settled(s.status);
-            s.started_by.filter(|by| !floats && *by != s.term && rows.iter().any(|x| term_of(x) == *by))
+            s.started_by.filter(|by| *by != s.term && rows.iter().any(|x| term_of(x) == *by))
         };
         let mut placed: Vec<((usize, usize), u8)> = Vec::with_capacity(rows.len());
         let mut next: Vec<((usize, usize), u8)> = rows.iter().rev().filter(|r| starter(r).is_none()).map(|r| (*r, 0)).collect();
@@ -747,13 +737,6 @@ fn draw_line(app: &mut App, buf: &mut Buffer, model: &[Proj], line: &Line, cols:
             let segs = tab_segs(&line, end.saturating_sub(x), Style::default().bg(pb), name_fg, t.muted);
             draw_tab_line(app, buf, row, x, end, segs, *tab);
         }
-        // A quiet heading: "SSH 2 ────".
-        Line::Section(kind, n) => {
-            let st = Style::default().bg(pb);
-            let label = format!("{} {n} ", kind.heading().to_uppercase());
-            let rest = (cols.rx + 1).saturating_sub(cols.x + 1 + label.width() as u16);
-            put(buf, cols.x + 1, y, &[seg(label, st.fg(t.muted).add_modifier(Modifier::BOLD)), seg("─".repeat(rest as usize), st.fg(t.line))], cols.rx + 1);
-        }
         Line::Sess(..) | Line::Detail(_) | Line::Third(_) | Line::Gap => {}
     }
 }
@@ -816,9 +799,7 @@ fn proj_meta(app: &App, p: &Proj, open: bool) -> String {
         let n = p.sessions().count();
         return if n == 0 { "empty".into() } else { format!("{n} hidden") };
     }
-    let place = if p.kind == Kind::Ssh {
-        String::new()
-    } else if p.git {
+    let place = if p.git {
         p.wts.iter().find(|w| w.main && !w.branch.is_empty()).map(|w| format!("{} {}", check::marks(app).branch, w.branch)).unwrap_or_default()
     } else {
         "no git".into()

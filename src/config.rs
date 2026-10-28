@@ -103,8 +103,6 @@ pub struct Ui {
     /// Where plain `<app>` opens its first shell (and the one after you close everything).
     /// Empty: wherever you run the app. `~` is your home folder.
     pub start_dir: String,
-    /// Sidebar sessions (and worktrees) that need you go first; the rest keep their place.
-    pub attention_sort: bool,
     /// A session's tabs as lines under its sidebar row (`SIDEBAR_TABS`): "all", "busy" (those
     /// working or needing you, and the one on screen) or "off".
     pub sidebar_tabs: String,
@@ -871,7 +869,6 @@ impl Default for Ui {
             alt_arrows: true,
             alt_keys: true,
             start_dir: String::new(),
-            attention_sort: true,
             sidebar_tabs: "all".into(),
             layout: String::new(),
             background: "solid".into(),
@@ -1625,6 +1622,12 @@ mod tests {
         super::write_atomic(&file, "{\"a\":1}").unwrap();
         assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_config_that_still_sorts_the_sidebar_by_attention_loads_and_the_key_does_nothing() {
+        let c: super::Config = toml::from_str("[ui]\nattention_sort = true\nlayout = \"hairline\"\n").expect("a retired key is not an error");
+        assert_eq!(c.ui.layout, "hairline", "the rest of the file is read");
     }
 
     #[test]

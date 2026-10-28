@@ -863,7 +863,7 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pane_colors" | "ui.rounded" | "ui.cursor" | "ui.cursor_blink" => "PANES",
             "ui.spinner" | "ui.glyphs" => "STATUS",
             "sessions.agent" | "sessions.where" => "NEW SESSIONS",
-            "ui.attention_sort" | "ui.sidebar_tabs" => "SIDEBAR",
+            "ui.sidebar_tabs" => "SIDEBAR",
             "worktree.delete_with_last" | "worktree.per_agent" | "worktree.command" => "WORKTREES",
             p if p.starts_with("restore.") => "RESTARTS",
             "scrollback" => "HISTORY",

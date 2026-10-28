@@ -83,9 +83,6 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
                 let segs = tab_segs(&line, text_end(r).saturating_sub(x), Style::default().bg(bg), name_fg, ink.dim);
                 draw_tab_line(app, buf, row, x, text_end(r), segs, *tab);
             }
-            Line::Section(kind, n) => {
-                put(buf, r.x + TEXT_IN, y, &[seg(format!("{} {n}", kind.heading().to_lowercase()), Style::default().fg(ink.dim).bg(ink.bg))], text_end(r));
-            }
             Line::Empty(pi) => {
                 let st = Style::default().fg(ink.dim).bg(ink.bg);
                 put(buf, r.x + NAME_IN, y, &[seg("empty", st.add_modifier(Modifier::ITALIC))], text_end(r));
@@ -111,7 +108,7 @@ fn hairline_lines(app: &App, model: &[Proj], t: &Theme) -> Vec<Line> {
     let mut lines = side_lines(app, model, t);
     lines.retain(|l| match l {
         Line::Detail(term) => find(model, *term).is_some_and(|(.., s)| s.helpers_wanted > 0),
-        _ => matches!(l, Line::Section(..) | Line::Proj(_) | Line::Sess(..) | Line::Tab(..) | Line::Empty(_) | Line::Gap),
+        _ => matches!(l, Line::Proj(_) | Line::Sess(..) | Line::Tab(..) | Line::Empty(_) | Line::Gap),
     });
     if matches!(lines.last(), Some(Line::Gap)) {
         lines.pop();

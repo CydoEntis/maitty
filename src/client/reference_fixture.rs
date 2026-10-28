@@ -264,6 +264,9 @@ pub(super) fn world(stage: Stage) -> App {
     ];
     app.snap.active_ws = Some(10);
     app.snap.questions = vec![HumanQuestion { id: 1, term: 3, text: "use pnpm or npm?".into(), options: vec!["pnpm".into(), "npm".into()] }];
+    // The reference lists the project that asks a question first. The app no longer moves a
+    // project when its sessions need you: it keeps the order you first saw them in.
+    app.screen.saved.order = [&pixls, &site, &orbit].iter().map(|p| super::design::path_key(p)).collect();
     for t in [footer, payments, finch, fox, moth] {
         app.parsers.insert(t.id, if t.id == 1 { fix_footer_screen() } else { vt100::Parser::new(20, 80, 0) });
         app.snap.terms.insert(t.id, t);

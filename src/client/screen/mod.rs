@@ -401,32 +401,6 @@ pub(super) struct Proj {
     pub git: bool,
     /// Recent local branches not checked out anywhere.
     pub branches: Vec<String>,
-    /// The sidebar section it's in.
-    pub kind: Kind,
-}
-
-/// The sidebar's groups: sessions here, grouped by where they work (agents and plain
-/// terminals together), then sessions on other machines.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(super) enum Kind {
-    /// Agents and terminals on this machine, by repo or folder.
-    Local,
-    /// Sessions on another machine (ssh, mosh), by machine.
-    Ssh,
-}
-
-impl Kind {
-    pub fn heading(self) -> &'static str {
-        match self {
-            Kind::Local => "Sessions",
-            Kind::Ssh => "SSH",
-        }
-    }
-
-    /// Which group a session belongs in.
-    pub fn of(t: &TermInfo) -> Kind {
-        if t.remote.is_some() { Kind::Ssh } else { Kind::Local }
-    }
 }
 
 impl Proj {
@@ -448,16 +422,10 @@ pub(super) fn rank(s: Status) -> u8 {
     }
 }
 
-/// Sorts a session after the ones that need you. Nothing else about its state moves its row:
-/// a row that shifted each time its agent started or finished is hard to find again.
 /// The sidebar has the keys, or the why popover opened from one of its rows does (it
 /// gives them back to the sidebar when it closes).
 pub(super) fn side_focused(app: &App) -> bool {
     matches!(app.mode, Mode::Side | Mode::Why { side: true, .. } | Mode::Helpers { side: true, .. })
-}
-
-pub(super) fn settled(s: Status) -> bool {
-    s != Status::Blocked
 }
 
 /// A split is one session: the pane it was split from keeps its row, the panes opened
@@ -601,12 +569,11 @@ impl App {
 
     fn screen_model_build(&self) -> Vec<Proj> {
         let mut projs: Vec<Proj> = Vec::new();
-        let sort = self.cfg.ui.attention_sort;
         let order = &self.screen.saved.order;
         let fallback: Vec<Color> = self.cfg.ui.workspace_colors.iter().filter_map(|c| crate::theme::parse_color(c)).collect();
-        let add_proj = |projs: &mut Vec<Proj>, path: &Path, git: bool, kind: Kind| -> usize {
+        let add_proj = |projs: &mut Vec<Proj>, path: &Path, git: bool| -> usize {
             let key = path_key(path);
-            if let Some(i) = projs.iter().position(|p| p.key == key && p.kind == kind) {
+            if let Some(i) = projs.iter().position(|p| p.key == key) {
                 projs[i].git |= git;
                 return i;
             }
@@ -620,7 +587,6 @@ impl App {
                 fresh: self.screen.fresh.contains(&key),
                 git,
                 branches: Vec::new(),
-                kind,
             });
             projs.len() - 1
         };
@@ -655,39 +621,14 @@ impl App {
                         (cwd.clone(), cwd, String::new(), true, false)
                     }
                 };
-                let kind = Kind::of(t);
-                let (name, pi, wi) = match &t.remote {
-                    // On another machine: grouped by that machine (the local folder means
-                    // nothing there).
-                    Some(host) => {
-                        let key = format!("ssh:{host}");
-                        let pi = match projs.iter().position(|p| p.kind == Kind::Ssh && p.key == key) {
-                            Some(i) => i,
-                            None => {
-                                projs.push(Proj {
-                                    key: key.clone(),
-                                    path: cwd_of(t, w),
-                                    name: host.clone(),
-                                    color: self.theme.muted,
-                                    wts: vec![Wt { key, path: cwd_of(t, w), name: String::new(), branch: String::new(), main: true, sessions: Vec::new() }],
-                                    fresh: false,
-                                    git: false,
-                                    branches: Vec::new(),
-                                    kind,
-                                });
-                                projs.len() - 1
-                            }
-                        };
-                        let what = t.label.trim().to_string();
-                        (if what.is_empty() { t.process.clone() } else { what }, pi, 0)
-                    }
-                    None => {
-                        let name = row_name(t, &root, &top, main, git);
-                        let pi = add_proj(&mut projs, &root, git, kind);
-                        let wi = add_wt(&mut projs[pi], &top, branch, main);
-                        (name, pi, wi)
-                    }
+                // A session on another machine stays with the folder it was started from, named
+                // by the machine unless you named it.
+                let name = match &t.remote {
+                    Some(host) if t.label.trim().is_empty() => host.clone(),
+                    _ => row_name(t, &root, &top, main, git),
                 };
+                let pi = add_proj(&mut projs, &root, git);
+                let wi = add_wt(&mut projs[pi], &top, branch, main);
                 let title = session_title(t, if leaves.len() == 1 { &w.name } else { "" }, &top);
                 // What it asks: its ask-human question, else what its screen asks.
                 let question = if t.helper_ask.is_empty() {
@@ -742,39 +683,9 @@ impl App {
         // split elsewhere) goes.
         projs.retain(|p| p.sessions().next().is_some());
         for p in &mut projs {
-            if sort {
-                for w in &mut p.wts {
-                    let order = &self.screen.saved.session_order;
-                    w.sessions.sort_by_key(|s| (settled(s.status), order.iter().position(|t| *t == s.term).unwrap_or(usize::MAX), s.term));
-                }
-            }
-            p.wts.sort_by_key(|w| {
-                let calm = w.sessions.iter().all(|s| settled(s.status));
-                (!w.main, sort && calm, w.name.clone())
-            });
+            p.wts.sort_by_key(|w| (!w.main, w.name.clone()));
         }
         projs.sort_by_key(|p| order.iter().position(|k| *k == p.key).unwrap_or(usize::MAX));
-        // Attention first: a project with something that needs you goes to the top.
-        projs.sort_by_key(|p| !p.sessions().any(|s| s.status == Status::Blocked));
-        // Folders here, then other machines (each keeps the order above).
-        projs.sort_by_key(|p| p.kind);
-        // The same name twice in a project: number them (shell 1, shell 2), oldest first.
-        for p in &mut projs {
-            let mut seen: HashMap<String, Vec<TermId>> = HashMap::new();
-            for s in p.wts.iter().flat_map(|w| w.sessions.iter()) {
-                seen.entry(s.name.clone()).or_default().push(s.term);
-            }
-            for w in &mut p.wts {
-                for s in &mut w.sessions {
-                    if let Some(ids) = seen.get(&s.name).filter(|ids| ids.len() > 1) {
-                        let mut ids = ids.clone();
-                        ids.sort();
-                        let n = ids.iter().position(|i| *i == s.term).unwrap_or(0) + 1;
-                        s.name = format!("{} {n}", s.name);
-                    }
-                }
-            }
-        }
         projs
     }
 
@@ -959,11 +870,6 @@ const OVERLAP_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
 /// shell is (inside its worktree), else the program.
 /// A session's row name: what you renamed it to; else the worktree it's in; else the
 /// folder under the project it's in; else (the project's own folder) its agent or "shell".
-/// Where a pane is: what it reported, else its workspace's folder.
-fn cwd_of(t: &TermInfo, w: &crate::protocol::WorkspaceInfo) -> PathBuf {
-    if t.cwd.as_os_str().is_empty() { w.cwd.clone() } else { t.cwd.clone() }
-}
-
 fn row_name(t: &TermInfo, root: &Path, top: &Path, main: bool, git: bool) -> String {
     if !t.label.trim().is_empty() {
         return t.label.trim().to_string();

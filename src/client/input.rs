@@ -949,12 +949,12 @@ impl App {
 
     /// Put session `t` where `u` is, within their group (the order you dragged them to).
     /// False when they aren't in the same group.
-    /// Put session `t` in group `pi` (by the sidebar's groups). Not onto another machine's group.
+    /// Put session `t` in group `pi` (by the sidebar's groups).
     pub(super) fn place_session(&mut self, t: TermId, pi: usize) -> bool {
         let model = self.screen_model();
         let Some(to) = model.get(pi) else { return false };
         let Some(from) = model.iter().find(|p| p.sessions().any(|s| s.term == t)) else { return false };
-        if from.key == to.key || from.kind != to.kind || to.kind == screen::Kind::Ssh {
+        if from.key == to.key {
             return false;
         }
         let placed = &mut self.screen.saved.placed;

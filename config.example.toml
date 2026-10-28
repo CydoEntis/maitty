@@ -35,7 +35,6 @@ replay_bytes = 2097152      # output kept per pane by the daemon, replayed on re
 
 [ui]
 start_dir = ""              # where plain `maitty` opens, e.g. "~/code" (empty: where you run it)
-attention_sort = true       # sidebar: sessions that need you first, the rest keep their place
 sidebar_tabs = "all"        # all | busy | off: a session's tabs as lines under its row
 alt_keys = true             # Alt+n shell, Alt+a session, Alt+x close, Alt+s / Alt+d split side by side / down, without the leader
 sidebar = true              # <leader> z collapses it

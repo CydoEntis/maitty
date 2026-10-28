@@ -2827,7 +2827,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn a_session_keeps_its_row_unless_it_needs_you() {
+    fn a_session_keeps_its_row_whatever_its_state() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let rows = |app: &mut App, codex: Status| {
             app.snap.terms.get_mut(&1).unwrap().status = Status::Idle;
@@ -2840,9 +2840,7 @@ mod screen_tests {
         assert_eq!(rows(&mut app, Status::Idle), [1, 2]);
         assert_eq!(rows(&mut app, Status::Working), [1, 2], "starting work doesn't move it");
         assert_eq!(rows(&mut app, Status::Done), [1, 2], "nor does finishing");
-        assert_eq!(rows(&mut app, Status::Blocked), [2, 1], "needing you does");
-        app.cfg.ui.attention_sort = false;
-        assert_eq!(rows(&mut app, Status::Blocked), [1, 2], "sorting off: nothing moves");
+        assert_eq!(rows(&mut app, Status::Blocked), [1, 2], "nor does needing you");
     }
 
     /// claude (1) started helpers: codex (2) is its helper, 4 is codex's, 5 is 4's.
@@ -2882,14 +2880,10 @@ mod screen_tests {
     fn helpers_sit_under_the_session_that_started_them() {
         let mut app = helper_tree();
         assert_eq!(helper_rows(&mut app), [(1, 0), (2, 1), (4, 2), (5, 2)], "each under the session that started it, no deeper than two steps");
-        // One that needs you goes to the top, and takes its own helpers with it.
+        // One that needs you stays where it is, under its starter, with its own helpers.
         app.snap.terms.get_mut(&2).unwrap().status = Status::Blocked;
-        assert_eq!(helper_rows(&mut app), [(2, 0), (4, 1), (5, 2), (1, 0)]);
-        // Sorting off: nothing moves, the helpers stay together.
-        app.cfg.ui.attention_sort = false;
         assert_eq!(helper_rows(&mut app), [(1, 0), (2, 1), (4, 2), (5, 2)]);
         // The session that started them closed: an ordinary row, its own helpers still under it.
-        app.cfg.ui.attention_sort = true;
         app.snap.terms.get_mut(&2).unwrap().status = Status::Idle;
         app.snap.terms.get_mut(&2).unwrap().started_by = Some(999);
         assert_eq!(helper_rows(&mut app), [(1, 0), (2, 0), (4, 1), (5, 2)]);
@@ -2958,7 +2952,7 @@ mod screen_tests {
         draw(&mut app, 160, 45);
         let groups = |app: &App| app.screen_model().iter().map(|p| (p.name.clone(), p.sessions().map(|s| s.term).collect::<Vec<_>>())).collect::<Vec<_>>();
         let header = |app: &App, name: &str| {
-            let pi = app.screen_model().iter().position(|p| p.name == name && p.kind == screen::Kind::Local).unwrap();
+            let pi = app.screen_model().iter().position(|p| p.name == name).unwrap();
             app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::ToggleProj(pi))).then_some((r.x + 4, r.y))).unwrap()
         };
         let row = |app: &App, t: TermId| app.hits.iter().find_map(|(r, h)| (*h == Hit::Screen(screen::ScreenHit::Session(t))).then_some((r.x + 6, r.y))).unwrap();
@@ -3064,7 +3058,7 @@ mod screen_tests {
         }
         app.screen_fresh();
         draw(&mut app, 160, 45);
-        let names = |app: &mut App| app.screen_model().iter().filter(|p| p.kind == screen::Kind::Local).map(|p| p.name.clone()).collect::<Vec<_>>();
+        let names = |app: &mut App| app.screen_model().iter().map(|p| p.name.clone()).collect::<Vec<_>>();
         let before = names(&mut app);
         assert_eq!(before.len(), 3, "shop-api's shell, notes, api: {before:?}");
         let header = |app: &App, name_idx: usize| {
@@ -3088,7 +3082,7 @@ mod screen_tests {
     }
 
     #[test]
-    fn the_sidebar_has_a_section_per_kind_of_session() {
+    fn a_session_on_another_machine_stays_with_its_folder_and_is_named_by_the_machine() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         // The shell ssh's into a machine; a second shell sits in another folder.
         let t = app.snap.terms.get_mut(&3).unwrap();
@@ -3104,17 +3098,14 @@ mod screen_tests {
         app.snap.workspaces.push(ws);
         app.screen_fresh();
         let model = app.screen_model();
-        let kinds: Vec<(screen::Kind, String)> = model.iter().map(|p| (p.kind, p.name.clone())).collect();
-        assert_eq!(
-            kinds,
-            vec![(screen::Kind::Local, "shop-api".into()), (screen::Kind::Local, "notes".into()), (screen::Kind::Ssh, "build-box".into())],
-            "folders here, then other machines, each grouped by where"
-        );
+        let names: Vec<String> = model.iter().map(|p| p.name.clone()).collect();
+        assert_eq!(names, ["shop-api", "notes"], "no group of its own for the other machine");
+        let ssh = model.iter().flat_map(|p| p.sessions()).find(|s| s.term == 3).expect("the ssh session");
+        assert_eq!(ssh.name, "build-box", "its row says which machine");
+        assert!(model[0].sessions().any(|s| s.term == 3), "it stays with the folder it was started in");
         let o = draw(&mut app, 160, 45);
         show(&o);
-        let at = |s: &str| o.find(s).unwrap_or_else(|| panic!("{s} in the sidebar"));
-        assert!(at("−  shop-api") < at("−  notes") && at("−  notes") < at("−  build-box"), "folders here, then other machines");
-        assert!(!o.contains("AGENTS") && !o.contains("TERMINALS") && at("SSH 1") > at("−  notes"), "only the other machines get a heading");
+        assert!(!o.contains("SSH"), "no SSH heading: {o}");
     }
 
     #[test]
@@ -5852,7 +5843,7 @@ mod settings_v8_tests {
         }
         let rows = design::settings_rows(Cat::Sessions);
         let groups: Vec<&str> = rows.iter().map(design::settings_group).collect();
-        assert_eq!(&groups[..4], ["NEW SESSIONS", "NEW SESSIONS", "SIDEBAR", "SIDEBAR"]);
+        assert_eq!(&groups[..4], ["NEW SESSIONS", "NEW SESSIONS", "SIDEBAR", "WORKTREES"]);
         assert!(!o.contains("+ starts"), "the + chips start shells, so there is nothing to choose: {o}");
     }
 
