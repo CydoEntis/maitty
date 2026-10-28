@@ -67,8 +67,8 @@ pub(super) fn tab_mark(app: &App, tab: usize, t: &Theme) -> Option<(String, Stri
 pub(super) fn tab_segs(line: &TabLine, room: u16, st: Style, name_fg: Color, dim: Color) -> (Vec<Seg>, Vec<Seg>) {
     let right = line.since.map(age).unwrap_or_default();
     let right_w = right.width() as u16;
-    // A tab of shells has no glyph, but its name keeps the column an agent's would.
-    let glyph = line.mark.as_ref().map_or_else(|| seg("  ", st), |(g, _, c)| seg(format!("{g} "), st.fg(*c).add_modifier(Modifier::BOLD)));
+    // A tab of shells has no state: it shows the shell's prompt arrow, as a plain shell row does.
+    let glyph = line.mark.as_ref().map_or_else(|| seg("› ", st.fg(dim)), |(g, _, c)| seg(format!("{g} "), st.fg(*c).add_modifier(Modifier::BOLD)));
     let glyph_w = glyph.0.width() as u16;
     let name_room = room.saturating_sub(glyph_w + right_w + 1) as usize;
     let name_st = if line.current { st.fg(name_fg).add_modifier(Modifier::BOLD) } else { st.fg(name_fg) };

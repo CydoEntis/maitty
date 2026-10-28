@@ -292,11 +292,11 @@ through `reference_fixture::as_one_line_rows`, which applies ADR 0021's one-line
 - **Tabs** (`side_tabs.rs`, ADR 0027, 0031): a session with two tabs or more has one line per tab
   under its row and its second and third lines, in both looks, flush with the row's name, no
   branch marks and no numbers: the tab's name (its own, else its focused session's) after its
-  most urgent agent's state glyph (a tab of shells keeps the column blank), and at the right
+  most urgent agent's state glyph (a tab of shells shows the shell's `›`, in `muted`), and at the right
   that agent's age. The tab on screen is
   `raised` with a teal `▎` and a teal (Hairline) or accent name; one that needs you has an amber
   `▎` and an amber name. A session row of shells shows its shape at the right too. Short of room the name shortens; the
-  glyph and the age stay. A click shows that tab (`ScreenHit::TabPick`), so a drag reorders them and a
+  glyph and the age stay. The arrows walk the tab lines like any row (`SideItem::Tab`): Enter or → shows the tab and gives it the keys, ← goes up to its session, leader `x` closes it. A session's own row shows only its own tab's panes' state, plus a question from any other tab (`fold_splits`); another tab's working or done is its line's to say. A click shows that tab (`ScreenHit::TabPick`), so a drag reorders them and a
   middle click closes one, as on the tab chips. A session with one tab has none.
   `ui.sidebar_tabs` (Settings › Sessions › Tabs in the sidebar) shows `all` of them, only the
   `busy` ones (working or needing you) and the one on screen, or none (`off`). Never the tab the

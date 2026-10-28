@@ -112,6 +112,8 @@ pub(super) struct Screen {
     pub cursor: Option<TermId>,
     /// The sidebar cursor on a project row instead (its key).
     pub cursor_proj: Option<String>,
+    /// The sidebar cursor on one of `cursor`'s session's tab lines (its place in `tabs`).
+    pub cursor_tab: Option<usize>,
     /// What the sidebar cursor walks over, top to bottom.
     pub side_items: Vec<SideItem>,
     /// Projects opened this run that haven't been looked at (NEW chip).
@@ -186,6 +188,16 @@ pub(super) struct Screen {
 pub(super) enum SideItem {
     Proj(String),
     Sess(TermId),
+    /// A tab line under its session (owner, place in `tabs`).
+    Tab(TermId, usize),
+}
+
+impl Screen {
+    /// The tab line the sidebar cursor rests on, if it still belongs to the cursor's session.
+    pub(super) fn cursor_tab_line(&self) -> Option<usize> {
+        let (i, owner) = (self.cursor_tab?, self.cursor?);
+        self.tabs.get(i).is_some_and(|t| t.owner == owner).then_some(i)
+    }
 }
 
 /// A tab asked for and not yet answered: whose it is, and the panes that existed when it was
@@ -460,7 +472,11 @@ pub(super) fn fold_splits(projs: &mut [Proj], tabs: &[ScreenTab]) {
         let Some(row) = projs.iter_mut().flat_map(|p| p.wts.iter_mut()).flat_map(|w| w.sessions.iter_mut()).find(|s| s.term == owner) else {
             continue;
         };
-        if let Some(m) = members.into_iter().filter(|m| rank(m.status) < rank(row.status)).min_by_key(|m| rank(m.status)) {
+        // Another tab has its own sidebar line: its agent working or done is that line's to say,
+        // not the owner's. Only a question still reaches the row, since the Inbox reads rows.
+        let own_tab: Vec<TermId> = tabs.iter().filter(|t| t.owner == owner && t.layout.contains(owner)).flat_map(|t| t.layout.leaves()).collect();
+        let reaches_row = |m: &Session| own_tab.contains(&m.term) || m.status == Status::Blocked;
+        if let Some(m) = members.into_iter().filter(|m| reaches_row(m) && rank(m.status) < rank(row.status)).min_by_key(|m| rank(m.status)) {
             row.status = m.status;
             row.since = m.since;
             row.question = m.question;

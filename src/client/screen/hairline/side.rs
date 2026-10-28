@@ -58,7 +58,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
             Line::Sess(.., depth) => {
                 indent = u16::from(*depth) * HELPER_INDENT;
                 let Some((_, _, s)) = line_term(model, line).and_then(|term| find(model, term)) else { continue };
-                let keyboard = side_has_keys && app.screen.cursor == Some(s.term);
+                let keyboard = side_has_keys && app.screen.cursor == Some(s.term) && app.screen.cursor_tab_line().is_none();
                 let state = if keyboard || (!side_has_keys && Some(s.term) == focus) {
                     RowState::Focused
                 } else if shown.contains(&s.term) || Some(s.term) == focus {
@@ -72,9 +72,10 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
             Line::Tab(owner, tab) => {
                 let Some(line) = tab_line(app, model, *owner, *tab, t) else { continue };
                 let row = Rect { x: r.x, y, width: r.width, height: 1 };
-                let bg = if line.current { ink.raised } else { ink.bg };
+                let picked = side_has_keys && app.screen.cursor_tab_line() == Some(*tab);
+                let bg = if line.current || picked { ink.raised } else { ink.bg };
                 fill(buf, row, bg);
-                let marker = if line.current { Some(ink.teal) } else { line.needs.then_some(ink.amber) };
+                let marker = if line.current || picked { Some(ink.teal) } else { line.needs.then_some(ink.amber) };
                 if let Some(c) = marker {
                     put(buf, r.x, y, &[seg("▎", Style::default().fg(c).bg(bg))], r.x + 1);
                 }

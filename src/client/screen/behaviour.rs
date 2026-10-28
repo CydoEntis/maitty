@@ -338,7 +338,10 @@ impl App {
         }
         let cur = match (&self.screen.cursor_proj, self.screen.cursor.or(self.focused())) {
             (Some(k), _) => items.iter().position(|i| *i == SideItem::Proj(k.clone())),
-            (None, Some(t)) => items.iter().position(|i| *i == SideItem::Sess(t)),
+            (None, Some(t)) => match self.screen.cursor_tab_line() {
+                Some(tab) => items.iter().position(|i| *i == SideItem::Tab(t, tab)),
+                None => items.iter().position(|i| *i == SideItem::Sess(t)),
+            },
             _ => None,
         };
         let next = match (cur, d) {
@@ -356,7 +359,10 @@ impl App {
         let items = &self.screen.side_items;
         let cur = match (&self.screen.cursor_proj, self.screen.cursor) {
             (Some(k), _) => items.iter().position(|i| *i == SideItem::Proj(k.clone())),
-            (None, Some(t)) => items.iter().position(|i| *i == SideItem::Sess(t)),
+            (None, Some(t)) => match self.screen.cursor_tab_line() {
+                Some(tab) => items.iter().position(|i| *i == SideItem::Tab(t, tab)),
+                None => items.iter().position(|i| *i == SideItem::Sess(t)),
+            },
             _ => None,
         }?;
         items.get(cur + 1).or_else(|| cur.checked_sub(1).and_then(|i| items.get(i))).cloned()
@@ -394,10 +400,17 @@ impl App {
         // The sidebar has the keys now, not an open side panel: set it aside, as a click
         // into a pane does, so the leader's x closes the cursor's row and not the panel.
         self.view_set_aside = self.view_kind();
+        self.screen.cursor_tab = None;
         match item {
             SideItem::Proj(k) => {
                 self.screen.cursor_proj = Some(k);
                 self.screen.cursor = None;
+            }
+            // The session stays the cursor's term, so what acts on "the row" still finds it.
+            SideItem::Tab(owner, tab) => {
+                self.screen.cursor_proj = None;
+                self.screen.cursor = Some(owner);
+                self.screen.cursor_tab = Some(tab);
             }
             SideItem::Sess(t) => {
                 self.screen.cursor_proj = None;
@@ -410,7 +423,17 @@ impl App {
         }
     }
 
+    /// Show tab `i` and give its focused pane the keys.
+    pub(in crate::client) fn screen_tab_pick(&mut self, i: usize) {
+        if let Some(tab) = self.screen.tabs.get(i) {
+            let to = tab.focus;
+            self.screen.tab = i;
+            self.cmd(Command::FocusPane { term: to });
+        }
+    }
+
     pub(in crate::client) fn screen_side_leave(&mut self) {
+        self.screen.cursor_tab = None;
         self.screen.cursor = None;
         self.screen.cursor_proj = None;
         self.mode = Mode::Normal;
@@ -635,6 +658,23 @@ impl App {
             return;
         }
         let plain = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        // On a tab line Enter and → show the tab (as a click does) and ← goes up to its session.
+        if let Some(tab) = self.screen.cursor_tab_line() {
+            match k.code {
+                KeyCode::Enter | KeyCode::Right if plain => {
+                    self.screen_tab_pick(tab);
+                    self.screen_side_leave();
+                    return;
+                }
+                KeyCode::Left if plain => {
+                    if let Some(owner) = self.screen.cursor {
+                        self.screen_side_set(SideItem::Sess(owner));
+                    }
+                    return;
+                }
+                _ => {}
+            }
+        }
         if k.code == KeyCode::Enter && proj.is_none() && let Some(c) = self.screen.cursor && self.helpers_asked(c) {
             self.open_helpers(c, true);
             return;
@@ -1346,10 +1386,8 @@ impl App {
             ScreenHit::HelperAnswer(term, choice) => self.answer_helpers(term, choice),
             ScreenHit::CheckDraft(h) => self.on_check_draft_hit(h),
             ScreenHit::TabPick(i) => {
-                if let Some(tab) = self.screen.tabs.get(i) {
-                    let to = tab.focus;
-                    self.screen.tab = i;
-                    self.cmd(Command::FocusPane { term: to });
+                if i < self.screen.tabs.len() {
+                    self.screen_tab_pick(i);
                     // Double-click: rename it in its pill.
                     if double {
                         self.rename_tab_start();

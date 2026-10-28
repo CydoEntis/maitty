@@ -1461,6 +1461,43 @@ mod screen_tests {
     }
 
     #[test]
+    fn the_arrows_reach_every_tab_line_under_a_session() {
+        for layout in ["floating", "hairline"] {
+            let (mut app, [a, ..]) = tabbed_session(layout);
+            drawn(&mut app, 160, 45);
+            app.screen_side_set(screen::SideItem::Sess(a));
+            let down = |app: &mut App| {
+                app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+                drawn(app, 160, 45);
+                app.screen.cursor_tab_line()
+            };
+            assert_eq!(down(&mut app), Some(1), "{layout}: first tab line");
+            assert_eq!(down(&mut app), Some(2), "{layout}: second tab line");
+            app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            assert_eq!(app.screen.tab, 2, "{layout}: Enter shows the tab");
+        }
+    }
+
+    #[test]
+    fn a_shell_never_takes_its_other_tab_s_agent_status() {
+        for layout in ["floating", "hairline"] {
+            let (mut app, [a, ..]) = tabbed_session(layout);
+            let info = app.snap.terms.get_mut(&a).unwrap();
+            (info.agent, info.status) = (None, Status::None);
+            app.screen_fresh();
+            let model = app.screen_model();
+            let row = model.iter().flat_map(|p| p.sessions()).find(|s| s.term == a).expect("the shell's row");
+            assert_eq!(row.status, Status::Blocked, "{layout}: only a question reaches the row");
+            let info = app.snap.terms.get_mut(&app.screen.tabs[2].focus).unwrap();
+            info.status = Status::Working;
+            app.screen_fresh();
+            let model = app.screen_model();
+            let row = model.iter().flat_map(|p| p.sessions()).find(|s| s.term == a).unwrap();
+            assert_eq!(row.status, Status::None, "{layout}: another tab's agent working is not the shell's");
+        }
+    }
+
+    #[test]
     fn a_session_s_tabs_each_show_their_own_state_under_its_row() {
         for layout in ["floating", "hairline"] {
             let (mut app, _) = tabbed_session(layout);

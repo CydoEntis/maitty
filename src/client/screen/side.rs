@@ -299,7 +299,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
             && let Some((_, wt, s)) = find(model, term)
         {
             let rl = *looks.entry(term).or_insert_with(|| {
-                let picked = if focused_side { app.screen.cursor == Some(term) } else { Some(term) == focus };
+                let picked = if focused_side { app.screen.cursor == Some(term) && app.screen.cursor_tab_line().is_none() } else { Some(term) == focus };
                 row_look(picked, pb, t)
             });
             if rl.bg != pb {
@@ -323,7 +323,7 @@ pub(in crate::client) fn draw_side(app: &mut App, buf: &mut Buffer, r: Rect, mod
             match line {
                 Line::Sess(..) => {
                     app.screen.row_y.insert(term, y);
-                    let keyboard = focused_side && app.screen.cursor == Some(term);
+                    let keyboard = focused_side && app.screen.cursor == Some(term) && app.screen.cursor_tab_line().is_none();
                     if keyboard && Some(term) != focus && let Some(gy) = app.motion.glide("side", u64::from(term), y, on) {
                         gliding = Some(gy);
                     }
@@ -368,6 +368,7 @@ pub(super) fn note_rows(app: &mut App, model: &[Proj], lines: &[Line]) {
         .filter_map(|l| match l {
             Line::Proj(pi) => Some(SideItem::Proj(model[*pi].key.clone())),
             Line::Sess(..) => line_term(model, l).map(SideItem::Sess),
+            Line::Tab(owner, tab) => Some(SideItem::Tab(*owner, *tab)),
             _ => None,
         })
         .collect();
@@ -734,7 +735,13 @@ fn draw_line(app: &mut App, buf: &mut Buffer, model: &[Proj], line: &Line, cols:
             // Right-aligned as the session row's age is, a column clear of the border.
             let end = cols.rx + 1;
             let x = cols.x + 2 + indent;
-            let segs = tab_segs(&line, end.saturating_sub(x), Style::default().bg(pb), name_fg, t.muted);
+            let picked = side_focused(app) && app.screen.cursor_tab_line() == Some(*tab);
+            let bg = if picked { t.sel_bg() } else { pb };
+            if picked {
+                fill(buf, row, bg);
+                check::edge(app, buf, cols.x, y, t.accent, bg);
+            }
+            let segs = tab_segs(&line, end.saturating_sub(x), Style::default().bg(bg), name_fg, t.muted);
             draw_tab_line(app, buf, row, x, end, segs, *tab);
         }
         Line::Sess(..) | Line::Detail(_) | Line::Third(_) | Line::Gap => {}
