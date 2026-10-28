@@ -2150,9 +2150,12 @@ mod screen_tests {
         for header in ["NEW", "GO TO", "VIEW", "SET UP"] {
             assert!(!o.contains(header), "the Menu has no {header} header");
         }
-        assert!(o.contains("─ Menu ") && o.contains("Session with options…") && o.contains("Pane beside this") && o.contains("Inbox ● 1") && o.contains("Search commands") && o.contains("then a key works anywhere"), "{o}");
+        assert!(o.contains("─ Menu ") && o.contains("Session with options…") && o.contains("Pane beside this") && o.contains("Inbox ● 1") && o.contains("Search commands"), "{o}");
+        assert!(!o.contains("then a key works anywhere"), "no leader hint");
+        let shell = o.lines().find(|l| l.contains("Shell here")).expect("Shell here");
+        assert!(!shell.trim_end_matches(['│', ' ']).ends_with(" n"), "no bare letter beside a row: {shell}");
         assert!(!o.contains("Start a fleet") && !o.contains("All commands"), "the fleet row and the old palette row are gone");
-        // The leader key shown beside a row runs it here: z collapses the sidebar.
+        // A row's leader key runs it here, unshown: z collapses the sidebar.
         assert!(app.sidebar);
         app.on_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE));
         assert!(!app.sidebar && app.mode == Mode::Normal, "z: the sidebar collapses");

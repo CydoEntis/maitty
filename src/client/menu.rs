@@ -641,8 +641,9 @@ pub enum MenuKey {
 }
 
 impl MenuKey {
-    /// As its keycap reads: `v`, `Alt+←`.
-    fn label(&self) -> String {
+    /// As a keycap would read: `v`, `Alt+←`.
+    #[cfg(test)]
+    pub fn label(&self) -> String {
         match self {
             MenuKey::Bound(k) => super::design::long_key(k),
             MenuKey::Letter(c) => c.to_string(),
@@ -764,14 +765,14 @@ fn menu_letters(items: &[(String, Act)], bound: &[Option<crate::keys::KeySpec>])
         .collect()
 }
 
+/// A right-click menu. Its items' keys (`menu_keys`) run them while it is open but aren't
+/// shown: a bare letter beside an item reads as a key that works anywhere.
 pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: &ScreenMenu) {
     let buf = f.buffer_mut();
-    let keys: Vec<Vec<super::design::Seg>> = menu_keys(app, &m.items).iter().map(|k| k.as_ref().map(|k| super::design::keycap(t, &k.label())).unwrap_or_default()).collect();
-    let keys_w = keys.iter().map(|k| segs_width(k)).max().unwrap_or(0);
     let danger = |a: &Act| matches!(a, Act::End(_) | Act::CloseProject(_));
     // The destructive item sits last, after a blank row.
     let gap = m.items.iter().any(|(_, a)| danger(a)) && m.items.len() > 1;
-    let w = m.items.iter().map(|(l, _)| l.width() as u16).max().unwrap_or(10).max(m.title.width() as u16).clamp(16, 44) + 7 + keys_w.max(3);
+    let w = m.items.iter().map(|(l, _)| l.width() as u16).max().unwrap_or(10).max(m.title.width() as u16).clamp(16, 44) + 10;
     let h = m.items.len() as u16 + 3 + gap as u16;
     let x = m.at.0.min(area.right().saturating_sub(w + 1)).max(area.x);
     let y = if m.at.1 + h < area.bottom() { m.at.1 + 1 } else { m.at.1.saturating_sub(h) }.max(area.y);
@@ -801,10 +802,7 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
         if i == m.sel {
             ls = ls.add_modifier(Modifier::BOLD);
         }
-        let key = keys.get(i).cloned().unwrap_or_default();
-        let kw = segs_width(&key);
-        put(f.buffer_mut(), row.x + 3, yy, &[seg(label.clone(), ls)], row.right().saturating_sub(kw + 2));
-        put(f.buffer_mut(), row.right().saturating_sub(kw + 1), yy, &key, row.right());
+        put(f.buffer_mut(), row.x + 3, yy, &[seg(label.clone(), ls)], row.right().saturating_sub(2));
         hit(app, row, ScreenHit::MenuPick(i));
         yy += 1;
     }
