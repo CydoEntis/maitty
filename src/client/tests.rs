@@ -1523,6 +1523,18 @@ mod screen_tests {
     }
 
     #[test]
+    fn alt_x_in_the_sidebar_closes_the_selected_session_and_asks_for_an_agent() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        let focused = app.focused();
+        let agent = *app.snap.terms.iter().find(|(id, t)| t.agent.is_some() && Some(**id) != focused).map(|(id, _)| id).expect("an agent not in focus");
+        app.screen_side_set(screen::SideItem::Sess(agent));
+        app.mode = Mode::Side;
+        app.on_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::ALT));
+        assert!(matches!(&app.mode, Mode::Confirm(c) if matches!(&c.act, crate::client::menu::Act::End(ts) if *ts == vec![agent])), "asks to close the row's session: {:?}", app.mode);
+        assert_eq!(app.focused(), focused, "it doesn't go into the pane");
+    }
+
+    #[test]
     fn settings_keys_lists_the_keys_that_need_no_leader() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let keys = modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Keys).unwrap();
