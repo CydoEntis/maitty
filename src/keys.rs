@@ -621,14 +621,15 @@ pub const DEFAULT_GLOBAL_KEYS: &[(&str, &str)] = &[
 
 /// The everyday actions without the leader (`ui.alt_keys`), on no key an agent uses: Claude
 /// Code takes Alt+v (paste an image, on Windows) and Alt+t (thinking), so the splits are Alt+s
-/// (side by side) and Alt+d (down), a new session (an agent) is Alt+a, and a new tab has
-/// none. No Alt+[ or Alt+]: terminals send those as the start of an escape sequence.
+/// (side by side) and Alt+d (down), a new session (an agent) is Alt+a, rename is Alt+r, and a
+/// new tab has none. No Alt+[ or Alt+]: terminals send those as the start of an escape sequence.
 pub const ALT_LETTER_KEYS: &[(&str, &str)] = &[
     ("alt+n", "shell-here"),
     ("alt+a", "start-session"),
     ("alt+x", "close-pane"),
     ("alt+s", "split-right"),
     ("alt+d", "split-down"),
+    ("alt+r", "rename-tab"),
 ];
 
 /// Moving between panes without the leader (`ui.alt_arrows`).

@@ -16,7 +16,7 @@ direct shortcut needs a modifier.
 
 - **Alt+letter:** the everyday actions run without the leader, on the leader's own letters held
   with Alt (`keys::ALT_LETTER_KEYS`): Alt+n new shell, Alt+a new session, Alt+x close the
-  pane, Alt+s split side by side, Alt+d split down. None is a key an agent needs: Claude Code takes Alt+v (paste an
+  pane, Alt+s split side by side, Alt+d split down, Alt+r rename the tab. None is a key an agent needs: Claude Code takes Alt+v (paste an
   image, on Windows) and Alt+t (thinking), so the splits are not the leader's v and h, a new
   session is Alt+a (an agent), and a new tab has no Alt key. Alt+d is readline's delete-word; the user chose it anyway.
   `ui.alt_keys` (on by default, Settings › General ›
@@ -41,4 +41,4 @@ direct shortcut needs a modifier.
 
 ## Consequences
 
-Five Alt keys are taken from programs while `ui.alt_keys` is on. All keys lists them under "without the leader".
+Six Alt keys are taken from programs while `ui.alt_keys` is on. All keys lists them under "without the leader".
