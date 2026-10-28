@@ -95,8 +95,7 @@ is named the same everywhere: its own name, else its focused session's. The titl
 pane's top border and names its own pane: a tab's only pane reads `project · ⎇ branch`, its tab
 naming and closing it. While a tab is split, every pane's number (its place in
 reading order, from 1, so it changes when panes move, close or split) leads its name: `2 · claude`. On the right: the session's status mark (it
-opens why) and a ✕; closing asks first when something would be lost (an agent, or a shell running
-a program; an idle shell closes at once, ADR 0029), naming the pane (`Close pane 2 · claude`) and lighting
+opens why) and a ✕; closing always asks first (ADR 0029), naming the pane (`Close pane 2 · claude`) and lighting
 its lines in the red until you answer. Unfocused panes fade;
 the focused border is the accent, or `sky()` in shortcut mode. See UI › *the frame* and *pane
 focus*.
