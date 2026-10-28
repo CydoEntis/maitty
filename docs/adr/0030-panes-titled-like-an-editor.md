@@ -27,7 +27,8 @@ rounded) and boxed in Hairline (they wanted a solid block with a coloured left e
 - **Whose tab a pane is** is kept by the daemon (`TermInfo::tab_of`, set by `Command::SetTabOf`
   when a session opens a tab or splits one), saved with the pane and remapped on restore, so a
   restart brings a session's tabs back as its tabs instead of as sessions of their own.
-- **Padding** defaults to 0: the frame reaches the window's edge.
+- **Padding** defaults to `top`: one empty row above the screen (the tabs touching the terminal's
+  own tab bar looked wrong) and none at the sides or foot, so the frame reaches those edges.
 - **Toast:** Floating draws a `line` outline on the ground with round corners whatever
   `ui.rounded` says, its left side the notice's colour; Hairline a solid `card2` block, no
   outline, its left edge a heavy `┃` in the notice's colour.
