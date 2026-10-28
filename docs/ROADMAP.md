@@ -600,7 +600,7 @@ colours become the Pane colours option on Floating; Floating keeps square, corne
    every close asks first ([ADR 0029](adr/0029-alt-letters-and-closing-without-asking.md))
 9. panes titled like an editor's (asked 2026-10-28): a lone pane has no title, a split pane's is
    number, glyph and name with no state word or ✕, every tab has a ✕; sidebar tab lines skip the
-   session's own tab; padding defaults to 0; a restart keeps a session's tabs its
+   session's own tab; padding defaults to a row above only; a restart keeps a session's tabs its
    own (the daemon keeps `tab_of`); the toast a round outline in Floating and a solid
    block with a coloured left edge in Hairline
    ([ADR 0030](adr/0030-panes-titled-like-an-editor.md))

@@ -1553,6 +1553,18 @@ mod screen_tests {
     }
 
     #[test]
+    fn padding_top_leaves_a_row_above_and_none_round_the_rest() {
+        let (_, mut app) = super::design_tests::render_with(160, 45);
+        app.cfg.ui.padding = crate::config::PADDING_TOP.into();
+        let buf = drawn(&mut app, 160, 45);
+        let row = |y: u16| (0..160u16).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert!(row(0).trim().is_empty(), "the top row is empty: {}", row(0));
+        assert!(row(1).starts_with("┌─ SESSIONS"), "the sidebar starts under it, at the left edge: {}", row(1));
+        assert_eq!(buf[(159, 4)].symbol(), "│", "the panes reach the right edge: {}", row(4));
+        assert_eq!(Config::default().ui.padding, crate::config::PADDING_TOP, "the default");
+    }
+
+    #[test]
     fn settings_keys_lists_the_keys_that_need_no_leader() {
         let (_, mut app) = super::design_tests::render_with(160, 45);
         let keys = modal::Cat::ALL.iter().position(|c| *c == modal::Cat::Keys).unwrap();

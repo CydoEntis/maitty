@@ -105,7 +105,7 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "theme", label: "Theme", kind: Kind::Choice(crate::theme::BUILTIN), cat: Cat::Appearance, help: "Enter to search and preview themes. Enter in the browser applies your choice." },
     Setting { path: "ui.layout", label: "Layout", kind: Kind::Choice(crate::config::LAYOUT_NAMES), cat: Cat::Appearance, help: "floating: a box per pane. hairline: no boxes, only lines." },
     Setting { path: "ui.sidebar_position", label: "Sidebar side", kind: Kind::Choice(&["left", "right"]), cat: Cat::Appearance, help: "Which edge the sidebar sits on." },
-    Setting { path: "ui.padding", label: "Padding", kind: Kind::Choice(&["0", "1", "2"]), cat: Cat::Appearance, help: "Space round the whole screen, in rows and columns." },
+    Setting { path: "ui.padding", label: "Padding", kind: Kind::Choice(&["top", "0", "1", "2"]), cat: Cat::Appearance, help: "Space round the screen: top is a row above only, else that many rows and columns all round." },
     Setting { path: "ui.background", label: "Background", kind: Kind::Choice(&["terminal", "solid"]), cat: Cat::Appearance, help: concat!("terminal: your terminal's background shows through. solid: ", env!("APP_COMMAND"), " paints every cell.") },
     Setting { path: "ui.motion", label: "Motion", kind: Kind::Bool, cat: Cat::Appearance, help: "Slides, glides and fades (under 150 ms). Always off over SSH." },
     Setting { path: "ui.gap", label: "Gap", kind: Kind::Choice(&["0", "1", "2"]), cat: Cat::Appearance, help: "Space between floating panes, in rows stacked and columns side by side." },
