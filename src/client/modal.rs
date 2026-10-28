@@ -94,7 +94,7 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "ui.splash_animation", label: "Splash animation", kind: Kind::Choice(&["cold start", "always", "never"]), cat: Cat::General, help: "The wordmark falls into place. cold start: the first start of a version, or when nothing is running. Off with Motion off." },
     Setting { path: "prefix", label: "Leader key", kind: Kind::Key, cat: Cat::General, help: "Press it, let go, then a key. Enter, then press the new leader." },
     Setting { path: "ui.mouse", label: "Mouse", kind: Kind::Bool, cat: Cat::General, help: "Click, hover, scroll and drag. Hold Shift to select text with your terminal instead." },
-    Setting { path: "ui.alt_keys", label: "Alt+letter shortcuts", kind: Kind::Bool, cat: Cat::General, help: "Alt+n shell, Alt+s session, Alt+t tab, Alt+x close, Alt+v / Alt+h split, without the leader." },
+    Setting { path: "ui.alt_keys", label: "Alt+letter shortcuts", kind: Kind::Bool, cat: Cat::General, help: "Alt+n shell, Alt+a session, Alt+x close, Alt+s / Alt+d split, without the leader. Change them in Settings › Keys." },
     Setting { path: "ui.alt_arrows", label: "Alt+arrows move between panes", kind: Kind::Bool, cat: Cat::General, help: "Without the leader. Turn it off if your shell jumps words with Alt+arrows." },
     Setting { path: "ui.which_key", label: "Leader waits for next key", kind: Kind::Bool, cat: Cat::General, help: "After the leader, list every key if you pause. Off: the Menu and ? list them." },
     Setting { path: "shell", label: "Shell", kind: Kind::Program(SHELLS), cat: Cat::General, help: "The shell new sessions run. Empty: pwsh / powershell on Windows, $SHELL elsewhere." },
