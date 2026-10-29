@@ -96,6 +96,20 @@ fn sanitize_branch(b: &str) -> String {
     b.chars().map(|c| if c.is_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '-' }).collect()
 }
 
+/// Where a worktree for `branch` goes, by the `worktree.dir` template.
+pub fn worktree_path(root: &Path, branch: &str, template: &str) -> PathBuf {
+    let repo = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "repo".into());
+    let parent = root.parent().unwrap_or(root);
+    let path = PathBuf::from(
+        template
+            .replace("{repo_parent}", &parent.to_string_lossy())
+            .replace("{repo}", &repo)
+            .replace("{branch}", &sanitize_branch(branch))
+            .replace('/', std::path::MAIN_SEPARATOR_STR),
+    );
+    crate::daemon::clean_path(path)
+}
+
 /// Create a worktree for `branch` (new from `base`/HEAD, or the existing local / remote
 /// branch). Returns (path, repo name).
 pub fn create_worktree(dir: &Path, branch: &str, base: Option<&str>, template: &str) -> Result<(PathBuf, String)> {
@@ -106,15 +120,7 @@ pub fn create_worktree(dir: &Path, branch: &str, base: Option<&str>, template: &
     let common = abs(dir, &git(dir, &["rev-parse", "--git-common-dir"]).context("not a git repository")?);
     let root = repo_root_of_common(&common).context("finding the repository root")?;
     let repo = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "repo".into());
-    let parent = root.parent().unwrap_or(&root);
-    let path = PathBuf::from(
-        template
-            .replace("{repo_parent}", &parent.to_string_lossy())
-            .replace("{repo}", &repo)
-            .replace("{branch}", &sanitize_branch(branch))
-            .replace('/', std::path::MAIN_SEPARATOR_STR),
-    );
-    let path = crate::daemon::clean_path(path);
+    let path = worktree_path(&root, branch, template);
     if path.exists() {
         bail!("{} already exists", path.display());
     }

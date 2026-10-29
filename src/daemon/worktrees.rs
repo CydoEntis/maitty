@@ -67,6 +67,16 @@ pub(super) fn create_trusted_worktree(dir: &std::path::Path, branch: &str, base:
     Ok(made)
 }
 
+/// The first of `names` from the `n`th on (wrapping) that `free` accepts; when all are taken, a
+/// numbered one that is.
+fn free_name(names: &[&str], n: usize, free: impl Fn(&str) -> bool) -> String {
+    (0..names.len())
+        .map(|i| names[(n + i) % names.len()].to_string())
+        .find(|b| free(b))
+        .or_else(|| (0..10_000).map(|i| format!("{}-{}", names[n % names.len()], (n + i) % 10_000)).find(|b| free(b)))
+        .unwrap_or_else(|| format!("{}-{n}", names[n % names.len()]))
+}
+
 /// A new worktree for an agent about to start in `dir`, a folder of the repo's main
 /// checkout, on a made-up branch. Returns the folder to start in: the same subfolder of the
 /// new worktree.
@@ -74,11 +84,10 @@ pub(super) fn agent_worktree(dir: &std::path::Path, template: &str) -> Result<Pa
     let head = crate::gitfs::head(dir).ok_or("not in a git repository")?;
     let taken = git::branches(&head.main_root);
     let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as usize).unwrap_or(0);
-    let names = crate::gitfs::WT_NAMES;
-    let branch = (0..names.len())
-        .map(|i| names[(n + i) % names.len()].to_string())
-        .find(|b| !taken.contains(b))
-        .unwrap_or_else(|| format!("{}-{}", names[n % names.len()], n % 1000));
+    // A folder can outlive its branch (renamed, or deleted by hand): a name is free only when
+    // neither exists, else git refuses and the agent starts in the main checkout.
+    let free = |b: &str| !taken.iter().any(|t| t == b) && !git::worktree_path(&head.main_root, b, template).exists();
+    let branch = free_name(&crate::gitfs::WT_NAMES, n, free);
     let (path, _) = create_trusted_worktree(&head.main_root, &branch, None, template)?;
     let sub = dir.strip_prefix(&head.top).ok().map(|s| path.join(s)).filter(|p| p.is_dir());
     Ok(sub.unwrap_or(path))
@@ -344,4 +353,23 @@ pub enum Removal {
     Kept(String),
     /// Clean but holding commits found nowhere else: you are asked.
     Unmerged(String),
+}
+
+#[cfg(test)]
+mod free_name_tests {
+    use super::free_name;
+
+    #[test]
+    fn a_name_whose_folder_exists_is_skipped_even_with_no_branch_of_that_name() {
+        let names = ["a", "b", "c"];
+        assert_eq!(free_name(&names, 0, |b| b != "a"), "b");
+        assert_eq!(free_name(&names, 1, |b| b != "b" && b != "c"), "a", "wraps round");
+    }
+
+    #[test]
+    fn when_every_name_is_taken_a_numbered_one_that_is_free_is_made() {
+        let names = ["a", "b"];
+        let got = free_name(&names, 0, |b| b.contains('-') && b != "a-0");
+        assert!(got.starts_with("a-") && got != "a-0", "{got}");
+    }
 }
