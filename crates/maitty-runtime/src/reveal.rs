@@ -2,8 +2,6 @@
 //! (`<app>://session/12?socket=default`); opening it runs `<app> reveal <link>`, which
 //! focuses that session and asks the window showing the app to come to the front.
 
-use crate::brand::APP_COMMAND;
-use anyhow::{Context, Result, bail};
 #[cfg(not(windows))]
 use std::process::Command;
 
@@ -25,7 +23,7 @@ pub fn link(term: TermId) -> String {
 }
 
 /// The session and server a link points at. A bare pane number works too.
-fn parse(target: &str) -> Option<(TermId, Option<String>)> {
+pub(crate) fn parse(target: &str) -> Option<(TermId, Option<String>)> {
     let target = target.trim();
     if let Ok(term) = target.parse() {
         return Some((term, None));
@@ -78,26 +76,6 @@ fn decode(s: &str) -> String {
         }
     }
     String::from_utf8_lossy(&out).into_owned()
-}
-
-/// `<app> reveal <link or pane>`: focus the session and bring its window forward.
-pub fn run(target: &str) -> Result<()> {
-    let Some((term, socket)) = parse(target) else {
-        bail!("not a {APP_COMMAND} link or pane number: {target}")
-    };
-    if let Some(s) = socket {
-        // SAFETY: set once at startup, before any thread is started.
-        unsafe { std::env::set_var(concat!(env!("APP_ENV"), "_SOCKET"), s) };
-    }
-    // Clicking the notification gave this process the right to bring a window forward;
-    // pass it on to the app's window, which does it when the server asks.
-    #[cfg(windows)]
-    unsafe {
-        windows_sys::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(
-            windows_sys::Win32::UI::WindowsAndMessaging::ASFW_ANY,
-        );
-    }
-    crate::cli::reveal(term).context("couldn't reach that session")
 }
 
 /// Bring the terminal window this the app runs in to the front (the server asked: a

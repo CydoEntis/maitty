@@ -8,6 +8,8 @@ pub(crate) mod integrations;
 mod jsonc;
 pub(crate) mod mcp;
 mod mcp_config;
+pub(crate) mod restart;
+pub(crate) mod reveal;
 pub(crate) mod secret_run;
 pub(crate) mod update;
 use crate::layout::Dir;
@@ -1029,7 +1031,7 @@ pub fn kill_server(forget: bool) -> Result<()> {
         }
         // It answers, then lets go of its socket a moment later: a server started right
         // after would find it.
-        Ok(()) if ipc::remote().is_none() => crate::restart::wait_until_server_gone(),
+        Ok(()) if ipc::remote().is_none() => restart::wait_until_server_gone(),
         r => r,
     }
 }

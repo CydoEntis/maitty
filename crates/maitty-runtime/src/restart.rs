@@ -3,14 +3,8 @@
 //! older server anything), the policy for when to ask, and re-opening the window.
 
 use crate::ipc;
-use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::time::Duration;
-
-/// How long to wait for a stopped server to let go of its socket before starting the next.
-const SERVER_GONE_WITHIN: Duration = Duration::from_secs(5);
-const POLL: Duration = Duration::from_millis(100);
 
 /// What the server tells whoever replaces it: which version it is and how many sessions it
 /// would interrupt. Written next to its pid file, because a server of another protocol
@@ -116,56 +110,6 @@ pub fn replace_older_idle_server(published: Option<&Activity>, ours: &str) -> bo
 /// The agents in the saved session.
 pub fn saved_agents() -> usize {
     crate::daemon::saved_agent_count()
-}
-
-/// Wait until no server answers on this socket.
-pub fn wait_until_server_gone() -> Result<()> {
-    let start = std::time::Instant::now();
-    while crate::cli::server_running() {
-        if start.elapsed() > SERVER_GONE_WITHIN {
-            bail!(concat!(
-                "the old server is still running; try `",
-                env!("APP_COMMAND"),
-                " kill-server`"
-            ));
-        }
-        std::thread::sleep(POLL);
-    }
-    Ok(())
-}
-
-/// Open the installed the app in this terminal in place of this one, with the same arguments
-/// and environment (so `<APP>_SOCKET` keeps meaning the same server). Returns only when
-/// that failed.
-pub fn relaunch() -> Result<()> {
-    let exe = crate::installed_executable::installed_executable()?;
-    let args: Vec<_> = std::env::args_os().skip(1).collect();
-    let mut cmd = std::process::Command::new(&exe);
-    cmd.args(args);
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        Err(cmd.exec()).with_context(|| format!("starting {}", exe.display()))
-    }
-    #[cfg(not(unix))]
-    {
-        // No exec here: run the new one in this console and leave with its exit code.
-        let status = cmd
-            .status()
-            .with_context(|| format!("starting {}", exe.display()))?;
-        std::process::exit(status.code().unwrap_or(0));
-    }
-}
-
-/// Set when the window should be replaced by the installed the app as it closes.
-static RELAUNCH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-pub fn request_relaunch() {
-    RELAUNCH.store(true, std::sync::atomic::Ordering::SeqCst);
-}
-
-pub fn relaunch_requested() -> bool {
-    RELAUNCH.load(std::sync::atomic::Ordering::SeqCst)
 }
 
 #[cfg(test)]

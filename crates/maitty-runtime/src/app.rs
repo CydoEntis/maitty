@@ -363,7 +363,7 @@ pub(crate) fn run() {
             command,
         }) => cli::new_workspace(path, name, command),
         Some(Cmd::Focus { pane }) => cli::focus(pane),
-        Some(Cmd::Reveal { target }) => reveal::run(&target),
+        Some(Cmd::Reveal { target }) => cli::reveal::run(&target),
         Some(Cmd::Teach { pane }) => cli::teach(pane),
         Some(Cmd::Statusline) => {
             cli::statusline();
@@ -480,11 +480,11 @@ pub(crate) fn run() {
 /// When this window was told to give way to a newly installed the app, that one opens here.
 fn open_client(open: Option<std::path::PathBuf>) -> anyhow::Result<()> {
     run_client(open)?;
-    if restart::relaunch_requested() {
+    if cli::restart::relaunch_requested() {
         // The old server is stopping; the installed the app starts the new one.
-        let _ = restart::wait_until_server_gone();
+        let _ = cli::restart::wait_until_server_gone();
         eprintln!(concat!("Restarting ", env!("APP_COMMAND"), "…"));
-        restart::relaunch()?;
+        cli::restart::relaunch()?;
     }
     Ok(())
 }

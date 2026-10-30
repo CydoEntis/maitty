@@ -470,7 +470,7 @@ pub struct App {
     daemon_restart_requested: bool,
     daemon_restart_reconnect: bool,
     /// This window is on an older the app than the one installed: it closes and the installed
-    /// one opens in its place (`restart::relaunch`).
+    /// one opens in its place (`cli::restart::relaunch`).
     relaunch: bool,
     /// Asking, because you said to, whether a newer the app is out.
     update_checking: bool,
@@ -647,7 +647,7 @@ async fn run_async(opts: Options) -> Result<()> {
     restore_terminal();
     result?;
     if app.relaunch {
-        crate::restart::request_relaunch();
+        crate::cli::restart::request_relaunch();
     } else if let Some(reason) = app.quit {
         println!("[{reason}]");
     }

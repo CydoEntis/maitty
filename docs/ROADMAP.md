@@ -985,7 +985,9 @@ keeps the saved user command and executes it after reporting usage.
 The MCP server and updater implementations now live under `maitty-runtime`'s
 `cli/` module. Shared release-version comparison and installed-executable
 resolution stay at the runtime root so IPC and restart code do not depend on the
-CLI updater. The daemon, TUI and CLI still share the runtime package.
+CLI updater. The reveal command and terminal relaunch mechanics now live under
+`cli/` too; daemon activity publication and notification link generation remain
+runtime-owned. The daemon, TUI and CLI still share the runtime package.
 
 Claude meets the same standalone desktop chat contract as Codex. Native terminal
 transfer remains deferred. Package the optional GUI for Windows, macOS and Linux
