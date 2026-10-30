@@ -68,9 +68,9 @@ Evidence baseline: dev at c08354ce6afc7888774f309e9d7c4873ed721abd.
 Keep provider-native history as executable agent context. Maitty holds a private
 display projection and stable conversation binding, not a replacement agent loop.
 
-Proposed feature locations: pure identity/state types in src/conversation.rs;
+Proposed feature locations: pure identity/state types in crates/maitty-shared/src/conversation.rs;
 daemon runtime, provider adapter, history and transfer modules in
-src/daemon/conversation/; IPC in src/protocol.rs; CLI controls beside src/cli.rs.
+crates/maitty-runtime/src/daemon/conversation/; IPC in crates/maitty-shared/src/protocol.rs; CLI controls beside crates/maitty-runtime/src/cli.rs.
 Tests live beside source. Names are planned locations, not existing modules.
 
 Use existing serde/serde_json, tokio, local IPC, private-file helpers and

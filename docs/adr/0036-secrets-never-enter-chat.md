@@ -10,7 +10,7 @@ Maitty can ask the user instead, through a masked prompt, but the agent is a sep
 nothing can put a variable into the environment of a process that is already running, and a
 value printed in a tool result is back in the transcript. The daemon already authenticates a
 pane by its `MAITTY_PANE_TOKEN` and asks the user on the caller's row for helpers
-(`src/daemon/helpers.rs`).
+(`crates/maitty-runtime/src/daemon/helpers.rs`).
 
 ## Decision
 

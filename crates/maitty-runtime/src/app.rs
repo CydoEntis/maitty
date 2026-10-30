@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 /// An agent-aware terminal multiplexer.
 #[derive(Parser)]
-#[command(version, about)]
+#[command(name = env!("APP_COMMAND"), version, about)]
 struct Args {
     /// Directory to open as a workspace (switches to it if already open).
     path: Option<PathBuf>,

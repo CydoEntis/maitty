@@ -12,7 +12,7 @@ asked for keys that are sensible and that many apps use, with no overlaps.
 
 ## Decision
 
-The defaults are `DEFAULT_PREFIX_KEYS` in `src/keys.rs`: one key per action, no key bound
+The defaults are `DEFAULT_PREFIX_KEYS` in `crates/maitty-runtime/src/keys.rs`: one key per action, no key bound
 twice, none needing Shift, and where another app has a habit, its key: `t` new tab and
 `Ctrl+W` close it (browsers), `x` close pane and `1`–`9` tabs (tmux), `v` / `h` split stacked /
 side by side (the user's choice: `v` stacks the panes vertically, `h` lines them up horizontally), `c`

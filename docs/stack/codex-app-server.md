@@ -122,7 +122,7 @@ and profile command selection in
 
 ## Project-specific: fixture boundary
 
-`src/daemon/conversation/codex.rs` and its sibling `fixtures/` contain a test-only
+`crates/maitty-runtime/src/daemon/conversation/codex.rs` and its sibling `fixtures/` contain a test-only
 compatibility contract. The fixtures are hand-authored synthetic representations
 of the inspected method/params-reference schema subset, not generated schemas or
 captured sessions. Tests run offline with no provider subprocess or session I/O.

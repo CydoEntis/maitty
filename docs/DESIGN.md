@@ -3,7 +3,7 @@
 Maitty's current look, in one page. It describes the visual language; the detailed rules
 (sizes, what gives way, keys, every state's words) live in [UI](UI.md), and each section
 below links to the part of UI.md that owns them. The code is the final word: the theme in
-`src/theme.rs`, the screen in `src/client/screen/`, and the reference frames the tests compare
+`crates/maitty-runtime/src/theme.rs`, the screen in `crates/maitty-runtime/src/client/screen/`, and the reference frames the tests compare
 against (see [TESTING](TESTING.md#project-specific-layout-and-fixtures)).
 
 This document describes the TUI. The optional desktop GUI uses the separate

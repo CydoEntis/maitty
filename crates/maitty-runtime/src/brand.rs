@@ -22,7 +22,7 @@ mod tests {
 
     #[test]
     fn the_name_comes_from_cargo_toml() {
-        assert_eq!(APP_COMMAND, env!("CARGO_PKG_NAME"));
+        assert_eq!(APP_COMMAND, env!("APP_PACKAGE"));
         assert!(
             !APP_NAME.is_empty()
                 && APP_NAME

@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-pub const EXAMPLE: &str = include_str!("../config.example.toml");
+pub const EXAMPLE: &str = include_str!("../../../config.example.toml");
 pub const CODEX_QUEUED_QUESTION_PATTERN: &str = r"(?m)^[ \t]*\?[ \t]+[1-9][0-9]*[ \t]+questions?[ \t]*$|^[ \t]*enter[ \t]+submit[ \t]+ctrl\+\][ \t]+skip[ \t]+shift\+[^\r\n]*main prompt[ \t]*$";
 
 /// `ui.padding`'s default: a row above the screen, so the tabs don't touch the terminal's own

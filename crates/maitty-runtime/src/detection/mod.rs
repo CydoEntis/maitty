@@ -127,7 +127,7 @@ struct CompiledManifest {
 }
 
 macro_rules! manifests {
-    ($($name:literal),+ $(,)?) => { &[$(include_str!(concat!("../../vendor/herdr-detection/", $name, ".toml"))),+] };
+    ($($name:literal),+ $(,)?) => { &[$(include_str!(concat!("../../../../vendor/herdr-detection/", $name, ".toml"))),+] };
 }
 
 const SOURCES: &[&str] = manifests!(

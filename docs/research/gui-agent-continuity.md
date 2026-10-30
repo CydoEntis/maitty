@@ -132,10 +132,10 @@ session ID/account/worktree, correct permissions, cancellation and reconnects.
 Closing either client must leave daemon-owned work alive. Test an active turn,
 pending permission, missing session and provider-version mismatch explicitly.
 
-Local context inspected by the parent investigation: `src/protocol.rs` currently
+Local context inspected by the parent investigation: `crates/maitty-shared/src/protocol.rs` currently
 transports snapshots and PTY bytes, not structured chat turns;
-`src/daemon/persist.rs` stores agent session/account/cwd; and
-`src/daemon/restore.rs` already resumes configured native session IDs. These are
+`crates/maitty-runtime/src/daemon/persist.rs` stores agent session/account/cwd; and
+`crates/maitty-runtime/src/daemon/restore.rs` already resumes configured native session IDs. These are
 useful foundations, not proof of a bidirectional chat bridge.
 
 ## Reuse and verification limits

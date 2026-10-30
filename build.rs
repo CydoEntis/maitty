@@ -3,11 +3,17 @@
 //! come from `[package.metadata.brand]`.
 
 use std::fs;
+use std::path::Path;
 
 fn main() {
-    println!("cargo:rerun-if-changed=Cargo.toml");
-    let command = std::env::var("CARGO_PKG_NAME").expect("cargo sets CARGO_PKG_NAME");
-    let manifest = fs::read_to_string("Cargo.toml").expect("Cargo.toml is readable");
+    configure(Path::new("Cargo.toml"));
+}
+
+pub fn configure(manifest_path: &Path) {
+    println!("cargo:rerun-if-changed={}", manifest_path.display());
+    let manifest = fs::read_to_string(manifest_path).expect("Cargo.toml is readable");
+    let package = section(&manifest, "[package]");
+    let command = value(&package, "name").expect("[package] needs a name");
     let brand = section(&manifest, "[package.metadata.brand]");
     let name =
         value(&brand, "name").unwrap_or_else(|| panic!("[package.metadata.brand] needs a name"));
@@ -22,6 +28,7 @@ fn main() {
     println!("cargo:rustc-env=APP_NAME={name}");
     println!("cargo:rustc-env=APP_TAGLINE={tagline}");
     println!("cargo:rustc-env=APP_COMMAND={command}");
+    println!("cargo:rustc-env=APP_PACKAGE={command}");
     println!(
         "cargo:rustc-env=APP_ENV={}",
         command.to_ascii_uppercase().replace('-', "_")

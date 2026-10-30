@@ -185,10 +185,13 @@ hidden-text validation and check-output classification live in the
 length-delimited protocol framing shared by the TUI and GUI; socket naming,
 handshakes and daemon startup stay in their respective clients. The Tauri host
 uses `maitty-desktop-client`
-for daemon IPC and GUI operations; it does not link the `maitty` runtime. The
-daemon, TUI, CLI and live provider process transports remain in `maitty`
-pending further extraction. Codex compatibility preflight, session metadata,
-usage extraction and effective-config policy live in `maitty-provider-codex`;
+for daemon IPC and GUI operations; it does not link `maitty-runtime`. The
+original terminal implementation now lives in `maitty-runtime`; the root
+`maitty` package preserves the installed command and re-exports the runtime
+library for compatibility. The daemon, TUI and CLI still live together inside
+`maitty-runtime` and remain to be separated. Codex compatibility preflight,
+session metadata, usage extraction and effective-config policy live in
+`maitty-provider-codex`;
 Claude stream parsing, version checks, session IDs and launch arguments live in
 `maitty-provider-claude`. Their live process transports remain in the daemon.
 Claude event projection also lives in its provider package. Completing the
@@ -239,7 +242,9 @@ the `maitty-shared` protocol messages.
 
 ```text
 src/
-  main.rs        argument parsing, picks client / daemon / CLI role
+  main.rs        installed `maitty` executable entry point
+  lib.rs         compatibility re-exports from `maitty-runtime`
+crates/maitty-runtime/src/
   cli.rs         one-shot subcommands (send, read, wait, hook, doctor, â€¦)
   cli/handoff.rs `maitty handoff`: the text brief, and the files a checkout changed
   cli/mcp_config.rs `maitty integrate mcp`: Maitty's entry in Codex, Qwen Code and Gemini CLI config files
@@ -261,7 +266,7 @@ src/
   mcp.rs, project.rs, gitfs.rs, alert.rs, reveal.rs, update.rs, restart.rs, sync.rs
 crates/maitty-shared/ shared wire protocol, conversation contracts and split-tree types
 crates/maitty-ipc-transport/ length-delimited message framing shared by clients
-src/test_support.rs  fixtures shared by runtime unit tests
+crates/maitty-runtime/ original terminal app implementation; TUI, CLI and daemon still being split
 docs/            these docs, the roadmap, design briefs
 config.example.toml
 ```
@@ -271,9 +276,11 @@ config.example.toml
 **The app's name** lives in `Cargo.toml` and nowhere else in the code (ADR 0019): the package
 name is the command, `[package.metadata.brand]` holds the name people see and the names it had
 before. `build.rs` hands them to the code as `APP_COMMAND`, `APP_NAME`, `APP_ENV` and
-`APP_PREVIOUS`; `src/brand.rs` wraps them. Write a name-bearing string as
+`APP_PREVIOUS`; `crates/maitty-runtime/src/brand.rs` wraps them. Write a
+name-bearing string as
 `concat!(".", env!("APP_COMMAND"), ".toml")`, or name `APP_NAME` in a format string with
-arguments of its own. Adapters in `src/cli/*.js` are templates (`__APP_NAME__`,
+arguments of its own. Adapters in `crates/maitty-runtime/src/cli/*.js` are
+templates (`__APP_NAME__`,
 `__APP_COMMAND__`, `__APP_ENV__`, `__APP_EXE__`) filled in when installed. `tests/naming.rs`
 fails on the name written out. To rename the app:
 
@@ -372,8 +379,9 @@ current GUI release scope beyond Codex and Claude.
 See [stack/claude-code-cli.md](stack/claude-code-cli.md) for the Claude CLI
 adapter's authentication, lifecycle and platform rules.
 
-The Codex transport foundation lives in `src/daemon/conversation/`: `codex.rs`
-checks compatibility, `transport.rs` validates launch configuration and stdio
+The Codex transport foundation lives in
+`crates/maitty-runtime/src/daemon/conversation/`: `codex.rs` checks
+compatibility, `transport.rs` validates launch configuration and stdio
 envelopes, `process.rs` owns platform process-tree cleanup, and `runtime.rs`
 owns background connection actors. `daemon.rs` admits bindings from the daemon's
 conversation registry and fences every incoming event by conversation,
@@ -386,7 +394,7 @@ JSON-RPC IDs on the existing connection; closing a client leaves its runtime ali
 Only an explicit conversation start launches a selected provider.
 The verified provider baseline is in [codex-app-server](stack/codex-app-server.md).
 
-Durable conversation metadata lives in pure `src/conversation.rs`, separate from
+Durable conversation metadata lives in pure `crates/maitty-shared/src/conversation.rs`, separate from
 `TermId`. The daemon keeps its registry independently of PTYs and saves it in the
 same session snapshot as optional pane associations. Restore fences running and
 transferring records as recovery-required and withholds linked panes from legacy
@@ -397,7 +405,7 @@ Native/structured transfer commands remain later work.
 The display-history foundation adds `history.rs` (typed projection and bounded
 reads), `history_provider.rs` (Codex event normalization) and `history_storage.rs`
 (private immutable pages and atomic manifests) beside the transport. Wire DTOs
-live inward in `src/conversation/history.rs`. No transcript enters the ordinary
+live inward in `maitty-shared::conversation`. No transcript enters the ordinary
 snapshot; attachment content is released on disconnect. See API_PATTERNS and
 DATABASE for retention and durability contracts. One daemon canonical projection
 owns cache writes; attachments only read. With output retention disabled, native

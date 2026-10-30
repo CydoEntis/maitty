@@ -126,7 +126,7 @@ an SSH remote being someone else's machine; what agents work on leaking through 
 (ntfy, off by default: they name the agent and folder only, unless `phone_text` is on, and
 the topic name is the only secret on the public server).
 
-The agent launchers (`src/shim.rs`) sit first on `PATH` in every plain shell pane. They are
+The agent launchers (`crates/maitty-runtime/src/shim.rs`) sit first on `PATH` in every plain shell pane. They are
 files in maitty's own data folder, written by the daemon as the user; a process that can write
 there can already run as the user through the shell startup files maitty writes beside them.
 A launcher asks for a worktree with `maitty agent-dir`, which sends the pane's own
@@ -223,7 +223,7 @@ Text sent to an agent through `maitty send` (and `--wait`), MCP `maitty_send` an
 one agent cannot hide instructions to another from you. The error names each one and where it
 is; nothing is sent. Your own typing and pastes in a pane are not checked.
 
-References (`src/references.rs`) are files the user puts in `.maitty/references/` at the repo's
+References (`crates/maitty-runtime/src/references.rs`) are files the user puts in `.maitty/references/` at the repo's
 main checkout; agents read them through MCP `maitty_references`, which returns paths and never
 file contents. An agent's `path` must name an existing folder in its own project unless
 `[mcp] scope = "all"`. Nothing outside that folder is listed or removed: a path with `..` is

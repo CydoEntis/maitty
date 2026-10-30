@@ -102,7 +102,7 @@ entry point (handler / route / command / consumer)
 
 Not HTTP. A private IPC protocol between client and daemon over a local socket
 (or `ssh host maitty proxy`): length-delimited frames carrying msgpack-encoded
-`ClientMsg` / `ServerMsg` enums (`src/protocol.rs`). The first exchange is
+`ClientMsg` / `ServerMsg` enums (`crates/maitty-shared/src/protocol.rs`). The first exchange is
 `Hello { version }` → `Welcome { version }`; mismatched `PROTOCOL_VERSION`s are
 refused. Bump it when a message shape changes incompatibly: a field removed, renamed
 or retyped, or a new enum variant (an old decoder rejects it). An added field with
@@ -112,7 +112,7 @@ too, so every bump stops hooked panes reporting until the daemon restarts. The C
 are thin wrappers that send the same commands.
 
 The optional Tauri GUI invokes only fixed desktop commands from
-`src/desktop.rs`; validate webview input in both the TypeScript boundary and
+`crates/maitty-desktop-client/`; validate webview input in both the TypeScript boundary and
 the Rust host. Never expose a generic process or shell command. A desktop
 protocol-mismatch restart must recheck the exact local protocol before stopping
 an older daemon and must refuse to downgrade a newer one.
