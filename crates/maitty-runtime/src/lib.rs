@@ -10,6 +10,7 @@ mod detection;
 mod gitfs;
 mod ipc;
 mod keys;
+pub use maitty_settings::theme;
 mod mcp;
 mod proc;
 mod project;
@@ -20,7 +21,6 @@ mod secret_files;
 mod shim;
 mod snapshot;
 mod sync;
-mod theme;
 mod tidy;
 mod update;
 

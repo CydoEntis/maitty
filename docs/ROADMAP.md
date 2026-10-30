@@ -931,6 +931,14 @@ macOS target checks, the full workspace suite (1,325 runtime tests passed,
 5 ignored, and the remaining package suites passed), and `maitty --version` and
 `maitty --help` smoke checks. An independent review confirmed app branding and
 relocated fixture paths.
+The shared `maitty-settings` package now owns key actions, default bindings,
+key parsing and built-in themes; the runtime keeps its terminal mouse-event
+encoding wrapper. On 2026-10-30, its extraction passed the full workspace test
+suite (1,317 runtime tests passed, 5 ignored, and all other package suites
+passed), workspace build and strict clippy, and Linux and macOS target checks
+for the installed `maitty` package. The all-workspace Linux cross-check still
+requires a configured Linux pkg-config/sysroot for the Tauri host's D-Bus
+dependency. Independent review found no behavior or portability issue.
 
 Claude meets the same standalone desktop chat contract as Codex. Native terminal
 transfer remains deferred. Package the optional GUI for Windows, macOS and Linux

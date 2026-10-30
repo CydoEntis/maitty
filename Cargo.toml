@@ -20,6 +20,7 @@ members = [
     "crates/maitty-shared",
     "crates/maitty-ipc-transport",
     "crates/maitty-runtime",
+    "crates/maitty-settings",
     "crates/maitty-desktop-client",
     "crates/maitty-provider-codex",
     "crates/maitty-provider-claude",

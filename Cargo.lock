@@ -2433,6 +2433,7 @@ dependencies = [
  "maitty-ipc-transport",
  "maitty-provider-claude",
  "maitty-provider-codex",
+ "maitty-settings",
  "maitty-shared",
  "png 0.17.16",
  "portable-pty",
@@ -2455,6 +2456,16 @@ dependencies = [
  "unicode-width",
  "vt100",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "maitty-settings"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "maitty-shared",
+ "ratatui",
+ "serde",
 ]
 
 [[package]]
