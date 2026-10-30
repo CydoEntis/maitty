@@ -190,110 +190,30 @@ fn codex_hooks_at_for_platform(
     uninstall: bool,
     windows: bool,
 ) -> Result<()> {
-    const EVENTS: &[(&str, Option<&str>)] = &[
-        ("SessionStart", Some("same")),
-        ("SubagentStart", None),
-        ("SubagentStop", None),
-    ];
-    const TIMEOUT_SECONDS: i64 = 3;
     regular_target(path)?;
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(error) => return Err(error).context("read Codex configuration"),
     };
-    let mut doc = text
-        .parse::<toml_edit::DocumentMut>()
-        .with_context(|| format!("{} has invalid TOML; preserved", path.display()))?;
-    if !doc.contains_key("hooks") {
-        if uninstall {
-            return Ok(());
-        }
-        doc["hooks"] = toml_edit::Item::Table(toml_edit::Table::new());
-    }
-    let hooks = doc["hooks"]
-        .as_table_mut()
-        .context("Codex hooks must be a table; preserved")?;
-    let command = format!("{} hook codex", serde_json::to_string(exe)?);
-
-    for (event, status) in EVENTS {
-        if !hooks.contains_key(event) {
-            if uninstall {
-                continue;
-            }
-            hooks[*event] = toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
-        }
-        let entries = hooks[*event].as_array_of_tables_mut().with_context(|| {
-            format!("Codex hooks.{event} must be an array of tables; preserved")
-        })?;
-        let mut owned_blocks = Vec::new();
-        for (index, entry) in entries.iter_mut().enumerate() {
-            let Some(handlers) = entry.get_mut("hooks") else {
-                continue;
-            };
-            let handlers = handlers.as_array_of_tables_mut().with_context(|| {
-                format!("Codex hooks.{event}.hooks must be an array of tables; preserved")
-            })?;
-            let before = handlers.len();
-            handlers.retain(|handler| {
-                let configured_command = handler.get("command").and_then(toml_edit::Item::as_str);
-                handler.get("type").and_then(toml_edit::Item::as_str) != Some("command")
-                    || !configured_command.is_some_and(|configured| {
-                        configured == command || configured == format!("{command} --status same")
-                    })
-            });
-            if handlers.len() != before {
-                owned_blocks.push(index);
-            }
-        }
-        for index in owned_blocks.into_iter().rev() {
-            let only_our_empty_handlers = entries.iter().nth(index).is_some_and(|entry| {
-                entry.len() == 1
-                    && entry
-                        .get("hooks")
-                        .and_then(toml_edit::Item::as_array_of_tables)
-                        .is_some_and(|a| a.is_empty())
-            });
-            if only_our_empty_handlers {
-                entries.remove(index);
-            }
-        }
-        if !uninstall {
-            let mut handler = toml_edit::Table::new();
-            handler["type"] = toml_edit::value("command");
-            let command = status.map_or_else(
-                || command.clone(),
-                |status| format!("{command} --status {status}"),
-            );
-            handler["command"] = toml_edit::value(&command);
-            if windows {
-                let windows_command = status.map_or_else(
-                    || format!("& \"{exe}\" hook codex"),
-                    |status| format!("& \"{exe}\" hook codex --status {status}"),
-                );
-                handler["commandWindows"] = toml_edit::value(windows_command);
-            }
-            handler["timeout"] = toml_edit::value(TIMEOUT_SECONDS);
-            let mut handlers = toml_edit::ArrayOfTables::new();
-            handlers.push(handler);
-            let mut entry = toml_edit::Table::new();
-            entry["hooks"] = toml_edit::Item::ArrayOfTables(handlers);
-            entries.push(entry);
-        }
-        if entries.is_empty() {
-            hooks.remove(event);
-        }
-    }
-
-    if hooks.is_empty() {
-        doc.remove("hooks");
-    }
+    let Some(updated) = maitty_provider_codex::update_status_hooks(
+        &text,
+        maitty_provider_codex::StatusHookOptions {
+            executable: exe,
+            uninstall,
+            windows,
+        },
+    )
+    .with_context(|| format!("update Codex hooks in {}", path.display()))?
+    else {
+        return Ok(());
+    };
     super::back_up_once(path, "toml")
         .context("back up Codex configuration before updating hooks")?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).context("create Codex configuration directory")?;
     }
-    crate::config::write_atomic(path, doc.to_string()).context("write Codex status hooks")
+    crate::config::write_atomic(path, updated).context("write Codex status hooks")
 }
 
 pub(super) fn install_codex(exe: &str, uninstall: bool) -> Result<PathBuf> {

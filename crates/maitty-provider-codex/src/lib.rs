@@ -6,8 +6,10 @@ use std::path::PathBuf;
 use std::sync::LazyLock;
 
 mod runtime_policy;
+mod status_hooks;
 
 pub use runtime_policy::runtime_policy_overrides;
+pub use status_hooks::{StatusHookOptions, update_status_hooks};
 
 /// A Codex session's id, parent, working folder and display name from its metadata line.
 pub fn session_metadata(head: &str) -> Option<(String, Option<String>, Option<PathBuf>, String)> {
