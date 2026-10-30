@@ -3,6 +3,116 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Icons {
+    pub working: String,
+    pub blocked: String,
+    pub done: String,
+    pub idle: String,
+    pub shell: String,
+    pub active_workspace: String,
+    /// Shown before a workspace's branch (default: the Nerd Font / Powerline branch glyph).
+    pub branch: String,
+}
+
+impl Default for Icons {
+    fn default() -> Self {
+        Icons {
+            working: "⠹".into(),
+            blocked: "●".into(),
+            // Filled like "needs you", told apart by colour: green.
+            done: "●".into(),
+            idle: "○".into(),
+            // A terminal (Nerd Font); set it to ">" or "$" without one.
+            shell: "\u{f489}".into(),
+            active_workspace: "▌".into(),
+            branch: "\u{e0a0} ".into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Keys {
+    /// Bindings after the prefix: key spec -> action. Merged over the defaults.
+    pub prefix: BTreeMap<String, String>,
+    /// Bindings that work without the prefix.
+    pub global: BTreeMap<String, String>,
+    /// Ignore the built-in bindings entirely.
+    pub replace_defaults: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Detection {
+    /// Output within this window counts as "working" for agents without hooks or patterns.
+    pub working_window_ms: u64,
+    /// Output this soon after a keystroke is treated as echo, not work.
+    pub echo_grace_ms: u64,
+    /// How often the process tree is scanned for agents.
+    pub scan_interval_ms: u64,
+    /// Rows from the bottom of the screen that status patterns are matched against.
+    pub pattern_rows: u16,
+}
+
+impl Default for Detection {
+    fn default() -> Self {
+        Detection {
+            working_window_ms: 1500,
+            echo_grace_ms: 300,
+            scan_interval_ms: 1000,
+            pattern_rows: 12,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Snapshots {
+    /// Keep a checkout's files as they were each time an agent's turn begins there, so a
+    /// turn can be taken back from the agent's menu.
+    pub enabled: bool,
+}
+
+impl Default for Snapshots {
+    fn default() -> Self {
+        Snapshots { enabled: true }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Notify {
+    /// Play the app's sound when an agent needs you.
+    pub sound: bool,
+    /// Alerts on your phone through ntfy (the free ntfy app): your topic's name. Empty is off.
+    /// On the public server the name is all that keeps them private, so make it hard to guess.
+    pub phone_topic: String,
+    /// The ntfy server (your own, if you host one).
+    pub phone_server: String,
+    /// Only once it has waited this long (seconds) with nobody answering: at your desk you
+    /// answer first and the phone stays quiet.
+    pub phone_after: u64,
+    /// Also when an agent finishes and nobody has looked.
+    pub phone_done: bool,
+    /// Say what the agent is doing in the alert, not just which agent and where.
+    pub phone_text: bool,
+}
+
+impl Default for Notify {
+    fn default() -> Self {
+        Notify {
+            sound: true,
+            phone_topic: String::new(),
+            phone_server: "https://ntfy.sh".into(),
+            phone_after: 60,
+            phone_done: false,
+            phone_text: false,
+        }
+    }
+}
+
 /// The default padding leaves a row above the tabs for the terminal's own tab bar.
 pub const PADDING_TOP: &str = "top";
 
@@ -687,11 +797,46 @@ impl Default for Ui {
 #[cfg(test)]
 mod tests {
     use super::{
-        CHECK_TIMEOUT_S_DEFAULT, CURSOR_SHAPES, CheckDef, DEFAULT_MODEL_FLAG, HELPERS_AT_ONCE,
-        HELPERS_MAY, LayoutKind, Mcp, NEW_AGENTS, NEW_WHERE, Preset, Quick, Recipe, Restore,
-        Rounding, Sessions, Ui, Worktree, same_path, validate_checks, validate_cursor,
-        validate_sessions,
+        CHECK_TIMEOUT_S_DEFAULT, CURSOR_SHAPES, CheckDef, DEFAULT_MODEL_FLAG, Detection,
+        HELPERS_AT_ONCE, HELPERS_MAY, Icons, Keys, LayoutKind, Mcp, NEW_AGENTS, NEW_WHERE, Notify,
+        Preset, Quick, Recipe, Restore, Rounding, Sessions, Snapshots, Ui, Worktree, same_path,
+        validate_checks, validate_cursor, validate_sessions,
     };
+
+    #[test]
+    fn display_detection_and_alert_settings_keep_their_defaults_and_serde_shape() {
+        let icons = Icons::default();
+        assert_eq!((icons.working.as_str(), icons.blocked.as_str()), ("⠹", "●"));
+        assert_eq!(icons.branch, "\u{e0a0} ");
+
+        let keys = Keys::default();
+        assert!(keys.prefix.is_empty() && keys.global.is_empty());
+        assert!(!keys.replace_defaults);
+
+        let detection = Detection::default();
+        assert_eq!(
+            (
+                detection.working_window_ms,
+                detection.echo_grace_ms,
+                detection.scan_interval_ms,
+                detection.pattern_rows,
+            ),
+            (1500, 300, 1000, 12)
+        );
+
+        let snapshots = Snapshots::default();
+        assert!(snapshots.enabled);
+
+        let notify = Notify::default();
+        assert!(notify.sound);
+        assert_eq!(notify.phone_server, "https://ntfy.sh");
+        assert_eq!(notify.phone_after, 60);
+        assert!(!notify.phone_done && !notify.phone_text);
+
+        let decoded: Notify = toml::from_str("sound = false").unwrap();
+        assert!(!decoded.sound);
+        assert_eq!(decoded.phone_server, "https://ntfy.sh");
+    }
 
     #[test]
     fn ui_defaults_keep_the_existing_appearance_and_cursor_settings() {

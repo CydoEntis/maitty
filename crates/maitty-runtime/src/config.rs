@@ -6,11 +6,11 @@ use crate::keys::{self, Action, KeySpec};
 use crate::theme::{Theme, ThemeOverrides};
 use anyhow::{Context, Result};
 pub use maitty_settings::config::{
-    BARS_FRAMES, CHECK_TIMEOUT_S_DEFAULT, CURSOR_SHAPES, CheckDef, DEFAULT_MODEL_FLAG,
-    HELPERS_AT_ONCE, HELPERS_MAY, LAYOUT_NAMES, LayoutKind, Mcp, NEW_AGENTS, NEW_WHERE,
-    PADDING_TOP, Preset, Quick, QuickAgent, Recipe, Restore, Rounding, SIDEBAR_TABS, SPINNERS,
-    Sessions, Ui, Worktree, same_path, validate_check, validate_checks, validate_cursor,
-    validate_sessions,
+    BARS_FRAMES, CHECK_TIMEOUT_S_DEFAULT, CURSOR_SHAPES, CheckDef, DEFAULT_MODEL_FLAG, Detection,
+    HELPERS_AT_ONCE, HELPERS_MAY, Icons, Keys, LAYOUT_NAMES, LayoutKind, Mcp, NEW_AGENTS,
+    NEW_WHERE, Notify, PADDING_TOP, Preset, Quick, QuickAgent, Recipe, Restore, Rounding,
+    SIDEBAR_TABS, SPINNERS, Sessions, Snapshots, Ui, Worktree, same_path, validate_check,
+    validate_checks, validate_cursor, validate_sessions,
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -190,76 +190,6 @@ pub fn parse_repo_checks(text: &str) -> Result<Vec<CheckDef>> {
         );
     }
     Ok(checks)
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Icons {
-    pub working: String,
-    pub blocked: String,
-    pub done: String,
-    pub idle: String,
-    pub shell: String,
-    pub active_workspace: String,
-    /// Shown before a workspace's branch (default: the Nerd Font / Powerline branch glyph).
-    pub branch: String,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Keys {
-    /// Bindings after the prefix: key spec -> action. Merged over the defaults.
-    pub prefix: BTreeMap<String, String>,
-    /// Bindings that work without the prefix.
-    pub global: BTreeMap<String, String>,
-    /// Ignore the built-in bindings entirely.
-    pub replace_defaults: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Detection {
-    /// Output within this window counts as "working" for agents without hooks or patterns.
-    pub working_window_ms: u64,
-    /// Output this soon after a keystroke is treated as echo, not work.
-    pub echo_grace_ms: u64,
-    /// How often the process tree is scanned for agents.
-    pub scan_interval_ms: u64,
-    /// Rows from the bottom of the screen that status patterns are matched against.
-    pub pattern_rows: u16,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Snapshots {
-    /// Keep a checkout's files as they were each time an agent's turn begins there, so a
-    /// turn can be taken back from the agent's menu.
-    pub enabled: bool,
-}
-
-impl Default for Snapshots {
-    fn default() -> Self {
-        Snapshots { enabled: true }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Notify {
-    /// Play the app's sound when an agent needs you.
-    pub sound: bool,
-    /// Alerts on your phone through ntfy (the free ntfy app): your topic's name. Empty is off.
-    /// On the public server the name is all that keeps them private, so make it hard to guess.
-    pub phone_topic: String,
-    /// The ntfy server (your own, if you host one).
-    pub phone_server: String,
-    /// Only once it has waited this long (seconds) with nobody answering: at your desk you
-    /// answer first and the phone stays quiet.
-    pub phone_after: u64,
-    /// Also when an agent finishes and nobody has looked.
-    pub phone_done: bool,
-    /// Say what the agent is doing in the alert, not just which agent and where.
-    pub phone_text: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -538,46 +468,6 @@ mod spinner_tests {
 const OLD_DONE_ICON: &str = "✓";
 /// The shell icon before it became a terminal.
 const OLD_SHELL_ICON: &str = "›";
-
-impl Default for Icons {
-    fn default() -> Self {
-        Icons {
-            working: "⠹".into(),
-            blocked: "●".into(),
-            // Filled like "needs you", told apart by colour: green.
-            done: "●".into(),
-            idle: "○".into(),
-            // A terminal (Nerd Font); set it to ">" or "$" without one.
-            shell: "\u{f489}".into(),
-            active_workspace: "▌".into(),
-            branch: "\u{e0a0} ".into(),
-        }
-    }
-}
-
-impl Default for Detection {
-    fn default() -> Self {
-        Detection {
-            working_window_ms: 1500,
-            echo_grace_ms: 300,
-            scan_interval_ms: 1000,
-            pattern_rows: 12,
-        }
-    }
-}
-
-impl Default for Notify {
-    fn default() -> Self {
-        Notify {
-            sound: true,
-            phone_topic: String::new(),
-            phone_server: "https://ntfy.sh".into(),
-            phone_after: 60,
-            phone_done: false,
-            phone_text: false,
-        }
-    }
-}
 
 fn agent(
     name: &str,

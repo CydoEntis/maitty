@@ -948,10 +948,11 @@ and TOML migration orchestration. Restore, worktree and MCP settings schemas
 and defaults have moved as well. Check definitions and pure validation now
 live there too, along with recipe, preset and quick-agent schemas/defaults and
 preset prompt projection. Repository check-file discovery and TOML parsing
-stay in the runtime. The settings package's 17 tests and runtime's 59 config
-tests pass, as do the full workspace suite (1,317 runtime tests, 17 settings
-tests, all remaining package suites, and 5 ignored tests), strict clippy,
-workspace build, and Linux/macOS package checks.
+stay in the runtime. Icon, key, detection, snapshot and notification settings
+schemas/defaults have now moved too; legacy icon normalization stays in runtime.
+The full workspace suite now passes 1,317 runtime tests and 18 settings tests,
+with all other package suites passing and 5 ignored tests. Strict clippy, the
+workspace build, and Linux/macOS package checks are being rerun for this slice.
 Linux and macOS target checks passed for the installed `maitty` package. The
 all-workspace Linux cross-check still needs a configured D-Bus
 pkg-config/sysroot for the Tauri host.
