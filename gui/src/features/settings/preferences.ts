@@ -1,0 +1,59 @@
+export type ToastPosition = 'top-right' | 'bottom-right' | 'bottom-left' | 'top-left'
+
+export type SettingsPreferences = {
+  accent: 'teal' | 'blue' | 'violet'
+  reduceMotion: boolean
+  animateSidebarActivity: boolean
+  compactSidebar: boolean
+  toastPosition: ToastPosition
+  notifyNeedsYou: boolean
+  notifyFinished: boolean
+  notificationSound: boolean
+}
+
+const STORAGE_KEY = 'maitty.gui.settings.v1'
+const DEFAULTS: SettingsPreferences = {
+  accent: 'teal',
+  reduceMotion: false,
+  animateSidebarActivity: true,
+  compactSidebar: false,
+  toastPosition: 'bottom-right',
+  notifyNeedsYou: true,
+  notifyFinished: true,
+  notificationSound: false,
+}
+
+export function readSettingsPreferences(): SettingsPreferences {
+  const stored = localStorage.getItem(STORAGE_KEY)
+  if (stored === null) return DEFAULTS
+  try {
+    const value: unknown = JSON.parse(stored)
+    if (typeof value !== 'object' || value === null) return DEFAULTS
+    const preferences = value as Partial<SettingsPreferences>
+    return {
+      accent: isAccent(preferences.accent) ? preferences.accent : DEFAULTS.accent,
+      reduceMotion: typeof preferences.reduceMotion === 'boolean' ? preferences.reduceMotion : DEFAULTS.reduceMotion,
+      animateSidebarActivity: typeof preferences.animateSidebarActivity === 'boolean' ? preferences.animateSidebarActivity : DEFAULTS.animateSidebarActivity,
+      compactSidebar: typeof preferences.compactSidebar === 'boolean' ? preferences.compactSidebar : DEFAULTS.compactSidebar,
+      toastPosition: isToastPosition(preferences.toastPosition) ? preferences.toastPosition : DEFAULTS.toastPosition,
+      notifyNeedsYou: typeof preferences.notifyNeedsYou === 'boolean' ? preferences.notifyNeedsYou : DEFAULTS.notifyNeedsYou,
+      notifyFinished: typeof preferences.notifyFinished === 'boolean' ? preferences.notifyFinished : DEFAULTS.notifyFinished,
+      notificationSound: typeof preferences.notificationSound === 'boolean' ? preferences.notificationSound : DEFAULTS.notificationSound,
+    }
+  } catch {
+    console.warn('Ignoring invalid Maitty notification preferences')
+    return DEFAULTS
+  }
+}
+
+export function writeSettingsPreferences(preferences: SettingsPreferences): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences))
+}
+
+function isToastPosition(value: unknown): value is ToastPosition {
+  return value === 'top-right' || value === 'bottom-right' || value === 'bottom-left' || value === 'top-left'
+}
+
+function isAccent(value: unknown): value is SettingsPreferences['accent'] {
+  return value === 'teal' || value === 'blue' || value === 'violet'
+}

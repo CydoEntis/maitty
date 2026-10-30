@@ -41,3 +41,132 @@ jobs:
           targets: aarch64-apple-darwin
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --locked --target aarch64-apple-darwin
+
+  gui-linux:
+    name: desktop GUI (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: gui/pnpm-lock.yaml
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential curl file libayatana-appindicator3-dev libssl-dev \
+            libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev patchelf rpm wget
+      - name: Install GUI dependencies
+        working-directory: gui
+        run: pnpm install --frozen-lockfile
+      - name: Test GUI
+        working-directory: gui
+        run: pnpm test
+      - name: Lint GUI
+        working-directory: gui
+        run: pnpm lint
+      - name: Build Linux desktop packages
+        working-directory: gui
+        run: pnpm desktop:build
+
+  gui-macos:
+    name: desktop GUI (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: gui/pnpm-lock.yaml
+      - name: Install GUI dependencies
+        working-directory: gui
+        run: pnpm install --frozen-lockfile
+      - name: Test GUI
+        working-directory: gui
+        run: pnpm test
+      - name: Lint GUI
+        working-directory: gui
+        run: pnpm lint
+      - name: Build macOS desktop packages
+        working-directory: gui
+        run: pnpm desktop:build
+
+  gui-windows:
+    name: desktop GUI (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: gui/pnpm-lock.yaml
+      - name: Install GUI dependencies
+        working-directory: gui
+        run: pnpm install --frozen-lockfile
+      - name: Test GUI
+        working-directory: gui
+        run: pnpm test
+      - name: Lint GUI
+        working-directory: gui
+        run: pnpm lint
+      - name: Build Windows desktop packages
+        working-directory: gui
+        run: pnpm desktop:build
+
+  gui-archlinux:
+    name: desktop GUI (Arch Linux)
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    timeout-minutes: 30
+    steps:
+      - name: Install Arch desktop and build dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --needed --noconfirm \
+            base-devel curl dpkg file git openssl patchelf appmenu-gtk-module \
+            libappindicator-gtk3 librsvg rpm-tools webkit2gtk-4.1 wget xdotool
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: gui/pnpm-lock.yaml
+      - name: Install GUI dependencies
+        working-directory: gui
+        run: pnpm install --frozen-lockfile
+      - name: Test GUI
+        working-directory: gui
+        run: pnpm test
+      - name: Lint GUI
+        working-directory: gui
+        run: pnpm lint
+      - name: Build Linux desktop packages
+        working-directory: gui
+        run: pnpm desktop:build

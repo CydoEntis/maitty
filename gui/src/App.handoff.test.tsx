@@ -1,0 +1,853 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Conversation, Message } from '@/data/preview'
+import App from './App'
+
+const daemon = vi.hoisted(() => ({
+  answerUserInput: vi.fn(),
+  approveRequest: vi.fn(),
+  cancelTurn: vi.fn(),
+  createConversation: vi.fn(),
+  classifySubmissionFailure: vi.fn(),
+  handoffToChat: vi.fn(),
+  handoffToNative: vi.fn(),
+  loadConversationDiff: vi.fn(),
+  loadCodexExecutablePath: vi.fn(),
+  loadConversations: vi.fn(),
+  loadDaemonRestartStatus: vi.fn(),
+  loadMessages: vi.fn(),
+  restartMismatchedDaemon: vi.fn(),
+  resumeConversation: vi.fn(),
+  submitMessage: vi.fn(),
+}))
+
+const folderPicker = vi.hoisted(() => ({ chooseProjectFolder: vi.fn() }))
+
+vi.mock('@/api/daemon', () => ({
+  ...daemon,
+  isDesktop: () => true,
+}))
+
+vi.mock('@/api/folderPicker', () => folderPicker)
+
+vi.mock('./TerminalView', () => ({
+  TerminalView: ({ conversation }: { conversation: Conversation }) => (
+    <div
+      className="terminal-screen"
+      role="region"
+      aria-label="Native Codex terminal"
+    >
+      Pane {conversation.nativePane}
+    </div>
+  ),
+}))
+
+const structuredConversation: Conversation = {
+  id: '42',
+  generation: 7,
+  execution: 'Structured',
+  title: 'Example conversation',
+  project: 'maitty',
+  folder: '/home/casey/maitty',
+  branch: 'main',
+  provider: 'Codex',
+  status: 'idle',
+  updated: null,
+  model: 'Codex default',
+  permission: 'Provider permissions',
+  context: null,
+  nativePane: null,
+  hasDiff: false,
+}
+
+describe('desktop chat and terminal handoff', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.localStorage.clear()
+    daemon.classifySubmissionFailure.mockReturnValue('unknown')
+    let currentConversation = structuredConversation
+    daemon.loadConversations.mockImplementation(() =>
+      Promise.resolve([currentConversation]),
+    )
+    daemon.loadCodexExecutablePath.mockResolvedValue(
+      'C:\\Program Files\\Codex\\codex.exe',
+    )
+    daemon.loadDaemonRestartStatus.mockResolvedValue({
+      daemonProtocol: 49,
+      guiProtocol: 59,
+      canRestart: true,
+      sessionCount: 2,
+      activeTurnCount: 1,
+    })
+    daemon.loadMessages.mockResolvedValue({
+      generation: 7,
+      receipt: null,
+      messages: [],
+      nextOperation: 1,
+      error: null,
+      cancelling: false,
+      completeness: 'Complete',
+    })
+    daemon.loadConversationDiff.mockResolvedValue({
+      files: [],
+      additions: 0,
+      deletions: 0,
+      total_files: 0,
+      truncated: false,
+    })
+    daemon.handoffToNative.mockImplementation(() => {
+      currentConversation = {
+        ...currentConversation,
+        execution: 'Native',
+        nativePane: 43,
+      }
+      return Promise.resolve()
+    })
+    daemon.handoffToChat.mockImplementation(() => {
+      currentConversation = {
+        ...currentConversation,
+        execution: 'Structured',
+        nativePane: null,
+      }
+      return Promise.resolve()
+    })
+  })
+
+  it('shows first-launch readiness, opens a Linux project folder, and keeps Settings available', async () => {
+    const user = userEvent.setup()
+    const folder = '/home/casey/projects/maitty'
+    daemon.loadConversations.mockResolvedValue([])
+    folderPicker.chooseProjectFolder.mockResolvedValue(folder)
+    renderDesktopApp()
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Run your coding agents side by side.',
+      }),
+    ).toBeInTheDocument()
+    expect(await screen.findByText('Codex CLI ready')).toBeInTheDocument()
+    expect(screen.getByText('Claude chat is disabled until Maitty verifies the CLI and a supported sign-in.')).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', { name: /Open a project folder/ }),
+    )
+    expect(
+      await screen.findByRole('textbox', { name: 'Project folder' }),
+    ).toHaveValue(folder)
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    await user.click(screen.getByRole('button', { name: 'Open settings' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Settings')
+    expect(daemon.loadCodexExecutablePath).toHaveBeenCalledOnce()
+  })
+
+  it('recovers an empty workspace after the daemon reconnects', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockReset()
+    daemon.loadConversations
+      .mockRejectedValueOnce(
+        'connecting to the local daemon: the running server is another maitty version (protocol v49, this one v59); run maitty in a terminal to restart it, or `maitty kill-server` and run maitty again',
+      )
+      .mockResolvedValue([])
+    renderDesktopApp()
+
+    expect(
+      await screen.findByRole('heading', { name: 'Daemon disconnected' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/service uses protocol v49, but this GUI needs v59/),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/restart the older service here/),
+    ).toBeInTheDocument()
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 1600)
+    })
+    expect(daemon.loadConversations).toHaveBeenCalledOnce()
+    await user.click(screen.getByRole('button', { name: 'Open settings' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Settings')
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+    await user.click(screen.getByRole('button', { name: 'Reconnect' }))
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Run your coding agents side by side.',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('status', { name: 'Daemon connected' }),
+    ).toBeInTheDocument()
+    expect(daemon.loadConversations).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows the old daemon activity before restarting it and reconnecting', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations
+      .mockRejectedValueOnce(
+        'connecting to the local daemon: the running server is another maitty version (protocol v49, this one v59); run maitty in a terminal to restart it, or `maitty kill-server` and run maitty again',
+      )
+      .mockResolvedValue([])
+    daemon.restartMismatchedDaemon.mockResolvedValue(undefined)
+    renderDesktopApp()
+
+    expect(
+      await screen.findByRole('heading', { name: 'Daemon disconnected' }),
+    ).toBeInTheDocument()
+    await user.click(
+      await screen.findByRole('button', { name: 'Restart service' }),
+    )
+    expect(await screen.findByRole('dialog')).toHaveTextContent(
+      '2 sessions and 1 active agent turn',
+    )
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(daemon.restartMismatchedDaemon).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Restart service' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Restart and reconnect' }),
+    )
+
+    await waitFor(() => {
+      expect(daemon.restartMismatchedDaemon).toHaveBeenCalledWith(49)
+    })
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Run your coding agents side by side.',
+      }),
+    ).toBeInTheDocument()
+    expect(daemon.loadConversations).toHaveBeenCalledTimes(2)
+  })
+
+  it('starts and selects a conversation in the folder chosen from the GUI', async () => {
+    const user = userEvent.setup()
+    const folder = '/home/casey/projects/new-project'
+    const createdConversation: Conversation = {
+      ...structuredConversation,
+      id: '43',
+      generation: 1,
+      title: 'Codex conversation 43',
+      project: 'new-project',
+      folder,
+    }
+    folderPicker.chooseProjectFolder.mockResolvedValue(folder)
+    daemon.createConversation.mockResolvedValue({ id: 43, generation: 1 })
+    daemon.submitMessage.mockResolvedValue(undefined)
+    daemon.loadConversations.mockResolvedValue([
+      structuredConversation,
+      createdConversation,
+    ])
+    daemon.loadMessages.mockImplementation((id: string) =>
+      Promise.resolve({
+        generation: id === '43' ? 1 : 7,
+        receipt: null,
+        messages: [],
+        nextOperation: 1,
+        error: null,
+        cancelling: false,
+        completeness: 'Complete',
+      }),
+    )
+    renderDesktopApp()
+
+    await user.keyboard('{Control>}n{/Control}')
+    await user.click(
+      screen.getByRole('button', { name: 'Browse for project folder' }),
+    )
+    expect(
+      await screen.findByRole('textbox', { name: 'Project folder' }),
+    ).toHaveValue(folder)
+    await user.click(screen.getByRole('button', { name: 'Start conversation' }))
+
+    await waitFor(() => {
+      expect(daemon.createConversation).toHaveBeenCalledWith(folder)
+    })
+    expect(
+      await screen.findByRole('heading', { name: 'Codex conversation 43' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    const composer = screen.getByRole('textbox', { name: 'Message Codex' })
+    await user.type(composer, 'Start the first Codex turn')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => {
+      expect(daemon.submitMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ id: '43', generation: 1 }),
+        1,
+        'Start the first Codex turn',
+      )
+    })
+    expect(composer).toHaveValue('')
+  })
+
+  it('blocks duplicate conversation creation while the first start is pending', async () => {
+    const user = userEvent.setup()
+    const folder = '/home/casey/projects/new-project'
+    const createdConversation: Conversation = {
+      ...structuredConversation,
+      id: '43',
+      generation: 1,
+      title: 'Codex conversation 43',
+      project: 'new-project',
+      folder,
+    }
+    let resolveCreation: (value: { id: number; generation: number }) => void =
+      () => {}
+    folderPicker.chooseProjectFolder.mockResolvedValue(folder)
+    daemon.createConversation.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreation = resolve
+        }),
+    )
+    daemon.loadConversations.mockResolvedValue([
+      structuredConversation,
+      createdConversation,
+    ])
+    daemon.loadMessages.mockImplementation((id: string) =>
+      Promise.resolve({
+        generation: id === '43' ? 1 : 7,
+        receipt: null,
+        messages: [],
+        nextOperation: 1,
+        error: null,
+        cancelling: false,
+        completeness: 'Complete',
+      }),
+    )
+    renderDesktopApp()
+
+    await user.keyboard('{Control>}n{/Control}')
+    await user.click(
+      screen.getByRole('button', { name: 'Browse for project folder' }),
+    )
+    await screen.findByRole('textbox', { name: 'Project folder' })
+    const start = screen.getByRole('button', { name: 'Start conversation' })
+    await user.click(start)
+
+    await waitFor(() => {
+      expect(daemon.createConversation).toHaveBeenCalledTimes(1)
+    })
+    expect(start).toBeDisabled()
+    await user.click(start)
+    expect(daemon.createConversation).toHaveBeenCalledTimes(1)
+
+    resolveCreation({ id: 43, generation: 1 })
+    expect(
+      await screen.findByRole('heading', { name: 'Codex conversation 43' }),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the current conversation open when starting a new one fails', async () => {
+    const user = userEvent.setup()
+    folderPicker.chooseProjectFolder.mockResolvedValue(
+      '/home/casey/projects/new-project',
+    )
+    daemon.createConversation.mockRejectedValue(
+      new Error('Codex was not found'),
+    )
+    renderDesktopApp()
+
+    await user.keyboard('{Control>}n{/Control}')
+    await user.click(
+      screen.getByRole('button', { name: 'Browse for project folder' }),
+    )
+    await user.click(
+      await screen.findByRole('button', { name: 'Start conversation' }),
+    )
+
+    expect(await screen.findByText('Codex was not found')).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toHaveTextContent('New conversation')
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(
+      screen.getByRole('heading', { name: 'Example conversation' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('textbox', { name: 'Message Codex' }),
+    ).toBeInTheDocument()
+  })
+
+  it('hands the same conversation to the native terminal and back to chat', async () => {
+    const user = userEvent.setup()
+    renderDesktopApp()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Open in native terminal' }),
+    )
+    await waitFor(() => {
+      expect(daemon.handoffToNative).toHaveBeenCalledWith(
+        structuredConversation,
+      )
+    })
+    expect(
+      await screen.findByRole('region', { name: 'Native Codex terminal' }),
+    ).toHaveTextContent('Pane 43')
+    expect(
+      screen.queryByRole('textbox', { name: 'Message Codex' }),
+    ).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Return to chat' }))
+
+    await waitFor(() => {
+      expect(daemon.handoffToChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: '42',
+          generation: 7,
+          execution: 'Native',
+        }),
+      )
+    })
+    expect(
+      await screen.findByRole('textbox', { name: 'Message Codex' }),
+    ).toBeInTheDocument()
+  })
+
+  it('blocks native handoff while the structured conversation is working', async () => {
+    daemon.loadConversations.mockResolvedValue([
+      { ...structuredConversation, status: 'working' },
+    ])
+    renderDesktopApp()
+
+    expect(
+      await screen.findByRole('button', { name: 'Open in native terminal' }),
+    ).toBeDisabled()
+    expect(daemon.handoffToNative).not.toHaveBeenCalled()
+  })
+
+  it('explains why quick-switcher terminal handoff cannot run while disconnected', async () => {
+    const user = userEvent.setup()
+    daemon.loadConversations.mockRejectedValue(new Error('daemon unavailable'))
+    renderDesktopApp([structuredConversation])
+
+    await screen.findByRole('status', { name: 'Daemon disconnected' })
+    await user.keyboard('{Control>}k{/Control}')
+    await user.type(
+      screen.getByRole('textbox', { name: 'Search actions and sessions' }),
+      'Example conversation',
+    )
+    await user.keyboard('{ArrowDown}')
+    await user.keyboard('{Control>}{Enter}{/Control}')
+
+    expect(
+      await screen.findByText(
+        'Reconnect to Maitty before opening the native terminal',
+      ),
+    ).toBeInTheDocument()
+    expect(daemon.handoffToNative).not.toHaveBeenCalled()
+  })
+
+  it('asks the daemon to reconcile native history before returning to chat', async () => {
+    const user = userEvent.setup()
+    const nativeConversation = {
+      ...structuredConversation,
+      execution: 'Native' as const,
+      nativePane: 43,
+    }
+    daemon.loadConversations.mockResolvedValue([nativeConversation])
+    daemon.loadMessages.mockResolvedValueOnce({
+      generation: 7,
+      receipt: null,
+      messages: [],
+      nextOperation: 1,
+      error: null,
+      cancelling: false,
+      completeness: { Incomplete: 'MissingPages' },
+    })
+    daemon.handoffToChat.mockResolvedValue(undefined)
+    renderDesktopApp()
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Show terminal' }),
+    )
+    expect(
+      await screen.findByText(
+        /Maitty will reconcile the exact Codex session before chat resumes/,
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Return to chat' })).toBeEnabled()
+    expect(daemon.handoffToChat).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Return to chat' }))
+    await waitFor(() => {
+      expect(daemon.handoffToChat).toHaveBeenCalledWith(nativeConversation)
+    })
+  })
+
+  it('offers a safe retry after native process cleanup requires recovery', async () => {
+    const user = userEvent.setup()
+    const nativeConversation = {
+      ...structuredConversation,
+      execution: 'Native' as const,
+      status: 'recovery' as const,
+      nativePane: 43,
+    }
+    daemon.loadConversations.mockResolvedValue([nativeConversation])
+    renderDesktopApp()
+
+    expect(
+      await screen.findByText(/Native process cleanup was not confirmed/),
+    ).toBeInTheDocument()
+    await user.click(
+      screen.getByRole('button', { name: 'Retry return to chat' }),
+    )
+
+    await waitFor(() => {
+      expect(daemon.handoffToChat).toHaveBeenCalledWith(nativeConversation)
+    })
+    expect(
+      await screen.findByRole('textbox', { name: 'Message Codex' }),
+    ).toBeInTheDocument()
+  })
+
+  it('does not offer a terminal retry when recovery has no live native pane', async () => {
+    const nativeConversation = {
+      ...structuredConversation,
+      execution: 'Native' as const,
+      status: 'recovery' as const,
+      nativePane: null,
+    }
+    daemon.loadConversations.mockResolvedValue([nativeConversation])
+    renderDesktopApp()
+
+    expect(
+      await screen.findByText(
+        /recovery in the TUI before it can return to chat/,
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Retry return to chat' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('re-enables the composer after the daemon marks a stopped turn interrupted', async () => {
+    const user = userEvent.setup()
+    const workingConversation = {
+      ...structuredConversation,
+      status: 'working' as const,
+    }
+    const idleConversation = {
+      ...structuredConversation,
+      status: 'idle' as const,
+    }
+    daemon.cancelTurn.mockResolvedValue(undefined)
+    daemon.loadConversations
+      .mockResolvedValueOnce([workingConversation])
+      .mockResolvedValue([idleConversation])
+    daemon.loadMessages
+      .mockResolvedValueOnce({
+        generation: 7,
+        receipt: {
+          conversation: 42,
+          generation: 7,
+          operation: 1,
+          delivery: { Acknowledged: { turn_id: 'turn-1' } },
+        },
+        messages: [],
+        nextOperation: 2,
+        error: null,
+        cancelling: false,
+        completeness: 'Complete',
+      })
+      .mockResolvedValue({
+        generation: 7,
+        receipt: {
+          conversation: 42,
+          generation: 7,
+          operation: 1,
+          delivery: { Acknowledged: { turn_id: 'turn-1' } },
+        },
+        messages: [
+          {
+            id: 'turn-1:command',
+            role: 'activity',
+            content: 'commandExecution',
+            detail: '',
+            activityState: 'Interrupted',
+            time: 'Recent',
+          },
+        ],
+        nextOperation: 2,
+        error: null,
+        cancelling: false,
+        completeness: 'Complete',
+      })
+    renderDesktopApp()
+
+    await user.click(await screen.findByRole('button', { name: 'Stop' }))
+
+    await waitFor(() => {
+      expect(daemon.cancelTurn).toHaveBeenCalledWith(workingConversation)
+    })
+    expect(await screen.findByText('Interrupted')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Message Codex' })).toBeEnabled()
+  })
+
+  it('refreshes a running activity after the conversation becomes idle', async () => {
+    const runningActivity: Message = {
+      id: 'turn-1:command',
+      role: 'activity',
+      content: 'commandExecution',
+      detail: '',
+      activityState: 'Running',
+      time: 'Recent',
+    }
+    const interruptedActivity = {
+      ...runningActivity,
+      activityState: 'Interrupted' as const,
+    }
+    daemon.loadMessages
+      .mockResolvedValueOnce({
+        generation: 7,
+        receipt: {
+          conversation: 42,
+          generation: 7,
+          operation: 1,
+          delivery: { Acknowledged: { turn_id: 'turn-1' } },
+        },
+        messages: [runningActivity],
+        nextOperation: 2,
+        error: null,
+        cancelling: false,
+        completeness: 'Complete',
+      })
+      .mockResolvedValue({
+        generation: 7,
+        receipt: {
+          conversation: 42,
+          generation: 7,
+          operation: 1,
+          delivery: { Acknowledged: { turn_id: 'turn-1' } },
+        },
+        messages: [interruptedActivity],
+        nextOperation: 2,
+        error: null,
+        cancelling: false,
+        completeness: 'Complete',
+      })
+    renderDesktopApp()
+
+    expect(await screen.findByText('Running')).toBeInTheDocument()
+    expect(
+      await screen.findByText('Interrupted', {}, { timeout: 4000 }),
+    ).toBeInTheDocument()
+    expect(daemon.loadMessages).toHaveBeenCalledTimes(2)
+  })
+
+  it('only runs an approval shortcut when Codex offered that exact choice', async () => {
+    const user = userEvent.setup()
+    const approval: Message = {
+      id: 'approval-1',
+      role: 'approval',
+      content: 'Codex requests approval',
+      time: 'Needs your decision',
+      providerRequestId: 'request-1',
+      approvalKind: 'Command',
+      approvalChoices: ['Decline'],
+    }
+    daemon.loadConversations.mockResolvedValue([
+      { ...structuredConversation, status: 'needs-you' },
+    ])
+    daemon.loadMessages.mockResolvedValue({
+      generation: 7,
+      receipt: null,
+      messages: [approval],
+      nextOperation: 1,
+      error: null,
+      cancelling: false,
+      completeness: 'Complete',
+    })
+    daemon.approveRequest.mockResolvedValue(undefined)
+    renderDesktopApp()
+
+    expect(
+      await screen.findByRole('button', { name: 'Decline' }),
+    ).toBeInTheDocument()
+    await user.keyboard('y')
+    expect(daemon.approveRequest).not.toHaveBeenCalled()
+
+    await user.keyboard('n')
+    await waitFor(() => {
+      expect(daemon.approveRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ id: '42' }),
+        'request-1',
+        'Decline',
+      )
+    })
+  })
+
+  it('passes Ctrl+backslash through while the native terminal has focus', async () => {
+    const user = userEvent.setup()
+    renderDesktopApp()
+    await user.click(
+      await screen.findByRole('button', { name: 'Open in native terminal' }),
+    )
+    const terminal = await screen.findByRole('region', {
+      name: 'Native Codex terminal',
+    })
+    const sidebar = screen.getByRole('complementary', { name: 'Conversations' })
+
+    fireEvent.keyDown(terminal, { key: '\\', ctrlKey: true })
+
+    expect(sidebar).not.toHaveClass('is-desktop-collapsed')
+  })
+
+  it('resumes the exact structured session from the recovery notice', async () => {
+    const user = userEvent.setup()
+    const recoveryConversation = {
+      ...structuredConversation,
+      status: 'recovery' as const,
+    }
+    daemon.loadConversations.mockResolvedValue([recoveryConversation])
+    daemon.resumeConversation.mockResolvedValue({ id: 42, generation: 8 })
+    renderDesktopApp()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Maitty will not replay the interrupted turn',
+    )
+    await user.click(screen.getByRole('button', { name: 'Resume session' }))
+
+    await waitFor(() => {
+      expect(daemon.resumeConversation).toHaveBeenCalledWith(
+        recoveryConversation,
+      )
+    })
+    expect(
+      await screen.findByRole('button', { name: 'Resume session' }),
+    ).toBeEnabled()
+  })
+
+  it('keeps a failed draft and offers retry when the daemon confirms no delivery', async () => {
+    const user = userEvent.setup()
+    daemon.submitMessage.mockRejectedValue(new Error('send failed'))
+    daemon.classifySubmissionFailure.mockReturnValue('not-delivered')
+    renderDesktopApp()
+
+    const composer = await screen.findByRole('textbox', {
+      name: 'Message Codex',
+    })
+    await user.type(composer, 'Please inspect this change')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Message was not delivered',
+    )
+    expect(composer).toHaveValue('Please inspect this change')
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled()
+  })
+
+  it('keeps uncertain delivery blocked and preserves the draft', async () => {
+    const user = userEvent.setup()
+    daemon.submitMessage.mockRejectedValue(new Error('send failed'))
+    daemon.classifySubmissionFailure.mockReturnValue('unknown')
+    daemon.loadMessages.mockResolvedValueOnce({
+      generation: 7,
+      receipt: null,
+      messages: [],
+      nextOperation: 1,
+      error: null,
+      cancelling: false,
+      completeness: 'Complete',
+    })
+    daemon.loadMessages.mockResolvedValue({
+      generation: 7,
+      receipt: {
+        conversation: 42,
+        generation: 7,
+        operation: 1,
+        delivery: 'SubmissionUncertain',
+      },
+      messages: [],
+      nextOperation: 2,
+      error: null,
+      cancelling: false,
+      completeness: 'Complete',
+    })
+    renderDesktopApp()
+
+    const composer = await screen.findByRole('textbox', {
+      name: 'Message Codex',
+    })
+    await user.type(composer, 'Do not duplicate this prompt')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Delivery is unknown',
+    )
+    expect(composer).toHaveValue('Do not duplicate this prompt')
+    expect(composer).toBeDisabled()
+    expect(
+      screen.queryByRole('button', { name: 'Retry' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('clears a blocked draft only after a delivery recheck confirms acknowledgement', async () => {
+    const user = userEvent.setup()
+    window.localStorage.setItem(
+      'maitty.gui.drafts.v1',
+      JSON.stringify({ '42': 'Prompt already submitted' }),
+    )
+    daemon.classifySubmissionFailure.mockReturnValue('delivered')
+    daemon.loadMessages
+      .mockResolvedValueOnce({
+        generation: 7,
+        receipt: {
+          conversation: 42,
+          generation: 7,
+          operation: 1,
+          delivery: 'SubmissionUncertain',
+        },
+        messages: [],
+        nextOperation: 2,
+        error: null,
+        cancelling: false,
+        completeness: 'Complete',
+      })
+      .mockResolvedValue({
+        generation: 7,
+        receipt: {
+          conversation: 42,
+          generation: 7,
+          operation: 1,
+          delivery: { Acknowledged: { turn_id: 'turn-1' } },
+        },
+        messages: [],
+        nextOperation: 2,
+        error: null,
+        cancelling: false,
+        completeness: 'Complete',
+      })
+    renderDesktopApp()
+
+    const composer = await screen.findByRole('textbox', {
+      name: 'Message Codex',
+    })
+    expect(composer).toHaveValue('Prompt already submitted')
+    await user.click(
+      await screen.findByRole('button', { name: 'Check delivery' }),
+    )
+
+    await waitFor(() => {
+      expect(composer).toHaveValue('')
+    })
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled()
+    expect(
+      screen.queryByText(
+        'Delivery is unknown. Maitty will not retry this prompt. Check the native terminal before continuing.',
+      ),
+    ).not.toBeInTheDocument()
+  })
+})
+
+function renderDesktopApp(conversations?: Conversation[]) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  if (conversations) client.setQueryData(['conversations'], conversations)
+  return render(
+    <QueryClientProvider client={client}>
+      <App />
+    </QueryClientProvider>,
+  )
+}
