@@ -184,9 +184,10 @@ The shared protocol, conversation contracts and split-tree types live in the
 for daemon IPC and GUI operations; it does not link the `maitty` runtime. The
 daemon, TUI, CLI and live provider process transports remain in `maitty`
 pending further extraction. Codex compatibility preflight and Claude stream
-frame parsing live in `maitty-provider-codex` and `maitty-provider-claude`.
-Their live process transports remain in the daemon. Completing the package
-split is tracked by [ADR 0042](adr/0042-decouple-desktop-clients-and-providers.md).
+parsing, version checks, session IDs and launch arguments live in
+`maitty-provider-codex` and `maitty-provider-claude`. Their live process
+transports remain in the daemon. Completing the package split is tracked by
+[ADR 0042](adr/0042-decouple-desktop-clients-and-providers.md).
 
 Rust, edition 2024, stable toolchain. Key libraries: `tokio` (async runtime),
 `ratatui` 0.30 + `crossterm` (TUI), `portable-pty` (PTYs / ConPTY), `vt100`

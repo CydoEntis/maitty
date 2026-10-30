@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
+use std::ffi::OsString;
 
 const MAX_FRAME_BYTES: usize = 1024 * 1024;
 const VERIFIED_VERSIONS: &[&str] = &["2.1.312"];
@@ -268,9 +269,69 @@ pub fn verified_version(version: &str) -> bool {
     VERIFIED_VERSIONS.contains(&version)
 }
 
+pub fn session_id() -> Result<String> {
+    let mut bytes = [0_u8; 16];
+    getrandom::fill(&mut bytes)
+        .map_err(|error| anyhow::anyhow!("Create Claude session identity: {error}"))?;
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    let hex = bytes.map(|byte| format!("{byte:02x}")).concat();
+    Ok(format!(
+        "{}-{}-{}-{}-{}",
+        &hex[0..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..32]
+    ))
+}
+
+pub fn command_arguments(
+    session_id: &str,
+    resume: bool,
+    settings: &maitty_shared::conversation::LaunchSettings,
+) -> Vec<OsString> {
+    let mut arguments = vec![
+        "-p".into(),
+        "--input-format".into(),
+        "stream-json".into(),
+        "--output-format".into(),
+        "stream-json".into(),
+        "--include-partial-messages".into(),
+        "--verbose".into(),
+        "--permission-prompts".into(),
+        "host".into(),
+        "--replay-user-messages".into(),
+    ];
+    let permission_mode = match (settings.sandbox, settings.approval_policy) {
+        (maitty_shared::conversation::Sandbox::ReadOnly, _) => "plan",
+        (_, maitty_shared::conversation::ApprovalPolicy::Never) => "dontAsk",
+        (
+            _,
+            maitty_shared::conversation::ApprovalPolicy::Untrusted
+            | maitty_shared::conversation::ApprovalPolicy::OnRequest,
+        ) => "default",
+    };
+    arguments.extend(["--permission-mode".into(), permission_mode.into()]);
+    if !resume {
+        arguments.extend(["--session-id".into(), session_id.into()]);
+    } else {
+        arguments.push(format!("--resume={session_id}").into());
+    }
+    if let Some(model) = settings.model.as_deref() {
+        arguments.extend(["--model".into(), model.into()]);
+    }
+    arguments
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{OutputFrame, bounded_content_text, parse_output_frame, verified_version};
+    use super::{
+        OutputFrame, bounded_content_text, command_arguments, parse_output_frame, session_id,
+        verified_version,
+    };
+    use maitty_shared::conversation::{ApprovalPolicy, LaunchSettings, Provider, Sandbox};
+    use std::path::PathBuf;
 
     #[test]
     fn only_the_locally_verified_cli_version_is_supported() {
@@ -292,5 +353,50 @@ mod tests {
         let preview = bounded_content_text(Some(&serde_json::json!("x".repeat(9000))));
         assert!(preview.ends_with("[Output truncated]"));
         assert!(preview.len() < 9000);
+    }
+
+    #[test]
+    fn session_ids_are_unique_valid_uuids() {
+        let first = session_id().unwrap();
+        let second = session_id().unwrap();
+        assert_eq!(first.len(), 36);
+        assert_eq!(first.as_bytes()[14], b'4');
+        assert!(matches!(first.as_bytes()[19], b'8'..=b'b'));
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn read_only_launch_arguments_select_plan_mode_and_the_model() {
+        let settings = LaunchSettings {
+            provider: Provider::Claude,
+            executable: PathBuf::from("claude"),
+            config_root: PathBuf::from("config"),
+            cwd: PathBuf::from("workspace"),
+            model: Some("sonnet".into()),
+            model_provider: None,
+            approval_policy: ApprovalPolicy::OnRequest,
+            sandbox: Sandbox::ReadOnly,
+        };
+        let arguments = command_arguments("session-1", false, &settings);
+        let arguments = arguments
+            .iter()
+            .map(|argument| argument.to_string_lossy())
+            .collect::<Vec<_>>();
+
+        assert!(
+            arguments
+                .windows(2)
+                .any(|pair| pair == ["--permission-mode", "plan"])
+        );
+        assert!(
+            arguments
+                .windows(2)
+                .any(|pair| pair == ["--session-id", "session-1"])
+        );
+        assert!(
+            arguments
+                .windows(2)
+                .any(|pair| pair == ["--model", "sonnet"])
+        );
     }
 }

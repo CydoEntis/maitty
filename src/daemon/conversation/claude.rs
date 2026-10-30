@@ -12,68 +12,14 @@ use tokio_util::codec::{FramedRead, FramedWrite, LinesCodec};
 #[cfg(test)]
 use maitty_provider_claude::ToolResult;
 use maitty_provider_claude::{
-    OutputFrame, bounded_content_text, parse_output_frame, verified_version,
+    OutputFrame, bounded_content_text, command_arguments, parse_output_frame, session_id,
+    verified_version,
 };
 
 const MAX_FRAME_BYTES: usize = 1024 * 1024;
 const STDERR_CHUNK_BYTES: usize = 8192;
 const PROCESS_EXIT_TIMEOUT: Duration = Duration::from_secs(2);
 const INITIALIZE_REQUEST_ID: &str = "claude-initialize";
-pub(super) fn session_id() -> Result<String> {
-    let mut bytes = [0_u8; 16];
-    getrandom::fill(&mut bytes)
-        .map_err(|error| anyhow::anyhow!("Create Claude session identity: {error}"))?;
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    let hex = bytes.map(|byte| format!("{byte:02x}")).concat();
-    Ok(format!(
-        "{}-{}-{}-{}-{}",
-        &hex[0..8],
-        &hex[8..12],
-        &hex[12..16],
-        &hex[16..20],
-        &hex[20..32]
-    ))
-}
-
-pub(super) fn command_arguments(
-    session_id: &str,
-    resume: bool,
-    settings: &crate::conversation::LaunchSettings,
-) -> Vec<OsString> {
-    let mut arguments = vec![
-        "-p".into(),
-        "--input-format".into(),
-        "stream-json".into(),
-        "--output-format".into(),
-        "stream-json".into(),
-        "--include-partial-messages".into(),
-        "--verbose".into(),
-        "--permission-prompts".into(),
-        "host".into(),
-        "--replay-user-messages".into(),
-    ];
-    let permission_mode = match (settings.sandbox, settings.approval_policy) {
-        (crate::conversation::Sandbox::ReadOnly, _) => "plan",
-        (_, crate::conversation::ApprovalPolicy::Never) => "dontAsk",
-        (
-            _,
-            crate::conversation::ApprovalPolicy::Untrusted
-            | crate::conversation::ApprovalPolicy::OnRequest,
-        ) => "default",
-    };
-    arguments.extend(["--permission-mode".into(), permission_mode.into()]);
-    if !resume {
-        arguments.extend(["--session-id".into(), session_id.into()]);
-    } else {
-        arguments.push(format!("--resume={session_id}").into());
-    }
-    if let Some(model) = settings.model.as_deref() {
-        arguments.extend(["--model".into(), model.into()]);
-    }
-    arguments
-}
-
 #[derive(Debug, PartialEq)]
 pub(super) enum ProjectedEvent {
     Notification { method: String, params: Value },
@@ -878,11 +824,9 @@ async fn run_turn(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        OutputFrame, ProjectedEvent, TurnProjector, command_arguments, parse_output_frame,
-        session_id, verified_version,
-    };
+    use super::{OutputFrame, ProjectedEvent, TurnProjector, parse_output_frame, verified_version};
     use crate::conversation::{ApprovalPolicy, LaunchSettings, Provider, Sandbox};
+    use maitty_provider_claude::{command_arguments, session_id};
     use serde_json::json;
     use std::path::PathBuf;
 
