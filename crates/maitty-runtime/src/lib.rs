@@ -6,7 +6,6 @@ mod client;
 mod config;
 mod daemon;
 pub use maitty_shared::{clock, conversation, hidden, layout, output_line, protocol};
-mod detection;
 mod gitfs;
 mod ipc;
 mod keys;

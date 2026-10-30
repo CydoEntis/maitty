@@ -2355,6 +2355,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "maitty-agent-detection"
+version = "0.1.0"
+dependencies = [
+ "maitty-shared",
+ "regex",
+ "serde",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
 name = "maitty-desktop-client"
 version = "0.1.0"
 dependencies = [
@@ -2430,6 +2440,7 @@ dependencies = [
  "interprocess",
  "jsonc-parser",
  "libc",
+ "maitty-agent-detection",
  "maitty-ipc-transport",
  "maitty-provider-claude",
  "maitty-provider-codex",

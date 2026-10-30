@@ -956,6 +956,12 @@ agent policy remain in runtime. The workspace suite passes 1,317 runtime tests,
 19 settings tests, 31 desktop-client tests, 3 IPC transport tests, all remaining
 package suites, and 5 ignored tests. Strict clippy, workspace build, and
 Linux/macOS package checks all pass.
+The bundled agent screen matcher and its manifest fixtures have now moved into
+`maitty-agent-detection`; daemon status still owns process-tree and lifecycle
+signals. The full workspace suite passes 1,314 runtime tests, 3 detection tests,
+19 settings tests, 31 desktop-client tests, 3 IPC transport tests, all remaining
+package suites, and 5 ignored tests. Strict clippy, workspace build, and
+Linux/macOS package checks all pass.
 Linux and macOS target checks passed for the installed `maitty` package. The
 all-workspace Linux cross-check still needs a configured D-Bus
 pkg-config/sysroot for the Tauri host.

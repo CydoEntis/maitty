@@ -192,6 +192,8 @@ length-delimited protocol framing and Welcome handshake shared by the TUI and GU
 socket naming and daemon startup stay in their respective clients. The Tauri host
 uses `maitty-desktop-client`
 for daemon IPC and GUI operations; it does not link `maitty-runtime`. The
+`maitty-agent-detection` package owns the bundled agent-screen matcher used by
+daemon status; process-tree and lifecycle status remain daemon-owned. The
 original terminal implementation now lives in `maitty-runtime`; the root
 `maitty` package preserves the installed command and re-exports the runtime
 library for compatibility. The daemon, TUI and CLI still live together inside
@@ -268,6 +270,7 @@ crates/maitty-runtime/src/
                  types; common preferences are in maitty-settings
   keys.rs        TUI mouse-event encoding wrapper; key actions live in maitty-settings
   layout.rs      split trees and neighbour finding
+  daemon/status.rs uses the external screen-evidence package for agent-owned patterns
   daemon/        the server: mod.rs (loop), term.rs (PTY + vt100), scan.rs
                  (status), git.rs, persist.rs
   client/        the UI: mod.rs (loop, input), screen/ (layout), design.rs
@@ -277,6 +280,7 @@ crates/maitty-runtime/src/
 crates/maitty-shared/ shared wire protocol, conversation contracts and split-tree types
 crates/maitty-settings/ preference schemas and validation, key actions, bindings, parsing and built-in themes
 crates/maitty-ipc-transport/ length-delimited framing and handshake shared by clients
+crates/maitty-agent-detection/ bundled agent screen-evidence rules and matcher
 crates/maitty-runtime/ original terminal app implementation; TUI, CLI and daemon still being split
 docs/            these docs, the roadmap, design briefs
 config.example.toml

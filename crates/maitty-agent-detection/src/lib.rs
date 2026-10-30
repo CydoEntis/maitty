@@ -2,13 +2,13 @@
 
 mod regions;
 
-use crate::protocol::Status;
+use maitty_shared::protocol::Status;
 use regex::Regex;
 use serde::Deserialize;
 use std::sync::LazyLock;
 
 #[derive(Clone, Copy)]
-pub(crate) struct DetectionInput<'a> {
+pub struct DetectionInput<'a> {
     pub screen: &'a str,
     pub osc_title: &'a str,
     pub osc_progress: &'a str,
@@ -127,7 +127,7 @@ struct CompiledManifest {
 }
 
 macro_rules! manifests {
-    ($($name:literal),+ $(,)?) => { &[$(include_str!(concat!("../../../../vendor/herdr-detection/", $name, ".toml"))),+] };
+    ($($name:literal),+ $(,)?) => { &[$(include_str!(concat!("../../../vendor/herdr-detection/", $name, ".toml"))),+] };
 }
 
 const SOURCES: &[&str] = manifests!(
@@ -181,7 +181,7 @@ static MANIFESTS: LazyLock<Vec<CompiledManifest>> = LazyLock::new(|| {
 });
 
 #[derive(Default)]
-pub(crate) struct Signal<'a> {
+pub struct Signal<'a> {
     pub status: Option<Status>,
     pub skip: bool,
     pub visible_idle: bool,
@@ -189,7 +189,7 @@ pub(crate) struct Signal<'a> {
     pub rule: &'a str,
 }
 
-pub(crate) fn detect(agent: &str, input: DetectionInput<'_>) -> Signal<'static> {
+pub fn detect(agent: &str, input: DetectionInput<'_>) -> Signal<'static> {
     let Some(manifest) = MANIFESTS.iter().find(|manifest| manifest.id == agent) else {
         return Signal::default();
     };

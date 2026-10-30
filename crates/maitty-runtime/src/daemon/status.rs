@@ -744,16 +744,16 @@ impl Daemon {
             let def = self.agents.iter().find(|a| &a.name == name);
             let screen = t.tail_text(t.rows);
             let signal = if def.is_some_and(|d| d.builtin_screen) {
-                crate::detection::detect(
+                maitty_agent_detection::detect(
                     name,
-                    crate::detection::DetectionInput {
+                    maitty_agent_detection::DetectionInput {
                         screen: &screen,
                         osc_title: &t.parser.callbacks().title,
                         osc_progress: &t.parser.callbacks().progress,
                     },
                 )
             } else {
-                crate::detection::Signal::default()
+                maitty_agent_detection::Signal::default()
             };
             if signal.skip {
                 continue;

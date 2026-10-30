@@ -18,6 +18,7 @@ previous = ["vibecasso", "seshi", "hydra", "drover"]
 [workspace]
 members = [
     "crates/maitty-shared",
+    "crates/maitty-agent-detection",
     "crates/maitty-ipc-transport",
     "crates/maitty-runtime",
     "crates/maitty-settings",
