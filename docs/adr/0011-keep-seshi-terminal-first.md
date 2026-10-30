@@ -1,6 +1,6 @@
 # 0011. Keep Seshi terminal-first
 
-- **Status:** Accepted
+- **Status:** Superseded by [0036](0036-chat-gui-shared-conversations.md)
 - **Date:** 2026-10-17
 
 ## Context

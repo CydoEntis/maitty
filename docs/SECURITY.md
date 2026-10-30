@@ -106,6 +106,17 @@ it out in the handoff.
 
 ## Project-specific: threat model
 
+The Tauri webview is an untrusted client. Keep capabilities limited to the
+application's own windows; validate command inputs in Rust; expose no generic
+filesystem, process or shell bridge. Conversation authority and credentials
+remain in the daemon and its authenticated IPC.
+
+The native host may start only the bundled CLI sidecar with the fixed `daemon`
+argument. Resolve its path from the application bundle; never accept a program
+path or argument list from the webview. Remove inherited pane, structured
+conversation and remote-route variables before starting it, while preserving
+the user's local config, data and socket overrides.
+
 Assets: the user's shells and agent sessions (which can run any command as the
 user), their source code, and API keys in `config.local.toml`. Threats: another
 local user or process driving the daemon's socket; a process inside one pane
@@ -247,3 +258,59 @@ warns and leaves the install in place. `MAITTY_NO_INTEGRATE=1` skips the step.
 
 `cargo audit` (install with `cargo install cargo-audit`) before releases; GitHub
 push protection for secrets. Not yet in CI (there is no CI yet).
+
+## Project-specific: structured history cache boundary
+
+The structured-history cache reuses private-directory/file helpers:
+0700 directories and 0600 files on Unix, the user's private data location on
+Windows. Binding fingerprints and numeric Maitty paths keep native identifiers
+out of filenames; pages remain sensitive conversation content, never diagnostics.
+Only current daemon-owned provider events may project into attached history.
+Unsupported raw provider objects are not retained. Cache disable serializes with
+writes and deletes only Maitty's socket-scoped history root, never native history.
+Without persistence, hydrated content belongs to an attachment and disappears on
+its disconnect. No credentials, real transcripts or model requests enter fixtures.
+Structured start/send/read/approval/cancel actions use the existing socket
+authentication without a conversation-based self exemption. Start requires the
+start grant, send and cancel require write, read requires read, and approval
+answers require respond. Structured runtimes cannot answer provider approval
+requests. A human approval is bound to its exact provider request ID,
+conversation generation and daemon-owned connection; unknown request kinds stay
+unanswered. Invisible characters are displayed as Unicode escapes. Only the
+command and reason needed for the decision leave the daemon;
+raw provider params are not retained in the conversation history or metadata.
+Prompts are checked for invisible characters at daemon admission. Launch inputs
+are validated in background and explicit sandbox/approval posture is checked in
+the provider response. Native profile-v2 and ambiguous identity are refused.
+Command execution, file-change and user-input requests may be answered only by a
+human through the exact live request ID. File-change approval stays disabled
+until the matching diff is visible. User-input answers are validated against
+the displayed questions and choices, reject hidden Unicode, and are not stored
+in history or metadata. Permission requests stay blocked and unanswered until
+their controls exist; no unsupported request can approve itself. Turn cancellation is human-only and carries the acknowledged active
+turn ID through the owning provider connection; uncertain sends are never
+guessed. Generation and connection identity fence every event; checkpoint
+approvals retain separate typed owners.
+
+Persist metadata intent before provider creation/submission and durable native
+turn acknowledgement before returning success. A crash or transport ambiguity
+never retries a possibly delivered prompt. Prompt text and effective environment
+never enter the metadata ledger or diagnostics. Structured history appears only
+in explicit authorized read replies and the optional private cache.
+
+Outgoing structured tools authenticate with a daemon-minted runtime secret bound
+to conversation, generation and connection. Strip inherited pane/structured
+credentials before launch. Do not persist this secret, copy a pane token, accept
+a partial environment claim, or treat rejected/revoked claims as human callers.
+Every request uses configured MCP grants, with no logical-conversation self
+exemption; human-only grant/check/helper answers remain human-only. Structured
+descendant starts are refused pending conversation-owned helper consent.
+
+Codex filters MCP child environments, so validated runtime overrides append the
+four reserved identity variable names to existing stdio MCP allowlists. They
+contain no secret values. Preserve the effective default/all shell policy and
+refuse unsupported custom filtering, environment-set or profile policy and
+reserved MCP environment conflicts before a thread starts. No credential
+exposure switch is broadened. Explicit MCP references revalidate current read
+authority before filesystem work. An in-memory native acknowledgement remains
+uncertain in every read response until its persistence barrier succeeds.

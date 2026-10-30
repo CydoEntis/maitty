@@ -1,0 +1,82 @@
+# Tauri
+
+> **Use for:** Maitty's optional cross-platform desktop GUI host.
+> **Requires:** Rust, TypeScript, React
+> **Fills:** ARCHITECTURE § stack and layers; ENVIRONMENT § prerequisites; SECURITY § threat model
+
+## Rules
+
+- Keep Tauri as an optional desktop shell. The Rust CLI/TUI build and install
+  must continue to work without Node or frontend dependencies.
+- The webview is a client of the daemon. It never owns agent processes, PTYs,
+  durable sessions, provider credentials or conversation state.
+- Keep the command surface narrow and typed. Validate every command input in
+  Rust; do not expose generic filesystem, process, shell or IPC commands.
+- Bundle the standalone CLI as the daemon sidecar. The native host starts it
+  only with the fixed `daemon` argument when no local daemon answers; the
+  webview cannot choose an executable or process arguments.
+- Launch the daemon as a separate detached process. It must keep sessions alive
+  after the GUI exits, and must not inherit pane identity, structured runtime
+  identity or remote routing variables from the GUI process.
+- Use the daemon's authenticated local IPC and existing protocol. The GUI must
+  not open a second session store or bypass daemon authorization.
+- Keep capabilities scoped to the app's own windows and only the plugins and
+  commands the GUI uses. Do not enable remote origins or broad filesystem access.
+- Native directory selection uses the Tauri dialog plugin. Grant only
+  `dialog:allow-open`; do not grant filesystem read/write access for a folder
+  picker.
+- Build the frontend as a Vite single-page app. Do not add server-side rendering.
+- Use the operating system webview. Document its runtime prerequisites and
+  verify packaged builds on Windows, macOS and Linux.
+
+## Platform prerequisites
+
+- Windows: Microsoft C++ build tools and WebView2 runtime.
+- macOS: macOS 10.15 or later and Xcode Command Line Tools.
+- Linux: WebKitGTK 4.1 and the Tauri system libraries listed by the platform
+  setup guide.
+
+For Arch Linux, including Omarchy, install Tauri's native build dependencies
+before running `pnpm desktop:build` from `gui/`:
+
+```sh
+sudo pacman -S --needed webkit2gtk-4.1 base-devel curl wget file openssl dpkg patchelf \
+  appmenu-gtk-module libappindicator-gtk3 librsvg rpm-tools xdotool
+```
+
+On Omarchy, install the same packages through **Super+Space → Install → Package**
+or run `omarchy pkg add <package>` once per package. Keep the system updated
+with Omarchy's own update flow; do not run a full `pacman -Syu` for this setup.
+Package names follow [Tauri's Linux prerequisites](https://v2.tauri.app/start/prerequisites/).
+The Omarchy package and update flows are documented in its
+[package guide](https://omarchy.org/manual/other-packages/) and
+[update guide](https://omarchy.org/manual/updates/).
+
+Build the GUI on Linux itself so Tauri links against that system's WebKitGTK.
+The Rust CLI/TUI can still be cross-checked from other platforms, but that does
+not validate the Linux desktop shell.
+
+The `.AppImage` bundle needs FUSE to mount when launched. Arch Linux and Omarchy
+can install `fuse2` through **Super+Space → Install → Package** or
+`omarchy pkg add fuse2`. If FUSE is unavailable, launch it with
+`--appimage-extract-and-run` instead. See the
+[AppImage FUSE guide](https://docs.appimage.org/user-guide/troubleshooting/fuse.html).
+
+## Project-specific: tauri
+
+Tauri 2 is the optional desktop host. The GUI lives in `gui/`, uses React,
+TypeScript, Vite, shadcn/ui and Tailwind, and connects to the existing daemon.
+Keep native packaging and GUI build steps separate from `cargo install --path .`.
+Desktop build scripts compile and package a GUI-specific CLI sidecar for the
+current host. Keep its `maitty-gui-daemon` name separate from the terminal CLI
+executable so a running daemon cannot lock the file a new GUI build must
+replace. Resolve the daemon from packaged resources first, then from an adjacent
+target-suffixed GUI sidecar so release builds launched from their output
+directory can start the daemon too.
+Expose only fixed commands to the webview. On a protocol mismatch, the GUI may
+offer an explicit restart for an older local daemon after showing its saved
+session and active-turn counts; recheck the exact protocol in Rust before
+stopping it, then reconnect through the bundled daemon. Never downgrade a newer
+daemon or restart a remote service from the GUI.
+The target OS floor is the existing project support floor; do not raise it
+without updating this section and the release workflow.

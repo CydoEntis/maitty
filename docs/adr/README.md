@@ -34,7 +34,7 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0008](0008-rename-to-seshi.md) | The app is called Seshi | Accepted |
 | [0009](0009-leader-keys-after-the-cut.md) | Leader keys: a shell is one key, and only kept features have keys | Accepted |
 | [0010](0010-optional-desktop-client.md) | Offer an optional desktop client over the shared session engine | Superseded by 0011 |
-| [0011](0011-keep-seshi-terminal-first.md) | Keep Seshi terminal-first | Accepted |
+| [0011](0011-keep-seshi-terminal-first.md) | Keep Seshi terminal-first | Superseded by [0036](0036-chat-gui-shared-conversations.md) |
 | [0012](0012-flat-rendering-style.md) | Add a flat rendering style | Accepted |
 | [0013](0013-v7-frame.md) | Draw the v7 frame: tabs in the pane title, no margin | Proposed, tabs in the title superseded by 0028 |
 | [0014](0014-v8-cleanup.md) | Bring over the v8 cleanup, keeping what the user already decided | Accepted, its no-footer rule amended by 0024 |
@@ -59,3 +59,8 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0033](0033-the-collapsed-sidebar-is-a-column.md) | The collapsed sidebar is a narrow column, not a strip of chips | Accepted |
 | [0034](0034-the-sidebar-never-reorders-itself.md) | The sidebar never reorders itself, and has no SSH group | Accepted |
 | [0035](0035-the-tab-row-sits-outside-the-pane-boxes.md) | The tab row sits over the pane boxes, not inside them | Accepted |
+| [0036](0036-chat-gui-shared-conversations.md) | Optional chat GUI over daemon-owned native conversations | Accepted
+| [0037](0037-tauri-react-desktop-shell.md) | Tauri 2 desktop shell with React and shadcn/ui | Accepted |
+| [0038](0038-standalone-gui-first.md) | Make the standalone GUI usable before native terminal transfer | Accepted |
+| [0039](0039-claude-code-cli-streaming.md) | Drive Claude Code through its streaming CLI protocol | Accepted |
+| [0040](0040-decouple-desktop-clients-and-providers.md) | Decouple desktop clients and provider adapters | Accepted |

@@ -82,8 +82,17 @@ in depth.
 
 ## Project-specific: engine and access
 
+`daemon/persist.rs` owns the session JSON snapshot. Conversation metadata and
+pane associations share one private, synced temporary file renamed over the
+snapshot; there is no separate registry file or database.
+
 
 ## Project-specific: conventions
+
+The top-level `conversations` list defaults empty for legacy snapshots. Optional
+pane `conversation_id` links never establish identity from legacy hook metadata.
+The registry validates nonzero IDs/generations, complete absolute bindings and
+unique conversation/native-session identities before saving or restoring.
 
 
 ## Project-specific: migrations workflow
@@ -91,3 +100,48 @@ in depth.
 
 ## Project-specific: entities
 
+A conversation stores provider, exact native session ID, optional account label
+and profile, config root, executable, cwd, optional worktree, execution kind,
+generation and recovery state. It stores no conversation content, credentials,
+provider connection or approval authority, including when restore.output=false.
+Running/transferring records restore with a checked generation increment and
+recovery-required state; linked panes never use legacy most-recent resume.
+Recovered metadata remains due for saving until an atomic write succeeds.
+A retained registry prevents empty-daemon auto-exit from deleting its snapshot.
+Profile persistence does not establish verified native/app-server launch parity;
+see [the Codex contract](stack/codex-app-server.md).
+
+
+## Project-specific: structured history cache foundation
+
+`daemon/conversation/history_storage.rs` is a private structured display cache,
+not a database or a replacement for provider-native context. `Cache::for_session`
+derives `<data>/session-<socket>.history/` from the existing session snapshot path.
+Conversation directories and immutable page filenames use numeric Maitty IDs;
+native IDs never become paths. Pages hold at most 128 entries / 256 KiB.
+
+A synced, atomically replaced `manifest.json` commits the revision, a SHA-256
+binding fingerprint, completeness and the exact page list with lengths/digests.
+Readers consult only that manifest; missing/corrupt pages fail explicitly and
+require native hydration. Temporary/orphan files never prove completeness.
+Streaming drafts are excluded from durable pages. Metadata snapshots remain
+content-free.
+
+One cache owner per daemon/socket serializes writes and policy changes. Prepared
+writes carry a policy epoch; disabled or superseded writes cannot recreate
+content. Older queued revisions cannot replace newer committed revisions.
+`restore.output = false` or `restore.enabled = false` deletes/prevents this cache;
+cleanup failure is explicit. Startup and reload apply these policies in production.
+
+`pending_starts` defaults empty and records identity creation intent before the
+provider can create a thread. An interrupted intent remains unresolved and never
+automatically starts another thread. Complete bindings include verified structured
+launch settings; the generic Codex `session_id` means exact `Thread.id`, never
+the shared tree's `Thread.sessionId`.
+
+`conversation_operations` defaults empty. It stores one monotonic operation
+watermark, prompt digest and uncertain/acknowledged turn receipt per conversation,
+including when output retention is disabled. It stores no prompt body or general
+request ledger. Metadata restoration must be enabled for structured mutations.
+All full snapshots use a capture-time ticket and one resolved-path writer lock;
+an older completion cannot overwrite a newer committed intent or receipt.

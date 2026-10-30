@@ -265,11 +265,13 @@ has to be right, and sessions survive the UI closing.
 3. **Windows is a first-class target.** Every change builds and behaves on
    Windows (ConPTY, named pipes, PowerShell) as well as Linux and macOS; the
    cross-checks in the gate are not optional.
-4. **Maitty is terminal-first.** The `maitty` terminal layout is its only user
-   interface. Floating and tiled are two drawing styles (ADR 0007). Do not add a
-   separate desktop GUI client (ADR 0011).
-5. **Status reports are only trusted from the pane itself**: its process tree, or
-   its `MAITTY_PANE_TOKEN`. Never accept a status change from an unverified source.
+4. **Preserve the TUI alongside the optional chat GUI.** Both clients use the
+   daemon's sessions. Keep native agent terminal interfaces and terminal-only
+   installation supported. See ADR 0036 and the chat GUI spec.
+5. **Trust status only from the owning runtime.** Pane reports need its process
+   tree or `MAITTY_PANE_TOKEN`; structured provider events need the daemon-owned
+   connection and current conversation generation. See ADR 0036. Unverified or
+   superseded sources cannot change status.
 6. **No blocking work on the UI thread.** Git, file walks, network and process
    spawns go through background tasks (`spawn_bg`) and report back as messages.
 

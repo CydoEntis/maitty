@@ -242,3 +242,10 @@ warnings`. No lint config file; allow-attributes are local and explained.
   `draw_*` functions stay inline where they are drawn.
 - **Layout numbers** (popup widths, column offsets) may stay inline in drawing
   code when used once; repeated ones become named consts.
+
+## Project-specific: desktop frontend
+
+The optional `gui/` frontend follows `docs/stack/typescript.md`,
+`docs/stack/react.md`, `docs/stack/shadcn-tailwind.md` and `docs/stack/xterm.md`.
+Keep frontend source in TypeScript and keep platform and daemon operations
+behind the Tauri host.

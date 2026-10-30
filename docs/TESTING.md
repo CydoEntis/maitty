@@ -71,6 +71,10 @@ journeys that must never break.
 
 ## Project-specific: tools and commands
 
+The optional desktop frontend uses the commands and tools recorded in its
+stack docs. Keep those checks separate from the Rust verification gate so the
+terminal-only build does not require Node or a webview.
+
 The built-in test harness: `cargo test` runs everything (unit tests sit in
 `#[cfg(test)] mod` blocks beside the code). UI tests render frames with
 ratatui's `TestBackend` and assert on the text and cell styles;

@@ -111,6 +111,12 @@ are ignored) and needs no bump, provided a test decodes the old shape. Hooks say
 too, so every bump stops hooked panes reporting until the daemon restarts. The CLI subcommands and the MCP server (`maitty mcp`, JSON-RPC over stdio)
 are thin wrappers that send the same commands.
 
+The optional Tauri GUI invokes only fixed desktop commands from
+`src/desktop.rs`; validate webview input in both the TypeScript boundary and
+the Rust host. Never expose a generic process or shell command. A desktop
+protocol-mismatch restart must recheck the exact local protocol before stopping
+an older daemon and must refuse to downgrade a newer one.
+
 ## Project-specific: response and error shapes
 
 Commands are fire-and-forget; the daemon's answer is the next `Snapshot` (full
@@ -128,7 +134,7 @@ the pane's process tree or `MAITTY_PANE_TOKEN`.
 Saved role profiles and sequenced planner/worker/reviewer workflows are not part
 of Maitty's interface, and neither is a fleet commander (`maitty brief`, `[team]`): old
 config keys for them are read and ignored. Sessions, ordinary agent launches, helpers, and
-MCP session controls remain supported. The wire protocol is version 49.
+MCP session controls remain supported. The wire protocol is version 55.
 
 `SwapPanes { a, b }` trades the places of two panes of one tab (the split ratios stay with
 their slots). Panes in different tabs, or one that isn't there, are an error.
@@ -299,3 +305,169 @@ changed` and `not checked: never for this repo`. With several checkpoints the no
 `command`, `exit_code`, `duration_ms`, `first_failing_line`, `line_count`, `turn`,
 `rerun_queued`, `overridden_at`, `overridden_by`, `stale_since`, `changed_files` as
 `{kind, path}`); `check` stays the headline.
+
+## Project-specific: structured display history foundation
+
+`daemon/conversation/history.rs` owns a display projection, separate from native
+executable context. Stable identities are conversation + exact native turn/item
+IDs; turn status has a separate row (empty item ID reserved internally).
+Lifecycle events upsert the existing row in place. Codex deltas have no sequence
+or offset, so equal chunks are appended within one connection; completed native
+items win over replayed deltas. Reconnect drops uncertain drafts before ordered
+authoritative hydration. Unknown items/events make completeness explicit.
+
+Internal reads accept a conversation/revision/position cursor, at most 128 entries
+and 256 KiB of serialized JSON including the page envelope. Content/order changes
+invalidate cursors; oversized entries fail explicitly. `next = None` means cached
+exhaustion only. Completeness is independently Unknown, Loading, Complete or
+Incomplete(reason). Ordinary snapshots contain summaries only; explicit
+`ConversationRead` replies carry bounded history pages.
+
+Daemon notifications reach
+attached projections only after current generation/connection acceptance, and
+client disconnect drops that attachment's memory. Production admission pages
+`thread/turns/list` ascending with `itemsView: full`, checks every continuation
+cursor and refuses partial/unsupported history before enabling writes. Hydration
+is capped at 100,000 entries and 32 MiB. Cached completeness is never fresh native
+completeness.
+
+`Cache::load` describes only its committed historical revision. Attachment
+`hydrate_cached` demotes it to disconnected/incomplete; only `hydrate_native`
+after authoritative reconciliation may establish current completeness. Structured
+admission must use this boundary when a provider continued during an attachment
+gap; cached exhaustion/Complete never proves fresh native completeness.
+
+Native hydration preserves running item prefixes as connection drafts: following
+deltas append to them, and durable snapshots omit them with incomplete status.
+Empty deltas do not mutate the projection. Attachment hydration advances beyond
+both imported and existing revisions; cache commits reject older or equal
+revisions so competing attachment snapshots cannot replace an equal revision.
+
+The cache accepts one daemon-owned authoritative projection/writer per
+conversation. Attachment read views are not independent cache writers. A
+`commit` result of `false` explicitly rejects a stale/equal revision or obsolete
+policy epoch; it is not a save acknowledgement. The caller must retain dirty
+state and refresh/reconcile before retrying. The daemon retains dirty revisions
+until a matching commit succeeds, with at most one cache write in flight per
+conversation. Reload fences the policy synchronously; deletion runs in the shared
+background storage lock. Attachments never submit independent cache revisions.
+
+## Project-specific: structured conversation IPC
+
+See [stack/claude-code-cli.md](stack/claude-code-cli.md) for the Claude CLI
+process boundary and event/approval handling rules.
+
+Protocol 59 adds the human-only `ConversationTerminalResize` command. It
+requires the exact conversation generation, validates bounded terminal
+dimensions, and resizes only the daemon-resolved native pane. Terminal replay
+queries return the pane's bounded raw output history for initial scrollback;
+screen queries return a formatted ANSI snapshot for terminal emulation. Protocol 58
+adds the human-only `ConversationHandoffToChat` command. It accepts
+only the exact idle native Codex pane, persists a transfer fence, confirms the
+native process tree stopped and the direct process was reaped, then resumes the
+same Codex session through the structured runtime. It hydrates the native turn
+history before acknowledging chat ownership; incomplete history blocks takeover.
+Protocol 57 adds the human-only `ConversationHandoffToNative` command. The daemon
+persists the transfer fence before stopping the structured runtime, waits for
+confirmed process cleanup, then resumes the exact Codex session in a daemon-owned
+terminal. Protocol 56 added conversation-bound native terminal screen and input messages.
+They require the exact conversation generation and resolve the attached pane
+inside the daemon; input is human-only, requires write (and respond while the
+pane is blocked), and is limited to 16 KiB per message. Protocol 55 added a
+read-only conversation diff query. Protocol 54 added Codex permission approval
+requests. Protocol 53 added file-change approval requests. Protocol 52 added
+`ConversationStart`, `ConversationSend`, `ConversationApprove`,
+`ConversationCancel` and `ConversationRead` over the existing authenticated
+socket. Start needs the start grant, send and cancel the write grant, approval
+answers the respond grant and read the read grant. Conversation IDs grant no
+pane self-exemption.
+Programmatic prompts use the same invisible-character refusal as ordinary send.
+Pane-originated starts also use existing helper consent and concurrency limits.
+Pending structured launches and live structured helpers count alongside native
+helpers; the verified initiating pane remains attached to the runtime's state.
+
+Daemon-owned structured processes receive a separate generation/connection-bound
+identity through four reserved environment variables and `Hello.structured`.
+The runtime mints its own secret; it never copies a pane token. Partial/malformed
+environment claims and rejected/stale handshakes cannot become human callers.
+Every incoming request rechecks the live owner and configured MCP grants;
+structured callers have no pane self exemption or human-only approval authority.
+Granted list/read/send workflows remain available under their respective grants.
+Structured descendants are refused until conversation-owned helper consent is
+supported; ordinary native helper behavior is unchanged.
+
+Before creating/resuming a thread, the actor reads effective provider config for
+the selected cwd on its own initialized connection. Supported shell policy retains
+the four identity variables; unsupported custom filtering/set/profile policies
+fail before thread creation. Runtime-only, value-free config overrides preserve
+existing stdio MCP inherited-variable lists and append the identity variable
+names. Explicit conflicting MCP environment values are refused. No authentication
+secret is inserted into provider config, persisted thread settings or metadata.
+MCP references revalidate authenticated read access before filesystem listing.
+
+Start targets are Create with explicit launch settings, Session with an exact
+Codex `Thread.id`, or Conversation with a Maitty ID and expected generation.
+Paths are resolved in background before admission. Explicit resume never uses
+latest, a picker, a fork, alternate history or a missing-thread fallback. Native
+profile-v2 remains unsupported. Effective cwd/model/provider/approval reviewer
+and sandbox are validated against the requested posture before identity commits.
+The exact native binding commits before start acknowledgement or turn submission.
+
+Send carries conversation ID, generation, a nonzero increasing operation ID and
+text. One current receipt and content digest are retained per conversation;
+prompt text stays in memory. Persist `SubmissionUncertain` before the RPC and
+persist the acknowledged native turn ID before replying. Same-operation retries
+return a durable receipt without sending again. Changed/reused/older IDs, stale
+generations and busy/blocked runtimes fail. EOF, partial writes, timeout, crash or
+failed acknowledgement persistence leave delivery uncertain and prohibit automatic
+resend. Request correlation IDs do not establish provider idempotency.
+Explicit reads expose an uncertain receipt while acknowledgement persistence is
+pending; the staged in-memory native acknowledgement is not a durable receipt.
+
+Command execution, file-change, permission and user-input requests retain the exact provider request ID, method,
+generation and connection. File-change approval is enabled only after the
+matching patch notification arrives, so the GUI can show the requested files and
+diff before a decision. A human with the respond grant may answer only the
+currently pending request with `accept`, `acceptForSession`, `decline` or `cancel`.
+The request ID is removed only after its response is queued on the owning runtime;
+stale generations, duplicate answers, and structured runtime callers are refused.
+Only the command, requested write root, permission profile and reason needed for a decision are exposed to the client;
+invisible Unicode characters are displayed as `\\u{...}` escapes. Raw provider
+params are not retained in conversation history or the metadata ledger.
+User-input answers must cover each displayed question, use offered choices or an
+explicit free-form option, and contain no hidden Unicode. Secret answers are
+forwarded only in the live provider response and are not stored in conversation
+history or metadata. Permission requests show the exact requested profile and
+allow only that profile for the current turn; declining returns an empty profile.
+Session-wide grants are not offered. Other provider request kinds remain visibly
+blocked and unanswered. Turn
+Cancellation names only the acknowledged active turn ID and exact native thread;
+uncertain submissions cannot be canceled by guessing. The interrupt response
+means the request was accepted, not that the turn stopped; the GUI waits for the
+matching `turn/completed` event. Only human clients can cancel. Native ownership
+transfer remains a later ticket contract. A completed
+native turn enters the existing checkpoint resolver/approval/worker path once;
+generation/run fences reject obsolete results. Provider completion cannot turn a
+failed or pending checkpoint into a pass.
+
+`ConversationDiff` accepts only a conversation ID and generation. The daemon
+resolves its checkout from the stored conversation binding, requires the read
+grant, and runs Git on a blocking worker. It includes tracked and non-ignored
+untracked changes, returns at most 100 files and 2 MiB of patch text, and marks
+the result truncated when large or symlinked untracked files or excess diff data
+are omitted. A result from an obsolete generation is discarded.
+
+Snapshot conversation summaries expose stable ID/generation, provider, cwd,
+worktree, recovery/status/checkpoint context and the optional real native pane.
+They carry no transcripts, launch environment, configuration roots or credentials.
+Explicit read replies carry the same checkpoint-gated status and checkpoint
+summaries. Provider error notifications and failed/interrupted native turns stay
+blocked with an explicit error reason; they cannot report successful completion.
+Failures answer the owning pending request and notify attached observers, without
+injecting unrelated errors into other one-shot clients.
+
+Revision advances use checked arithmetic before changing content, order or
+completeness. Exhaustion returns typed `RevisionExhausted`, preserves the prior
+view/cursor revision and surfaces at the daemon boundary. Cache loading/preparing
+rejects an exhausted manifest/projection revision; imported attachment revisions
+are checked before replacing the existing view. Revisions never wrap or saturate.

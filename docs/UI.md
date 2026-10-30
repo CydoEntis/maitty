@@ -92,6 +92,11 @@ outcome.
 
 ## Project-specific: design system
 
+The optional desktop GUI is a separate React application in `gui/`. Its
+components, state and styling follow the TypeScript, React and shadcn/Tailwind
+stack docs. It shares session and conversation contracts with the TUI, while
+its visual design is owned by the GUI roadmap phases.
+
 A terminal UI (ratatui). Colours come only from the theme (`theme.rs`): semantic
 slots `bg`, `card`, `card2`, `hov`, `accent`/`acc_ink`, `text`/`strong`/`muted`,
 and status colours (`working`, `blocked` = needs you, `done`, `idle`, `err`).

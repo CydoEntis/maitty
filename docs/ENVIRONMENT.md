@@ -46,6 +46,10 @@ script it.
 
 ## Project-specific: prerequisites
 
+The optional Tauri desktop build requires the platform tools and webview
+runtime listed in `docs/stack/tauri.md`. These are not prerequisites for the
+Rust CLI/TUI build or `cargo install --path .`.
+
 Rust stable (edition 2024, so 1.85+) with `cargo`; for the cross-checks, the
 `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin` targets
 (`rustup target add …`). Optional at runtime: `git`, `gh` (opening a PR from Changes), the
@@ -59,6 +63,23 @@ cargo build
 cargo test
 cargo install --path .   # then run: maitty
 ```
+
+To work on the optional desktop preview, from `gui/` run:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm desktop:dev       # run the Tauri desktop shell
+pnpm desktop:build     # create platform installer packages
+```
+
+Desktop commands build the Rust CLI sidecar for the current host platform.
+The packaged GUI uses that sidecar to start the separate daemon when needed;
+closing the GUI leaves the daemon and its sessions running. `pnpm dev` opens
+the browser preview with sample data and does not start or connect to a daemon.
+On Arch Linux, including Omarchy, install the packages listed in
+[`docs/stack/tauri.md`](stack/tauri.md#platform-prerequisites) before running
+`pnpm desktop:build`. Build on the target Linux host because the desktop shell
+links to its installed WebKitGTK.
 
 Settings live in `config.toml` (`%APPDATA%\maitty\` on Windows,
 `~/.config/maitty/` elsewhere), with `config.local.toml` beside it for
@@ -82,6 +103,7 @@ it reads:
 | Variable | Purpose | Set by |
 | --- | --- | --- |
 | `MAITTY_CONFIG` | use this config file instead of the default | user |
+| `MAITTY_DATA_DIR` | absolute directory for saved state, logs and approval settings; validated and captured at startup | developer / user |
 | `MAITTY_SOCKET` | name of a separate server (like `tmux -L`); used for nested test servers | user |
 | `MAITTY_REMOTE` | the SSH host this client works on (from `--remote`) | maitty |
 | `MAITTY_SSH`, `MAITTY_REMOTE_CMD` | replace `ssh` / the remote `maitty` command | user |
@@ -94,8 +116,38 @@ it reads:
 | `XDG_CONFIG_HOME`, `XDG_STATE_HOME` | native OpenCode configuration/state roots; Kilo's config also uses the config root | user / OS |
 | `EDITOR`, `VISUAL`, `SHELL`, `COMSPEC` | editor and shell defaults | OS / user |
 
+For isolated tests, set `MAITTY_DATA_DIR`, `MAITTY_CONFIG` and a unique
+`MAITTY_SOCKET` together. Keep the data directory outside the test repository:
+it contains approval decisions that repository files must not control. The data
+override skips legacy-name migration; it does not redirect config files or
+provider-native history. Empty or relative paths and existing non-directories
+fail startup. A missing absolute directory is created by the private state writers.
+
 ## Project-specific: environments
 
 Local only: Maitty is a desktop tool. Development builds use `cargo install --path .`;
 release archives and installers are published through the GitHub release workflow.
 `dev` is the working branch.
+
+## Project-specific: structured history retention foundation
+
+The structured cache derives `session-<socket>.history/` beside the
+existing private session file, with numeric conversation/page directories. It adds
+no settings, environment variables or dependencies. Its cache owner accepts the
+existing `restore.enabled` and `restore.output` policy at initialization and
+reload: either false removes/prevents all Maitty structured history content.
+Cleanup errors surface; native provider history is untouched. Attachment-scoped
+memory hydration remains available while disk retention is disabled.
+Structured mutations require `restore.enabled=true` so delivery metadata can be
+durably recorded. `restore.output=false` still permits content-free identity and
+operation receipts. A selected executable and existing absolute Codex home/cwd
+are explicit CLI launch inputs; the actor sets `CODEX_HOME` to that root. No new
+provider credential setting is introduced.
+
+Structured provider children receive four internal, runtime-scoped variables:
+`MAITTY_CONVERSATION_ID`, `MAITTY_CONVERSATION_GENERATION`,
+`MAITTY_CONVERSATION_CONNECTION`, and secret `MAITTY_CONVERSATION_AUTH`.
+The daemon owns these values; do not set or log them. All four are required when
+any is present. They identify a live runtime without a terminal pane. Provider
+launch strips inherited pane/structured claims, and configured MCP subprocess
+allowlists receive only the variable names through transient request overrides.

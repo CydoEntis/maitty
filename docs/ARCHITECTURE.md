@@ -178,6 +178,11 @@ each other.
 
 ## Project-specific: stack
 
+The optional GUI, TUI/CLI, daemon core, shared protocol and provider adapters
+are separate workspace packages per [ADR 0040](adr/0040-decouple-desktop-clients-and-providers.md).
+Clients depend on the shared protocol; only the daemon depends on provider
+adapters and owns agent processes.
+
 Rust, edition 2024, stable toolchain. Key libraries: `tokio` (async runtime),
 `ratatui` 0.30 + `crossterm` (TUI), `portable-pty` (PTYs / ConPTY), `vt100`
 (terminal emulation), `interprocess` (local sockets), `rmp-serde` (msgpack wire
@@ -189,6 +194,9 @@ lists while retaining comments and settings; serde_json alone cannot preserve th
 `vt100` is a patched copy in `vendor/vt100` (see its `MAITTY.md`; wired in with
 `[patch.crates-io]`): keep its changes there and listed in that file.
 Rules for the language live in `docs/stack/rust.md`.
+The optional desktop client uses Tauri 2, React, TypeScript, Vite, shadcn/ui
+and Tailwind; its rules live in `docs/stack/tauri.md`, `typescript.md`,
+`react.md` and `shadcn-tailwind.md`.
 
 ## Project-specific: layers
 
@@ -323,4 +331,72 @@ Decisions: [0001 daemon owns sessions](adr/0001-daemon-owns-sessions.md),
 [0003 msgpack over local sockets](adr/0003-msgpack-over-local-sockets.md),
 [0004 one layout](adr/0004-one-layout.md),
 [0005 herdr-compatible keys](adr/0005-herdr-compatible-keys.md),
-[0011 keep Maitty terminal-first](adr/0011-keep-seshi-terminal-first.md).
+[0031 optional chat GUI and shared conversations](adr/0036-chat-gui-shared-conversations.md).
+
+## Project-specific: planned structured conversations
+
+[Phases 32–35](ROADMAP.md#32--shared-conversations-and-codex-handoff--active)
+add daemon-owned structured agent runtimes and an optional chat GUI.
+[The spec](features/chat-gui/spec.md) owns the target conversation/history/handoff
+contract. Structured Codex CLI admission is implemented; the current terminal path remains supported.
+Codex is first, Claude follows before release. Desktop framework selection and
+final GUI design were selected in phases 35–37.
+
+Structured provider integrations follow the provider-appropriate pattern
+documented by [T3 Code's provider guide](research/t3code-provider-integrations.md):
+use a provider's supported native runtime/protocol when it carries capabilities
+Maitty needs; use ACP for compatible agents; add a thin provider-specific flavor
+only for behavior ACP does not express. Normalize events and truthful capability
+flags at the daemon adapter boundary. Keep each provider's identity, account and
+configuration isolated, and preserve its native approval and session semantics.
+Do not infer that another product's authentication choices are permitted for
+Maitty. This rule guides future provider integrations; it does not expand the
+current GUI release scope beyond Codex and Claude.
+
+See [stack/claude-code-cli.md](stack/claude-code-cli.md) for the Claude CLI
+adapter's authentication, lifecycle and platform rules.
+
+The Codex transport foundation lives in `src/daemon/conversation/`: `codex.rs`
+checks compatibility, `transport.rs` validates launch configuration and stdio
+envelopes, `process.rs` owns platform process-tree cleanup, and `runtime.rs`
+owns background connection actors. `daemon.rs` admits bindings from the daemon's
+conversation registry and fences every incoming event by conversation,
+generation and connection identity. Runtime ownership never belongs to a client
+or PTY. Disposal remains pending until the root is reaped; disconnect does not
+dispose it. Synthetic fixtures and real fake-provider child tests live beside it.
+`commands.rs` owns authenticated start/send/read admission, operation receipts,
+durability barriers and native paging. Actors correlate typed requests with exact
+JSON-RPC IDs on the existing connection; closing a client leaves its runtime alive.
+Only an explicit conversation start launches a selected provider.
+The verified provider baseline is in [codex-app-server](stack/codex-app-server.md).
+
+Durable conversation metadata lives in pure `src/conversation.rs`, separate from
+`TermId`. The daemon keeps its registry independently of PTYs and saves it in the
+same session snapshot as optional pane associations. Restore fences running and
+transferring records as recovery-required and withholds linked panes from legacy
+resume fallback. Unresolved creation intents retain a separate `PendingStart`;
+they never fabricate a native identity or automatically create another thread.
+Native/structured transfer commands remain later work.
+
+The display-history foundation adds `history.rs` (typed projection and bounded
+reads), `history_provider.rs` (Codex event normalization) and `history_storage.rs`
+(private immutable pages and atomic manifests) beside the transport. Wire DTOs
+live inward in `src/conversation/history.rs`. No transcript enters the ordinary
+snapshot; attachment content is released on disconnect. See API_PATTERNS and
+DATABASE for retention and durability contracts. One daemon canonical projection
+owns cache writes; attachments only read. With output retention disabled, native
+content lives only during hydration or in an attached view and drops on disconnect.
+
+Session snapshots use capture-time tickets and one serialized writer per resolved
+destination. Autosave, forced saves, shutdown and conversation barriers share it.
+Only a confirmed durable commit advances `last_saved`; a stale or failed write
+cannot authorize a provider mutation. The sidebar uses typed pane/conversation
+keys and binds a real native terminal without manufacturing a PTY.
+
+## Project-specific: optional desktop GUI
+
+`gui/` is an optional Tauri frontend and host. It communicates with the daemon
+through the host's narrow typed command boundary and the daemon's authenticated
+local IPC. The Rust daemon remains the sole owner of sessions, providers,
+conversation identity and persistence. The GUI build must not become a
+prerequisite for building or installing the CLI/TUI.

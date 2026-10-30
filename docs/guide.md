@@ -5,6 +5,59 @@ in [shortcuts](shortcuts.md); every setting is in [`config.example.toml`](../con
 
 ## Using it
 
+Structured Codex conversations use the daemon without creating a terminal pane.
+They appear in the existing session list; selecting an unbound conversation keeps
+the sidebar focused. Native terminal handoff and interactive request answers are
+later work. Existing `maitty send` still types into a PTY.
+
+Start with a verified Codex 0.164.0 executable and existing absolute paths:
+
+```powershell
+maitty conversation start --executable C:\tools\codex.exe --config-root C:\codex-home --cwd C:\project
+maitty conversation send --conversation 1 --generation 1 --operation 1 "Review the failing test"
+maitty conversation read --conversation 1 --limit 128
+```
+
+Commands print JSON. Start returns `conversation` and `generation`; use those
+values for send. Increment `--operation` for each new prompt. Repeating an
+acknowledged operation with identical text returns its receipt without sending
+again. Uncertain delivery refuses automatic resend; inspect native/provider
+evidence before deciding how to continue.
+
+`start --session <exact-Thread.id>` resumes that exact native thread with the same
+explicit executable/config-root/cwd inputs. A missing thread fails. Reconnect
+recorded Maitty identity with `start --conversation <id> --generation <current>`;
+it uses recorded settings and returns a newly fenced generation. No picker,
+latest-session selection or implicit fork is used. Interrupted creation intent
+has no confirmed identity and cannot automatically create another thread.
+
+New bindings also accept `--model`, `--model-provider`, `--approval`
+(`untrusted`, `on-request`, `never`; default `on-request`) and `--sandbox`
+(`read-only`, `workspace-write`; default `read-only`). Workspace write disables
+network and additional temporary-directory writable roots. Native profiles are
+unsupported. A provider posture mismatch fails before turn submission.
+
+`read --cursor '<JSON cursor>'` continues a page; limit is 1–128 and each page is
+at most 256 KiB. A cursor becomes stale when history or generation changes.
+Completeness and item state are separate from page exhaustion. Unsupported or
+incomplete native history disables sending. Provider approval/question requests
+remain visibly blocked and unanswered. Checkpoint failures and pending approvals
+remain visible even when the provider has finished.
+
+Structured mutations require `[restore] enabled=true`. Setting `output=false`
+removes/prevents Maitty's transcript cache while preserving content-free identity
+and delivery receipts; explicit reads may hydrate memory for that connection.
+
+Structured tools authenticate as that runtime and follow configured MCP grants.
+Granted list/read/send/reference operations remain available. Starting further
+helpers from a structured runtime is refused until conversation-owned helper
+consent is supported; native helper starts keep their existing behavior.
+Structured admission supports the default/all Codex shell environment policy.
+Custom filtering, environment-set/profile policies or explicit MCP environment
+values that conflict with its reserved identity fail with a native-terminal
+alternative. Runtime MCP environment allowlists are augmented without editing
+your configuration or storing authentication values in thread settings.
+
 Click **menu** at the bottom of the sidebar (or press the leader, then `m`) for the common
 commands: new session, shell, pane, tab, Inbox, Search commands, All keys, the sidebar and Settings.
 **Search commands** (leader, then `Space`) finds every command, including **Connect agents**

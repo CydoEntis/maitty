@@ -6,6 +6,10 @@ below links to the part of UI.md that owns them. The code is the final word: the
 `src/theme.rs`, the screen in `src/client/screen/`, and the reference frames the tests compare
 against (see [TESTING](TESTING.md#project-specific-layout-and-fixtures)).
 
+This document describes the TUI. The optional desktop GUI uses the separate
+[chat GUI design brief](features/chat-gui/design-brief.md); phase 35 records its
+approved detailed visual system here only if it becomes shared across clients.
+
 ## Principles
 
 - **Status first.** Every session reads as working, needs you, done or idle at a glance, and
