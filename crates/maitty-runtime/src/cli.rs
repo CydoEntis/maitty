@@ -1765,44 +1765,18 @@ pub fn status_from_hook(payload: &Value) -> Option<HookStatus> {
     if let Some(status) = maitty_provider_codex::status_from_hook(payload) {
         return Some(status);
     }
+    if let Some(status) = maitty_provider_claude::status_from_hook(payload) {
+        return Some(status);
+    }
     let event = payload
         .get("hook_event_name")
         .and_then(Value::as_str)
         .unwrap_or("");
-    let tool = payload
-        .get("tool_name")
-        .and_then(Value::as_str)
-        .unwrap_or("");
     Some(match event {
-        "PreToolUse" if tool == "AskUserQuestion" => HookStatus::Blocked,
-        "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "SubagentStart" => HookStatus::Working,
         // Gemini CLI.
         "BeforeAgent" | "BeforeTool" | "AfterTool" => HookStatus::Working,
         "AfterAgent" => HookStatus::Done,
-        "SubagentStop" | "SubagentEnd" => HookStatus::Same,
-        "PermissionRequest" => HookStatus::Blocked,
-        "Notification" => {
-            let kind = payload
-                .get("notification_type")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let msg = payload
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_lowercase();
-            match kind {
-                "permission_prompt" | "elicitation_dialog" | "ToolPermission" => {
-                    HookStatus::Blocked
-                }
-                "idle_prompt" => HookStatus::Done,
-                _ if msg.contains("permission") => HookStatus::Blocked,
-                _ => return None,
-            }
-        }
-        "Stop" => HookStatus::Done,
-        "SessionStart" => HookStatus::Idle,
-        "SessionEnd" => HookStatus::Gone,
+        "SubagentEnd" => HookStatus::Same,
         "pi.agent_start" | "pi.ui_prompt_end" => HookStatus::Working,
         "pi.ui_prompt_start" => HookStatus::Blocked,
         "pi.agent_settled" => HookStatus::Done,

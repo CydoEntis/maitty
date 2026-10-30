@@ -1,6 +1,49 @@
 use serde_json::Value;
 use std::path::Path;
 
+/// Maps events from Claude-compatible native hook payloads to Maitty status.
+pub fn status_from_hook(payload: &Value) -> Option<maitty_shared::protocol::HookStatus> {
+    use maitty_shared::protocol::HookStatus;
+
+    let event = payload
+        .get("hook_event_name")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let tool = payload
+        .get("tool_name")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    Some(match event {
+        "PreToolUse" if tool == "AskUserQuestion" => HookStatus::Blocked,
+        "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "SubagentStart" => HookStatus::Working,
+        "SubagentStop" => HookStatus::Same,
+        "PermissionRequest" => HookStatus::Blocked,
+        "Notification" => {
+            let kind = payload
+                .get("notification_type")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let message = payload
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_lowercase();
+            match kind {
+                "permission_prompt" | "elicitation_dialog" | "ToolPermission" => {
+                    HookStatus::Blocked
+                }
+                "idle_prompt" => HookStatus::Done,
+                _ if message.contains("permission") => HookStatus::Blocked,
+                _ => return None,
+            }
+        }
+        "Stop" => HookStatus::Done,
+        "SessionStart" => HookStatus::Idle,
+        "SessionEnd" => HookStatus::Gone,
+        _ => return None,
+    })
+}
+
 pub fn is_our_name(program: &str, app_names: &[&str]) -> bool {
     app_names.contains(&program)
 }
@@ -64,7 +107,7 @@ fn split_command(command: &str) -> (&str, &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_our_hook_group, is_our_name, runs_our_hook, stale_hooks};
+    use super::{is_our_hook_group, is_our_name, runs_our_hook, stale_hooks, status_from_hook};
     use serde_json::json;
 
     const APP_NAMES: &[&str] = &["maitty", "seshi", "hydra", "drover"];
@@ -97,5 +140,33 @@ mod tests {
         }});
 
         assert_eq!(stale_hooks(&root, wanted, APP_NAMES), [stale]);
+    }
+
+    #[test]
+    fn maps_claude_hook_events_and_leaves_unknown_notifications_unmapped() {
+        use maitty_shared::protocol::HookStatus;
+
+        assert_eq!(
+            status_from_hook(
+                &json!({"hook_event_name":"PreToolUse","tool_name":"AskUserQuestion"})
+            ),
+            Some(HookStatus::Blocked)
+        );
+        assert_eq!(
+            status_from_hook(
+                &json!({"hook_event_name":"Notification","notification_type":"permission_prompt"})
+            ),
+            Some(HookStatus::Blocked)
+        );
+        assert_eq!(
+            status_from_hook(
+                &json!({"hook_event_name":"Notification","notification_type":"unknown"})
+            ),
+            None
+        );
+        assert_eq!(
+            status_from_hook(&json!({"hook_event_name":"SessionEnd"})),
+            Some(HookStatus::Gone)
+        );
     }
 }
