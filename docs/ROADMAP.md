@@ -936,12 +936,9 @@ macOS target checks, the full workspace suite (1,325 runtime tests passed,
 relocated fixture paths.
 The shared `maitty-settings` package now owns key actions, default bindings,
 key parsing and built-in themes; the runtime keeps its terminal mouse-event
-encoding wrapper. On 2026-10-30, its extraction passed the full workspace test
-suite (1,317 runtime tests passed, 5 ignored, and all other package suites
-passed), workspace build and strict clippy, and Linux and macOS target checks
-for the installed `maitty` package. The all-workspace Linux cross-check still
-requires a configured Linux pkg-config/sysroot for the Tauri host's D-Bus
-dependency. Independent review found no behavior or portability issue.
+encoding wrapper. It currently has 19 tests covering these preferences and
+validators. The all-workspace Linux cross-check still requires a configured
+Linux pkg-config/sysroot for the Tauri host's D-Bus dependency.
 The UI preference model has also moved into `maitty-settings`, including its
 defaults, rounding deserialization, legacy look mapping, cursor validation and
 spinner presets. The `Sessions` preferences and pure choice validation have

@@ -188,8 +188,8 @@ defaults, pure validation and appearance compatibility rules, terminal key actio
 default bindings, key parsing and built-in themes; terminal-specific mouse
 encoding stays in the runtime. Config loading and filesystem migrations remain
 runtime-owned. `maitty-ipc-transport` owns bounded,
-length-delimited protocol framing, Welcome handshake, socket identity formatting
-private Unix socket-directory check, and platform socket-name conversion shared
+length-delimited protocol framing, Welcome handshake, socket identity formatting,
+private Unix socket-directory checks and platform socket-name conversion shared
 by the TUI and GUI; socket connection and daemon startup stay in their respective
 clients. The Tauri host
 uses `maitty-desktop-client`
