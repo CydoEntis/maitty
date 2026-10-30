@@ -58,6 +58,7 @@ impl App {
                     self.on_first_state();
                 }
                 self.screen_sync();
+                self.auto_open_secret();
                 self.check_view_sync();
                 self.maybe_restart_daemon(last_session_closed);
             }

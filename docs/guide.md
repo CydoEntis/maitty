@@ -251,7 +251,10 @@ Subagents usually inherit their parent's MCP tools. Over `--remote` the view isn
 
 **Secrets.** An agent that needs an API key or token calls `maitty_request_secret` instead of
 asking in chat. Its row turns "needs you" with "asks for a secret" (and shows in the Inbox);
-Enter on the row, or a click on the line, opens a prompt beside it. What you type shows as dots.
+The prompt opens by itself beside the row when nothing else has the screen (it waits its turn
+behind a dialog or sheet, and a request you declined is not offered again); keys are ignored for
+the first second and a half, so what you were typing is not taken as the secret. Enter on the row,
+or a click on the line, opens it any time. What you type shows as dots.
 Enter gives it and Esc declines (the agent is told to carry on without it); a paste works too. By
 default the agent gets the path of a file only you can read, with the secret in it; if it asks for
 delivery `run`, it gets a reference and runs `maitty secret run <reference> --env NAME -- <command>`

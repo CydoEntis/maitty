@@ -155,6 +155,12 @@ pub(super) struct Screen {
     pub inbox_return: Option<(String, usize)>,
     /// What you have typed into a secret's prompt so far. Cleared when the prompt closes.
     pub secret_typed: crate::protocol::SecretText,
+    /// Secret requests already put in front of you, so Esc is not answered by the same one
+    /// opening again.
+    pub secret_offered: HashSet<u64>,
+    /// While set and in the future, a prompt that opened by itself takes no keys: what you were
+    /// typing a moment ago must not become the secret.
+    pub secret_guard: Option<Instant>,
     pub overlap_at: HashMap<PathBuf, Instant>,
     /// Each checkout's lines added and removed and not committed (`+N −N` on its rows), and
     /// when they were last counted.

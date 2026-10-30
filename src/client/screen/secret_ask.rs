@@ -7,11 +7,15 @@
 
 use super::*;
 use crate::protocol::{ClientMsg, SecretRequest, SecretText};
+use std::time::Duration;
 
 const POP_W: u16 = 64;
 /// The longest label the row's line shows before it is cut.
 const LABEL_CHARS: usize = 40;
 const MASK: char = '•';
+/// How long a prompt that opened by itself ignores keys, so a line you were typing in a pane
+/// is not given away as the secret.
+const AUTO_OPEN_GUARD: Duration = Duration::from_millis(1500);
 
 /// A row's second line while its session asks for a secret.
 pub(in crate::client) fn secret_line(label: &str) -> String {
@@ -93,8 +97,26 @@ impl App {
         if let Some(req) = self.secret_request(term) {
             self.screen.inbox_return = None;
             self.screen.secret_typed = SecretText::default();
+            self.screen.secret_guard = None;
             self.mode = Mode::Secret { term, id: req.id, side };
         }
+    }
+
+    /// A request that has not been put in front of you yet opens its prompt by itself, when
+    /// nothing else has the screen. Its keys wait a moment (`AUTO_OPEN_GUARD`).
+    pub(in crate::client) fn auto_open_secret(&mut self) {
+        if !matches!(self.mode, Mode::Normal | Mode::Side) || self.view.is_some() {
+            return;
+        }
+        let Some(req) = self.snap.secret_requests.iter().find(|r| !self.screen.secret_offered.contains(&r.id)).cloned() else { return };
+        self.screen.secret_offered.insert(req.id);
+        let side = matches!(self.mode, Mode::Side);
+        self.open_secret(req.term, side);
+        self.screen.secret_guard = Some(Instant::now() + AUTO_OPEN_GUARD);
+    }
+
+    fn secret_guarded(&self) -> bool {
+        self.screen.secret_guard.is_some_and(|until| Instant::now() < until)
     }
 
     /// Open the question from the Inbox's row `sel` (typed `query`): leaving it goes back there.
@@ -158,6 +180,9 @@ impl App {
 
     pub(in crate::client) fn on_secret_key(&mut self, term: TermId, k: &KeyEvent) {
         let typing = !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        if self.secret_guarded() && k.code != KeyCode::Esc {
+            return;
+        }
         match k.code {
             KeyCode::Esc => self.answer_secret(term, false),
             KeyCode::Enter => self.answer_secret(term, true),
@@ -172,7 +197,7 @@ impl App {
 
     /// A pasted secret: one line, without the newline a copy often ends with.
     pub(in crate::client) fn paste_into_secret(&mut self, text: &str) {
-        if matches!(self.mode, Mode::Secret { .. }) {
+        if matches!(self.mode, Mode::Secret { .. }) && !self.secret_guarded() {
             self.screen.secret_typed.0.push_str(text.trim_end_matches(['\r', '\n']));
         }
     }

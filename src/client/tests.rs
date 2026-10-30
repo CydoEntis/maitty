@@ -3800,6 +3800,41 @@ second line
     }
 
     #[test]
+    fn a_new_request_opens_its_prompt_by_itself_and_keys_wait_a_moment() {
+        let (mut app, mut rx) = asking_for_a_secret();
+        app.mode = Mode::Normal;
+        app.auto_open_secret();
+        assert_eq!(app.mode, Mode::Secret { term: 2, id: 7, side: false }, "it opens without a key");
+        type_text(&mut app, "half a message");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(app.screen.secret_typed.0.is_empty() && secret_answers(&mut rx).is_empty(), "what you were typing is not taken");
+        app.screen.secret_guard = None;
+        type_text(&mut app, "sk-1");
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(secret_answers(&mut rx), [(7, Some("sk-1".to_string()))]);
+        assert_eq!(app.mode, Mode::Normal, "back where you were");
+    }
+
+    #[test]
+    fn a_declined_request_does_not_open_again_and_a_busy_screen_is_left_alone() {
+        let (mut app, mut rx) = asking_for_a_secret();
+        app.mode = Mode::Normal;
+        app.auto_open_secret();
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(secret_answers(&mut rx), [(7, None)], "Esc declines even while keys wait");
+        app.auto_open_secret();
+        assert_eq!(app.mode, Mode::Normal, "the same request is not offered twice");
+        let (mut busy, _rx) = asking_for_a_secret();
+        busy.mode = Mode::Side;
+        busy.screen.secret_offered.clear();
+        busy.mode = Mode::Prompt { kind: PromptKind::ConfirmRemoveWorktree(1), input: String::new() };
+        let before = busy.mode.clone();
+        busy.auto_open_secret();
+        assert_eq!(busy.mode, before, "another prompt keeps the screen");
+        assert!(busy.screen.secret_offered.is_empty(), "and the request waits its turn");
+    }
+
+    #[test]
     fn esc_declines_and_enter_on_nothing_asks_for_something_to_give() {
         let (mut app, mut rx) = asking_for_a_secret();
         app.open_secret(2, true);
