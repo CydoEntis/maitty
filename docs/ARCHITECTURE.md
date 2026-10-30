@@ -179,9 +179,9 @@ each other.
 
 ## Project-specific: stack
 
-The shared protocol, conversation contracts, split-tree types, hidden-text
-validation and check-output classification live in the `maitty-shared`
-workspace package. The Tauri host uses `maitty-desktop-client`
+The shared protocol, conversation contracts, split-tree types, clock helpers,
+hidden-text validation and check-output classification live in the
+`maitty-shared` workspace package. The Tauri host uses `maitty-desktop-client`
 for daemon IPC and GUI operations; it does not link the `maitty` runtime. The
 daemon, TUI, CLI and live provider process transports remain in `maitty`
 pending further extraction. Codex compatibility preflight and Claude stream

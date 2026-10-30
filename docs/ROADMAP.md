@@ -906,8 +906,8 @@ Tauri host no longer links the core runtime. Preserve the current integrated GUI
 branch as the rollback and comparison point while the refactor is verified.
 
 Refactor progress: `crates/maitty-shared` owns the versioned protocol,
-conversation contracts, split-tree types, hidden-text validation and shared
-check-output rules. `crates/maitty-desktop-client`
+conversation contracts, split-tree types, clock helpers, hidden-text
+validation and shared check-output rules. `crates/maitty-desktop-client`
 now owns GUI daemon IPC, lifecycle operations and Codex discovery; the Tauri
 host depends on it and `maitty-shared`, not the `maitty` runtime. Codex
 compatibility preflight and Claude protocol parsing, session IDs and launch
