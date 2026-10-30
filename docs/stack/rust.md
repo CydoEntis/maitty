@@ -1,6 +1,6 @@
 # Rust
 
-> **Use for:** all code in this repo (one Rust 2024 crate, one binary).
+> **Use for:** all Rust workspace packages in this repo (Rust 2024).
 > **Requires:** none
 > **Fills:** CODE-STANDARDS § language and framework rules, CODE-STANDARDS § formatting and linting, TESTING § tools and commands
 
