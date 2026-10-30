@@ -2388,10 +2388,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "maitty-desktop-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "directories",
+ "futures-util",
+ "interprocess",
+ "libc",
+ "maitty-shared",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "maitty-gui"
 version = "0.1.0"
 dependencies = [
- "maitty",
+ "maitty-desktop-client",
  "maitty-shared",
  "serde_json",
  "tauri",

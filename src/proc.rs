@@ -23,7 +23,6 @@ pub fn system_tool(name: &str) -> Command {
 #[cfg(windows)]
 pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// Don't open a console window for this program (Windows; nothing elsewhere).
 /// Whether a program is on PATH (with Windows' own extensions).
 pub fn on_path(tool: &str) -> bool {
     let exts: &[&str] = if cfg!(windows) {
@@ -31,23 +30,17 @@ pub fn on_path(tool: &str) -> bool {
     } else {
         &[""]
     };
-    std::env::var_os("PATH").is_some_and(|p| {
-        std::env::split_paths(&p).any(|d| {
-            exts.iter().any(|e| {
-                if e.is_empty() {
-                    d.join(tool).is_file()
+    std::env::var_os("PATH").is_some_and(|path| {
+        std::env::split_paths(&path).any(|directory| {
+            exts.iter().any(|extension| {
+                if extension.is_empty() {
+                    directory.join(tool).is_file()
                 } else {
-                    d.join(format!("{tool}.{e}")).is_file()
+                    directory.join(format!("{tool}.{extension}")).is_file()
                 }
             })
         })
     })
-}
-
-/// Find a native executable on PATH. Windows command scripts are excluded because they need a shell.
-pub fn executable_on_path(tool: &str) -> anyhow::Result<std::path::PathBuf> {
-    let path = std::env::var_os("PATH").ok_or_else(|| anyhow::anyhow!("PATH is not set"))?;
-    executable_from_path(tool, &path)
 }
 
 pub(crate) fn resolve_executable_path(path: &Path) -> anyhow::Result<std::path::PathBuf> {
@@ -68,24 +61,7 @@ pub(crate) fn resolve_executable_path(path: &Path) -> anyhow::Result<std::path::
     }
 }
 
-fn executable_from_path(tool: &str, path: &std::ffi::OsStr) -> anyhow::Result<std::path::PathBuf> {
-    let extensions: &[&str] = if cfg!(windows) { &["exe"] } else { &[""] };
-    for directory in std::env::split_paths(path) {
-        for extension in extensions {
-            let name = if extension.is_empty() {
-                tool.to_string()
-            } else {
-                format!("{tool}.{extension}")
-            };
-            let candidate = directory.join(name);
-            if candidate.is_file() {
-                return resolve_executable_path(&candidate);
-            }
-        }
-    }
-    anyhow::bail!("{tool} is not installed as a native executable on PATH")
-}
-
+/// Don't open a console window for this program (Windows; nothing elsewhere).
 pub fn quiet(cmd: &mut Command) -> &mut Command {
     #[cfg(windows)]
     {
@@ -201,56 +177,6 @@ pub fn ahead_of_the_panes() {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[cfg(unix)]
-    #[test]
-    fn executable_lookup_preserves_a_mise_shim_name() {
-        use std::os::unix::fs::{PermissionsExt, symlink};
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
-        static NEXT_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
-
-        struct TestDirectory(std::path::PathBuf);
-
-        impl Drop for TestDirectory {
-            fn drop(&mut self) {
-                let _ = std::fs::remove_dir_all(&self.0);
-            }
-        }
-
-        let directory = loop {
-            let candidate = std::env::temp_dir().join(format!(
-                "{}-mise-shim-{}-{}",
-                env!("APP_COMMAND"),
-                std::process::id(),
-                NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed)
-            ));
-            match std::fs::create_dir(&candidate) {
-                Ok(()) => break TestDirectory(candidate),
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                Err(error) => panic!("create test directory: {error}"),
-            }
-        };
-        let mise = directory.0.join("mise");
-        std::fs::write(&mise, "#!/bin/sh\nprintf '%s\\n' \"$0\" \"$1\"\n").unwrap();
-        std::fs::set_permissions(&mise, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let codex = directory.0.join("codex");
-        symlink(&mise, &codex).unwrap();
-        let path = std::env::join_paths([&directory.0]).unwrap();
-
-        let executable = executable_from_path("codex", &path).unwrap();
-        let output = Command::new(&executable)
-            .arg("app-server")
-            .output()
-            .unwrap();
-
-        let expected = format!(
-            "{}\napp-server\n",
-            std::path::absolute(&codex).unwrap().display()
-        );
-        assert!(output.status.success());
-        assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
-    }
 
     #[cfg(windows)]
     #[test]

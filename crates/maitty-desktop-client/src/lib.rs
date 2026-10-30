@@ -1,11 +1,15 @@
-use crate::conversation::{ApprovalPolicy, LaunchSettings, Sandbox, StartTarget};
-use crate::ipc;
-use crate::protocol::{ClientMsg, Command, Query, Reply, ServerMsg};
+use maitty_shared::conversation::{ApprovalPolicy, LaunchSettings, Sandbox, StartTarget};
+mod ipc;
 use anyhow::{Context, Result, bail};
+use maitty_shared::protocol::{ClientMsg, Command, Query, Reply, ServerMsg};
 use serde_json::{Value, json};
 use std::path::PathBuf;
+use std::time::Duration;
 
 const MAX_TERMINAL_INPUT_BYTES: usize = 16 * 1024;
+const APP_COMMAND: &str = env!("MAITTY_APP_COMMAND");
+const APP_NAME: &str = env!("MAITTY_APP_NAME");
+const APP_ENV: &str = env!("MAITTY_APP_ENV");
 
 pub async fn list_sessions(daemon_executable: PathBuf) -> Result<Value> {
     let reply = request(ClientMsg::Query(Query::List), daemon_executable).await?;
@@ -17,88 +21,157 @@ pub async fn list_sessions(daemon_executable: PathBuf) -> Result<Value> {
 
 /// Report whether a local daemon speaks an older protocol and can be replaced by this build.
 pub async fn daemon_restart_status() -> Result<Value> {
-    anyhow::ensure!(
-        crate::ipc::remote().is_none(),
-        concat!(
-            "the GUI can restart only the local ",
-            env!("APP_NAME"),
-            " service"
-        )
-    );
-    let daemon_protocol = match ipc::open_for_user(false).await {
+    let daemon_protocol = match ipc::open_for_user().await {
         Err(error) => ipc::other_version(&error)
             .ok_or_else(|| error.context("checking the local daemon version"))?,
         Ok((reader, writer)) => {
             drop((reader, writer));
-            bail!(concat!(
-                "the local ",
-                env!("APP_NAME"),
-                " service is already compatible with this GUI"
-            ))
+            bail!("the local {APP_NAME} service is already compatible with this GUI")
         }
     };
-    let activity = crate::restart::read();
+    let activity = read_activity();
     let session_count = activity
         .as_ref()
-        .map_or_else(crate::restart::saved_agents, |activity| activity.sessions);
+        .map_or_else(saved_agent_count, |activity| activity.sessions);
     Ok(json!({
         "daemonProtocol": daemon_protocol,
-        "guiProtocol": crate::protocol::PROTOCOL_VERSION,
-        "canRestart": daemon_protocol < crate::protocol::PROTOCOL_VERSION,
+        "guiProtocol": maitty_shared::protocol::PROTOCOL_VERSION,
+        "canRestart": daemon_protocol < maitty_shared::protocol::PROTOCOL_VERSION,
         "sessionCount": session_count,
-        "activeTurnCount": activity.as_ref().map(crate::restart::Activity::busy),
+        "activeTurnCount": activity.as_ref().map(Activity::busy),
     }))
+}
+
+#[derive(serde::Deserialize)]
+struct Activity {
+    pid: u32,
+    sessions: usize,
+    working: usize,
+    waiting: usize,
+}
+
+impl Activity {
+    fn busy(&self) -> usize {
+        self.working + self.waiting
+    }
+}
+
+fn read_activity() -> Option<Activity> {
+    let pid_path = ipc::pid_file();
+    let activity_path = pid_path.with_extension("activity");
+    let activity: Activity = serde_json::from_slice(&std::fs::read(activity_path).ok()?).ok()?;
+    let pid = std::fs::read_to_string(pid_path)
+        .ok()?
+        .trim()
+        .parse::<u32>()
+        .ok()?;
+    (activity.pid == pid).then_some(activity)
+}
+
+fn saved_agent_count() -> usize {
+    let label = std::env::var(format!("{APP_ENV}_SOCKET")).unwrap_or_else(|_| "default".into());
+    let path = ipc::data_dir().join(format!("session-{label}.json"));
+    let Ok(saved) = std::fs::read(path) else {
+        return 0;
+    };
+    let Ok(saved) = serde_json::from_slice::<Value>(&saved) else {
+        return 0;
+    };
+    saved
+        .get("workspaces")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|workspace| workspace.get("tabs").and_then(Value::as_array))
+        .flatten()
+        .filter_map(|tab| tab.get("panes").and_then(Value::as_object))
+        .flat_map(|panes| panes.values())
+        .filter(|pane| pane.get("agent").is_some_and(|agent| !agent.is_null()))
+        .count()
+}
+
+fn stop_mismatched_daemon() -> Result<()> {
+    let pid = std::fs::read_to_string(ipc::pid_file())
+        .ok()
+        .and_then(|value| value.trim().parse::<u32>().ok())
+        .filter(|pid| is_app_daemon(*pid))
+        .ok_or_else(|| {
+            anyhow::anyhow!("couldn't identify the local {APP_NAME} ({APP_COMMAND}) daemon process")
+        })?;
+    let mut command = if cfg!(windows) {
+        let mut command = std::process::Command::new("taskkill");
+        command.args(["/PID", &pid.to_string(), "/F"]);
+        command
+    } else {
+        let mut command = std::process::Command::new("kill");
+        command.arg(pid.to_string());
+        command
+    };
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    let status = command
+        .status()
+        .context("stopping the old daemon process")?;
+    anyhow::ensure!(
+        status.success(),
+        "couldn't stop the old daemon process {pid}"
+    );
+    Ok(())
+}
+
+fn is_app_daemon(pid: u32) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let Ok(command_line) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
+            return false;
+        };
+        let args = command_line.split(|byte| *byte == 0).collect::<Vec<_>>();
+        args.first()
+            .is_some_and(|program| program.ends_with(APP_COMMAND.as_bytes()))
+            && args.get(1).is_some_and(|arg| *arg == b"daemon")
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        true
+    }
 }
 
 /// Stop only the exact older local daemon the user confirmed replacing.
 pub async fn restart_mismatched_daemon(expected_protocol: u32) -> Result<()> {
-    anyhow::ensure!(
-        crate::ipc::remote().is_none(),
-        concat!(
-            "the GUI can restart only the local ",
-            env!("APP_NAME"),
-            " service"
-        )
-    );
-    let daemon_protocol = match ipc::open_for_user(false).await {
+    let daemon_protocol = match ipc::open_for_user().await {
         Err(error) => ipc::other_version(&error)
             .ok_or_else(|| error.context("checking the local daemon version"))?,
         Ok((reader, writer)) => {
             drop((reader, writer));
-            bail!(concat!(
-                "the local ",
-                env!("APP_NAME"),
-                " service is already compatible with this GUI"
-            ))
+            bail!("the local {APP_NAME} service is already compatible with this GUI")
         }
     };
     validate_restart_confirmation(daemon_protocol, expected_protocol)?;
-    tokio::task::spawn_blocking(|| crate::cli::kill_server(false))
+    tokio::task::spawn_blocking(stop_mismatched_daemon)
         .await
-        .context(concat!(
-            "waiting for the local ",
-            env!("APP_NAME"),
-            " service to stop"
-        ))??;
-    Ok(())
+        .context(format!("waiting for the local {APP_NAME} service to stop"))??;
+    for _ in 0..50 {
+        if !ipc::is_running().await {
+            ipc::remove_pid_file();
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    bail!("the old daemon still holds the local service socket")
 }
 
 fn validate_restart_confirmation(daemon_protocol: u32, expected_protocol: u32) -> Result<()> {
     anyhow::ensure!(
         daemon_protocol == expected_protocol,
-        concat!(
-            "the local ",
-            env!("APP_NAME"),
-            " service changed since the restart prompt opened"
-        )
+        "the local {APP_NAME} service changed since the restart prompt opened"
     );
     anyhow::ensure!(
-        daemon_protocol < crate::protocol::PROTOCOL_VERSION,
-        concat!(
-            "the local ",
-            env!("APP_NAME"),
-            " service is newer than this GUI; update the GUI before reconnecting"
-        )
+        daemon_protocol < maitty_shared::protocol::PROTOCOL_VERSION,
+        "the local {APP_NAME} service is newer than this GUI; update the GUI before reconnecting"
     );
     Ok(())
 }
@@ -115,7 +188,7 @@ pub async fn read_conversation(
         .context("invalid conversation history cursor")?;
     let reply = request(
         ClientMsg::Query(Query::ConversationRead {
-            id: crate::conversation::ConversationId(id),
+            id: maitty_shared::conversation::ConversationId(id),
             cursor,
             limit,
         }),
@@ -135,7 +208,7 @@ pub async fn conversation_diff(
 ) -> Result<Value> {
     let reply = request(
         ClientMsg::Query(Query::ConversationDiff {
-            id: crate::conversation::ConversationId(id),
+            id: maitty_shared::conversation::ConversationId(id),
             generation,
         }),
         daemon_executable,
@@ -154,7 +227,7 @@ pub async fn terminal_screen(
 ) -> Result<String> {
     let reply = request(
         ClientMsg::Query(Query::ConversationTerminalScreen {
-            id: crate::conversation::ConversationId(id),
+            id: maitty_shared::conversation::ConversationId(id),
             generation,
         }),
         daemon_executable,
@@ -173,7 +246,7 @@ pub async fn terminal_replay(
 ) -> Result<Vec<u8>> {
     let reply = request(
         ClientMsg::Query(Query::ConversationTerminalReplay {
-            id: crate::conversation::ConversationId(id),
+            id: maitty_shared::conversation::ConversationId(id),
             generation,
         }),
         daemon_executable,
@@ -195,13 +268,13 @@ pub async fn send_terminal_input(
         !data.is_empty() && data.len() <= MAX_TERMINAL_INPUT_BYTES,
         "Terminal input must contain between 1 and {MAX_TERMINAL_INPUT_BYTES} bytes"
     );
-    let (mut reader, mut writer) = ipc::open_or_spawn_for_user(false, daemon_executable)
+    let (mut reader, mut writer) = ipc::open_or_spawn_for_user(&daemon_executable)
         .await
         .context("connecting to the local daemon")?;
-    ipc::send(
+    ipc::send_message(
         &mut writer,
         &ClientMsg::Command(Command::ConversationTerminalInput {
-            id: crate::conversation::ConversationId(id),
+            id: maitty_shared::conversation::ConversationId(id),
             generation,
             data,
         }),
@@ -211,10 +284,10 @@ pub async fn send_terminal_input(
         Reply::Ok => {}
         _ => bail!("daemon returned an unexpected terminal input reply"),
     }
-    ipc::send(
+    ipc::send_message(
         &mut writer,
         &ClientMsg::Query(Query::ConversationTerminalScreen {
-            id: crate::conversation::ConversationId(id),
+            id: maitty_shared::conversation::ConversationId(id),
             generation,
         }),
     )
@@ -236,7 +309,7 @@ pub async fn resize_terminal(
 ) -> Result<()> {
     let reply = request(
         ClientMsg::Command(Command::ConversationTerminalResize {
-            id: crate::conversation::ConversationId(id),
+            id: maitty_shared::conversation::ConversationId(id),
             generation,
             cols,
             rows,
@@ -259,7 +332,7 @@ pub async fn send_conversation(
 ) -> Result<Value> {
     let reply = request(
         ClientMsg::Command(Command::ConversationSend {
-            id: crate::conversation::ConversationId(id),
+            id: maitty_shared::conversation::ConversationId(id),
             generation,
             operation,
             text,
@@ -276,13 +349,13 @@ pub async fn send_conversation(
 pub async fn approve_conversation(
     id: u64,
     generation: u64,
-    request_id: crate::conversation::ProviderRequestId,
-    decision: crate::conversation::ApprovalDecision,
+    request_id: maitty_shared::conversation::ProviderRequestId,
+    decision: maitty_shared::conversation::ApprovalDecision,
     daemon_executable: PathBuf,
 ) -> Result<Value> {
     let reply = request(
         ClientMsg::Command(Command::ConversationApprove {
-            id: crate::conversation::ConversationId(id),
+            id: maitty_shared::conversation::ConversationId(id),
             generation,
             request_id,
             decision,
@@ -299,13 +372,13 @@ pub async fn approve_conversation(
 pub async fn answer_user_input(
     id: u64,
     generation: u64,
-    request_id: crate::conversation::ProviderRequestId,
+    request_id: maitty_shared::conversation::ProviderRequestId,
     answers: std::collections::BTreeMap<String, Vec<String>>,
     daemon_executable: PathBuf,
 ) -> Result<Value> {
     let reply = request(
         ClientMsg::Command(Command::ConversationAnswerInput {
-            id: crate::conversation::ConversationId(id),
+            id: maitty_shared::conversation::ConversationId(id),
             generation,
             request_id,
             answers,
@@ -326,7 +399,7 @@ pub async fn cancel_conversation(
 ) -> Result<Value> {
     let reply = request(
         ClientMsg::Command(Command::ConversationCancel {
-            id: crate::conversation::ConversationId(id),
+            id: maitty_shared::conversation::ConversationId(id),
             generation,
         }),
         daemon_executable,
@@ -345,7 +418,7 @@ pub async fn handoff_conversation_to_native(
 ) -> Result<Value> {
     let reply = request(
         ClientMsg::Command(Command::ConversationHandoffToNative {
-            id: crate::conversation::ConversationId(id),
+            id: maitty_shared::conversation::ConversationId(id),
             generation,
         }),
         daemon_executable,
@@ -364,7 +437,7 @@ pub async fn handoff_conversation_to_chat(
 ) -> Result<Value> {
     let reply = request(
         ClientMsg::Command(Command::ConversationHandoffToChat {
-            id: crate::conversation::ConversationId(id),
+            id: maitty_shared::conversation::ConversationId(id),
             generation,
         }),
         daemon_executable,
@@ -386,7 +459,7 @@ pub async fn resume_codex_conversation(
     let reply = request(
         ClientMsg::Command(Command::ConversationStart {
             target: StartTarget::Conversation {
-                id: crate::conversation::ConversationId(id),
+                id: maitty_shared::conversation::ConversationId(id),
                 generation,
             },
         }),
@@ -409,9 +482,9 @@ pub async fn create_codex_conversation(cwd: PathBuf, daemon_executable: PathBuf)
         bail!("the selected project folder is not a directory");
     }
     let settings = LaunchSettings {
-        provider: crate::conversation::Provider::Codex,
+        provider: maitty_shared::conversation::Provider::Codex,
         executable: codex_app_server_executable()?,
-        config_root: crate::config::codex_config_dir(),
+        config_root: codex_config_dir(),
         cwd,
         model: None,
         model_provider: None,
@@ -434,7 +507,7 @@ pub async fn create_codex_conversation(cwd: PathBuf, daemon_executable: PathBuf)
 }
 
 pub fn codex_app_server_executable() -> Result<PathBuf> {
-    match crate::proc::executable_on_path("codex") {
+    match executable_on_path("codex") {
         Ok(executable) => Ok(executable),
         Err(error) => {
             #[cfg(windows)]
@@ -457,6 +530,52 @@ pub fn codex_app_server_executable() -> Result<PathBuf> {
             Err(error)
         }
     }
+}
+
+fn codex_config_dir() -> PathBuf {
+    std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            directories::BaseDirs::new()
+                .map(|dirs| dirs.home_dir().join(".codex"))
+                .unwrap_or_default()
+        })
+}
+
+fn executable_on_path(tool: &str) -> Result<PathBuf> {
+    let path = std::env::var_os("PATH").ok_or_else(|| anyhow::anyhow!("PATH is not set"))?;
+    executable_from_path(tool, &path)
+}
+
+fn executable_from_path(tool: &str, path: &std::ffi::OsStr) -> Result<PathBuf> {
+    let extensions: &[&str] = if cfg!(windows) { &["exe"] } else { &[""] };
+    for directory in std::env::split_paths(path) {
+        for extension in extensions {
+            let name = if extension.is_empty() {
+                tool.to_string()
+            } else {
+                format!("{tool}.{extension}")
+            };
+            let candidate = directory.join(name);
+            if !candidate.is_file() {
+                continue;
+            }
+            #[cfg(unix)]
+            {
+                let file_name = candidate
+                    .file_name()
+                    .ok_or_else(|| anyhow::anyhow!("Executable path has no file name"))?;
+                let parent = candidate
+                    .parent()
+                    .filter(|parent| !parent.as_os_str().is_empty())
+                    .unwrap_or(std::path::Path::new("."));
+                return Ok(std::fs::canonicalize(parent)?.join(file_name));
+            }
+            #[cfg(windows)]
+            return candidate.canonicalize().map_err(Into::into);
+        }
+    }
+    bail!("{tool} is not installed as a native executable on PATH")
 }
 
 #[cfg(windows)]
@@ -510,7 +629,7 @@ mod tests {
     fn finds_codex_in_the_nested_windows_npm_package() {
         let root = std::env::temp_dir().join(format!(
             "{}-codex-app-server-{}-{}",
-            crate::brand::APP_COMMAND,
+            env!("MAITTY_APP_COMMAND"),
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -534,7 +653,7 @@ mod tests {
     fn finds_codex_under_nvm_symlink_when_node_is_not_on_path() {
         let root = std::env::temp_dir().join(format!(
             "{}-codex-nvm-path-{}-{}",
-            crate::brand::APP_COMMAND,
+            env!("MAITTY_APP_COMMAND"),
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -559,7 +678,7 @@ mod tests {
     fn finds_codex_under_the_standard_npm_root_when_node_is_not_on_path() {
         let root = std::env::temp_dir().join(format!(
             "{}-codex-npm-root-{}-{}",
-            crate::brand::APP_COMMAND,
+            env!("MAITTY_APP_COMMAND"),
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -584,7 +703,7 @@ mod tests {
     fn finds_codex_under_the_system_node_root_when_node_is_not_on_path() {
         let root = std::env::temp_dir().join(format!(
             "{}-codex-system-node-{}-{}",
-            crate::brand::APP_COMMAND,
+            env!("MAITTY_APP_COMMAND"),
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -607,16 +726,16 @@ mod tests {
 }
 
 async fn request(message: ClientMsg, daemon_executable: PathBuf) -> Result<Reply> {
-    let (mut reader, mut writer) = ipc::open_or_spawn_for_user(false, daemon_executable)
+    let (mut reader, mut writer) = ipc::open_or_spawn_for_user(&daemon_executable)
         .await
         .context("connecting to the local daemon")?;
-    ipc::send(&mut writer, &message).await?;
+    ipc::send_message(&mut writer, &message).await?;
     receive_reply(&mut reader).await
 }
 
 async fn receive_reply(reader: &mut ipc::Reader) -> Result<Reply> {
     loop {
-        match ipc::recv_server(reader).await? {
+        match ipc::receive_server(reader).await? {
             Some(ServerMsg::Reply(reply)) => return Ok(reply),
             Some(ServerMsg::Error(error)) => bail!(error),
             Some(ServerMsg::Bye) => bail!("local daemon closed the connection"),
@@ -632,9 +751,49 @@ mod restart_confirmation_tests {
 
     #[test]
     fn accepts_only_the_confirmed_older_protocol() {
-        let current = crate::protocol::PROTOCOL_VERSION;
+        let current = maitty_shared::protocol::PROTOCOL_VERSION;
         assert!(validate_restart_confirmation(current - 1, current - 1).is_ok());
         assert!(validate_restart_confirmation(current - 2, current - 1).is_err());
         assert!(validate_restart_confirmation(current + 1, current + 1).is_err());
+    }
+}
+
+#[cfg(all(test, unix))]
+mod executable_lookup_tests {
+    use super::executable_from_path;
+    use std::os::unix::fs::{PermissionsExt, symlink};
+
+    #[test]
+    fn preserves_a_mise_shim_name_when_resolving_codex() {
+        let directory = std::env::temp_dir().join(format!(
+            "{}-mise-shim-{}-{}",
+            env!("MAITTY_APP_COMMAND"),
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        let mise = directory.join("mise");
+        std::fs::write(&mise, "#!/bin/sh\nprintf '%s\\n' \"$0\" \"$1\"\n").unwrap();
+        std::fs::set_permissions(&mise, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let codex = directory.join("codex");
+        symlink(&mise, &codex).unwrap();
+        let path = std::env::join_paths([&directory]).unwrap();
+
+        let executable = executable_from_path("codex", &path).unwrap();
+        let output = std::process::Command::new(&executable)
+            .arg("app-server")
+            .output()
+            .unwrap();
+        let expected = format!(
+            "{}\napp-server\n",
+            std::path::absolute(&codex).unwrap().display()
+        );
+
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }

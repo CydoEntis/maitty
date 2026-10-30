@@ -180,10 +180,11 @@ each other.
 ## Project-specific: stack
 
 The shared protocol, conversation contracts and split-tree types live in the
-`maitty-shared` workspace package. The TUI, CLI, daemon and provider adapters
-remain in the `maitty` package. The Tauri host still uses `maitty` for its daemon
-client and lifecycle commands. Completing the package split is tracked by
-[ADR 0042](adr/0042-decouple-desktop-clients-and-providers.md).
+`maitty-shared` workspace package. The Tauri host uses `maitty-desktop-client`
+for daemon IPC and GUI operations; it does not link the `maitty` runtime. The
+daemon, TUI, CLI and provider adapters remain in `maitty` pending further
+extraction. Completing the package split is tracked by [ADR
+0042](adr/0042-decouple-desktop-clients-and-providers.md).
 
 Rust, edition 2024, stable toolchain. Key libraries: `tokio` (async runtime),
 `ratatui` 0.30 + `crossterm` (TUI), `portable-pty` (PTYs / ConPTY), `vt100`

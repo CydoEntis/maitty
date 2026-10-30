@@ -905,6 +905,12 @@ headless core, TUI/CLI, shared protocol, GUI host and provider adapters so the
 Tauri host no longer links the core runtime. Preserve the current integrated GUI
 branch as the rollback and comparison point while the refactor is verified.
 
+Refactor progress: `crates/maitty-shared` owns the versioned protocol,
+conversation contracts and split-tree types. `crates/maitty-desktop-client`
+now owns GUI daemon IPC, lifecycle operations and Codex discovery; the Tauri
+host depends on it and `maitty-shared`, not the `maitty` runtime. The daemon,
+TUI/CLI and provider adapters remain to be extracted and verified.
+
 Claude meets the same standalone desktop chat contract as Codex. Native terminal
 transfer remains deferred. Package the optional GUI for Windows, macOS and Linux
 while retaining the standalone TUI install.

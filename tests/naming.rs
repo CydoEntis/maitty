@@ -57,6 +57,8 @@ fn lines_naming(names: &[String], skip: &[&str]) -> Vec<String> {
         let text = std::fs::read_to_string(&file).expect("utf-8 source");
         for (n, line) in text.lines().enumerate() {
             let lower = line.to_lowercase();
+            // Workspace crate identifiers carry the product prefix by Cargo convention.
+            let lower = lower.replace("maitty_shared", "");
             if names.iter().any(|name| names_word(&lower, name)) {
                 hits.push(format!("{rel}:{}: {}", n + 1, line.trim()));
             }

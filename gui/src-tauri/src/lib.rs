@@ -46,7 +46,7 @@ fn first_existing_daemon(candidates: &[PathBuf]) -> Option<PathBuf> {
 
 #[tauri::command]
 async fn list_sessions(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
-    runtime::list_sessions(daemon_executable(&app)?)
+    maitty_desktop_client::list_sessions(daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -58,7 +58,7 @@ async fn read_conversation(
     cursor: Option<serde_json::Value>,
     limit: usize,
 ) -> Result<serde_json::Value, String> {
-    runtime::read_conversation(id, cursor, limit, daemon_executable(&app)?)
+    maitty_desktop_client::read_conversation(id, cursor, limit, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -69,7 +69,7 @@ async fn conversation_diff(
     id: u64,
     generation: u64,
 ) -> Result<serde_json::Value, String> {
-    runtime::conversation_diff(id, generation, daemon_executable(&app)?)
+    maitty_desktop_client::conversation_diff(id, generation, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -80,7 +80,7 @@ async fn terminal_screen(
     id: u64,
     generation: u64,
 ) -> Result<String, String> {
-    runtime::terminal_screen(id, generation, daemon_executable(&app)?)
+    maitty_desktop_client::terminal_screen(id, generation, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -91,7 +91,7 @@ async fn terminal_replay(
     id: u64,
     generation: u64,
 ) -> Result<Vec<u8>, String> {
-    runtime::terminal_replay(id, generation, daemon_executable(&app)?)
+    maitty_desktop_client::terminal_replay(id, generation, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -103,7 +103,7 @@ async fn send_terminal_input(
     generation: u64,
     data: Vec<u8>,
 ) -> Result<String, String> {
-    runtime::send_terminal_input(id, generation, data, daemon_executable(&app)?)
+    maitty_desktop_client::send_terminal_input(id, generation, data, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -116,7 +116,7 @@ async fn resize_terminal(
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
-    runtime::resize_terminal(id, generation, cols, rows, daemon_executable(&app)?)
+    maitty_desktop_client::resize_terminal(id, generation, cols, rows, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -129,9 +129,15 @@ async fn send_conversation(
     operation: u64,
     text: String,
 ) -> Result<serde_json::Value, String> {
-    runtime::send_conversation(id, generation, operation, text, daemon_executable(&app)?)
-        .await
-        .map_err(|error| format!("{error:#}"))
+    maitty_desktop_client::send_conversation(
+        id,
+        generation,
+        operation,
+        text,
+        daemon_executable(&app)?,
+    )
+    .await
+    .map_err(|error| format!("{error:#}"))
 }
 
 #[tauri::command]
@@ -142,7 +148,7 @@ async fn approve_conversation(
     request_id: maitty_shared::conversation::ProviderRequestId,
     decision: maitty_shared::conversation::ApprovalDecision,
 ) -> Result<serde_json::Value, String> {
-    runtime::approve_conversation(
+    maitty_desktop_client::approve_conversation(
         id,
         generation,
         request_id,
@@ -161,7 +167,7 @@ async fn answer_conversation_input(
     request_id: maitty_shared::conversation::ProviderRequestId,
     answers: std::collections::BTreeMap<String, Vec<String>>,
 ) -> Result<serde_json::Value, String> {
-    runtime::answer_user_input(
+    maitty_desktop_client::answer_user_input(
         id,
         generation,
         request_id,
@@ -178,7 +184,7 @@ async fn cancel_conversation(
     id: u64,
     generation: u64,
 ) -> Result<serde_json::Value, String> {
-    runtime::cancel_conversation(id, generation, daemon_executable(&app)?)
+    maitty_desktop_client::cancel_conversation(id, generation, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -189,7 +195,7 @@ async fn handoff_conversation_to_native(
     id: u64,
     generation: u64,
 ) -> Result<serde_json::Value, String> {
-    runtime::handoff_conversation_to_native(id, generation, daemon_executable(&app)?)
+    maitty_desktop_client::handoff_conversation_to_native(id, generation, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -200,7 +206,7 @@ async fn handoff_conversation_to_chat(
     id: u64,
     generation: u64,
 ) -> Result<serde_json::Value, String> {
-    runtime::handoff_conversation_to_chat(id, generation, daemon_executable(&app)?)
+    maitty_desktop_client::handoff_conversation_to_chat(id, generation, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -211,7 +217,7 @@ async fn resume_codex_conversation(
     id: u64,
     generation: u64,
 ) -> Result<serde_json::Value, String> {
-    runtime::resume_codex_conversation(id, generation, daemon_executable(&app)?)
+    maitty_desktop_client::resume_codex_conversation(id, generation, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -221,28 +227,28 @@ async fn create_codex_conversation(
     app: tauri::AppHandle,
     cwd: PathBuf,
 ) -> Result<serde_json::Value, String> {
-    runtime::create_codex_conversation(cwd, daemon_executable(&app)?)
+    maitty_desktop_client::create_codex_conversation(cwd, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
 
 #[tauri::command]
 fn codex_executable_path() -> Result<String, String> {
-    runtime::codex_app_server_executable()
+    maitty_desktop_client::codex_app_server_executable()
         .map(|path| path.to_string_lossy().into_owned())
         .map_err(|error| format!("{error:#}"))
 }
 
 #[tauri::command]
 async fn daemon_restart_status() -> Result<serde_json::Value, String> {
-    runtime::daemon_restart_status()
+    maitty_desktop_client::daemon_restart_status()
         .await
         .map_err(|error| format!("{error:#}"))
 }
 
 #[tauri::command]
 async fn restart_mismatched_daemon(expected_protocol: u32) -> Result<(), String> {
-    runtime::restart_mismatched_daemon(expected_protocol)
+    maitty_desktop_client::restart_mismatched_daemon(expected_protocol)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -277,7 +283,6 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::first_existing_daemon;
-    use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static NEXT_TEMP_DIRECTORY: AtomicU64 = AtomicU64::new(0);
@@ -299,7 +304,7 @@ mod tests {
 
         assert_eq!(
             first_existing_daemon(&[missing_resource, adjacent_sidecar.clone(), adjacent_daemon,]),
-            Some(PathBuf::from(adjacent_sidecar))
+            Some(adjacent_sidecar)
         );
 
         let packaged_directory = directory.join("resources");

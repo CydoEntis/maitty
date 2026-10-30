@@ -16,7 +16,7 @@ tagline = "All agents on deck"
 previous = ["vibecasso", "seshi", "hydra", "drover"]
 
 [workspace]
-members = ["crates/maitty-shared", "gui/src-tauri"]
+members = ["crates/maitty-shared", "crates/maitty-desktop-client", "gui/src-tauri"]
 resolver = "3"
 
 [lib]

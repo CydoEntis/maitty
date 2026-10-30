@@ -279,7 +279,7 @@ pub async fn proxy() -> Result<()> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let mut stream = connect().await;
     if stream.is_err() {
-        spawn_daemon(None, false)?;
+        spawn_daemon(None)?;
         for _ in 0..60 {
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             stream = connect().await;
@@ -412,29 +412,6 @@ pub async fn open(attach: bool) -> Result<(Reader, Writer)> {
     }
 }
 
-/// Connect as the local human user, without inheriting a pane's runtime identity or remote host.
-pub async fn open_for_user(attach: bool) -> Result<(Reader, Writer)> {
-    let (mut reader, mut writer) = framed(connect().await?);
-    send(
-        &mut writer,
-        &ClientMsg::Hello {
-            version: protocol::PROTOCOL_VERSION,
-            attach,
-            from: None,
-            structured: None,
-        },
-    )
-    .await?;
-    match recv_server(&mut reader).await? {
-        Some(ServerMsg::Welcome { version }) if version == protocol::PROTOCOL_VERSION => {
-            Ok((reader, writer))
-        }
-        Some(ServerMsg::Welcome { version }) => Err(OtherVersion { daemon: version }.into()),
-        Some(ServerMsg::Error(error)) => bail!(error),
-        _ => bail!("unexpected handshake from daemon"),
-    }
-}
-
 fn ssh_failure() -> String {
     // Give ssh a moment to say why.
     std::thread::sleep(std::time::Duration::from_millis(300));
@@ -453,46 +430,37 @@ fn ssh_failure() -> String {
 
 /// Connect, starting the daemon in the background if none is running.
 pub async fn open_or_spawn(attach: bool) -> Result<(Reader, Writer)> {
-    open_or_spawn_with(attach, None, false).await
+    open_or_spawn_with(attach, None).await
 }
 
 /// Reconnect after replacing the executable, spawning the newly installed image if needed.
 pub async fn open_or_spawn_installed(attach: bool) -> Result<(Reader, Writer)> {
     let exe = crate::update::installed_executable()?;
-    open_or_spawn_with(attach, Some(exe), false).await
-}
-
-/// Connect as the local user, starting the bundled daemon image when none is running.
-pub async fn open_or_spawn_for_user(
-    attach: bool,
-    daemon_executable: std::path::PathBuf,
-) -> Result<(Reader, Writer)> {
-    open_or_spawn_with(attach, Some(daemon_executable), true).await
+    open_or_spawn_with(attach, Some(exe)).await
 }
 
 async fn open_or_spawn_with(
     attach: bool,
     exe: Option<std::path::PathBuf>,
-    for_user: bool,
 ) -> Result<(Reader, Writer)> {
-    if !for_user && has_structured_identity() {
+    if has_structured_identity() {
         return open(attach).await;
     }
     // Over ssh the far side starts its own server.
-    if !for_user && remote().is_some() {
+    if remote().is_some() {
         return open(attach).await;
     }
-    match open_identity(attach, for_user).await {
+    match open(attach).await {
         Ok(c) => return Ok(c),
         // A server is running: starting another would only fail to take its socket.
         Err(e) if other_version(&e).is_some() => return Err(e),
         Err(_) => {}
     }
-    spawn_daemon(exe.as_deref(), for_user)?;
+    spawn_daemon(exe.as_deref())?;
     let mut last = None;
     for _ in 0..60 {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        match open_identity(attach, for_user).await {
+        match open(attach).await {
             Ok(c) => return Ok(c),
             Err(e) => last = Some(e),
         }
@@ -500,40 +468,20 @@ async fn open_or_spawn_with(
     Err(last.unwrap_or_else(|| anyhow::anyhow!("daemon did not start")))
 }
 
-async fn open_identity(attach: bool, for_user: bool) -> Result<(Reader, Writer)> {
-    if for_user {
-        open_for_user(attach).await
-    } else {
-        open(attach).await
-    }
-}
-
-fn spawn_daemon(exe: Option<&std::path::Path>, for_user: bool) -> Result<()> {
-    daemon_command(exe, for_user)?
+fn spawn_daemon(exe: Option<&std::path::Path>) -> Result<()> {
+    daemon_command(exe)?
         .spawn()
         .context("starting the daemon")?;
     Ok(())
 }
 
-fn daemon_command(exe: Option<&std::path::Path>, for_user: bool) -> Result<std::process::Command> {
+fn daemon_command(exe: Option<&std::path::Path>) -> Result<std::process::Command> {
     let current = std::env::current_exe()?;
     let mut cmd = std::process::Command::new(exe.unwrap_or(&current));
     cmd.arg("daemon")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    if for_user {
-        // A GUI started inside a pane still represents the local human, not that pane.
-        for key in STRUCTURED_ENV.into_iter().chain([
-            concat!(env!("APP_ENV"), "_TERM_ID"),
-            concat!(env!("APP_ENV"), "_PANE_TOKEN"),
-            concat!(env!("APP_ENV"), "_REMOTE"),
-            concat!(env!("APP_ENV"), "_SSH"),
-            concat!(env!("APP_ENV"), "_REMOTE_CMD"),
-        ]) {
-            cmd.env_remove(key);
-        }
-    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -558,33 +506,12 @@ fn daemon_command(exe: Option<&std::path::Path>, for_user: bool) -> Result<std::
 #[cfg(test)]
 mod tests {
     #[test]
-    fn desktop_daemon_command_is_fixed_and_clears_inherited_runtime_routes() {
-        let command = super::daemon_command(None, true).unwrap();
+    fn daemon_command_starts_daemon() {
+        let command = super::daemon_command(None).unwrap();
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
             [std::ffi::OsStr::new("daemon")]
         );
-        let removed = command
-            .get_envs()
-            .filter(|(_, value)| value.is_none())
-            .map(|(key, _)| key.to_string_lossy().into_owned())
-            .collect::<Vec<_>>();
-        for key in super::STRUCTURED_ENV.into_iter().chain([
-            concat!(env!("APP_ENV"), "_TERM_ID"),
-            concat!(env!("APP_ENV"), "_PANE_TOKEN"),
-            concat!(env!("APP_ENV"), "_REMOTE"),
-            concat!(env!("APP_ENV"), "_SSH"),
-            concat!(env!("APP_ENV"), "_REMOTE_CMD"),
-        ]) {
-            assert!(removed.iter().any(|removed| removed == key));
-        }
-        for key in [
-            concat!(env!("APP_ENV"), "_CONFIG"),
-            concat!(env!("APP_ENV"), "_DATA_DIR"),
-            concat!(env!("APP_ENV"), "_SOCKET"),
-        ] {
-            assert!(!removed.iter().any(|removed| removed == key));
-        }
     }
 
     #[test]
