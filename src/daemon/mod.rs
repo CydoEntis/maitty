@@ -345,14 +345,14 @@ struct Daemon {
     last_loss: Option<Instant>,
 }
 
-pub fn run() -> Result<()> {
+pub fn run(on_start: impl FnOnce()) -> Result<()> {
     crate::proc::ahead_of_the_panes();
     init_logging();
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
         .build()?;
-    rt.block_on(async {
+    rt.block_on(async move {
         // Refuse to start a second daemon on the same socket.
         if ipc::connect().await.is_ok() {
             anyhow::bail!(
@@ -397,7 +397,7 @@ pub fn run() -> Result<()> {
         if let Some(e) = err {
             tracing::warn!("config: {e}");
         }
-        let mut d = Daemon::new(cfg, tx);
+        let mut d = Daemon::new(cfg, tx, on_start);
         match approvals::Approvals::load(&d.approvals_file) {
             Ok(a) => d.approvals = a,
             Err(e) => tracing::warn!("check approvals: {e:#}; every repo check asks again"),
@@ -824,16 +824,13 @@ pub fn saved_agent_count() -> usize {
 
 impl Daemon {
     /// A daemon with no panes yet; its process scanner and hook thread are running.
-    fn new(cfg: Config, tx: mpsc::Sender<Ev>) -> Daemon {
+    fn new(cfg: Config, tx: mpsc::Sender<Ev>, on_start: impl FnOnce()) -> Daemon {
         contain::children_die_with_us();
         // Clicking a notification opens its the app:// link (Windows needs to be told how).
         if !cfg!(test) {
             crate::reveal::register();
         }
-        // Hooks naming another the app (an older install) can't reach this server.
-        if !cfg!(test) {
-            crate::cli::refresh_claude_hooks();
-        }
+        on_start();
         let agents = cfg.agent_defs();
         let scan = Arc::new(Mutex::new(scan::Shared {
             roots: Vec::new(),

@@ -21,10 +21,19 @@ fn own_data_folder() {
 fn daemon() -> (Daemon, mpsc::Receiver<Ev>) {
     own_data_folder();
     let (tx, rx) = mpsc::channel(4096);
-    let mut d = Daemon::new(Config::default(), tx);
+    let mut d = Daemon::new(Config::default(), tx, || {});
     // Its own folder (made only if something is written to it), so tests never share check tails.
     d.check_dir = persist::scratch_dir().path().to_path_buf();
     (d, rx)
+}
+
+#[test]
+fn startup_callback_runs_once_when_the_daemon_is_created() {
+    own_data_folder();
+    let (tx, _rx) = mpsc::channel(4096);
+    let calls = std::cell::Cell::new(0);
+    let _daemon = Daemon::new(Config::default(), tx, || calls.set(calls.get() + 1));
+    assert_eq!(calls.get(), 1);
 }
 
 fn pane(d: &mut Daemon) -> TermId {

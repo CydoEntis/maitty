@@ -539,7 +539,7 @@ impl Fixture {
 
 fn daemon(record: Conversation) -> (Daemon, mpsc::Receiver<Ev>) {
     let (tx, rx) = mpsc::channel(32);
-    let mut daemon = Daemon::new(Config::default(), tx);
+    let mut daemon = Daemon::new(Config::default(), tx, || {});
     daemon.conversations.push(record);
     (daemon, rx)
 }
@@ -683,7 +683,7 @@ async fn conversation_fixture(mode: &str) -> TestSession {
     .await
     .unwrap();
     let (tx, events) = mpsc::channel(128);
-    let mut daemon = Daemon::new(Config::default(), tx);
+    let mut daemon = Daemon::new(Config::default(), tx, || {});
     daemon.session_path = fixture.directory.path().join("data/session.json");
     daemon.check_dir = fixture.directory.path().join("data/checks");
     daemon.approvals_file = fixture.directory.path().join("data/approvals.json");

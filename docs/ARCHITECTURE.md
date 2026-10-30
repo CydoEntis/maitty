@@ -217,6 +217,8 @@ and Tailwind; its rules live in `docs/stack/tauri.md`, `typescript.md`,
   `daemon/usage.rs` (agents' usage, limits, continue after a limit).
 - **Application:** `daemon/mod.rs` (the server loop: commands in, state and
   output out) and `client/mod.rs` (the client loop: events in, commands out).
+- **Composition boundary:** `app.rs` supplies optional startup actions to the
+  daemon; daemon modules must not import CLI modules.
 - **Presentation:** `client/screen/` (the layout and its popups),
   `client/design.rs` (shared drawing helpers), `client/render.rs`, and the
   feature views in `client/` (files, changes, branches, â€¦).

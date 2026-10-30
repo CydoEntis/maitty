@@ -310,7 +310,11 @@ pub(crate) fn run() {
     let result = match args.cmd {
         None => open_client(args.path),
         Some(Cmd::Attach { path }) => open_client(path),
-        Some(Cmd::Daemon) => daemon::run(),
+        Some(Cmd::Daemon) => daemon::run(|| {
+            if !cfg!(test) {
+                cli::refresh_claude_hooks();
+            }
+        }),
         Some(Cmd::Conversation { cmd }) => cli::conversation::run(cmd),
         Some(Cmd::Secret {
             cmd:

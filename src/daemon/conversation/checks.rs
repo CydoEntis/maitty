@@ -261,7 +261,7 @@ mod tests {
             ..Default::default()
         });
         let (tx, rx) = tokio::sync::mpsc::channel(32);
-        let mut d = Daemon::new(cfg, tx);
+        let mut d = Daemon::new(cfg, tx, || {});
         d.conversations.push(c);
         d.conversation_states.entry(id).or_default().status = Status::Done;
         (d, rx, dir, id)

@@ -913,6 +913,8 @@ host depends on it and `maitty-shared`, not the `maitty` runtime. Codex
 compatibility preflight and Claude protocol parsing, session IDs and launch
 arguments are in their provider packages; live transports, daemon and TUI/CLI
 remain to be extracted.
+The daemon no longer imports the CLI to refresh Claude hooks. `app.rs` supplies
+that startup action to daemon initialization, after the existing-daemon check.
 
 Claude meets the same standalone desktop chat contract as Codex. Native terminal
 transfer remains deferred. Package the optional GUI for Windows, macOS and Linux
@@ -1081,9 +1083,10 @@ fixture now passes only its declared fake-provider environment instead of
 snapshotting the machine environment; the latter could race with tests that
 change process environment variables. This does not verify Claude's live
 protocol or authentication.
-After moving shared clock helpers, the current Windows workspace passed
+After moving shared clock helpers and inverting the daemon-to-CLI startup hook,
+the current Windows workspace passed
 `cargo build --workspace --locked`, `cargo test --workspace --locked
--- --test-threads=2` (1,383 passed, 5 ignored), workspace clippy with warnings
+-- --test-threads=2` (1,384 passed, 5 ignored), workspace clippy with warnings
 denied, formatting and whitespace checks. The core and all extracted packages
 cross-check for Linux and macOS. A full workspace Linux cross-check from Windows
 is blocked by the GUI's `libdbus-sys` requiring a configured Linux sysroot;
