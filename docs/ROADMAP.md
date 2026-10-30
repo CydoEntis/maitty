@@ -1205,6 +1205,10 @@ Phase 37 remains active. Real Omarchy desktop acceptance, macOS package/build/ru
 hosted CI, live Claude protocol/authentication, and installer upgrade/uninstall
 checks remain open. The Debian and Fedora container runs are package smoke tests,
 not substitutes for the user's Omarchy desktop.
+On 2026-10-30, Windows GUI tests passed (103 tests across 16 files), lint passed,
+and `pnpm desktop:build` produced MSI and NSIS packages using an isolated Cargo
+target because an existing Maitty process held the default release binary open.
+The packages are in `gui/target/gui-refactor-release-20261030/release/bundle/`.
 
 ## In scope
 

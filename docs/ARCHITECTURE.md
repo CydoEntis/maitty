@@ -159,7 +159,7 @@ monorepo split.
 
 ## Project-specific: system context
 
-Maitty is one binary that runs in two roles:
+The terminal `maitty` binary runs as a daemon or as a client:
 
 - **Daemon (server):** started on demand, one per user (or per `MAITTY_SOCKET`
   name). Owns every pane: spawns shells and agents in pseudo-terminals
@@ -170,6 +170,11 @@ Maitty is one binary that runs in two roles:
   commands and keystrokes. Many clients can attach; any can detach.
 - **CLI subcommands** (`maitty send`, `maitty read`, `maitty wait`, `maitty worktree`,
   `maitty handoff`, `maitty doctor`, `maitty mcp`, `maitty proxy`, â€¦) talk to the same daemon.
+
+The optional desktop GUI is a separate Tauri application. It connects to the same
+daemon through the local protocol and does not link the terminal runtime. The
+daemon remains the owner of sessions, conversations, persistence and agent
+processes.
 
 External systems: the agent CLIs it runs (claude, codex, â€¦) and their hook
 callbacks (`maitty hook`), `git` and `gh`, `ssh`
