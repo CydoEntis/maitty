@@ -2353,55 +2353,37 @@ fn statusline_before() -> PathBuf {
     crate::config::data_dir().join("claude-statusline.txt")
 }
 
-/// Whether a status line command is the app's (or the seshi's or hydra's it was renamed from).
-fn is_our_statusline(cmd: &str) -> bool {
-    (cmd.contains(crate::brand::APP_COMMAND) || crate::brand::previous().any(|p| cmd.contains(p)))
-        && cmd.trim_end().ends_with(" statusline")
-}
-
 /// Make Claude's status line the app's (or with `uninstall`, put yours back). Yours keeps
 /// showing: the app's runs it with the same input and prints what it prints.
+#[cfg(test)]
 fn statusline_setting(
     root: &mut Value,
     exe: &str,
     uninstall: bool,
     kept: &std::path::Path,
 ) -> Result<()> {
-    let cur = root
-        .get("statusLine")
-        .and_then(|s| s.get("command"))
-        .and_then(Value::as_str)
-        .map(String::from);
-    let ours = cur.as_deref().is_some_and(is_our_statusline);
     let before = std::fs::read_to_string(kept).unwrap_or_default();
-    let obj = root
-        .as_object_mut()
-        .ok_or_else(|| anyhow!("settings.json is not an object"))?;
-    if uninstall {
-        if ours {
-            match before.trim() {
-                "" => {
-                    obj.remove("statusLine");
-                }
-                b => obj["statusLine"]["command"] = json!(b),
-            }
-        }
-        let _ = std::fs::remove_file(kept);
-        return Ok(());
-    }
-    if !ours {
+    apply_statusline_setting(root, exe, uninstall, kept, &before)
+}
+
+fn apply_statusline_setting(
+    root: &mut Value,
+    exe: &str,
+    uninstall: bool,
+    kept: &std::path::Path,
+    before: &str,
+) -> Result<()> {
+    let change =
+        maitty_provider_claude::update_statusline(root, exe, &app_hook_names(), uninstall, before)?;
+    if let Some(previous) = change.previous_command_to_save {
         if let Some(dir) = kept.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        std::fs::write(kept, cur.unwrap_or_default())?;
+        std::fs::write(kept, previous)?;
     }
-    let line = obj
-        .entry("statusLine")
-        .or_insert_with(|| json!({ "type": "command" }));
-    if !line.is_object() {
-        *line = json!({ "type": "command" });
+    if change.remove_previous_command {
+        let _ = std::fs::remove_file(kept);
     }
-    line["command"] = json!(format!("\"{exe}\" statusline"));
     Ok(())
 }
 
@@ -2438,7 +2420,7 @@ pub fn statusline() {
     }
     let before = std::fs::read_to_string(statusline_before()).unwrap_or_default();
     let before = before.trim();
-    if before.is_empty() || is_our_statusline(before) {
+    if before.is_empty() || maitty_provider_claude::is_our_statusline(before, &app_hook_names()) {
         return;
     }
     let mut cmd = shell_line(before);
@@ -2567,7 +2549,9 @@ fn claude_statusline(doc: &jsonc::Doc, exe: &str, uninstall: bool) -> Result<()>
         .ok_or_else(|| anyhow!("settings.json is not an object"))?;
     let mut root = doc.to_value().unwrap_or_default();
     let before = root.get("statusLine").cloned();
-    statusline_setting(&mut root, exe, uninstall, &statusline_before())?;
+    let kept = statusline_before();
+    let previous = std::fs::read_to_string(&kept).unwrap_or_default();
+    apply_statusline_setting(&mut root, exe, uninstall, &kept, &previous)?;
     match root.get("statusLine") {
         Some(line) if before.as_ref() != Some(line) => {
             jsonc::set_prop(&settings, "statusLine", jsonc::input(line))
@@ -2628,7 +2612,7 @@ fn needs_statusline() -> bool {
         .and_then(|s| s.get("command"))
         .and_then(Value::as_str)
         .unwrap_or_default();
-    hooked && !is_our_statusline(cmd)
+    hooked && !maitty_provider_claude::is_our_statusline(cmd, &app_hook_names())
 }
 
 /// Point the app's Claude hooks at this the app if they name another one. A hook from a

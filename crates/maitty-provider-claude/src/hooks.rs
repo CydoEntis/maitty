@@ -83,6 +83,67 @@ pub fn replace_json_hook_group(
     }
 }
 
+/// File changes the caller must make after updating Claude's status-line setting.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct StatusLineFileChange {
+    pub previous_command_to_save: Option<String>,
+    pub remove_previous_command: bool,
+}
+
+/// Whether `command` invokes this app's status-line wrapper, including renamed installs.
+pub fn is_our_statusline(command: &str, app_names: &[&str]) -> bool {
+    app_names.iter().any(|name| command.contains(name))
+        && command.trim_end().ends_with(" statusline")
+}
+
+/// Updates the in-memory Claude status-line setting and returns required file changes.
+pub fn update_statusline(
+    root: &mut Value,
+    executable: &str,
+    app_names: &[&str],
+    uninstall: bool,
+    previous_command: &str,
+) -> anyhow::Result<StatusLineFileChange> {
+    let current = root
+        .get("statusLine")
+        .and_then(|line| line.get("command"))
+        .and_then(Value::as_str)
+        .map(String::from);
+    let is_ours = current
+        .as_deref()
+        .is_some_and(|command| is_our_statusline(command, app_names));
+    let settings = root
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("settings.json is not an object"))?;
+    if uninstall {
+        if is_ours {
+            match previous_command.trim() {
+                "" => {
+                    settings.remove("statusLine");
+                }
+                previous => settings["statusLine"]["command"] = serde_json::json!(previous),
+            }
+        }
+        return Ok(StatusLineFileChange {
+            previous_command_to_save: None,
+            remove_previous_command: true,
+        });
+    }
+
+    let previous_command_to_save = (!is_ours).then(|| current.unwrap_or_default());
+    let line = settings
+        .entry("statusLine")
+        .or_insert_with(|| serde_json::json!({ "type": "command" }));
+    if !line.is_object() {
+        *line = serde_json::json!({ "type": "command" });
+    }
+    line["command"] = serde_json::json!(format!("\"{executable}\" statusline"));
+    Ok(StatusLineFileChange {
+        previous_command_to_save,
+        remove_previous_command: false,
+    })
+}
+
 /// Maps events from Claude-compatible native hook payloads to Maitty status.
 pub fn status_from_hook(payload: &Value) -> Option<maitty_shared::protocol::HookStatus> {
     use maitty_shared::protocol::HookStatus;
@@ -190,8 +251,8 @@ fn split_command(command: &str) -> (&str, &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        JsonHookGroupOptions, is_our_hook_group, is_our_name, json_hook_group,
-        replace_json_hook_group, runs_our_hook, stale_hooks, status_from_hook,
+        JsonHookGroupOptions, is_our_hook_group, is_our_name, is_our_statusline, json_hook_group,
+        replace_json_hook_group, runs_our_hook, stale_hooks, status_from_hook, update_statusline,
     };
     use jsonc_parser::cst::CstInputValue;
     use serde_json::json;
@@ -309,5 +370,46 @@ mod tests {
             groups[1]["hooks"][0]["command"],
             "\"/bin/maitty\" hook claude"
         );
+    }
+
+    #[test]
+    fn statusline_update_preserves_and_restores_the_users_previous_command() {
+        let names = ["maitty", "hydra"];
+        let mut settings = serde_json::json!({
+            "statusLine": { "type": "command", "command": "my-statusline", "padding": 1 }
+        });
+        let install = update_statusline(&mut settings, "/apps/maitty", &names, false, "").unwrap();
+        assert_eq!(
+            install.previous_command_to_save.as_deref(),
+            Some("my-statusline")
+        );
+        assert_eq!(
+            settings["statusLine"]["command"],
+            "\"/apps/maitty\" statusline"
+        );
+        assert_eq!(settings["statusLine"]["padding"], 1);
+
+        let repeated = update_statusline(
+            &mut settings,
+            "/apps/maitty-new",
+            &names,
+            false,
+            "my-statusline",
+        )
+        .unwrap();
+        assert_eq!(repeated.previous_command_to_save, None);
+
+        let uninstall = update_statusline(
+            &mut settings,
+            "/apps/maitty-new",
+            &names,
+            true,
+            "my-statusline",
+        )
+        .unwrap();
+        assert!(uninstall.remove_previous_command);
+        assert_eq!(settings["statusLine"]["command"], "my-statusline");
+        assert!(is_our_statusline("\"/apps/hydra.exe\" statusline", &names));
+        assert!(!is_our_statusline("my-statusline", &names));
     }
 }

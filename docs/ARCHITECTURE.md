@@ -207,8 +207,9 @@ configuration projection and completion-event mapping live in
 `maitty-provider-codex`;
 Claude stream parsing, version checks, session IDs, launch arguments, frame
 limit, hook event definitions, command-group projection and replacement,
-ownership, stale-hook projection and native event mapping live in
-`maitty-provider-claude`. JSONC files and live process transports remain in the
+ownership, stale-hook projection, native event mapping and status-line config
+policy live in `maitty-provider-claude`. JSONC files and live process
+transports remain in the
 runtime. Claude event projection also lives in its provider package. Completing the
 package split is tracked by
 [ADR 0042](adr/0042-decouple-desktop-clients-and-providers.md).

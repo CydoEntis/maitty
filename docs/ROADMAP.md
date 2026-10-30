@@ -980,6 +980,8 @@ Claude provider's hook ownership and stale-hook policy; other provider event
 mappings remain in the runtime. The provider also builds the shared tagged hook
 group used by Claude, Gemini and Qwen settings; JSONC editing and file writes
 stay in the runtime, while the provider owns replacement of its tagged groups.
+Claude status-line configuration policy also lives in the provider; the runtime
+keeps the saved user command and executes it after reporting usage.
 
 Claude meets the same standalone desktop chat contract as Codex. Native terminal
 transfer remains deferred. Package the optional GUI for Windows, macOS and Linux

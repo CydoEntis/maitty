@@ -5,8 +5,9 @@ use std::ffi::OsString;
 mod hooks;
 mod projection;
 pub use hooks::{
-    JsonHookGroupOptions, STATUS_EVENTS, is_our_hook_group, is_our_name, json_hook_group,
-    replace_json_hook_group, runs_our_hook, stale_hooks, status_from_hook,
+    JsonHookGroupOptions, STATUS_EVENTS, StatusLineFileChange, is_our_hook_group, is_our_name,
+    is_our_statusline, json_hook_group, replace_json_hook_group, runs_our_hook, stale_hooks,
+    status_from_hook, update_statusline,
 };
 pub use projection::{MAX_PENDING_TOOLS, ProjectedEvent, TurnProjector};
 
