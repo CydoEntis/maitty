@@ -1762,6 +1762,9 @@ pub fn config_init() -> Result<()> {
 
 /// Map a Claude Code (or Codex, same dialect) hook payload to a status.
 pub fn status_from_hook(payload: &Value) -> Option<HookStatus> {
+    if let Some(status) = maitty_provider_codex::status_from_hook(payload) {
+        return Some(status);
+    }
     let event = payload
         .get("hook_event_name")
         .and_then(Value::as_str)
@@ -1828,10 +1831,6 @@ pub fn status_from_hook(payload: &Value) -> Option<HookStatus> {
                 "session.deleted" => HookStatus::Gone,
                 _ => return None,
             }
-        }
-        // Codex `notify`.
-        _ if payload.get("type").and_then(Value::as_str) == Some("agent-turn-complete") => {
-            HookStatus::Done
         }
         _ => return None,
     })

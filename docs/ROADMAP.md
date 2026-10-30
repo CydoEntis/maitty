@@ -973,7 +973,8 @@ package shared by the TUI and CLI installer. Filesystem discovery and adapter
 installation remain in the runtime. This removes the TUI's metadata-only import
 from the CLI module while keeping status setup behavior unchanged.
 Codex-specific native hook TOML projection now lives in `maitty-provider-codex`;
-the runtime retains path checks, backups and atomic file writes.
+the runtime retains path checks, backups and atomic file writes. The provider's
+completion notification is also mapped there to the shared hook status.
 
 Claude meets the same standalone desktop chat contract as Codex. Native terminal
 transfer remains deferred. Package the optional GUI for Windows, macOS and Linux

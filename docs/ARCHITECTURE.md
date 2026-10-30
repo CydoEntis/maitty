@@ -202,8 +202,9 @@ original terminal implementation now lives in `maitty-runtime`; the root
 `maitty` package preserves the installed command and re-exports the runtime
 library for compatibility. The daemon, TUI and CLI still live together inside
 `maitty-runtime` and remain to be separated. Codex compatibility preflight,
-session metadata, usage extraction, effective-config policy and native hook
-configuration projection live in `maitty-provider-codex`;
+session metadata, usage extraction, effective-config policy, native hook
+configuration projection and completion-event mapping live in
+`maitty-provider-codex`;
 Claude stream parsing, version checks, session IDs, launch arguments, frame
 limit, hook ownership and stale-hook projection live in
 `maitty-provider-claude`. JSONC files and live process transports remain in the

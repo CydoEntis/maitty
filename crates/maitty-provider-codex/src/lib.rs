@@ -11,6 +11,12 @@ mod status_hooks;
 pub use runtime_policy::runtime_policy_overrides;
 pub use status_hooks::{StatusHookOptions, update_status_hooks};
 
+/// Maps Codex's native completion notification to Maitty's shared hook status.
+pub fn status_from_hook(payload: &Value) -> Option<maitty_shared::protocol::HookStatus> {
+    (payload.get("type").and_then(Value::as_str) == Some("agent-turn-complete"))
+        .then_some(maitty_shared::protocol::HookStatus::Done)
+}
+
 /// A Codex session's id, parent, working folder and display name from its metadata line.
 pub fn session_metadata(head: &str) -> Option<(String, Option<String>, Option<PathBuf>, String)> {
     static FIELD: LazyLock<Regex> = LazyLock::new(|| {
@@ -281,6 +287,18 @@ mod tests {
 
     const SUPPORTED_SCHEMA: &str = include_str!("fixtures/codex-0.164.0.json");
     const MISSING_INTERRUPT: &str = include_str!("fixtures/missing-interrupt.json");
+
+    #[test]
+    fn maps_only_codex_turn_completion_notifications() {
+        assert_eq!(
+            status_from_hook(&serde_json::json!({"type": "agent-turn-complete"})),
+            Some(maitty_shared::protocol::HookStatus::Done)
+        );
+        assert_eq!(
+            status_from_hook(&serde_json::json!({"type": "other-event"})),
+            None
+        );
+    }
 
     #[test]
     fn verified_versions_support_required_session_operations() {
