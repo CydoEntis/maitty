@@ -10,11 +10,10 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio_util::codec::{FramedRead, FramedWrite, LinesCodec};
 
 use maitty_provider_claude::{
-    MAX_PENDING_TOOLS, OutputFrame, ProjectedEvent, TurnProjector, bounded_content_text,
-    command_arguments, parse_output_frame, session_id, verified_version,
+    MAX_FRAME_BYTES, MAX_PENDING_TOOLS, OutputFrame, ProjectedEvent, TurnProjector,
+    bounded_content_text, command_arguments, parse_output_frame, session_id, verified_version,
 };
 
-const MAX_FRAME_BYTES: usize = 1024 * 1024;
 const STDERR_CHUNK_BYTES: usize = 8192;
 const PROCESS_EXIT_TIMEOUT: Duration = Duration::from_secs(2);
 const INITIALIZE_REQUEST_ID: &str = "claude-initialize";
@@ -767,7 +766,7 @@ mod tests {
     fn rejects_oversized_stream_frames() {
         let frame = format!(
             "{{\"type\":\"assistant\",\"padding\":\"{}\"}}",
-            "x".repeat(super::MAX_FRAME_BYTES)
+            "x".repeat(MAX_FRAME_BYTES)
         );
         assert!(parse_output_frame(&frame).is_err());
     }
