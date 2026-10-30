@@ -911,8 +911,8 @@ validation and shared check-output rules. `crates/maitty-desktop-client`
 now owns GUI daemon IPC, lifecycle operations and Codex discovery; the Tauri
 host depends on it and `maitty-shared`, not the `maitty` runtime. Codex
 compatibility preflight and Claude protocol parsing, session IDs and launch
-arguments are in their provider packages; live transports, daemon and TUI/CLI
-remain to be extracted.
+arguments, plus Claude turn-event projection, are in their provider packages;
+live transports, daemon and TUI/CLI remain to be extracted.
 The daemon no longer imports the CLI to refresh Claude hooks. `app.rs` supplies
 that startup action to daemon initialization, after the existing-daemon check.
 
@@ -1083,8 +1083,8 @@ fixture now passes only its declared fake-provider environment instead of
 snapshotting the machine environment; the latter could race with tests that
 change process environment variables. This does not verify Claude's live
 protocol or authentication.
-After moving shared clock helpers and inverting the daemon-to-CLI startup hook,
-the current Windows workspace passed
+After moving shared clock helpers, inverting the daemon-to-CLI startup hook,
+and extracting Claude turn-event projection, the current Windows workspace passed
 `cargo build --workspace --locked`, `cargo test --workspace --locked
 -- --test-threads=2` (1,384 passed, 5 ignored), workspace clippy with warnings
 denied, formatting and whitespace checks. The core and all extracted packages

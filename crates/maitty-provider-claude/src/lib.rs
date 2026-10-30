@@ -2,6 +2,9 @@ use anyhow::{Context, Result, bail};
 use serde_json::Value;
 use std::ffi::OsString;
 
+mod projection;
+pub use projection::{MAX_PENDING_TOOLS, ProjectedEvent, TurnProjector};
+
 const MAX_FRAME_BYTES: usize = 1024 * 1024;
 const VERIFIED_VERSIONS: &[&str] = &["2.1.312"];
 
