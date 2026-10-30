@@ -939,6 +939,16 @@ passed), workspace build and strict clippy, and Linux and macOS target checks
 for the installed `maitty` package. The all-workspace Linux cross-check still
 requires a configured Linux pkg-config/sysroot for the Tauri host's D-Bus
 dependency. Independent review found no behavior or portability issue.
+The UI preference model has also moved into `maitty-settings`, including its
+defaults, rounding deserialization, legacy look mapping, cursor validation and
+spinner presets. `maitty-runtime::config` re-exports the old names while
+keeping file loading and TOML migration orchestration. The settings package's
+13 tests and the runtime's 59 config tests pass, as do the workspace check and
+strict clippy. The full workspace suite passed (1,317 runtime tests, 13
+settings tests, all remaining package suites, and 5 ignored tests). Linux and
+macOS target checks passed for the installed `maitty` package. The all-workspace
+Linux cross-check still needs a configured D-Bus pkg-config/sysroot for the
+Tauri host.
 
 Claude meets the same standalone desktop chat contract as Codex. Native terminal
 transfer remains deferred. Package the optional GUI for Windows, macOS and Linux

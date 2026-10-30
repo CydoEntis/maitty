@@ -5,6 +5,10 @@ use crate::brand::APP_COMMAND;
 use crate::keys::{self, Action, KeySpec};
 use crate::theme::{Theme, ThemeOverrides};
 use anyhow::{Context, Result};
+pub use maitty_settings::config::{
+    BARS_FRAMES, CURSOR_SHAPES, LAYOUT_NAMES, LayoutKind, PADDING_TOP, Rounding, SIDEBAR_TABS,
+    SPINNERS, Ui, validate_cursor,
+};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
@@ -13,10 +17,6 @@ use std::sync::OnceLock;
 
 pub const EXAMPLE: &str = include_str!("../../../config.example.toml");
 pub const CODEX_QUEUED_QUESTION_PATTERN: &str = r"(?m)^[ \t]*\?[ \t]+[1-9][0-9]*[ \t]+questions?[ \t]*$|^[ \t]*enter[ \t]+submit[ \t]+ctrl\+\][ \t]+skip[ \t]+shift\+[^\r\n]*main prompt[ \t]*$";
-
-/// `ui.padding`'s default: a row above the screen, so the tabs don't touch the terminal's own
-/// tab bar, and none round the rest.
-pub const PADDING_TOP: &str = "top";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -69,81 +69,6 @@ pub struct Config {
     pub agents_replace_defaults: bool,
     /// Commands the app runs when an agent's turn ends in the named project (`[[check]]`).
     pub check: Vec<CheckDef>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Ui {
-    pub sidebar: bool,
-    /// "left" or "right".
-    pub sidebar_position: String,
-    /// Milliseconds after the prefix before the which-key popup shows (0 = immediately).
-    pub which_key_delay_ms: u64,
-    pub which_key: bool,
-    pub mouse: bool,
-    /// Animate the working icon with these frames (empty = use `icons.working`).
-    pub spinner: Vec<String>,
-    /// One colour per workspace, assigned in order and kept across restarts.
-    pub workspace_colors: Vec<String>,
-    /// The welcome screen when the app starts.
-    pub splash: bool,
-    /// When the splash's wordmark falls into place: "cold start" (a first start of a version, or
-    /// nothing left running), "always" or "never".
-    pub splash_animation: String,
-    /// Look for a newer the app when the window opens (and every few hours) and say so.
-    pub update_check: bool,
-    /// Short slides and glides (the sidebar, the sheet, the highlight, toasts). Always off
-    /// over SSH.
-    pub motion: bool,
-    /// Alt+arrows move between panes without the leader (off: they go to the program, for
-    /// shells that jump words with them).
-    pub alt_arrows: bool,
-    /// Alt with the leader's letter runs the everyday actions without it (`keys::ALT_LETTER_KEYS`:
-    /// new shell, session and tab, close, split). Off: those keys go to the program.
-    pub alt_keys: bool,
-    /// Where plain `<app>` opens its first shell (and the one after you close everything).
-    /// Empty: wherever you run the app. `~` is your home folder.
-    pub start_dir: String,
-    /// A session's tabs as lines under its sidebar row (`SIDEBAR_TABS`): "all", "busy" (those
-    /// working or needing you, and the one on screen) or "off".
-    pub sidebar_tabs: String,
-    /// The look (ADR 0027): "floating" or "hairline". Read with `layout_kind`; an older file's
-    /// look is folded in by `fold_retired_layout`. Empty means unset.
-    pub layout: String,
-    /// "solid" (the default) paints everything the theme's `bg`, so a plain terminal shows the
-    /// theme whole; "terminal" leaves chrome on the terminal's own background (so transparency
-    /// and a background image show through evenly).
-    pub background: String,
-    /// Older files' Cards spacing, "floating" or "tiled": read only while `layout` is unset or
-    /// "cards".
-    pub panes: String,
-    /// Which glyph set marks sessions and checks: "auto" (ASCII when the blocked, done and idle
-    /// icons are all ASCII, else Unicode), "unicode", "ascii" or "nerd".
-    pub glyphs: String,
-    /// Space between floating cards: "0", "1" or "2" rows stacked (and columns side by side).
-    pub gap: String,
-    /// Space round the whole screen, in every layout: "0", "1" or "2" rows (and columns), or
-    /// `PADDING_TOP` (the default), a row above only.
-    pub padding: String,
-    /// How far unfocused panes fade toward their background: "off", "subtle", "30%", "60%" ("40%" from older configs counts as 30%).
-    pub dim: String,
-    /// The focused card's border: "accent", "bright" or "none".
-    pub focus_border: String,
-    /// One setting for every rounded shape (`Rounding`).
-    pub rounded: Rounding,
-    /// Floating: each pane's border in its own colour, by its place in the tab (ADR 0027).
-    pub pane_colors: bool,
-    /// What `fold_retired_layout` changed, to say once and write back: the retired look's name
-    /// and the settings that stand for it now. Never read from or written to the file.
-    #[serde(skip)]
-    pub retired_layout: Option<RetiredLayout>,
-    /// Show `· N agents` on a working session's row when the agent reports helpers.
-    pub subagent_count: bool,
-    /// The cursor's shape when the program in a pane doesn't ask for one: "terminal" (the
-    /// terminal's own), "block", "underline" or "bar" (`CURSOR_SHAPES`).
-    pub cursor: String,
-    /// That cursor blinks.
-    pub cursor_blink: bool,
 }
 
 pub const NEW_AGENTS: &[&str] = &["last used", "claude", "codex", "gemini"];
@@ -213,57 +138,6 @@ fn fold_legacy_helpers(value: &mut toml::Table) {
     }
 }
 
-/// How round the shapes are, all of them at once (`ui.rounded`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Rounding {
-    /// Round card corners, and half-circle ends on every chip, button, row and hover (Nerd Font).
-    Full,
-    /// Rounded squares: round card corners, square ends everywhere else. No Nerd Font needed.
-    Corners,
-    /// Everything square.
-    Off,
-}
-
-impl Rounding {
-    /// Settings' choices, in its order.
-    pub const NAMES: &[&str] = &["full", "corners", "off"];
-
-    /// Cards draw `╭╮╰╯`.
-    pub fn corners(self) -> bool {
-        self != Rounding::Off
-    }
-
-    /// Chips, buttons, rows and the hover end in half-circles.
-    pub fn caps(self) -> bool {
-        self == Rounding::Full
-    }
-}
-
-/// Older files wrote `rounded = true` / `false`: on is `full`, off is `off`.
-impl<'de> Deserialize<'de> for Rounding {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Written {
-            Switch(bool),
-            Name(String),
-        }
-        match Written::deserialize(d)? {
-            Written::Switch(on) => Ok(if on { Rounding::Full } else { Rounding::Off }),
-            Written::Name(name) => match name.as_str() {
-                "full" => Ok(Rounding::Full),
-                "corners" => Ok(Rounding::Corners),
-                "off" => Ok(Rounding::Off),
-                _ => Err(serde::de::Error::custom(format!(
-                    "ui.rounded is \"{name}\"; use one of: {}",
-                    Rounding::NAMES.join(", ")
-                ))),
-            },
-        }
-    }
-}
-
 /// An old `ui.corners = "rounded"` is `ui.rounded = "corners"` unless the file sets that itself,
 /// now that one setting rounds everything. The file itself is not rewritten.
 fn fold_legacy_corners(value: &mut toml::Table) {
@@ -276,22 +150,6 @@ fn fold_legacy_corners(value: &mut toml::Table) {
     {
         ui.insert("rounded".into(), toml::Value::String("corners".into()));
     }
-}
-
-/// `ui.sidebar_tabs`' choices, in Settings' order.
-pub const SIDEBAR_TABS: &[&str] = &["all", "busy", "off"];
-
-/// `ui.cursor`'s choices, in Settings' order.
-pub const CURSOR_SHAPES: &[&str] = &["terminal", "block", "underline", "bar"];
-
-fn validate_cursor(ui: &Ui) -> Result<()> {
-    anyhow::ensure!(
-        CURSOR_SHAPES.contains(&ui.cursor.as_str()),
-        "ui.cursor is \"{}\"; use one of: {}",
-        ui.cursor,
-        CURSOR_SHAPES.join(", ")
-    );
-    Ok(())
 }
 
 fn validate_sessions(s: &Sessions) -> Result<()> {
@@ -381,106 +239,6 @@ impl Default for Mcp {
             .to_vec(),
             scope: "project".into(),
             grants: ["read", "write", "start"].map(String::from).to_vec(),
-        }
-    }
-}
-
-/// A retired look an older file named, and what stands for it now (`Ui::fold_retired_layout`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RetiredLayout {
-    /// How Settings called it: "Tiled", "Grid" or "Compact".
-    pub name: &'static str,
-    pub kind: LayoutKind,
-    /// `gap = 0` stands for it (Tiled).
-    pub gap: bool,
-    /// `pane_colors = true` stands for it (Grid).
-    pub pane_colors: bool,
-}
-
-impl RetiredLayout {
-    /// What the app says once when it starts with it.
-    pub fn note(&self) -> String {
-        let now = match (self.kind, self.gap, self.pane_colors) {
-            (LayoutKind::Hairline, ..) => "Hairline, lines only",
-            (_, true, _) => "Floating with no gap",
-            (_, _, true) => "Floating with Pane colours on",
-            _ => "Floating",
-        };
-        format!(
-            "The {} layout is now {now}. Change it in Settings › Appearance",
-            self.name
-        )
-    }
-}
-
-/// The two looks over the one session layout (ADR 0027).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LayoutKind {
-    Floating,
-    /// No boxes: `│` / `─` hairlines, a title and rule per pane, and a status strip.
-    Hairline,
-}
-
-/// Settings' Layout choices, in its order.
-pub const LAYOUT_NAMES: &[&str] = &["floating", "hairline"];
-
-impl LayoutKind {
-    /// Its value in `ui.layout`.
-    pub fn name(self) -> &'static str {
-        match self {
-            LayoutKind::Floating => "floating",
-            LayoutKind::Hairline => "hairline",
-        }
-    }
-}
-
-impl Ui {
-    /// The look chosen; anything but "hairline" is Floating.
-    pub fn layout_kind(&self) -> LayoutKind {
-        if self.layout == "hairline" {
-            LayoutKind::Hairline
-        } else {
-            LayoutKind::Floating
-        }
-    }
-
-    /// An older file's look, kept as near as the two looks allow (ADR 0027): Tiled (and Cards
-    /// with `panes = "tiled"`) is Floating with no gaps, Grid is Floating with pane colours,
-    /// and Compact (once "flat") is Hairline. The file itself is not rewritten.
-    pub fn fold_retired_layout(&mut self) {
-        let tiled = self.layout == "tiled"
-            || (matches!(self.layout.as_str(), "" | "cards") && self.panes == "tiled");
-        let retired = if tiled {
-            self.gap = "0".into();
-            Some("Tiled")
-        } else if self.layout == "grid" {
-            self.pane_colors = true;
-            Some("Grid")
-        } else if matches!(self.layout.as_str(), "compact" | "flat") {
-            Some("Compact")
-        } else {
-            None
-        };
-        let kind = if retired == Some("Compact") {
-            LayoutKind::Hairline
-        } else {
-            self.layout_kind()
-        };
-        self.layout = kind.name().into();
-        self.retired_layout = retired.map(|name| RetiredLayout {
-            name,
-            kind,
-            gap: tiled,
-            pane_colors: name == "Grid",
-        });
-    }
-
-    /// The rounding drawn: `rounded`, except that Hairline is always square (ADR 0026).
-    pub fn rounding(&self) -> Rounding {
-        if self.layout_kind() == LayoutKind::Hairline {
-            Rounding::Off
-        } else {
-            self.rounded
         }
     }
 }
@@ -1013,47 +771,6 @@ impl Default for Config {
     }
 }
 
-impl Default for Ui {
-    fn default() -> Self {
-        Ui {
-            sidebar: true,
-            sidebar_position: "left".into(),
-            which_key_delay_ms: 600,
-            which_key: false,
-            mouse: true,
-            spinner: SPINNERS[0].1.iter().map(|frame| (*frame).into()).collect(),
-            workspace_colors: [
-                "#a593ff", "#5aa9ff", "#ff7ab6", "#3dd6c0", "#e8c565", "#ff9f6b", "#c792ea",
-                "#7fd8a4",
-            ]
-            .map(String::from)
-            .to_vec(),
-            splash: true,
-            splash_animation: "cold start".into(),
-            update_check: true,
-            motion: true,
-            alt_arrows: true,
-            alt_keys: true,
-            start_dir: String::new(),
-            sidebar_tabs: "all".into(),
-            layout: String::new(),
-            background: "solid".into(),
-            panes: "floating".into(),
-            glyphs: "auto".into(),
-            gap: "1".into(),
-            padding: PADDING_TOP.into(),
-            dim: "30%".into(),
-            focus_border: "accent".into(),
-            rounded: Rounding::Off,
-            pane_colors: false,
-            retired_layout: None,
-            subagent_count: true,
-            cursor: "terminal".into(),
-            cursor_blink: true,
-        }
-    }
-}
-
 impl Default for Quick {
     fn default() -> Self {
         let a = |name: &str, command: &str, models: &[&str], flag: &str| QuickAgent {
@@ -1100,33 +817,6 @@ impl Default for Worktree {
     }
 }
 
-pub const SPINNERS: &[(&str, &[&str])] = &[
-    ("Braille", &["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]),
-    ("Dots", &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
-    ("Line (ASCII)", &["|", "/", "-", "\\"]),
-    // Three dots chasing round the cell's edge.
-    ("Snake", &["⠇", "⠋", "⠙", "⠸", "⢰", "⣠", "⣄", "⡆"]),
-    // Each frame held twice: the pulse breathes at half the other styles' pace.
-    ("Pulse", &["·", "·", "•", "•", "●", "●", "•", "•"]),
-    // From ratatui-spinner's FluxFrames (MIT): Fill is its PULSE.
-    ("Fill", &["⣀", "⣤", "⣶", "⣾", "⣿", "⣾", "⣶", "⣤"]),
-    ("Orbit", &["⠁", "⠈", "⠐", "⠠", "⢀", "⡀", "⠄", "⠂"]),
-    ("Bounce", &["⠉", "⠒", "⣀", "⠒"]),
-    ("Pair", &["⠉", "⠘", "⠰", "⢠", "⣀", "⡄", "⠆", "⠃"]),
-    ("Arc", &["◜", "◝", "◞", "◟"]),
-    ("Moon", &["◓", "◑", "◒", "◐"]),
-    ("Star", &["✶", "✷", "✸", "✹"]),
-    (
-        "Blocks",
-        &[
-            "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃", "▂",
-        ],
-    ),
-    ("Bars", BARS_FRAMES),
-];
-/// The reference frames' working spinner: three Braille bars, two columns wide. The ASCII glyph set
-/// swaps it for `BARS_ASCII` (see `client::render::status_icon`).
-pub const BARS_FRAMES: &[&str] = &["⣰⡄", "⣼⡀", "⣶⡆", "⣧⡇", "⣆⡆", "⣤⡄", "⣸⡆", "⣴⡇", "⣇⡄", "⣦⡀"];
 pub const BARS_ASCII: &[&str] = &[". ", "o ", "O ", "o "];
 pub const MAX_SPINNER_FRAMES: usize = 64;
 

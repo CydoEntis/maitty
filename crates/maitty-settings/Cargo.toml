@@ -10,3 +10,6 @@ anyhow = "1"
 maitty-shared = { path = "../maitty-shared" }
 ratatui = "0.30"
 serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+toml = "0.9"

@@ -181,9 +181,11 @@ each other.
 
 The shared protocol, conversation contracts, split-tree types, clock helpers,
 hidden-text validation and check-output classification live in the
-`maitty-shared` workspace package. `maitty-settings` owns terminal key actions,
+`maitty-shared` workspace package. `maitty-settings` owns the UI preference
+schema and defaults, appearance compatibility rules, terminal key actions,
 default bindings, key parsing and built-in themes; terminal-specific mouse
-encoding stays in the runtime. `maitty-ipc-transport` owns bounded,
+encoding stays in the runtime. Config loading and filesystem migrations remain
+runtime-owned. `maitty-ipc-transport` owns bounded,
 length-delimited protocol framing shared by the TUI and GUI; socket naming,
 handshakes and daemon startup stay in their respective clients. The Tauri host
 uses `maitty-desktop-client`
@@ -219,8 +221,9 @@ and Tailwind; its rules live in `docs/stack/tauri.md`, `typescript.md`,
 
 - **Domain / shared types:** `maitty-shared::protocol` (every message between client and
   daemon), `maitty-shared::layout` (split-tree contract),
-  `maitty-settings::keys` (actions and bindings), `maitty-settings::theme`,
-  and `config.rs`. No I/O beyond reading config.
+  `maitty-settings::config` (UI preferences), `maitty-settings::keys` (actions
+  and bindings), `maitty-settings::theme`, and the remaining config schema.
+  Config file loading and migration I/O stay in the runtime.
 - **Infrastructure:** `ipc.rs` (sockets, SSH proxy), `daemon/term.rs` (PTY +
   emulator per pane), `daemon/scan.rs` (status detection), `daemon/git.rs`,
   `daemon/persist.rs`, `gitfs.rs`, `alert.rs`, `reveal.rs` (notification links,
@@ -257,7 +260,8 @@ crates/maitty-runtime/src/
   references.rs  a project's reference images in `.maitty/references/` at the main checkout (the client's References view and the MCP server list them)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
   ipc.rs         local sockets and the SSH proxy
-  config.rs      config.toml (+ config.local.toml) loading
+  config.rs      config.toml (+ config.local.toml) loading and non-UI config
+                 types; UI preferences are in maitty-settings
   keys.rs        TUI mouse-event encoding wrapper; key actions live in maitty-settings
   layout.rs      split trees and neighbour finding
   daemon/        the server: mod.rs (loop), term.rs (PTY + vt100), scan.rs
@@ -267,7 +271,7 @@ crates/maitty-runtime/src/
                  per feature (files, find, branch, recipes, pr, â€¦)
   mcp.rs, project.rs, gitfs.rs, alert.rs, reveal.rs, update.rs, restart.rs, sync.rs
 crates/maitty-shared/ shared wire protocol, conversation contracts and split-tree types
-crates/maitty-settings/ terminal key actions, bindings, parsing and built-in themes
+crates/maitty-settings/ UI preferences, terminal key actions, bindings, parsing and built-in themes
 crates/maitty-ipc-transport/ length-delimited message framing shared by clients
 crates/maitty-runtime/ original terminal app implementation; TUI, CLI and daemon still being split
 docs/            these docs, the roadmap, design briefs
