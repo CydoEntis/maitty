@@ -968,6 +968,10 @@ package checks all pass.
 Linux and macOS target checks passed for the installed `maitty` package. The
 all-workspace Linux cross-check still needs a configured D-Bus
 pkg-config/sysroot for the Tauri host.
+The native status integration catalog is now a pure `maitty-agent-integrations`
+package shared by the TUI and CLI installer. Filesystem discovery and adapter
+installation remain in the runtime. This removes the TUI's metadata-only import
+from the CLI module while keeping status setup behavior unchanged.
 
 Claude meets the same standalone desktop chat contract as Codex. Native terminal
 transfer remains deferred. Package the optional GUI for Windows, macOS and Linux

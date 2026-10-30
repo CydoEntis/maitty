@@ -713,7 +713,7 @@ impl App {
                             if agent == "claude" {
                                 app.claude_hooks = Some(true);
                             }
-                            let name = crate::cli::integrations::STATUS_AGENTS.iter().find(|a| a.id == agent).map_or(agent.as_str(), |a| a.name);
+                            let name = maitty_agent_integrations::STATUS_AGENTS.iter().find(|a| a.id == agent).map_or(agent.as_str(), |a| a.name);
                             app.notify(format!("{name} status installed; restart {name} to load it (Pi also supports /reload)"), false)
                         }
                         Err(e) => app.notify(format!("couldn't set up {agent} status: {e:#}"), true),

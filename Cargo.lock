@@ -2365,6 +2365,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "maitty-agent-integrations"
+version = "0.1.0"
+
+[[package]]
 name = "maitty-desktop-client"
 version = "0.1.0"
 dependencies = [
@@ -2443,6 +2447,7 @@ dependencies = [
  "jsonc-parser",
  "libc",
  "maitty-agent-detection",
+ "maitty-agent-integrations",
  "maitty-ipc-transport",
  "maitty-provider-claude",
  "maitty-provider-codex",

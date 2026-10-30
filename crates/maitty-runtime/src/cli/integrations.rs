@@ -446,30 +446,25 @@ fn install_opencode_at(
 
 type Install = fn(exe: &str, uninstall: bool) -> Result<PathBuf>;
 
-/// An agent whose status `integrate` and the Connect agents list can set up.
-pub(crate) struct StatusAgent {
-    pub(crate) id: &'static str,
-    pub(crate) name: &'static str,
-    install: Install,
-}
+pub(crate) use maitty_agent_integrations::STATUS_AGENTS;
+use maitty_agent_integrations::{StatusAdapter, StatusAgent};
 
-/// The one list both the CLI and the Connect agents menu offer, so they can't disagree.
-pub(crate) const STATUS_AGENTS: &[StatusAgent] = &[
-    StatusAgent {
-        id: "claude",
-        name: "Claude Code",
-        install: |_, uninstall| super::claude_hooks(uninstall),
-    },
-    StatusAgent {
-        id: "codex",
-        name: "Codex",
-        install: install_codex,
-    },
-    // Gemini counts its hook timeout in milliseconds.
-    StatusAgent {
-        id: "gemini",
-        name: "Gemini CLI",
-        install: |_, uninstall| {
+/// The function that sets up `agent`'s status, or why there is none.
+pub(crate) fn status_installer(agent: &str) -> Result<Install> {
+    let Some(definition) = STATUS_AGENTS
+        .iter()
+        .find(|definition| definition.id == agent)
+    else {
+        bail!(
+            "no integration for `{agent}`; any agent can call `{} hook {agent} --status <working|blocked|done|idle>`",
+            env!("APP_COMMAND")
+        );
+    };
+    match definition.adapter {
+        StatusAdapter::Claude => Ok(|_, uninstall| super::claude_hooks(uninstall)),
+        StatusAdapter::Codex => Ok(install_codex),
+        // Gemini counts its hook timeout in milliseconds.
+        StatusAdapter::Gemini => Ok(|_, uninstall| {
             super::json_hooks(
                 &super::home_settings("GEMINI_CLI_HOME", ".gemini"),
                 "gemini",
@@ -477,13 +472,9 @@ pub(crate) const STATUS_AGENTS: &[StatusAgent] = &[
                 5000,
                 uninstall,
             )
-        },
-    },
-    // Qwen Code copies Claude's events, and its seconds.
-    StatusAgent {
-        id: "qwen",
-        name: "Qwen Code",
-        install: |_, uninstall| {
+        }),
+        // Qwen Code copies Claude's events, and its seconds.
+        StatusAdapter::Qwen => Ok(|_, uninstall| {
             super::json_hooks(
                 &super::qwen_settings(),
                 "qwen",
@@ -491,48 +482,13 @@ pub(crate) const STATUS_AGENTS: &[StatusAgent] = &[
                 10,
                 uninstall,
             )
-        },
-    },
-    StatusAgent {
-        id: "opencode",
-        name: "OpenCode",
-        install: install_opencode,
-    },
-    StatusAgent {
-        id: "pi",
-        name: "Pi",
-        install: install_pi,
-    },
-    StatusAgent {
-        id: "omp",
-        name: "OMP",
-        install: install_omp,
-    },
-    StatusAgent {
-        id: "kilo",
-        name: "Kilo",
-        install: install_kilo,
-    },
-    StatusAgent {
-        id: "kimi",
-        name: "Kimi",
-        install: install_kimi,
-    },
-    StatusAgent {
-        id: "mastracode",
-        name: "Mastra Code",
-        install: install_mastracode,
-    },
-];
-
-/// The function that sets up `agent`'s status, or why there is none.
-pub(crate) fn status_installer(agent: &str) -> Result<Install> {
-    match STATUS_AGENTS.iter().find(|a| a.id == agent) {
-        Some(a) => Ok(a.install),
-        None => bail!(
-            "no integration for `{agent}`; any agent can call `{} hook {agent} --status <working|blocked|done|idle>`",
-            env!("APP_COMMAND")
-        ),
+        }),
+        StatusAdapter::OpenCode => Ok(install_opencode),
+        StatusAdapter::Pi => Ok(install_pi),
+        StatusAdapter::Omp => Ok(install_omp),
+        StatusAdapter::Kilo => Ok(install_kilo),
+        StatusAdapter::Kimi => Ok(install_kimi),
+        StatusAdapter::MastraCode => Ok(install_mastracode),
     }
 }
 
@@ -597,7 +553,8 @@ pub(crate) fn connect(agent: &StatusAgent, exe: &str, uninstall: bool) -> Result
     if uninstall && !path.exists() {
         return Ok(false);
     }
-    changes(&path, || (agent.install)(exe, uninstall))
+    let install = status_installer(agent.id)?;
+    changes(&path, || install(exe, uninstall))
 }
 
 fn changes(path: &std::path::Path, change: impl FnOnce() -> Result<PathBuf>) -> Result<bool> {

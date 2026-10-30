@@ -19,6 +19,7 @@ previous = ["vibecasso", "seshi", "hydra", "drover"]
 members = [
     "crates/maitty-shared",
     "crates/maitty-agent-detection",
+    "crates/maitty-agent-integrations",
     "crates/maitty-ipc-transport",
     "crates/maitty-runtime",
     "crates/maitty-settings",

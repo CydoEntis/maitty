@@ -73,7 +73,7 @@ impl App {
             Action::Find(tab) => self.open_find(tab),
             Action::AgentStatusSetup => self.menu(
                 "Connect an agent · it then reports working, needs you and done itself".into(),
-                crate::cli::integrations::STATUS_AGENTS
+                maitty_agent_integrations::STATUS_AGENTS
                     .iter()
                     .map(|a| {
                         (

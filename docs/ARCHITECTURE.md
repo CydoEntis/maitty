@@ -196,6 +196,8 @@ uses `maitty-desktop-client`
 for daemon IPC and GUI operations; it does not link `maitty-runtime`. The
 `maitty-agent-detection` package owns the bundled agent-screen matcher used by
 daemon status; process-tree and lifecycle status remain daemon-owned. The
+`maitty-agent-integrations` package owns the catalog of agents with native
+status integrations; config discovery and installation remain runtime-owned. The
 original terminal implementation now lives in `maitty-runtime`; the root
 `maitty` package preserves the installed command and re-exports the runtime
 library for compatibility. The daemon, TUI and CLI still live together inside
@@ -284,6 +286,7 @@ crates/maitty-shared/ shared wire protocol, conversation contracts and split-tre
 crates/maitty-settings/ preference schemas and validation, key actions, bindings, parsing and built-in themes
 crates/maitty-ipc-transport/ length-delimited framing and handshake shared by clients
 crates/maitty-agent-detection/ bundled agent screen-evidence rules and matcher
+crates/maitty-agent-integrations/ native status integration catalog
 crates/maitty-runtime/ original terminal app implementation; TUI, CLI and daemon still being split
 docs/            these docs, the roadmap, design briefs
 config.example.toml
