@@ -2850,7 +2850,7 @@ mod native_resume_tests {
     }
 
     fn native_conversation() -> Conversation {
-        let mut conversation = crate::conversation::tests::conversation();
+        let mut conversation = crate::test_support::conversation();
         conversation.execution = ExecutionKind::Native;
         conversation.state = RecoveryState::RecoveryRequired;
         conversation.binding.session_id = "exact session; & whoami".into();

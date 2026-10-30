@@ -57,11 +57,9 @@ src/
   tidy.rs        what removing a worktree would lose (shared by the close-time removal and the clean-up list)
   snapshot.rs    a checkout's files kept before each agent turn, and put back (the server takes them, the client lists and restores)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
-  protocol.rs    wire messages and PROTOCOL_VERSION
   ipc.rs         local sockets and the SSH proxy
   config.rs      config.toml (+ config.local.toml) loading, atomic state files
   keys.rs        actions, default bindings, key parsing
-  layout.rs      split trees and neighbour finding
   theme.rs       built-in themes and contrast audit
   clock.rs       time helpers, local clock times
   proc.rs        running other programs: no console window, output or error as text,
@@ -181,10 +179,11 @@ each other.
 
 ## Project-specific: stack
 
-The optional GUI, TUI/CLI, daemon core, shared protocol and provider adapters
-are separate workspace packages per [ADR 0042](adr/0042-decouple-desktop-clients-and-providers.md).
-Clients depend on the shared protocol; only the daemon depends on provider
-adapters and owns agent processes.
+The shared protocol, conversation contracts and split-tree types live in the
+`maitty-shared` workspace package. The TUI, CLI, daemon and provider adapters
+remain in the `maitty` package. The Tauri host still uses `maitty` for its daemon
+client and lifecycle commands. Completing the package split is tracked by
+[ADR 0042](adr/0042-decouple-desktop-clients-and-providers.md).
 
 Rust, edition 2024, stable toolchain. Key libraries: `tokio` (async runtime),
 `ratatui` 0.30 + `crossterm` (TUI), `portable-pty` (PTYs / ConPTY), `vt100`
@@ -203,8 +202,8 @@ and Tailwind; its rules live in `docs/stack/tauri.md`, `typescript.md`,
 
 ## Project-specific: layers
 
-- **Domain / shared types:** `protocol.rs` (every message between client and
-  daemon), `layout.rs` (split trees), `keys.rs` (actions and bindings),
+- **Domain / shared types:** `maitty-shared::protocol` (every message between client and
+  daemon), `maitty-shared::layout` (split-tree contract), `keys.rs` (actions and bindings),
   `theme.rs`, `config.rs`. No I/O beyond reading config.
 - **Infrastructure:** `ipc.rs` (sockets, SSH proxy), `daemon/term.rs` (PTY +
   emulator per pane), `daemon/scan.rs` (status detection), `daemon/git.rs`,
@@ -222,7 +221,7 @@ saves. Presets and frame validation live in `config.rs`; `ui.spinner` remains th
 existing persisted array consumed by the shared status-icon renderer.
 
 The client never touches a PTY; the daemon never draws. They meet only through
-`protocol.rs` messages.
+the `maitty-shared` protocol messages.
 
 ## Project-specific: directory layout
 
@@ -237,7 +236,6 @@ src/
   snapshot.rs    a checkout's files kept before each agent turn, and put back (the server takes them, the client lists and restores)
   references.rs  a project's reference images in `.maitty/references/` at the main checkout (the client's References view and the MCP server list them)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
-  protocol.rs    wire messages and PROTOCOL_VERSION
   ipc.rs         local sockets and the SSH proxy
   config.rs      config.toml (+ config.local.toml) loading
   keys.rs        actions, default bindings, key parsing
@@ -249,6 +247,8 @@ src/
                  (drawing helpers), render.rs, menu.rs, views.rs, and one file
                  per feature (files, find, branch, recipes, pr, â€¦)
   mcp.rs, project.rs, gitfs.rs, alert.rs, reveal.rs, update.rs, restart.rs, sync.rs
+crates/maitty-shared/ shared wire protocol, conversation contracts and split-tree types
+src/test_support.rs  fixtures shared by runtime unit tests
 docs/            these docs, the roadmap, design briefs
 config.example.toml
 ```

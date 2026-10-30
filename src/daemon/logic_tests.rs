@@ -6330,7 +6330,7 @@ fn conversation_restore_fences_writers_without_starting_a_pty() {
     for reference in [ConversationId(1), ConversationId(99)] {
         let (mut d, _rx) = daemon();
         d.cfg.restore.output = false;
-        let mut record = crate::conversation::tests::conversation();
+        let mut record = crate::test_support::conversation();
         record.state = RecoveryState::Transferring;
         let pane = persist::SavedPane {
             conversation_id: Some(reference),
@@ -6389,7 +6389,7 @@ fn startup_persists_recovered_generations_before_another_restart() {
     for state in [RecoveryState::Running, RecoveryState::Transferring] {
         let dir = persist::scratch_dir();
         let path = dir.path().join("session.json");
-        let mut record = crate::conversation::tests::conversation();
+        let mut record = crate::test_support::conversation();
         record.state = state;
         let saved = persist::Saved {
             conversations: vec![record],
@@ -6425,7 +6425,7 @@ fn startup_persists_recovered_generations_before_another_restart() {
 fn registry_only_sessions_survive_the_unused_daemon_exit_deadline() {
     let (mut d, _rx) = daemon();
     d.restore_startup(persist::Saved {
-        conversations: vec![crate::conversation::tests::conversation()],
+        conversations: vec![crate::test_support::conversation()],
         ..Default::default()
     });
     d.empty_since = Instant::now() - EXIT_WHEN_UNUSED_FOR - Duration::from_secs(1);

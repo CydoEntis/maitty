@@ -139,8 +139,8 @@ async fn approve_conversation(
     app: tauri::AppHandle,
     id: u64,
     generation: u64,
-    request_id: runtime::ProviderRequestId,
-    decision: runtime::ApprovalDecision,
+    request_id: maitty_shared::conversation::ProviderRequestId,
+    decision: maitty_shared::conversation::ApprovalDecision,
 ) -> Result<serde_json::Value, String> {
     runtime::approve_conversation(
         id,
@@ -158,7 +158,7 @@ async fn answer_conversation_input(
     app: tauri::AppHandle,
     id: u64,
     generation: u64,
-    request_id: runtime::ProviderRequestId,
+    request_id: maitty_shared::conversation::ProviderRequestId,
     answers: std::collections::BTreeMap<String, Vec<String>>,
 ) -> Result<serde_json::Value, String> {
     runtime::answer_user_input(

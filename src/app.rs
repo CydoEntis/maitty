@@ -320,7 +320,7 @@ pub(crate) fn run() {
                     command,
                 },
         }) => match cli::secret_run::run(&reference, &env_name, &command) {
-                Ok(0) => Ok(()),
+            Ok(0) => Ok(()),
             Ok(code) => std::process::exit(code),
             Err(error) => Err(error),
         },

@@ -470,7 +470,7 @@ impl Fixture {
             ] {
                 std::fs::write(root.join(name), inventory[section].to_string()).unwrap();
             }
-            let mut record = crate::conversation::tests::conversation();
+            let mut record = crate::test_support::conversation();
             record.binding.profile = None;
             record.binding.executable = executable;
             record.binding.config_root = std::fs::canonicalize(&root).unwrap();

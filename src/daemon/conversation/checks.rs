@@ -249,7 +249,7 @@ mod tests {
         std::fs::create_dir_all(dir.path()).unwrap();
         crate::proc::git(dir.path(), &["init", "-q"]).unwrap();
         std::fs::write(dir.path().join("source.txt"), "original").unwrap();
-        let mut c = crate::conversation::tests::conversation();
+        let mut c = crate::test_support::conversation();
         c.binding.cwd = dir.path().to_path_buf();
         c.binding.worktree = None;
         let id = c.id;

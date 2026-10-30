@@ -56,10 +56,10 @@ pub enum Completeness {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Cursor {
     #[serde(default)]
-    pub(crate) generation: u64,
-    pub(crate) conversation: ConversationId,
-    pub(crate) revision: u64,
-    pub(crate) next_position: usize,
+    pub generation: u64,
+    pub conversation: ConversationId,
+    pub revision: u64,
+    pub next_position: usize,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Page {

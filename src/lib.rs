@@ -5,20 +5,18 @@ mod cli;
 mod client;
 mod clock;
 mod config;
-mod conversation;
 mod daemon;
+pub use maitty_shared::{conversation, layout, protocol};
 mod desktop;
 mod detection;
 mod gitfs;
 mod hidden;
 mod ipc;
 mod keys;
-mod layout;
 mod mcp;
 mod output_line;
 mod proc;
 mod project;
-mod protocol;
 mod references;
 mod restart;
 mod reveal;
@@ -29,6 +27,9 @@ mod sync;
 mod theme;
 mod tidy;
 mod update;
+
+#[cfg(test)]
+mod test_support;
 
 pub use conversation::{ApprovalDecision, ProviderRequestId};
 

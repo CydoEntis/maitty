@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path, PathBuf};
 
-pub(crate) mod history;
+pub mod history;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -46,7 +46,7 @@ pub enum StartTarget {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct PendingStart {
+pub struct PendingStart {
     pub id: ConversationId,
     pub generation: u64,
     pub settings: LaunchSettings,
@@ -68,7 +68,7 @@ pub struct Receipt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Operation {
+pub struct Operation {
     pub receipt: Receipt,
     pub digest: String,
 }
@@ -180,15 +180,15 @@ pub enum Provider {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct NativeBinding {
-    pub(crate) provider: Provider,
-    pub(crate) session_id: String,
-    pub(crate) account: Option<String>,
-    pub(crate) profile: Option<String>,
-    pub(crate) config_root: PathBuf,
-    pub(crate) executable: PathBuf,
-    pub(crate) cwd: PathBuf,
-    pub(crate) worktree: Option<PathBuf>,
+pub struct NativeBinding {
+    pub provider: Provider,
+    pub session_id: String,
+    pub account: Option<String>,
+    pub profile: Option<String>,
+    pub config_root: PathBuf,
+    pub executable: PathBuf,
+    pub cwd: PathBuf,
+    pub worktree: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -208,20 +208,20 @@ pub enum RecoveryState {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Conversation {
-    pub(crate) id: ConversationId,
-    pub(crate) binding: NativeBinding,
-    pub(crate) execution: ExecutionKind,
-    pub(crate) generation: u64,
-    pub(crate) state: RecoveryState,
+pub struct Conversation {
+    pub id: ConversationId,
+    pub binding: NativeBinding,
+    pub execution: ExecutionKind,
+    pub generation: u64,
+    pub state: RecoveryState,
     #[serde(default)]
-    pub(crate) settings: Option<LaunchSettings>,
+    pub settings: Option<LaunchSettings>,
     #[serde(default)]
-    pub(crate) awaiting_first_user_message: bool,
+    pub awaiting_first_user_message: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum IdentityError {
+pub enum IdentityError {
     IncompleteBinding,
     DuplicateId,
     DuplicateNativeSession,
@@ -230,7 +230,7 @@ pub(crate) enum IdentityError {
 }
 
 impl Conversation {
-    pub(crate) fn recover(&mut self) -> Result<(), IdentityError> {
+    pub fn recover(&mut self) -> Result<(), IdentityError> {
         if matches!(
             self.state,
             RecoveryState::Running | RecoveryState::Transferring
@@ -256,7 +256,7 @@ fn identity_text(text: &str) -> bool {
     !text.trim().is_empty() && !text.chars().any(char::is_control)
 }
 
-pub(crate) fn validate_settings(settings: &LaunchSettings) -> Result<(), IdentityError> {
+pub fn validate_settings(settings: &LaunchSettings) -> Result<(), IdentityError> {
     if ![&settings.config_root, &settings.executable, &settings.cwd]
         .into_iter()
         .all(|p| exact_path(p))
@@ -271,7 +271,7 @@ pub(crate) fn validate_settings(settings: &LaunchSettings) -> Result<(), Identit
     Ok(())
 }
 
-pub(crate) fn validate_metadata(
+pub fn validate_metadata(
     records: &[Conversation],
     pending: &[PendingStart],
     operations: &[Operation],
@@ -314,7 +314,7 @@ pub(crate) fn validate_metadata(
     Ok(())
 }
 
-pub(crate) fn validate_registry(records: &[Conversation]) -> Result<(), IdentityError> {
+pub fn validate_registry(records: &[Conversation]) -> Result<(), IdentityError> {
     for (index, record) in records.iter().enumerate() {
         let binding = &record.binding;
         if let Some(settings) = &record.settings {
@@ -362,10 +362,10 @@ pub(crate) fn validate_registry(records: &[Conversation]) -> Result<(), Identity
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
 
-    pub(crate) fn conversation() -> Conversation {
+    pub fn conversation() -> Conversation {
         Conversation {
             id: ConversationId(1),
             binding: NativeBinding {

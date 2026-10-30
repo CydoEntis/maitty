@@ -963,7 +963,7 @@ pub struct TermInfo {
     pub checks: Vec<CheckInfo>,
 }
 
-pub(crate) fn one_or_many_checks<'de, D: serde::Deserializer<'de>>(
+pub fn one_or_many_checks<'de, D: serde::Deserializer<'de>>(
     d: D,
 ) -> Result<Vec<CheckInfo>, D::Error> {
     #[derive(Deserialize)]
@@ -1539,7 +1539,7 @@ mod tests {
             ],
             overridden_by: "you".into(),
             source: CheckSource::Repo {
-                file: concat!(".", env!("APP_COMMAND"), "/checks.toml").into(),
+                file: ".maitty/checks.toml".into(),
                 commit: Some("a1b2c3d".into()),
                 committed_at: Some(80),
                 uncommitted: true,

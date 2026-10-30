@@ -8,7 +8,7 @@ fn atomic_manifest_is_the_only_committed_revision_and_orphans_do_not_count() {
     let scratch = scratch_dir();
     let root = scratch.path().join("history");
     let cache = Cache::open(root.clone(), true, true).unwrap();
-    let binding = crate::conversation::tests::conversation().binding;
+    let binding = crate::test_support::conversation().binding;
     let mut h = History::new(ConversationId(1));
     h.apply(Update::UpsertItem(entry(0))).unwrap();
     assert!(cache.commit(cache.prepare(&binding, &h).unwrap()).unwrap());
@@ -31,7 +31,7 @@ fn atomic_manifest_is_the_only_committed_revision_and_orphans_do_not_count() {
 fn missing_and_corrupt_pages_cannot_claim_complete_history() {
     let scratch = scratch_dir();
     let cache = Cache::open(scratch.path().join("history"), true, true).unwrap();
-    let binding = crate::conversation::tests::conversation().binding;
+    let binding = crate::test_support::conversation().binding;
     let mut h = History::new(ConversationId(1));
     h.apply(Update::UpsertItem(entry(0))).unwrap();
     h.set_completeness(Completeness::Complete).unwrap();
@@ -50,7 +50,7 @@ fn disabling_storage_fences_queued_writes_and_deletes_existing_content() {
     let scratch = scratch_dir();
     let root = scratch.path().join("history");
     let cache = Cache::open(root.clone(), true, true).unwrap();
-    let binding = crate::conversation::tests::conversation().binding;
+    let binding = crate::test_support::conversation().binding;
     let h = History::new(ConversationId(1));
     let queued = cache.prepare(&binding, &h).unwrap();
     cache.commit(cache.prepare(&binding, &h).unwrap()).unwrap();
@@ -77,7 +77,7 @@ fn disabled_cache_cleanup_errors_are_explicit_and_leave_writes_disabled() {
 fn private_pages_are_bounded_and_binding_changes_require_native_hydration() {
     let scratch = scratch_dir();
     let cache = Cache::open(scratch.path().join("history"), true, true).unwrap();
-    let mut binding = crate::conversation::tests::conversation().binding;
+    let mut binding = crate::test_support::conversation().binding;
     binding.session_id = "../../not-a-path".into();
     let mut h = History::new(ConversationId(1));
     for i in 0..300 {
@@ -128,7 +128,7 @@ fn session_paths_isolate_history_and_old_queued_revisions_cannot_replace_newer_o
     let cache = Cache::for_session(&first, true, true).unwrap();
     let other =
         Cache::for_session(&scratch.path().join("session-second.json"), true, true).unwrap();
-    let binding = crate::conversation::tests::conversation().binding;
+    let binding = crate::test_support::conversation().binding;
     let mut h = History::new(ConversationId(1));
     let older = cache.prepare(&binding, &h).unwrap();
     h.apply(Update::UpsertItem(entry(0))).unwrap();
@@ -142,7 +142,7 @@ fn concurrent_disable_always_wins_over_a_prepared_write() {
     let scratch = scratch_dir();
     let root = scratch.path().join("history");
     let cache = Cache::open(root.clone(), true, true).unwrap();
-    let binding = crate::conversation::tests::conversation().binding;
+    let binding = crate::test_support::conversation().binding;
     let mut h = History::new(ConversationId(1));
     h.apply(Update::UpsertItem(entry(1))).unwrap();
     let queued = cache.prepare(&binding, &h).unwrap();
@@ -170,7 +170,7 @@ fn concurrent_disable_always_wins_over_a_prepared_write() {
 fn empty_committed_history_is_distinct_from_an_absent_cache() {
     let scratch = scratch_dir();
     let cache = Cache::open(scratch.path().join("history"), true, true).unwrap();
-    let binding = crate::conversation::tests::conversation().binding;
+    let binding = crate::test_support::conversation().binding;
     let mut h = History::new(ConversationId(1));
     h.set_completeness(Completeness::Complete).unwrap();
     cache.commit(cache.prepare(&binding, &h).unwrap()).unwrap();
@@ -180,7 +180,7 @@ fn empty_committed_history_is_distinct_from_an_absent_cache() {
 fn cached_completeness_never_claims_fresh_native_completeness_after_an_attachment_gap() {
     let scratch = scratch_dir();
     let cache = Cache::open(scratch.path().join("history"), true, true).unwrap();
-    let binding = crate::conversation::tests::conversation().binding;
+    let binding = crate::test_support::conversation().binding;
     let mut h = History::new(ConversationId(1));
     h.apply(Update::UpsertItem(entry(1))).unwrap();
     h.set_completeness(Completeness::Complete).unwrap();
@@ -200,7 +200,7 @@ fn cached_completeness_never_claims_fresh_native_completeness_after_an_attachmen
 fn reattached_cached_revision_can_be_updated_and_committed_immediately() {
     let scratch = scratch_dir();
     let cache = Cache::open(scratch.path().join("history"), true, true).unwrap();
-    let binding = crate::conversation::tests::conversation().binding;
+    let binding = crate::test_support::conversation().binding;
     let mut initial = History::new(ConversationId(1));
     initial.apply(Update::UpsertItem(entry(1))).unwrap();
     initial.revision = 100;
@@ -232,7 +232,7 @@ fn reattached_cached_revision_can_be_updated_and_committed_immediately() {
 fn equal_revision_from_competing_attachment_cannot_replace_a_committed_snapshot() {
     let scratch = scratch_dir();
     let cache = Cache::open(scratch.path().join("history"), true, true).unwrap();
-    let binding = crate::conversation::tests::conversation().binding;
+    let binding = crate::test_support::conversation().binding;
     let mut attachments = super::super::history::Attachments::default();
     for attachment in [1, 2] {
         attachments.attach(attachment, ConversationId(1));
@@ -263,7 +263,7 @@ fn equal_revision_from_competing_attachment_cannot_replace_a_committed_snapshot(
 fn exhausted_manifest_revision_is_rejected_before_attachment_hydration() {
     let scratch = scratch_dir();
     let cache = Cache::open(scratch.path().join("history"), true, true).unwrap();
-    let binding = crate::conversation::tests::conversation().binding;
+    let binding = crate::test_support::conversation().binding;
     let h = History::new(ConversationId(1));
     cache.commit(cache.prepare(&binding, &h).unwrap()).unwrap();
     let path = cache.root.join("1/manifest.json");
@@ -276,7 +276,7 @@ fn exhausted_manifest_revision_is_rejected_before_attachment_hydration() {
 fn exhausted_projection_cannot_be_prepared_as_an_unloadable_cache_revision() {
     let scratch = scratch_dir();
     let cache = Cache::open(scratch.path().join("history"), true, true).unwrap();
-    let binding = crate::conversation::tests::conversation().binding;
+    let binding = crate::test_support::conversation().binding;
     let mut h = History::new(ConversationId(1));
     h.revision = u64::MAX;
     let error = match cache.prepare(&binding, &h) {

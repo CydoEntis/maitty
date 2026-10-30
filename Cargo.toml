@@ -15,12 +15,17 @@ tagline = "All agents on deck"
 # Commands the app had before, newest first: what an old install left is carried over.
 previous = ["vibecasso", "seshi", "hydra", "drover"]
 
+[workspace]
+members = ["crates/maitty-shared", "gui/src-tauri"]
+resolver = "3"
+
 [lib]
 name = "runtime"
 test = true
 doctest = false
 
 [dependencies]
+maitty-shared = { path = "crates/maitty-shared" }
 anyhow = "1"
 arboard = { version = "3", default-features = false, features = ["image-data"] }
 png = "0.17"

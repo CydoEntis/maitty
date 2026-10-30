@@ -20,8 +20,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = { version = "2.8.4" }
+maitty-shared = { path = "../../crates/maitty-shared" }
 runtime = { package = "maitty", path = "../.." }
 serde_json = "1"
 
-[patch.crates-io]
-vt100 = { path = "../../vendor/vt100" }

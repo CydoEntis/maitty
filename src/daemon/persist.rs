@@ -604,7 +604,7 @@ mod tests {
         let path = dir.path().join("session.json");
         let old = Saved::default();
         let new = Saved {
-            conversations: vec![crate::conversation::tests::conversation()],
+            conversations: vec![crate::test_support::conversation()],
             ..Default::default()
         };
         let old_ticket = next_session_ticket().unwrap();
@@ -629,7 +629,7 @@ mod tests {
         let dir = scratch_dir();
         let path = dir.path().join("session.json");
         let mut old = Saved {
-            conversations: vec![crate::conversation::tests::conversation()],
+            conversations: vec![crate::test_support::conversation()],
             ..Default::default()
         };
         let old_ticket = next_session_ticket().unwrap();
@@ -707,7 +707,7 @@ mod tests {
     fn conversation_metadata_is_private_atomic_and_independent_of_output() {
         let dir = scratch_dir();
         let path = dir.path().join("session.json");
-        let record = crate::conversation::tests::conversation();
+        let record = crate::test_support::conversation();
         let saved = Saved {
             conversations: vec![record.clone()],
             ..Default::default()
@@ -741,7 +741,7 @@ mod tests {
     fn invalid_registry_cannot_replace_a_valid_saved_session() {
         let dir = scratch_dir();
         let path = dir.path().join("session.json");
-        let record = crate::conversation::tests::conversation();
+        let record = crate::test_support::conversation();
         let mut saved = Saved {
             conversations: vec![record.clone()],
             ..Default::default()
