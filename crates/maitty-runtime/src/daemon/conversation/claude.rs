@@ -584,7 +584,7 @@ async fn run_turn(
 mod tests {
     use super::{parse_output_frame, verified_version};
     use crate::conversation::{ApprovalPolicy, LaunchSettings, Provider, Sandbox};
-    use maitty_provider_claude::{OutputFrame, command_arguments, session_id};
+    use maitty_provider_claude::{MAX_FRAME_BYTES, OutputFrame, command_arguments, session_id};
     use serde_json::json;
     use std::path::PathBuf;
 
