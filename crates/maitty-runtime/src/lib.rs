@@ -10,7 +10,6 @@ mod gitfs;
 mod ipc;
 mod keys;
 pub use maitty_settings::theme;
-mod mcp;
 mod proc;
 mod project;
 mod references;

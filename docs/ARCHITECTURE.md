@@ -98,7 +98,7 @@ src/
     markdown.rs (markdown drawn for the Files preview: text, width, theme in; styled lines out),
     motion.rs (slides and glides), â€¦
     tests.rs     rendering and behaviour tests
-  mcp.rs, project.rs, gitfs.rs, alert.rs, reveal.rs, update.rs, restart.rs, sync.rs
+  cli/mcp.rs, project.rs, gitfs.rs, alert.rs, reveal.rs, update.rs, restart.rs, sync.rs
   secret_files.rs  a secret handed to an agent as a private file, and clearing the stale ones
   shim.rs        the per-agent launchers on a shell pane's PATH, and the PATH code `maitty agent-launch` shares
 docs/            these docs, the roadmap, design briefs
@@ -246,7 +246,7 @@ and Tailwind; its rules live in `docs/stack/tauri.md`, `typescript.md`,
 - **Infrastructure:** `ipc.rs` (sockets, SSH proxy), `daemon/term.rs` (PTY +
   emulator per pane), `daemon/scan.rs` (status detection), `daemon/git.rs`,
   `daemon/persist.rs`, `gitfs.rs`, `alert.rs`, `reveal.rs` (notification links,
-  bringing the window forward), `update.rs`, `sync.rs`, `mcp.rs`,
+  bringing the window forward), `update.rs`, `sync.rs`, `cli/mcp.rs`,
   `daemon/usage.rs` (agents' usage, limits, continue after a limit).
 - **Application:** `daemon/mod.rs` (the server loop: commands in, state and
   output out) and `client/mod.rs` (the client loop: events in, commands out).
@@ -289,7 +289,7 @@ crates/maitty-runtime/src/
   client/        the UI: mod.rs (loop, input), screen/ (layout), design.rs
                  (drawing helpers), render.rs, menu.rs, views.rs, and one file
                  per feature (files, find, branch, recipes, pr, â€¦)
-  mcp.rs, project.rs, gitfs.rs, alert.rs, reveal.rs, update.rs, restart.rs, sync.rs
+  cli/mcp.rs, project.rs, gitfs.rs, alert.rs, reveal.rs, update.rs, restart.rs, sync.rs
 crates/maitty-shared/ shared wire protocol, conversation contracts and split-tree types
 crates/maitty-settings/ preference schemas and validation, key actions, bindings, parsing and built-in themes
 crates/maitty-ipc-transport/ length-delimited framing and handshake shared by clients

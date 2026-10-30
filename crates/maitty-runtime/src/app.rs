@@ -1,6 +1,6 @@
 use crate::brand::APP_COMMAND;
 use crate::{
-    alert, cli, client, config, daemon, ipc, mcp, protocol, restart, reveal, sync, update,
+    alert, cli, client, config, daemon, ipc, protocol, restart, reveal, sync, update,
 };
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -415,7 +415,7 @@ pub(crate) fn run() {
         }) => cli::worktree(branch, base, ws, command),
         Some(Cmd::WorktreeRemove { ws, force }) => cli::worktree_remove(ws, force),
         Some(Cmd::KillServer { forget }) => cli::kill_server(forget),
-        Some(Cmd::Mcp) => mcp::run(),
+        Some(Cmd::Mcp) => cli::mcp::run(),
         Some(Cmd::Doctor) => cli::doctor(),
         Some(Cmd::Account { name, command }) => cli::account(&name, &command),
         Some(Cmd::Update { check, force }) => update::run(check, force),

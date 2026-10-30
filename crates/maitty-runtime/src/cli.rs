@@ -5,6 +5,7 @@ use crate::ipc;
 pub(crate) mod conversation;
 pub(crate) mod handoff;
 pub(crate) mod integrations;
+pub(crate) mod mcp;
 mod jsonc;
 mod mcp_config;
 pub(crate) mod secret_run;
