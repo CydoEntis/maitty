@@ -4,7 +4,7 @@
 
 use crate::brand::{APP_COMMAND, APP_ENV};
 use crate::protocol::{self, ClientMsg, ServerMsg};
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use interprocess::local_socket::tokio::{RecvHalf, SendHalf, Stream, prelude::*};
 #[cfg(unix)]
 use interprocess::local_socket::{GenericFilePath, ToFsName};
@@ -365,19 +365,15 @@ pub async fn open(attach: bool) -> Result<(Reader, Writer)> {
         },
     )
     .await?;
-    let first = match recv_server(&mut r).await {
-        Ok(m) => m,
+    let version = match maitty_ipc_transport::welcome_version(&mut r).await {
+        Ok(version) => version,
         Err(e) if remote().is_some() => return Err(e.context(ssh_failure())),
         Err(e) => return Err(e),
     };
-    if first.is_none() && remote().is_some() {
-        bail!(ssh_failure());
-    }
-    match first {
-        Some(ServerMsg::Welcome { version }) if version == protocol::PROTOCOL_VERSION => Ok((r, w)),
-        Some(ServerMsg::Welcome { version }) => Err(OtherVersion { daemon: version }.into()),
-        Some(ServerMsg::Error(e)) => bail!(e),
-        _ => bail!("unexpected handshake from daemon"),
+    if version == protocol::PROTOCOL_VERSION {
+        Ok((r, w))
+    } else {
+        Err(OtherVersion { daemon: version }.into())
     }
 }
 

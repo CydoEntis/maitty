@@ -908,7 +908,8 @@ branch as the rollback and comparison point while the refactor is verified.
 Refactor progress: `crates/maitty-shared` owns the versioned protocol,
 conversation contracts, split-tree types, clock helpers, hidden-text
 validation and shared check-output rules. `crates/maitty-ipc-transport` owns
-bounded length-delimited framing and message encode/decode for both clients.
+bounded length-delimited framing, message encode/decode and the shared Welcome
+handshake for both clients; each client keeps its own protocol mismatch error.
 `crates/maitty-desktop-client`
 now owns GUI daemon IPC, lifecycle operations and Codex discovery; the Tauri
 host depends on it and `maitty-shared`, not the `maitty` runtime. Codex
@@ -951,8 +952,10 @@ preset prompt projection. Repository check-file discovery and TOML parsing
 stay in the runtime. Icon, key, detection, snapshot and notification settings
 schemas/defaults have now moved too; legacy icon normalization stays in runtime.
 The full workspace suite now passes 1,317 runtime tests and 18 settings tests,
-with all other package suites passing and 5 ignored tests. Strict clippy, the
-workspace build, and Linux/macOS package checks are being rerun for this slice.
+31 desktop-client tests, 3 IPC transport tests, all remaining package suites,
+and 5 ignored tests. Strict clippy passes. Workspace build and Linux/macOS
+and 5 ignored tests. Strict clippy, workspace build, and Linux/macOS package
+checks all pass.
 Linux and macOS target checks passed for the installed `maitty` package. The
 all-workspace Linux cross-check still needs a configured D-Bus
 pkg-config/sysroot for the Tauri host.

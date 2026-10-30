@@ -188,8 +188,8 @@ defaults, pure validation and appearance compatibility rules, terminal key actio
 default bindings, key parsing and built-in themes; terminal-specific mouse
 encoding stays in the runtime. Config loading and filesystem migrations remain
 runtime-owned. `maitty-ipc-transport` owns bounded,
-length-delimited protocol framing shared by the TUI and GUI; socket naming,
-handshakes and daemon startup stay in their respective clients. The Tauri host
+length-delimited protocol framing and Welcome handshake shared by the TUI and GUI;
+socket naming and daemon startup stay in their respective clients. The Tauri host
 uses `maitty-desktop-client`
 for daemon IPC and GUI operations; it does not link `maitty-runtime`. The
 original terminal implementation now lives in `maitty-runtime`; the root
@@ -276,7 +276,7 @@ crates/maitty-runtime/src/
   mcp.rs, project.rs, gitfs.rs, alert.rs, reveal.rs, update.rs, restart.rs, sync.rs
 crates/maitty-shared/ shared wire protocol, conversation contracts and split-tree types
 crates/maitty-settings/ preference schemas and validation, key actions, bindings, parsing and built-in themes
-crates/maitty-ipc-transport/ length-delimited message framing shared by clients
+crates/maitty-ipc-transport/ length-delimited framing and handshake shared by clients
 crates/maitty-runtime/ original terminal app implementation; TUI, CLI and daemon still being split
 docs/            these docs, the roadmap, design briefs
 config.example.toml

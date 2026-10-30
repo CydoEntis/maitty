@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use interprocess::local_socket::Name;
 use interprocess::local_socket::tokio::{Stream, prelude::*};
 #[cfg(unix)]
@@ -135,13 +135,11 @@ pub async fn open_for_user() -> Result<(Reader, Writer)> {
         },
     )
     .await?;
-    match receive_server(&mut reader).await? {
-        Some(ServerMsg::Welcome { version }) if version == protocol::PROTOCOL_VERSION => {
-            Ok((reader, writer))
-        }
-        Some(ServerMsg::Welcome { version }) => Err(OtherVersion { daemon: version }.into()),
-        Some(ServerMsg::Error(error)) => bail!(error),
-        _ => bail!("unexpected handshake from daemon"),
+    let version = maitty_ipc_transport::welcome_version(&mut reader).await?;
+    if version == protocol::PROTOCOL_VERSION {
+        Ok((reader, writer))
+    } else {
+        Err(OtherVersion { daemon: version }.into())
     }
 }
 
