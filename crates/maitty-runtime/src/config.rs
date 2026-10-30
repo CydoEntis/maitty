@@ -6,8 +6,9 @@ use crate::keys::{self, Action, KeySpec};
 use crate::theme::{Theme, ThemeOverrides};
 use anyhow::{Context, Result};
 pub use maitty_settings::config::{
-    BARS_FRAMES, CURSOR_SHAPES, LAYOUT_NAMES, LayoutKind, PADDING_TOP, Rounding, SIDEBAR_TABS,
-    SPINNERS, Ui, validate_cursor,
+    BARS_FRAMES, CURSOR_SHAPES, HELPERS_AT_ONCE, HELPERS_MAY, LAYOUT_NAMES, LayoutKind, NEW_AGENTS,
+    NEW_WHERE, PADDING_TOP, Rounding, SIDEBAR_TABS, SPINNERS, Sessions, Ui, validate_cursor,
+    validate_sessions,
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -71,41 +72,6 @@ pub struct Config {
     pub check: Vec<CheckDef>,
 }
 
-pub const NEW_AGENTS: &[&str] = &["last used", "claude", "codex", "gemini"];
-pub const NEW_WHERE: &[&str] = &["new worktree", "this folder"];
-pub const HELPERS_MAY: &[&str] = &["ask", "always", "never"];
-pub const HELPERS_AT_ONCE: &[&str] = &["2", "3", "4"];
-
-/// Settings > Sessions. `helpers` and `helpers_at_once` are read by the daemon when an agent
-/// starts a session (`Config::helpers_at_once`); the rest by the client's new-session flow.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Sessions {
-    /// Which agent leader `s` starts: one of `NEW_AGENTS`.
-    pub agent: String,
-    /// Where a new session opens: one of `NEW_WHERE`.
-    #[serde(rename = "where")]
-    pub place: String,
-    /// Whether a session may start helpers: one of `HELPERS_MAY`.
-    pub helpers: String,
-    /// Helpers one session runs at a time: one of `HELPERS_AT_ONCE`. An old `[mcp]
-    /// helpers_at_once` fills it in when this is not set (`fold_legacy_helpers`).
-    pub helpers_at_once: String,
-    pub pr_wake: bool,
-}
-
-impl Default for Sessions {
-    fn default() -> Self {
-        Sessions {
-            agent: "last used".into(),
-            place: "new worktree".into(),
-            helpers: "ask".into(),
-            helpers_at_once: "3".into(),
-            pr_wake: true,
-        }
-    }
-}
-
 /// An old `[mcp] helpers_at_once` (0 to 16, 0 for no limit) is the one limit now unless
 /// `[sessions] helpers_at_once` is set: it becomes the nearest of `HELPERS_AT_ONCE`, and 0 the
 /// largest. The file itself is not rewritten.
@@ -150,21 +116,6 @@ fn fold_legacy_corners(value: &mut toml::Table) {
     {
         ui.insert("rounded".into(), toml::Value::String("corners".into()));
     }
-}
-
-fn validate_sessions(s: &Sessions) -> Result<()> {
-    let one_of = |key: &str, value: &str, allowed: &[&str]| -> Result<()> {
-        anyhow::ensure!(
-            allowed.contains(&value),
-            "sessions.{key} is \"{value}\"; use one of: {}",
-            allowed.join(", ")
-        );
-        Ok(())
-    };
-    one_of("agent", &s.agent, NEW_AGENTS)?;
-    one_of("where", &s.place, NEW_WHERE)?;
-    one_of("helpers", &s.helpers, HELPERS_MAY)?;
-    one_of("helpers_at_once", &s.helpers_at_once, HELPERS_AT_ONCE)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

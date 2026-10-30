@@ -79,6 +79,57 @@ pub struct Ui {
     pub cursor_blink: bool,
 }
 
+pub const NEW_AGENTS: &[&str] = &["last used", "claude", "codex", "gemini"];
+pub const NEW_WHERE: &[&str] = &["new worktree", "this folder"];
+pub const HELPERS_MAY: &[&str] = &["ask", "always", "never"];
+pub const HELPERS_AT_ONCE: &[&str] = &["2", "3", "4"];
+
+/// Settings > Sessions. `helpers` and `helpers_at_once` are read by the daemon when an agent
+/// starts a session (`Config::helpers_at_once`); the rest by the client's new-session flow.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Sessions {
+    /// Which agent leader `s` starts: one of `NEW_AGENTS`.
+    pub agent: String,
+    /// Where a new session opens: one of `NEW_WHERE`.
+    #[serde(rename = "where")]
+    pub place: String,
+    /// Whether a session may start helpers: one of `HELPERS_MAY`.
+    pub helpers: String,
+    /// Helpers one session runs at a time: one of `HELPERS_AT_ONCE`. An old `[mcp]
+    /// helpers_at_once` fills it in when this is not set (`fold_legacy_helpers`).
+    pub helpers_at_once: String,
+    pub pr_wake: bool,
+}
+
+impl Default for Sessions {
+    fn default() -> Self {
+        Sessions {
+            agent: "last used".into(),
+            place: "new worktree".into(),
+            helpers: "ask".into(),
+            helpers_at_once: "3".into(),
+            pr_wake: true,
+        }
+    }
+}
+
+/// Refuse session preference values that are not offered by the settings UI.
+pub fn validate_sessions(s: &Sessions) -> Result<()> {
+    let one_of = |key: &str, value: &str, allowed: &[&str]| -> Result<()> {
+        anyhow::ensure!(
+            allowed.contains(&value),
+            "sessions.{key} is \"{value}\"; use one of: {}",
+            allowed.join(", ")
+        );
+        Ok(())
+    };
+    one_of("agent", &s.agent, NEW_AGENTS)?;
+    one_of("where", &s.place, NEW_WHERE)?;
+    one_of("helpers", &s.helpers, HELPERS_MAY)?;
+    one_of("helpers_at_once", &s.helpers_at_once, HELPERS_AT_ONCE)
+}
+
 /// How round the shapes are, all of them at once (`ui.rounded`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -319,7 +370,10 @@ impl Default for Ui {
 
 #[cfg(test)]
 mod tests {
-    use super::{CURSOR_SHAPES, LayoutKind, Rounding, Ui, validate_cursor};
+    use super::{
+        CURSOR_SHAPES, HELPERS_AT_ONCE, HELPERS_MAY, LayoutKind, NEW_AGENTS, NEW_WHERE, Rounding,
+        Sessions, Ui, validate_cursor, validate_sessions,
+    };
 
     #[test]
     fn ui_defaults_keep_the_existing_appearance_and_cursor_settings() {
@@ -371,5 +425,36 @@ mod tests {
 
         let ui: Ui = toml::from_str("cursor = 'beam'").unwrap();
         assert!(validate_cursor(&ui).is_err());
+    }
+
+    #[test]
+    fn session_defaults_and_choices_are_validated() {
+        let defaults = Sessions::default();
+        assert_eq!(defaults.agent, "last used");
+        assert_eq!(defaults.place, "new worktree");
+        assert_eq!(defaults.helpers, "ask");
+        assert_eq!(defaults.helpers_at_once, "3");
+        assert!(validate_sessions(&defaults).is_ok());
+
+        for agent in NEW_AGENTS {
+            let settings: Sessions = toml::from_str(&format!("agent = '{agent}'")).unwrap();
+            assert!(validate_sessions(&settings).is_ok(), "{agent}");
+        }
+        for place in NEW_WHERE {
+            let settings: Sessions = toml::from_str(&format!("where = '{place}'")).unwrap();
+            assert!(validate_sessions(&settings).is_ok(), "{place}");
+        }
+        for helpers in HELPERS_MAY {
+            let settings: Sessions = toml::from_str(&format!("helpers = '{helpers}'")).unwrap();
+            assert!(validate_sessions(&settings).is_ok(), "{helpers}");
+        }
+        for count in HELPERS_AT_ONCE {
+            let settings: Sessions =
+                toml::from_str(&format!("helpers_at_once = '{count}'")).unwrap();
+            assert!(validate_sessions(&settings).is_ok(), "{count}");
+        }
+
+        let invalid: Sessions = toml::from_str("helpers = 'sometimes'").unwrap();
+        assert!(validate_sessions(&invalid).is_err());
     }
 }
