@@ -945,11 +945,12 @@ spinner presets. The `Sessions` preferences and pure choice validation have
 also moved; old `[mcp] helpers_at_once` TOML migration remains in runtime.
 `maitty-runtime::config` re-exports the old names while keeping file loading
 and TOML migration orchestration. Restore, worktree and MCP settings schemas
-and defaults have moved as well. The settings package's 15 tests and the
-runtime's 59 config tests pass, as do the workspace check and strict clippy.
-The full workspace suite passed after these settings extractions (1,317
-runtime tests, 15 settings tests, all remaining package suites, and 5 ignored
-tests).
+and defaults have moved as well. Check definitions and pure validation now
+live there too; repository check-file discovery and TOML parsing stay in the
+runtime. The settings package's 16 tests and runtime's 59 config tests pass,
+as do the workspace check and strict clippy. The full workspace suite passed
+after these settings extractions (1,317 runtime tests, 16 settings tests, all
+remaining package suites, and 5 ignored tests).
 Linux and macOS target checks passed for the installed `maitty` package. The
 all-workspace Linux cross-check still needs a configured D-Bus
 pkg-config/sysroot for the Tauri host.

@@ -1,5 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 /// The default padding leaves a row above the tabs for the terminal's own tab bar.
 pub const PADDING_TOP: &str = "top";
@@ -227,6 +228,104 @@ impl Default for Worktree {
             prewarm: String::new(),
         }
     }
+}
+
+/// How long a check may run unless its `[[check]]` says otherwise.
+pub const CHECK_TIMEOUT_S_DEFAULT: u64 = 600;
+
+/// The command the app runs in a session's worktree when an agent's turn ends in `project`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct CheckDef {
+    /// The repository's main checkout; sessions in any of its worktrees use this check.
+    pub project: PathBuf,
+    /// The checkpoint's name, unique in its project; unset, the command's last word.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Run through the user's shell.
+    pub command: String,
+    /// Seconds before the run is stopped and reads as not run.
+    pub timeout_s: u64,
+}
+
+impl CheckDef {
+    /// What the checkpoint is called: its `name`, else the command's last word (`npm test`: `test`).
+    pub fn name(&self) -> &str {
+        self.name
+            .as_deref()
+            .unwrap_or_else(|| self.command.split_whitespace().last().unwrap_or_default())
+    }
+
+    pub fn timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.timeout_s)
+    }
+}
+
+impl Default for CheckDef {
+    fn default() -> Self {
+        Self {
+            project: PathBuf::new(),
+            name: None,
+            command: String::new(),
+            timeout_s: CHECK_TIMEOUT_S_DEFAULT,
+        }
+    }
+}
+
+/// Whether two paths name the same place, ignoring separator style, a trailing separator and case.
+pub fn same_path(a: &Path, b: &Path) -> bool {
+    let n = |p: &Path| {
+        p.to_string_lossy()
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_lowercase()
+    };
+    n(a) == n(b)
+}
+
+/// Refuse a `[[check]]` that could never run, or two of one name in a project, so a typo shows
+/// when the config loads and not as a check that silently never happens.
+pub fn validate_checks(checks: &[CheckDef]) -> Result<()> {
+    for (i, c) in checks.iter().enumerate() {
+        let n = i + 1;
+        anyhow::ensure!(
+            !c.project.as_os_str().is_empty(),
+            "[[check]] #{n} needs a `project`"
+        );
+        validate_check(n, c, &c.project.display().to_string())?;
+        anyhow::ensure!(
+            !c.project.to_string_lossy().starts_with('~'),
+            "[[check]] #{n}: `project` {} starts with `~`, which is not expanded; give the full path",
+            c.project.display()
+        );
+        anyhow::ensure!(
+            !checks[..i]
+                .iter()
+                .any(|o| same_path(&o.project, &c.project)
+                    && o.name().eq_ignore_ascii_case(c.name())),
+            "[[check]] #{n}: {} already has a check named `{}`; give each a different `name`",
+            c.project.display(),
+            c.name()
+        );
+    }
+    Ok(())
+}
+
+/// The rules a check meets wherever it is named: in config or in a repo's file (`place`).
+pub fn validate_check(n: usize, c: &CheckDef, place: &str) -> Result<()> {
+    anyhow::ensure!(
+        !c.command.trim().is_empty(),
+        "[[check]] #{n} ({place}) needs a `command`"
+    );
+    anyhow::ensure!(
+        c.timeout_s > 0,
+        "[[check]] #{n} ({place}) needs a `timeout_s` above 0"
+    );
+    anyhow::ensure!(
+        c.name.as_deref().is_none_or(|s| !s.trim().is_empty()),
+        "[[check]] #{n} ({place}) has an empty `name`"
+    );
+    Ok(())
 }
 
 /// How round the shapes are, all of them at once (`ui.rounded`).
@@ -470,8 +569,9 @@ impl Default for Ui {
 #[cfg(test)]
 mod tests {
     use super::{
-        CURSOR_SHAPES, HELPERS_AT_ONCE, HELPERS_MAY, LayoutKind, Mcp, NEW_AGENTS, NEW_WHERE,
-        Restore, Rounding, Sessions, Ui, Worktree, validate_cursor, validate_sessions,
+        CHECK_TIMEOUT_S_DEFAULT, CURSOR_SHAPES, CheckDef, HELPERS_AT_ONCE, HELPERS_MAY, LayoutKind,
+        Mcp, NEW_AGENTS, NEW_WHERE, Restore, Rounding, Sessions, Ui, Worktree, same_path,
+        validate_checks, validate_cursor, validate_sessions,
     };
 
     #[test]
@@ -572,5 +672,27 @@ mod tests {
         assert_eq!(mcp.scope, "project");
         assert_eq!(mcp.grants, ["read", "write", "start"]);
         assert!(mcp.safe.iter().any(|command| command == "cargo test"));
+    }
+
+    #[test]
+    fn check_defaults_and_validation_reject_missing_or_duplicate_entries() {
+        let default = CheckDef::default();
+        assert!(default.project.as_os_str().is_empty());
+        assert_eq!(default.timeout_s, CHECK_TIMEOUT_S_DEFAULT);
+        assert_eq!(default.name(), "");
+
+        let check = |project: &str, name: Option<&str>| CheckDef {
+            project: project.into(),
+            name: name.map(str::to_string),
+            command: "cargo test".into(),
+            timeout_s: 60,
+        };
+        assert!(validate_checks(&[check("repo", None)]).is_ok());
+        assert!(validate_checks(&[check("repo", None), check("REPO\\", Some("test"))]).is_err());
+        assert!(validate_checks(&[check("", None)]).is_err());
+        assert!(same_path(
+            std::path::Path::new("C:\\Repo\\"),
+            std::path::Path::new("c:/repo")
+        ));
     }
 }
