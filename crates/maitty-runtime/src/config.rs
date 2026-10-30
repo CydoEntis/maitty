@@ -6,9 +6,9 @@ use crate::keys::{self, Action, KeySpec};
 use crate::theme::{Theme, ThemeOverrides};
 use anyhow::{Context, Result};
 pub use maitty_settings::config::{
-    BARS_FRAMES, CURSOR_SHAPES, HELPERS_AT_ONCE, HELPERS_MAY, LAYOUT_NAMES, LayoutKind, NEW_AGENTS,
-    NEW_WHERE, PADDING_TOP, Rounding, SIDEBAR_TABS, SPINNERS, Sessions, Ui, validate_cursor,
-    validate_sessions,
+    BARS_FRAMES, CURSOR_SHAPES, HELPERS_AT_ONCE, HELPERS_MAY, LAYOUT_NAMES, LayoutKind, Mcp,
+    NEW_AGENTS, NEW_WHERE, PADDING_TOP, Restore, Rounding, SIDEBAR_TABS, SPINNERS, Sessions, Ui,
+    Worktree, validate_cursor, validate_sessions,
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -115,82 +115,6 @@ fn fold_legacy_corners(value: &mut toml::Table) {
         && corners.as_ref().and_then(toml::Value::as_str) == Some("rounded")
     {
         ui.insert("rounded".into(), toml::Value::String("corners".into()));
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Restore {
-    /// Rebuild the saved workspaces, tabs and panes when the server starts.
-    pub enabled: bool,
-    /// Relaunch agents with their resume command (`claude --resume <id>`, ...).
-    pub agents: bool,
-    /// Re-run commands panes were started with (`spawn-right:lazygit`, `<app> split -- x`).
-    pub commands: bool,
-    /// Keep each pane's recent output on disk so it is there after a restart. It can hold
-    /// secrets that were on screen; off deletes what is saved.
-    pub output: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Worktree {
-    /// Where new worktrees go. `{repo}`, `{repo_parent}`, `{branch}` are substituted.
-    pub dir: String,
-    /// Command to start in a new worktree's first pane (e.g. "claude"). Empty = a shell.
-    pub command: String,
-    /// New agents (+ New, the quick prompt, or a quick-prompt agent typed into a pane's
-    /// PowerShell, bash or fish) get their own worktree when started in a repo's main checkout.
-    pub per_agent: bool,
-    /// Closing the last thing running in a worktree the app made removes its folder (the
-    /// branch is kept; a worktree with uncommitted changes is left alone).
-    pub delete_with_last: bool,
-    /// Keep this agent (e.g. "claude") booted in a spare worktree of the repo you last
-    /// used, so the next one starts instantly. Costs one idle agent. Empty: off.
-    pub prewarm: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Mcp {
-    /// May agents answer other agents' prompts with "yes"? never | safe | always
-    /// ("no" is always allowed).
-    pub approve: String,
-    /// "safe": the prompt must mention one of these.
-    pub safe: Vec<String>,
-    /// project: only sessions in the calling agent's repo; all: every session.
-    pub scope: String,
-    /// What an agent's pane may do through the app by default (`<app> grant` changes one
-    /// pane): read (other panes' screens), write (type into them), start (new sessions),
-    /// respond (answer another agent's prompt or question), admin (close other panes, stop
-    /// the server).
-    pub grants: Vec<String>,
-}
-
-impl Default for Mcp {
-    fn default() -> Self {
-        Mcp {
-            approve: "never".into(),
-            safe: [
-                "npm test",
-                "npm run test",
-                "npm run lint",
-                "pnpm test",
-                "yarn test",
-                "cargo test",
-                "cargo check",
-                "cargo clippy",
-                "pytest",
-                "go test",
-                "git status",
-                "git diff",
-                "git log",
-            ]
-            .map(String::from)
-            .to_vec(),
-            scope: "project".into(),
-            grants: ["read", "write", "start"].map(String::from).to_vec(),
-        }
     }
 }
 
@@ -741,29 +665,6 @@ impl Default for Quick {
                 ),
                 a("codex", "codex {prompt}", &[], "-m"),
             ],
-        }
-    }
-}
-
-impl Default for Restore {
-    fn default() -> Self {
-        Restore {
-            enabled: true,
-            agents: true,
-            commands: true,
-            output: true,
-        }
-    }
-}
-
-impl Default for Worktree {
-    fn default() -> Self {
-        Worktree {
-            dir: "{repo_parent}/{repo}-worktrees/{branch}".into(),
-            command: String::new(),
-            per_agent: true,
-            delete_with_last: true,
-            prewarm: String::new(),
         }
     }
 }

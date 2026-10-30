@@ -130,6 +130,105 @@ pub fn validate_sessions(s: &Sessions) -> Result<()> {
     one_of("helpers_at_once", &s.helpers_at_once, HELPERS_AT_ONCE)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Restore {
+    /// Rebuild the saved workspaces, tabs and panes when the server starts.
+    pub enabled: bool,
+    /// Relaunch agents with their resume command (`claude --resume <id>`, ...).
+    pub agents: bool,
+    /// Re-run commands panes were started with (`spawn-right:lazygit`, `<app> split -- x`).
+    pub commands: bool,
+    /// Keep each pane's recent output on disk so it is there after a restart. It can hold
+    /// secrets that were on screen; off deletes what is saved.
+    pub output: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Worktree {
+    /// Where new worktrees go. `{repo}`, `{repo_parent}`, `{branch}` are substituted.
+    pub dir: String,
+    /// Command to start in a new worktree's first pane (e.g. "claude"). Empty = a shell.
+    pub command: String,
+    /// New agents (+ New, the quick prompt, or a quick-prompt agent typed into a pane's
+    /// PowerShell, bash or fish) get their own worktree when started in a repo's main checkout.
+    pub per_agent: bool,
+    /// Closing the last thing running in a worktree the app made removes its folder (the
+    /// branch is kept; a worktree with uncommitted changes is left alone).
+    pub delete_with_last: bool,
+    /// Keep this agent (e.g. "claude") booted in a spare worktree of the repo you last
+    /// used, so the next one starts instantly. Costs one idle agent. Empty: off.
+    pub prewarm: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Mcp {
+    /// May agents answer other agents' prompts with "yes"? never | safe | always
+    /// ("no" is always allowed).
+    pub approve: String,
+    /// "safe": the prompt must mention one of these.
+    pub safe: Vec<String>,
+    /// project: only sessions in the calling agent's repo; all: every session.
+    pub scope: String,
+    /// What an agent's pane may do through the app by default (`<app> grant` changes one
+    /// pane): read (other panes' screens), write (type into them), start (new sessions),
+    /// respond (answer another agent's prompt or question), admin (close other panes, stop
+    /// the server).
+    pub grants: Vec<String>,
+}
+
+impl Default for Mcp {
+    fn default() -> Self {
+        Mcp {
+            approve: "never".into(),
+            safe: [
+                "npm test",
+                "npm run test",
+                "npm run lint",
+                "pnpm test",
+                "yarn test",
+                "cargo test",
+                "cargo check",
+                "cargo clippy",
+                "pytest",
+                "go test",
+                "git status",
+                "git diff",
+                "git log",
+            ]
+            .map(String::from)
+            .to_vec(),
+            scope: "project".into(),
+            grants: ["read", "write", "start"].map(String::from).to_vec(),
+        }
+    }
+}
+
+impl Default for Restore {
+    fn default() -> Self {
+        Restore {
+            enabled: true,
+            agents: true,
+            commands: true,
+            output: true,
+        }
+    }
+}
+
+impl Default for Worktree {
+    fn default() -> Self {
+        Worktree {
+            dir: "{repo_parent}/{repo}-worktrees/{branch}".into(),
+            command: String::new(),
+            per_agent: true,
+            delete_with_last: true,
+            prewarm: String::new(),
+        }
+    }
+}
+
 /// How round the shapes are, all of them at once (`ui.rounded`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -371,8 +470,8 @@ impl Default for Ui {
 #[cfg(test)]
 mod tests {
     use super::{
-        CURSOR_SHAPES, HELPERS_AT_ONCE, HELPERS_MAY, LayoutKind, NEW_AGENTS, NEW_WHERE, Rounding,
-        Sessions, Ui, validate_cursor, validate_sessions,
+        CURSOR_SHAPES, HELPERS_AT_ONCE, HELPERS_MAY, LayoutKind, Mcp, NEW_AGENTS, NEW_WHERE,
+        Restore, Rounding, Sessions, Ui, Worktree, validate_cursor, validate_sessions,
     };
 
     #[test]
@@ -456,5 +555,22 @@ mod tests {
 
         let invalid: Sessions = toml::from_str("helpers = 'sometimes'").unwrap();
         assert!(validate_sessions(&invalid).is_err());
+    }
+
+    #[test]
+    fn persistence_worktree_and_mcp_settings_keep_their_defaults() {
+        let restore = Restore::default();
+        assert!(restore.enabled && restore.agents && restore.commands && restore.output);
+
+        let worktree = Worktree::default();
+        assert_eq!(worktree.dir, "{repo_parent}/{repo}-worktrees/{branch}");
+        assert!(worktree.per_agent && worktree.delete_with_last);
+        assert!(worktree.command.is_empty() && worktree.prewarm.is_empty());
+
+        let mcp = Mcp::default();
+        assert_eq!(mcp.approve, "never");
+        assert_eq!(mcp.scope, "project");
+        assert_eq!(mcp.grants, ["read", "write", "start"]);
+        assert!(mcp.safe.iter().any(|command| command == "cargo test"));
     }
 }
