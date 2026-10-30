@@ -87,31 +87,13 @@ fn name() -> Result<Name<'static>> {
 
 #[cfg(unix)]
 fn socket_dir() -> Result<std::path::PathBuf> {
-    use std::os::unix::fs::{DirBuilderExt, MetadataExt};
-
-    // SAFETY: getuid has no preconditions and cannot fail.
-    let uid = unsafe { libc::getuid() };
-    let base = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(std::path::PathBuf::from)
-        .filter(|path| path.is_dir())
-        .unwrap_or_else(std::env::temp_dir);
-    let directory = base.join(format!("{APP_COMMAND}-{uid}"));
-    match std::fs::DirBuilder::new().mode(0o700).create(&directory) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-        Err(error) => {
-            return Err(error).with_context(|| format!("creating {}", directory.display()));
-        }
-    }
-    let metadata = std::fs::symlink_metadata(&directory)
-        .with_context(|| format!("checking {}", directory.display()))?;
-    if !metadata.is_dir() || metadata.uid() != uid || metadata.mode() & 0o077 != 0 {
-        bail!(
-            "{} isn't a private folder of yours; remove it and restart {APP_COMMAND}",
-            directory.display()
-        );
-    }
-    Ok(directory)
+    let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from);
+    maitty_ipc_transport::private_socket_dir(
+        APP_COMMAND,
+        &format!("restart {APP_COMMAND}"),
+        runtime_dir.as_deref(),
+        &std::env::temp_dir(),
+    )
 }
 
 async fn connect() -> Result<Stream> {

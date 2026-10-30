@@ -148,32 +148,13 @@ fn name() -> Result<Name<'static>> {
 /// ours and private before use.
 #[cfg(unix)]
 fn socket_dir() -> Result<std::path::PathBuf> {
-    use std::os::unix::fs::{DirBuilderExt, MetadataExt};
-    // SAFETY: getuid has no preconditions and can't fail.
-    let uid = unsafe { libc::getuid() };
-    let base = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(std::path::PathBuf::from)
-        .filter(|p| p.is_dir())
-        .unwrap_or_else(std::env::temp_dir);
-    let dir = base.join(format!("{APP_COMMAND}-{uid}"));
-    match std::fs::DirBuilder::new().mode(0o700).create(&dir) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-        Err(e) => return Err(e).with_context(|| format!("creating {}", dir.display())),
-    }
-    let meta =
-        std::fs::symlink_metadata(&dir).with_context(|| format!("checking {}", dir.display()))?;
-    if !meta.is_dir() || meta.uid() != uid || meta.mode() & 0o077 != 0 {
-        anyhow::bail!(
-            concat!(
-                "{} isn't a private folder of yours; remove it and start ",
-                env!("APP_COMMAND"),
-                " again"
-            ),
-            dir.display()
-        );
-    }
-    Ok(dir)
+    let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from);
+    maitty_ipc_transport::private_socket_dir(
+        APP_COMMAND,
+        &format!("start {APP_COMMAND} again"),
+        runtime_dir.as_deref(),
+        &std::env::temp_dir(),
+    )
 }
 
 /// The machine whose server this talks to (`--remote`), if not this one.

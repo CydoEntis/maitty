@@ -1,3 +1,5 @@
+#[cfg(unix)]
+use anyhow::Context;
 use anyhow::Result;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Serialize, de::DeserializeOwned};
@@ -15,6 +17,37 @@ pub fn socket_id(
     let label = socket_label.unwrap_or("default");
     let user = username.or(user).unwrap_or("user");
     format!("{app_command}-{user}-{label}.sock")
+}
+
+#[cfg(unix)]
+pub fn private_socket_dir(
+    app_command: &str,
+    recovery_instruction: &str,
+    runtime_dir: Option<&std::path::Path>,
+    temp_dir: &std::path::Path,
+) -> anyhow::Result<std::path::PathBuf> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+
+    // SAFETY: getuid has no preconditions and can't fail.
+    let uid = unsafe { libc::getuid() };
+    let base = runtime_dir.filter(|path| path.is_dir()).unwrap_or(temp_dir);
+    let directory = base.join(format!("{app_command}-{uid}"));
+    match std::fs::DirBuilder::new().mode(0o700).create(&directory) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => {
+            return Err(error).with_context(|| format!("creating {}", directory.display()));
+        }
+    }
+    let metadata = std::fs::symlink_metadata(&directory)
+        .with_context(|| format!("checking {}", directory.display()))?;
+    if !metadata.is_dir() || metadata.uid() != uid || metadata.mode() & 0o077 != 0 {
+        anyhow::bail!(
+            "{} isn't a private folder of yours; remove it and {recovery_instruction}",
+            directory.display()
+        );
+    }
+    Ok(directory)
 }
 
 pub type Reader = FramedRead<Box<dyn AsyncRead + Send + Unpin>, LengthDelimitedCodec>;
@@ -71,6 +104,8 @@ pub fn is_decode_error(error: &anyhow::Error) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use super::private_socket_dir;
     use super::{framed_parts, receive, send, socket_id, welcome_version};
     use maitty_shared::protocol::{ClientMsg, PROTOCOL_VERSION, ServerMsg};
 
@@ -163,5 +198,28 @@ mod tests {
             socket_id("maitty", None, None, None),
             "maitty-user-default.sock"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_socket_directory_is_created_with_owner_only_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = std::env::temp_dir().join(format!(
+            "maitty-ipc-transport-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let result =
+            private_socket_dir("maitty-test", "start maitty-test again", Some(&root), &root)
+                .unwrap();
+        let permissions = std::fs::metadata(&result).unwrap().permissions();
+        assert_eq!(permissions.mode() & 0o777, 0o700);
+        std::fs::remove_dir(&result).unwrap();
+        std::fs::remove_dir(root).unwrap();
     }
 }
