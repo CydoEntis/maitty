@@ -105,6 +105,8 @@ pub(super) struct Screen {
     pub show_own: Option<TermId>,
     /// Counts frames, for `ScreenTab::used`.
     pub tick: u64,
+    /// The modals drawn this frame, which are flattened onto the screen's ground at its end.
+    pub modal_rects: Vec<Rect>,
     /// Where the sessions were drawn last frame, and the splits between them.
     pub leaf_rects: Vec<(TermId, Rect)>,
     pub dividers: Vec<(Rect, bool, Vec<bool>)>,

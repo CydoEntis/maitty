@@ -795,16 +795,20 @@ pub(super) fn draw_menu(app: &mut App, f: &mut Frame, area: Rect, t: &Theme, m: 
     // The destructive item sits last, after a blank row.
     let gap = m.items.iter().any(|(_, a)| danger(a)) && m.items.len() > 1;
     let w = m.items.iter().map(|(l, _)| l.width() as u16).max().unwrap_or(10).max(m.title.width() as u16).clamp(16, 44) + 10;
-    let h = m.items.len() as u16 + 3 + gap as u16;
+    // The Menu's card: its border, a padding row, the items, a padding row, its border.
+    let h = m.items.len() as u16 + 4 + gap as u16;
     let x = m.at.0.min(area.right().saturating_sub(w + 1)).max(area.x);
     let y = if m.at.1 + h < area.bottom() { m.at.1 + 1 } else { m.at.1.saturating_sub(h) }.max(area.y);
     let r = Rect { x, y, width: w, height: h };
     // Clicking anywhere else closes it.
     hit(app, area, ScreenHit::Close);
-    // A popover, as the why one: a raised title row over a card.
-    let bgm = t.card;
+    // The same card as the Menu: a lit border with its title as a chip on it, on the ground.
+    let bgm = t.bg;
     let title = truncate(&m.title, (w - 10) as usize);
-    super::screen::popover_at(app, buf, r, &title, t);
+    let mut c = super::screen::Card::new(t, &title).lit(t.accent);
+    c.bg = bgm;
+    super::screen::card(app, buf, r, &c, t);
+    hit(app, r, ScreenHit::Noop);
     let look = super::screen::Look::of(&app.cfg.ui);
     let mut yy = r.y + 2;
     for (i, (label, act)) in m.items.iter().enumerate() {

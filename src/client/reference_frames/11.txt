@@ -1,5 +1,5 @@
 ===== floating | 160x45 | unicode
-┌─ SESSIONS 5 ──────────── ●1 ✕1 ┐ ┌─ 1  fix-footer  2  add-payments ─── ✕ failed  ✕  ┐ ┌─ INBOX 2 ──────────────────────────────────────────────────────── ✕  ┐
+┌─ SESSIONS 5 ──────────── ●1 ✕1 ┐ ┌─ 1  fix-footer  2  add-payments ─── ✕ failed   ✕ ┐ ┌─ INBOX 2 ────────────────────────────────────────────────────────  ✕ ┐
 │                                │ │                                                  │ │                                                                      │
 │  ▾ affiliate-site ⎇ main · ch… │ │                                                  │ │  NEEDS YOU  1                                                        │
 │ ▎ ✕ fix-footer              2m │ │                                                  │ │ ● warm-finch · pixls                                              3m │
@@ -45,7 +45,7 @@
 │  + new               a actions │ │                                                  │ │ ↑↓ select   ⏎ open   r re-run   O override   Esc close               │
 └────────────────────────────────┘ └──────────────────────────────────────────────────┘ └──────────────────────────────────────────────────────────────────────┘
 ===== floating | 100x30 | unicode
-┌─ SESSIONS 5 ──── ●1 ✕1 ┐ ┌─ INBOX 2 ───────────────────────────────────────────────────────── ✕  ┐
+┌─ SESSIONS 5 ──── ●1 ✕1 ┐ ┌─ INBOX 2 ─────────────────────────────────────────────────────────  ✕ ┐
 │                        │ │                                                                       │
 │  ▾ affiliate-site      │ │  NEEDS YOU  1                                                         │
 │ ▎ ✕ fix-footer      2m │ │ ● warm-finch · pixls                                               3m │
@@ -76,7 +76,7 @@
 │  + new       a actions │ │ ↑↓ select   ⏎ open   r re-run   O override   Esc close                │
 └────────────────────────┘ └───────────────────────────────────────────────────────────────────────┘
 ===== floating | 80x24 | unicode
-┌─ SESSIONS 5 ──── ●1 ✕1 ┐ ┌─ INBOX 2 ───────────────────────────────────── ✕  ┐
+┌─ SESSIONS 5 ──── ●1 ✕1 ┐ ┌─ INBOX 2 ─────────────────────────────────────  ✕ ┐
 │                        │ │                                                   │
 │  ▾ affiliate-site      │ │  NEEDS YOU  1                                     │
 │ ▎ ✕ fix-footer         │ │ ● warm-finch · pixls                           3m │
@@ -101,7 +101,7 @@
 │  + new       a actions │ │ ↑↓ select   ⏎ open   r re-run   O override   Esc  │
 └────────────────────────┘ └───────────────────────────────────────────────────┘
 ===== tiled | 160x45 | unicode
-┌─ SESSIONS 5 ──────────── ●1 ✕1 ┐┌─ 1  fix-footer  2  add-payments ───── ✕ failed  ✕  ┐┌─ INBOX 2 ──────────────────────────────────────────────────────── ✕  ┐
+┌─ SESSIONS 5 ──────────── ●1 ✕1 ┐┌─ 1  fix-footer  2  add-payments ───── ✕ failed   ✕ ┐┌─ INBOX 2 ────────────────────────────────────────────────────────  ✕ ┐
 │                                ││                                                    ││                                                                      │
 │  ▾ affiliate-site ⎇ main · ch… ││                                                    ││  NEEDS YOU  1                                                        │
 │ ▎ ✕ fix-footer              2m ││                                                    ││ ● warm-finch · pixls                                              3m │
@@ -147,7 +147,7 @@
 │  + new               a actions ││                                                    ││ ↑↓ select   ⏎ open   r re-run   O override   Esc close               │
 └────────────────────────────────┘└────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────┘
 ===== tiled | 100x30 | unicode
-┌─ SESSIONS 5 ──── ●1 ✕1 ┐┌─ INBOX 2 ────────────────────────────────────────────────────────── ✕  ┐
+┌─ SESSIONS 5 ──── ●1 ✕1 ┐┌─ INBOX 2 ──────────────────────────────────────────────────────────  ✕ ┐
 │                        ││                                                                        │
 │  ▾ affiliate-site      ││  NEEDS YOU  1                                                          │
 │ ▎ ✕ fix-footer      2m ││ ● warm-finch · pixls                                                3m │
@@ -178,7 +178,7 @@
 │  + new       a actions ││ ↑↓ select   ⏎ open   r re-run   O override   Esc close                 │
 └────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
 ===== tiled | 80x24 | unicode
-┌─ SESSIONS 5 ──── ●1 ✕1 ┐┌─ INBOX 2 ────────────────────────────────────── ✕  ┐
+┌─ SESSIONS 5 ──── ●1 ✕1 ┐┌─ INBOX 2 ──────────────────────────────────────  ✕ ┐
 │                        ││                                                    │
 │  ▾ affiliate-site      ││  NEEDS YOU  1                                      │
 │ ▎ ✕ fix-footer         ││ ● warm-finch · pixls                            3m │

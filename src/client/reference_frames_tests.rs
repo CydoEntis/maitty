@@ -429,8 +429,8 @@ fn mask_key_bar(row: &mut [char], x0: usize, x1: usize) {
 
 /// A modal's title row in `[x0, x1)` as the app draws it since modals took a pane's frame (the
 /// user's choice, 2026-10-24, docs/UI.md): the reference's accent bar becomes the top border with
-/// the corners of its `bottom` row, its title a chip two in and `Esc close` a chip a `─` before
-/// the corner. Every other cell of the modal is still the reference's.
+/// the corners of its `bottom` row, its title a chip two in and a red `✕` (in place of the
+/// reference's `Esc close`, ADR 0038) a chip a `─` before the corner. Every other cell of the modal is still the reference's.
 fn as_bordered_header(row: &mut [char], bottom: &[char], x0: usize, x1: usize) {
     let bar: String = row[x0..x1].iter().collect();
     let title = bar.trim().strip_suffix("Esc close").unwrap_or_else(|| panic!("the reference's title bar: {bar:?}")).trim_end();
@@ -439,7 +439,7 @@ fn as_bordered_header(row: &mut [char], bottom: &[char], x0: usize, x1: usize) {
         '┘' => '┐',
         c => c,
     };
-    let tail: Vec<char> = format!(" Esc close ─{}", top(bottom[x1 - 1])).chars().collect();
+    let tail: Vec<char> = format!(" ✕ {}", top(bottom[x1 - 1])).chars().collect();
     let mut header: Vec<char> = format!("{}─ {title} ", top(bottom[x0])).chars().collect();
     header.resize(x1 - x0 - tail.len(), '─');
     header.extend(tail);

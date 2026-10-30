@@ -154,6 +154,7 @@ theme = "tokyo-night"
 layout = "floating"        # floating | hairline
 pane_colors = true         # floating: each pane's border in its own colour
 rounded = "full"           # full (needs a Nerd Font) | corners | off
+tab_gap = true             # a cell between one tab and the next; false: they touch
 padding = "1"              # 0 | 1 | 2: space round the screen
 
 [keys.prefix]

@@ -34,9 +34,9 @@ fn world(stage: Stage) -> App {
     app
 }
 
-/// The row a lone pane's top border is on: under the tab row, which is level with the sidebar's top edge (ADR 0035).
+/// The row a lone pane's top border is on: level with the sidebar's top edge, the tabs on it (ADR 0038).
 fn pane_y(_: Layout) -> u16 {
-    1
+    0
 }
 
 /// Where the reference puts the pane column: right of the sidebar and the gap.
@@ -76,9 +76,9 @@ fn preset_01_s_frame_is_the_reference_s_in_every_layout_and_size() {
         let r = rows(&text);
         let (px, py) = (pane_x(layout, w), pane_y(layout));
         let tabs = from(&r[0], px);
-        assert!(tabs.contains(" 1  fix-footer ") && tabs.contains(" 2  add-payments"), "row 0, over the pane's box, is the tabs, each with its state: {at}");
+        assert!(tabs.contains(" 1  fix-footer ") && tabs.contains(" 2  add-payments"), "row 0, the pane's top border, carries the tabs, each with its state: {at}");
         let title = from(&r[py as usize], px);
-        assert!(title.starts_with("┌─") && title.ends_with('┐') && title.chars().skip(1).take(title.chars().count() - 2).all(|c| c == '─'), "a lone pane's top is a plain border: its tab names it: {at}");
+        assert!(title.starts_with("┌─ ") && title.ends_with('┐'), "a lone pane's top border opens with its tabs and closes at the corner: {at}");
         assert_eq!(from(&r[h as usize - 1], 0), last, "last row: {at}");
         let sw = side_w(w);
         assert_eq!((r[0][0], r[0][sw as usize - 1]), ('┌', '┐'), "the sidebar's top corners: {at}");
@@ -160,7 +160,7 @@ fn a_modal_is_centred_with_a_border_all_round_and_no_shadow() {
                 assert_eq!(r, Rect::new((w - mw) / 2, (h - mh) / 2, mw, mh), "{at}");
                 let line = |y: u16, x0: u16, x1: u16| (x0..x1).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>();
                 let fill = |n: usize| "─".repeat(n);
-                assert_eq!(line(r.y, r.x, r.right()), format!("┌─ OVERRIDE A FAILED CHECK {} Esc close ─┐", fill(mw as usize - 40)), "{at}");
+                assert_eq!(line(r.y, r.x, r.right()), format!("┌─ OVERRIDE A FAILED CHECK {} ✕ ┐", fill(mw as usize - 31)), "{at}");
                 assert_eq!(line(r.bottom() - 1, r.x, r.right()), format!("└{}┘", fill(mw as usize - 2)), "{at}");
                 assert!((r.y + 1..r.bottom() - 1).all(|y| buf[(r.x, y)].symbol() == "│" && buf[(r.right() - 1, y)].symbol() == "│"), "{at}");
                 assert!(beside_and_under(r, w, h).all(|p| buf[p] == before[p]), "no shadow: {at}");
@@ -170,7 +170,7 @@ fn a_modal_is_centred_with_a_border_all_round_and_no_shadow() {
 }
 
 /// The modal's frame works like a pane's (the user's choice, 2026-10-24): corners by
-/// `ui.rounded`, the title an accent chip on the top border, `Esc close` a chip at its right
+/// `ui.rounded`, the title an accent chip on the top border, a red `✕` chip at its right
 /// that a click closes, chip ends capped with `full`, and no accent bar across the top.
 #[test]
 fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and_rounding() {
@@ -186,13 +186,14 @@ fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and
             let at = format!("{layout} {rounded:?}");
             let sym = |x: u16| buf[(x, r.y)].symbol().to_string();
             let (tl, tr) = if rounded == Rounding::Off { ("┌", "┐") } else { ("╭", "╮") };
-            assert_eq!((sym(r.x), sym(r.x + 1), sym(r.right() - 2), sym(r.right() - 1)), (tl.into(), "─".into(), "─".into(), tr.into()), "{at}");
+            // The red ✕ is flush against the corner, so its last cell is the one before it.
+            assert_eq!((sym(r.x), sym(r.x + 1), sym(r.right() - 1)), (tl.into(), "─".into(), tr.into()), "{at}");
             let caps = rounded == Rounding::Full;
-            let (title, esc) = (r.x + 2, r.right() - 2 - if caps { 13 } else { 11 });
+            let (title, esc) = (r.x + 2, r.right() - 1 - if caps { 5 } else { 3 });
             let row = |x0: u16, x1: u16| (x0..x1).map(sym).collect::<String>();
             let (l, e) = if caps { (CAP_L, CAP_R) } else { ("", "") };
             assert_eq!(row(title, title + 10 + 2 * u16::from(caps)), format!("{l} OVERRIDE {e}"), "{at}");
-            assert_eq!(row(esc, r.right() - 2), format!("{l} Esc close {e}"), "{at}");
+            assert_eq!(row(esc, r.right() - 1), format!("{l} ✕ {e}"), "{at}");
             assert_eq!(buf[(title + 2, r.y)].bg, t.accent, "the title chip is the accent: {at}");
             let chip = |x: u16| buf[(x, r.y)].symbol() != "─";
             assert!((r.x + 1..r.right() - 1).filter(|x| !chip(*x)).all(|x| buf[(x, r.y)].bg == t.card), "no accent bar: {at}");
@@ -202,7 +203,7 @@ fn a_modal_s_title_and_esc_close_are_chips_on_its_top_border_in_every_layout_and
                 }
             }
             let close = app.hits.iter().rev().find(|(_, h)| *h == Hit::Screen(ScreenHit::Close)).map(|(r, _)| *r).expect("a close target");
-            assert_eq!(close, Rect::new(esc, r.y, r.right() - 2 - esc, 1), "the whole Esc chip closes: {at}");
+            assert_eq!(close, Rect::new(esc, r.y, r.right() - 1 - esc, 1), "the whole Esc chip closes: {at}");
         }
     }
 }
@@ -263,7 +264,7 @@ fn a_confirm_s_long_sub_is_cut_inside_its_title_chip() {
         let (tl, tr) = if rounded == Rounding::Off { ("┌", "┐") } else { ("╭", "╮") };
         let text = row.concat();
         assert!(text.starts_with(&format!("{tl}─{l} changes · a-folder")), "{at}: {text}");
-        assert!(text.ends_with(&format!("─{l} Esc close {e}─{tr}")), "{at}: {text}");
+        assert!(text.ends_with(&format!("─{l} ✕ {e}{tr}")), "{at}: {text}");
         let esc = close.x - x0;
         assert_eq!((row[esc as usize - 3].as_str(), row[esc as usize - 2].as_str()), (last, "─"), "{at}: the title chip ends whole before the Esc chip: {text}");
         assert!(text.contains('…'), "{at}: the sub is cut: {text}");
@@ -274,17 +275,17 @@ fn a_confirm_s_long_sub_is_cut_inside_its_title_chip() {
     }
 }
 
-/// A modal too narrow for the Esc chip beside its title drops the chip rather than draw it
-/// over the corner and the title.
+/// A modal too narrow for the red ✕ chip beside its corner drops the chip rather than draw it
+/// over the corner.
 #[test]
-fn a_modal_too_narrow_for_its_esc_chip_keeps_its_corner_and_title() {
+fn a_modal_too_narrow_for_its_close_chip_keeps_its_corners() {
     let mut app = world(Stage::None);
     app.cfg.ui.rounded = crate::config::Rounding::Full;
     let t = app.theme.clone();
     let mut buf = Buffer::empty(Rect::new(0, 0, 20, 6));
-    let r = panel_at(&mut app, &mut buf, Rect::new(2, 1, 12, 4), "NEW", &[], &t);
+    let r = panel_at(&mut app, &mut buf, Rect::new(2, 1, 6, 4), "NEW", &[], &t);
     let row: String = (r.x..r.right()).map(|x| buf[(x, r.y)].symbol().to_string()).collect();
-    assert!(row.starts_with(&format!("╭─{CAP_L} NEW {CAP_R}")) && row.ends_with("─╮") && !row.contains("Esc"), "{row}");
+    assert!(row.starts_with("╭─") && row.ends_with("─╮") && !row.contains('✕'), "{row}");
     assert!(!app.hits.iter().any(|(_, h)| *h == Hit::Screen(ScreenHit::Close)), "nothing to click: Esc closes it");
 }
 
@@ -607,8 +608,7 @@ fn shown_row(buf: &Buffer, y: u16, x0: u16, x1: u16, lit: Color) -> String {
 fn a_hovered_border_chip_is_whole() {
     use super::super::Hit;
     use crate::config::Rounding;
-    let chips: [(&str, Pick); 5] = [
-        ("the sheet's ✕", |h| matches!(h, Hit::Screen(ScreenHit::Close | ScreenHit::ViewClose))),
+    let chips: [(&str, Pick); 4] = [
         ("a tab chip", |h| matches!(h, Hit::Screen(ScreenHit::TabPick(_)))),
         ("the + chip", |h| matches!(h, Hit::Screen(ScreenHit::NewTab))),
         ("the bar's update pill", |h| matches!(h, Hit::Screen(ScreenHit::Update))),
@@ -676,4 +676,37 @@ fn a_hovered_border_chip_is_whole() {
         }
     }
     assert_eq!(covered.len(), chips.len(), "every kind of chip is hovered somewhere: {covered:?}");
+}
+
+/// Row 0 of the 160x45 frame as text.
+fn top_row(app: &mut App) -> String {
+    let buf = drawn_in(app, "floating");
+    (0..160u16).map(|x| buf[(x, 0)].symbol().to_string()).collect()
+}
+
+#[test]
+fn the_tab_gap_is_a_cell_of_the_border_between_tabs_or_none() {
+    for gap in [true, false] {
+        let mut app = world(Stage::None);
+        app.cfg.ui.tab_gap = gap;
+        let row = top_row(&mut app);
+        let between = &row[row.find("fix-footer").expect("the first tab")..row.find("add-payments").expect("the second tab")];
+        assert_eq!(between.matches('─').count(), usize::from(gap), "gap {gap}: a cell of the border between the tabs, or none: {row}");
+    }
+}
+
+#[test]
+fn the_sheets_tabs_and_close_follow_the_shape_and_the_gap() {
+    use crate::config::Rounding;
+    for (rounded, gap) in [(Rounding::Off, true), (Rounding::Corners, false), (Rounding::Full, true), (Rounding::Full, false)] {
+        let mut app = world(Stage::Failed);
+        (app.cfg.ui.rounded, app.cfg.ui.tab_gap) = (rounded, gap);
+        app.act(Action::Files);
+        let row = top_row(&mut app);
+        let at = format!("{rounded:?} gap {gap}: {row}");
+        let strip = &row[row.find("Files").expect("the Files tab")..row.find("References").expect("the References tab")];
+        assert_eq!(strip.matches('─').count(), if gap { 3 } else { 0 }, "a cell of the border between the sheet's tabs, or none: {at}");
+        assert_eq!(row.contains(CAP_L), rounded == Rounding::Full, "caps only in a pill: {at}");
+        assert!(row.contains('✕'), "the close button: {at}");
+    }
 }

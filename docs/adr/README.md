@@ -58,4 +58,5 @@ supersedes it, and set the old one's status to `Superseded by NNNN`.
 | [0032](0032-a-session-owns-its-tabs.md) | A session owns its tabs, and picking it shows it | Accepted |
 | [0033](0033-the-collapsed-sidebar-is-a-column.md) | The collapsed sidebar is a narrow column, not a strip of chips | Accepted |
 | [0034](0034-the-sidebar-never-reorders-itself.md) | The sidebar never reorders itself, and has no SSH group | Accepted |
-| [0035](0035-the-tab-row-sits-outside-the-pane-boxes.md) | The tab row sits over the pane boxes, not inside them | Accepted |
+| [0035](0035-the-tab-row-sits-outside-the-pane-boxes.md) | The tab row sits over the pane boxes, not inside them | Accepted, amended by 0038 |
+| [0038](0038-tabs-sit-on-the-pane-border.md) | Floating's tabs sit on the first pane's top border | Proposed |

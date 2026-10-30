@@ -21,6 +21,7 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     app.hits_under_overlay = 0;
     app.panes.clear();
     app.pane_frames.clear();
+    app.screen.modal_rects.clear();
     let area = f.area();
     let hairline = super::screen::Look::of(&app.cfg.ui).hairline;
     let t = if hairline { super::screen::flat_theme(&app.theme) } else { app.theme.clone() };
@@ -61,6 +62,7 @@ pub fn draw(app: &mut App, f: &mut Frame) {
     super::screen::draw(app, f, area, &t);
     let above = super::screen::above_bar(app, area);
     draw_overlays(app, f, above, &t);
+    super::screen::flatten_modals(app, f.buffer_mut(), &t);
     tint_hovered(app, f.buffer_mut(), &t);
     if terminal_bg {
         use_terminal_background(f.buffer_mut(), t.bg);

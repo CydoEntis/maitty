@@ -368,7 +368,7 @@ mod screen_tests {
                 let in_column = |hit: screen::ScreenHit| app.hits.iter().find(|(r, h)| *h == Hit::Screen(hit) && r.x >= g.side.x && r.right() <= g.side.right()).map(|(r, _)| *r);
                 assert!(in_column(screen::ScreenHit::Session(1)).is_some() && in_column(screen::ScreenHit::Session(2)).is_some(), "{w}x{h} {position}: a row per session");
                 assert!(in_column(screen::ScreenHit::ExpandSidebar).is_some() && in_column(screen::ScreenHit::Actions).is_some() && in_column(screen::ScreenHit::NewShell).is_some(), "{w}x{h} {position}: expand, Menu and New stay clickable");
-                assert!(screen.lines().nth(g.tabs.y as usize).unwrap().contains("◫ ⤢"), "the tabs sit on row {}: {}", g.tabs.y, screen.lines().nth(g.tabs.y as usize).unwrap());
+                assert!(screen.lines().nth(g.tabs.y as usize).unwrap().contains("◫ ⤢") || screen.lines().nth(g.tabs.y as usize).unwrap().contains(" + "), "the tabs sit on row {}: {}", g.tabs.y, screen.lines().nth(g.tabs.y as usize).unwrap());
                 let click = |app: &mut App, r: Rect| {
                     for kind in [MouseEventKind::Down(MouseButton::Left), MouseEventKind::Up(MouseButton::Left)] {
                         app.on_mouse(MouseEvent { kind, column: r.x + 1, row: r.y, modifiers: KeyModifiers::NONE });
@@ -642,13 +642,13 @@ mod screen_tests {
         show(&text);
         let lines: Vec<&str> = text.lines().collect();
         assert!(!text.contains(concat!(">_ ", env!("APP_COMMAND"))), "no logo");
-        // The grid: no margin, the sidebar card the full height from the corner, the tabs on
-        // row 0 beside it, outside the pane card (ADR 0035), the pane card right under them.
+        // The grid: no margin, the sidebar card the full height from the corner, the pane card
+        // beside it with the tabs on its top border, row 0 (ADR 0038).
         assert!(lines[0].starts_with("┌─"), "the sidebar card from the very corner: {}", lines[0]);
         assert!(lines[0].contains("● claude"), "the tab keeps its session and state: {}", lines[0]);
         assert!(text.contains("+ New") && text.contains("Menu"), "New and Actions stay in the sidebar foot");
-        assert!(lines[0].contains(" claude ✕") && lines[0].contains("  +") && lines[0].contains("◫ ⤢") && !lines[0].contains('▯'), "the tab's name on the tab row over the pane's box (a lone tab has no number), the + chip, then split and zoom at the right: {}", lines[0]);
-        assert!(!lines[1].contains("claude") && !lines[1].contains("needs you") && !lines[1].contains('✕'), "a lone pane has no title: its tab names it: {}", lines[1]);
+        assert!(lines[0].contains(" claude ✕") && lines[0].contains(" + ") && !lines[0].contains('◫') && !lines[0].contains('⤢') && !lines[0].contains('▯'), "the tab's name on the pane's top border (a lone tab has no number), the + chip, and no split or zoom buttons: {}", lines[0]);
+        assert!(!lines[1].contains("needs you") && !lines[1].contains('✕'), "a lone pane has no title of its own: its tab, on its border, names it: {}", lines[1]);
         // Projects and their sessions, nothing in between.
         assert!(text.contains("−  shop-api") && text.contains("SESSIONS") && text.contains("●1"), "a project: its fold arrow and name; what needs you in the sidebar's title");
         assert!(!text.contains("AGENTS") && !text.contains("TERMINALS") && !text.contains("BRANCHES") && !text.contains("WORKTREES"), "no heading per kind of session");
@@ -835,9 +835,10 @@ mod screen_tests {
         let mut term = Terminal::new(TestBackend::new(230, 50)).unwrap();
         term.draw(|f| render::draw(&mut app, f)).unwrap();
         let buf = term.backend().buffer().clone();
-        let card = app.theme.card;
+        // The menu has no fill of its own: its ground is the screen's.
+        let card = app.theme.bg;
         let x = 62;
-        let last_item = (0..50u16).rev().find(|&y| (62..90).any(|x| buf[(x, y)].symbol() == "C") && buf[(x, y)].bg == card).expect("the Close pane row");
+        let last_item = (0..25u16).rev().find(|&y| (62..90).any(|x| buf[(x, y)].symbol() == "C") && buf[(x, y)].bg == card).expect("the Close pane row");
         let below = |n: u16| buf[(x, last_item + n)].bg;
         assert_eq!(below(1), card, "{layout}: one padding row under the last item");
         assert!(matches!(buf[(x, last_item + 2)].symbol(), "─" | "╰" | "└"), "{layout}: then its box, as it began one row above the first item");
@@ -1406,7 +1407,7 @@ mod screen_tests {
                     assert_eq!((l.symbol(), l.bg, e.symbol(), e.bg), (" ", t.btn, " ", t.btn), "square: {at}");
                 }
                 let gap = &buf[(r.x - 1, r.y)];
-                assert!(gap.symbol() == " " && gap.bg != t.btn, "a clear cell before it: {at}");
+                assert!(gap.symbol() == "─" && gap.bg != t.btn, "a cell of the border before it, not of the chip: {at}");
             }
         }
     }
@@ -1697,7 +1698,8 @@ mod screen_tests {
                     let card = card_of(&app, a);
                     let title: String = (card.x..card.right()).map(|x| buf[(x, card.y)].symbol()).collect();
                     // The tabs have their own row over the panes (ADR 0028).
-                    let row = screen::grid(&app, buf.area).tabs;
+                    // Floating's tabs sit on the top border (ADR 0038): a row of one cell's height.
+                    let row = Rect { height: 1, ..screen::grid(&app, buf.area).tabs };
                     let top: String = (row.x..row.right()).map(|x| buf[(x, row.y)].symbol()).collect();
                     let at = format!("{layout} {rounded:?} current {place} {w}: {top} / {title}");
                     show(&at);
@@ -4317,7 +4319,7 @@ second line
         app.open_changes(repo.clone());
         let o = draw(&mut app, 160, 45);
         show(&o);
-        assert!(o.contains(" Changes c ") && o.contains("fix the flaky checkout test"), "Changes docks beside the panes");
+        assert!(o.contains("c  Changes") && o.contains("fix the flaky checkout test"), "Changes docks beside the panes");
         assert!(!o.contains("─ Changes "), "its lit tab names it; the title doesn't repeat it");
         let _ = std::fs::remove_dir_all(&repo);
     }
@@ -5822,8 +5824,10 @@ second line
                 let top = app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap_or(0);
                 let pane = app.pane_frames.iter().map(|(_, r)| *r).filter(|r| r.y == top).max_by_key(|r| r.right()).expect("the top-right pane");
                 let row: String = (pane.x..pane.right()).map(|x| buf[(x, pane.y)].symbol()).collect();
-                // A lone pane's name, state and ✕ are on its tab: its top says nothing.
-                assert!(!row.contains('✕') && !row.contains("needs you") && !row.contains("claude"), "{layout} {mode}: {row}");
+                // A lone pane's name, state and ✕ are on its tab, which sits on its top border
+                // except in Hairline, where the tab row is its own: its own top says nothing.
+                let tabs_here = !matches!(layout, "hairline" | "compact");
+                assert!(!row.contains("needs you") && (tabs_here || (!row.contains('✕') && !row.contains("claude"))), "{layout} {mode}: {row}");
                 closes.push(row);
             }
             assert!(closes.windows(2).all(|p| p[0] == p[1]), "{layout}: the pane's top holds still: {closes:?}");
@@ -5866,7 +5870,7 @@ second line
                     assert!(title.contains("SESSIONS") && title.contains("●1"), "{at}: the sidebar's title and count: {row}");
                     let top = app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap_or(0);
                     let pane = app.pane_frames.iter().map(|(_, r)| *r).find(|r| r.y == top).expect("a pane along the top");
-                    let tabs: String = (pane.x..pane.right()).map(|x| buf[(x, pane.y - 1)].symbol()).collect();
+                    let tabs: String = (pane.x..pane.right()).map(|x| buf[(x, pane.y)].symbol()).collect();
                     assert!(tabs.contains('●'), "{at}: the session's status on its tab: {row}");
                     let (_, bar) = bar_text(&app, &buf);
                     assert!(bar.trim().starts_with(bar_words(mode)), "{at}: {bar}");
@@ -5940,7 +5944,7 @@ second line
             app.act(a);
             let o = draw(&mut app, 120, 34);
             show(&o);
-            assert!(o.contains(title) && o.contains("Esc close"), "{title}: a {APP_COMMAND} modal (title in its accent chip, Esc to close)");
+            assert!(o.contains(title) && o.contains('✕'), "{title}: a {APP_COMMAND} modal (title in its accent chip, a red ✕ to close)");
         }
     }
 
@@ -9541,7 +9545,7 @@ mod files_panel_tests {
         key(&mut app, KeyCode::Right);
         let o = draw(&mut app, 80, 24);
         let header = o.lines().find(|l| l.contains('‹')).expect("the file's header");
-        assert!(header.contains("i edit") && header.contains("1–15 of 60 "), "the tab strip and the mode bar take a row each: {header}");
+        assert!(header.contains("i edit") && header.contains("1–16 of 60 "), "the tab chips are on the border, so only the mode bar takes a row: {header}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -10526,17 +10530,17 @@ mod drawer_tab_tests {
         let buf = draw(&mut app);
         let o = text(&buf);
         super::check_settings_tests::show(&o);
-        let row = o.lines().find(|l| l.contains("Files f")).unwrap_or_else(|| panic!("a tab strip:\n{o}"));
-        let (files, changes, branch) = (row.find("Files f").unwrap(), row.find("Changes c").unwrap(), row.find("Branch b").unwrap());
-        assert!(files < changes && changes < branch && row.contains('·'), "in order, a dot apart: {row}");
-        let (fx, fy) = find(&buf, "Files f").unwrap();
-        let (cx, cy) = find(&buf, "Changes c").unwrap();
+        let row = o.lines().find(|l| l.contains("f  Files")).unwrap_or_else(|| panic!("a tab strip:\n{o}"));
+        let (files, changes, branch) = (row.find("f  Files").unwrap(), row.find("c  Changes").unwrap(), row.find("b  Branch").unwrap());
+        assert!(files < changes && changes < branch && row.contains("Files ─ c"), "in order, a cell of the border apart: {row}");
+        let (fx, fy) = find(&buf, "f  Files").unwrap();
+        let (cx, cy) = find(&buf, "c  Changes").unwrap();
         assert_eq!(buf[(fx, fy)].bg, app.theme.accent, "the open tab is lit");
         assert_ne!(buf[(cx, cy)].bg, app.theme.accent, "the others are not");
         app.cfg.keys.prefix.insert("c".into(), "none".into());
         app.cfg.keys.prefix.insert("d".into(), "changes".into());
         app.keymap = app.cfg.keymap();
-        assert!(find(&draw(&mut app), "Changes d").is_some(), "the keys come from the keymap");
+        assert!(find(&draw(&mut app), "d  Changes").is_some(), "the keys come from the keymap");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -10831,7 +10835,7 @@ mod references_view_tests {
             assert!(o.contains("No references yet · paste an image or add a file"), "the empty state at {w}×{h}:\n{o}");
             assert!(o.contains("Refs") || o.contains("References"), "its tab in the strip at {w}×{h}");
             if w >= 160 {
-                assert!(o.contains("Files f") && o.contains("References a"), "the strip names its key:\n{o}");
+                assert!(o.contains("f  Files") && o.contains("a  References"), "the strip names its key:\n{o}");
             }
             key(&mut app, KeyCode::Char('a'));
             assert!(sheet(&app).is_none(), "a closes it again");

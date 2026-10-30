@@ -218,13 +218,17 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
     // Hairline puts the tab strip on the title row, over the rule; what the title said goes
     // to the right, dim.
     let tabs_on_title = Look::of(&app.cfg.ui).hairline && drawer_tab(kind).is_some();
+    // Floating's strip is chips on the top border, like the session's tabs; the title goes right.
+    let chips_on_border = !Look::of(&app.cfg.ui).hairline && drawer_tab(kind).is_some();
     // Lit while it has the keys; a click into a pane sets it aside, unlit, still open.
-    let mut c = Card::new(t, if tabs_on_title { "" } else { &title });
+    let mut c = Card::new(t, if tabs_on_title || chips_on_border { "" } else { &title });
     if sheet_has_keys(app) {
         c = c.lit(t.accent);
     }
     c.sub = &sub;
-    if tabs_on_title && !title.is_empty() {
+    // The chips come first: the title shows only where it leaves them their names.
+    let room_for_title = !chips_on_border || r.width >= 2 + drawer_names_w() + title.width() as u16 + 12;
+    if (tabs_on_title || chips_on_border) && !title.is_empty() && room_for_title {
         c.right = vec![seg(format!("{title}  "), Style::default().fg(t.muted))];
     }
     // The read-while-working sheets and Changes sit on the desk's ground, like the panes.
@@ -250,9 +254,11 @@ pub(in crate::client) fn draw_sheet(app: &mut App, buf: &mut Buffer, r: Rect, ki
             }
             inside
         }
-        Some(cur) if inside.height > 1 => {
-            draw_drawer_tabs(app, buf, Rect { height: 1, ..inside }, cur, c.bg, t);
-            Rect { y: inside.y + 1, height: inside.height - 1, ..inside }
+        Some(cur) => {
+            let taken = segs_width(&c.right) + close_width(Look::of(&app.cfg.ui), !c.right.is_empty()) + 4;
+            let row = Rect { x: title_x(r), y: r.y, width: r.width.saturating_sub(2 + taken), height: 1 };
+            draw_drawer_chips(app, buf, row, cur, t);
+            inside
         }
         _ => inside,
     };
@@ -354,6 +360,64 @@ fn draw_drawer_tabs(app: &mut App, buf: &mut Buffer, row: Rect, cur: usize, grou
         x += w + 1;
     }
     open
+}
+
+/// The width of the drawer's chips with their names alone, and a cell of border between.
+fn drawer_names_w() -> u16 {
+    DRAWER_TABS.iter().map(|(_, name, ..)| name.width() as u16 + 4).sum::<u16>() + DRAWER_TABS.len() as u16
+}
+
+/// The drawer's tabs as chips on the sheet's top border, as the session's tabs are on a pane's:
+/// a key chip then the name, the open one in the accent (lit while the panel has the keys), a
+/// cell of the border between them. A click switches. Where they do not fit, the keys go, then
+/// the long names.
+fn draw_drawer_chips(app: &mut App, buf: &mut Buffer, row: Rect, cur: usize, t: &Theme) {
+    let border = buf[(row.x, row.y)].fg;
+    let lit = sheet_has_keys(app);
+    let look = Look::of(&app.cfg.ui);
+    // The shape follows `ui.rounded` (a pill has caps), the gap `ui.tab_gap`.
+    let (ends, gap) = (2 * u16::from(look.caps), u16::from(look.tab_gap));
+    let chip = |(name, key): &(String, String)| {
+        let k = key.trim();
+        (if k.is_empty() { 0 } else { k.width() as u16 + 2 }) + name.width() as u16 + 2 + ends
+    };
+    let all = drawer_tab_labels(app, u16::MAX);
+    let names: Vec<(String, String)> = all.iter().map(|(n, _)| (n.clone(), String::new())).collect();
+    let short: Vec<(String, String)> = DRAWER_TABS.iter().map(|(_, _, s, _)| (s.to_string(), String::new())).collect();
+    let total = |tabs: &[(String, String)]| tabs.iter().map(&chip).sum::<u16>() + gap * (tabs.len() as u16 - 1);
+    let Some(tabs) = [all, names].into_iter().find(|tabs| total(tabs) <= row.width).or(Some(short)) else { return };
+    let mut x = row.x;
+    for (i, tab) in tabs.iter().enumerate() {
+        let w = chip(tab);
+        if x + w > row.right() {
+            break;
+        }
+        let tr = Rect { x, y: row.y, width: w, height: 1 };
+        let on = i == cur;
+        let (ink, fill) = if on { if lit { (t.acc_ink, t.accent) } else { (t.strong, t.btn) } } else { (t.text, t.bg) };
+        let bg = if !on && hovered(app, tr) { t.hov } else { fill };
+        let k = tab.1.trim();
+        let mut segs = Vec::new();
+        if !k.is_empty() {
+            let kb = if on { fill } else { t.btn };
+            segs.push(seg(format!(" {k} "), Style::default().fg(if on { ink } else { t.accent }).bg(kb).add_modifier(Modifier::BOLD)));
+        }
+        let mut st = Style::default().fg(ink).bg(bg);
+        if on {
+            st = st.add_modifier(Modifier::BOLD);
+        }
+        segs.push(seg(format!(" {} ", tab.0), st));
+        if look.caps {
+            segs = round_ends(segs, t.bg);
+        }
+        put(buf, x, row.y, &segs, row.right());
+        hit(app, tr, ScreenHit::DrawerTab(i));
+        x += w;
+        if gap == 1 && i + 1 < tabs.len() && x < row.right() {
+            put(buf, x, row.y, &[seg("─", Style::default().fg(border))], row.right());
+            x += 1;
+        }
+    }
 }
 
 /// Settings is a modal so it does not take width away from the workspace.

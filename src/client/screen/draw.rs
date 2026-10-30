@@ -208,7 +208,7 @@ pub(in crate::client) fn draw(app: &mut App, f: &mut Frame, area: Rect, t: &Them
         draw_main(app, f, g.panes, &model, t);
     }
     if !Look::of(&app.cfg.ui).hairline {
-        draw_tab_chips(app, f.buffer_mut(), g.tabs, &model, t);
+        draw_tab_chips(app, f.buffer_mut(), g.panes, &model, t);
     } else {
         hairline::draw_tab_row(app, f.buffer_mut(), g.tabs, &model, t);
         let edge = (g.side.width > 0).then_some(g.edge.x);
@@ -267,18 +267,28 @@ pub(in crate::client) fn lone_pane(app: &App, term: TermId) -> bool {
     matches!(app.screen.leaf_rects.as_slice(), [(id, _)] if *id == term)
 }
 
-/// Floating's tab row: the chips' own row over the boxes, outside them (no gap: rows are scarce).
-const FLOAT_TAB_ROW: u16 = 1;
+/// Floating's tabs have no row of their own: they sit on the first pane's top border (ADR 0038).
+const FLOAT_TAB_ROW: u16 = 0;
 
-/// Floating's tabs along the first row of `r`, lined up with the pane titles' chips.
-fn draw_tab_chips(app: &mut App, buf: &mut Buffer, r: Rect, model: &[Proj], t: &Theme) {
-    if r.height == 0 || r.width < 4 {
+/// Floating's tabs on the top border of the first pane, as the sidebar's `SESSIONS` chip sits on
+/// its own, a column in from the corner like every title chip. The border runs on between the
+/// chips and after them. Splitting and zooming are keys and the menu: no buttons.
+fn draw_tab_chips(app: &mut App, buf: &mut Buffer, panes: Rect, model: &[Proj], t: &Theme) {
+    // The topmost, leftmost pane: its border is the row the sidebar's title shares.
+    let Some(first) = app.screen.leaf_rects.iter().map(|(_, r)| *r).min_by_key(|r| (r.y, r.x)) else { return };
+    let first = first.intersection(buf.area);
+    if first.width < 8 || first.height == 0 {
         return;
     }
-    let mut row = Rect { height: 1, ..r };
-    row.width = tab_tools(app, buf, row, t.muted, t.strong, Color::Reset, t.accent) - row.x;
-    let chips = tab_strip(app, model, row, true, t);
-    put(buf, row.x, row.y, &chips, row.right());
+    let x = title_x(first);
+    let row = Rect { x, y: first.y, width: panes.right().saturating_sub(x), height: 1 };
+    // What the border is drawn in, so the gaps between chips are more of it.
+    let border = buf[(x, first.y)].fg;
+    let chips: Vec<Seg> = tab_strip(app, model, row, true, t)
+        .into_iter()
+        .map(|(text, st)| if st.bg.is_none() && text.trim().is_empty() { ("─".repeat(text.width()), Style::default().fg(border)) } else { (text, st) })
+        .collect();
+    put(buf, x, first.y, &chips, row.right());
 }
 
 /// The tab row's fixed right end: `◫` splits the focused pane and `⤢` zooms it (lit while it
@@ -532,7 +542,10 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
         }
         let w = segs_width(&pair);
         let reserve = if on || placed { 0 } else { keep };
-        if crowded && !on || at + w + reserve > max_x {
+        // Another tab takes the cell clear after it too (with `ui.tab_gap`); the current one does not need it.
+        let gap = u16::from(look.tab_gap);
+        let need = if on { w } else { w + gap };
+        if crowded && !on || at + need + reserve > max_x {
             all_fit = false;
             if on || placed {
                 break;
@@ -551,10 +564,14 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
         }
         placed |= on;
         out.extend(pair);
-        at += w;
+        // A cell clear between one tab and the next (on the border it is more of the line).
+        if look.tab_gap {
+            out.push(seg(" ", Style::default()));
+        }
+        at += w + gap;
     }
-    // The chip that opens a tab, a cell clear of the tabs: it drops first, so never shows
-    // without every tab before it.
+    // The chip that opens a tab, after the cell each tab leaves clear: it drops first, so never
+    // shows without every tab before it.
     if !all_fit {
         return out;
     }
@@ -563,9 +580,8 @@ fn tab_strip(app: &mut App, model: &[Proj], row: Rect, lit: bool, t: &Theme) -> 
         plus = round_ends(plus, ground);
     }
     let w = segs_width(&plus);
-    if at + 1 + w <= max_x {
-        hit(app, Rect { x: at + 1, y, width: w, height: 1 }, ScreenHit::NewTab);
-        out.push(seg(" ", Style::default()));
+    if at + w <= max_x {
+        hit(app, Rect { x: at, y, width: w, height: 1 }, ScreenHit::NewTab);
         out.extend(plus);
     }
     out

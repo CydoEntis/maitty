@@ -132,6 +132,9 @@ pub struct Ui {
     pub rounded: Rounding,
     /// Floating: each pane's border in its own colour, by its place in the tab (ADR 0027).
     pub pane_colors: bool,
+    /// A cell clear between one tab chip and the next (on a border it is more of the line). Off:
+    /// the chips touch.
+    pub tab_gap: bool,
     /// What `fold_retired_layout` changed, to say once and write back: the retired look's name
     /// and the settings that stand for it now. Never read from or written to the file.
     #[serde(skip)]
@@ -883,6 +886,7 @@ impl Default for Ui {
             focus_border: "accent".into(),
             rounded: Rounding::Off,
             pane_colors: false,
+            tab_gap: true,
             retired_layout: None,
             subagent_count: true,
             cursor: "terminal".into(),

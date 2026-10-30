@@ -136,8 +136,11 @@ fn every_split() -> impl Iterator<Item = (String, App, Buffer)> {
 #[test]
 fn no_pane_has_a_title_in_any_look() {
     for (label, app, buf) in every_split() {
-        // A lone pane's top row is its terminal's first line; a split's is its edge.
-        for (term, r) in app.screen.leaf_rects.iter().filter(|_| app.screen.leaf_rects.len() > 1) {
+        // A lone pane's top row is its terminal's first line; a split's is its edge. In Floating the
+        // first pane's top border carries the tabs (ADR 0038), which are words.
+        let first = app.screen.leaf_rects.iter().min_by_key(|(_, r)| (r.y, r.x)).map(|(term, _)| *term);
+        let tabs_there = !label.starts_with("hairline");
+        for (term, r) in app.screen.leaf_rects.iter().filter(|(term, _)| app.screen.leaf_rects.len() > 1 && !(tabs_there && Some(*term) == first)) {
             let top = title_of(&buf, *r);
             assert!(!top.chars().any(char::is_alphanumeric), "{label}: pane {term}'s top edge carries no words, its tab names it: {top}\n{}", text(&buf));
         }
@@ -149,10 +152,10 @@ fn a_named_tab_keeps_its_name_on_its_tab() {
     let mut app = split_world("floating", 2);
     app.screen.tabs[0].name = "build".into();
     let buf = draw(&mut app, 160, 45);
-    let r = app.screen.leaf_rects.iter().min_by_key(|(_, r)| (r.y, r.x)).map(|(_, r)| *r).expect("a pane");
-    let tabs = |app: &App, buf: &Buffer| title_of(buf, crate::client::screen::grid(app, buf.area).tabs);
-    let title = title_of(&buf, r);
-    assert!(tabs(&app, &buf).contains(" build ") && !title.contains("build"), "the tab's name on its tab, none on the pane: {} / {title}", tabs(&app, &buf));
+    let first = |app: &App| app.screen.leaf_rects.iter().min_by_key(|(_, r)| (r.y, r.x)).map(|(_, r)| *r).expect("a pane");
+    // The tabs are on the first pane's top border.
+    let tabs = |app: &App, buf: &Buffer| title_of(buf, first(app));
+    assert!(tabs(&app, &buf).contains(" build "), "the tab's name is on its tab: {}", tabs(&app, &buf));
     let mut second = app.screen.tabs[0].clone();
     (second.layout, second.focus, second.name) = (Node::Leaf(5), 5, String::new());
     app.screen.tabs.push(second);

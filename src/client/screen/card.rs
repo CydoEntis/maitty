@@ -74,6 +74,8 @@ pub(in crate::client) struct Look {
     /// asks this, and takes its colours from `hairline::Ink`.
     pub hairline: bool,
     pub rounded: bool,
+    /// A cell clear between one tab chip and the next (`ui.tab_gap`).
+    pub tab_gap: bool,
     /// Rows between stacked cards, and columns between cards side by side.
     pub gap: u16,
     pub dim: f32,
@@ -94,6 +96,7 @@ impl Look {
             pane_colors: ui.pane_colors && !hairline,
             hairline,
             rounded: rounding.corners(),
+            tab_gap: ui.tab_gap,
             gap: if hairline { 0 } else { ui.gap.parse().unwrap_or(1).min(2) },
             dim: match ui.dim.as_str() {
                 "off" => 0.0,
@@ -261,21 +264,24 @@ impl<'a> Card<'a> {
 
 /// How wide a card's ✕ is drawn on its top border, the spaces round it included.
 pub(in crate::client) fn close_width(look: Look, after_right: bool) -> u16 {
-    close_lead(look, after_right) + 2 * u16::from(look.caps) + 2
+    if look.hairline { close_lead(look, after_right) + 2 * u16::from(look.caps) + 2 } else { close_lead(look, after_right) + RED_CLOSE_W }
 }
+
+/// The red close button's width: the ✕ and a cell each side, flush against the corner.
+const RED_CLOSE_W: u16 = 3;
 
 /// Spaces before the ✕: two after other right-hand segments. Alone, a square ✕'s chip starts on
 /// the padding before the segments, where the reference frames put it; a capped chip needs that cell
 /// blank to stand clear of the border, so it starts a cell on.
 fn close_lead(look: Look, after_right: bool) -> u16 {
-    if after_right { 2 } else { u16::from(look.caps) }
+    if after_right { 2 } else if look.hairline { u16::from(look.caps) } else { 0 }
 }
 
 /// The ✕'s click target, which the pointer's tint lights: the ✕ and a cell each side, and with
 /// caps a space more each side inside them, so the hovered ✕ is a whole chip like the others
 /// rather than two caps pressed against the glyph.
 fn close_chip_w(look: Look) -> u16 {
-    if look.caps { 5 } else { 3 }
+    if look.hairline && !look.caps { 3 } else if look.hairline { 5 } else { RED_CLOSE_W }
 }
 
 /// Where a card's title chip starts: on the top border two in.
@@ -339,13 +345,27 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
     };
     let ground = t.bg;
     let mut right = c.right.clone();
+    // The red button sits flush against the corner; Hairline's quiet ✕ keeps a cell of padding.
+    let flush = c.close.is_some() && !look.hairline;
     if c.close.is_some() {
         let lead = " ".repeat(close_lead(look, !right.is_empty()) as usize);
-        let inner = if look.caps { " " } else { "" };
         let close = glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close;
-        right.push(seg(format!("{lead}{inner}{close}{inner} "), Style::default().fg(t.muted)));
+        if flush {
+            right.push(seg(lead, Style::default()));
+            let glyph = Style::default().fg(t.strong).bg(t.err).add_modifier(Modifier::BOLD);
+            if look.caps {
+                // A pill: caps in the button's colour over the border's ground.
+                let cap = Style::default().fg(t.err).bg(ground);
+                right.extend([seg(CAP_L, cap), seg(close, glyph), seg(CAP_R, cap)]);
+            } else {
+                right.push(seg(format!(" {close} "), glyph));
+            }
+        } else {
+            let inner = if look.caps { " " } else { "" };
+            right.push(seg(format!("{lead}{inner}{close}{inner} "), Style::default().fg(t.muted)));
+        }
     }
-    let end = right_end(r);
+    let end = if flush { r.right().saturating_sub(1) } else { right_end(r) };
     let rw = segs_width(&right);
     let rx = end.saturating_sub(rw);
     let chip_x = title_x(r);
@@ -353,8 +373,9 @@ pub(in crate::client) fn card(app: &mut App, buf: &mut Buffer, r: Rect, c: &Card
     if shown {
         let pad = 1;
         let space = seg(" ", Style::default());
-        let segs: Vec<Seg> = std::iter::once(space.clone()).chain(right).chain(std::iter::once(space)).map(|(s, st)| (s, if st.bg.is_none() { st.bg(ground) } else { st })).collect();
-        put(buf, rx - pad, r.y, &segs, end + pad);
+        let after = if flush { None } else { Some(space.clone()) };
+        let segs: Vec<Seg> = std::iter::once(space).chain(right).chain(after).map(|(s, st)| (s, if st.bg.is_none() { st.bg(ground) } else { st })).collect();
+        put(buf, rx - pad, r.y, &segs, end + if flush { 0 } else { pad });
         if let Some(h) = c.close {
             let w = close_chip_w(look);
             hit(app, Rect { x: end.saturating_sub(w), y: r.y, width: w, height: 1 }, h);

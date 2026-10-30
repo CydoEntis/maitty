@@ -861,6 +861,7 @@ pub(super) fn settings_group(row: &SRow) -> &'static str {
             "theme" => "THEME",
             "ui.layout" | "ui.padding" | "ui.background" | "ui.sidebar_position" | "ui.motion" => "LAYOUT",
             "ui.gap" | "ui.dim" | "ui.focus_border" | "ui.pane_colors" | "ui.rounded" | "ui.cursor" | "ui.cursor_blink" => "PANES",
+            "ui.tab_gap" => "TABS",
             "ui.spinner" | "ui.glyphs" => "STATUS",
             "sessions.agent" | "sessions.where" => "NEW SESSIONS",
             "ui.sidebar_tabs" => "SIDEBAR",

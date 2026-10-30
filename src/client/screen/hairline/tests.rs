@@ -428,7 +428,8 @@ fn a_split_pane_has_a_rule_and_no_title_and_the_rule_focuses_it() {
 
 #[test]
 fn the_tab_row_ends_in_split_and_zoom_and_zoom_fills_the_tab_with_the_focused_pane() {
-    for look in ["hairline", "floating"] {
+    // Floating has no buttons: the tabs sit on the pane's border; splitting and zooming are keys.
+    for look in ["hairline"] {
         let mut app = hairline_world(2);
         app.cfg.ui.layout = look.into();
         let buf = draw(&mut app, 160, 45);
@@ -462,16 +463,17 @@ fn the_line_under_the_sidebar_or_the_tabs_is_teal_where_the_keys_are() {
 }
 
 #[test]
-fn in_floating_the_tab_row_is_level_with_the_sidebar_s_top_and_the_pane_box_is_under_it() {
+fn in_floating_the_tabs_sit_on_the_first_pane_s_top_border_level_with_the_sidebar_s_top() {
     for panes in [1, 2] {
         let mut app = hairline_world(panes);
         app.cfg.ui.layout = "floating".into();
         let buf = draw(&mut app, 160, 45);
         let g = grid(&app, framed(&app, buf.area));
         let top = app.pane_frames.iter().map(|(_, r)| r.y).min().unwrap();
-        assert_eq!(g.tabs.y, g.side.y, "{panes} pane(s): the tab row is on the sidebar's top row");
-        assert_eq!(top, g.tabs.y + 1, "{panes} pane(s): the pane box starts right under the tab row, so the tabs are outside it");
-        let row: String = (g.tabs.x..g.tabs.right()).map(|x| buf[(x, g.tabs.y)].symbol()).collect();
-        assert!(row.contains("fix-footer") && row.contains('⤢'), "{panes} pane(s): the tab row is there: {row}");
+        assert_eq!(g.tabs.height, 0, "{panes} pane(s): the tabs have no row of their own");
+        assert_eq!(top, g.side.y, "{panes} pane(s): the pane's top border is on the sidebar's top row");
+        let row: String = (g.panes.x..g.panes.right()).map(|x| buf[(x, top)].symbol()).collect();
+        assert!(row.contains("fix-footer") && !row.contains('⤢') && !row.contains('◫'), "{panes} pane(s): the tabs are on the border, with no split or zoom buttons: {row}");
+        assert!(row.starts_with(['┌', '╭']) && row.ends_with(['┐', '╮']), "{panes} pane(s): and the border is still one line: {row}");
     }
 }
