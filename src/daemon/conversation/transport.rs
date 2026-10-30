@@ -1,4 +1,4 @@
-use super::{codex, process::OwnedChild};
+use super::process::OwnedChild;
 use crate::conversation::{
     Conversation, LaunchSettings, PendingStart, Provider, validate_registry,
 };
@@ -262,10 +262,10 @@ impl Launch {
             .strip_prefix("codex-cli ")
             .context("Unrecognized Codex executable version")?;
         // Refuse an unverified binary before asking it to generate a schema.
-        if !codex::is_verified_version(version) {
+        if !maitty_provider_codex::is_verified_version(version) {
             return Err(anyhow::anyhow!(
                 "Unsupported Codex executable version; select a verified Codex {}",
-                codex::VERIFIED_VERSIONS.join(" or ")
+                maitty_provider_codex::VERIFIED_VERSIONS.join(" or ")
             )
             .into());
         }
@@ -285,7 +285,8 @@ impl Launch {
             };
             Ok(json!({"clientRequests": read("ClientRequest.json")?, "serverRequests": read("ServerRequest.json")?}).to_string())
         }).await.context("Read Codex schema in background")??;
-        codex::check_compatibility(version, &inventory).map_err(anyhow::Error::new)?;
+        maitty_provider_codex::check_compatibility(version, &inventory)
+            .map_err(anyhow::Error::new)?;
         directory.remove().await?;
         Ok(())
     }

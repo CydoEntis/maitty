@@ -58,7 +58,14 @@ fn lines_naming(names: &[String], skip: &[&str]) -> Vec<String> {
         for (n, line) in text.lines().enumerate() {
             let lower = line.to_lowercase();
             // Workspace crate identifiers carry the product prefix by Cargo convention.
-            let lower = lower.replace("maitty_shared", "");
+            let lower = [
+                "maitty_shared",
+                "maitty_desktop_client",
+                "maitty_provider_codex",
+                "maitty-provider-codex",
+            ]
+            .into_iter()
+            .fold(lower, |line, crate_name| line.replace(crate_name, ""));
             if names.iter().any(|name| names_word(&lower, name)) {
                 hits.push(format!("{rel}:{}: {}", n + 1, line.trim()));
             }

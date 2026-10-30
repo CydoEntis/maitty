@@ -1,7 +1,8 @@
 use serde_json::Value;
 use std::fmt;
 
-pub(super) const VERIFIED_VERSIONS: &[&str] = &["0.164.0", "0.165.0"];
+/// Codex app-server versions whose required methods and payloads are verified.
+pub const VERIFIED_VERSIONS: &[&str] = &["0.164.0", "0.165.0"];
 const VERIFIED_VERSIONS_TEXT: &str = "0.164.0 or 0.165.0";
 const CLIENT_METHODS: &[(&str, &str)] = &[
     ("initialize", "InitializeParams"),
@@ -31,7 +32,8 @@ const SERVER_METHODS: &[(&str, &str)] = &[
 ];
 
 #[derive(Debug, PartialEq, Eq)]
-pub(super) enum CompatibilityError {
+/// A Codex app-server failed the no-session-mutation compatibility preflight.
+pub enum CompatibilityError {
     Unsupported { capability: String },
 }
 
@@ -53,12 +55,15 @@ fn unsupported(capability: &str) -> CompatibilityError {
     }
 }
 
-pub(super) fn is_verified_version(version: &str) -> bool {
+/// Returns whether `version` is in the verified Codex app-server set.
+pub fn is_verified_version(version: &str) -> bool {
     VERIFIED_VERSIONS.contains(&version)
 }
 
-// This pure preflight has no session handle, so refusal cannot mutate a thread.
-pub(super) fn check_compatibility(version: &str, schema: &str) -> Result<(), CompatibilityError> {
+/// Checks that a verified Codex server advertises every operation Maitty uses.
+///
+/// This preflight takes no session handle, so refusal cannot mutate a thread.
+pub fn check_compatibility(version: &str, schema: &str) -> Result<(), CompatibilityError> {
     if !is_verified_version(version) {
         return Err(unsupported("unverified executable version"));
     }

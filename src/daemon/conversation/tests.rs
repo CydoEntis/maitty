@@ -462,8 +462,10 @@ impl Fixture {
             std::fs::create_dir_all(&root).unwrap();
             let executable = fake_executable(&root);
             std::fs::create_dir(root.join("different")).unwrap();
-            let inventory: Value =
-                serde_json::from_str(include_str!("fixtures/codex-0.164.0.json")).unwrap();
+            let inventory: Value = serde_json::from_str(include_str!(
+                "../../../crates/maitty-provider-codex/src/fixtures/codex-0.164.0.json"
+            ))
+            .unwrap();
             for (name, section) in [
                 ("ClientRequest.json", "clientRequests"),
                 ("ServerRequest.json", "serverRequests"),

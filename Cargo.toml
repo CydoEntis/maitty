@@ -16,7 +16,12 @@ tagline = "All agents on deck"
 previous = ["vibecasso", "seshi", "hydra", "drover"]
 
 [workspace]
-members = ["crates/maitty-shared", "crates/maitty-desktop-client", "gui/src-tauri"]
+members = [
+    "crates/maitty-shared",
+    "crates/maitty-desktop-client",
+    "crates/maitty-provider-codex",
+    "gui/src-tauri",
+]
 resolver = "3"
 
 [lib]
@@ -26,6 +31,7 @@ doctest = false
 
 [dependencies]
 maitty-shared = { path = "crates/maitty-shared" }
+maitty-provider-codex = { path = "crates/maitty-provider-codex" }
 anyhow = "1"
 arboard = { version = "3", default-features = false, features = ["image-data"] }
 png = "0.17"

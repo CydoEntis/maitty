@@ -1,6 +1,5 @@
 pub(super) mod checks;
 mod claude;
-mod codex;
 pub(super) mod commands;
 mod daemon;
 pub(super) mod history;

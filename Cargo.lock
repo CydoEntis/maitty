@@ -2363,6 +2363,7 @@ dependencies = [
  "interprocess",
  "jsonc-parser",
  "libc",
+ "maitty-provider-codex",
  "maitty-shared",
  "png 0.17.16",
  "portable-pty",
@@ -2414,6 +2415,13 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
+]
+
+[[package]]
+name = "maitty-provider-codex"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]
