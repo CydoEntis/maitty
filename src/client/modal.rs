@@ -109,6 +109,7 @@ pub const SETTINGS: &[Setting] = &[
     Setting { path: "ui.background", label: "Background", kind: Kind::Choice(&["terminal", "solid"]), cat: Cat::Appearance, help: concat!("terminal: your terminal's background shows through. solid: ", env!("APP_COMMAND"), " paints every cell.") },
     Setting { path: "ui.motion", label: "Motion", kind: Kind::Bool, cat: Cat::Appearance, help: "Slides, glides and fades (under 150 ms). Always off over SSH." },
     Setting { path: "ui.gap", label: "Gap", kind: Kind::Choice(&["0", "1", "2"]), cat: Cat::Appearance, help: "Space between floating panes, in rows stacked and columns side by side." },
+    Setting { path: "ui.tab_gap", label: "Tab gap", kind: Kind::Bool, cat: Cat::Appearance, help: "A cell between one tab and the next, and between a sheet's tabs. Off: they touch. The shape of a tab follows Rounded." },
     Setting { path: "ui.pane_colors", label: "Pane colours", kind: Kind::Bool, cat: Cat::Appearance, help: "Floating: each pane's border in its own colour, by its place in the tab." },
     Setting { path: "ui.rounded", label: "Rounded", kind: Kind::Choice(crate::config::Rounding::NAMES), cat: Cat::Appearance, help: "full: round corners and round ends everywhere (needs a Nerd Font). corners: rounded squares, square ends. off: all square." },
     Setting { path: "ui.dim", label: "Dim unfocused", kind: Kind::Choice(&["off", "subtle", "30%", "60%"]), cat: Cat::Appearance, help: "How far the panes you're not in fade. Their colours stay recognisable." },

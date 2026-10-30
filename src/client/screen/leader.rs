@@ -55,7 +55,8 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
     let y = area.bottom().saturating_sub(4 + h).max(area.y);
     let r = Rect { x, y, width: w, height: h };
     let mut c = Card::new(t, "Menu").lit(t.accent);
-    c.bg = t.card;
+    // No fill of its own: the Menu is drawn on the ground like the panes.
+    c.bg = t.bg;
     let inside = card(app, buf, r, &c, t);
     hit(app, r, ScreenHit::Noop);
     let needs = app.screen_model().iter().flat_map(|p| p.sessions()).filter(|s| s.status == Status::Blocked).count();
@@ -76,9 +77,9 @@ pub(in crate::client) fn draw_actions(app: &mut App, f: &mut Frame, area: Rect, 
             let rr = Rect { x: r.x + 2, y: yy, width: w.saturating_sub(4), height: 1 };
             let on = i == sel || hovered(app, rr);
             if on {
-                row_pill(look, buf, rr.x, yy, rr.width, t.sel_on(t.card), t.card);
+                row_pill(look, buf, rr.x, yy, rr.width, t.sel_on(t.bg), t.bg);
             }
-            let bg = if on { t.sel_on(t.card) } else { t.card };
+            let bg = if on { t.sel_on(t.bg) } else { t.bg };
             let st = Style::default().bg(bg);
             let mut ls = st.fg(if on { t.strong } else { t.text });
             if on {

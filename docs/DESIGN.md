@@ -89,15 +89,17 @@ sidebar*.
 
 ## Pane titles and tabs
 
-The session's tabs have a row of their own over the panes in both looks
-([ADR 0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md)): in Floating the tab chips right over the boxes, each led by its state's glyph (on screen or
+The session's tabs have a row of their own in Hairline
+([ADR 0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md)); in Floating they sit on the first
+pane's top border, as the sidebar's `SESSIONS` chip sits on its own ([ADR 0038](adr/0038-tabs-sit-on-the-pane-border.md)),
+the border running on between the chips (`ui.tab_gap`, on by default, leaves a cell of it between one tab and the next; off, they touch). A chip's ends follow `ui.rounded`: square, rounded corners, or a pill. Each chip is led by its state's glyph (on screen or
 not) and ended by its ✕, the current one in the accent, then a **+** chip for a new tab. A tab
 is named the same everywhere: its own name, else its focused session's. Panes are titled as an
 editor's are ([ADR 0030](adr/0030-panes-titled-like-an-editor.md)): a tab's only pane has no
-title (a plain top border), its tab naming it, showing its state (the glyph opens why) and
+title of its own (its border carries the tabs), its tab naming it, showing its state (the glyph opens why) and
 closing it. A split's panes have no title at all ([ADR 0031](adr/0031-tabs-name-a-project-and-splits-have-no-title.md)):
 the tab names where you are, and a pane's top edge says its state, teal when focused and amber
-when it needs you. The tab row lists the tabs of the session you are in, numbered 1–n, each with
+when it needs you. The tabs list the session's tabs, numbered 1–n, each with
 a ✕ on the open one only, and ends in `◫` (split) and `⤢` (zoom the
 focused pane). A pane closes with Alt+x, leader `x` or its menu. Closing always
 asks first (ADR 0029), naming the pane (`Close pane 2 · claude`) and lighting its lines in the
@@ -120,7 +122,7 @@ groups* and *check evidence sheet*.
 
 ## Modals and popovers
 
-Everything that floats over the screen is boxed as the look boxes a pane: a `line` box round
+The Menu and a row's context menu have no fill of their own: they are drawn on the ground like the panes. Everything else that floats over the screen is boxed as the look boxes a pane: a `line` box round
 `card` with corners by `ui.rounded` in Floating, a square line box on the ground in Hairline
 ([ADR 0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md)). Deciding is a modal: centred, framed like a pane (the title as an accent chip on the top border,
 `Esc close` at the right), the screen behind dimmed, no shadow. Settings, override, command

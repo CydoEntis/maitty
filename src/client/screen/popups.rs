@@ -4,16 +4,14 @@ use super::*;
 
 // ---- overlays ------------------------------------------------------------------------------
 
-/// What a popup does to everything behind it: text toward its ground, all of it toward black.
+/// How far the text behind a popup fades toward its ground.
 const BEHIND_TEXT: f32 = 0.6;
-const BEHIND_DARK: f32 = 0.45;
 
-/// Dim everything already drawn behind a popup: text toward its ground and all of it darker.
-/// Pill ends keep their shape (their colour darkens like the pill's). What is under it takes no
-/// hover from here on (`hits_under_overlay`).
+/// Dim everything already drawn behind a popup: its text fades toward its ground, and every
+/// background is left as it is, so no part of the screen changes colour under a popup. Pill ends
+/// keep their shape. What is under it takes no hover from here on (`hits_under_overlay`).
 pub(in crate::client) fn dim_all(app: &mut App, buf: &mut Buffer, area: Rect, t: &Theme) {
     app.hits_under_overlay = app.hits.len();
-    let black = Color::Rgb(0, 0, 0);
     let area = area.intersection(buf.area);
     for y in area.top()..area.bottom() {
         for x in area.left()..area.right() {
@@ -21,8 +19,9 @@ pub(in crate::client) fn dim_all(app: &mut App, buf: &mut Buffer, area: Rect, t:
             let bg = if c.bg == Color::Reset { t.bg } else { c.bg };
             let fg = if c.fg == Color::Reset { t.fg } else { c.fg };
             let cap = c.symbol() == CAP_L || c.symbol() == CAP_R;
-            c.fg = if cap { blend(fg, black, BEHIND_DARK) } else { blend(blend(fg, bg, BEHIND_TEXT), black, BEHIND_DARK) };
-            c.bg = blend(bg, black, BEHIND_DARK);
+            if !cap {
+                c.fg = blend(fg, bg, BEHIND_TEXT);
+            }
         }
     }
 }
@@ -47,7 +46,7 @@ pub(in crate::client) fn panel(app: &mut App, buf: &mut Buffer, area: Rect, w: u
 
 /// A modal's frame at `r`, drawn like a pane's card: a body of `card` boxed in `line` with
 /// corners by the setting, the title as an accent chip on the top border two in, and an
-/// `Esc close` chip at the border's right, a `─` before the corner. Chip ends are caps with
+/// red `✕` chip at the border's right, a `─` before the corner. Chip ends are caps with
 /// `ui.rounded = full`. `right` sits on the border before `Esc close`.
 /// Returns `r`; its contents start two in and two down.
 pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, title: &str, right: &[Seg], t: &Theme) -> Rect {
@@ -56,16 +55,19 @@ pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, titl
         return r;
     }
     let look = Look::of(&app.cfg.ui);
+    app.screen.modal_rects.push(r);
     fill(buf, r, t.card);
     panel_box(buf, r, look, Style::default().fg(t.line).bg(t.card));
-    let lit = Style::default().bg(t.btn).add_modifier(Modifier::BOLD);
-    let esc = header_chip(look, vec![seg(" Esc", lit.fg(t.accent)), seg(" close ", lit.fg(t.strong))], t.card);
+    // The red close button, as on a sheet's border; Esc still closes it.
+    let red = Style::default().fg(t.strong).bg(t.err).add_modifier(Modifier::BOLD);
+    let esc = header_chip(look, vec![seg(format!(" {} ", glyphs::chosen(&app.cfg.ui.glyphs, &app.cfg.icons).close), red)], t.card);
     let esc_w = segs_width(&esc);
     // Too narrow for the chip beside the corner: Esc and a click outside still close it.
     let shows_esc = r.width >= esc_w + 4;
-    let esc_x = if shows_esc { r.right() - esc_w - 2 } else { r.right() - 1 };
+    // Flush against the corner: the button is the last cells of the border.
+    let esc_x = if shows_esc { r.right() - esc_w - 1 } else { r.right() - 1 };
     if shows_esc {
-        put(buf, esc_x, r.y, &esc, r.right() - 2);
+        put(buf, esc_x, r.y, &esc, r.right() - 1);
     }
     let segs: Vec<Seg> = right.iter().map(|(s, st)| (s.clone(), st.bg(t.card))).collect();
     let rx = esc_x.saturating_sub(segs_width(&segs) + 1);
@@ -81,6 +83,25 @@ pub(in crate::client) fn panel_at(app: &mut App, buf: &mut Buffer, r: Rect, titl
         hit(app, Rect { x: esc_x, y: r.y, width: esc_w, height: 1 }, ScreenHit::Close);
     }
     r
+}
+
+/// Modals draw on the raised `card` grounds; on screen they take the screen's own, like the
+/// panes, and a selected or pointed-at row keeps its tint over it.
+pub(in crate::client) fn flatten_modals(app: &App, buf: &mut Buffer, t: &Theme) {
+    let area = buf.area;
+    for r in app.screen.modal_rects.iter().map(|r| r.intersection(area)) {
+        for y in r.top()..r.bottom() {
+            for x in r.left()..r.right() {
+                let c = &mut buf[(x, y)];
+                c.bg = match c.bg {
+                    b if b == t.card || b == t.card2 => t.bg,
+                    b if b == t.sel_on(t.card) || b == t.sel_on(t.card2) => t.sel_on(t.bg),
+                    b if b == t.hover_on(t.card) || b == t.hover_on(t.card2) => t.hover_on(t.bg),
+                    b => b,
+                };
+            }
+        }
+    }
 }
 
 /// A modal's box: `─` top and bottom, `│` sides, corners by the setting.

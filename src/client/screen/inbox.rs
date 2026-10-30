@@ -167,8 +167,8 @@ fn draw_buttons(app: &mut App, buf: &mut Buffer, (x, y, right): (u16, u16, u16),
 }
 
 /// Merge or throw away being asked about, or under way, in a finished item.
-fn draw_asking(app: &mut App, buf: &mut Buffer, (x, y, right): (u16, u16, u16), name: &str, (merge, busy): (bool, bool), ground: Color, t: &Theme) {
-    let c = Style::default().bg(ground);
+fn draw_asking(app: &mut App, buf: &mut Buffer, (x, y, right): (u16, u16, u16), name: &str, (merge, busy): (bool, bool), bg: Color, t: &Theme) {
+    let c = Style::default().bg(bg);
     if busy {
         let what = if merge { format!("Merging {name} into main…") } else { "Removing the worktree…".to_string() };
         let spin = app.cfg.ui.spinner.get(app.spinner_frame() as usize % app.cfg.ui.spinner.len().max(1)).cloned().unwrap_or_default();
@@ -182,7 +182,7 @@ fn draw_asking(app: &mut App, buf: &mut Buffer, (x, y, right): (u16, u16, u16), 
 }
 
 /// A heads-up: two checkouts changed the same file.
-fn draw_heads(buf: &mut Buffer, (x, y, right): (u16, u16, u16), o: &crate::client::overlap::Overlap, bg: Color, ground: Color, t: &Theme) {
+fn draw_heads(buf: &mut Buffer, (x, y, right): (u16, u16, u16), o: &crate::client::overlap::Overlap, bg: Color, t: &Theme) {
     let st = Style::default().bg(bg);
     let conf = head_color(HEADS_HEAD, t);
     let mut left = vec![seg("⇆ ", st.fg(conf).add_modifier(Modifier::BOLD))];
@@ -193,10 +193,11 @@ fn draw_heads(buf: &mut Buffer, (x, y, right): (u16, u16, u16), o: &crate::clien
     left.push(seg(" both changed ", st.fg(t.text)));
     left.push(seg(o.file.rsplit('/').next().unwrap_or(&o.file).to_string(), st.fg(t.sky())));
     put(buf, x, y, &left, right);
-    let c = Style::default().bg(ground);
+    // Every line is on the row's own ground, so a selected row's tint runs unbroken.
+    let c = Style::default().bg(bg);
     put(buf, x + 2, y + 1, &[seg("Different branches, same file: it may conflict when they merge.", c.fg(t.muted))], right);
     let tell = format!("tell {}", o.checkouts.first().cloned().unwrap_or_default());
-    put(buf, x + 2, y + 2, &cap_hints(t, ground, &[("d", "both diffs"), ("m", &tell), ("k", "dismiss")]), right);
+    put(buf, x + 2, y + 2, &cap_hints(t, bg, &[("d", "both diffs"), ("m", &tell), ("k", "dismiss")]), right);
 }
 
 /// A session found by typing: glyph, name, what runs and where.
@@ -288,7 +289,7 @@ pub(super) fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, ground: 
         match (row, &items[i]) {
             (GoRow::Heads(k), _) => {
                 if let Some((_, o)) = heads.get(*k) {
-                    draw_heads(buf, (x, y, right), o, bg, ground, t);
+                    draw_heads(buf, (x, y, right), o, bg, t);
                 }
             }
             (GoRow::Sess(pi, term), _) => {
@@ -307,7 +308,7 @@ pub(super) fn draw_inbox(app: &mut App, buf: &mut Buffer, inside: Rect, ground: 
                     }
                     Extra::Asking | Extra::Busy => {
                         if let Some((_, merge, busy)) = confirm {
-                            draw_asking(app, buf, (x + 2, under, right), &it.name, (merge, busy), ground, t);
+                            draw_asking(app, buf, (x + 2, under, right), &it.name, (merge, busy), bg, t);
                         }
                     }
                     Extra::None if selected => draw_buttons(app, buf, (x + 2, under, right), &it.buttons, t),
@@ -351,6 +352,22 @@ mod tests {
         app.screen_sync();
         select(&mut app, term);
         app
+    }
+
+    #[test]
+    fn the_selected_item_s_tint_runs_unbroken_down_every_line() {
+        let t = Theme::named(crate::theme::DEFAULT);
+        let area = Rect { x: 0, y: 0, width: 100, height: 30 };
+        let mut app = inbox_world(Stage::Failed, 1);
+        let mut buf = Buffer::empty(area);
+        draw_inbox(&mut app, &mut buf, area, t.bg, &t);
+        let tint = t.sel_on(t.bg);
+        let rows: Vec<u16> = (0..area.height).filter(|&y| buf[(area.x, y)].bg == tint).collect();
+        assert!(rows.len() >= 2, "the selected item has more than one line: {rows:?}");
+        for y in rows {
+            assert_eq!(buf[(area.x + 1, y)].bg, tint, "row {y}: the tint before the words");
+            assert_eq!(buf[(area.right() - 3, y)].bg, tint, "row {y}: and after them, to the far side");
+        }
     }
 
     fn select(app: &mut App, term: TermId) {
