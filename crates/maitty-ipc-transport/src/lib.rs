@@ -19,6 +19,32 @@ pub fn socket_id(
     format!("{app_command}-{user}-{label}.sock")
 }
 
+pub fn socket_name(
+    id: &str,
+    unix_directory: Option<&std::path::Path>,
+) -> Result<interprocess::local_socket::Name<'static>> {
+    #[cfg(windows)]
+    {
+        use interprocess::local_socket::{GenericNamespaced, ToNsName};
+        let _ = unix_directory;
+        Ok(id.to_ns_name::<GenericNamespaced>()?.into_owned())
+    }
+    #[cfg(unix)]
+    {
+        use interprocess::local_socket::{GenericFilePath, ToFsName};
+        let directory = unix_directory.context("Unix socket directory is required")?;
+        Ok(directory
+            .join(id)
+            .to_fs_name::<GenericFilePath>()?
+            .into_owned())
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (id, unix_directory);
+        anyhow::bail!("local sockets are unsupported on this platform")
+    }
+}
+
 #[cfg(unix)]
 pub fn private_socket_dir(
     app_command: &str,
@@ -198,6 +224,18 @@ mod tests {
             socket_id("maitty", None, None, None),
             "maitty-user-default.sock"
         );
+    }
+
+    #[test]
+    fn socket_name_uses_the_platform_namespace() {
+        #[cfg(unix)]
+        {
+            assert!(super::socket_name("maitty-test.sock", None).is_err());
+            let directory = std::env::temp_dir();
+            assert!(super::socket_name("maitty-test.sock", Some(&directory)).is_ok());
+        }
+        #[cfg(windows)]
+        assert!(super::socket_name("maitty-test", None).is_ok());
     }
 
     #[cfg(unix)]

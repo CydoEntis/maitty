@@ -6,10 +6,6 @@ use crate::brand::{APP_COMMAND, APP_ENV};
 use crate::protocol::{self, ClientMsg, ServerMsg};
 use anyhow::{Context, Result};
 use interprocess::local_socket::tokio::{RecvHalf, SendHalf, Stream, prelude::*};
-#[cfg(unix)]
-use interprocess::local_socket::{GenericFilePath, ToFsName};
-#[cfg(windows)]
-use interprocess::local_socket::{GenericNamespaced, ToNsName};
 use interprocess::local_socket::{ListenerOptions, Name};
 pub use maitty_ipc_transport::{Reader, Writer, is_decode_error, send};
 use maitty_ipc_transport::{framed_parts, reader, writer};
@@ -133,15 +129,11 @@ pub fn socket_id() -> String {
 /// reach the daemon (an abstract socket would have no permissions at all).
 fn name() -> Result<Name<'static>> {
     let id = socket_id();
-    #[cfg(windows)]
-    {
-        Ok(id.to_ns_name::<GenericNamespaced>()?.into_owned())
-    }
     #[cfg(unix)]
-    {
-        let path = socket_dir()?.join(id);
-        Ok(path.to_fs_name::<GenericFilePath>()?.into_owned())
-    }
+    let directory = Some(socket_dir()?);
+    #[cfg(windows)]
+    let directory: Option<std::path::PathBuf> = None;
+    maitty_ipc_transport::socket_name(&id, directory.as_deref())
 }
 
 /// `$XDG_RUNTIME_DIR/<app>-<uid>` (or the temp folder's), created 0700 and checked to be

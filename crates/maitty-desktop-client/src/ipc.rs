@@ -1,10 +1,6 @@
 use anyhow::{Context, Result};
 use interprocess::local_socket::Name;
 use interprocess::local_socket::tokio::{Stream, prelude::*};
-#[cfg(unix)]
-use interprocess::local_socket::{GenericFilePath, ToFsName};
-#[cfg(windows)]
-use interprocess::local_socket::{GenericNamespaced, ToNsName};
 pub use maitty_ipc_transport::{Reader, Writer};
 use maitty_ipc_transport::{framed_parts, receive, send};
 use maitty_shared::protocol::{self, ClientMsg, ServerMsg};
@@ -72,17 +68,11 @@ pub async fn is_running() -> bool {
 
 fn name() -> Result<Name<'static>> {
     let id = socket_id();
-    #[cfg(windows)]
-    {
-        Ok(id.to_ns_name::<GenericNamespaced>()?.into_owned())
-    }
     #[cfg(unix)]
-    {
-        Ok(socket_dir()?
-            .join(id)
-            .to_fs_name::<GenericFilePath>()?
-            .into_owned())
-    }
+    let directory = Some(socket_dir()?);
+    #[cfg(windows)]
+    let directory: Option<std::path::PathBuf> = None;
+    maitty_ipc_transport::socket_name(&id, directory.as_deref())
 }
 
 #[cfg(unix)]

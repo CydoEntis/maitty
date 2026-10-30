@@ -909,9 +909,9 @@ Refactor progress: `crates/maitty-shared` owns the versioned protocol,
 conversation contracts, split-tree types, clock helpers, hidden-text
 validation and shared check-output rules. `crates/maitty-ipc-transport` owns
 bounded length-delimited framing, message encode/decode and the shared Welcome
-handshake, socket identity formatting and private Unix socket-directory check
-for both clients; each client keeps its own protocol mismatch error, OS connection
-and daemon lifecycle.
+handshake, socket identity formatting, private Unix socket-directory check and
+platform socket-name conversion for both clients; each client keeps its own
+protocol mismatch error, socket connection and daemon lifecycle.
 `crates/maitty-desktop-client`
 now owns GUI daemon IPC, lifecycle operations and Codex discovery; the Tauri
 host depends on it and `maitty-shared`, not the `maitty` runtime. Codex
@@ -964,8 +964,8 @@ signals. Socket identity formatting is shared in `maitty-ipc-transport`; the
 clients retain their OS connection and lifecycle. The private Unix socket
 directory permission check is shared too. The Windows workspace suite passes
 1,314 runtime tests, 3 detection tests, 19 settings tests, 31 desktop-client
-tests, 4 IPC transport tests, all remaining package suites, and 5 ignored tests.
-The IPC package passes 5 tests in the Linux Rust container, including its
+tests, 5 IPC transport tests, all remaining package suites, and 5 ignored tests.
+The IPC package passes 6 tests in the Linux Rust container, including its
 owner-only directory check. Strict clippy, workspace build, and Linux/macOS
 package checks all pass.
 Linux and macOS target checks passed for the installed `maitty` package. The

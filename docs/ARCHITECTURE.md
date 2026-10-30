@@ -189,8 +189,9 @@ default bindings, key parsing and built-in themes; terminal-specific mouse
 encoding stays in the runtime. Config loading and filesystem migrations remain
 runtime-owned. `maitty-ipc-transport` owns bounded,
 length-delimited protocol framing, Welcome handshake, socket identity formatting
-and private Unix socket-directory check shared by the TUI and GUI; OS socket
-names and daemon startup stay in their respective clients. The Tauri host
+private Unix socket-directory check, and platform socket-name conversion shared
+by the TUI and GUI; socket connection and daemon startup stay in their respective
+clients. The Tauri host
 uses `maitty-desktop-client`
 for daemon IPC and GUI operations; it does not link `maitty-runtime`. The
 `maitty-agent-detection` package owns the bundled agent-screen matcher used by
