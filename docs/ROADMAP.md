@@ -951,11 +951,11 @@ live there too, along with recipe, preset and quick-agent schemas/defaults and
 preset prompt projection. Repository check-file discovery and TOML parsing
 stay in the runtime. Icon, key, detection, snapshot and notification settings
 schemas/defaults have now moved too; legacy icon normalization stays in runtime.
-The full workspace suite now passes 1,317 runtime tests and 18 settings tests,
-31 desktop-client tests, 3 IPC transport tests, all remaining package suites,
-and 5 ignored tests. Strict clippy passes. Workspace build and Linux/macOS
-and 5 ignored tests. Strict clippy, workspace build, and Linux/macOS package
-checks all pass.
+The pure `AgentDef` schema has moved as well; command detection and built-in
+agent policy remain in runtime. The workspace suite passes 1,317 runtime tests,
+19 settings tests, 31 desktop-client tests, 3 IPC transport tests, all remaining
+package suites, and 5 ignored tests. Strict clippy, workspace build, and
+Linux/macOS package checks all pass.
 Linux and macOS target checks passed for the installed `maitty` package. The
 all-workspace Linux cross-check still needs a configured D-Bus
 pkg-config/sysroot for the Tauri host.

@@ -6,10 +6,10 @@ use crate::keys::{self, Action, KeySpec};
 use crate::theme::{Theme, ThemeOverrides};
 use anyhow::{Context, Result};
 pub use maitty_settings::config::{
-    BARS_FRAMES, CHECK_TIMEOUT_S_DEFAULT, CURSOR_SHAPES, CheckDef, DEFAULT_MODEL_FLAG, Detection,
-    HELPERS_AT_ONCE, HELPERS_MAY, Icons, Keys, LAYOUT_NAMES, LayoutKind, Mcp, NEW_AGENTS,
-    NEW_WHERE, Notify, PADDING_TOP, Preset, Quick, QuickAgent, Recipe, Restore, Rounding,
-    SIDEBAR_TABS, SPINNERS, Sessions, Snapshots, Ui, Worktree, same_path, validate_check,
+    AgentDef, BARS_FRAMES, CHECK_TIMEOUT_S_DEFAULT, CURSOR_SHAPES, CheckDef, DEFAULT_MODEL_FLAG,
+    Detection, HELPERS_AT_ONCE, HELPERS_MAY, Icons, Keys, LAYOUT_NAMES, LayoutKind, Mcp,
+    NEW_AGENTS, NEW_WHERE, Notify, PADDING_TOP, Preset, Quick, QuickAgent, Recipe, Restore,
+    Rounding, SIDEBAR_TABS, SPINNERS, Sessions, Snapshots, Ui, Worktree, same_path, validate_check,
     validate_checks, validate_cursor, validate_sessions,
 };
 use regex::Regex;
@@ -190,26 +190,6 @@ pub fn parse_repo_checks(text: &str) -> Result<Vec<CheckDef>> {
         );
     }
     Ok(checks)
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct AgentDef {
-    pub name: String,
-    /// Executable names (without .exe), matched case-insensitively.
-    pub process: Vec<String>,
-    /// Substrings of the command line, for agents that run under node/bun/python.
-    pub cmdline: Vec<String>,
-    /// Regexes (case-insensitive) on the bottom of the screen meaning "waiting on you".
-    pub blocked_patterns: Vec<String>,
-    /// Regexes meaning "mid-turn". When absent, recent output is used instead.
-    pub working_patterns: Vec<String>,
-    /// Command that resumes a known session; `{session}` is the id hooks reported.
-    pub resume: Option<String>,
-    /// Command that resumes the most recent session in the pane's directory.
-    pub resume_last: Option<String>,
-    /// Set to false to disable a built-in agent.
-    pub enabled: Option<bool>,
 }
 
 /// Shells, by their program name.

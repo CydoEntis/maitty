@@ -3,6 +3,26 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AgentDef {
+    pub name: String,
+    /// Executable names (without .exe), matched case-insensitively.
+    pub process: Vec<String>,
+    /// Substrings of the command line, for agents that run under node/bun/python.
+    pub cmdline: Vec<String>,
+    /// Regexes (case-insensitive) on the bottom of the screen meaning "waiting on you".
+    pub blocked_patterns: Vec<String>,
+    /// Regexes meaning "mid-turn". When absent, recent output is used instead.
+    pub working_patterns: Vec<String>,
+    /// Command that resumes a known session; `{session}` is the id hooks reported.
+    pub resume: Option<String>,
+    /// Command that resumes the most recent session in the pane's directory.
+    pub resume_last: Option<String>,
+    /// Set to false to disable a built-in agent.
+    pub enabled: Option<bool>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Icons {
@@ -797,7 +817,7 @@ impl Default for Ui {
 #[cfg(test)]
 mod tests {
     use super::{
-        CHECK_TIMEOUT_S_DEFAULT, CURSOR_SHAPES, CheckDef, DEFAULT_MODEL_FLAG, Detection,
+        AgentDef, CHECK_TIMEOUT_S_DEFAULT, CURSOR_SHAPES, CheckDef, DEFAULT_MODEL_FLAG, Detection,
         HELPERS_AT_ONCE, HELPERS_MAY, Icons, Keys, LayoutKind, Mcp, NEW_AGENTS, NEW_WHERE, Notify,
         Preset, Quick, Recipe, Restore, Rounding, Sessions, Snapshots, Ui, Worktree, same_path,
         validate_checks, validate_cursor, validate_sessions,
@@ -836,6 +856,22 @@ mod tests {
         let decoded: Notify = toml::from_str("sound = false").unwrap();
         assert!(!decoded.sound);
         assert_eq!(decoded.phone_server, "https://ntfy.sh");
+    }
+
+    #[test]
+    fn agent_preferences_default_to_empty_and_accept_older_partial_toml() {
+        let agent = AgentDef::default();
+        assert!(agent.name.is_empty());
+        assert!(agent.process.is_empty() && agent.cmdline.is_empty());
+        assert!(agent.blocked_patterns.is_empty() && agent.working_patterns.is_empty());
+        assert_eq!(agent.resume, None);
+        assert_eq!(agent.resume_last, None);
+        assert_eq!(agent.enabled, None);
+
+        let decoded: AgentDef = toml::from_str("name = 'codex'").unwrap();
+        assert_eq!(decoded.name, "codex");
+        assert!(decoded.process.is_empty());
+        assert!(decoded.cmdline.is_empty());
     }
 
     #[test]
