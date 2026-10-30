@@ -1,4 +1,4 @@
-# 0036. Optional chat GUI over daemon-owned native conversations
+# 0041. Optional chat GUI over daemon-owned native conversations
 
 - **Status:** Accepted
 - **Date:** 2026-10-27

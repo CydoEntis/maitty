@@ -22,6 +22,7 @@ mod protocol;
 mod references;
 mod restart;
 mod reveal;
+mod secret_files;
 mod shim;
 mod snapshot;
 mod sync;

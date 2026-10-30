@@ -1,8 +1,8 @@
-# 0040. Decouple desktop clients and provider adapters
+# 0042. Decouple desktop clients and provider adapters
 
 - **Status:** Accepted
 - **Date:** 2026-10-30
-- **Amends:** [0036](0036-chat-gui-shared-conversations.md), [0037](0037-tauri-react-desktop-shell.md)
+- **Amends:** [0041](0041-chat-gui-shared-conversations.md), [0037](0037-tauri-react-desktop-shell.md)
 
 ## Context
 

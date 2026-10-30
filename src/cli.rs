@@ -7,6 +7,7 @@ pub(crate) mod handoff;
 pub(crate) mod integrations;
 mod jsonc;
 mod mcp_config;
+pub(crate) mod secret_run;
 use crate::layout::Dir;
 use crate::protocol::*;
 use anyhow::{Context, Result, anyhow, bail};
@@ -59,6 +60,19 @@ fn command(c: Command) -> Result<()> {
     block_on(request(ClientMsg::Command(c))).map(|_| ())
 }
 
+pub fn pr_link(pane: Option<TermId>, url: Option<String>) -> Result<()> {
+    let term = resolve_pane(pane)?;
+    command(Command::LinkPr {
+        term,
+        url: url.clone(),
+    })?;
+    match url {
+        Some(url) => println!("pane {term} follows {url} now"),
+        None => println!("pane {term} follows the pull request on its branch again"),
+    }
+    Ok(())
+}
+
 /// An explicit pane, else the pane this command runs in, else the focused one.
 fn resolve_pane(pane: Option<TermId>) -> Result<TermId> {
     if let Some(p) = pane {
@@ -95,7 +109,7 @@ const NOT_NEW_WORK: [&str; 13] = [
     "-w",
     "--worktree",
 ];
-const SUBCOMMANDS: [&str; 20] = [
+const SUBCOMMANDS: [&str; 22] = [
     "resume",
     "exec",
     "e",
@@ -116,6 +130,8 @@ const SUBCOMMANDS: [&str; 20] = [
     "sandbox",
     "debug",
     "app-server",
+    "secret",
+    "pr",
 ];
 
 /// Whether `agent args…` starts new work (which gets its own worktree).
@@ -609,6 +625,9 @@ fn pane_json(p: &TermInfo) -> Value {
     if let Some(at) = p.quiet_since.filter(|_| p.status == Status::Working) {
         v["quiet_since"] = json!(at);
     }
+    if let Some(pr) = &p.pr {
+        v["pr"] = pr_json(pr);
+    }
     if let Some(c) = p.reported_check() {
         v["check"] = json!({
             "state": c.state.label(), "command": c.command, "exit_code": c.exit_code, "duration_ms": c.duration_ms,
@@ -617,6 +636,15 @@ fn pane_json(p: &TermInfo) -> Value {
         v["checks"] = p.checks.iter().map(checkpoint_json).collect();
     }
     v
+}
+
+pub(crate) fn pr_json(pr: &crate::protocol::PrInfo) -> Value {
+    json!({
+        "number": pr.number, "url": pr.url, "title": pr.title,
+        "state": format!("{:?}", pr.state).to_lowercase(), "draft": pr.draft,
+        "checks": { "passed": pr.checks.passed, "pending": pr.checks.pending, "failed": pr.checks.failed },
+        "review": format!("{:?}", pr.review).to_lowercase(), "conflicting": pr.conflicting, "summary": pr.headline(),
+    })
 }
 
 /// One checkpoint in `<app> ls --json`'s `checks`.

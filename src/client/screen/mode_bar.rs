@@ -232,6 +232,11 @@ fn keys_holder(app: &App) -> Option<Holder> {
             &[("↑↓", "move"), ("Enter", "open")],
             ("Esc", "back"),
         ),
+        Mode::Secret { .. } => holder(
+            "SECRET",
+            &[("", "type masked"), ("Enter", "give it")],
+            ("Esc", "decline"),
+        ),
         // Waiting for a key: the next one, arrows too, becomes the binding.
         Mode::ScreenSettings(v) if v.capturing => {
             holder("SETTINGS", &[("", "press the new key")], ("Esc", "cancel"))
@@ -754,6 +759,23 @@ fn load_piece(app: &App, t: &Theme) -> Option<Piece> {
     })
 }
 
+fn pr_piece(app: &App, t: &Theme) -> Option<Piece> {
+    let pr = app
+        .focused()
+        .and_then(|f| app.snap.terms.get(&f))
+        .and_then(|i| i.pr.as_ref())?;
+    let colour = match pr.tone() {
+        crate::protocol::PrTone::Bad => t.err,
+        crate::protocol::PrTone::Good => t.done,
+        crate::protocol::PrTone::Waiting | crate::protocol::PrTone::Plain => t.muted,
+    };
+    Some(Piece {
+        segs: vec![seg(pr.headline(), Style::default().fg(colour).bg(t.bg))],
+        gap: GAP,
+        hit: None,
+    })
+}
+
 /// Draw the mode bar on `row`: lit, who has the keys, or typing, with Update or Restart at its
 /// right end. Hairline adds the look and pane count after TYPING and, unless shortcut mode
 /// lights the row, how many need you just before Update or Restart (or at the end without them).
@@ -819,7 +841,11 @@ pub(in crate::client) fn draw_mode_bar(app: &mut App, buf: &mut Buffer, row: Rec
             );
             let used = width(&left) + release_room(release) + alert_w;
             right.push(alert);
-            for extra in branch_piece(app, t).into_iter().chain(load_piece(app, t)) {
+            for extra in branch_piece(app, t)
+                .into_iter()
+                .chain(pr_piece(app, t))
+                .chain(load_piece(app, t))
+            {
                 let more = extra.gap + segs_width(&extra.segs);
                 if used
                     + right[1..]

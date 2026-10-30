@@ -804,6 +804,20 @@ impl Daemon {
                 self.forget_check_approval(&project, &name)?
             }
             Command::AnswerHelpers { term, choice } => self.answer_helpers(term, choice)?,
+            Command::RequestSecret {
+                term,
+                label,
+                reason,
+            } => {
+                self.request_secret(client, term, &label, &reason)?;
+                return Ok(false);
+            }
+            Command::AnswerSecret { id, value } => self.answer_secret(id, value)?,
+            Command::LinkPr { term, url } => self.link_pr(term, url.as_deref())?,
+            Command::SpendSecret { reference } => {
+                self.spend_secret(client, &reference)?;
+                return Ok(false);
+            }
             Command::Grant { term, grants } => {
                 let known = ["read", "write", "start", "respond", "admin"];
                 if let Some(bad) = grants

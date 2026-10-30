@@ -93,6 +93,10 @@ impl App {
     }
 
     pub(super) fn on_paste(&mut self, s: String) {
+        if matches!(self.mode, Mode::Secret { .. }) {
+            self.paste_into_secret(&s);
+            return;
+        }
         if self.paste_into_files(&s) || self.paste_into_references(&s) {
             return;
         }
@@ -359,6 +363,7 @@ impl App {
             Mode::Compose(c) => self.on_compose_key(*c, &k),
             Mode::Why { term, side } => self.on_why_key(term, side, &k),
             Mode::Helpers { term, side } => self.on_helpers_key(term, side, &k),
+            Mode::Secret { term, .. } => self.on_secret_key(term, &k),
             Mode::Confirm(c) if matches!(c.act, crate::client::menu::Act::OverrideCheck(..)) => {
                 self.on_override_key(*c, &k)
             }

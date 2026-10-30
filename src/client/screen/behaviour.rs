@@ -864,9 +864,9 @@ impl App {
         if k.code == KeyCode::Enter
             && proj.is_none()
             && let Some(c) = self.screen.cursor.and_then(|key| self.session_term(key))
-            && self.helpers_asked(c)
+            && self.asks_you(c)
         {
-            self.open_helpers(c, true);
+            self.open_ask(c, true);
             return;
         }
         if k.code == KeyCode::Enter
@@ -1351,10 +1351,10 @@ impl App {
             // opens (a number there would be typed into the agent).
             KeyCode::Char('1'..='9')
                 if query.is_empty()
-                    && matches!(sel_row, Some(GoRow::Ask(t)) if self.helpers_asked(t)) =>
+                    && matches!(sel_row, Some(GoRow::Ask(t)) if self.asks_you(t)) =>
             {
                 if let Some(GoRow::Ask(term)) = sel_row {
-                    return self.open_helpers_from_inbox(term, query, sel);
+                    return self.open_ask_from_inbox(term, query, sel);
                 }
             }
             KeyCode::Char(c @ '1'..='9')
@@ -1493,8 +1493,8 @@ impl App {
                     .as_ref()
                     .is_some_and(|i| i.state == crate::protocol::CheckState::Stale);
                 match sel_row {
-                    Some(GoRow::Ask(t)) if query.is_empty() && self.helpers_asked(t) => {
-                        return self.open_helpers_from_inbox(t, query, sel);
+                    Some(GoRow::Ask(t)) if query.is_empty() && self.asks_you(t) => {
+                        return self.open_ask_from_inbox(t, query, sel);
                     }
                     Some(GoRow::Ask(t)) if query.is_empty() => {
                         return self.start_compose(t, false, Some((query, sel)));
@@ -1797,8 +1797,10 @@ impl App {
                 self.confirm_done(None);
             }
             ScreenHit::Approve(h) => self.on_approve_hit(h),
-            ScreenHit::HelperAsk(term) => self.open_helpers(term, matches!(self.mode, Mode::Side)),
+            ScreenHit::HelperAsk(term) => self.open_ask(term, matches!(self.mode, Mode::Side)),
             ScreenHit::HelperAnswer(term, choice) => self.answer_helpers(term, choice),
+            ScreenHit::SecretGive(term) => self.answer_secret(term, true),
+            ScreenHit::SecretDecline(term) => self.answer_secret(term, false),
             ScreenHit::CheckDraft(h) => self.on_check_draft_hit(h),
             ScreenHit::TabPick(i) => {
                 if let Some(tab) = self.screen.tabs.get(i) {

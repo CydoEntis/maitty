@@ -133,6 +133,7 @@ pub(super) fn term(
         started_by: None,
         tab_of: None,
         helper_ask: Vec::new(),
+        pr: None,
         queued: Vec::new(),
         root: None,
         top: None,

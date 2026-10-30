@@ -26,6 +26,16 @@ enum Cmd {
         #[command(subcommand)]
         cmd: cli::conversation::Cmd,
     },
+    /// Run one command with a secret the user gave this pane.
+    Secret {
+        #[command(subcommand)]
+        cmd: SecretCmd,
+    },
+    /// Link a pane to a pull request.
+    Pr {
+        #[command(subcommand)]
+        cmd: PrCmd,
+    },
     /// Attach to the running server (starting it if needed).
     Attach { path: Option<PathBuf> },
     /// Run the server in the foreground (normally started automatically).
@@ -247,6 +257,27 @@ enum ConfigCmd {
     Example,
 }
 
+#[derive(Subcommand)]
+enum SecretCmd {
+    /// Spend a one-use secret reference and set it in an environment variable for the command.
+    Run {
+        reference: String,
+        #[arg(long = "env")]
+        env_name: String,
+        #[arg(last = true, required = true, allow_hyphen_values = true)]
+        command: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum PrCmd {
+    /// Follow an explicit pull request URL, or use the pane's branch when URL is omitted.
+    Link {
+        pane: Option<protocol::TermId>,
+        url: Option<String>,
+    },
+}
+
 pub(crate) fn run() {
     let args = Args::parse();
     if let Err(error) = config::initialize_data_dir() {
@@ -281,6 +312,21 @@ pub(crate) fn run() {
         Some(Cmd::Attach { path }) => open_client(path),
         Some(Cmd::Daemon) => daemon::run(),
         Some(Cmd::Conversation { cmd }) => cli::conversation::run(cmd),
+        Some(Cmd::Secret {
+            cmd:
+                SecretCmd::Run {
+                    reference,
+                    env_name,
+                    command,
+                },
+        }) => match cli::secret_run::run(&reference, &env_name, &command) {
+                Ok(0) => Ok(()),
+            Ok(code) => std::process::exit(code),
+            Err(error) => Err(error),
+        },
+        Some(Cmd::Pr {
+            cmd: PrCmd::Link { pane, url },
+        }) => cli::pr_link(pane, url),
         Some(Cmd::Ls { json }) => cli::ls(json),
         Some(Cmd::Read { pane }) => cli::read(pane),
         Some(Cmd::Send { pane, keys, .. }) if !keys.is_empty() => cli::send_keys(pane, keys),

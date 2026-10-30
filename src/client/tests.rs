@@ -72,6 +72,7 @@ mod design_tests {
             started_by: None,
             tab_of: None,
             helper_ask: Vec::new(),
+            pr: None,
             queued: Vec::new(),
             root: None,
             top: None,
@@ -2567,7 +2568,6 @@ mod screen_tests {
             ('x', Action::ClosePane),
             ('s', Action::SplitRight),
             ('d', Action::SplitDown),
-            ('r', Action::RenameTab),
         ] {
             assert_eq!(on.global.get(&alt(c)), Some(&want), "Alt+{c}");
         }

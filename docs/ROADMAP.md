@@ -2,7 +2,7 @@
 
 Source of truth for scope, order, decisions and rules. Tickets hold the detail.
 Read this before starting work. If work conflicts with it, stop and say so.
-Last reconciled: 2026-10-29 on `gui-roadmap` (v0.50.6).
+Last reconciled: 2026-10-30 on `feat/chat-gui` (v0.51.0; origin/main merged).
 Verify: `cargo build && cargo test && cargo clippy --all-targets -- -D warnings && cargo check --target x86_64-unknown-linux-gnu && cargo check --target aarch64-apple-darwin`
 
 Maitty is a terminal multiplexer built for running many coding agents at once: see
@@ -11,7 +11,7 @@ which ones need you, jump to them, and keep them running when you leave. See
 
 ## Now
 
-Latest release: **v0.50.6** (2026-10-28), wire protocol 49. Phases 1–31 are shipped (phase 11
+Latest release: **v0.51.0** (2026-10-30), wire protocol 50. Phases 1–33 are shipped (phase 11
 declined); the release history is in the GitHub Releases and git tags, not here. v0.44.0 added
 [Phase 27](#27--radar-and-sending-failures--shipped-in-v0440) (context on the row, a failed
 check into the message box), [Phase 28](#28--references--shipped-in-v0440) (references),
@@ -22,7 +22,7 @@ title, the guide, two flaky tests).
 Built 2026-10-27, not released: [Phase 32](#32--two-looks-and-a-sessions-tabs-in-the-sidebar--built-not-released),
 two looks and a session's tabs in the sidebar.
 
-Active next development: [Phase 36](#36--claude-continuity-and-initial-gui-release--active),
+Active next development: [Phase 37](#37--claude-continuity-and-initial-gui-release--active),
 Claude support and cross-platform GUI release readiness. The standalone Codex GUI
 and its design pass are complete. Live GUI-to-native-TUI handoff acceptance stays
 deferred until both providers are usable and packaged; the TUI remains supported.
@@ -110,8 +110,8 @@ The real-day-use check and the known squash-merge detection gap remain visible i
 
 The user canceled this direction before implementation and chose to keep Maitty
 terminal-first, using T3 Code when they want a chat-first GUI. No code, tickets,
-branch, or worktree were created. Reopened by [ADR 0036](adr/0036-chat-gui-shared-conversations.md)
-as phases 33–36; the earlier decline is superseded.
+branch, or worktree were created. Reopened by [ADR 0041](adr/0041-chat-gui-shared-conversations.md)
+as phases 34–37; the earlier decline is superseded.
 
 ### 12 - Flat rendering style - shipped in v0.36.0
 
@@ -609,13 +609,20 @@ colours become the Pane colours option on Floating; Floating keeps square, corne
     tab row sits in the header over the pane boxes, not inside them
     ([ADR 0035](adr/0035-the-tab-row-sits-outside-the-pane-boxes.md))
 
-### 33 — Shared conversations and Codex handoff · foundation in progress
+### 33 — Secrets and PR tracking · shipped in v0.51.0
+
+Maitty stores secrets outside source files and chat history, delivers them only to
+the owning daemon process, and tracks pull request state. See
+[the feature intent](features/secrets-and-pr/intent.md) and
+[ADR 0041](adr/0036-secrets-never-enter-chat.md).
+
+### 34 — Shared conversations and Codex handoff · foundation in progress
 
 Requested 2026-10-27. [Intent](features/chat-gui/intent.md) ·
-[Spec](features/chat-gui/spec.md) · [ADR 0036](adr/0036-chat-gui-shared-conversations.md).
+[Spec](features/chat-gui/spec.md) · [ADR 0041](adr/0041-chat-gui-shared-conversations.md).
 Codex first. The daemon owns structured execution and exact native conversation
 identity. The ticket list below tracks that foundation. Standalone desktop work
-now proceeds in phase 34; native GUI-to-TUI handoff acceptance is deferred.
+now proceeds in phase 35; native GUI-to-TUI handoff acceptance is deferred.
 
 The daemon conversation foundation and standalone Codex execution support are
 required by the GUI. The optional GUI-to-native-TUI handoff was implemented early,
@@ -663,7 +670,7 @@ exact thread to its native terminal, returned to chat with the original history,
 and completed a second prompt. Direct user-driven GUI acceptance and platform
 handoff checks remain open.
 
-### 34 — A usable standalone Codex chat GUI · complete
+### 35 — A usable standalone Codex chat GUI · complete
 
 Make the GUI independently usable for Codex: start a conversation in a chosen
 folder, send and receive messages, see tool activity, resolve approvals, cancel
@@ -676,9 +683,9 @@ daemon's authenticated local IPC ([ADR 0037](adr/0037-tauri-react-desktop-shell.
 1803 or later with WebView2, macOS 10.15 or later, and Linux with WebKitGTK 4.1.
 The functional states and visual brief are in
 [the GUI design brief](features/chat-gui/design-brief.md). Use a working layout
-in this phase; review its final visual design in phase 35.
+in this phase; review its final visual design in phase 36.
 
-Prototype work began before phase 33 exits, at the user's explicit request to
+Prototype work began before phase 34 exits, at the user's explicit request to
 keep the GUI moving. The Windows prototype bundles the standalone CLI and starts
 the daemon in a separate process; it can list and read sessions and submit a
 message. Command execution, file-change and tool-input requests and exact acknowledged-turn cancellation
@@ -694,7 +701,7 @@ history is reconciled. Terminal resize requests now preserve the latest
 dimensions when an earlier daemon resize is still in flight; the regression is
 covered by the GUI terminal tests. Windows now has live evidence for creating a
 conversation, chatting, canceling and continuing, and preserving daemon work
-across GUI close/reopen; Windows installer bundles build successfully. Phase 34
+across GUI close/reopen; Windows installer bundles build successfully. Phase 35
 now has live Windows and Arch Linux/Xvfb evidence for Codex chat, approvals,
 recovery and diffs. Windows MSI/NSIS bundles and Arch deb/rpm/AppImage packages
 build. A real Omarchy desktop check and macOS desktop build remain open for
@@ -797,16 +804,16 @@ conversation rows can be pinned, renamed or archived. Those labels are saved
 locally, and archiving a working conversation is blocked. Press `?` for the
 keyboard shortcut list. The responsive layout was checked at 1440×900, 1024×700, and 800×600, including the sidebar's 900px breakpoint.
 
-### 35 — Design the GUI using the working app · complete, after 34
+### 36 — Design the GUI using the working app · complete, after 35
 
 The user-approved v2 desktop handoff is now the visual and interaction source of
 truth; see the [design brief](features/chat-gui/design-brief.md) and its preserved
 reference files. Validate the running Codex GUI against it, finish its responsive
 layout and keyboard/accessibility details, and exercise empty/loading/error/
-reconnect states. Preserve conversation continuity. Phase 35 acceptance passed:
+reconnect states. Preserve conversation continuity. Phase 36 acceptance passed:
 the running app was reviewed at 1440×900, 1024×700 and 800×600, and the GUI tests
 cover keyboard, accessibility, first-run, loading, disconnect and recovery
-behavior. Phase 34's live Codex chat, recovery and diff requirements are complete.
+behavior. Phase 35's live Codex chat, recovery and diff requirements are complete.
 Windows and Linux frontend checks and the Rust verification gate pass on the
 current worktree. Omarchy desktop and macOS package checks remain release
 verification.
@@ -889,11 +896,11 @@ gate passed again on 2026-10-29: 1,345 library tests and 3 naming tests passed,
 5 tests were ignored, and build, clippy, Linux target check and macOS target
 check all passed. A real Omarchy desktop check remains a release check.
 
-### 36 — Claude continuity and initial GUI release · active, after 35
+### 37 — Claude continuity and initial GUI release · active, after 36
 
 Keep the GUI as an optional client package over the daemon protocol. Before
 merging the feature into `main` or `dev`, complete the package separation in
-[ADR 0040](adr/0040-decouple-desktop-clients-and-providers.md): extract the
+[ADR 0042](adr/0042-decouple-desktop-clients-and-providers.md): extract the
 headless core, TUI/CLI, shared protocol, GUI host and provider adapters so the
 Tauri host no longer links the core runtime. Preserve the current integrated GUI
 branch as the rollback and comparison point while the refactor is verified.
@@ -1107,7 +1114,7 @@ until the CLI version, permissions, authentication and turn lifecycle are
 verified end to end.
 Existing TUI support for all other agents remains; more structured providers and
 GUI remotes need later scope.
-Phase 36 remains active. Real Omarchy desktop acceptance, macOS package/build/run,
+Phase 37 remains active. Real Omarchy desktop acceptance, macOS package/build/run,
 hosted CI, live Claude protocol/authentication, and installer upgrade/uninstall
 checks remain open. The Debian and Fedora container runs are package smoke tests,
 not substitutes for the user's Omarchy desktop.
@@ -1115,7 +1122,7 @@ not substitutes for the user's Omarchy desktop.
 ## In scope
 
 Existing features below are shipped unless marked. Optional chat GUI and native
-conversation continuity are planned in phases 33–36:
+conversation continuity are planned in phases 34–37:
 [intent](features/chat-gui/intent.md) · [spec](features/chat-gui/spec.md).
 
 **Core**
@@ -1206,7 +1213,7 @@ conversation continuity are planned in phases 33–36:
 - [ADR-0008](adr/0008-rename-to-seshi.md) — The app was called Seshi (the name superseded by ADR-0018, then ADR-0020); an old hydra install is brought over once.
 - [ADR-0012](adr/0012-flat-rendering-style.md) — Add a flat rendering style over the shared session layout; Cards stays default.
 - [ADR-0014](adr/0014-v8-cleanup.md) — Bring over the v8 cleanup, keeping what the user already decided. Rules out: bare letters acting in the sidebar; per-state glyphs on session rows; the fleet, the Team tab, the subagent tree and a helper mode.
-- [ADR-0036](adr/0036-chat-gui-shared-conversations.md) — Optional chat GUI over daemon-owned native conversations. Rules out: replacing the native TUI, client-owned sessions, concurrent runtime writers and most-recent-session handoff.
+- [ADR-0041](adr/0041-chat-gui-shared-conversations.md) — Optional chat GUI over daemon-owned native conversations. Rules out: replacing the native TUI, client-owned sessions, concurrent runtime writers and most-recent-session handoff.
 - [ADR-0038](adr/0038-standalone-gui-first.md) — Make the standalone GUI usable before native terminal transfer; Windows, macOS and Linux release checks remain required.
 - [ADR-0020](adr/0020-rename-to-maitty.md) — The app is called Maitty, "All agents on deck"; a vibecasso or seshi install carries over once.
 - [ADR-0019](adr/0019-the-name-lives-in-one-place.md) — The app's name lives in `Cargo.toml`; code takes it from `brand`. Rules out: writing the app's name out in code, adapters or comments.
@@ -1215,7 +1222,7 @@ conversation continuity are planned in phases 33–36:
 - [ADR-0016](adr/0016-sticky-shortcut-mode.md) — The leader opens a shortcut mode that stays until Esc, the leader, a click into a pane or a typing action. Rules out: letters acting outside that shown mode.
 - [ADR-0013](adr/0013-v7-frame.md) — Draw the v7 frame: tabs in the pane title (the "no margin" part replaced by `ui.padding`, ADR-0021; the tabs moved to a row of their own by ADR-0028).
 - [ADR-0015](adr/0015-four-named-layouts-and-grid.md) — One Layout setting: Floating, Tiled, Compact, Grid; Grid is a look over the shared layout (the four cut to Floating by ADR-0027). Rules out: Grid's own sidebar, top bar, fixed grid, zoom and bare keys.
-- [ADR-0035](adr/0035-the-tab-row-sits-outside-the-pane-boxes.md) — Floating's tab row sits over the pane boxes, level with the sidebar's top, not inside them (amends ADR-0028, ADR-0036). Rules out: tabs or a plate inside a pane's border.
+- [ADR-0035](adr/0035-the-tab-row-sits-outside-the-pane-boxes.md) — Floating's tab row sits over the pane boxes, level with the sidebar's top, not inside them (amends ADR-0028, ADR-0041). Rules out: tabs or a plate inside a pane's border.
 - [ADR-0029](adr/0029-alt-letters-and-closing-without-asking.md) — Alt+letter shortcuts for the everyday actions (`ui.alt_keys`); every close asks first (amends ADR-0017). Rules out: bare keys acting outside shortcut mode; Alt+[ and Alt+].
 - [ADR-0030](adr/0030-panes-titled-like-an-editor.md) — Panes titled like an editor's: no title on a lone pane, no ✕ or state word on a split pane's; sidebar tab lines skip the session's own tab; padding 0; toasts per look (amends ADR-0027, ADR-0028). Rules out: tabs back in the pane border.
 - [ADR-0028](adr/0028-tab-rows-and-popups-drawn-like-panes.md) — A tab row over the panes in both looks; every popup and toast boxed as its look boxes a pane (amends ADR-0013). Rules out: tabs in a pane's title; frameless filled popups.
@@ -1226,7 +1233,7 @@ conversation continuity are planned in phases 33–36:
 
 ## Rules
 
-- Structured conversation trust, ownership and history invariants are target contracts in the [chat GUI spec](features/chat-gui/spec.md); not yet implemented, tracked by phase 33.
+- Structured conversation trust, ownership and history invariants are target contracts in the [chat GUI spec](features/chat-gui/spec.md); not yet implemented, tracked by phase 34.
 
 - The daemon's socket only accepts the user who started it — `src/ipc.rs` — SECURITY.md
 - Status reports need the pane's token or its process chain — `src/daemon/mod.rs` hook handling — AGENTS.md non-negotiable 5
@@ -1243,7 +1250,7 @@ conversation continuity are planned in phases 33–36:
 ## Records
 
 Chat GUI: [intent](features/chat-gui/intent.md), [spec](features/chat-gui/spec.md),
-[ADR 0036](adr/0036-chat-gui-shared-conversations.md),
+[ADR 0041](adr/0041-chat-gui-shared-conversations.md),
 [source research](research/gui-agent-continuity.md).
 
 Docs: `AGENTS.md`, `docs/` (architecture, standards, testing, security, UI, API patterns), `docs/stack/rust.md`.

@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*); client and daemon refuse to talk across versions, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 60;
+pub const PROTOCOL_VERSION: u32 = 61;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -408,6 +408,22 @@ pub enum Command {
         term: TermId,
         choice: HelperChoice,
     },
+    RequestSecret {
+        term: TermId,
+        label: String,
+        reason: String,
+    },
+    AnswerSecret {
+        id: u64,
+        value: Option<SecretText>,
+    },
+    LinkPr {
+        term: TermId,
+        url: Option<String>,
+    },
+    SpendSecret {
+        reference: String,
+    },
     /// `forget`: also discard the saved session, so the next start is a clean slate.
     KillServer {
         forget: bool,
@@ -655,6 +671,8 @@ pub struct Snapshot {
     /// Questions agents asked you (`<app> ask-human`), waiting for an answer.
     #[serde(default)]
     pub questions: Vec<HumanQuestion>,
+    #[serde(default)]
+    pub secret_requests: Vec<SecretRequest>,
     /// Plan limits by agent ("claude", "codex"), as last reported.
     #[serde(default)]
     pub limits: Vec<(String, Vec<Limit>)>,
@@ -664,6 +682,110 @@ pub struct Snapshot {
     /// What each agent got done over the last day, by agent and folder.
     #[serde(default)]
     pub today: Vec<AgentDay>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SecretRequest {
+    pub id: u64,
+    pub term: TermId,
+    pub label: String,
+    pub reason: String,
+}
+
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SecretText(pub String);
+
+impl std::fmt::Debug for SecretText {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SecretText(<hidden>)")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct PrInfo {
+    pub number: u32,
+    pub url: String,
+    pub title: String,
+    pub state: PrState,
+    pub draft: bool,
+    pub checks: PrChecks,
+    pub review: PrReview,
+    pub conflicting: bool,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PrTone {
+    Bad,
+    Waiting,
+    Good,
+    Plain,
+}
+impl PrInfo {
+    pub fn headline(&self) -> String {
+        let fails = self.checks.failed.len();
+        let what = match self.state {
+            PrState::Merged => "merged".to_string(),
+            PrState::Closed => "closed".to_string(),
+            PrState::Open if fails > 0 => format!("{fails} failing"),
+            PrState::Open if self.conflicting => "conflict".into(),
+            PrState::Open if self.review == PrReview::ChangesRequested => {
+                "changes requested".into()
+            }
+            PrState::Open if self.checks.pending > 0 => "checking".into(),
+            PrState::Open if self.review == PrReview::Approved => "approved".into(),
+            PrState::Open if self.checks.passed > 0 => "passing".into(),
+            PrState::Open => String::new(),
+        };
+        let draft = if self.draft && self.state == PrState::Open {
+            " draft"
+        } else {
+            ""
+        };
+        format!(
+            "#{}{}{what}{draft}",
+            self.number,
+            if what.is_empty() { "" } else { " " }
+        )
+    }
+    pub fn tone(&self) -> PrTone {
+        match self.state {
+            PrState::Merged => PrTone::Good,
+            PrState::Closed => PrTone::Bad,
+            PrState::Open
+                if !self.checks.failed.is_empty()
+                    || self.conflicting
+                    || self.review == PrReview::ChangesRequested =>
+            {
+                PrTone::Bad
+            }
+            PrState::Open if self.checks.pending > 0 => PrTone::Waiting,
+            PrState::Open if self.review == PrReview::Approved || self.checks.passed > 0 => {
+                PrTone::Good
+            }
+            PrState::Open => PrTone::Plain,
+        }
+    }
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum PrState {
+    #[default]
+    Open,
+    Merged,
+    Closed,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct PrChecks {
+    pub passed: u32,
+    pub pending: u32,
+    pub failed: Vec<String>,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum PrReview {
+    #[default]
+    None,
+    Required,
+    Approved,
+    ChangesRequested,
 }
 
 /// An agent's last day in one folder: turns it finished, time it spent working, its cost.
@@ -791,6 +913,8 @@ pub struct TermInfo {
     /// empty means the row needs you ("wants to start N helpers"); `AnswerHelpers` answers it.
     #[serde(default)]
     pub helper_ask: Vec<String>,
+    #[serde(default)]
+    pub pr: Option<PrInfo>,
     /// Follow-ups waiting for its turn to end, next first.
     #[serde(default)]
     pub queued: Vec<String>,

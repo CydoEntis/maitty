@@ -1,4 +1,4 @@
-# Architecture
+﻿# Architecture
 
 This doc covers how the code is organised, which way dependencies point, and
 which design patterns to use. `AGENTS.md` is the operating contract; this doc
@@ -7,7 +7,7 @@ holds the architecture rules in depth.
 ## Principles
 
 - **Dependencies point inward.** Stable, pure code sits at the centre. Volatile
-  code — UI, frameworks, databases, networks — sits at the edge. Inner code never
+  code â€” UI, frameworks, databases, networks â€” sits at the edge. Inner code never
   imports outer code.
 - **Organise by feature, then by layer.** A feature's UI, use cases, types, and
   data access live together. Code becomes shared only when a second real
@@ -53,7 +53,7 @@ layers*. Never reverse the direction.
 ```text
 src/
   main.rs        argument parsing, picks client / daemon / CLI role
-  cli.rs         one-shot subcommands (send, read, wait, hook, allow, doctor, …)
+  cli.rs         one-shot subcommands (send, read, wait, hook, allow, doctor, â€¦)
   tidy.rs        what removing a worktree would lose (shared by the close-time removal and the clean-up list)
   snapshot.rs    a checkout's files kept before each agent turn, and put back (the server takes them, the client lists and restores)
   output_line.rs  one line of a check's output: made safe to show, and read as pass or failure (the server picks the first failing line, the client colours with the same rule)
@@ -76,6 +76,8 @@ src/
     check_source.rs which checks a project has (yours, else the repo's .maitty/checks.toml), where each comes from, whether it may run
     check_stale.rs  a pass gone stale: the worktree's tree when a run starts, compared on the git poll
     helpers.rs   sessions starting helpers: the ask / always / never rule, the request a session's row shows, and the projects you said Always for (helper-projects.json)
+    secrets.rs   secrets agents ask you for: the pending requests, and what you typed, held in memory as single-use references (ADR-0036)
+    pr.rs        each pane's pull request read through `gh`: the poll, the answer parsed, what changed between two readings, and the message queued for the agent
     approvals.rs your Always / Never / Once for repo-supplied check commands (kept in Maitty's data folder, read at start), and the ApproveCheck / ForgetCheckApproval commands
     term.rs      one pane: PTY, input thread, vt100 emulator
     scan.rs, git.rs, persist.rs
@@ -96,9 +98,10 @@ src/
     themes.rs    searchable theme browser, previews, background save
     menu.rs, views.rs, files.rs, find.rs, branch.rs, recipes.rs, overlap.rs,
     markdown.rs (markdown drawn for the Files preview: text, width, theme in; styled lines out),
-    motion.rs (slides and glides), …
+    motion.rs (slides and glides), â€¦
     tests.rs     rendering and behaviour tests
   mcp.rs, project.rs, gitfs.rs, alert.rs, reveal.rs, update.rs, restart.rs, sync.rs
+  secret_files.rs  a secret handed to an agent as a private file, and clearing the stale ones
   shim.rs        the per-agent launchers on a shell pane's PATH, and the PATH code `maitty agent-launch` shares
 docs/            these docs, the roadmap, design briefs
 config.example.toml
@@ -124,7 +127,7 @@ ceremony.
 | **Factory** | construction has rules, defaults, or picks among implementations | a constructor or object literal is enough |
 | **Dependency injection** (constructor or parameter) | a unit needs collaborators that tests must control | the dependency is a pure function. Import it. |
 | **Domain events** | several independent reactions follow one state change | there is one reaction. Call it directly. |
-| **Mapper** | data crosses a boundary with a different shape (row → entity, entity → DTO) | the shapes are identical and will stay so |
+| **Mapper** | data crosses a boundary with a different shape (row â†’ entity, entity â†’ DTO) | the shapes are identical and will stay so |
 
 ### Anti-patterns
 
@@ -168,9 +171,9 @@ Maitty is one binary that runs in two roles:
   on Windows, Unix socket elsewhere), receives snapshots and pane output, sends
   commands and keystrokes. Many clients can attach; any can detach.
 - **CLI subcommands** (`maitty send`, `maitty read`, `maitty wait`, `maitty worktree`,
-  `maitty handoff`, `maitty doctor`, `maitty mcp`, `maitty proxy`, …) talk to the same daemon.
+  `maitty handoff`, `maitty doctor`, `maitty mcp`, `maitty proxy`, â€¦) talk to the same daemon.
 
-External systems: the agent CLIs it runs (claude, codex, …) and their hook
+External systems: the agent CLIs it runs (claude, codex, â€¦) and their hook
 callbacks (`maitty hook`), `git` and `gh`, `ssh`
 for remote machines (`--remote host` runs `ssh host maitty proxy`), the OS
 clipboard and notifications, and an MCP server (`maitty mcp`) agents use to talk to
@@ -179,7 +182,7 @@ each other.
 ## Project-specific: stack
 
 The optional GUI, TUI/CLI, daemon core, shared protocol and provider adapters
-are separate workspace packages per [ADR 0040](adr/0040-decouple-desktop-clients-and-providers.md).
+are separate workspace packages per [ADR 0042](adr/0042-decouple-desktop-clients-and-providers.md).
 Clients depend on the shared protocol; only the daemon depends on provider
 adapters and owns agent processes.
 
@@ -212,7 +215,7 @@ and Tailwind; its rules live in `docs/stack/tauri.md`, `typescript.md`,
   output out) and `client/mod.rs` (the client loop: events in, commands out).
 - **Presentation:** `client/screen/` (the layout and its popups),
   `client/design.rs` (shared drawing helpers), `client/render.rs`, and the
-  feature views in `client/` (files, changes, branches, …).
+  feature views in `client/` (files, changes, branches, â€¦).
 
 `client/spinners.rs` owns the working-spinner picker, previews and background
 saves. Presets and frame validation live in `config.rs`; `ui.spinner` remains the
@@ -226,7 +229,7 @@ The client never touches a PTY; the daemon never draws. They meet only through
 ```text
 src/
   main.rs        argument parsing, picks client / daemon / CLI role
-  cli.rs         one-shot subcommands (send, read, wait, hook, doctor, …)
+  cli.rs         one-shot subcommands (send, read, wait, hook, doctor, â€¦)
   cli/handoff.rs `maitty handoff`: the text brief, and the files a checkout changed
   cli/mcp_config.rs `maitty integrate mcp`: Maitty's entry in Codex, Qwen Code and Gemini CLI config files
   cli/jsonc.rs   agents' settings.json edited in place (comments, key order, BOM kept), for hooks and MCP
@@ -244,7 +247,7 @@ src/
                  (status), git.rs, persist.rs
   client/        the UI: mod.rs (loop, input), screen/ (layout), design.rs
                  (drawing helpers), render.rs, menu.rs, views.rs, and one file
-                 per feature (files, find, branch, recipes, pr, …)
+                 per feature (files, find, branch, recipes, pr, â€¦)
   mcp.rs, project.rs, gitfs.rs, alert.rs, reveal.rs, update.rs, restart.rs, sync.rs
 docs/            these docs, the roadmap, design briefs
 config.example.toml
@@ -276,7 +279,7 @@ opens the search, `Action::Help` opens All keys). The Menu and tab renaming are 
 
 **Agent launchers.** A plain shell pane (no command, not a popup) starts with a launcher per
 agent first on its `PATH` (`shim.rs`, written to `<data>/shell/bin/`; only files maitty wrote are
-replaced or removed): `claude` there runs `maitty agent-dir claude …`, goes to the folder it
+replaced or removed): `claude` there runs `maitty agent-dir claude â€¦`, goes to the folder it
 prints, and execs the next `claude` on `PATH` with the launcher folder taken off (a `.cmd`
 calling `maitty agent-launch` on Windows). The agents are the built-in four plus the programs the quick
 agents run (the first word of a plain-named `command`, so an agent named `work` that runs `claude` adds nothing), and only when `worktree.per_agent` is on. `daemon/term.rs` also defines a shell
@@ -309,8 +312,8 @@ outside Maitty. No provider-specific status adapter is needed.
   with full `Snapshot`s plus per-pane output. The client derives its view model
   (`screen_model`) from the snapshot each frame instead of caching parallel state.
 - **Modes.** Client UI state is one `Mode` enum (popups, sidebar focus, settings,
-  …); each mode has a `draw_*` and an `on_*_key` function.
-- **Hit testing.** Drawing registers clickable rects (`hit(app, rect, ScreenHit::…)`);
+  â€¦); each mode has a `draw_*` and an `on_*_key` function.
+- **Hit testing.** Drawing registers clickable rects (`hit(app, rect, ScreenHit::â€¦)`);
   mouse handling looks them up, so drawing and clicking can't drift.
   `client/screen/rail.rs` renders the collapsed sidebar (a narrow column) from the same session
   model and status glyphs; it shares focus, hit testing and scroll state.
@@ -319,10 +322,10 @@ outside Maitty. No provider-specific status adapter is needed.
   `proc::quiet`), never a hand-built `Command` with its own window flag or error parsing.
 - **Filterable popups** use `query_list` + `list_row` (client/screen/popups.rs).
 - **Cards and pills** come from `card.rs`: `card()` for every pane, the sidebar and popups
-  (title in the border, ✕ on the right), `pill()` / `row_pill()` for tabs, buttons and
+  (title in the border, âœ• on the right), `pill()` / `row_pill()` for tabs, buttons and
   selected rows. Use accent for focus, the working colour for work, red for needs-you,
   sky for leader mode and red for destructive actions.
-- **Popups** use the shared `panel()` helper (a lit card with ✕), `dim_all` behind, and
+- **Popups** use the shared `panel()` helper (a lit card with âœ•), `dim_all` behind, and
   `hints()` for the key line.
 
 
@@ -331,16 +334,16 @@ Decisions: [0001 daemon owns sessions](adr/0001-daemon-owns-sessions.md),
 [0003 msgpack over local sockets](adr/0003-msgpack-over-local-sockets.md),
 [0004 one layout](adr/0004-one-layout.md),
 [0005 herdr-compatible keys](adr/0005-herdr-compatible-keys.md),
-[0031 optional chat GUI and shared conversations](adr/0036-chat-gui-shared-conversations.md).
+[0031 optional chat GUI and shared conversations](adr/0041-chat-gui-shared-conversations.md).
 
 ## Project-specific: planned structured conversations
 
-[Phases 32–35](ROADMAP.md#32--shared-conversations-and-codex-handoff--active)
+[Phases 32â€“35](ROADMAP.md#32--shared-conversations-and-codex-handoff--active)
 add daemon-owned structured agent runtimes and an optional chat GUI.
 [The spec](features/chat-gui/spec.md) owns the target conversation/history/handoff
 contract. Structured Codex CLI admission is implemented; the current terminal path remains supported.
 Codex is first, Claude follows before release. Desktop framework selection and
-final GUI design were selected in phases 35–37.
+final GUI design were selected in phases 35â€“37.
 
 Structured provider integrations follow the provider-appropriate pattern
 documented by [T3 Code's provider guide](research/t3code-provider-integrations.md):

@@ -16,8 +16,10 @@ mod conversation;
 mod git;
 mod helpers;
 mod persist;
+mod pr;
 mod restore;
 mod scan;
+mod secrets;
 mod status;
 mod term;
 mod usage;
@@ -120,6 +122,7 @@ pub enum Ev {
     KillTreeFinished(TermId, Result<(), String>),
     Scan(Vec<scan::Found>),
     Git(Vec<(WsId, Option<GitInfo>)>),
+    Prs(Vec<(pr::Place, pr::Read)>),
     WorktreeCreated {
         client: ClientId,
         branch: String,
@@ -275,6 +278,9 @@ struct Daemon {
     /// Questions agents asked you: the question, who's waiting for the answer, and the
     /// pane's status before it asked.
     questions: Vec<(HumanQuestion, ClientId, Status)>,
+    secrets: secrets::Secrets,
+    prs: pr::Prs,
+    last_secret_files: Instant,
     git_busy: bool,
     last_git: Instant,
     last_save: Instant,
@@ -767,6 +773,26 @@ impl Daemon {
             {
                 anyhow::bail!("check approvals are yours to give, not a pane's")
             }
+            Command::RequestSecret { term, .. }
+                if self.clients.get(&client).and_then(|c| c.from) != Some(*term) =>
+            {
+                anyhow::bail!("only a pane asks for its own secret")
+            }
+            Command::AnswerSecret { .. } if self.client_is_agent(client) => {
+                anyhow::bail!("a secret is yours to give, not a pane's")
+            }
+            Command::LinkPr { term, .. }
+                if self
+                    .clients
+                    .get(&client)
+                    .and_then(|c| c.from)
+                    .is_some_and(|from| from != *term) =>
+            {
+                anyhow::bail!("a pane links only its own pull request")
+            }
+            Command::SpendSecret { .. } if !self.client_is_agent(client) => {
+                anyhow::bail!("only an agent pane can spend a secret reference")
+            }
             // A session may not let itself (or another) start helpers.
             Command::AnswerHelpers { .. } if self.client_is_agent(client) => {
                 anyhow::bail!("starting helpers is yours to allow, not a pane's")
@@ -832,6 +858,9 @@ impl Daemon {
             empty_since: Instant::now(),
             pending_ops: 0,
             questions: Vec::new(),
+            secrets: secrets::Secrets::default(),
+            prs: pr::Prs::default(),
+            last_secret_files: Instant::now(),
             git_busy: false,
             last_git: crate::clock::ago(GIT_POLL_EVERY),
             last_save: Instant::now(),
@@ -899,6 +928,8 @@ impl Daemon {
                     self.auto_continue();
                     self.poll_codex();
                     self.poll_git();
+                    self.sweep_secrets();
+                    self.poll_prs();
                     if self.last_vanished_check.elapsed() >= VANISHED_CHECK_EVERY {
                         self.last_vanished_check = Instant::now();
                         self.forget_vanished_worktrees();
@@ -1199,6 +1230,7 @@ impl Daemon {
             Ev::Disconnected(id) => {
                 self.conversation_history.detach(id);
                 self.clients.remove(&id);
+                self.withdraw_secret_requests(id);
                 // The agent that asked went away (cancelled, killed): its question goes too.
                 let gone: Vec<(TermId, Status)> = self
                     .questions
@@ -1470,6 +1502,7 @@ impl Daemon {
                     }
                 }
             }
+            Ev::Prs(reads) => self.prs_read(reads),
             Ev::WorktreeCreated {
                 client,
                 branch,
@@ -2117,6 +2150,7 @@ impl Daemon {
                         started_by: t.started_by,
                         tab_of: t.tab_of.filter(|o| self.terms.contains_key(o)),
                         helper_ask: t.helpers.asked.clone(),
+                        pr: self.pr_of(t),
                         queued: t.queue.iter().cloned().collect(),
                         subagent_activity: t.subagent_activity.clone(),
                         session: t.session.clone(),
@@ -2131,6 +2165,7 @@ impl Daemon {
             active_ws: self.active_ws,
             terms,
             questions: self.questions.iter().map(|(q, ..)| q.clone()).collect(),
+            secret_requests: self.secrets.requests(),
             limits: self
                 .limits
                 .iter()

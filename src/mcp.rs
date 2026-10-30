@@ -48,6 +48,9 @@ fn row_of(t: &TermInfo, me: Option<TermId>) -> Value {
     if let Some(note) = cli::checks_note(t) {
         row["check"] = json!(note);
     }
+    if let Some(pr) = &t.pr {
+        row["pr"] = cli::pr_json(pr);
+    }
     row
 }
 
@@ -125,6 +128,16 @@ fn tools() -> Value {
             "inputSchema": { "type": "object", "properties": {
                 "path": { "type": "string", "description": "A folder in the project, if not the one you run in." }
             } }
+        },
+        {
+            "name": concat!(env!("APP_COMMAND"), "_request_secret"),
+            "description": concat!("Ask the user for a secret you need. Never ask for one in chat. They type it into a hidden prompt in ", env!("APP_COMMAND"), "; then choose file delivery or a one-use reference for `", env!("APP_COMMAND"), " secret run`. Never print the secret or write it into the project."),
+            "inputSchema": { "type": "object", "properties": {
+                "label": { "type": "string", "description": "What it is called, e.g. OpenAI API key." },
+                "reason": { "type": "string", "description": "What you need it for." },
+                "delivery": { "type": "string", "enum": ["file", "run"] },
+                "timeout": { "type": "integer", "description": "Seconds to wait (default 600)." }
+            }, "required": ["label"] }
         },
         {
             "name": concat!(env!("APP_COMMAND"), "_interrupt"),
@@ -246,6 +259,7 @@ impl Server {
             concat!(env!("APP_COMMAND"), "_answer") => self.answer(args),
             concat!(env!("APP_COMMAND"), "_start") => self.start(args),
             concat!(env!("APP_COMMAND"), "_references") => self.references(args),
+            concat!(env!("APP_COMMAND"), "_request_secret") => self.request_secret(args),
             concat!(env!("APP_COMMAND"), "_interrupt") => self.session(args).and_then(|t| {
                 cli::send(Some(t.id), "\x03".into(), false)
                     .map(|_| format!("interrupted {}", t.id))
@@ -439,6 +453,73 @@ impl Server {
         ))
     }
 
+    fn request_secret(&self, args: &Value) -> Result<String, String> {
+        let term = self.me.ok_or(concat!(
+            "only an agent running in a ",
+            env!("APP_COMMAND"),
+            " pane can ask for a secret"
+        ))?;
+        let label = args
+            .get("label")
+            .and_then(Value::as_str)
+            .filter(|l| !l.trim().is_empty())
+            .ok_or("say what the secret is called (label)")?;
+        let reason = args.get("reason").and_then(Value::as_str).unwrap_or("");
+        let secs = args.get("timeout").and_then(Value::as_u64).unwrap_or(600);
+        let by_run = match args.get("delivery").and_then(Value::as_str) {
+            None | Some("file") => false,
+            Some("run") => true,
+            Some(other) => return Err(format!("delivery is \"file\" or \"run\", not {other:?}")),
+        };
+        let asked = cli::block_on(async {
+            Ok(tokio::time::timeout(
+                std::time::Duration::from_secs(secs),
+                cli::request(ClientMsg::Command(Command::RequestSecret {
+                    term,
+                    label: label.to_string(),
+                    reason: reason.to_string(),
+                })),
+            )
+            .await)
+        })
+        .map_err(|e| format!("{e:#}"))?;
+        let reference = match asked {
+            Ok(Ok(Reply::Text(reference))) => reference,
+            Ok(Ok(_)) => return Err("unexpected reply".into()),
+            Ok(Err(e)) => return Err(format!("{e:#}")),
+            Err(_) => {
+                return Err(format!(
+                    "The user hasn't answered after {secs}s, so the request was withdrawn. Tell them what secret you need, then ask again."
+                ));
+            }
+        };
+        if by_run {
+            return Ok(run_instructions(&reference));
+        }
+        let value = match cli::block_on(cli::request(ClientMsg::Command(Command::SpendSecret {
+            reference: reference.clone(),
+        })))
+        .map_err(|e| format!("{e:#}"))?
+        {
+            Reply::Text(value) => value,
+            _ => return Err("unexpected reply".into()),
+        };
+        let dir = crate::secret_files::folder();
+        if let Err(e) = crate::secret_files::remove_stale(
+            &dir,
+            crate::secret_files::KEPT_FOR,
+            std::time::SystemTime::now(),
+        ) {
+            eprintln!("clearing old secret files: {e:#}");
+        }
+        let path = crate::secret_files::write(&dir, &reference, &value)
+            .map_err(|e| format!("couldn't save the secret for you: {e:#}"))?;
+        Ok(format!(
+            "Saved to {} (only the user can read it). Read it when needed, use it, then delete the file; it is removed within a day. Never print it or put it in chat or the project.",
+            path.display()
+        ))
+    }
+
     /// The references of the caller's project, or of the project `path` is in (within scope).
     fn references(&self, args: &Value) -> Result<String, String> {
         if crate::ipc::has_structured_identity() {
@@ -580,6 +661,17 @@ impl Server {
             "asked {APP_COMMAND} to start {agent}; it hasn't appeared yet"
         ))
     }
+}
+
+fn run_instructions(reference: &str) -> String {
+    format!(
+        concat!(
+            "The user gave it. Run one command with it in an environment variable: ",
+            env!("APP_COMMAND"),
+            " secret run {} --env NAME -- <command>. It works once in your pane and expires in a day."
+        ),
+        reference
+    )
 }
 
 fn references_json(folder: &Path, found: &crate::references::Listing) -> Value {

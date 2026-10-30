@@ -16,7 +16,9 @@ use super::render::{blend, render_screen, truncate};
 use super::{App, Hit, Mode};
 use crate::brand::APP_COMMAND;
 use crate::keys::Action;
-use crate::protocol::{CheckInfo, SessionKey, Status, SubagentActivity, TermId, TermInfo};
+use crate::protocol::{
+    CheckInfo, SecretText, SessionKey, Status, SubagentActivity, TermId, TermInfo,
+};
 use crate::theme::Theme;
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
@@ -209,6 +211,7 @@ pub(super) struct Screen {
     pub check_page: Option<check_settings::CheckDraft>,
     /// A failed check waiting for its output before its message opens (`m`).
     pub failure_ask: Option<failure_note::FailureAsk>,
+    pub secret_typed: SecretText,
 }
 
 /// A row the sidebar cursor can rest on.
@@ -423,6 +426,7 @@ pub(super) struct Session {
     pub started_by: Option<TermId>,
     /// Helpers it wants to start and is waiting on you for (0: not asking).
     pub helpers_wanted: usize,
+    pub secret_ask: Option<String>,
     /// Follow-ups waiting for its turn to end, next first.
     pub queued: Vec<String>,
     /// The latest check the app ran after its turn: the headline of `checks`.
@@ -820,7 +824,15 @@ impl App {
                 let wi = add_wt(&mut projs[pi], &top, branch, main);
                 let title = session_title(t, if leaves.len() == 1 { &w.name } else { "" }, &top);
                 // What it asks: its ask-human question, else what its screen asks.
-                let question = if t.helper_ask.is_empty() {
+                let secret = self
+                    .snap
+                    .secret_requests
+                    .iter()
+                    .find(|r| r.term == *id)
+                    .map(|r| r.label.clone());
+                let question = if let Some(label) = &secret {
+                    Some(secret_line(label))
+                } else if t.helper_ask.is_empty() {
                     (t.status == Status::Blocked)
                         .then(|| {
                             self.snap
@@ -869,6 +881,12 @@ impl App {
                     resume_at: t.resume_at,
                     started_by: t.started_by,
                     helpers_wanted: t.helper_ask.len(),
+                    secret_ask: self
+                        .snap
+                        .secret_requests
+                        .iter()
+                        .find(|r| r.term == *id)
+                        .map(|r| r.label.clone()),
                     queued: t.queued.clone(),
                     check: t.check().cloned(),
                     checks: t.checks.clone(),
@@ -920,6 +938,7 @@ impl App {
                 resume_at: None,
                 started_by: None,
                 helpers_wanted: 0,
+                secret_ask: None,
                 queued: Vec::new(),
                 check,
                 checks,
@@ -1414,6 +1433,8 @@ pub(super) enum ScreenHit {
     HelperAsk(TermId),
     /// A choice in that question.
     HelperAnswer(TermId, crate::protocol::HelperChoice),
+    SecretGive(TermId),
+    SecretDecline(TermId),
     /// A button or row of Settings › Check.
     CheckDraft(check_settings::DraftHit),
 }
@@ -1486,6 +1507,7 @@ mod popover;
 mod popups;
 mod rail;
 mod references_sheet;
+mod secret_ask;
 pub(in crate::client) use self::hairline::{flat_theme, plain, plain_on, set_plain};
 #[cfg(test)]
 pub(in crate::client) use self::rail::RAIL_W;
@@ -1505,5 +1527,5 @@ mod tidy;
 pub(in crate::client) use self::{
     branch_sheet::*, card::*, check_actions::*, check_approve::*, check_sheet::*, dialogs::*,
     draw::*, heads::*, helpers_ask::*, keyoverlay::*, leader::*, mode_bar::*, popover::*,
-    popups::*, references_sheet::*, sheet::*, side::*, splash::*, tidy::*,
+    popups::*, references_sheet::*, secret_ask::*, sheet::*, side::*, splash::*, tidy::*,
 };

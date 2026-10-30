@@ -2,7 +2,7 @@
 
 Type: feature
 Author: Cody · Status: accepted · Date: 2026-10-27
-Plan: [phases 33–36](../../ROADMAP.md#33--shared-conversations-and-codex-handoff--active)
+Plan: [phases 34–37](../../ROADMAP.md#34--shared-conversations-and-codex-handoff--active)
 
 ## Problem
 
@@ -30,7 +30,7 @@ Codex and Claude sessions, local IPC, CLI, TUI and optional desktop client.
   safe at idle.
 - Daemon owns all processes. Closing either client leaves work running.
 - Build a usable GUI before the dedicated GUI design pass.
-- See [ADR 0036](../../adr/0036-chat-gui-shared-conversations.md).
+- See [ADR 0041](../../adr/0041-chat-gui-shared-conversations.md).
 
 ## Out of scope
 
@@ -41,10 +41,10 @@ chat browsing and attachments wait for separate scope.
 
 ## Open questions
 
-None for phase 33. Later-phase decisions are recorded in the roadmap and do not
+None for phase 34. Later-phase decisions are recorded in the roadmap and do not
 block foundation tickets.
 
 ## Tickets
 
-Phase 33: [#197](https://github.com/CydoEntis/maitty/issues/197), [#198](https://github.com/CydoEntis/maitty/issues/198), [#199](https://github.com/CydoEntis/maitty/issues/199), [#200](https://github.com/CydoEntis/maitty/issues/200), [#201](https://github.com/CydoEntis/maitty/issues/201), [#202](https://github.com/CydoEntis/maitty/issues/202), [#203](https://github.com/CydoEntis/maitty/issues/203), [#204](https://github.com/CydoEntis/maitty/issues/204), [#205](https://github.com/CydoEntis/maitty/issues/205), [#206](https://github.com/CydoEntis/maitty/issues/206), [#207](https://github.com/CydoEntis/maitty/issues/207).
+Phase 34: [#197](https://github.com/CydoEntis/maitty/issues/197), [#198](https://github.com/CydoEntis/maitty/issues/198), [#199](https://github.com/CydoEntis/maitty/issues/199), [#200](https://github.com/CydoEntis/maitty/issues/200), [#201](https://github.com/CydoEntis/maitty/issues/201), [#202](https://github.com/CydoEntis/maitty/issues/202), [#203](https://github.com/CydoEntis/maitty/issues/203), [#204](https://github.com/CydoEntis/maitty/issues/204), [#205](https://github.com/CydoEntis/maitty/issues/205), [#206](https://github.com/CydoEntis/maitty/issues/206), [#207](https://github.com/CydoEntis/maitty/issues/207).
 Later phases are not ticketed.

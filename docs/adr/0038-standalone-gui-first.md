@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-29
-- **Amends:** [0036](0036-chat-gui-shared-conversations.md)
+- **Amends:** [0041](0041-chat-gui-shared-conversations.md)
 
 ## Context
 

@@ -45,6 +45,7 @@ fn has_detail(app: &App, s: &Session) -> bool {
         || s.question.is_some()
         || s.resume_at.is_some()
         || s.helpers_wanted > 0
+        || s.secret_ask.is_some()
         || (s.status == Status::Working && s.quiet_since.is_some())
         || helpers_at_work
         || s.native_term
@@ -59,6 +60,7 @@ fn quiet_done(s: &Session) -> bool {
         && check::shown(s).is_none()
         && s.question.is_none()
         && s.resume_at.is_none()
+        && s.secret_ask.is_none()
         && matches!(s.status, Status::Idle | Status::None)
 }
 
@@ -470,7 +472,7 @@ pub(in crate::client) fn draw_side(
                         cols.end(),
                     );
                     // Its question is this line: a click answers it, not just opens the session.
-                    if s.helpers_wanted > 0
+                    if (s.helpers_wanted > 0 || s.secret_ask.is_some())
                         && let Some(term) = s.native_term
                     {
                         hit(app, row, ScreenHit::HelperAsk(term));
@@ -979,10 +981,10 @@ fn detail(app: &App, s: &Session, rl: RowLook, t: &Theme, room: usize) -> Vec<Se
     {
         return rl.on(receipt, t);
     }
-    if s.helpers_wanted > 0 {
+    if s.secret_ask.is_some() || s.helpers_wanted > 0 {
         return rl.on(
             vec![seg(
-                truncate(&helpers_line_in(s.helpers_wanted, room), room),
+                truncate(&ask_line_in(s, room), room),
                 Style::default().fg(t.blocked),
             )],
             t,

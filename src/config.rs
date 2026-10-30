@@ -166,6 +166,7 @@ pub struct Sessions {
     /// Helpers one session runs at a time: one of `HELPERS_AT_ONCE`. An old `[mcp]
     /// helpers_at_once` fills it in when this is not set (`fold_legacy_helpers`).
     pub helpers_at_once: String,
+    pub pr_wake: bool,
 }
 
 impl Default for Sessions {
@@ -175,6 +176,7 @@ impl Default for Sessions {
             place: "new worktree".into(),
             helpers: "ask".into(),
             helpers_at_once: "3".into(),
+            pr_wake: true,
         }
     }
 }

@@ -134,7 +134,7 @@ the pane's process tree or `MAITTY_PANE_TOKEN`.
 Saved role profiles and sequenced planner/worker/reviewer workflows are not part
 of Maitty's interface, and neither is a fleet commander (`maitty brief`, `[team]`): old
 config keys for them are read and ignored. Sessions, ordinary agent launches, helpers, and
-MCP session controls remain supported. The wire protocol is version 55.
+MCP session controls remain supported. The wire protocol is version 61.
 
 `SwapPanes { a, b }` trades the places of two panes of one tab (the split ratios stay with
 their slots). Panes in different tabs, or one that isn't there, are an error.
@@ -158,6 +158,19 @@ refuses with an error the agent can read. `sessions.helpers_at_once` (2, 3 or 4)
 helpers one session has working at once; a start past it is refused with what to do. A
 person's shell (no agent in the pane) is never asked. Sessions saved before a restart keep
 `started_by`; any fleet or commander field in a saved file is ignored on load.
+
+**Pull requests.** The daemon polls `gh` off the event loop for each pane's branch, or the URL
+set by `Command::LinkPr { term, url }`; `None` returns to branch discovery. A pane may only link
+its own PR. `TermInfo.pr` holds the latest checks, review, conflict, title and URL. When a new
+reading has a failed check, review request or merge conflict, Maitty queues a short follow-up
+for the pane's next idle turn when `[sessions] pr_wake` is enabled. It never types into a question.
+
+**Secrets.** A pane asks through `Command::RequestSecret { term, label, reason }` on its
+authenticated connection. The request appears in `Snapshot.secret_requests`; the value is never
+part of a snapshot. Only the user can answer with `Command::AnswerSecret { id, value }`. The
+waiting pane receives a single-use, 24-hour reference, then requests its value once with
+`Command::SpendSecret { reference }`. The reference belongs to the pane that asked, and a daemon
+restart forgets all held secrets. Disconnecting the asking pane withdraws its request.
 
 A pane's check results travel as `CheckInfo` summaries on `TermInfo.checks`, one per
 checkpoint in project order; `TermInfo::check()` is the headline one (the worst state wins:

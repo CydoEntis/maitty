@@ -171,6 +171,11 @@ enum Mode {
         term: TermId,
         side: bool,
     },
+    Secret {
+        term: TermId,
+        id: u64,
+        side: bool,
+    },
     /// The leader's key map (or its second step), typed to search.
     KeyMap(Box<screen::KeyMap>),
     /// Every command with its key (the sidebar's "menu").
