@@ -1081,6 +1081,14 @@ fixture now passes only its declared fake-provider environment instead of
 snapshotting the machine environment; the latter could race with tests that
 change process environment variables. This does not verify Claude's live
 protocol or authentication.
+After moving shared clock helpers, the current Windows workspace passed
+`cargo build --workspace --locked`, `cargo test --workspace --locked
+-- --test-threads=2` (1,383 passed, 5 ignored), workspace clippy with warnings
+denied, formatting and whitespace checks. The core and all extracted packages
+cross-check for Linux and macOS. A full workspace Linux cross-check from Windows
+is blocked by the GUI's `libdbus-sys` requiring a configured Linux sysroot;
+the full macOS cross-check is blocked because this host has no target C compiler.
+These host limitations do not replace native desktop builds.
 The terminal-only Windows install also passed with an isolated Cargo target:
 `cargo install --path . --root target/gui-roadmap-tui-install-smoke --locked
 --target-dir target/gui-roadmap-tui-build`; the installed binary printed
