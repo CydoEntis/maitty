@@ -2163,19 +2163,6 @@ fn home_settings(env: &str, dir: &str) -> PathBuf {
         .join("settings.json")
 }
 
-const CLAUDE_EVENTS: &[(&str, Option<&str>)] = &[
-    ("UserPromptSubmit", None),
-    ("PreToolUse", None),
-    ("PostToolUse", None),
-    ("PermissionRequest", None),
-    ("Notification", None),
-    ("Stop", None),
-    ("SubagentStart", None),
-    ("SubagentStop", None),
-    ("SessionStart", None),
-    ("SessionEnd", None),
-];
-
 /// A hook group the app put there: tagged, or (from installs before the tag) one that runs
 /// The app's command, or one it had before.
 fn is_our_name(program: &str) -> bool {
@@ -2502,7 +2489,13 @@ fn shell_line(line: &str) -> std::process::Command {
 
 /// Add (or with `uninstall`, remove) the app's hooks in Claude Code's settings.
 fn claude_hooks(uninstall: bool) -> Result<PathBuf> {
-    json_hooks(&claude_settings(), "claude", CLAUDE_EVENTS, 5, uninstall)
+    json_hooks(
+        &claude_settings(),
+        "claude",
+        maitty_provider_claude::STATUS_EVENTS,
+        5,
+        uninstall,
+    )
 }
 
 /// Add (or remove) the app's hooks in a Claude-style settings.json (Claude Code, Gemini CLI,

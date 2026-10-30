@@ -1,6 +1,20 @@
 use serde_json::Value;
 use std::path::Path;
 
+/// Claude Code hook events used for native session status reporting.
+pub const STATUS_EVENTS: &[(&str, Option<&str>)] = &[
+    ("UserPromptSubmit", None),
+    ("PreToolUse", None),
+    ("PostToolUse", None),
+    ("PermissionRequest", None),
+    ("Notification", None),
+    ("Stop", None),
+    ("SubagentStart", None),
+    ("SubagentStop", None),
+    ("SessionStart", None),
+    ("SessionEnd", None),
+];
+
 /// Maps events from Claude-compatible native hook payloads to Maitty status.
 pub fn status_from_hook(payload: &Value) -> Option<maitty_shared::protocol::HookStatus> {
     use maitty_shared::protocol::HookStatus;

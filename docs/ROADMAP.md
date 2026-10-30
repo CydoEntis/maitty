@@ -975,9 +975,9 @@ from the CLI module while keeping status setup behavior unchanged.
 Codex-specific native hook TOML projection now lives in `maitty-provider-codex`;
 the runtime retains path checks, backups and atomic file writes. The provider's
 completion notification is also mapped there to the shared hook status.
-Claude-compatible status event mapping now lives with the Claude provider's
-hook ownership and stale-hook policy; other provider event mappings remain in
-the runtime.
+Claude hook events and compatible status event mapping now live with the
+Claude provider's hook ownership and stale-hook policy; other provider event
+mappings remain in the runtime.
 
 Claude meets the same standalone desktop chat contract as Codex. Native terminal
 transfer remains deferred. Package the optional GUI for Windows, macOS and Linux

@@ -398,7 +398,7 @@ pub(crate) fn status_installer(agent: &str) -> Result<Install> {
             super::json_hooks(
                 &super::qwen_settings(),
                 "qwen",
-                super::CLAUDE_EVENTS,
+                maitty_provider_claude::STATUS_EVENTS,
                 10,
                 uninstall,
             )
