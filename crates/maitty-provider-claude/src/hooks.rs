@@ -1,3 +1,4 @@
+use jsonc_parser::cst::{CstInputValue, CstObject, CstObjectProp};
 use serde_json::Value;
 use std::path::Path;
 
@@ -47,6 +48,39 @@ pub fn json_hook_group(options: JsonHookGroupOptions<'_>) -> Value {
         group.insert("matcher".into(), serde_json::json!(matcher));
     }
     Value::Object(group)
+}
+
+/// Replaces this app's group for one event, leaving every other group untouched.
+pub fn replace_json_hook_group(
+    hooks: &CstObject,
+    event: &str,
+    group: Option<CstInputValue>,
+    app_names: &[&str],
+) {
+    let groups = match hooks.get(event) {
+        Some(property) => match property.array_value() {
+            Some(groups) => groups,
+            None => return,
+        },
+        None if group.is_none() => return,
+        None => hooks
+            .append(event, CstInputValue::Array(Vec::new()))
+            .array_value_or_set(),
+    };
+    for existing in groups.elements() {
+        if existing
+            .to_serde_value()
+            .is_some_and(|value| is_our_hook_group(&value, app_names))
+        {
+            existing.remove();
+        }
+    }
+    if let Some(group) = group {
+        groups.append(group);
+    }
+    if groups.elements().is_empty() {
+        hooks.get(event).into_iter().for_each(CstObjectProp::remove);
+    }
 }
 
 /// Maps events from Claude-compatible native hook payloads to Maitty status.
@@ -156,9 +190,10 @@ fn split_command(command: &str) -> (&str, &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        JsonHookGroupOptions, is_our_hook_group, is_our_name, json_hook_group, runs_our_hook,
-        stale_hooks, status_from_hook,
+        JsonHookGroupOptions, is_our_hook_group, is_our_name, json_hook_group,
+        replace_json_hook_group, runs_our_hook, stale_hooks, status_from_hook,
     };
+    use jsonc_parser::cst::CstInputValue;
     use serde_json::json;
 
     const APP_NAMES: &[&str] = &["maitty", "seshi", "hydra", "drover"];
@@ -239,5 +274,40 @@ mod tests {
             "\"/home/user/Maitty App/maitty\" hook claude"
         );
         assert_eq!(group["hooks"][0]["timeout"], 5);
+    }
+
+    #[test]
+    fn replaces_current_and_legacy_groups_without_removing_other_tools() {
+        let document = jsonc_parser::cst::CstRootNode::parse(
+            r#"{"hooks":{"Stop":[{"_hydra":true,"hooks":[]},{"hooks":[{"command":"other-tool"}]}]}}"#,
+            &jsonc_parser::ParseOptions::default(),
+        )
+        .unwrap();
+        let root = document.object_value().unwrap();
+        let hooks = root.get("hooks").unwrap().object_value().unwrap();
+        replace_json_hook_group(
+            &hooks,
+            "Stop",
+            Some(CstInputValue::Object(vec![
+                ("_maitty".into(), CstInputValue::Bool(true)),
+                (
+                    "hooks".into(),
+                    CstInputValue::Array(vec![CstInputValue::Object(vec![(
+                        "command".into(),
+                        CstInputValue::String("\"/bin/maitty\" hook claude".into()),
+                    )])]),
+                ),
+            ])),
+            &["maitty", "hydra"],
+        );
+
+        let result = document.to_serde_value().unwrap();
+        let groups = result["hooks"]["Stop"].as_array().unwrap();
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0]["hooks"][0]["command"], "other-tool");
+        assert_eq!(
+            groups[1]["hooks"][0]["command"],
+            "\"/bin/maitty\" hook claude"
+        );
     }
 }

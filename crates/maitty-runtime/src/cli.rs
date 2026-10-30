@@ -11,7 +11,7 @@ pub(crate) mod secret_run;
 use crate::layout::Dir;
 use crate::protocol::*;
 use anyhow::{Context, Result, anyhow, bail};
-use jsonc_parser::cst::{CstInputValue, CstObject, CstObjectProp};
+use jsonc_parser::cst::{CstInputValue, CstObjectProp};
 use mcp_config::McpChange;
 use serde_json::{Value, json};
 use std::io::Read;
@@ -2535,11 +2535,11 @@ fn json_hooks(
     };
     if let Some(hooks) = &hooks {
         for (event, matcher) in events {
-            replace_our_group(
+            maitty_provider_claude::replace_json_hook_group(
                 hooks,
                 event,
                 (!uninstall).then(|| {
-                    maitty_provider_claude::json_hook_group(
+                    jsonc::input(&maitty_provider_claude::json_hook_group(
                         maitty_provider_claude::JsonHookGroupOptions {
                             command_name: APP_COMMAND,
                             executable: &exe,
@@ -2547,8 +2547,9 @@ fn json_hooks(
                             timeout,
                             matcher: *matcher,
                         },
-                    )
+                    ))
                 }),
+                &app_hook_names(),
             );
         }
     }
@@ -2557,32 +2558,6 @@ fn json_hooks(
     }
     crate::config::write_atomic(path, doc.text())?;
     Ok(path.to_path_buf())
-}
-
-/// Swaps the app's groups under `event` for `ours` (`None` only removes them); every other
-/// group stays where it is. An event left with no groups is dropped.
-fn replace_our_group(hooks: &CstObject, event: &str, ours: Option<Value>) {
-    let groups = match hooks.get(event) {
-        Some(prop) => match prop.array_value() {
-            Some(groups) => groups,
-            None => return,
-        },
-        None if ours.is_none() => return,
-        None => hooks
-            .append(event, CstInputValue::Array(Vec::new()))
-            .array_value_or_set(),
-    };
-    for group in groups.elements() {
-        if group.to_serde_value().is_some_and(|g| is_ours(&g)) {
-            group.remove();
-        }
-    }
-    if let Some(g) = ours {
-        groups.append(jsonc::input(&g));
-    }
-    if groups.elements().is_empty() {
-        hooks.get(event).into_iter().for_each(CstObjectProp::remove);
-    }
 }
 
 /// Points Claude's status line at the app (or back), changing only the `statusLine` entry.

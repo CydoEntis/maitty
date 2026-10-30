@@ -2416,6 +2416,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "getrandom 0.3.4",
+ "jsonc-parser",
  "maitty-shared",
  "serde_json",
 ]
