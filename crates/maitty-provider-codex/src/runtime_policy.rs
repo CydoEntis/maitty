@@ -1,7 +1,12 @@
 use anyhow::{Result, bail};
 use serde_json::{Map, Value, json};
 
-pub(super) fn overrides(response: &Value) -> Result<Map<String, Value>> {
+/// Preserves supported Codex runtime settings and adds required Maitty environment forwarding.
+pub fn runtime_policy_overrides(
+    response: &Value,
+    structured_environment: &[&str],
+    runtime_route_environment: &[&str],
+) -> Result<Map<String, Value>> {
     let config = response
         .get("config")
         .and_then(Value::as_object)
@@ -53,7 +58,10 @@ pub(super) fn overrides(response: &Value) -> Result<Map<String, Value>> {
         _ => bail!("Unsupported Codex default environment filtering policy"),
     };
     let mut overrides = Map::new();
-    overrides.insert("shell_environment_policy".into(),json!({"inherit":"all","ignore_default_excludes":ignore,"exclude":[],"set":{},"include_only":[],"experimental_use_profile":false}));
+    overrides.insert(
+        "shell_environment_policy".into(),
+        json!({"inherit":"all","ignore_default_excludes":ignore,"exclude":[],"set":{},"include_only":[],"experimental_use_profile":false}),
+    );
     let servers = match config.get("mcp_servers") {
         None | Some(Value::Null) => &empty,
         Some(Value::Object(servers)) => servers,
@@ -82,7 +90,7 @@ pub(super) fn overrides(response: &Value) -> Result<Map<String, Value>> {
                 .as_object()
                 .ok_or_else(|| anyhow::anyhow!("Unsupported Codex MCP environment"))?;
             if env.keys().any(|key| {
-                crate::ipc::STRUCTURED_ENV
+                structured_environment
                     .iter()
                     .any(|reserved| key.eq_ignore_ascii_case(reserved))
             }) {
@@ -96,9 +104,9 @@ pub(super) fn overrides(response: &Value) -> Result<Map<String, Value>> {
             }
             _ => bail!("Unsupported Codex MCP inherited environment list"),
         };
-        for key in crate::ipc::STRUCTURED_ENV
-            .into_iter()
-            .chain(crate::ipc::RUNTIME_ROUTE_ENV)
+        for key in structured_environment
+            .iter()
+            .chain(runtime_route_environment.iter())
         {
             if !variables.iter().any(|value| value == key) {
                 variables.push(json!(key));
@@ -115,23 +123,33 @@ pub(super) fn overrides(response: &Value) -> Result<Map<String, Value>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const STRUCTURED_ENV: [&str; 4] = [
+        "MAITTY_CONVERSATION_ID",
+        "MAITTY_CONVERSATION_GENERATION",
+        "MAITTY_CONVERSATION_CONNECTION",
+        "MAITTY_CONVERSATION_TOKEN",
+    ];
+    const ROUTE_ENV: [&str; 2] = ["MAITTY_RUNTIME_ROUTE", "MAITTY_RUNTIME_SESSION"];
+
     #[test]
     fn default_policy_and_existing_mcp_environment_are_preserved_without_secret_values() {
         let response = json!({"config":{"mcp_servers":{"synthetic":{"command":"server","args":["--stdio"],"env_vars":["USER_CHOICE"]}}}});
-        let overrides = overrides(&response).unwrap();
+        let overrides = runtime_policy_overrides(&response, &STRUCTURED_ENV, &ROUTE_ENV).unwrap();
         let variables = overrides["mcp_servers.synthetic.env_vars"]
             .as_array()
             .unwrap();
         assert_eq!(variables[0], "USER_CHOICE");
-        for key in crate::ipc::STRUCTURED_ENV {
+        for key in STRUCTURED_ENV {
             assert!(variables.contains(&json!(key)));
         }
-        for key in crate::ipc::RUNTIME_ROUTE_ENV {
+        for key in ROUTE_ENV {
             assert!(variables.contains(&json!(key)));
         }
         assert_eq!(overrides.len(), 2);
         assert!(!overrides.contains_key("mcp_servers.synthetic.command"));
     }
+
     #[test]
     fn filtering_shell_or_reserved_mcp_overrides_fail_closed() {
         for policy in [
@@ -141,27 +159,42 @@ mod tests {
             json!({"set":{"USER_CHOICE":"value"}}),
             json!({"filters":{}}),
         ] {
-            assert!(overrides(&json!({"config":{"shell_environment_policy":policy}})).is_err());
+            assert!(
+                runtime_policy_overrides(
+                    &json!({"config":{"shell_environment_policy":policy}}),
+                    &STRUCTURED_ENV,
+                    &ROUTE_ENV,
+                )
+                .is_err()
+            );
         }
-        let mut env = Map::new();
-        env.insert(crate::ipc::STRUCTURED_ENV[3].into(), json!("forged"));
+        let env = json!({"MAITTY_CONVERSATION_TOKEN":"forged"});
         assert!(
-            overrides(
-                &json!({"config":{"mcp_servers":{"synthetic":{"command":"server","env":env}}}})
+            runtime_policy_overrides(
+                &json!({"config":{"mcp_servers":{"synthetic":{"command":"server","env":env}}}}),
+                &STRUCTURED_ENV,
+                &ROUTE_ENV,
             )
             .is_err()
         );
         assert!(
-            overrides(
-                &json!({"config":{"shell_environment_policy":{"ignore_default_excludes":false}}})
+            runtime_policy_overrides(
+                &json!({"config":{"shell_environment_policy":{"ignore_default_excludes":false}}}),
+                &STRUCTURED_ENV,
+                &ROUTE_ENV,
             )
             .is_ok()
         );
     }
+
     #[test]
     fn serialized_absent_shell_policy_options_use_verified_native_defaults() {
         let response = json!({"config":{"shell_environment_policy":{"inherit":null,"ignore_default_excludes":null,"exclude":null,"set":null,"include_only":null,"filters":null,"experimental_use_profile":null}}});
-        let defaults = overrides(&json!({"config":{}})).unwrap();
-        assert_eq!(overrides(&response).unwrap(), defaults);
+        let defaults =
+            runtime_policy_overrides(&json!({"config":{}}), &STRUCTURED_ENV, &ROUTE_ENV).unwrap();
+        assert_eq!(
+            runtime_policy_overrides(&response, &STRUCTURED_ENV, &ROUTE_ENV).unwrap(),
+            defaults
+        );
     }
 }

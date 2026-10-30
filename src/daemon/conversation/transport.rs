@@ -623,7 +623,16 @@ impl Connection {
                 Envelope::Response {
                     id: RequestId::Integer(CONFIG_READ_ID),
                     result: Ok(response),
-                } => return Ok((super::runtime_policy::overrides(&response)?, notifications)),
+                } => {
+                    return Ok((
+                        maitty_provider_codex::runtime_policy_overrides(
+                            &response,
+                            &crate::ipc::STRUCTURED_ENV,
+                            &crate::ipc::RUNTIME_ROUTE_ENV,
+                        )?,
+                        notifications,
+                    ));
+                }
                 Envelope::Notification { method, params }
                     if notifications.len() < MAX_STARTUP_NOTIFICATIONS =>
                 {

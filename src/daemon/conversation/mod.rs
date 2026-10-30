@@ -7,7 +7,6 @@ mod history_provider;
 pub(super) mod history_storage;
 mod process;
 mod runtime;
-mod runtime_policy;
 pub(super) mod transport;
 
 pub(in crate::daemon) use runtime::Owner;
