@@ -182,8 +182,8 @@ each other.
 The shared protocol, conversation contracts, split-tree types, clock helpers,
 hidden-text validation and check-output classification live in the
 `maitty-shared` workspace package. `maitty-settings` owns the UI, session, restore,
-worktree, MCP and check preference schemas and defaults, pure validation and
-appearance compatibility rules, terminal key actions,
+worktree, MCP, check, recipe, preset and quick-agent preference schemas and
+defaults, pure validation and appearance compatibility rules, terminal key actions,
 default bindings, key parsing and built-in themes; terminal-specific mouse
 encoding stays in the runtime. Config loading and filesystem migrations remain
 runtime-owned. `maitty-ipc-transport` owns bounded,
@@ -222,7 +222,8 @@ and Tailwind; its rules live in `docs/stack/tauri.md`, `typescript.md`,
 
 - **Domain / shared types:** `maitty-shared::protocol` (every message between client and
   daemon), `maitty-shared::layout` (split-tree contract),
-  `maitty-settings::config` (UI, session, restore, worktree, MCP and check preferences),
+  `maitty-settings::config` (UI, session, restore, worktree, MCP, check, recipe,
+  preset and quick-agent preferences),
   `maitty-settings::keys` (actions and bindings), `maitty-settings::theme`, and
   the remaining config schema.
   Config file loading and migration I/O stay in the runtime.

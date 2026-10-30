@@ -1,5 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// The default padding leaves a row above the tabs for the terminal's own tab bar.
@@ -328,6 +329,123 @@ pub fn validate_check(n: usize, c: &CheckDef, place: &str) -> Result<()> {
     Ok(())
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Recipe {
+    pub name: String,
+    /// Start in its own worktree (in a git project).
+    pub worktree: bool,
+    /// Commands: the first is the main one; the rest start beside it in the same folder.
+    pub run: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Preset {
+    pub name: String,
+    /// Which agent (a name from + New's RUN row).
+    pub agent: String,
+    /// One of the agent's models; empty is its default.
+    pub model: String,
+    /// What to ask. `{task}` is replaced with what you type; with no `{task}` the preset
+    /// starts in one key, without asking.
+    pub prompt: String,
+    /// "send": to the agent you're on; "beside": a new one beside it, in its folder;
+    /// "worktree": a new one in a new worktree.
+    #[serde(rename = "where")]
+    pub place: String,
+}
+
+impl Default for Preset {
+    fn default() -> Self {
+        Preset {
+            name: String::new(),
+            agent: "claude".into(),
+            model: String::new(),
+            prompt: String::new(),
+            place: "beside".into(),
+        }
+    }
+}
+
+impl Preset {
+    pub fn asks(&self) -> bool {
+        self.prompt.contains("{task}") || self.prompt.trim().is_empty()
+    }
+
+    /// The prompt with the task in it.
+    pub fn fill(&self, task: &str) -> String {
+        let task = task.trim();
+        if self.prompt.contains("{task}") {
+            self.prompt.replace("{task}", task).trim().to_string()
+        } else if self.prompt.trim().is_empty() {
+            task.to_string()
+        } else if task.is_empty() {
+            self.prompt.trim().to_string()
+        } else {
+            format!("{} {task}", self.prompt.trim())
+        }
+    }
+}
+
+impl Default for Recipe {
+    fn default() -> Self {
+        Recipe {
+            name: String::new(),
+            worktree: true,
+            run: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Quick {
+    /// The agents the app can start (the new-agent dialog lists them).
+    pub agents: Vec<QuickAgent>,
+}
+
+/// The flag that picks a model when an agent's `model_flag` is empty.
+pub const DEFAULT_MODEL_FLAG: &str = "--model";
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct QuickAgent {
+    pub name: String,
+    /// `{prompt}` is replaced with the task, quoted for your shell.
+    pub command: String,
+    /// Models to choose from when starting it (the first choice is always its default).
+    pub models: Vec<String>,
+    /// The flag that picks one (default `--model`).
+    pub model_flag: String,
+    /// Its own environment, which makes it an account: `CLAUDE_CONFIG_DIR = "~/.claude-work"`
+    /// is claude signed in as someone else. A leading `~` is your home folder.
+    pub env: BTreeMap<String, String>,
+}
+
+impl Default for Quick {
+    fn default() -> Self {
+        let a = |name: &str, command: &str, models: &[&str], flag: &str| QuickAgent {
+            name: name.into(),
+            command: command.into(),
+            models: models.iter().map(|m| m.to_string()).collect(),
+            model_flag: flag.into(),
+            env: BTreeMap::new(),
+        };
+        Quick {
+            agents: vec![
+                a(
+                    "claude",
+                    "claude {prompt}",
+                    &["opus", "sonnet", "haiku"],
+                    "--model",
+                ),
+                a("codex", "codex {prompt}", &[], "-m"),
+            ],
+        }
+    }
+}
+
 /// How round the shapes are, all of them at once (`ui.rounded`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -569,9 +687,10 @@ impl Default for Ui {
 #[cfg(test)]
 mod tests {
     use super::{
-        CHECK_TIMEOUT_S_DEFAULT, CURSOR_SHAPES, CheckDef, HELPERS_AT_ONCE, HELPERS_MAY, LayoutKind,
-        Mcp, NEW_AGENTS, NEW_WHERE, Restore, Rounding, Sessions, Ui, Worktree, same_path,
-        validate_checks, validate_cursor, validate_sessions,
+        CHECK_TIMEOUT_S_DEFAULT, CURSOR_SHAPES, CheckDef, DEFAULT_MODEL_FLAG, HELPERS_AT_ONCE,
+        HELPERS_MAY, LayoutKind, Mcp, NEW_AGENTS, NEW_WHERE, Preset, Quick, Recipe, Restore,
+        Rounding, Sessions, Ui, Worktree, same_path, validate_checks, validate_cursor,
+        validate_sessions,
     };
 
     #[test]
@@ -694,5 +813,31 @@ mod tests {
             std::path::Path::new("C:\\Repo\\"),
             std::path::Path::new("c:/repo")
         ));
+    }
+
+    #[test]
+    fn recipes_presets_and_quick_agents_keep_their_defaults_and_prompt_rules() {
+        let recipe = Recipe::default();
+        assert!(recipe.worktree && recipe.run.is_empty());
+
+        let preset = Preset::default();
+        assert_eq!(
+            (preset.agent.as_str(), preset.place.as_str()),
+            ("claude", "beside")
+        );
+        assert!(preset.asks());
+        assert_eq!(preset.fill("  fix the bug  "), "fix the bug");
+
+        let named = Preset {
+            prompt: "review {task}".into(),
+            ..Preset::default()
+        };
+        assert_eq!(named.fill("the diff"), "review the diff");
+
+        let quick = Quick::default();
+        assert_eq!(quick.agents.len(), 2);
+        assert_eq!(quick.agents[0].name, "claude");
+        assert_eq!(quick.agents[1].name, "codex");
+        assert_eq!(DEFAULT_MODEL_FLAG, "--model");
     }
 }
