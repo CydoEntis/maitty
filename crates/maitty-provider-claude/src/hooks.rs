@@ -15,6 +15,40 @@ pub const STATUS_EVENTS: &[(&str, Option<&str>)] = &[
     ("SessionEnd", None),
 ];
 
+/// Inputs for building a hook group in Claude-compatible settings JSON.
+pub struct JsonHookGroupOptions<'a> {
+    pub command_name: &'a str,
+    pub executable: &'a str,
+    pub agent: &'a str,
+    pub timeout: u64,
+    pub matcher: Option<&'a str>,
+}
+
+/// Builds one tagged command hook group for a Claude-compatible settings file.
+pub fn json_hook_group(options: JsonHookGroupOptions<'_>) -> Value {
+    let JsonHookGroupOptions {
+        command_name,
+        executable,
+        agent,
+        timeout,
+        matcher,
+    } = options;
+    let mut group = serde_json::Map::new();
+    group.insert(format!("_{command_name}"), serde_json::json!(true));
+    group.insert(
+        "hooks".into(),
+        serde_json::json!([{
+            "type": "command",
+            "command": format!("\"{executable}\" hook {agent}"),
+            "timeout": timeout
+        }]),
+    );
+    if let Some(matcher) = matcher {
+        group.insert("matcher".into(), serde_json::json!(matcher));
+    }
+    Value::Object(group)
+}
+
 /// Maps events from Claude-compatible native hook payloads to Maitty status.
 pub fn status_from_hook(payload: &Value) -> Option<maitty_shared::protocol::HookStatus> {
     use maitty_shared::protocol::HookStatus;
@@ -121,7 +155,10 @@ fn split_command(command: &str) -> (&str, &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_our_hook_group, is_our_name, runs_our_hook, stale_hooks, status_from_hook};
+    use super::{
+        JsonHookGroupOptions, is_our_hook_group, is_our_name, json_hook_group, runs_our_hook,
+        stale_hooks, status_from_hook,
+    };
     use serde_json::json;
 
     const APP_NAMES: &[&str] = &["maitty", "seshi", "hydra", "drover"];
@@ -182,5 +219,25 @@ mod tests {
             status_from_hook(&json!({"hook_event_name":"SessionEnd"})),
             Some(HookStatus::Gone)
         );
+    }
+
+    #[test]
+    fn builds_tagged_hook_groups_with_optional_matchers() {
+        let group = json_hook_group(JsonHookGroupOptions {
+            command_name: "maitty",
+            executable: "/home/user/Maitty App/maitty",
+            agent: "claude",
+            timeout: 5,
+            matcher: Some("AskUserQuestion"),
+        });
+
+        assert_eq!(group["_maitty"], true);
+        assert_eq!(group["matcher"], "AskUserQuestion");
+        assert_eq!(group["hooks"][0]["type"], "command");
+        assert_eq!(
+            group["hooks"][0]["command"],
+            "\"/home/user/Maitty App/maitty\" hook claude"
+        );
+        assert_eq!(group["hooks"][0]["timeout"], 5);
     }
 }

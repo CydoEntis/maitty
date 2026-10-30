@@ -206,7 +206,7 @@ session metadata, usage extraction, effective-config policy, native hook
 configuration projection and completion-event mapping live in
 `maitty-provider-codex`;
 Claude stream parsing, version checks, session IDs, launch arguments, frame
-limit, hook event definitions, ownership, stale-hook projection and native event mapping live in
+limit, hook event definitions, command-group projection, ownership, stale-hook projection and native event mapping live in
 `maitty-provider-claude`. JSONC files and live process transports remain in the
 runtime. Claude event projection also lives in its provider package. Completing the
 package split is tracked by

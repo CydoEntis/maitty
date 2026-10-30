@@ -2538,7 +2538,17 @@ fn json_hooks(
             replace_our_group(
                 hooks,
                 event,
-                (!uninstall).then(|| our_group(&exe, agent, timeout, *matcher)),
+                (!uninstall).then(|| {
+                    maitty_provider_claude::json_hook_group(
+                        maitty_provider_claude::JsonHookGroupOptions {
+                            command_name: APP_COMMAND,
+                            executable: &exe,
+                            agent,
+                            timeout,
+                            matcher: *matcher,
+                        },
+                    )
+                }),
             );
         }
     }
@@ -2547,18 +2557,6 @@ fn json_hooks(
     }
     crate::config::write_atomic(path, doc.text())?;
     Ok(path.to_path_buf())
-}
-
-/// The tagged hook group that runs `<app> hook <agent>` (the tag is how re-runs find it).
-fn our_group(exe: &str, agent: &str, timeout: u64, matcher: Option<&str>) -> Value {
-    let mut g = json!({
-        concat!("_", env!("APP_COMMAND")): true,
-        "hooks": [{ "type": "command", "command": format!("\"{exe}\" hook {agent}"), "timeout": timeout }],
-    });
-    if let Some(m) = matcher {
-        g["matcher"] = json!(m);
-    }
-    g
 }
 
 /// Swaps the app's groups under `event` for `ours` (`None` only removes them); every other
